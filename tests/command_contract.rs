@@ -861,6 +861,23 @@ impl RuntimeHarness {
         let lookup_registry = self.root.join("tests/fixtures/registries/cusip-isin");
         self.prewarm_lookup_registry(&lookup_input, &lookup_registry);
         let wrong_column_input = self.root.join("tests/fixtures/csv/wrong_column.csv");
+        let scoped_registry = self.work.join("scoped-registry");
+        fs::create_dir_all(&scoped_registry).expect("scoped registry dir");
+        fs::write(
+            scoped_registry.join("registry.json"),
+            serde_json::to_vec_pretty(&json!({
+                "id": "scoped-properties",
+                "version": "1.0.0",
+                "description": "Scoped property aliases for command contracts",
+                "updated": "2026-09-03",
+                "entry_count": 0
+            }))
+            .expect("scoped registry metadata serializes"),
+        )
+        .expect("scoped registry metadata");
+        fs::write(scoped_registry.join("properties.json"), b"[]").expect("scoped aliases file");
+        let scoped_lookup_input = self.work.join("scoped-assets.csv");
+        fs::write(&scoped_lookup_input, "asset_number\n41-001\n").expect("scoped lookup input");
         let export_seed = self.work.join("registry-export.csv");
         let dbt_schema = self.work.join("registry-export.schema.yml");
         let dbt_test = self.work.join("registry-export.tests.sql");
@@ -989,6 +1006,26 @@ impl RuntimeHarness {
                 expected: RuntimeExpectation::json(2, "canon.v0", SchemaField::Version)
                     .assert_eq("outcome", json!("REFUSAL"))
                     .assert_eq("refusal.code", json!("E_COLUMN_NOT_FOUND"))
+                    .with_stderr(StderrExpectation::Empty),
+            },
+            RuntimeCase {
+                id: "root_lookup_malformed_scope_refusal",
+                command_name: "root lookup",
+                args: vec![
+                    path_arg(&lookup_input),
+                    "--registry".to_string(),
+                    path_arg(&lookup_registry),
+                    "--column".to_string(),
+                    "cusip".to_string(),
+                    "--scope".to_string(),
+                    "deal".to_string(),
+                    "--no-witness".to_string(),
+                ],
+                expected: RuntimeExpectation::json(2, "canon.v0", SchemaField::Version)
+                    .assert_eq("outcome", json!("REFUSAL"))
+                    .assert_eq("refusal.code", json!("E_PARSE"))
+                    .assert_eq("refusal.detail.flag", json!("--scope"))
+                    .assert_eq("refusal.detail.writes_performed", json!(false))
                     .with_stderr(StderrExpectation::Empty),
             },
             RuntimeCase {
@@ -1212,6 +1249,116 @@ impl RuntimeHarness {
                 .with_mutation(MutationExpectation::Exists(
                     registry_build_dir.join("_build.json"),
                 )),
+            },
+            RuntimeCase {
+                id: "registry_mint_scoped_alias_json",
+                command_name: "registry mint",
+                args: vec![
+                    "registry".to_string(),
+                    "mint".to_string(),
+                    "--registry".to_string(),
+                    path_arg(&scoped_registry),
+                    "--canonical-id".to_string(),
+                    "PROP-001".to_string(),
+                    "--canonical-type".to_string(),
+                    "cmbs_property".to_string(),
+                    "--scope".to_string(),
+                    "deal=CIK1690255".to_string(),
+                    "--with-alias".to_string(),
+                    "properties.json=41-001:absee_property_alias".to_string(),
+                    "--no-lint".to_string(),
+                    "--emit".to_string(),
+                    "json".to_string(),
+                ],
+                expected: RuntimeExpectation::json(
+                    0,
+                    "canon_registry_mint.v0",
+                    SchemaField::Version,
+                )
+                .assert_eq("canonical_id", json!("PROP-001"))
+                .assert_eq("registry.entry_count_after", json!(1))
+                .with_stderr(StderrExpectation::Empty)
+                .with_mutation(MutationExpectation::Exists(
+                    scoped_registry.join("properties.json"),
+                )),
+            },
+            RuntimeCase {
+                id: "registry_add_entry_scoped_alias_json",
+                command_name: "registry add-entry",
+                args: vec![
+                    "registry".to_string(),
+                    "add-entry".to_string(),
+                    "--registry".to_string(),
+                    path_arg(&scoped_registry),
+                    "--alias-file".to_string(),
+                    "properties.json".to_string(),
+                    "--canonical-id".to_string(),
+                    "PROP-002".to_string(),
+                    "--input".to_string(),
+                    "41-001".to_string(),
+                    "--rule-id".to_string(),
+                    "absee_property_alias".to_string(),
+                    "--canonical-type".to_string(),
+                    "cmbs_property".to_string(),
+                    "--scope".to_string(),
+                    "deal=CIK0000002".to_string(),
+                    "--no-lint".to_string(),
+                    "--emit".to_string(),
+                    "json".to_string(),
+                ],
+                expected: RuntimeExpectation::json(
+                    0,
+                    "canon_registry_add_entry.v0",
+                    SchemaField::Version,
+                )
+                .assert_eq("alias_entry.input", json!("41-001"))
+                .assert_eq("registry.entry_count_after", json!(2))
+                .with_stderr(StderrExpectation::Empty)
+                .with_mutation(MutationExpectation::Exists(
+                    scoped_registry.join("properties.json"),
+                )),
+            },
+            RuntimeCase {
+                id: "root_lookup_scoped_alias_resolves_json",
+                command_name: "root lookup",
+                args: vec![
+                    path_arg(&scoped_lookup_input),
+                    "--registry".to_string(),
+                    path_arg(&scoped_registry),
+                    "--column".to_string(),
+                    "asset_number".to_string(),
+                    "--scope".to_string(),
+                    "deal=CIK1690255".to_string(),
+                    "--explicit".to_string(),
+                    "--no-witness".to_string(),
+                ],
+                expected: RuntimeExpectation::json(0, "canon.v0", SchemaField::Version)
+                    .assert_eq("outcome", json!("RESOLVED"))
+                    .assert_eq("mappings.0.input", json!("u8:41-001"))
+                    .assert_eq("mappings.0.canonical_id", json!("u8:PROP-001"))
+                    .with_stderr(StderrExpectation::Contains(
+                        "Building registry index for scoped-properties",
+                    )),
+            },
+            RuntimeCase {
+                id: "root_lookup_scoped_alias_wrong_scope_unresolved",
+                command_name: "root lookup",
+                args: vec![
+                    path_arg(&scoped_lookup_input),
+                    "--registry".to_string(),
+                    path_arg(&scoped_registry),
+                    "--column".to_string(),
+                    "asset_number".to_string(),
+                    "--scope".to_string(),
+                    "deal=CIK9999999".to_string(),
+                    "--no-witness".to_string(),
+                ],
+                expected: RuntimeExpectation::json(1, "canon.v0", SchemaField::Version)
+                    .assert_eq("outcome", json!("UNRESOLVED"))
+                    .assert_eq("summary.total", json!(1))
+                    .assert_eq("summary.resolved", json!(0))
+                    .assert_eq("summary.unresolved", json!(1))
+                    .with_stderr(StderrExpectation::Empty),
             },
             RuntimeCase {
                 id: "project_init_writes_manifest",

@@ -75,7 +75,7 @@ out-of-tree extensions. They are not core defaults.
 
 ## CLI (v0)
 ```bash
-canon <INPUT> --registry <REGISTRY> --column <COLUMN> [--emit json|csv] [--canon-column <NAME>] [--map-out <PATH>] [--max-rows <N>] [--max-bytes <N>]
+canon <INPUT> --registry <REGISTRY> --column <COLUMN> [--scope DIMENSION=VALUE]... [--emit json|csv] [--canon-column <NAME>] [--map-out <PATH>] [--max-rows <N>] [--max-bytes <N>]
 canon doctor health [--json]
 canon doctor capabilities [--json]
 canon doctor robot-docs
@@ -130,8 +130,8 @@ canon registry export --format dbt-seed|search-index --registry <REGISTRY> --out
 canon registry providers [--emit json|summary]
 canon registry provider-schema <PROVIDER> [--emit json|summary]
 canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]
-canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
-canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
+canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
+canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
 canon registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict] [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]
 canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
@@ -196,6 +196,7 @@ Arguments:
 Options:
 - `--registry <PATH>`: Registry directory (versioned). Required.
 - `--column <COLUMN>`: Column containing IDs to resolve (CSV column name or JSONL field name). Required. Uses the same identifier encoding as `rvl` (`u8:<...>` or `hex:<...>` for ambiguous names).
+- `--scope DIMENSION=VALUE`: Optional exact lookup scope binding; repeatable. Core dimensions are `dataset`/`deal`, `jurisdiction`, `source_system`, and `profile`. Scoped registry entries require the matching query scope.
 - `--emit <json|csv>`: What goes to stdout. Default: `json` (mapping artifact). `csv` emits the original file with a canonical ID column appended — making `canon` a pipeline stage, not just an artifact producer. CSV input only; `--emit csv` with JSONL input is a REFUSAL (`E_EMIT_FORMAT`).
 - `--canon-column <NAME>`: Name of the appended canonical ID column. Default: `<COLUMN>__canon` (e.g., `cusip__canon`). Only meaningful with `--emit csv`; ignored otherwise.
 - `--map-out <PATH>`: Write the JSON mapping artifact to this file. Only meaningful with `--emit csv` — provides the mapping sidecar for `pack` or audit. Without it, `--emit csv` produces no JSON artifact (the witness ledger still records the run). Ignored with a stderr warning in `--emit json` mode (the mapping already IS stdout).
@@ -267,20 +268,22 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - emits plain text by default (`<PREFIX>-<zero-padded-number>`) or `canon_registry_next_id.v0` JSON
 - exits `0` when an ID is suggested, `2` on refusal
 
-`canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]`
+`canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]`
 - appends one exact alias entry to an existing root-level mapping file; `--alias-file` cannot point into a subdirectory and cannot be `registry.json` or `_build.json`
 - requires `--input` to be non-empty and already ASCII-trimmed; the lookup key written is exactly that value
-- refuses duplicate inputs already present anywhere in the registry because first-match precedence would make the new entry ambiguous or shadowed
+- refuses duplicate unscoped inputs or duplicate inputs in the same scope because first-match precedence would make the new entry ambiguous or shadowed
+- optional repeatable `--scope DIMENSION=VALUE` writes scoped alias metadata; `deal=...` is accepted as the dataset scope dimension for deal-scoped registries
 - infers `--canonical-type` only when the canonical ID already exists with exactly one type; new canonical IDs require an explicit type
 - defaults to a patch semver bump when `--next-version` is absent; use `--next-version` for calendar or other non-numeric versions
 - updates `registry.json.version` and `registry.json.entry_count`, runs standard lint by default, and restores the original files if lint reports errors
 - emits `canon_registry_add_entry.v0` JSON by default; `--emit plain` prints a one-line shell-oriented receipt
 - exits `0` on accepted write, `2` on refusal
 
-`canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]`
+`canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]`
 - creates one self-authored canonical ID with one or more starting exact aliases in a single versioned write
 - accepts either an explicit `--canonical-id` or an allocation prefix; when both are omitted, allocation uses `registry.json.default_id_scheme`
 - requires at least one `--with-alias`; each alias target file must already exist at the registry root
+- optional repeatable `--scope DIMENSION=VALUE` applies the same scoped metadata to every minted alias; scoped lookup must pass the matching scope to resolve it
 - parses each alias at the first `=` and the last `:`, so alias inputs may contain colons when quoted by the shell
 - applies one version bump and one `entry_count` increment covering all added aliases, then runs the same standard lint gate as `add-entry` unless `--no-lint` is set
 - emits `canon_registry_mint.v0` JSON by default; `--emit plain` prints only the minted canonical ID
@@ -1140,6 +1143,7 @@ canon registry next-id --registry registries/people/
 
 # Mint one canonical ID with an initial exact alias
 canon registry mint --registry registries/people/ --canonical-type person --with-alias 'aliases.json=Jane Doe:MANUAL'
+canon registry mint --registry registries/properties/ --canonical-type cmbs_property --prefix PROP --scope deal=CIK1690255 --with-alias 'properties.json=41-001:absee_property_alias'
 
 # Add another exact alias to an existing canonical ID
 canon registry add-entry --registry registries/people/ --alias-file aliases.json --canonical-id PPL-001 --input 'J. Doe' --rule-id MANUAL

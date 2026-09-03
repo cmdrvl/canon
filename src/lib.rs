@@ -3459,6 +3459,14 @@ fn run_registry_next_id(next_id: &RegistryNextIdCli) -> Result<u8, Box<dyn Error
 }
 
 fn run_registry_add_entry(add_entry: &RegistryAddEntryCli) -> Result<u8, Box<dyn Error>> {
+    let scope = match parse_cli_scope_flags(&add_entry.scope) {
+        Ok(scope) => scope,
+        Err(error) => {
+            let output = create_scope_parse_refusal(&add_entry.scope, error);
+            emit_registry_plain_json_refusal(output, &add_entry.emit)?;
+            return Ok(2);
+        }
+    };
     let request = registry::RegistryAddEntryRequest {
         registry: add_entry.registry.clone(),
         alias_file: add_entry.alias_file.clone(),
@@ -3471,7 +3479,7 @@ fn run_registry_add_entry(add_entry: &RegistryAddEntryCli) -> Result<u8, Box<dyn
         no_lint: add_entry.no_lint,
     };
 
-    match registry::add_entry(request) {
+    match registry::add_entry_with_scope(request, scope) {
         Ok(output) => {
             match add_entry.emit {
                 RegistryPlainJsonEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
@@ -3493,6 +3501,14 @@ fn run_registry_add_entry(add_entry: &RegistryAddEntryCli) -> Result<u8, Box<dyn
 }
 
 fn run_registry_mint(mint: &RegistryMintCli) -> Result<u8, Box<dyn Error>> {
+    let scope = match parse_cli_scope_flags(&mint.scope) {
+        Ok(scope) => scope,
+        Err(error) => {
+            let output = create_scope_parse_refusal(&mint.scope, error);
+            emit_registry_plain_json_refusal(output, &mint.emit)?;
+            return Ok(2);
+        }
+    };
     let request = registry::RegistryMintRequest {
         registry: mint.registry.clone(),
         canonical_id: mint.canonical_id.clone(),
@@ -3504,7 +3520,7 @@ fn run_registry_mint(mint: &RegistryMintCli) -> Result<u8, Box<dyn Error>> {
         no_lint: mint.no_lint,
     };
 
-    match registry::mint(request) {
+    match registry::mint_with_scope(request, scope) {
         Ok(output) => {
             match mint.emit {
                 RegistryPlainJsonEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
@@ -7113,7 +7129,12 @@ fn run_registry_audit_pipeline(
     let input_values =
         input::parse_input(&audit.seed, &audit.column, audit.max_bytes, audit.max_rows)
             .map_err(create_input_refusal)?;
-    enforce_unscoped_lookup_scope(&registry, &audit.registry)?;
+    match check_unscoped_lookup_scope(&registry).map_err(create_lookup_refusal)? {
+        UnscopedLookupScopeCheck::Clear => {}
+        UnscopedLookupScopeCheck::ScopeRequired => {
+            return Err(create_scope_required_refusal(&registry, &audit.registry));
+        }
+    }
     let resolve_result =
         lookup::resolve_values(&registry, &input_values).map_err(create_lookup_refusal)?;
 
@@ -7225,9 +7246,10 @@ fn parse_provider_config(options: &[String]) -> Result<BTreeMap<String, String>,
 
 /// Long flags an agent commonly types on the core lookup command. Used to
 /// turn clap's generic "unexpected argument" into a did-you-mean suggestion.
-const KNOWN_CORE_FLAGS: [&str; 14] = [
+const KNOWN_CORE_FLAGS: [&str; 15] = [
     "registry",
     "column",
+    "scope",
     "emit",
     "canon-column",
     "map-out",
@@ -7475,6 +7497,8 @@ fn run_pipeline(
     // Step 4: Load registry
     let registry = registry::load_registry(registry_path).map_err(create_registry_refusal)?;
     let input_path_display = input_path.to_string_lossy().into_owned();
+    let lookup_scope = parse_cli_scope_flags(&cli.scope)
+        .map_err(|error| create_scope_parse_refusal(&cli.scope, error))?;
 
     // Step 5: Parse input
     let input_values = input::parse_input(input_path, column, cli.max_bytes, cli.max_rows)
@@ -7511,9 +7535,22 @@ fn run_pipeline(
     }
 
     // Step 8: Resolve values
-    enforce_unscoped_lookup_scope(&registry, registry_path)?;
-    let resolve_result =
-        lookup::resolve_values(&registry, &input_values).map_err(create_lookup_refusal)?;
+    let resolve_result = if let Some(scope) = lookup_scope {
+        let context = lookup::ExactLookupContext {
+            namespace: None,
+            scope: Some(scope),
+        };
+        lookup::resolve_values_with_context(&registry, &input_values, &context)
+            .map_err(create_lookup_refusal)?
+    } else {
+        match check_unscoped_lookup_scope(&registry).map_err(create_lookup_refusal)? {
+            UnscopedLookupScopeCheck::Clear => {}
+            UnscopedLookupScopeCheck::ScopeRequired => {
+                return Err(create_scope_required_refusal(&registry, registry_path));
+            }
+        }
+        lookup::resolve_values(&registry, &input_values).map_err(create_lookup_refusal)?
+    };
 
     // Step 9: Determine outcome
     let outcome = determine_outcome(&resolve_result.summary);
@@ -7667,6 +7704,9 @@ fn run_pipeline(
         }
         if let Some(max_bytes) = cli.max_bytes {
             params.insert("max_bytes".to_string(), serde_json::Value::from(max_bytes));
+        }
+        if !cli.scope.is_empty() {
+            params.insert("scope".to_string(), serde_json::json!(&cli.scope));
         }
 
         let witness_record = witness::WitnessRecord::new(
@@ -7846,16 +7886,60 @@ fn create_lookup_refusal(error: lookup::LookupError) -> CanonOutput {
     )
 }
 
-#[allow(clippy::result_large_err)]
-fn enforce_unscoped_lookup_scope(
-    registry: &Registry,
-    registry_path: &Path,
-) -> Result<(), CanonOutput> {
-    match lookup::registry_has_scoped_entries(registry) {
-        Ok(false) => Ok(()),
-        Ok(true) => Err(create_scope_required_refusal(registry, registry_path)),
-        Err(error) => Err(create_lookup_refusal(error)),
+fn parse_cli_scope_flags(
+    raw_scopes: &[String],
+) -> Result<Option<identity_scope::IdentityScope>, String> {
+    registry::parse_scope_flag_bindings(raw_scopes)
+}
+
+fn create_scope_parse_refusal(raw_scopes: &[String], error: String) -> CanonOutput {
+    refusal::create_refusal(
+        RefusalCode::EParse,
+        "Invalid --scope binding".to_string(),
+        serde_json::json!({
+            "flag": "--scope",
+            "values": raw_scopes,
+            "error": error,
+            "expected": "DIMENSION=VALUE",
+            "accepted_dimensions": [
+                "dataset",
+                "deal",
+                "jurisdiction",
+                "source_system",
+                "profile"
+            ],
+            "writes_performed": false
+        }),
+        Some("Rerun with --scope DIMENSION=VALUE, for example --scope deal=CIK1690255".to_string()),
+    )
+}
+
+fn emit_registry_plain_json_refusal(
+    output: CanonOutput,
+    emit: &RegistryPlainJsonEmitMode,
+) -> Result<(), Box<dyn Error>> {
+    match emit {
+        RegistryPlainJsonEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+        RegistryPlainJsonEmitMode::Plain => eprintln!("{}", serde_json::to_string(&output)?),
     }
+    Ok(())
+}
+
+enum UnscopedLookupScopeCheck {
+    Clear,
+    ScopeRequired,
+}
+
+fn check_unscoped_lookup_scope(
+    registry: &Registry,
+) -> Result<UnscopedLookupScopeCheck, lookup::LookupError> {
+    lookup::registry_has_scoped_entries(registry).map(|has_scoped_entries| {
+        if has_scoped_entries {
+            UnscopedLookupScopeCheck::ScopeRequired
+        } else {
+            UnscopedLookupScopeCheck::Clear
+        }
+    })
 }
 
 fn create_scope_required_refusal(registry: &Registry, registry_path: &Path) -> CanonOutput {

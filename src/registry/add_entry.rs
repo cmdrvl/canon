@@ -223,15 +223,23 @@ pub fn plan_add_entry_with_scope(
         &version_after,
         entry_count_after,
     )?;
-    let alias_bytes = build_alias_bytes_from_source(
+    let alias_entry = RegistryAliasWriteEntry {
+        alias_file: alias_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default()
+            .to_string(),
+        input: input.clone(),
+        canonical_id: canonical_id.clone(),
+        canonical_type: canonical_type.clone(),
+        rule_id: rule_id.clone(),
+        scope: scope.clone(),
+    };
+    let alias_bytes = build_alias_bytes_with_entries_from_source(
         &request.registry,
         &alias_path,
         &alias_source_bytes,
-        &input,
-        &canonical_id,
-        &canonical_type,
-        &rule_id,
-        scope.as_ref(),
+        &[alias_entry],
     )?;
 
     let alias_file = request.alias_file;
@@ -657,32 +665,6 @@ pub(super) fn build_alias_bytes_with_entries(
 ) -> Result<Vec<u8>, Refusal> {
     let bytes = fs::read(alias_path).map_err(|error| io_refusal(alias_path, error))?;
     build_alias_bytes_with_entries_from_source(registry, alias_path, &bytes, new_entries)
-}
-
-fn build_alias_bytes_from_source(
-    registry: &Path,
-    alias_path: &Path,
-    source_bytes: &[u8],
-    input: &str,
-    canonical_id: &str,
-    canonical_type: &str,
-    rule_id: &str,
-    scope: Option<&IdentityScope>,
-) -> Result<Vec<u8>, Refusal> {
-    let alias_file = alias_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or_default()
-        .to_string();
-    let entry = RegistryAliasWriteEntry {
-        alias_file,
-        input: input.to_string(),
-        canonical_id: canonical_id.to_string(),
-        canonical_type: canonical_type.to_string(),
-        rule_id: rule_id.to_string(),
-        scope: scope.cloned(),
-    };
-    build_alias_bytes_with_entries_from_source(registry, alias_path, source_bytes, &[entry])
 }
 
 fn build_alias_bytes_with_entries_from_source(

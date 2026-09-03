@@ -1201,6 +1201,10 @@ pub struct RegistryAddEntryCli {
     #[arg(long = "canonical-type")]
     pub canonical_type: Option<String>,
 
+    /// Exact lookup scope binding, repeatable: DIMENSION=VALUE
+    #[arg(long = "scope")]
+    pub scope: Vec<String>,
+
     /// Numeric semver bump to apply; defaults to patch when --next-version is absent
     #[arg(long, value_enum)]
     pub bump: Option<RegistryVersionBumpMode>,
@@ -1249,6 +1253,10 @@ pub struct RegistryMintCli {
     /// Alias spec, repeatable: FILE=INPUT:RULE_ID
     #[arg(long = "with-alias")]
     pub with_alias: Vec<String>,
+
+    /// Exact lookup scope binding, repeatable: DIMENSION=VALUE
+    #[arg(long = "scope")]
+    pub scope: Vec<String>,
 
     /// Numeric semver bump to apply; defaults to patch when --next-version is absent
     #[arg(long, value_enum)]
@@ -2419,6 +2427,10 @@ pub struct Cli {
     #[arg(long, required_unless_present_any = ["version", "describe", "schema"])]
     pub column: Option<String>,
 
+    /// Exact lookup scope binding, repeatable: DIMENSION=VALUE
+    #[arg(long = "scope")]
+    pub scope: Vec<String>,
+
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: EmitMode,
@@ -2552,8 +2564,34 @@ mod tests {
         assert_eq!(cli.input, Some(PathBuf::from("input.csv")));
         assert_eq!(cli.registry, Some(PathBuf::from("registries/test")));
         assert_eq!(cli.column, Some("id".to_string()));
+        assert!(cli.scope.is_empty());
         assert!(matches!(cli.emit, EmitMode::Json));
         assert!(!cli.plain_json_values);
+    }
+
+    #[test]
+    fn test_cli_scoped_lookup_parsing() {
+        let args = [
+            "canon",
+            "input.csv",
+            "--registry",
+            "registries/test",
+            "--column",
+            "asset_number",
+            "--scope",
+            "deal=CIK1690255",
+            "--scope",
+            "source_system=sec_abs_ee",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        assert_eq!(
+            cli.scope,
+            vec![
+                "deal=CIK1690255".to_string(),
+                "source_system=sec_abs_ee".to_string()
+            ]
+        );
     }
 
     #[test]
@@ -2674,6 +2712,8 @@ mod tests {
             "MANUAL",
             "--canonical-type",
             "person",
+            "--scope",
+            "deal=CIK1690255",
             "--bump",
             "minor",
             "--emit",
@@ -2693,6 +2733,7 @@ mod tests {
             assert_eq!(add_entry.input, "Jane Doe");
             assert_eq!(add_entry.rule_id, "MANUAL");
             assert_eq!(add_entry.canonical_type.as_deref(), Some("person"));
+            assert_eq!(add_entry.scope, vec!["deal=CIK1690255".to_string()]);
             assert_eq!(add_entry.bump, Some(RegistryVersionBumpMode::Minor));
             assert!(add_entry.next_version.is_none());
             assert!(!add_entry.no_lint);
@@ -2716,6 +2757,8 @@ mod tests {
             "aliases.json=Jane Doe:MANUAL",
             "--with-alias",
             "aliases.json=J. Doe:ALIAS",
+            "--scope",
+            "deal=CIK1690255",
             "--bump",
             "minor",
             "--emit",
@@ -2734,6 +2777,7 @@ mod tests {
             assert_eq!(mint.prefix.as_deref(), Some("PPL"));
             assert_eq!(mint.canonical_type, "person");
             assert_eq!(mint.with_alias.len(), 2);
+            assert_eq!(mint.scope, vec!["deal=CIK1690255".to_string()]);
             assert_eq!(mint.bump, Some(RegistryVersionBumpMode::Minor));
             assert!(mint.next_version.is_none());
             assert!(!mint.no_lint);

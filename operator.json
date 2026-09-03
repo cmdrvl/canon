@@ -9,7 +9,7 @@
   "invocation": {
     "binary": "canon",
     "usage": [
-      "canon <INPUT> --registry <DIR> --column <COL> [OPTIONS]",
+      "canon <INPUT> --registry <DIR> --column <COL> [--scope DIMENSION=VALUE]... [OPTIONS]",
       "canon doctor [health [--json]|capabilities [--json]|robot-docs|--robot-triage]",
       "canon doctor health [--json]",
       "canon doctor capabilities [--json]",
@@ -34,8 +34,8 @@
       "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
       "canon registry export --format dbt-seed|search-index --registry <DIR> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--emit json|summary]",
       "canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]",
-      "canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
-      "canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
+      "canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
+      "canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
       "canon registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict] [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]",
       "canon registry diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
       "canon registry audit <SEED> --registry <DIR> --column <COL> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]",
@@ -101,6 +101,13 @@
       "type": "string",
       "required": true,
       "description": "Column containing IDs to resolve"
+    },
+    {
+      "name": "scope",
+      "flag": "--scope",
+      "type": "string",
+      "repeatable": true,
+      "description": "Exact lookup scope binding DIMENSION=VALUE; core dimensions: dataset/deal, jurisdiction, source_system, profile"
     },
     {
       "name": "emit",
@@ -3628,7 +3635,7 @@
     },
     {
       "name": "registry add-entry",
-      "usage": "canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
+      "usage": "canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
       "description": "Append one exact alias entry to a self-authored registry with metadata version/count update and optional standard lint gate",
       "output_mode": "mixed",
       "output_schema": "canon_registry_add_entry.v0",
@@ -3704,6 +3711,13 @@
           "description": "Canonical type; inferred only for an existing canonical ID with one type"
         },
         {
+          "name": "scope",
+          "flag": "--scope",
+          "type": "string",
+          "repeatable": true,
+          "description": "Scoped alias binding DIMENSION=VALUE; repeatable. deal is accepted as the dataset dimension for deal-scoped registries."
+        },
+        {
           "name": "bump",
           "flag": "--bump",
           "type": "string",
@@ -3753,7 +3767,7 @@
     },
     {
       "name": "registry mint",
-      "usage": "canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
+      "usage": "canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
       "description": "Mint one self-authored canonical ID and one or more exact starting aliases with a single registry metadata update",
       "output_mode": "mixed",
       "output_schema": "canon_registry_mint.v0",
@@ -3820,6 +3834,13 @@
           "required": true,
           "repeatable": true,
           "description": "Alias spec FILE=INPUT:RULE_ID; split once at '=' and at the last ':'"
+        },
+        {
+          "name": "scope",
+          "flag": "--scope",
+          "type": "string",
+          "repeatable": true,
+          "description": "Scoped alias binding DIMENSION=VALUE; repeatable. deal is accepted as the dataset dimension for deal-scoped registries."
         },
         {
           "name": "bump",
