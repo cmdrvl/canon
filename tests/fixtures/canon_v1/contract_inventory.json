@@ -1215,7 +1215,7 @@
     { "id": "canon_registry_lint.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_mint.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_next_id.v0", "family": "registry", "action": "preserve" },
-    { "id": "canon.registry_index.v1", "family": "registry", "action": "preserve" },
+    { "id": "canon.registry_index.v2", "family": "registry", "action": "preserve" },
     { "id": "canon.registry.package.v1", "family": "registry", "action": "preserve" },
     { "id": "canon.registry.package.verify.v1", "family": "registry", "action": "preserve" },
     {

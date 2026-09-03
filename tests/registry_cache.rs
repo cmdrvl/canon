@@ -122,6 +122,15 @@ fn resolve_aapl(registry_dir: &Path) -> Result<(PathBuf, String), Box<dyn Error>
     Ok((registry.db_path, result.mappings[0].canonical_id.clone()))
 }
 
+fn index_schema_version(db_path: &Path) -> Result<String, Box<dyn Error>> {
+    let connection = Connection::open(db_path)?;
+    Ok(connection.query_row(
+        "SELECT value FROM metadata WHERE key = 'schema_version'",
+        [],
+        |row| row.get(0),
+    )?)
+}
+
 fn finding_codes(output: &canon::registry_lint::RegistryLintOutput) -> Vec<String> {
     output
         .findings
@@ -282,6 +291,64 @@ fn content_changes_invalidate_cache_key() -> Result<(), Box<dyn Error>> {
 
     cleanup_cache_file(&before_path);
     cleanup_cache_file(&after_path);
+    Ok(())
+}
+
+#[test]
+fn legacy_v1_registry_index_is_rebuilt_not_reused() -> Result<(), Box<dyn Error>> {
+    let temp = TempDir::new()?;
+    create_registry(temp.path(), "legacy-index", "037833100", "594918104")?;
+
+    let registry = load_registry(temp.path())?;
+    let db_path = registry.db_path.clone();
+    cleanup_cache_file(&db_path);
+
+    let connection = Connection::open(&db_path)?;
+    connection.execute_batch(
+        r#"
+        CREATE TABLE metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+
+        CREATE TABLE entries (
+            input TEXT NOT NULL,
+            canonical_id TEXT NOT NULL,
+            canonical_type TEXT NOT NULL,
+            rule_id TEXT NOT NULL,
+            source_file TEXT NOT NULL,
+            entry_order INTEGER NOT NULL
+        );
+
+        CREATE INDEX idx_input ON entries(input);
+        "#,
+    )?;
+    connection.execute(
+        "INSERT INTO metadata (key, value) VALUES ('schema_version', 'canon.registry_index.v1')",
+        [],
+    )?;
+    connection.execute(
+        "INSERT INTO entries (input, canonical_id, canonical_type, rule_id, source_file, entry_order)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params!["TSLA", "STALE-CUSIP", "cusip", "STALE_RULE", "stale.json", 0_i64],
+    )?;
+    drop(connection);
+
+    let reloaded = load_registry(temp.path())?;
+    let result = resolve_values(&reloaded, &input_values(&["AAPL", "TSLA"]))?;
+
+    assert_eq!(reloaded.db_path, db_path);
+    assert_eq!(
+        index_schema_version(&reloaded.db_path)?,
+        "canon.registry_index.v2"
+    );
+    assert_eq!(result.mappings.len(), 1);
+    assert_eq!(result.mappings[0].input, "AAPL");
+    assert_eq!(result.mappings[0].canonical_id, "037833100");
+    assert_eq!(result.unresolved.len(), 1);
+    assert_eq!(result.unresolved[0].input.as_deref(), Some("TSLA"));
+
+    cleanup_cache_file(&reloaded.db_path);
     Ok(())
 }
 
