@@ -301,6 +301,18 @@ fn footprint_roll_stage_emits_admissible_hard_integer_bands() {
 #[test]
 fn footprint_roll_request_canonicalization_is_order_independent() {
     let mut left = request_with("SQFT", Some(1_000), Some(3), &["p2", "p1"]);
+    left.assessment_roll_rows = vec![
+        GeoAssessmentRollGrossSqftRow {
+            bbl: "p2".to_string(),
+            gross_sqft: Some(700),
+            units: Some(1),
+        },
+        GeoAssessmentRollGrossSqftRow {
+            bbl: "p1".to_string(),
+            gross_sqft: Some(400),
+            units: Some(1),
+        },
+    ];
     left.universe.buildings = vec![
         GeoBuildingCandidate {
             id: "b2".to_string(),
@@ -314,6 +326,18 @@ fn footprint_roll_request_canonicalization_is_order_independent() {
     left.footprint_rows.reverse();
 
     let mut right = request_with("SQFT", Some(1_000), Some(3), &["p1", "p2"]);
+    right.assessment_roll_rows = vec![
+        GeoAssessmentRollGrossSqftRow {
+            bbl: "p1".to_string(),
+            gross_sqft: Some(400),
+            units: Some(1),
+        },
+        GeoAssessmentRollGrossSqftRow {
+            bbl: "p2".to_string(),
+            gross_sqft: Some(700),
+            units: Some(1),
+        },
+    ];
     right.universe.buildings = vec![
         GeoBuildingCandidate {
             id: "b1".to_string(),
@@ -368,7 +392,7 @@ fn calibration_receipts_replay_roll_gsf_band_counts_and_digest() {
         .get("3061260001")
         .expect("fixture source row exists");
     assert_eq!(fixture_row.gross_sqft, "14628");
-    assert_eq!(fixture_row.units, "1");
+    assert_eq!(fixture_row.units, "15");
 }
 
 #[test]
