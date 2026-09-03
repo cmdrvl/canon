@@ -10,6 +10,7 @@ Commands:
   candidate-recall   Evaluate candidate retrieval recall against sealed public gold labels
   alias-withholding  Compile a public alias-withholding execution envelope into a report
   generalization     Compile a strict artifact-backed generalization execution envelope into a report
+  calibrate          Sweep entity threshold tuples against gold labels and recommend a read-only strategy fragment
   evidence           Score typed evidence for candidate pairs
   solve              Solve entity identity assignments from evidence artifacts
   link               Link two row sets through the artifact-backed entity workbench
