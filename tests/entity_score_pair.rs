@@ -67,7 +67,7 @@ fn sdk_score_pair_replays_full_run_edge_evidence_for_the_pair() {
         response.evidence_record.pair_score_total.as_u32()
     );
     assert_eq!(response.verdict, EntityScorePairVerdict::WouldMerge);
-    assert_eq!(response.writes_performed, false);
+    assert!(!response.writes_performed);
     assert!(response.registry_snapshot_hash.is_none());
     assert!(
         response
@@ -108,7 +108,7 @@ fn sdk_score_pair_adds_registry_alias_support_when_registry_is_supplied() {
         support_row("support:001", "Acme Coffee"),
         support_row("support:002", "Acme Coffee Shop"),
         profile.to_str().expect("profile path utf8"),
-        profile,
+        profile.clone(),
     );
     request.registry = Some(registry);
 
@@ -136,7 +136,7 @@ fn sdk_score_pair_registry_conflict_vetoes_otherwise_similar_pair() {
         support_row("support:001", "Acme Coffee"),
         support_row("support:002", "Acme Coffee Shop"),
         profile.to_str().expect("profile path utf8"),
-        profile,
+        profile.clone(),
     );
     request.registry = Some(registry);
 
@@ -162,7 +162,7 @@ fn sdk_score_pair_no_support_hits_yields_empty_waterfall_and_zero_score() {
         support_row("support:001", "Northpoint Books"),
         support_row("support:002", "Westside Florist"),
         profile.to_str().expect("profile path utf8"),
-        profile,
+        profile.clone(),
     ))
     .expect("SDK score-pair without support");
 
@@ -188,7 +188,7 @@ fn sdk_score_pair_malformed_record_refuses_without_writes() {
         json!(["not", "an", "object"]),
         support_row("support:002", "Acme Coffee Shop"),
         profile.to_str().expect("profile path utf8"),
-        profile,
+        profile.clone(),
     ))
     .expect_err("malformed left record refuses");
 
