@@ -1,0 +1,719 @@
+[
+  {
+    "case_id": "096dd0bb45f6388c",
+    "d1_subject_id": "h7-subject:non-round:524efa302815a83e7e33419b92fdb25064300e6185537c4c4ae1aca9effbd356",
+    "loan_key": "76f1aad84ddf56ddf5bc81c94063ca70",
+    "document_id": "2021040100867001",
+    "truth_parcels": [
+      "4007910022",
+      "4007910023",
+      "4007910122",
+      "4007910123"
+    ],
+    "stage_observations": {
+      "retained_pad": 1,
+      "retained_geocode_preference": 1,
+      "assessment_roll_owner_exact": 0,
+      "assessment_roll_affiliate_preference": 5,
+      "roll_gsf_band": 1,
+      "footprint_floor": 0
+    },
+    "condo_bridge": null,
+    "baseline": {
+      "status": "ambiguous",
+      "residual_count": 281474976710656,
+      "residual_count_saturated": false,
+      "truth_in_universe": "0/4",
+      "truth_model_in_residual": null,
+      "forced": {
+        "parcels": [
+          "4008020060"
+        ],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "stacked": {
+      "status": "component_budget_fallback",
+      "residual_count": null,
+      "residual_count_saturated": false,
+      "truth_in_universe": "0/4",
+      "truth_model_in_residual": null,
+      "forced": {
+        "parcels": [],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "explanation": null
+  },
+  {
+    "case_id": "0b6d06c62cc8a31e",
+    "d1_subject_id": "h7-subject:non-round:e1ee05351a5b681c0dcda44e19dd575c686c3c630809c137bd64cc3232bc256c",
+    "loan_key": "6bfe47de21ff7d7e24bf6464871dea9f",
+    "document_id": "2019050100411003",
+    "truth_parcels": [
+      "4066310001",
+      "4066320001",
+      "4066330001"
+    ],
+    "stage_observations": {
+      "retained_pad": 1,
+      "retained_geocode_preference": 1,
+      "assessment_roll_owner_exact": 1,
+      "assessment_roll_affiliate_preference": 0,
+      "roll_gsf_band": 1,
+      "footprint_floor": 0
+    },
+    "condo_bridge": null,
+    "baseline": {
+      "status": "ambiguous",
+      "residual_count": 2061584302080,
+      "residual_count_saturated": false,
+      "truth_in_universe": "2/3",
+      "truth_model_in_residual": null,
+      "forced": {
+        "parcels": [],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "stacked": {
+      "status": "ambiguous",
+      "residual_count": 2,
+      "residual_count_saturated": false,
+      "truth_in_universe": "2/3",
+      "truth_model_in_residual": null,
+      "forced": {
+        "parcels": [],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "explanation": null
+  },
+  {
+    "case_id": "338e7d4c248865da",
+    "d1_subject_id": "h7-subject:non-round:37ab22474cdc2c5e7031b19537a5516d80e12f0e57da3edf8eb45b08e2f8f5d4",
+    "loan_key": "0b296a95d154bb0b07a9ddf6733250b1",
+    "document_id": "2024112600661007",
+    "truth_parcels": [
+      "1021530067",
+      "1021530068",
+      "1021540024"
+    ],
+    "stage_observations": {
+      "retained_pad": 1,
+      "retained_geocode_preference": 1,
+      "assessment_roll_owner_exact": 1,
+      "assessment_roll_affiliate_preference": 2,
+      "roll_gsf_band": 0,
+      "footprint_floor": 0
+    },
+    "condo_bridge": null,
+    "baseline": {
+      "status": "ambiguous",
+      "residual_count": 262144,
+      "residual_count_saturated": false,
+      "truth_in_universe": "2/3",
+      "truth_model_in_residual": null,
+      "forced": {
+        "parcels": [
+          "1021530068"
+        ],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "stacked": {
+      "status": "ambiguous",
+      "residual_count": 2,
+      "residual_count_saturated": false,
+      "truth_in_universe": "2/3",
+      "truth_model_in_residual": null,
+      "forced": {
+        "parcels": [
+          "1021530068"
+        ],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "explanation": null
+  },
+  {
+    "case_id": "3cf11e9a58e3b710",
+    "d1_subject_id": "h7-subject:non-round:1f301680cb0f2c88d43c40f0869779eca34a07dfaca12b657b4509486df60a46",
+    "loan_key": "073ad3a0862827c75501ac66570eb783",
+    "document_id": "2020021800990006",
+    "truth_parcels": [
+      "1004060014",
+      "1004060015",
+      "1004510044",
+      "1004510045",
+      "1004510046",
+      "1004510047"
+    ],
+    "stage_observations": {
+      "retained_pad": 1,
+      "retained_geocode_preference": 2,
+      "assessment_roll_owner_exact": 0,
+      "assessment_roll_affiliate_preference": 6,
+      "roll_gsf_band": 1,
+      "footprint_floor": 0
+    },
+    "condo_bridge": null,
+    "baseline": {
+      "status": "ambiguous",
+      "residual_count": 18446744073709551615,
+      "residual_count_saturated": true,
+      "truth_in_universe": "6/6",
+      "truth_model_in_residual": true,
+      "forced": {
+        "parcels": [],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "stacked": {
+      "status": "component_budget_fallback",
+      "residual_count": null,
+      "residual_count_saturated": false,
+      "truth_in_universe": "6/6",
+      "truth_model_in_residual": false,
+      "forced": {
+        "parcels": [],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "explanation": null
+  },
+  {
+    "case_id": "41858dad7a1286af",
+    "d1_subject_id": "h7-subject:non-round:d2cfbf35920510e5b64e5ce9b946ce17317ba26ad9a740bf3381ce8add5126f5",
+    "loan_key": "f46f9ea45311d9e17972ae06637393de",
+    "document_id": "2024090400016018",
+    "truth_parcels": [
+      "2027870057",
+      "2032500151",
+      "3035390015"
+    ],
+    "stage_observations": {
+      "retained_pad": 1,
+      "retained_geocode_preference": 2,
+      "assessment_roll_owner_exact": 1,
+      "assessment_roll_affiliate_preference": 1,
+      "roll_gsf_band": 0,
+      "footprint_floor": 0
+    },
+    "condo_bridge": null,
+    "baseline": {
+      "status": "ambiguous",
+      "residual_count": 18446744073709551615,
+      "residual_count_saturated": true,
+      "truth_in_universe": "3/3",
+      "truth_model_in_residual": true,
+      "forced": {
+        "parcels": [],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "stacked": {
+      "status": "ambiguous",
+      "residual_count": 7,
+      "residual_count_saturated": false,
+      "truth_in_universe": "3/3",
+      "truth_model_in_residual": true,
+      "forced": {
+        "parcels": [],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "explanation": null
+  },
+  {
+    "case_id": "4493d4ab4cb35283",
+    "d1_subject_id": "h7-subject:non-round:5934bb9370d31d9b1fa687544020e5e006512cb16d073ed3712ba0cf37a17c36",
+    "loan_key": "a89343223f12351e8cc666345560b9a8",
+    "document_id": "2018032200347012",
+    "truth_parcels": [
+      "4159100057",
+      "4159100064",
+      "4159100066"
+    ],
+    "stage_observations": {
+      "retained_pad": 1,
+      "retained_geocode_preference": 1,
+      "assessment_roll_owner_exact": 0,
+      "assessment_roll_affiliate_preference": 0,
+      "roll_gsf_band": 0,
+      "footprint_floor": 0
+    },
+    "condo_bridge": null,
+    "baseline": {
+      "status": "ambiguous",
+      "residual_count": 1024,
+      "residual_count_saturated": false,
+      "truth_in_universe": "0/3",
+      "truth_model_in_residual": null,
+      "forced": {
+        "parcels": [
+          "4014570001"
+        ],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "stacked": {
+      "status": "ambiguous",
+      "residual_count": 1024,
+      "residual_count_saturated": false,
+      "truth_in_universe": "0/3",
+      "truth_model_in_residual": null,
+      "forced": {
+        "parcels": [
+          "4014570001"
+        ],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "explanation": null
+  },
+  {
+    "case_id": "5ef8cda2d818cdb0",
+    "d1_subject_id": "h7-subject:non-round:947b6d4949589dd94789958dcae3b2131e6e93cf55d9fd661b2c247a63dfc387",
+    "loan_key": "11306d29410b4f52d24de5c1c25bfb43",
+    "document_id": "2020122901080003",
+    "truth_parcels": [
+      "2023300030",
+      "2023300057"
+    ],
+    "stage_observations": {
+      "retained_pad": 1,
+      "retained_geocode_preference": 1,
+      "assessment_roll_owner_exact": 1,
+      "assessment_roll_affiliate_preference": 0,
+      "roll_gsf_band": 1,
+      "footprint_floor": 0
+    },
+    "condo_bridge": null,
+    "baseline": {
+      "status": "ambiguous",
+      "residual_count": 134217728,
+      "residual_count_saturated": false,
+      "truth_in_universe": "2/2",
+      "truth_model_in_residual": true,
+      "forced": {
+        "parcels": [
+          "2023300030"
+        ],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "stacked": {
+      "status": "resolved",
+      "residual_count": 1,
+      "residual_count_saturated": false,
+      "truth_in_universe": "2/2",
+      "truth_model_in_residual": true,
+      "forced": {
+        "parcels": [
+          "2023300030",
+          "2023300057"
+        ],
+        "buildings": []
+      },
+      "deed_exact": true
+    },
+    "explanation": null
+  },
+  {
+    "case_id": "873c99f8121c08eb",
+    "d1_subject_id": "h7-subject:non-round:c8217df560eb3d08527d5f562299988dd2e287326ca61590a0c9f462bf1ab251",
+    "loan_key": "6668e47c143195a41650c2c8eeee9ef1",
+    "document_id": "2017102501712003",
+    "truth_parcels": [
+      "3060450024",
+      "3060450025"
+    ],
+    "stage_observations": {
+      "retained_pad": 1,
+      "retained_geocode_preference": 1,
+      "assessment_roll_owner_exact": 1,
+      "assessment_roll_affiliate_preference": 3,
+      "roll_gsf_band": 1,
+      "footprint_floor": 0
+    },
+    "condo_bridge": null,
+    "baseline": {
+      "status": "ambiguous",
+      "residual_count": 4398046511104,
+      "residual_count_saturated": false,
+      "truth_in_universe": "2/2",
+      "truth_model_in_residual": true,
+      "forced": {
+        "parcels": [
+          "3060450024"
+        ],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "stacked": {
+      "status": "resolved",
+      "residual_count": 1,
+      "residual_count_saturated": false,
+      "truth_in_universe": "2/2",
+      "truth_model_in_residual": true,
+      "forced": {
+        "parcels": [
+          "3060450024",
+          "3060450025"
+        ],
+        "buildings": []
+      },
+      "deed_exact": true
+    },
+    "explanation": null
+  },
+  {
+    "case_id": "9922164563c925c5",
+    "d1_subject_id": "h7-subject:non-round:7e3690f74c34f5b945ab0866c8af2f7bf06eaaa12e7b1d22c8c35f43468e8496",
+    "loan_key": "6adf5e5094f33076147d7fb3e876974e",
+    "document_id": "2021050301019001",
+    "truth_parcels": [
+      "4053010017",
+      "4053010050",
+      "4053020083",
+      "4053020097",
+      "4053020117",
+      "4053030144"
+    ],
+    "stage_observations": {
+      "retained_pad": 1,
+      "retained_geocode_preference": 3,
+      "assessment_roll_owner_exact": 1,
+      "assessment_roll_affiliate_preference": 2,
+      "roll_gsf_band": 0,
+      "footprint_floor": 0
+    },
+    "condo_bridge": null,
+    "baseline": {
+      "status": "ambiguous",
+      "residual_count": 100663296,
+      "residual_count_saturated": false,
+      "truth_in_universe": "5/6",
+      "truth_model_in_residual": null,
+      "forced": {
+        "parcels": [],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "stacked": {
+      "status": "ambiguous",
+      "residual_count": 24,
+      "residual_count_saturated": false,
+      "truth_in_universe": "5/6",
+      "truth_model_in_residual": null,
+      "forced": {
+        "parcels": [],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "explanation": null
+  },
+  {
+    "case_id": "a001bb36b4af9488",
+    "d1_subject_id": "h7-subject:non-round:2808547cf99b9ac8c5c091cd58f3aab0851274c3ab2550237fdc9f23ff5a0a7f",
+    "loan_key": "645469abb0305bb496b4fc1b29c5b853",
+    "document_id": "2021081601369002",
+    "truth_parcels": [
+      "2057930450",
+      "2057930480",
+      "2057930481"
+    ],
+    "stage_observations": {
+      "retained_pad": 1,
+      "retained_geocode_preference": 1,
+      "assessment_roll_owner_exact": 1,
+      "assessment_roll_affiliate_preference": 0,
+      "roll_gsf_band": 1,
+      "footprint_floor": 0
+    },
+    "condo_bridge": null,
+    "baseline": {
+      "status": "ambiguous",
+      "residual_count": 96,
+      "residual_count_saturated": false,
+      "truth_in_universe": "3/3",
+      "truth_model_in_residual": true,
+      "forced": {
+        "parcels": [],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "stacked": {
+      "status": "resolved",
+      "residual_count": 1,
+      "residual_count_saturated": false,
+      "truth_in_universe": "3/3",
+      "truth_model_in_residual": true,
+      "forced": {
+        "parcels": [
+          "2057930450",
+          "2057930480",
+          "2057930481"
+        ],
+        "buildings": []
+      },
+      "deed_exact": true
+    },
+    "explanation": null
+  },
+  {
+    "case_id": "ced7ad9f0d74abf7",
+    "d1_subject_id": "h7-subject:non-round:1f301680cb0f2c88d43c40f0869779eca34a07dfaca12b657b4509486df60a46",
+    "loan_key": "073ad3a0862827c75501ac66570eb783",
+    "document_id": "2020021800990006",
+    "truth_parcels": [
+      "1004060014",
+      "1004060015",
+      "1004510044",
+      "1004510045",
+      "1004510046",
+      "1004510047"
+    ],
+    "stage_observations": {
+      "retained_pad": 0,
+      "retained_geocode_preference": 1,
+      "assessment_roll_owner_exact": 0,
+      "assessment_roll_affiliate_preference": 4,
+      "roll_gsf_band": 1,
+      "footprint_floor": 0
+    },
+    "condo_bridge": null,
+    "baseline": {
+      "status": "ambiguous",
+      "residual_count": 1099511627775,
+      "residual_count_saturated": false,
+      "truth_in_universe": "4/6",
+      "truth_model_in_residual": null,
+      "forced": {
+        "parcels": [],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "stacked": {
+      "status": "ambiguous",
+      "residual_count": 4820,
+      "residual_count_saturated": false,
+      "truth_in_universe": "4/6",
+      "truth_model_in_residual": null,
+      "forced": {
+        "parcels": [],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "explanation": null
+  },
+  {
+    "case_id": "d37aed509107bbbf",
+    "d1_subject_id": "h7-subject:non-round:1ad5bdba3889b00b072822850d087dbd433dbc1fe560d90751fc6b7e5ef55cda",
+    "loan_key": "8d71ae8d52b901af4a5b657af0b1021c",
+    "document_id": "2022020300255003",
+    "truth_parcels": [
+      "3029070021",
+      "3029070022",
+      "3029070023"
+    ],
+    "stage_observations": {
+      "retained_pad": 1,
+      "retained_geocode_preference": 1,
+      "assessment_roll_owner_exact": 1,
+      "assessment_roll_affiliate_preference": 0,
+      "roll_gsf_band": 1,
+      "footprint_floor": 0
+    },
+    "condo_bridge": null,
+    "baseline": {
+      "status": "ambiguous",
+      "residual_count": 252201579132747776,
+      "residual_count_saturated": false,
+      "truth_in_universe": "3/3",
+      "truth_model_in_residual": true,
+      "forced": {
+        "parcels": [],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "stacked": {
+      "status": "ambiguous",
+      "residual_count": 4,
+      "residual_count_saturated": false,
+      "truth_in_universe": "3/3",
+      "truth_model_in_residual": true,
+      "forced": {
+        "parcels": [],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "explanation": null
+  },
+  {
+    "case_id": "da11f90bd6d69f44",
+    "d1_subject_id": "h7-subject:non-round:20869bd800113cc1e8656827b4e09582b9d998b874cce0f8a6b7225ea9ab9893",
+    "loan_key": "7402ec7245fbb952845811f2985dc6ad",
+    "document_id": "2018031200288001",
+    "truth_parcels": [
+      "1011170051",
+      "1011170052"
+    ],
+    "stage_observations": {
+      "retained_pad": 1,
+      "retained_geocode_preference": 2,
+      "assessment_roll_owner_exact": 0,
+      "assessment_roll_affiliate_preference": 3,
+      "roll_gsf_band": 0,
+      "footprint_floor": 0
+    },
+    "condo_bridge": null,
+    "baseline": {
+      "status": "ambiguous",
+      "residual_count": 393216,
+      "residual_count_saturated": false,
+      "truth_in_universe": "2/2",
+      "truth_model_in_residual": true,
+      "forced": {
+        "parcels": [],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "stacked": {
+      "status": "ambiguous",
+      "residual_count": 18446744073709551615,
+      "residual_count_saturated": true,
+      "truth_in_universe": "2/2",
+      "truth_model_in_residual": true,
+      "forced": {
+        "parcels": [],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "explanation": null
+  },
+  {
+    "case_id": "e43aa7e8cfe9cc00",
+    "d1_subject_id": "h7-subject:non-round:45ec05135653deebc211f6056f6d6492a947a8a2ed73dd86c26e6126e3d00a67",
+    "loan_key": "6134edf46aa6085ebbe33371eec7cb0c",
+    "document_id": "2018071101247005",
+    "truth_parcels": [
+      "4073410012",
+      "4073420028",
+      "4073490001"
+    ],
+    "stage_observations": {
+      "retained_pad": 1,
+      "retained_geocode_preference": 2,
+      "assessment_roll_owner_exact": 1,
+      "assessment_roll_affiliate_preference": 1,
+      "roll_gsf_band": 0,
+      "footprint_floor": 1
+    },
+    "condo_bridge": null,
+    "baseline": {
+      "status": "ambiguous",
+      "residual_count": 1073741824,
+      "residual_count_saturated": false,
+      "truth_in_universe": "2/3",
+      "truth_model_in_residual": null,
+      "forced": {
+        "parcels": [
+          "4073420028"
+        ],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "stacked": {
+      "status": "resolved",
+      "residual_count": 1,
+      "residual_count_saturated": false,
+      "truth_in_universe": "2/3",
+      "truth_model_in_residual": null,
+      "forced": {
+        "parcels": [
+          "4073420028"
+        ],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "explanation": null
+  },
+  {
+    "case_id": "eccfde711e69d8fa",
+    "d1_subject_id": "h7-subject:non-round:4bb51b76b9a709ec6f9cc298ac7e441f77a1320ee4edac1124efa9b11c05293f",
+    "loan_key": "e7b0bdb8eeb55cb44e166d9da0314030",
+    "document_id": "2025081200826016",
+    "truth_parcels": [
+      "1010370062",
+      "1010430004",
+      "1010430061",
+      "1010430062",
+      "1010720029",
+      "1012420031",
+      "1020310029",
+      "1020310031",
+      "1020590032",
+      "1020590061"
+    ],
+    "stage_observations": {
+      "retained_pad": 0,
+      "retained_geocode_preference": 4,
+      "assessment_roll_owner_exact": 0,
+      "assessment_roll_affiliate_preference": 3,
+      "roll_gsf_band": 0,
+      "footprint_floor": 0
+    },
+    "condo_bridge": null,
+    "baseline": {
+      "status": "ambiguous",
+      "residual_count": 2305843009213693951,
+      "residual_count_saturated": false,
+      "truth_in_universe": "4/10",
+      "truth_model_in_residual": null,
+      "forced": {
+        "parcels": [],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "stacked": {
+      "status": "ambiguous",
+      "residual_count": 18446744073709551615,
+      "residual_count_saturated": true,
+      "truth_in_universe": "4/10",
+      "truth_model_in_residual": null,
+      "forced": {
+        "parcels": [],
+        "buildings": []
+      },
+      "deed_exact": false
+    },
+    "explanation": null
+  }
+]

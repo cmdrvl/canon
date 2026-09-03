@@ -1,0 +1,119 @@
+{
+  "version": "canon_geo_e4_gate_v2_restack_measurement.v0",
+  "fixture_class": "fixture_replay_observed_warehouse_snapshot_not_live",
+  "proof_class": "fixture replay of retained warehouse snapshot; not live proof; not a gate pass",
+  "source_fixture_digests": [
+    {
+      "path": "tests/fixtures/geo/e4_gate_v2_population_request.json",
+      "blake3": "87b4df37e654d935af53c362dfb06f54e3880327a401c111974058ba6403cc80"
+    },
+    {
+      "path": "scripts/geo_measurements/fixtures/d1_residuals/d1_population_evidence_stack.json",
+      "blake3": "56e1a45e684fedf26adfab34fae9743c84879934ca19fa74e3d8d4d8faa39f82"
+    },
+    {
+      "path": "scripts/geo_measurements/fixtures/d1_residuals/mcp_stack_2026-09-03/e4_case_bindings.json",
+      "blake3": "2c22f6c68092e923cb9b7eb1d68170de36257fc088d7a1e5c8ba66d032414cc4"
+    },
+    {
+      "path": "scripts/geo_measurements/fixtures/d1_residuals/mcp_stack_2026-09-03/assessment_roll_fy2026p3_lots.json.gz",
+      "blake3": "c7a4d933686393db400d26e1b8d6b3c814e2f38e042dd87ad7e3214fa2446173"
+    },
+    {
+      "path": "scripts/geo_measurements/fixtures/d1_residuals/mcp_stack_2026-09-03/footprints.json",
+      "blake3": "52fd7a6cdae12cc4a12bd515880890692d6aa8f9d96aa5c3b9bcfa0f19d075d9"
+    },
+    {
+      "path": "scripts/geo_measurements/fixtures/d1_residuals/mcp_stack_2026-09-03/pad_bbl.json.gz",
+      "blake3": "fb315b30e7b6b1b0a3a736fa429f823959a05d5459c1969d104aaf1b3160ee90"
+    },
+    {
+      "path": "scripts/geo_measurements/fixtures/d1_residuals/mcp_stack_2026-09-03/calibration_roll_owner_exact.json",
+      "blake3": "9496ca262a7cca89d372b7769152371c4b2928eb1d64d744d37b9c8039db93f2"
+    },
+    {
+      "path": "scripts/geo_measurements/fixtures/d1_residuals/mcp_stack_2026-09-03/calibration_roll_gsf_band.json",
+      "blake3": "5888eb18fd25794efed77de098cb676989599dbaca0799b6a8fce6f8ecb49220"
+    },
+    {
+      "path": "scripts/geo_measurements/fixtures/d1_residuals/mcp_stack_2026-09-03/calibration_footprint.json",
+      "blake3": "c6ae4c4dab224518a11507ddb874ad21659f1fc8826d629e6fba4e56faddd21f"
+    },
+    {
+      "path": "scripts/geo_measurements/fixtures/d1_residuals/mcp_stack_2026-09-03/overlay_request_roll_exact_owner_gsf_band.json.gz",
+      "blake3": "b066e6edc0f02862aa36d7418ba5b7c39118ec59d90e258a15b97ae6edc09fb6"
+    },
+    {
+      "path": "scripts/geo_measurements/fixtures/d1_residuals/mcp_stack_2026-09-03/overlay_request_soft_owner_footprint.json.gz",
+      "blake3": "8c8b5a4bbd8691a62c274b11c1b22a84a04462112029a5ea85f0346de5b9b354"
+    }
+  ],
+  "stage_notes": [
+    "The stage replay starts from tests/fixtures/geo/e4_gate_v2_population_request.json.",
+    "Assessment-roll owner stage widens only the frozen candidate-universe blocks.",
+    "Retained PAD membership and geocode preferences are translated from the first matching D1 subject receipt by exact deed truth-set binding; hard PAD membership is all-or-nothing, not subset-trimmed.",
+    "footprints.json is a summarized active-BIN count by BBL; the replay expands it into deterministic fixture BIN rows for the footprint_roll stage.",
+    "Loan SIZE and LOAN_COUNTY_PROPERTY_COUNT are replayed from retained calibration/overlay receipts; no live warehouse query is made.",
+    "The replay caps case max_assignments at 2097152; budget fallbacks are typed abstentions, never guessed residuals."
+  ],
+  "stage_summaries": {
+    "assessment_roll_owner": {
+      "added_roll_lots": 1339,
+      "affiliate_preference_lots": 30,
+      "affiliate_soft_observations": 30,
+      "cases": 15,
+      "exact_hard_observations": 9,
+      "exact_match_lots": 23,
+      "owner_overlay_cases": 14,
+      "party_rows": 23,
+      "roll_rows": 1877,
+      "widened_cases": 8
+    },
+    "condo_bridge": {
+      "cases": 0,
+      "fully_reached": 0,
+      "partial": 0,
+      "truth_unit_lots": 0,
+      "truth_unit_lots_mapped": 0,
+      "truth_unit_lots_unmapped": 0,
+      "unreached": 0
+    },
+    "stacked_overlay_cases": 15,
+    "stacked_overlay_observations": {
+      "assessment_roll_affiliate_preference": 30,
+      "assessment_roll_owner_exact": 9,
+      "footprint_floor": 1,
+      "retained_geocode_preference": 24,
+      "retained_pad": 13,
+      "roll_gsf_band": 8
+    }
+  },
+  "g1_numbers": {
+    "pad_only_baseline": {
+      "cases": 15,
+      "evidence_no_observation_cases": 2,
+      "reachable_cases": 7,
+      "resolved_cases": 0,
+      "ambiguous_cases": 15,
+      "conflict_cases": 0,
+      "component_budget_fallback_cases": 0,
+      "deed_exact_cases": 0,
+      "false_merge_cases": 0,
+      "truth_exclusion_cases": 0,
+      "residual_count_le16_cases": 0
+    },
+    "stacked": {
+      "cases": 15,
+      "evidence_no_observation_cases": 0,
+      "reachable_cases": 7,
+      "resolved_cases": 4,
+      "ambiguous_cases": 9,
+      "conflict_cases": 0,
+      "component_budget_fallback_cases": 2,
+      "deed_exact_cases": 3,
+      "false_merge_cases": 0,
+      "truth_exclusion_cases": 1,
+      "residual_count_le16_cases": 8
+    }
+  }
+}
