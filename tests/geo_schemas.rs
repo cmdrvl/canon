@@ -141,7 +141,7 @@ use canon::geo::{
 use h3o::{LatLng, Resolution};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
-use std::{fs, path::Path, str::FromStr};
+use std::{collections::BTreeMap, fs, path::Path, str::FromStr};
 
 const COMPOSITION_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.composition_request.v0.schema.json");
