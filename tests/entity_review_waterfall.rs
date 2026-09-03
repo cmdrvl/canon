@@ -6,6 +6,7 @@ use canon::{
         EntityArtifactMetadata, EntityDeterministicSummary, EntityInputReference,
         EntityPatchNamespaces, EntityProfileReference, EntityRegistrySnapshot,
         EntityStrategyReference,
+        review::render_review_queue_csv,
         review::{ReviewProvenanceSample, ReviewQueueArtifact, ReviewQueueItem},
         review_export::{
             NativeReviewArtifact, NativeReviewExportRequest, build_native_review_artifact,
@@ -91,6 +92,20 @@ fn native_review_waterfall_saturates_orders_and_surfaces_frequency_metadata() {
     assert!(html.contains("count=${valueFrequency.count}"));
     assert!(!html.contains("http://"));
     assert!(!html.contains("https://"));
+}
+
+#[test]
+fn review_queue_export_carries_waterfall_source_facts_for_native_projection() {
+    let queue = review_queue(false);
+    let json = serde_json::to_string(&queue).expect("queue json");
+    assert!(json.contains("\"evidence_hits\""));
+    assert!(json.contains("\"operator_id\":\"name_similarity\""));
+    assert!(json.contains("value_frequency"));
+
+    let csv = render_review_queue_csv(&queue).expect("queue csv");
+    assert!(csv.contains("positive_evidence_json"));
+    assert!(csv.contains("evidence_hits"));
+    assert!(csv.contains("name_similarity"));
 }
 
 #[test]
