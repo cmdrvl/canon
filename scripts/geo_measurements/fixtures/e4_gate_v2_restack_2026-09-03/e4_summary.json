@@ -1,0 +1,28 @@
+{
+ "baseline": {
+  "resolved": 0,
+  "deed_exact": 0,
+  "ambiguous": 15,
+  "conflict": 0,
+  "budget": 0,
+  "truth_in_universe_full": 7,
+  "reach_none": 2,
+  "no_observation": 2,
+  "false_merge": 0,
+  "truth_excluded": 0,
+  "le16": 0
+ },
+ "stacked": {
+  "resolved": 4,
+  "deed_exact": 3,
+  "ambiguous": 9,
+  "conflict": 0,
+  "budget": 2,
+  "truth_in_universe_full": 7,
+  "reach_none": 2,
+  "no_observation": 0,
+  "false_merge": 0,
+  "truth_excluded": 1,
+  "le16": 8
+ }
+}
