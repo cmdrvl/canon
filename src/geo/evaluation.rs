@@ -802,6 +802,17 @@ fn execute_case_through_geo_run(
         .to_hex()
         .to_string();
     let case_workspace = workspace_root.join(case_workspace_stem(&case.id));
+    std::fs::create_dir_all(&case_workspace).map_err(|error| {
+        GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo population evaluate run workspace could not be created",
+            [
+                ("case_id", case.id.clone()),
+                ("workspace", case_workspace.display().to_string()),
+                ("error", error.to_string()),
+            ],
+        )
+    })?;
     let level = selected_case_control_level(&case.evidence.profile.selection_level)?;
     let plan = case_geo_run_plan(&case.id, level, &case.evidence)?;
     let bindings = case_geo_run_bindings(&case.id, level, &case.evidence)?;
