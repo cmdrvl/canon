@@ -821,7 +821,16 @@ fn execute_case_through_geo_run(
 
     let run = run_geo_plan(GeoRunRequest::new(plan, policy, bindings))
         .map_err(|error| map_geo_run_error(&case.id, error))?;
-    if run.status != GeoRunStatus::Completed {
+    // Abstained, Contradicted, and BudgetFallback are solve outcomes that the
+    // run reports from the composition artifact's status; the solve artifact
+    // exists for each of them and the evaluation scores them like the direct path.
+    if !matches!(
+        run.status,
+        GeoRunStatus::Completed
+            | GeoRunStatus::Abstained
+            | GeoRunStatus::Contradicted
+            | GeoRunStatus::BudgetFallback
+    ) {
         return Err(GeoPopulationError::new(
             GeoPopulationErrorCode::Composition,
             "Geo population evaluate run path did not complete",
