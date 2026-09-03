@@ -327,7 +327,7 @@ fn candidate<const N: usize>(
                 partition_role: TournamentPartitionRole::Tune,
                 access_kind: TournamentAccessKind::Features,
                 package_digest: package_digest.to_string(),
-                source_digest: digest("tune-features"),
+                source_digest: digest("tune-corpus"),
             },
         ],
     }
