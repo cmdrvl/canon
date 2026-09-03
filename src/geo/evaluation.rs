@@ -537,7 +537,7 @@ pub fn evaluate_population_with_run_artifacts(
 }
 
 enum GeoPopulationCaseSolveOutcome {
-    Solved(GeoCompositionArtifact),
+    Solved(Box<GeoCompositionArtifact>),
     AssignmentBudgetExceeded,
 }
 
@@ -725,7 +725,7 @@ where
                     abstained: is_abstention_status(status),
                     false_merge,
                 };
-                (evaluation, Some(artifact))
+                (evaluation, Some(*artifact))
             }
         };
         validate_case_evaluation(&evaluation)?;
@@ -776,7 +776,7 @@ fn execute_case_direct(
             Ok(GeoPopulationCaseExecution {
                 evidence: compilation,
                 propagation: None,
-                solve: GeoPopulationCaseSolveOutcome::Solved(artifact),
+                solve: GeoPopulationCaseSolveOutcome::Solved(Box::new(artifact)),
                 compilation_digest,
                 propagation_digest: None,
                 solver_digest: Some(solver_digest),
@@ -890,7 +890,7 @@ fn execute_case_through_geo_run(
     Ok(GeoPopulationCaseExecution {
         evidence: compilation,
         propagation: Some(propagation),
-        solve: GeoPopulationCaseSolveOutcome::Solved(solve),
+        solve: GeoPopulationCaseSolveOutcome::Solved(Box::new(solve)),
         compilation_digest,
         propagation_digest: Some(propagation_digest),
         solver_digest: Some(solver_digest),
@@ -1190,70 +1190,82 @@ fn case_geo_run_plan(
         .collect::<BTreeMap<_, _>>();
     let project_nodes = vec![
         extension_node(
-            &format!("{prefix}.home_cells"),
-            ProjectPlanNodeKind::Normalize,
-            GEO_MATERIALIZE_HOME_CELLS_COMMAND,
-            Vec::new(),
-            "home_cells",
-            &format!("geo/{}/home_cells.json", level_run_prefix(level)),
-            vec![ProjectPlanHashRef {
-                ref_id: "geo.evaluate.case".to_string(),
-                content_hash: digest_bytes(case_id.as_bytes()),
-            }],
+            ExtensionNodeSpec {
+                node_id: &format!("{prefix}.home_cells"),
+                kind: ProjectPlanNodeKind::Normalize,
+                command: GEO_MATERIALIZE_HOME_CELLS_COMMAND,
+                dependencies: Vec::new(),
+                output_id: "home_cells",
+                path: &format!("geo/{}/home_cells.json", level_run_prefix(level)),
+                content_hash_inputs: vec![ProjectPlanHashRef {
+                    ref_id: "geo.evaluate.case".to_string(),
+                    content_hash: digest_bytes(case_id.as_bytes()),
+                }],
+            },
             &limits,
         ),
         extension_node(
-            &format!("{prefix}.section"),
-            ProjectPlanNodeKind::Block,
-            GEO_TILE_WORK_COMMAND,
-            vec![format!("{prefix}.home_cells")],
-            "section",
-            &format!("geo/{}/section.json", level_run_prefix(level)),
-            Vec::new(),
+            ExtensionNodeSpec {
+                node_id: &format!("{prefix}.section"),
+                kind: ProjectPlanNodeKind::Block,
+                command: GEO_TILE_WORK_COMMAND,
+                dependencies: vec![format!("{prefix}.home_cells")],
+                output_id: "section",
+                path: &format!("geo/{}/section.json", level_run_prefix(level)),
+                content_hash_inputs: Vec::new(),
+            },
             &limits,
         ),
         extension_node(
-            &format!("{prefix}.materialize_evidence"),
-            ProjectPlanNodeKind::Evidence,
-            GEO_MATERIALIZE_EVIDENCE_COMMAND,
-            vec![format!("{prefix}.section")],
-            "materialize_evidence",
-            &format!("geo/{}/materialize_evidence.json", level_run_prefix(level)),
-            Vec::new(),
+            ExtensionNodeSpec {
+                node_id: &format!("{prefix}.materialize_evidence"),
+                kind: ProjectPlanNodeKind::Evidence,
+                command: GEO_MATERIALIZE_EVIDENCE_COMMAND,
+                dependencies: vec![format!("{prefix}.section")],
+                output_id: "materialize_evidence",
+                path: &format!("geo/{}/materialize_evidence.json", level_run_prefix(level)),
+                content_hash_inputs: Vec::new(),
+            },
             &limits,
         ),
         extension_node(
-            &format!("{prefix}.compile_evidence"),
-            ProjectPlanNodeKind::Evidence,
-            GEO_COMPILE_EVIDENCE_COMMAND,
-            vec![format!("{prefix}.materialize_evidence")],
-            "compile_evidence",
-            &format!("geo/{}/compile_evidence.json", level_run_prefix(level)),
-            Vec::new(),
+            ExtensionNodeSpec {
+                node_id: &format!("{prefix}.compile_evidence"),
+                kind: ProjectPlanNodeKind::Evidence,
+                command: GEO_COMPILE_EVIDENCE_COMMAND,
+                dependencies: vec![format!("{prefix}.materialize_evidence")],
+                output_id: "compile_evidence",
+                path: &format!("geo/{}/compile_evidence.json", level_run_prefix(level)),
+                content_hash_inputs: Vec::new(),
+            },
             &limits,
         ),
         extension_node(
-            &format!("{prefix}.propagate"),
-            ProjectPlanNodeKind::Solve,
-            GEO_PROPAGATE_STAGE_COMMAND,
-            vec![format!("{prefix}.compile_evidence")],
-            GEO_PROPAGATE_OUTPUT_ID,
-            &format!("geo/{}/propagation.json", level_run_prefix(level)),
-            Vec::new(),
+            ExtensionNodeSpec {
+                node_id: &format!("{prefix}.propagate"),
+                kind: ProjectPlanNodeKind::Solve,
+                command: GEO_PROPAGATE_STAGE_COMMAND,
+                dependencies: vec![format!("{prefix}.compile_evidence")],
+                output_id: GEO_PROPAGATE_OUTPUT_ID,
+                path: &format!("geo/{}/propagation.json", level_run_prefix(level)),
+                content_hash_inputs: Vec::new(),
+            },
             &limits,
         ),
         extension_node(
-            &format!("{prefix}.solve"),
-            ProjectPlanNodeKind::Solve,
-            GEO_SOLVE_COMMAND,
-            vec![
-                format!("{prefix}.compile_evidence"),
-                format!("{prefix}.propagate"),
-                format!("{prefix}.section"),
-            ],
-            "solve",
-            &format!("geo/{}/solve.json", level_run_prefix(level)),
-            Vec::new(),
+            ExtensionNodeSpec {
+                node_id: &format!("{prefix}.solve"),
+                kind: ProjectPlanNodeKind::Solve,
+                command: GEO_SOLVE_COMMAND,
+                dependencies: vec![
+                    format!("{prefix}.compile_evidence"),
+                    format!("{prefix}.propagate"),
+                    format!("{prefix}.section"),
+                ],
+                output_id: "solve",
+                path: &format!("geo/{}/solve.json", level_run_prefix(level)),
+                content_hash_inputs: Vec::new(),
+            },
             &limits,
         ),
     ];
@@ -1288,77 +1300,89 @@ fn case_geo_run_plan(
     .collect::<Vec<_>>();
     let overlays = vec![
         overlay_node(
-            &node_ids[0],
-            GeoPlanStage::MaterializeHomeCells,
-            level,
-            CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
-            false,
-            false,
-            None,
+            OverlayNodeSpec {
+                project_node_id: &node_ids[0],
+                stage: GeoPlanStage::MaterializeHomeCells,
+                level,
+                expected_output_contract: CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
+                bounded_section_required: false,
+                incidence_factorization_required: false,
+                exact_solve_scope: None,
+            },
             bounds.clone(),
         ),
         overlay_node(
-            &node_ids[1],
-            GeoPlanStage::BuildBoundedSection,
-            level,
-            CANON_GEO_TILE_WORK_UNIT_VERSION,
-            false,
-            false,
-            None,
+            OverlayNodeSpec {
+                project_node_id: &node_ids[1],
+                stage: GeoPlanStage::BuildBoundedSection,
+                level,
+                expected_output_contract: CANON_GEO_TILE_WORK_UNIT_VERSION,
+                bounded_section_required: false,
+                incidence_factorization_required: false,
+                exact_solve_scope: None,
+            },
             bounds.clone(),
         ),
         overlay_node(
-            &node_ids[2],
-            GeoPlanStage::MaterializeEvidence,
-            level,
-            CANON_GEO_EVIDENCE_REQUEST_VERSION,
-            false,
-            false,
-            None,
+            OverlayNodeSpec {
+                project_node_id: &node_ids[2],
+                stage: GeoPlanStage::MaterializeEvidence,
+                level,
+                expected_output_contract: CANON_GEO_EVIDENCE_REQUEST_VERSION,
+                bounded_section_required: false,
+                incidence_factorization_required: false,
+                exact_solve_scope: None,
+            },
             bounds.clone(),
         ),
         overlay_node(
-            &node_ids[3],
-            GeoPlanStage::CompileEvidence,
-            level,
-            CANON_GEO_EVIDENCE_COMPILATION_VERSION,
-            false,
-            false,
-            None,
+            OverlayNodeSpec {
+                project_node_id: &node_ids[3],
+                stage: GeoPlanStage::CompileEvidence,
+                level,
+                expected_output_contract: CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+                bounded_section_required: false,
+                incidence_factorization_required: false,
+                exact_solve_scope: None,
+            },
             bounds.clone(),
         ),
         overlay_node(
-            &node_ids[4],
-            GeoPlanStage::PropagateConstraints,
-            level,
-            CANON_GEO_PROPAGATION_VERSION,
-            false,
-            false,
-            None,
+            OverlayNodeSpec {
+                project_node_id: &node_ids[4],
+                stage: GeoPlanStage::PropagateConstraints,
+                level,
+                expected_output_contract: CANON_GEO_PROPAGATION_VERSION,
+                bounded_section_required: false,
+                incidence_factorization_required: false,
+                exact_solve_scope: None,
+            },
             bounds.clone(),
         ),
         overlay_node(
-            &node_ids[5],
-            GeoPlanStage::FactorAndSolveExactResidual,
-            level,
-            CANON_GEO_COMPOSITION_VERSION,
-            true,
-            true,
-            Some(GeoPlanExactSolveScope {
-                bounded_section: GeoPlanProducedArtifactRef {
-                    producer_node_id: node_ids[1].clone(),
-                    output_id: "section".to_string(),
-                    output_contract: CANON_GEO_TILE_WORK_UNIT_VERSION.to_string(),
-                },
-                evidence_compilation: GeoPlanProducedArtifactRef {
-                    producer_node_id: node_ids[3].clone(),
-                    output_id: "compile_evidence".to_string(),
-                    output_contract: CANON_GEO_EVIDENCE_COMPILATION_VERSION.to_string(),
-                },
-                component_scope:
-                    GeoPlanComponentScope::ActualConnectedComponentsOfCompiledConstraintIncidence,
-                component_key_field: "canon_geo_composition.v0.factorization[].key".to_string(),
-            }),
+            OverlayNodeSpec {
+                project_node_id: &node_ids[5],
+                stage: GeoPlanStage::FactorAndSolveExactResidual,
+                level,
+                expected_output_contract: CANON_GEO_COMPOSITION_VERSION,
+                bounded_section_required: true,
+                incidence_factorization_required: true,
+                exact_solve_scope: Some(GeoPlanExactSolveScope {
+                    bounded_section: GeoPlanProducedArtifactRef {
+                        producer_node_id: node_ids[1].clone(),
+                        output_id: "section".to_string(),
+                        output_contract: CANON_GEO_TILE_WORK_UNIT_VERSION.to_string(),
+                    },
+                    evidence_compilation: GeoPlanProducedArtifactRef {
+                        producer_node_id: node_ids[3].clone(),
+                        output_id: "compile_evidence".to_string(),
+                        output_contract: CANON_GEO_EVIDENCE_COMPILATION_VERSION.to_string(),
+                    },
+                    component_scope:
+                        GeoPlanComponentScope::ActualConnectedComponentsOfCompiledConstraintIncidence,
+                    component_key_field: "canon_geo_composition.v0.factorization[].key".to_string(),
+                }),
+            },
             bounds.clone(),
         ),
     ];
@@ -1434,26 +1458,30 @@ fn case_geo_run_plan(
     Ok(plan)
 }
 
-fn extension_node(
-    node_id: &str,
+struct ExtensionNodeSpec<'a> {
+    node_id: &'a str,
     kind: ProjectPlanNodeKind,
-    command: &str,
+    command: &'a str,
     dependencies: Vec<String>,
-    output_id: &str,
-    path: &str,
+    output_id: &'a str,
+    path: &'a str,
     content_hash_inputs: Vec<ProjectPlanHashRef>,
+}
+
+fn extension_node(
+    spec: ExtensionNodeSpec<'_>,
     limits: &BTreeMap<String, u64>,
 ) -> ProjectExtensionDagNode {
     ProjectExtensionDagNode {
-        node_id: node_id.to_string(),
-        kind,
+        node_id: spec.node_id.to_string(),
+        kind: spec.kind,
         class: ProjectPlanNodeClass::Computation,
-        command: command.to_string(),
-        dependencies,
-        content_hash_inputs,
+        command: spec.command.to_string(),
+        dependencies: spec.dependencies,
+        content_hash_inputs: spec.content_hash_inputs,
         outputs: vec![ProjectExtensionDagOutput {
-            output_id: output_id.to_string(),
-            path: path.to_string(),
+            output_id: spec.output_id.to_string(),
+            path: spec.path.to_string(),
             materialization: ProjectPlanOutputMaterialization::PlannedArtifact,
         }],
         limits: limits.clone(),
@@ -1472,28 +1500,32 @@ fn extension_node(
     }
 }
 
-fn overlay_node(
-    project_node_id: &str,
+struct OverlayNodeSpec<'a> {
+    project_node_id: &'a str,
     stage: GeoPlanStage,
     level: GeoControlEntityLevel,
-    expected_output_contract: &str,
+    expected_output_contract: &'a str,
     bounded_section_required: bool,
     incidence_factorization_required: bool,
     exact_solve_scope: Option<GeoPlanExactSolveScope>,
+}
+
+fn overlay_node(
+    spec: OverlayNodeSpec<'_>,
     deterministic_bounds: Vec<GeoNumericBound>,
 ) -> GeoPlanNodeOverlay {
     GeoPlanNodeOverlay {
-        project_node_id: project_node_id.to_string(),
-        stage,
-        entity_level: Some(level),
+        project_node_id: spec.project_node_id.to_string(),
+        stage: spec.stage,
+        entity_level: Some(spec.level),
         evidence_classes: vec![GeoEvidenceClass::ParcelGeometry],
         claim_classes: vec![GeoClaimClass::CollateralComposition],
-        expected_output_contract: expected_output_contract.to_string(),
-        preconditions: stage_preconditions(stage),
+        expected_output_contract: spec.expected_output_contract.to_string(),
+        preconditions: stage_preconditions(spec.stage),
         claim_effect: GeoPlanClaimEffect::CanChangeRequestedClaim,
-        bounded_section_required,
-        incidence_factorization_required,
-        exact_solve_scope,
+        bounded_section_required: spec.bounded_section_required,
+        incidence_factorization_required: spec.incidence_factorization_required,
+        exact_solve_scope: spec.exact_solve_scope,
         cost_estimate_ranges: deterministic_bounds
             .iter()
             .map(|bound| GeoPlanCostEstimateRange {
@@ -1545,6 +1577,11 @@ fn stage_preconditions(stage: GeoPlanStage) -> Vec<GeoPlanPrecondition> {
                 GeoPlanGatePlane::Coverage,
                 GeoPlanGateStatus::StructurallyCompleteRelativeToInputs,
                 "solve consumes the declared bounded section and compiled evidence artifacts",
+            ),
+            precondition(
+                GeoPlanGatePlane::CandidateReach,
+                GeoPlanGateStatus::UnverifiedWithClaimLimitation,
+                "candidate reach is scored separately from this declared-universe run adapter",
             ),
             precondition(
                 GeoPlanGatePlane::SolverCorrectness,
