@@ -195,6 +195,7 @@ dependencies = [
  "chrono",
  "clap",
  "csv",
+ "flate2",
  "h3o",
  "libc",
  "petgraph",

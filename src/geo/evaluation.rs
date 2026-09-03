@@ -96,6 +96,12 @@ pub struct GeoPopulationEvaluationRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoPopulationCaseTruthReachByGrain {
+    pub case_id: String,
+    pub truth_reach_by_grain: Vec<GeoTruthReachByGrain>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeoCandidateTruthEvaluationRequest {
     pub version: String,
     pub population_id: String,
@@ -273,6 +279,32 @@ pub enum GeoCandidateReachStatus {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum GeoTruthRepresentationGrain {
+    UnitLot,
+    BillingLot,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoTruthReachByGrain {
+    pub grain: GeoTruthRepresentationGrain,
+    pub truth_members: u64,
+    pub truth_members_in_universe: u64,
+    pub candidate_reach: GeoCandidateReachStatus,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoPopulationTruthGrainSummary {
+    pub grain: GeoTruthRepresentationGrain,
+    pub cases: u64,
+    pub truth_members: u64,
+    pub truth_members_in_universe: u64,
+    pub candidate_reach_full_cases: u64,
+    pub candidate_reach_partial_cases: u64,
+    pub candidate_reach_none_cases: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum GeoEvidenceCoverageStatus {
     NoObservations,
     DiagnosticOnly,
@@ -294,6 +326,8 @@ pub struct GeoPopulationCaseEvaluation {
     pub candidate_members: u64,
     pub truth_members: u64,
     pub truth_members_in_universe: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub truth_reach_by_grain: Vec<GeoTruthReachByGrain>,
     pub candidate_reach: GeoCandidateReachStatus,
     pub evidence_coverage: GeoEvidenceCoverageStatus,
     pub evidence_observations: u64,
@@ -357,6 +391,8 @@ pub struct GeoPopulationSummary {
     pub candidate_reach_full_cases: u64,
     pub candidate_reach_partial_cases: u64,
     pub candidate_reach_none_cases: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub truth_reach_by_grain: Vec<GeoPopulationTruthGrainSummary>,
     /// Cases where at least one labeled truth member was absent from the
     /// candidate universe. These are candidate-generation failures, not
     /// solver false negatives.
@@ -409,6 +445,8 @@ pub struct GeoPopulationTruthPlaneSummary {
     pub candidate_reach_full_cases: u64,
     pub candidate_reach_partial_cases: u64,
     pub candidate_reach_none_cases: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub truth_reach_by_grain: Vec<GeoPopulationTruthGrainSummary>,
     pub solver_truth_scored_cases: u64,
     pub solver_artifact_cases: u64,
     pub empirical_falsification_eligible_cases: u64,
@@ -520,10 +558,22 @@ pub fn evaluate_population(
     Ok(evaluate_population_with_artifacts(request)?.evaluation)
 }
 
+pub fn evaluate_population_with_truth_reach_by_grain(
+    request: &GeoPopulationEvaluationRequest,
+    truth_reach_by_case: &[GeoPopulationCaseTruthReachByGrain],
+) -> Result<GeoPopulationEvaluationArtifact, GeoPopulationError> {
+    let truth_reach_by_case = canonical_truth_reach_overlay_map(truth_reach_by_case)?;
+    Ok(
+        evaluate_population_with_case_executor(request, execute_case_direct, &truth_reach_by_case)?
+            .evaluation,
+    )
+}
+
 pub fn evaluate_population_with_artifacts(
     request: &GeoPopulationEvaluationRequest,
 ) -> Result<GeoPopulationEvaluationWithArtifacts, GeoPopulationError> {
-    evaluate_population_with_case_executor(request, execute_case_direct)
+    let truth_reach_by_case = BTreeMap::new();
+    evaluate_population_with_case_executor(request, execute_case_direct, &truth_reach_by_case)
 }
 
 pub fn evaluate_population_with_run_artifacts(
@@ -531,9 +581,12 @@ pub fn evaluate_population_with_run_artifacts(
     workspace_root: impl AsRef<Path>,
 ) -> Result<GeoPopulationEvaluationWithArtifacts, GeoPopulationError> {
     let workspace_root = workspace_root.as_ref();
-    evaluate_population_with_case_executor(request, |case| {
-        execute_case_through_geo_run(case, workspace_root)
-    })
+    let truth_reach_by_case = BTreeMap::new();
+    evaluate_population_with_case_executor(
+        request,
+        |case| execute_case_through_geo_run(case, workspace_root),
+        &truth_reach_by_case,
+    )
 }
 
 enum GeoPopulationCaseSolveOutcome {
@@ -553,6 +606,7 @@ struct GeoPopulationCaseExecution {
 fn evaluate_population_with_case_executor<F>(
     request: &GeoPopulationEvaluationRequest,
     mut execute_case: F,
+    truth_reach_by_case: &BTreeMap<String, Vec<GeoTruthReachByGrain>>,
 ) -> Result<GeoPopulationEvaluationWithArtifacts, GeoPopulationError>
 where
     F: FnMut(&GeoLabeledCompositionCase) -> Result<GeoPopulationCaseExecution, GeoPopulationError>,
@@ -592,6 +646,7 @@ where
             ));
         }
     }
+    validate_truth_reach_overlay_case_ids(truth_reach_by_case, &cases)?;
 
     let mut evaluations = Vec::with_capacity(cases.len());
     let mut case_artifacts = Vec::with_capacity(cases.len());
@@ -616,6 +671,10 @@ where
         let truth_members_in_universe = count_truth_in_universe(&case.truth, universe)?;
         let full_truth_recall = truth_members == truth_members_in_universe;
         let candidate_reach = candidate_reach_status(truth_members, truth_members_in_universe)?;
+        let truth_reach_by_grain = truth_reach_by_case
+            .get(&case_id)
+            .cloned()
+            .unwrap_or_default();
         let evidence_metrics = evidence_metrics(&compilation.admissions)?;
 
         let (evaluation, solve_artifact) = match execution.solve {
@@ -630,6 +689,7 @@ where
                     candidate_members,
                     truth_members,
                     truth_members_in_universe,
+                    truth_reach_by_grain: truth_reach_by_grain.clone(),
                     candidate_reach,
                     evidence_coverage: evidence_metrics.coverage,
                     evidence_observations: evidence_metrics.observations,
@@ -703,6 +763,7 @@ where
                     candidate_members,
                     truth_members,
                     truth_members_in_universe,
+                    truth_reach_by_grain: truth_reach_by_grain.clone(),
                     candidate_reach,
                     evidence_coverage: evidence_metrics.coverage,
                     evidence_observations: evidence_metrics.observations,
@@ -2003,6 +2064,86 @@ fn validate_case(case: &mut GeoLabeledCompositionCase) -> Result<(), GeoPopulati
     reject_duplicates("truth.buildings", &case.truth.buildings)
 }
 
+fn canonical_truth_reach_overlay_map(
+    overlays: &[GeoPopulationCaseTruthReachByGrain],
+) -> Result<BTreeMap<String, Vec<GeoTruthReachByGrain>>, GeoPopulationError> {
+    let mut by_case = BTreeMap::new();
+    for overlay in overlays {
+        validate_nonempty_canonical("truth_reach.case_id", &overlay.case_id)?;
+        let mut reaches = overlay.truth_reach_by_grain.clone();
+        reaches.sort_by_key(|reach| reach.grain);
+        validate_truth_reach_by_grain("truth_reach_by_grain", &reaches)?;
+        if by_case.insert(overlay.case_id.clone(), reaches).is_some() {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo population truth reach overlay repeats a case identifier",
+                [("case_id", overlay.case_id.as_str())],
+            ));
+        }
+    }
+    Ok(by_case)
+}
+
+fn validate_truth_reach_overlay_case_ids(
+    overlays: &BTreeMap<String, Vec<GeoTruthReachByGrain>>,
+    cases: &[GeoLabeledCompositionCase],
+) -> Result<(), GeoPopulationError> {
+    let case_ids = cases
+        .iter()
+        .map(|case| case.id.as_str())
+        .collect::<BTreeSet<_>>();
+    for case_id in overlays.keys() {
+        if !case_ids.contains(case_id.as_str()) {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo population truth reach overlay references an unknown case",
+                [("case_id", case_id.as_str())],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_truth_reach_by_grain(
+    field: &'static str,
+    reaches: &[GeoTruthReachByGrain],
+) -> Result<(), GeoPopulationError> {
+    let mut previous = None;
+    for reach in reaches {
+        if let Some(previous_grain) = previous
+            && previous_grain >= reach.grain
+        {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo population truth reach by grain must be sorted and unique",
+                [
+                    ("field", field.to_string()),
+                    ("grain", format!("{:?}", reach.grain)),
+                ],
+            ));
+        }
+        previous = Some(reach.grain);
+        let expected =
+            truth_grain_reach_status(reach.truth_members, reach.truth_members_in_universe)?;
+        if reach.candidate_reach != expected {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo population truth reach by grain has inconsistent counts",
+                [
+                    ("field", field.to_string()),
+                    ("grain", format!("{:?}", reach.grain)),
+                    (
+                        "declared",
+                        candidate_reach_name(reach.candidate_reach).to_string(),
+                    ),
+                    ("expected", candidate_reach_name(expected).to_string()),
+                ],
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn validate_candidate_truth_gate(gate: &GeoCandidateTruthGate) -> Result<(), GeoPopulationError> {
     validate_nonempty_canonical("gate_id", &gate.gate_id)?;
     if gate.gate_id != CANON_GEO_FROZEN_E4_H7_GATE_ID {
@@ -2611,6 +2752,35 @@ fn candidate_reach_status(
     }
 }
 
+fn truth_grain_reach_status(
+    truth_members: u64,
+    truth_members_in_universe: u64,
+) -> Result<GeoCandidateReachStatus, GeoPopulationError> {
+    if truth_members_in_universe > truth_members {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo population truth grain counts are internally inconsistent",
+            [
+                ("truth_members", truth_members.to_string()),
+                (
+                    "truth_members_in_universe",
+                    truth_members_in_universe.to_string(),
+                ),
+            ],
+        ));
+    }
+    if truth_members == 0 {
+        return Ok(GeoCandidateReachStatus::None);
+    }
+    if truth_members == truth_members_in_universe {
+        Ok(GeoCandidateReachStatus::Full)
+    } else if truth_members_in_universe == 0 {
+        Ok(GeoCandidateReachStatus::None)
+    } else {
+        Ok(GeoCandidateReachStatus::Partial)
+    }
+}
+
 fn is_abstention_status(status: GeoPopulationCaseStatus) -> bool {
     matches!(
         status,
@@ -2884,6 +3054,7 @@ fn validate_case_evaluation(case: &GeoPopulationCaseEvaluation) -> Result<(), Ge
             "Geo population evaluation emitted a candidate reach bucket inconsistent with truth counts",
         ));
     }
+    validate_truth_reach_by_grain("case.truth_reach_by_grain", &case.truth_reach_by_grain)?;
     if case.full_truth_recall != (case.candidate_reach == GeoCandidateReachStatus::Full) {
         return Err(case_invariant_error(
             case,
@@ -3073,6 +3244,7 @@ fn summarize(
         candidate_reach_full_cases: 0,
         candidate_reach_partial_cases: 0,
         candidate_reach_none_cases: 0,
+        truth_reach_by_grain: Vec::new(),
         candidate_recall_failure_cases: 0,
         evidence_no_observation_cases: 0,
         evidence_diagnostic_only_cases: 0,
@@ -3094,6 +3266,8 @@ fn summarize(
         backbone_false_positive_members: 0,
     };
     let mut truth_planes = BTreeMap::<GeoTruthPlane, GeoPopulationTruthPlaneSummary>::new();
+    let mut truth_reach_by_grain =
+        BTreeMap::<GeoTruthRepresentationGrain, GeoPopulationTruthGrainSummary>::new();
     for case in cases {
         checked_inc(
             &mut summary.population_eligible_cases,
@@ -3280,6 +3454,12 @@ fn summarize(
             case.truth_members_in_universe,
             "truth_members_in_universe",
         )?;
+        for reach in &case.truth_reach_by_grain {
+            truth_reach_by_grain
+                .entry(reach.grain)
+                .or_insert_with(|| GeoPopulationTruthGrainSummary::new(reach.grain))
+                .record(reach)?;
+        }
         checked_add(
             &mut summary.backbone_true_positive_members,
             case.backbone_true_positive_members,
@@ -3295,6 +3475,7 @@ fn summarize(
             .or_insert_with(|| GeoPopulationTruthPlaneSummary::new(case.truth_plane))
             .record(case)?;
     }
+    summary.truth_reach_by_grain = truth_reach_by_grain.into_values().collect();
     summary.truth_planes = truth_planes.into_values().collect();
     validate_summary(&summary)?;
     Ok(summary)
@@ -3592,6 +3773,11 @@ fn validate_summary(summary: &GeoPopulationSummary) -> Result<(), GeoPopulationE
         summary.residual_count_exact_cases,
     )?;
     validate_truth_plane_sums(summary)?;
+    validate_truth_grain_summaries(
+        "summary.truth_reach_by_grain",
+        &summary.truth_reach_by_grain,
+    )?;
+    validate_truth_grain_plane_sums(summary)?;
     for plane in &summary.truth_planes {
         validate_summary_denominators(
             "truth_plane",
@@ -3611,6 +3797,10 @@ fn validate_summary(summary: &GeoPopulationSummary) -> Result<(), GeoPopulationE
             plane.residual_count_complete_cases,
             plane.residual_count_saturated_cases,
             plane.residual_count_exact_cases,
+        )?;
+        validate_truth_grain_summaries(
+            "truth_plane.truth_reach_by_grain",
+            &plane.truth_reach_by_grain,
         )?;
     }
     Ok(())
@@ -3847,6 +4037,92 @@ fn validate_candidate_truth_plane_sum(
             field,
             expected,
             actual,
+        ));
+    }
+    Ok(())
+}
+
+fn validate_truth_grain_summaries(
+    scope: &'static str,
+    summaries: &[GeoPopulationTruthGrainSummary],
+) -> Result<(), GeoPopulationError> {
+    let mut previous = None;
+    for summary in summaries {
+        if let Some(previous_grain) = previous
+            && previous_grain >= summary.grain
+        {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo population truth grain summaries must be sorted and unique",
+                [
+                    ("scope", scope.to_string()),
+                    ("grain", format!("{:?}", summary.grain)),
+                ],
+            ));
+        }
+        previous = Some(summary.grain);
+        if summary.cases == 0 {
+            return Err(summary_invariant_error(
+                scope,
+                "truth_reach_by_grain.cases",
+                1,
+                summary.cases,
+            ));
+        }
+        if summary.truth_members_in_universe > summary.truth_members {
+            return Err(summary_invariant_error(
+                scope,
+                "truth_reach_by_grain.truth_members_in_universe",
+                summary.truth_members,
+                summary.truth_members_in_universe,
+            ));
+        }
+        let reach_cases = sum_u64(
+            [
+                summary.candidate_reach_full_cases,
+                summary.candidate_reach_partial_cases,
+                summary.candidate_reach_none_cases,
+            ],
+            "truth_reach_by_grain.candidate_reach_cases",
+        )?;
+        if reach_cases != summary.cases {
+            return Err(summary_invariant_error(
+                scope,
+                "truth_reach_by_grain.candidate_reach_cases",
+                summary.cases,
+                reach_cases,
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_truth_grain_plane_sums(
+    summary: &GeoPopulationSummary,
+) -> Result<(), GeoPopulationError> {
+    let mut expected = Vec::<GeoPopulationTruthGrainSummary>::new();
+    for plane in &summary.truth_planes {
+        for grain_summary in &plane.truth_reach_by_grain {
+            let index = match expected
+                .binary_search_by_key(&grain_summary.grain, |summary| summary.grain)
+            {
+                Ok(index) => index,
+                Err(index) => {
+                    expected.insert(
+                        index,
+                        GeoPopulationTruthGrainSummary::new(grain_summary.grain),
+                    );
+                    index
+                }
+            };
+            expected[index].record_summary(grain_summary)?;
+        }
+    }
+    if summary.truth_reach_by_grain != expected {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo population truth grain summary does not match truth-plane sums",
+            [("field", "truth_reach_by_grain")],
         ));
     }
     Ok(())
@@ -4272,6 +4548,7 @@ impl GeoPopulationTruthPlaneSummary {
             candidate_reach_full_cases: 0,
             candidate_reach_partial_cases: 0,
             candidate_reach_none_cases: 0,
+            truth_reach_by_grain: Vec::new(),
             solver_truth_scored_cases: 0,
             solver_artifact_cases: 0,
             empirical_falsification_eligible_cases: 0,
@@ -4462,6 +4739,7 @@ impl GeoPopulationTruthPlaneSummary {
             case.truth_members_in_universe,
             "truth_members_in_universe",
         )?;
+        record_truth_grain_reach(&mut self.truth_reach_by_grain, &case.truth_reach_by_grain)?;
         checked_add(
             &mut self.backbone_true_positive_members,
             case.backbone_true_positive_members,
@@ -4471,6 +4749,98 @@ impl GeoPopulationTruthPlaneSummary {
             &mut self.backbone_false_positive_members,
             case.backbone_false_positive_members,
             "backbone_false_positive_members",
+        )
+    }
+}
+
+fn record_truth_grain_reach(
+    summaries: &mut Vec<GeoPopulationTruthGrainSummary>,
+    reaches: &[GeoTruthReachByGrain],
+) -> Result<(), GeoPopulationError> {
+    for reach in reaches {
+        let index = match summaries.binary_search_by_key(&reach.grain, |summary| summary.grain) {
+            Ok(index) => index,
+            Err(index) => {
+                summaries.insert(index, GeoPopulationTruthGrainSummary::new(reach.grain));
+                index
+            }
+        };
+        summaries[index].record(reach)?;
+    }
+    Ok(())
+}
+
+impl GeoPopulationTruthGrainSummary {
+    fn new(grain: GeoTruthRepresentationGrain) -> Self {
+        Self {
+            grain,
+            cases: 0,
+            truth_members: 0,
+            truth_members_in_universe: 0,
+            candidate_reach_full_cases: 0,
+            candidate_reach_partial_cases: 0,
+            candidate_reach_none_cases: 0,
+        }
+    }
+
+    fn record(&mut self, reach: &GeoTruthReachByGrain) -> Result<(), GeoPopulationError> {
+        checked_inc(&mut self.cases, "truth_reach_by_grain.cases")?;
+        checked_add(
+            &mut self.truth_members,
+            reach.truth_members,
+            "truth_reach_by_grain.truth_members",
+        )?;
+        checked_add(
+            &mut self.truth_members_in_universe,
+            reach.truth_members_in_universe,
+            "truth_reach_by_grain.truth_members_in_universe",
+        )?;
+        match reach.candidate_reach {
+            GeoCandidateReachStatus::Full => checked_inc(
+                &mut self.candidate_reach_full_cases,
+                "truth_reach_by_grain.candidate_reach_full_cases",
+            )?,
+            GeoCandidateReachStatus::Partial => checked_inc(
+                &mut self.candidate_reach_partial_cases,
+                "truth_reach_by_grain.candidate_reach_partial_cases",
+            )?,
+            GeoCandidateReachStatus::None => checked_inc(
+                &mut self.candidate_reach_none_cases,
+                "truth_reach_by_grain.candidate_reach_none_cases",
+            )?,
+        }
+        Ok(())
+    }
+
+    fn record_summary(
+        &mut self,
+        summary: &GeoPopulationTruthGrainSummary,
+    ) -> Result<(), GeoPopulationError> {
+        checked_add(&mut self.cases, summary.cases, "truth_reach_by_grain.cases")?;
+        checked_add(
+            &mut self.truth_members,
+            summary.truth_members,
+            "truth_reach_by_grain.truth_members",
+        )?;
+        checked_add(
+            &mut self.truth_members_in_universe,
+            summary.truth_members_in_universe,
+            "truth_reach_by_grain.truth_members_in_universe",
+        )?;
+        checked_add(
+            &mut self.candidate_reach_full_cases,
+            summary.candidate_reach_full_cases,
+            "truth_reach_by_grain.candidate_reach_full_cases",
+        )?;
+        checked_add(
+            &mut self.candidate_reach_partial_cases,
+            summary.candidate_reach_partial_cases,
+            "truth_reach_by_grain.candidate_reach_partial_cases",
+        )?;
+        checked_add(
+            &mut self.candidate_reach_none_cases,
+            summary.candidate_reach_none_cases,
+            "truth_reach_by_grain.candidate_reach_none_cases",
         )
     }
 }

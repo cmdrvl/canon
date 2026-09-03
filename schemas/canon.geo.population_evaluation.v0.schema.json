@@ -79,6 +79,51 @@
         "none"
       ]
     },
+    "truth_representation_grain": {
+      "type": "string",
+      "enum": [
+        "unit_lot",
+        "billing_lot"
+      ]
+    },
+    "truth_reach_by_grain": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "grain": { "$ref": "#/$defs/truth_representation_grain" },
+        "truth_members": { "type": "integer", "minimum": 0 },
+        "truth_members_in_universe": { "type": "integer", "minimum": 0 },
+        "candidate_reach": { "$ref": "#/$defs/candidate_reach_status" }
+      },
+      "required": [
+        "grain",
+        "truth_members",
+        "truth_members_in_universe",
+        "candidate_reach"
+      ]
+    },
+    "truth_grain_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "grain": { "$ref": "#/$defs/truth_representation_grain" },
+        "cases": { "type": "integer", "minimum": 0 },
+        "truth_members": { "type": "integer", "minimum": 0 },
+        "truth_members_in_universe": { "type": "integer", "minimum": 0 },
+        "candidate_reach_full_cases": { "type": "integer", "minimum": 0 },
+        "candidate_reach_partial_cases": { "type": "integer", "minimum": 0 },
+        "candidate_reach_none_cases": { "type": "integer", "minimum": 0 }
+      },
+      "required": [
+        "grain",
+        "cases",
+        "truth_members",
+        "truth_members_in_universe",
+        "candidate_reach_full_cases",
+        "candidate_reach_partial_cases",
+        "candidate_reach_none_cases"
+      ]
+    },
     "evidence_coverage_status": {
       "type": "string",
       "enum": [
@@ -156,6 +201,12 @@
         "truth_members_in_universe": {
           "type": "integer",
           "minimum": 0
+        },
+        "truth_reach_by_grain": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/truth_reach_by_grain"
+          }
         },
         "candidate_reach": {
           "$ref": "#/$defs/candidate_reach_status"
@@ -308,6 +359,12 @@
         "candidate_reach_full_cases": { "type": "integer", "minimum": 0 },
         "candidate_reach_partial_cases": { "type": "integer", "minimum": 0 },
         "candidate_reach_none_cases": { "type": "integer", "minimum": 0 },
+        "truth_reach_by_grain": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/truth_grain_summary"
+          }
+        },
         "solver_truth_scored_cases": { "type": "integer", "minimum": 0 },
         "solver_artifact_cases": {
           "type": "integer",
@@ -458,6 +515,12 @@
         "candidate_reach_none_cases": {
           "type": "integer",
           "minimum": 0
+        },
+        "truth_reach_by_grain": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/truth_grain_summary"
+          }
         },
         "candidate_recall_failure_cases": {
           "type": "integer",
