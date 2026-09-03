@@ -18,6 +18,10 @@ pub const GEO_BBL_NORMALIZATION_RULE_ID: &str = "bbl_normalization.v1";
 pub const GEO_DIRECT_ALIAS_RULE_ID: &str = "geo_direct_alias.v1";
 pub const GEO_PROPERTY_ASSERTION_RULE_ID: &str = "geo_property_document_assertion.v1";
 pub const CANON_GEO_REGISTRY_PROPOSAL_VERSION: &str = "canon_geo_registry_proposal.v0";
+pub const CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION: &str =
+    "canon_geo_tile_identifier_stability_request.v0";
+pub const CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION: &str =
+    "canon_geo_tile_identifier_stability.v0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeoIdentifierError {
@@ -128,6 +132,10 @@ pub struct GeoIdentifierTombstone {
     pub cluster_id: String,
     pub geometry_blake3: String,
     pub reason: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub successor_cluster_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub survivor_cluster_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -145,6 +153,92 @@ pub struct GeoTileIdentifierDiff {
     pub added_cluster_ids: Vec<String>,
     pub tombstoned_cluster_ids: Vec<String>,
     pub merged_prior_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTileIdentifierStabilityRequest {
+    pub version: String,
+    pub before: GeoTileIdentifierVintage,
+    pub after: GeoTileIdentifierVintage,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub client_aliases: Vec<GeoClientTileAliasBinding>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoClientTileAliasBinding {
+    pub client_alias: String,
+    pub cluster_id: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoTileIdentifierContractDisposition {
+    May,
+    Never,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTileIdentifierContractRule {
+    pub rule_id: String,
+    pub disposition: GeoTileIdentifierContractDisposition,
+    pub statement: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTileIdentifierStabilityContract {
+    pub rules: Vec<GeoTileIdentifierContractRule>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoClientTileAliasImpactStatus {
+    Active,
+    Tombstoned,
+    MergedToSurvivor,
+    UnknownCluster,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoClientTileAliasImpact {
+    pub client_alias: String,
+    pub cluster_id: String,
+    pub status: GeoClientTileAliasImpactStatus,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub replacement_cluster_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tombstone_reason: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTileIdentifierStabilityArtifact {
+    pub version: String,
+    pub request_blake3: String,
+    pub tile_id: String,
+    pub before_vintage_id: String,
+    pub after_vintage_id: String,
+    pub contract: GeoTileIdentifierStabilityContract,
+    pub diff: GeoTileIdentifierDiff,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub client_alias_impacts: Vec<GeoClientTileAliasImpact>,
+    pub summary: GeoTileIdentifierStabilitySummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTileIdentifierStabilitySummary {
+    pub retained_clusters: u64,
+    pub added_clusters: u64,
+    pub tombstoned_clusters: u64,
+    pub merged_prior_ids: u64,
+    pub client_aliases: u64,
+    pub stale_client_aliases: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -457,6 +551,177 @@ pub fn diff_tile_identifier_vintages(
     })
 }
 
+pub fn check_tile_identifier_stability(
+    request: &GeoTileIdentifierStabilityRequest,
+) -> Result<GeoTileIdentifierStabilityArtifact, GeoIdentifierError> {
+    let request = canonical_tile_identifier_stability_request(request)?;
+    reject_retired_id_reuse(&request.before, &request.after)?;
+    let diff = diff_tile_identifier_vintages(&request.before, &request.after)?;
+    validate_split_tombstone_successors(&request.after)?;
+    let client_alias_impacts = client_alias_impacts(&request)?;
+    let summary = tile_identifier_stability_summary(&diff, &client_alias_impacts)?;
+    let artifact = GeoTileIdentifierStabilityArtifact {
+        version: CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION.to_string(),
+        request_blake3: hash_stability_request(&request)?,
+        tile_id: request.after.tile_id,
+        before_vintage_id: request.before.vintage_id,
+        after_vintage_id: request.after.vintage_id,
+        contract: default_tile_identifier_stability_contract(),
+        diff,
+        client_alias_impacts,
+        summary,
+    };
+    validate_tile_identifier_stability_artifact(&artifact)?;
+    Ok(artifact)
+}
+
+pub fn canonical_tile_identifier_stability_request(
+    request: &GeoTileIdentifierStabilityRequest,
+) -> Result<GeoTileIdentifierStabilityRequest, GeoIdentifierError> {
+    if request.version != CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION {
+        return Err(GeoIdentifierError {
+            code: GeoIdentifierErrorCode::UnsupportedVersion,
+            message: "Unsupported Geo tile identifier stability request version".to_string(),
+            detail: BTreeMap::from([
+                ("actual".to_string(), request.version.clone()),
+                (
+                    "expected".to_string(),
+                    CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION.to_string(),
+                ),
+            ]),
+        });
+    }
+    let mut canonical = request.clone();
+    canonical.before = canonical_tile_identifier_vintage(&canonical.before)?;
+    canonical.after = canonical_tile_identifier_vintage(&canonical.after)?;
+    canonical.client_aliases.sort_by(|left, right| {
+        left.client_alias
+            .cmp(&right.client_alias)
+            .then_with(|| left.cluster_id.cmp(&right.cluster_id))
+    });
+    let mut aliases = BTreeSet::new();
+    for alias in &canonical.client_aliases {
+        validate_identifier("client_aliases[].client_alias", &alias.client_alias)?;
+        validate_cluster_id("client_aliases[].cluster_id", &alias.cluster_id)?;
+        if !aliases.insert(alias.client_alias.clone()) {
+            return Err(GeoIdentifierError::invalid_input(
+                "Geo tile identifier stability request contains a duplicate client alias",
+                [("client_alias", alias.client_alias.clone())],
+            ));
+        }
+    }
+    Ok(canonical)
+}
+
+pub fn canonical_tile_identifier_stability_bytes(
+    artifact: &GeoTileIdentifierStabilityArtifact,
+) -> Result<Vec<u8>, GeoIdentifierError> {
+    validate_tile_identifier_stability_artifact(artifact)?;
+    let mut canonical = artifact.clone();
+    canonical
+        .diff
+        .retained_cluster_ids
+        .sort_by(|left, right| left.cmp(right));
+    canonical
+        .diff
+        .added_cluster_ids
+        .sort_by(|left, right| left.cmp(right));
+    canonical
+        .diff
+        .tombstoned_cluster_ids
+        .sort_by(|left, right| left.cmp(right));
+    canonical
+        .diff
+        .merged_prior_ids
+        .sort_by(|left, right| left.cmp(right));
+    canonical
+        .client_alias_impacts
+        .sort_by(|left, right| left.client_alias.cmp(&right.client_alias));
+    canonical.summary =
+        tile_identifier_stability_summary(&canonical.diff, &canonical.client_alias_impacts)?;
+    serde_json::to_vec(&canonical).map_err(|error| {
+        GeoIdentifierError::invalid_input(
+            "Geo tile identifier stability artifact could not be serialized",
+            [("error", error.to_string())],
+        )
+    })
+}
+
+pub fn validate_tile_identifier_stability_artifact(
+    artifact: &GeoTileIdentifierStabilityArtifact,
+) -> Result<(), GeoIdentifierError> {
+    if artifact.version != CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION {
+        return Err(GeoIdentifierError {
+            code: GeoIdentifierErrorCode::UnsupportedVersion,
+            message: "Unsupported Geo tile identifier stability artifact version".to_string(),
+            detail: BTreeMap::from([
+                ("actual".to_string(), artifact.version.clone()),
+                (
+                    "expected".to_string(),
+                    CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION.to_string(),
+                ),
+            ]),
+        });
+    }
+    validate_identifier("tile_id", &artifact.tile_id)?;
+    validate_identifier("before_vintage_id", &artifact.before_vintage_id)?;
+    validate_identifier("after_vintage_id", &artifact.after_vintage_id)?;
+    validate_blake3("request_blake3", &artifact.request_blake3)?;
+    validate_stability_contract(&artifact.contract)?;
+    validate_diff("diff", &artifact.diff)?;
+    validate_client_alias_impacts(&artifact.client_alias_impacts)?;
+    let expected =
+        tile_identifier_stability_summary(&artifact.diff, &artifact.client_alias_impacts)?;
+    if artifact.summary != expected {
+        return Err(GeoIdentifierError::invalid_input(
+            "Geo tile identifier stability summary does not match the diff and client impacts",
+            [
+                ("field", "summary".to_string()),
+                ("actual", format!("{:?}", artifact.summary)),
+                ("expected", format!("{expected:?}")),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+pub fn default_tile_identifier_stability_contract() -> GeoTileIdentifierStabilityContract {
+    GeoTileIdentifierStabilityContract {
+        rules: vec![
+            contract_rule(
+                "add_new_clusters",
+                GeoTileIdentifierContractDisposition::May,
+                "A tile refresh may add new clusters.",
+            ),
+            contract_rule(
+                "retire_with_tombstone",
+                GeoTileIdentifierContractDisposition::May,
+                "A tile refresh may retire a cluster only with a tombstone.",
+            ),
+            contract_rule(
+                "split_with_tombstone_successors",
+                GeoTileIdentifierContractDisposition::May,
+                "A tile refresh may split a cluster only by retiring the prior id with a tombstone naming successor clusters.",
+            ),
+            contract_rule(
+                "merge_retaining_prior_ids",
+                GeoTileIdentifierContractDisposition::May,
+                "A tile refresh may merge clusters by retaining every prior id as an alias of the survivor.",
+            ),
+            contract_rule(
+                "reassign_existing_id",
+                GeoTileIdentifierContractDisposition::Never,
+                "A tile refresh must never reassign an existing minted id to different geometry.",
+            ),
+            contract_rule(
+                "reuse_retired_id",
+                GeoTileIdentifierContractDisposition::Never,
+                "A tile refresh must never reuse a retired id.",
+            ),
+        ],
+    }
+}
+
 pub fn compare_property_sets(
     left: &GeoPropertyDocumentAssertion,
     right: &GeoPropertyDocumentAssertion,
@@ -520,15 +785,370 @@ fn cluster_map<'a>(
     Ok(by_id)
 }
 
+fn canonical_tile_identifier_vintage(
+    vintage: &GeoTileIdentifierVintage,
+) -> Result<GeoTileIdentifierVintage, GeoIdentifierError> {
+    validate_identifier("tile_id", &vintage.tile_id)?;
+    validate_identifier("vintage_id", &vintage.vintage_id)?;
+    let mut canonical = vintage.clone();
+    for cluster in &mut canonical.clusters {
+        validate_cluster(cluster)?;
+        cluster.aliases.sort();
+        cluster.aliases.dedup();
+    }
+    canonical
+        .clusters
+        .sort_by(|left, right| left.cluster_id.cmp(&right.cluster_id));
+    for tombstone in &mut canonical.tombstones {
+        validate_tombstone(tombstone)?;
+        tombstone.successor_cluster_ids.sort();
+        tombstone.successor_cluster_ids.dedup();
+    }
+    canonical
+        .tombstones
+        .sort_by(|left, right| left.cluster_id.cmp(&right.cluster_id));
+    Ok(canonical)
+}
+
+fn reject_retired_id_reuse(
+    before: &GeoTileIdentifierVintage,
+    after: &GeoTileIdentifierVintage,
+) -> Result<(), GeoIdentifierError> {
+    let after_clusters = cluster_map("after.clusters", &after.clusters)?;
+    for tombstone in &before.tombstones {
+        validate_tombstone(tombstone)?;
+        if after_clusters.contains_key(&tombstone.cluster_id) {
+            return Err(GeoIdentifierError::invalid_input(
+                "Geo tile refresh reused a retired minted id",
+                [
+                    ("cluster_id", tombstone.cluster_id.clone()),
+                    ("before_vintage_id", before.vintage_id.clone()),
+                    ("after_vintage_id", after.vintage_id.clone()),
+                ],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_split_tombstone_successors(
+    after: &GeoTileIdentifierVintage,
+) -> Result<(), GeoIdentifierError> {
+    let after_clusters = cluster_map("after.clusters", &after.clusters)?;
+    for tombstone in &after.tombstones {
+        validate_tombstone(tombstone)?;
+        if after_clusters.contains_key(&tombstone.cluster_id) {
+            return Err(GeoIdentifierError::invalid_input(
+                "Geo tile refresh cannot both retain and tombstone a minted id",
+                [("cluster_id", tombstone.cluster_id.clone())],
+            ));
+        }
+        if tombstone.reason.contains("split") && tombstone.successor_cluster_ids.is_empty() {
+            return Err(GeoIdentifierError::invalid_input(
+                "Geo split tombstone must name successor clusters",
+                [("cluster_id", tombstone.cluster_id.clone())],
+            ));
+        }
+        for successor in &tombstone.successor_cluster_ids {
+            if !after_clusters.contains_key(successor) {
+                return Err(GeoIdentifierError::invalid_input(
+                    "Geo tombstone successor is absent from the refreshed tile vintage",
+                    [
+                        ("cluster_id", tombstone.cluster_id.clone()),
+                        ("successor_cluster_id", successor.clone()),
+                    ],
+                ));
+            }
+        }
+        if let Some(survivor) = &tombstone.survivor_cluster_id
+            && !after_clusters.contains_key(survivor)
+        {
+            return Err(GeoIdentifierError::invalid_input(
+                "Geo tombstone survivor is absent from the refreshed tile vintage",
+                [
+                    ("cluster_id", tombstone.cluster_id.clone()),
+                    ("survivor_cluster_id", survivor.clone()),
+                ],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn client_alias_impacts(
+    request: &GeoTileIdentifierStabilityRequest,
+) -> Result<Vec<GeoClientTileAliasImpact>, GeoIdentifierError> {
+    let after_clusters = cluster_map("after.clusters", &request.after.clusters)?;
+    let after_tombstones = request
+        .after
+        .tombstones
+        .iter()
+        .map(|tombstone| (tombstone.cluster_id.clone(), tombstone))
+        .collect::<BTreeMap<_, _>>();
+    let alias_survivors = retained_alias_survivors(&request.after.clusters)?;
+    let mut impacts = Vec::with_capacity(request.client_aliases.len());
+    for alias in &request.client_aliases {
+        let impact = if after_clusters.contains_key(&alias.cluster_id) {
+            GeoClientTileAliasImpact {
+                client_alias: alias.client_alias.clone(),
+                cluster_id: alias.cluster_id.clone(),
+                status: GeoClientTileAliasImpactStatus::Active,
+                replacement_cluster_ids: Vec::new(),
+                tombstone_reason: None,
+                message: "client alias still points at an active retained cluster".to_string(),
+            }
+        } else if let Some(tombstone) = after_tombstones.get(&alias.cluster_id) {
+            let mut replacements = tombstone.successor_cluster_ids.clone();
+            if let Some(survivor) = &tombstone.survivor_cluster_id {
+                replacements.push(survivor.clone());
+            }
+            replacements.sort();
+            replacements.dedup();
+            GeoClientTileAliasImpact {
+                client_alias: alias.client_alias.clone(),
+                cluster_id: alias.cluster_id.clone(),
+                status: GeoClientTileAliasImpactStatus::Tombstoned,
+                replacement_cluster_ids: replacements,
+                tombstone_reason: Some(tombstone.reason.clone()),
+                message: "client alias points at a tombstoned tile cluster".to_string(),
+            }
+        } else if let Some(survivor) = alias_survivors.get(&alias.cluster_id) {
+            GeoClientTileAliasImpact {
+                client_alias: alias.client_alias.clone(),
+                cluster_id: alias.cluster_id.clone(),
+                status: GeoClientTileAliasImpactStatus::MergedToSurvivor,
+                replacement_cluster_ids: vec![survivor.clone()],
+                tombstone_reason: None,
+                message: "client alias points at a prior id retained as a survivor alias"
+                    .to_string(),
+            }
+        } else {
+            GeoClientTileAliasImpact {
+                client_alias: alias.client_alias.clone(),
+                cluster_id: alias.cluster_id.clone(),
+                status: GeoClientTileAliasImpactStatus::UnknownCluster,
+                replacement_cluster_ids: Vec::new(),
+                tombstone_reason: None,
+                message: "client alias points at a cluster absent from the refreshed tile contract"
+                    .to_string(),
+            }
+        };
+        impacts.push(impact);
+    }
+    impacts.sort_by(|left, right| left.client_alias.cmp(&right.client_alias));
+    Ok(impacts)
+}
+
+fn retained_alias_survivors(
+    clusters: &[GeoIdentifierCluster],
+) -> Result<BTreeMap<String, String>, GeoIdentifierError> {
+    let mut survivors = BTreeMap::new();
+    for cluster in clusters {
+        validate_cluster(cluster)?;
+        for alias in cluster
+            .aliases
+            .iter()
+            .filter(|alias| alias.starts_with("cmdrvl:"))
+        {
+            if let Some(previous) = survivors.insert(alias.clone(), cluster.cluster_id.clone()) {
+                return Err(GeoIdentifierError::invalid_input(
+                    "Geo prior minted id is retained as an alias by multiple survivor clusters",
+                    [
+                        ("prior_cluster_id", alias.clone()),
+                        ("survivor_before", previous),
+                        ("survivor_after", cluster.cluster_id.clone()),
+                    ],
+                ));
+            }
+        }
+    }
+    Ok(survivors)
+}
+
+fn tile_identifier_stability_summary(
+    diff: &GeoTileIdentifierDiff,
+    client_alias_impacts: &[GeoClientTileAliasImpact],
+) -> Result<GeoTileIdentifierStabilitySummary, GeoIdentifierError> {
+    Ok(GeoTileIdentifierStabilitySummary {
+        retained_clusters: usize_to_u64(diff.retained_cluster_ids.len(), "retained_clusters")?,
+        added_clusters: usize_to_u64(diff.added_cluster_ids.len(), "added_clusters")?,
+        tombstoned_clusters: usize_to_u64(
+            diff.tombstoned_cluster_ids.len(),
+            "tombstoned_clusters",
+        )?,
+        merged_prior_ids: usize_to_u64(diff.merged_prior_ids.len(), "merged_prior_ids")?,
+        client_aliases: usize_to_u64(client_alias_impacts.len(), "client_aliases")?,
+        stale_client_aliases: usize_to_u64(
+            client_alias_impacts
+                .iter()
+                .filter(|impact| impact.status != GeoClientTileAliasImpactStatus::Active)
+                .count(),
+            "stale_client_aliases",
+        )?,
+    })
+}
+
+fn validate_stability_contract(
+    contract: &GeoTileIdentifierStabilityContract,
+) -> Result<(), GeoIdentifierError> {
+    let mut rules = BTreeSet::new();
+    for rule in &contract.rules {
+        validate_identifier("contract.rules[].rule_id", &rule.rule_id)?;
+        validate_identifier("contract.rules[].statement", &rule.statement)?;
+        if !rules.insert(rule.rule_id.clone()) {
+            return Err(GeoIdentifierError::invalid_input(
+                "Geo tile identifier stability contract contains a duplicate rule",
+                [("rule_id", rule.rule_id.clone())],
+            ));
+        }
+    }
+    for required in [
+        "add_new_clusters",
+        "retire_with_tombstone",
+        "split_with_tombstone_successors",
+        "merge_retaining_prior_ids",
+        "reassign_existing_id",
+        "reuse_retired_id",
+    ] {
+        if !rules.contains(required) {
+            return Err(GeoIdentifierError::invalid_input(
+                "Geo tile identifier stability contract is missing a required rule",
+                [("rule_id", required.to_string())],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_diff(
+    field: &'static str,
+    diff: &GeoTileIdentifierDiff,
+) -> Result<(), GeoIdentifierError> {
+    validate_cluster_id_list(field, "retained_cluster_ids", &diff.retained_cluster_ids)?;
+    validate_cluster_id_list(field, "added_cluster_ids", &diff.added_cluster_ids)?;
+    validate_cluster_id_list(
+        field,
+        "tombstoned_cluster_ids",
+        &diff.tombstoned_cluster_ids,
+    )?;
+    validate_cluster_id_list(field, "merged_prior_ids", &diff.merged_prior_ids)
+}
+
+fn validate_cluster_id_list(
+    parent: &'static str,
+    field: &'static str,
+    ids: &[String],
+) -> Result<(), GeoIdentifierError> {
+    let mut seen = BTreeSet::new();
+    for id in ids {
+        validate_cluster_id(field, id)?;
+        if !seen.insert(id) {
+            return Err(GeoIdentifierError::invalid_input(
+                "Geo tile identifier stability id lists must not contain duplicates",
+                [
+                    ("field", format!("{parent}.{field}")),
+                    ("cluster_id", id.clone()),
+                ],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_client_alias_impacts(
+    impacts: &[GeoClientTileAliasImpact],
+) -> Result<(), GeoIdentifierError> {
+    let mut aliases = BTreeSet::new();
+    let mut previous: Option<&str> = None;
+    for impact in impacts {
+        validate_identifier("client_alias_impacts[].client_alias", &impact.client_alias)?;
+        validate_cluster_id("client_alias_impacts[].cluster_id", &impact.cluster_id)?;
+        validate_identifier("client_alias_impacts[].message", &impact.message)?;
+        for replacement in &impact.replacement_cluster_ids {
+            validate_cluster_id(
+                "client_alias_impacts[].replacement_cluster_ids",
+                replacement,
+            )?;
+        }
+        if let Some(reason) = &impact.tombstone_reason {
+            validate_identifier("client_alias_impacts[].tombstone_reason", reason)?;
+        }
+        if !aliases.insert(impact.client_alias.as_str()) {
+            return Err(GeoIdentifierError::invalid_input(
+                "Geo tile identifier stability client impacts contain a duplicate alias",
+                [("client_alias", impact.client_alias.clone())],
+            ));
+        }
+        if let Some(previous_alias) = previous
+            && previous_alias >= impact.client_alias.as_str()
+        {
+            return Err(GeoIdentifierError::invalid_input(
+                "Geo tile identifier stability client impacts must be sorted by client_alias",
+                [
+                    ("previous_client_alias", previous_alias.to_string()),
+                    ("client_alias", impact.client_alias.clone()),
+                ],
+            ));
+        }
+        previous = Some(impact.client_alias.as_str());
+    }
+    Ok(())
+}
+
+fn contract_rule(
+    rule_id: &str,
+    disposition: GeoTileIdentifierContractDisposition,
+    statement: &str,
+) -> GeoTileIdentifierContractRule {
+    GeoTileIdentifierContractRule {
+        rule_id: rule_id.to_string(),
+        disposition,
+        statement: statement.to_string(),
+    }
+}
+
+fn hash_stability_request(
+    request: &GeoTileIdentifierStabilityRequest,
+) -> Result<String, GeoIdentifierError> {
+    serde_json::to_vec(request)
+        .map(|bytes| format!("blake3:{}", blake3::hash(&bytes).to_hex()))
+        .map_err(|error| {
+            GeoIdentifierError::invalid_input(
+                "Geo tile identifier stability request could not be serialized for hashing",
+                [("error", error.to_string())],
+            )
+        })
+}
+
+fn validate_tombstone(tombstone: &GeoIdentifierTombstone) -> Result<(), GeoIdentifierError> {
+    validate_cluster_id("tombstones[].cluster_id", &tombstone.cluster_id)?;
+    validate_blake3("tombstones[].geometry_blake3", &tombstone.geometry_blake3)?;
+    validate_identifier("tombstones[].reason", &tombstone.reason)?;
+    for successor in &tombstone.successor_cluster_ids {
+        validate_cluster_id("tombstones[].successor_cluster_ids", successor)?;
+    }
+    if let Some(survivor) = &tombstone.survivor_cluster_id {
+        validate_cluster_id("tombstones[].survivor_cluster_id", survivor)?;
+    }
+    Ok(())
+}
+
+fn usize_to_u64(value: usize, field: &'static str) -> Result<u64, GeoIdentifierError> {
+    u64::try_from(value).map_err(|_| {
+        GeoIdentifierError::invalid_input(
+            "Geo identifier count does not fit in u64",
+            [("field", field.to_string())],
+        )
+    })
+}
+
 fn tombstone_map<'a>(
     before_clusters: &BTreeMap<String, &'a GeoIdentifierCluster>,
     tombstones: &'a [GeoIdentifierTombstone],
 ) -> Result<BTreeMap<String, &'a GeoIdentifierTombstone>, GeoIdentifierError> {
     let mut by_id = BTreeMap::new();
     for tombstone in tombstones {
-        validate_cluster_id("tombstones[].cluster_id", &tombstone.cluster_id)?;
-        validate_blake3("tombstones[].geometry_blake3", &tombstone.geometry_blake3)?;
-        validate_identifier("tombstones[].reason", &tombstone.reason)?;
+        validate_tombstone(tombstone)?;
         if !before_clusters.contains_key(&tombstone.cluster_id) {
             return Err(GeoIdentifierError::invalid_input(
                 "Geo tile tombstone names a cluster absent from the prior vintage",

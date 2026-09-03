@@ -37,6 +37,8 @@ fn tombstone(cluster_id: &str, geometry_blake3: String) -> GeoIdentifierTombston
         cluster_id: cluster_id.to_string(),
         geometry_blake3,
         reason: "retired_by_tile_refresh".to_string(),
+        successor_cluster_ids: Vec::new(),
+        survivor_cluster_id: None,
     }
 }
 

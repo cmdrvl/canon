@@ -1,0 +1,255 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.tile_identifier_stability.v0",
+  "description": "Published tile-refresh identifier stability contract and client stale-alias impact artifact.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "request_blake3",
+    "tile_id",
+    "before_vintage_id",
+    "after_vintage_id",
+    "contract",
+    "diff",
+    "summary"
+  ],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "canon_geo_tile_identifier_stability.v0"
+    },
+    "request_blake3": { "$ref": "#/$defs/blake3_digest" },
+    "tile_id": { "type": "string", "minLength": 1 },
+    "before_vintage_id": { "type": "string", "minLength": 1 },
+    "after_vintage_id": { "type": "string", "minLength": 1 },
+    "contract": { "$ref": "#/$defs/contract" },
+    "diff": { "$ref": "#/$defs/diff" },
+    "client_alias_impacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/client_alias_impact" }
+    },
+    "summary": { "$ref": "#/$defs/summary" }
+  },
+  "$defs": {
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "before",
+        "after"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "const": "canon_geo_tile_identifier_stability_request.v0"
+        },
+        "before": { "$ref": "#/$defs/identifier_vintage" },
+        "after": { "$ref": "#/$defs/identifier_vintage" },
+        "client_aliases": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/client_alias_binding" }
+        }
+      }
+    },
+    "blake3_digest": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "cluster_id": {
+      "type": "string",
+      "pattern": "^cmdrvl:(parcel|building|property):"
+    },
+    "entity_level": {
+      "type": "string",
+      "enum": [
+        "poi_unit",
+        "building",
+        "parcel",
+        "property"
+      ]
+    },
+    "identifier_vintage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tile_id",
+        "vintage_id",
+        "clusters"
+      ],
+      "properties": {
+        "tile_id": { "type": "string", "minLength": 1 },
+        "vintage_id": { "type": "string", "minLength": 1 },
+        "clusters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/cluster" }
+        },
+        "tombstones": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/tombstone" }
+        }
+      }
+    },
+    "cluster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cluster_id",
+        "entity_level",
+        "geometry_blake3"
+      ],
+      "properties": {
+        "cluster_id": { "$ref": "#/$defs/cluster_id" },
+        "entity_level": { "$ref": "#/$defs/entity_level" },
+        "geometry_blake3": { "$ref": "#/$defs/blake3_digest" },
+        "aliases": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "tombstone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cluster_id",
+        "geometry_blake3",
+        "reason"
+      ],
+      "properties": {
+        "cluster_id": { "$ref": "#/$defs/cluster_id" },
+        "geometry_blake3": { "$ref": "#/$defs/blake3_digest" },
+        "reason": { "type": "string", "minLength": 1 },
+        "successor_cluster_ids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/cluster_id" }
+        },
+        "survivor_cluster_id": { "$ref": "#/$defs/cluster_id" }
+      }
+    },
+    "client_alias_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "client_alias",
+        "cluster_id"
+      ],
+      "properties": {
+        "client_alias": { "type": "string", "minLength": 1 },
+        "cluster_id": { "$ref": "#/$defs/cluster_id" }
+      }
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rules"
+      ],
+      "properties": {
+        "rules": {
+          "type": "array",
+          "minItems": 6,
+          "items": { "$ref": "#/$defs/contract_rule" }
+        }
+      }
+    },
+    "contract_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule_id",
+        "disposition",
+        "statement"
+      ],
+      "properties": {
+        "rule_id": { "type": "string", "minLength": 1 },
+        "disposition": {
+          "type": "string",
+          "enum": [
+            "may",
+            "never"
+          ]
+        },
+        "statement": { "type": "string", "minLength": 1 }
+      }
+    },
+    "diff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "retained_cluster_ids",
+        "added_cluster_ids",
+        "tombstoned_cluster_ids",
+        "merged_prior_ids"
+      ],
+      "properties": {
+        "retained_cluster_ids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/cluster_id" }
+        },
+        "added_cluster_ids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/cluster_id" }
+        },
+        "tombstoned_cluster_ids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/cluster_id" }
+        },
+        "merged_prior_ids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/cluster_id" }
+        }
+      }
+    },
+    "client_alias_impact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "client_alias",
+        "cluster_id",
+        "status",
+        "message"
+      ],
+      "properties": {
+        "client_alias": { "type": "string", "minLength": 1 },
+        "cluster_id": { "$ref": "#/$defs/cluster_id" },
+        "status": {
+          "type": "string",
+          "enum": [
+            "active",
+            "tombstoned",
+            "merged_to_survivor",
+            "unknown_cluster"
+          ]
+        },
+        "replacement_cluster_ids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/cluster_id" }
+        },
+        "tombstone_reason": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "retained_clusters",
+        "added_clusters",
+        "tombstoned_clusters",
+        "merged_prior_ids",
+        "client_aliases",
+        "stale_client_aliases"
+      ],
+      "properties": {
+        "retained_clusters": { "type": "integer", "minimum": 0 },
+        "added_clusters": { "type": "integer", "minimum": 0 },
+        "tombstoned_clusters": { "type": "integer", "minimum": 0 },
+        "merged_prior_ids": { "type": "integer", "minimum": 0 },
+        "client_aliases": { "type": "integer", "minimum": 0 },
+        "stale_client_aliases": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
