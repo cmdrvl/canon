@@ -3,7 +3,7 @@
 use canon::{
     InputFormat, InputValues, SpecialReason,
     lookup::resolve_values,
-    registry::load_registry,
+    registry::{compile_registry_package, load_registry},
     registry_lint::{RegistryLintProfile, lint},
 };
 use rusqlite::{Connection, params};
@@ -194,6 +194,10 @@ fn scoped_mapping_metadata_is_carried_in_index_and_lints_clean() -> Result<(), B
     let codes = finding_codes(&lint_output);
     assert_eq!(lint_output.summary.errors, 0);
     assert!(!codes.contains(&"mapping_scope_metadata_invalid".to_string()));
+
+    let package = compile_registry_package(temp.path()).expect("scoped registry packages");
+    assert_eq!(package.entry_count, 1);
+    assert_eq!(package.effective_mapping_count, 1);
 
     cleanup_cache_file(&registry.db_path);
     Ok(())
