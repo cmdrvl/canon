@@ -871,6 +871,7 @@ const SUPPORTED_CANNOT_LINK_OPS: &[&str] = &[
     "role_conflict",
     "protected_anchor_conflict",
     "segment_conflict",
+    "context_conflict",
     "platform_label_guard",
     "division_boundary",
 ];
