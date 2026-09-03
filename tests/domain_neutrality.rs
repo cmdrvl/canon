@@ -8,11 +8,12 @@ use canon::entity::profile_package::{
     execute_profile_package_records, load_profile_package_bytes, load_profile_package_file,
 };
 use canon::extensions::{
-    self, FORBIDDEN_EXTENSION_DOC_REFERENCES, REQUIRED_NEUTRAL_DOC_REFERENCES,
+    self, FORBIDDEN_EXTENSION_DOC_REFERENCES, REQUIRED_NEUTRAL_DOC_REFERENCES, SourceScanViolation,
     render_doc_scan_report, render_source_scan_report, scan_domain_neutral_extension_sources,
     scan_extension_docs, scan_stripped_rust_source,
 };
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -34,6 +35,90 @@ const REGAB_EXAMPLE_PACKAGE: &str =
 const REGAB_EXAMPLE_RECORDS: &str = "tests/fixtures/entity/regab/org_mentions/org_mentions.csv";
 
 const EXTENSIONS_DOCS: &str = include_str!("../docs/EXTENSIONS.md");
+const DOMAIN_NEUTRAL_ENTITY_ENGINE_RUNTIME_RULE: &str = "domain_neutral_entity_engine_runtime";
+const FORBIDDEN_ENTITY_ENGINE_DOMAIN_TERMS: &[&str] = &[
+    "bdc", "cmbs", "regab", "reg ab", "sec10d", "sec 10-d", "servicer", "tenant",
+];
+const RECORDED_ENTITY_ENGINE_SOURCE_RESIDUALS: &[(&str, &str)] = &[
+    ("src/cli.rs", "cmbs"),
+    ("src/cli.rs", "tenant"),
+    ("src/distribution/cache.rs", "bdc"),
+    ("src/entity/apply.rs", "cmbs"),
+    ("src/entity/apply.rs", "sec10d"),
+    ("src/entity/apply.rs", "tenant"),
+    ("src/entity/contracts.rs", "cmbs"),
+    ("src/entity/contracts.rs", "tenant"),
+    ("src/entity/index.rs", "cmbs"),
+    ("src/entity/index.rs", "regab"),
+    ("src/entity/index.rs", "sec10d"),
+    ("src/entity/index.rs", "tenant"),
+    ("src/entity/link.rs", "regab"),
+    ("src/entity/prepare.rs", "cmbs"),
+    ("src/entity/prepare.rs", "regab"),
+    ("src/entity/prepare.rs", "tenant"),
+    ("src/entity/profile.rs", "regab"),
+    ("src/entity/profile.rs", "tenant"),
+    ("src/entity/profile_cli.rs", "cmbs"),
+    ("src/entity/profile_cli.rs", "regab"),
+    ("src/entity/profile_cli.rs", "sec10d"),
+    ("src/entity/profile_cli.rs", "tenant"),
+    ("src/entity/profiles/cmbs.rs", "cmbs"),
+    ("src/entity/profiles/cmbs.rs", "tenant"),
+    ("src/entity/profiles/mod.rs", "cmbs"),
+    ("src/entity/profiles/mod.rs", "regab"),
+    ("src/entity/profiles/regab.rs", "reg ab"),
+    ("src/entity/profiles/regab.rs", "regab"),
+    ("src/entity/profiles/regab.rs", "servicer"),
+    ("src/entity/review.rs", "regab"),
+    ("src/entity/review_import.rs", "cmbs"),
+    ("src/entity/review_import.rs", "tenant"),
+    ("src/entity/run.rs", "cmbs"),
+    ("src/entity/run.rs", "regab"),
+    ("src/entity/run.rs", "tenant"),
+    ("src/entity/schema.rs", "cmbs"),
+    ("src/entity/schema.rs", "tenant"),
+    ("src/entity/surface_id.rs", "cmbs"),
+    ("src/entity/surface_id.rs", "tenant"),
+    ("src/evaluation/generalization.rs", "cmbs"),
+    ("src/evaluation/generalization.rs", "regab"),
+    ("src/evaluation/generalization.rs", "tenant"),
+    ("src/extensions/mod.rs", "cmbs"),
+    ("src/extensions/mod.rs", "regab"),
+    ("src/extensions/mod.rs", "servicer"),
+    ("src/extensions/mod.rs", "tenant"),
+    ("src/geo/composition.rs", "cmbs"),
+    ("src/geo/control.rs", "cmbs"),
+    ("src/geo/identifiers.rs", "cmbs"),
+    ("src/geo/pre_resolve.rs", "cmbs"),
+    ("src/lib.rs", "bdc"),
+    ("src/lib.rs", "cmbs"),
+    ("src/lib.rs", "regab"),
+    ("src/lib.rs", "tenant"),
+    ("src/namekit/explain.rs", "tenant"),
+    ("src/namekit/legal_suffix.rs", "cmbs"),
+    ("src/namekit/legal_suffix.rs", "reg ab"),
+    ("src/namekit/legal_suffix.rs", "regab"),
+    ("src/namekit/legal_suffix.rs", "tenant"),
+    ("src/namekit/mod.rs", "regab"),
+    ("src/namekit/mod.rs", "tenant"),
+    ("src/namekit/tenant.rs", "cmbs"),
+    ("src/namekit/tenant.rs", "tenant"),
+    ("src/refusal.rs", "bdc"),
+    ("src/registry_lint.rs", "bdc"),
+    ("src/resolve/assertions.rs", "servicer"),
+    ("src/resolve/graph.rs", "cmbs"),
+    ("src/resolve/graph.rs", "servicer"),
+    ("src/resolve/mod.rs", "cmbs"),
+    ("src/resolve/mod.rs", "servicer"),
+    ("src/resolve/output.rs", "cmbs"),
+    ("src/resolve/output.rs", "servicer"),
+    ("src/resolve/strategy.rs", "cmbs"),
+    ("src/resolve/tape.rs", "cmbs"),
+    ("src/resolve/tape.rs", "servicer"),
+    ("src/resolve/writeback.rs", "cmbs"),
+];
+const RECORDED_ENTITY_BINARY_RESIDUAL_TERMS: &[&str] =
+    &["bdc", "cmbs", "regab", "reg ab", "sec10d", "tenant"];
 
 #[test]
 fn extension_runtime_sources_stay_domain_neutral() {
@@ -75,6 +160,73 @@ fn neutral_contract() {
         violations.iter().all(|violation| violation.line >= 4),
         "comment-only lines should not be flagged:\n{}",
         render_source_scan_report(&violations)
+    );
+}
+
+#[test]
+fn entity_engine_source_scan_flags_planted_runtime_leak_but_ignores_comments() {
+    let source = r#"
+// CMBS tenant servicer in a comment must not fail the runtime scanner
+/* Reg AB and BDC in block comments are also ignored */
+fn neutral_contract() {
+    let recovery = "rerun the CMBS tenant branch";
+    let policy = "sec10d regab servicer policy";
+}
+"#;
+    let violations = scan_stripped_rust_source(
+        DOMAIN_NEUTRAL_ENTITY_ENGINE_RUNTIME_RULE,
+        "tests/domain_neutrality.rs.entity_engine_fixture",
+        source,
+        FORBIDDEN_ENTITY_ENGINE_DOMAIN_TERMS,
+    );
+    let seen_terms = violations
+        .iter()
+        .map(|violation| violation.term.as_str())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        seen_terms,
+        BTreeSet::from(["cmbs", "regab", "sec10d", "servicer", "tenant"])
+    );
+    assert!(
+        violations.iter().all(|violation| violation.line >= 5),
+        "comment-only lines should not be flagged:\n{}",
+        render_source_scan_report(&violations)
+    );
+}
+
+#[test]
+fn entity_engine_source_scan_has_no_unrecorded_domain_runtime_leak_paths() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let violations = scan_entity_engine_source_domain_terms(repo_root)
+        .expect("entity engine source scan should read files");
+    let recorded = RECORDED_ENTITY_ENGINE_SOURCE_RESIDUALS
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let unrecorded = violations
+        .iter()
+        .filter(|violation| !recorded.contains(&(violation.path.as_str(), violation.term.as_str())))
+        .cloned()
+        .collect::<Vec<_>>();
+    assert!(
+        unrecorded.is_empty(),
+        "domain-neutral entity engine source scan found unrecorded runtime leaks:\n{}",
+        render_source_scan_report(&unrecorded)
+    );
+}
+
+#[test]
+fn shipped_canon_binary_scan_has_no_unrecorded_domain_runtime_terms() {
+    let observed = scan_binary_domain_terms(Path::new(env!("CARGO_BIN_EXE_canon")))
+        .expect("canon binary should be readable");
+    let recorded = RECORDED_ENTITY_BINARY_RESIDUAL_TERMS
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let unrecorded = observed.difference(&recorded).copied().collect::<Vec<_>>();
+    assert!(
+        unrecorded.is_empty(),
+        "domain-neutral binary scan found unrecorded terms: {unrecorded:?}; observed={observed:?}"
     );
 }
 
@@ -1234,4 +1386,86 @@ fn sample_hash(hex: char) -> String {
         "blake3:{}",
         std::iter::repeat_n(hex, 64).collect::<String>()
     )
+}
+
+fn scan_entity_engine_source_domain_terms(
+    repo_root: &Path,
+) -> std::io::Result<Vec<SourceScanViolation>> {
+    let mut violations = Vec::new();
+    for relative_path in entity_engine_source_files(repo_root)? {
+        let source = fs::read_to_string(repo_root.join(&relative_path))?;
+        violations.extend(scan_stripped_rust_source(
+            DOMAIN_NEUTRAL_ENTITY_ENGINE_RUNTIME_RULE,
+            &relative_path,
+            &source,
+            FORBIDDEN_ENTITY_ENGINE_DOMAIN_TERMS,
+        ));
+    }
+    Ok(violations)
+}
+
+fn entity_engine_source_files(repo_root: &Path) -> std::io::Result<Vec<String>> {
+    let mut files = Vec::new();
+    collect_rust_source_files(repo_root, &repo_root.join("src"), &mut files)?;
+    files.retain(|relative_path| !relative_path.starts_with("src/org/"));
+    files.sort();
+    Ok(files)
+}
+
+fn collect_rust_source_files(
+    repo_root: &Path,
+    directory: &Path,
+    files: &mut Vec<String>,
+) -> std::io::Result<()> {
+    let mut entries = fs::read_dir(directory)?.collect::<Result<Vec<_>, _>>()?;
+    entries.sort_by_key(|entry| entry.path());
+    for entry in entries {
+        let entry_path = entry.path();
+        if entry_path.is_dir() {
+            collect_rust_source_files(repo_root, &entry_path, files)?;
+        } else if entry_path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            == Some("rs")
+        {
+            let relative_path = entry_path
+                .strip_prefix(repo_root)
+                .expect("source file should be under repository root")
+                .to_string_lossy()
+                .replace('\\', "/");
+            files.push(relative_path);
+        }
+    }
+    Ok(())
+}
+
+fn scan_binary_domain_terms(binary_path: &Path) -> std::io::Result<BTreeSet<&'static str>> {
+    let strings = printable_ascii_strings(&fs::read(binary_path)?);
+    Ok(FORBIDDEN_ENTITY_ENGINE_DOMAIN_TERMS
+        .iter()
+        .copied()
+        .filter(|term| strings.iter().any(|line| line.contains(term)))
+        .collect())
+}
+
+fn printable_ascii_strings(bytes: &[u8]) -> Vec<String> {
+    let mut strings = Vec::new();
+    let mut current = Vec::new();
+    for byte in bytes {
+        if byte.is_ascii_graphic() || *byte == b' ' {
+            current.push(byte.to_ascii_lowercase());
+        } else {
+            push_printable_ascii_string(&mut strings, &mut current);
+        }
+    }
+    push_printable_ascii_string(&mut strings, &mut current);
+    strings
+}
+
+fn push_printable_ascii_string(strings: &mut Vec<String>, current: &mut Vec<u8>) {
+    if current.len() >= 3 {
+        strings.push(String::from_utf8(std::mem::take(current)).expect("ASCII string"));
+    } else {
+        current.clear();
+    }
 }
