@@ -1005,7 +1005,7 @@ pub enum LoadedGeneralizationArtifact {
     CandidateRecall(EntityCandidateRecallReport),
     Link(Box<EntityLinkArtifact>),
     LinkObservationSurfaceBindings(Vec<EntityLinkObservationSurfaceBinding>),
-    Run(EntityRunArtifact),
+    Run(Box<EntityRunArtifact>),
     Solve(SolveArtifact),
     LeakScanSources(Value),
 }
@@ -2173,7 +2173,7 @@ pub fn load_generalization_artifact_ref(
         GeneralizationArtifactKind::Run => {
             let value: Value = serde_json::from_slice(&bytes).map_err(artifact_error)?;
             validate_json_version(field, &value, &reference.version)?;
-            LoadedGeneralizationArtifact::Run(parse_run_artifact(&bytes)?)
+            LoadedGeneralizationArtifact::Run(Box::new(parse_run_artifact(&bytes)?))
         }
         GeneralizationArtifactKind::Solve => {
             let value: Value = serde_json::from_slice(&bytes).map_err(artifact_error)?;
@@ -5689,7 +5689,7 @@ fn loaded_run_artifact(
     artifacts
         .iter()
         .find_map(|artifact| match &artifact.artifact {
-            LoadedGeneralizationArtifact::Run(run) => Some(run),
+            LoadedGeneralizationArtifact::Run(run) => Some(run.as_ref()),
             _ => None,
         })
         .ok_or_else(|| {
