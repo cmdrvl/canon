@@ -1,7 +1,10 @@
 #![forbid(unsafe_code)]
 
 use canon::{
-    InputFormat, InputValues, SpecialReason, lookup::resolve_values, registry::load_registry,
+    InputFormat, InputValues, SpecialReason,
+    lookup::resolve_values,
+    registry::load_registry,
+    registry_lint::{RegistryLintProfile, lint},
 };
 use rusqlite::{Connection, params};
 use std::collections::HashMap;
@@ -11,6 +14,40 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 use tempfile::TempDir;
+
+fn source_local_namespace() -> serde_json::Value {
+    serde_json::json!({
+        "kind": "core",
+        "class": "source_local_id"
+    })
+}
+
+fn source_scoped_scope() -> serde_json::Value {
+    serde_json::json!({
+        "dimensions": [
+            {
+                "dimension": {
+                    "kind": "core",
+                    "dimension": "source_system"
+                },
+                "binding": {
+                    "binding": "exact",
+                    "value": "sec_abs_ee"
+                }
+            },
+            {
+                "dimension": {
+                    "kind": "core",
+                    "dimension": "dataset"
+                },
+                "binding": {
+                    "binding": "exact",
+                    "value": "deal:COMM-2014-UBS4"
+                }
+            }
+        ]
+    })
+}
 
 fn write_registry_metadata(
     dir: &Path,
@@ -85,6 +122,14 @@ fn resolve_aapl(registry_dir: &Path) -> Result<(PathBuf, String), Box<dyn Error>
     Ok((registry.db_path, result.mappings[0].canonical_id.clone()))
 }
 
+fn finding_codes(output: &canon::registry_lint::RegistryLintOutput) -> Vec<String> {
+    output
+        .findings
+        .iter()
+        .map(|finding| finding.code.clone())
+        .collect()
+}
+
 fn cleanup_cache_file(path: &Path) {
     let _ = fs::remove_file(path);
 }
@@ -101,6 +146,96 @@ fn load_registry_uses_external_cache_without_sidecar_writes() -> Result<(), Box<
     assert!(!registry.db_path.starts_with(temp.path()));
 
     cleanup_cache_file(&registry.db_path);
+    Ok(())
+}
+
+#[test]
+fn scoped_mapping_metadata_is_carried_in_index_and_lints_clean() -> Result<(), Box<dyn Error>> {
+    let temp = TempDir::new()?;
+    write_registry_metadata(temp.path(), "scoped", "1.0.0", 1)?;
+    write_mapping_file(
+        temp.path(),
+        "asset-number.json",
+        &[serde_json::json!({
+            "input": "41-001",
+            "canonical_id": "PROPERTY-0001",
+            "canonical_type": "property",
+            "rule_id": "ABS_EE_ASSET_NUMBER",
+            "namespace": source_local_namespace(),
+            "scope": source_scoped_scope()
+        })],
+    )?;
+
+    let registry = load_registry(temp.path())?;
+    let result = resolve_values(&registry, &input_values(&["41-001"]))?;
+
+    assert_eq!(result.mappings.len(), 1);
+    assert_eq!(result.mappings[0].canonical_id, "PROPERTY-0001");
+
+    let connection = Connection::open(&registry.db_path)?;
+    let (namespace_json, scope_json): (Option<String>, Option<String>) = connection.query_row(
+        "SELECT namespace, scope FROM entries WHERE input = ?1",
+        params!["41-001"],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&namespace_json.expect("namespace stored"))?,
+        source_local_namespace()
+    );
+    let scope = serde_json::from_str::<serde_json::Value>(&scope_json.expect("scope stored"))?;
+    let dimensions = scope["dimensions"].as_array().expect("scope dimensions");
+    assert_eq!(dimensions.len(), 2);
+    assert!(dimensions.iter().any(|dimension| {
+        dimension["dimension"] == serde_json::json!({"kind":"core","dimension":"source_system"})
+            && dimension["binding"] == serde_json::json!({"binding":"exact","value":"sec_abs_ee"})
+    }));
+
+    let lint_output = lint(temp.path(), RegistryLintProfile::Standard).expect("lint standard");
+    let codes = finding_codes(&lint_output);
+    assert_eq!(lint_output.summary.errors, 0);
+    assert!(!codes.contains(&"mapping_scope_metadata_invalid".to_string()));
+
+    cleanup_cache_file(&registry.db_path);
+    Ok(())
+}
+
+#[test]
+fn malformed_scoped_mapping_metadata_is_bad_registry_and_lint_error() -> Result<(), Box<dyn Error>>
+{
+    let temp = TempDir::new()?;
+    write_registry_metadata(temp.path(), "scoped", "1.0.0", 1)?;
+    write_mapping_file(
+        temp.path(),
+        "asset-number.json",
+        &[serde_json::json!({
+            "input": "41-001",
+            "canonical_id": "PROPERTY-0001",
+            "canonical_type": "property",
+            "rule_id": "ABS_EE_ASSET_NUMBER",
+            "namespace": source_local_namespace(),
+            "scope": {
+                "dimensions": [
+                    {
+                        "dimension": {
+                            "kind": "core",
+                            "dimension": "dataset"
+                        },
+                        "binding": {
+                            "binding": "exact",
+                            "value": "deal:COMM-2014-UBS4"
+                        }
+                    }
+                ]
+            }
+        })],
+    )?;
+
+    let error = load_registry(temp.path()).expect_err("source local id without source scope fails");
+    assert!(error.to_string().contains("source_local_id"));
+
+    let lint_output = lint(temp.path(), RegistryLintProfile::Standard).expect("lint standard");
+    assert!(lint_output.summary.errors > 0);
+    assert!(finding_codes(&lint_output).contains(&"mapping_scope_metadata_invalid".to_string()));
     Ok(())
 }
 

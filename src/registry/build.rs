@@ -321,6 +321,7 @@ pub fn build_registry(
                 canonical_id: entry.canonical_id.clone(),
                 canonical_type: entry.canonical_type.clone(),
                 rule_id: entry.rule_id.clone(),
+                ..super::MappingEntry::default()
             })
             .collect::<Vec<_>>();
         let content = serde_json::to_string_pretty(&mapping_entries).map_err(|error| {
@@ -549,6 +550,7 @@ fn final_files_to_mapping_files(
                     canonical_id: entry.canonical_id.clone(),
                     canonical_type: entry.canonical_type.clone(),
                     rule_id: entry.rule_id.clone(),
+                    ..super::MappingEntry::default()
                 })
                 .collect(),
         })

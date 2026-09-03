@@ -2,13 +2,17 @@ use crate::{
     Registry, RegistryDiffChangeType, RegistryDiffChangedEntry, RegistryDiffEntry,
     RegistryDiffOutput, RegistryDiffRemovedEntry, RegistryDiffSummary, RegistryDiffValue,
     RegistryDiffVersion, RegistryMeta,
+    identity_scope::{
+        CoreIdentifierNamespaceClass, CoreScopeDimension, IdentifierNamespaceRef, IdentityScope,
+        ScopeBinding, ScopeDimensionRef, finalize_scope,
+    },
     paths::{self, RegistryIndexCacheMode},
 };
 pub use build::{RegistryBuildError, RegistryBuildErrorKind, RegistryBuildRequest, build_registry};
 pub use export::{
     RegistryExportFormat, RegistryExportOutput, RegistryExportRequest, export_registry,
 };
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
@@ -75,12 +79,16 @@ pub struct DefaultIdScheme {
     pub zero_pad: usize,
 }
 
-#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, serde::Serialize)]
 struct MappingEntry {
     input: String,
     canonical_id: String,
     canonical_type: String,
     rule_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    namespace: Option<IdentifierNamespaceRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    scope: Option<IdentityScope>,
 }
 
 #[derive(Debug)]
@@ -148,13 +156,15 @@ CREATE TABLE IF NOT EXISTS entries (
     canonical_type TEXT NOT NULL,
     rule_id TEXT NOT NULL,
     source_file TEXT NOT NULL,
-    entry_order INTEGER NOT NULL
+    entry_order INTEGER NOT NULL,
+    namespace TEXT,
+    scope TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_input ON entries(input);
 "#;
 
-const INDEX_SCHEMA_VERSION: &str = "canon.registry_index.v1";
+const INDEX_SCHEMA_VERSION: &str = "canon.registry_index.v2";
 const INDEX_LEASE_SUFFIX: &str = ".canon-index.lock";
 const REGISTRY_MUTATION_LOCK_NAME: &str = ".canon-registry-mutation.lock";
 const LEASE_STALE_AFTER: Duration = Duration::from_secs(30);
@@ -479,11 +489,11 @@ fn discover_mapping_files(registry_dir: &Path) -> Result<Vec<MappingFile>, Box<d
         let content = fs::read_to_string(&path)
             .map_err(|e| format!("Failed to read mapping file {:?}: {}", path, e))?;
 
-        let entries: Vec<MappingEntry> = serde_json::from_str(&content)
+        let mut entries: Vec<MappingEntry> = serde_json::from_str(&content)
             .map_err(|e| format!("Failed to parse mapping file {:?}: {}", path, e))?;
 
         // Validate required fields
-        for (i, entry) in entries.iter().enumerate() {
+        for (i, entry) in entries.iter_mut().enumerate() {
             if entry.input.is_empty()
                 || entry.canonical_id.is_empty()
                 || entry.canonical_type.is_empty()
@@ -493,12 +503,120 @@ fn discover_mapping_files(registry_dir: &Path) -> Result<Vec<MappingFile>, Box<d
                     format!("Invalid entry {} in {:?}: missing required fields", i, path).into(),
                 );
             }
+            finalize_mapping_entry_scope(entry, i, &path)?;
         }
 
         mapping_files.push(MappingFile { path, entries });
     }
 
     Ok(mapping_files)
+}
+
+fn finalize_mapping_entry_scope(
+    entry: &mut MappingEntry,
+    entry_order: usize,
+    path: &Path,
+) -> Result<(), Box<dyn Error>> {
+    let finalized_scope =
+        finalize_mapping_scope_metadata(entry.namespace.as_ref(), entry.scope.take())
+            .map_err(|error| format!("Invalid entry {} in {:?}: {}", entry_order, path, error))?;
+    entry.scope = finalized_scope;
+    Ok(())
+}
+
+pub(crate) fn finalize_mapping_scope_metadata(
+    namespace: Option<&IdentifierNamespaceRef>,
+    scope: Option<IdentityScope>,
+) -> Result<Option<IdentityScope>, String> {
+    if let Some(namespace) = namespace {
+        validate_identifier_namespace(namespace)?;
+    }
+
+    let finalized_scope = scope
+        .map(|scope| finalize_scope(scope, None).map_err(|error| error.to_string()))
+        .transpose()?;
+
+    if let Some(namespace) = namespace {
+        validate_namespace_scope_requirements(namespace, finalized_scope.as_ref())?;
+    }
+
+    Ok(finalized_scope)
+}
+
+fn validate_identifier_namespace(namespace: &IdentifierNamespaceRef) -> Result<(), String> {
+    if let IdentifierNamespaceRef::Extension {
+        package_digest,
+        vocabulary,
+        value,
+    } = namespace
+    {
+        if !is_valid_blake3_digest(package_digest) {
+            return Err(
+                "namespace.package_digest must use blake3:<lower-hex-64> format".to_string(),
+            );
+        }
+        for (field, candidate) in [
+            ("namespace.vocabulary", vocabulary),
+            ("namespace.value", value),
+        ] {
+            if candidate.trim().is_empty() {
+                return Err(format!("{field} must be non-empty after trimming"));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_namespace_scope_requirements(
+    namespace: &IdentifierNamespaceRef,
+    scope: Option<&IdentityScope>,
+) -> Result<(), String> {
+    let required_dimension = match namespace {
+        IdentifierNamespaceRef::Core {
+            class: CoreIdentifierNamespaceClass::SourceLocalId,
+        } => Some((
+            "source_local_id",
+            CoreScopeDimension::SourceSystem,
+            "source_system",
+        )),
+        IdentifierNamespaceRef::Core {
+            class: CoreIdentifierNamespaceClass::DatasetLocalId,
+        } => Some(("dataset_local_id", CoreScopeDimension::Dataset, "dataset")),
+        _ => None,
+    };
+
+    if let Some((namespace_name, required_dimension, dimension_name)) = required_dimension
+        && !scope_has_exact_dimension(scope, required_dimension)
+    {
+        return Err(format!(
+            "{namespace_name} namespaces require an exact {dimension_name} scope dimension"
+        ));
+    }
+    Ok(())
+}
+
+fn scope_has_exact_dimension(scope: Option<&IdentityScope>, target: CoreScopeDimension) -> bool {
+    scope.is_some_and(|scope| {
+        scope.dimensions.iter().any(|binding| {
+            matches!(
+                (&binding.dimension, &binding.binding),
+                (
+                    ScopeDimensionRef::Core { dimension },
+                    ScopeBinding::Exact { .. }
+                ) if *dimension == target
+            )
+        })
+    })
+}
+
+fn is_valid_blake3_digest(value: &str) -> bool {
+    let Some(hex) = value.strip_prefix("blake3:") else {
+        return false;
+    };
+    hex.len() == 64
+        && hex
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 fn discover_mapping_file_paths(registry_dir: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
@@ -666,7 +784,7 @@ fn build_index(
         )?;
 
         let mut stmt = conn.prepare(
-            "INSERT INTO entries (input, canonical_id, canonical_type, rule_id, source_file, entry_order) VALUES (?, ?, ?, ?, ?, ?)"
+            "INSERT INTO entries (input, canonical_id, canonical_type, rule_id, source_file, entry_order, namespace, scope) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         )?;
 
         for mapping_file in mapping_files {
@@ -677,13 +795,17 @@ fn build_index(
                 .unwrap_or("unknown");
 
             for (entry_order, entry) in mapping_file.entries.iter().enumerate() {
-                stmt.execute([
+                let namespace_json = optional_json(entry.namespace.as_ref())?;
+                let scope_json = optional_json(entry.scope.as_ref())?;
+                stmt.execute(params![
                     &entry.input,
                     &entry.canonical_id,
                     &entry.canonical_type,
                     &entry.rule_id,
                     source_file,
-                    &entry_order.to_string(),
+                    entry_order as i64,
+                    namespace_json,
+                    scope_json,
                 ])?;
             }
         }
@@ -699,6 +821,13 @@ fn build_index(
     }
 
     install_built_index(&temp_path, db_path, source_digest)
+}
+
+fn optional_json<T: Serialize>(value: Option<&T>) -> Result<Option<String>, Box<dyn Error>> {
+    value
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|error| format!("Failed to serialize scoped mapping metadata: {}", error).into())
 }
 
 fn resolve_index_target(
@@ -1043,22 +1172,42 @@ mod tests {
                 canonical_id: "037833100".to_string(),
                 canonical_type: "cusip".to_string(),
                 rule_id: "TICKER_TO_CUSIP".to_string(),
+                ..MappingEntry::default()
             },
             MappingEntry {
                 input: "MSFT".to_string(),
                 canonical_id: "594918104".to_string(),
                 canonical_type: "cusip".to_string(),
                 rule_id: "TICKER_TO_CUSIP".to_string(),
+                ..MappingEntry::default()
             },
             MappingEntry {
                 input: "GOOGL".to_string(),
                 canonical_id: "02079K305".to_string(),
                 canonical_type: "cusip".to_string(),
                 rule_id: "TICKER_TO_CUSIP".to_string(),
+                ..MappingEntry::default()
             },
         ];
         write_mapping_file(temp_dir, "ticker-to-cusip.json", &mappings)?;
 
+        Ok(())
+    }
+
+    #[test]
+    fn unscoped_mapping_entry_serialization_omits_scope_metadata() -> Result<(), Box<dyn Error>> {
+        let entry = MappingEntry {
+            input: "AAPL".to_string(),
+            canonical_id: "037833100".to_string(),
+            canonical_type: "cusip".to_string(),
+            rule_id: "TICKER_TO_CUSIP".to_string(),
+            ..MappingEntry::default()
+        };
+
+        let value = serde_json::to_value(&entry)?;
+
+        assert!(value.get("namespace").is_none());
+        assert!(value.get("scope").is_none());
         Ok(())
     }
 
@@ -1192,12 +1341,14 @@ mod tests {
                     canonical_id: "SECOND".to_string(),
                     canonical_type: "ticker".to_string(),
                     rule_id: "SECONDARY".to_string(),
+                    ..MappingEntry::default()
                 },
                 MappingEntry {
                     input: "NVDA".to_string(),
                     canonical_id: "67066G104".to_string(),
                     canonical_type: "cusip".to_string(),
                     rule_id: "SECONDARY".to_string(),
+                    ..MappingEntry::default()
                 },
             ],
         )?;
@@ -1210,12 +1361,14 @@ mod tests {
                     canonical_id: "FIRST".to_string(),
                     canonical_type: "ticker".to_string(),
                     rule_id: "PRIMARY".to_string(),
+                    ..MappingEntry::default()
                 },
                 MappingEntry {
                     input: "MSFT".to_string(),
                     canonical_id: "594918104".to_string(),
                     canonical_type: "cusip".to_string(),
                     rule_id: "PRIMARY".to_string(),
+                    ..MappingEntry::default()
                 },
             ],
         )?;
@@ -1245,18 +1398,21 @@ mod tests {
                     canonical_id: "BBG000B9XRY4".to_string(),
                     canonical_type: "composite_figi".to_string(),
                     rule_id: "OPENFIGI".to_string(),
+                    ..MappingEntry::default()
                 },
                 MappingEntry {
                     input: "MSFT".to_string(),
                     canonical_id: "BBG000BPH459".to_string(),
                     canonical_type: "composite_figi".to_string(),
                     rule_id: "OPENFIGI".to_string(),
+                    ..MappingEntry::default()
                 },
                 MappingEntry {
                     input: "TSLA".to_string(),
                     canonical_id: "BBG000N9MNX3".to_string(),
                     canonical_type: "composite_figi".to_string(),
                     rule_id: "OPENFIGI".to_string(),
+                    ..MappingEntry::default()
                 },
             ],
         )?;
@@ -1272,18 +1428,21 @@ mod tests {
                     canonical_id: "BBG000B9XRY4".to_string(),
                     canonical_type: "composite_figi".to_string(),
                     rule_id: "OPENFIGI".to_string(),
+                    ..MappingEntry::default()
                 },
                 MappingEntry {
                     input: "MSFT".to_string(),
                     canonical_id: "BBG000BPH45Z".to_string(),
                     canonical_type: "composite_figi".to_string(),
                     rule_id: "OPENFIGI".to_string(),
+                    ..MappingEntry::default()
                 },
                 MappingEntry {
                     input: "NVDA".to_string(),
                     canonical_id: "BBG000BBJQV0".to_string(),
                     canonical_type: "composite_figi".to_string(),
                     rule_id: "OPENFIGI".to_string(),
+                    ..MappingEntry::default()
                 },
             ],
         )?;
@@ -1327,12 +1486,14 @@ mod tests {
                     canonical_id: "BBG000B9XRY4".to_string(),
                     canonical_type: "composite_figi".to_string(),
                     rule_id: "PRIMARY".to_string(),
+                    ..MappingEntry::default()
                 },
                 MappingEntry {
                     input: "MSFT".to_string(),
                     canonical_id: "BBG000BPH459".to_string(),
                     canonical_type: "composite_figi".to_string(),
                     rule_id: "PRIMARY".to_string(),
+                    ..MappingEntry::default()
                 },
             ],
         )?;
@@ -1348,12 +1509,14 @@ mod tests {
                     canonical_id: "BBG000B9XRY4".to_string(),
                     canonical_type: "composite_figi".to_string(),
                     rule_id: "PRIMARY".to_string(),
+                    ..MappingEntry::default()
                 },
                 MappingEntry {
                     input: "MSFT".to_string(),
                     canonical_id: "BBG000BPH459".to_string(),
                     canonical_type: "composite_figi".to_string(),
                     rule_id: "PRIMARY".to_string(),
+                    ..MappingEntry::default()
                 },
             ],
         )?;
@@ -1366,12 +1529,14 @@ mod tests {
                     canonical_id: "SHADOWED".to_string(),
                     canonical_type: "composite_figi".to_string(),
                     rule_id: "SECONDARY".to_string(),
+                    ..MappingEntry::default()
                 },
                 MappingEntry {
                     input: "NVDA".to_string(),
                     canonical_id: "BBG000BBJQV0".to_string(),
                     canonical_type: "composite_figi".to_string(),
                     rule_id: "SECONDARY".to_string(),
+                    ..MappingEntry::default()
                 },
             ],
         )?;

@@ -3,9 +3,13 @@ use crate::{
     entity::runtime::types::{
         AnchorValue, CannotLinkFact, PendingClusterRecord, RowPair, TrustedAnchorRecord,
     },
-    registry::package::{
-        RegistryPackage, RegistryPackageError, RegistryPackageFindingSeverity,
-        RegistryPackageVerificationFinding, compile_registry_package, verify_registry_package,
+    identity_scope::{IdentifierNamespaceRef, IdentityScope},
+    registry::{
+        self,
+        package::{
+            RegistryPackage, RegistryPackageError, RegistryPackageFindingSeverity,
+            RegistryPackageVerificationFinding, compile_registry_package, verify_registry_package,
+        },
     },
     strategy_registry::{
         StrategyAttestationGrade, StrategyEntryKey, StrategyEntryStatus, StrategyRegistryEntry,
@@ -140,6 +144,10 @@ struct RawMappingEntry {
     canonical_id: Option<String>,
     canonical_type: Option<String>,
     rule_id: Option<String>,
+    #[serde(default)]
+    namespace: Option<IdentifierNamespaceRef>,
+    #[serde(default)]
+    scope: Option<IdentityScope>,
 }
 
 #[derive(Debug, Clone)]
@@ -717,6 +725,24 @@ fn validate_mapping_entry(
                 "Populate required mapping fields, then rerun canon registry lint",
             );
         }
+    }
+
+    if (entry.namespace.is_some() || entry.scope.is_some())
+        && let Err(error) =
+            registry::finalize_mapping_scope_metadata(entry.namespace.as_ref(), entry.scope.clone())
+    {
+        context.finding(
+            RegistryLintSeverity::Error,
+            "mapping_scope",
+            "mapping_scope_metadata_invalid",
+            format!("Mapping entry {entry_order} has invalid scoped identity metadata: {error}"),
+            FindingLocation::path(path),
+            json!({
+                "entry_order": entry_order,
+                "error": error,
+            }),
+            "Fix namespace/scope metadata, then rerun canon registry lint",
+        );
     }
 }
 
