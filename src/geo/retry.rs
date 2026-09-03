@@ -1,11 +1,22 @@
 #![forbid(unsafe_code)]
 
-//! Retry-population fixtures for bounded Geo reacquisition measurements.
+//! Retry-population fixtures and bounded Geo reacquisition loop artifacts.
 
+use crate::geo::{
+    GeoAcquisitionReceipt, GeoAcquisitionRequest, GeoRun, GeoRunStatus,
+    geo_acquisition_request_semantic_hash, validate_geo_acquisition_receipt,
+    validate_geo_acquisition_request, validate_geo_run,
+};
 use h3o::CellIndex;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, error::Error, fmt, str::FromStr};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    error::Error,
+    fmt,
+    str::FromStr,
+};
 
+pub const CANON_GEO_RETRY_LOOP_VERSION: &str = "canon_geo_retry_loop.v0";
 pub const CANON_GEO_POINT_POPULATION_VERSION: &str = "canon_geo_point_population.v0";
 
 const NYC_MIN_LON_E7: i64 = -743_000_000;
@@ -68,6 +79,115 @@ pub struct GeoPointPopulationGeocode {
     pub geocode_asof: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoRetryPolicy {
+    pub max_passes: u8,
+    pub regeocode_request_template: GeoAcquisitionRequest,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoRetryPass {
+    pub index: u8,
+    pub plan_blake3: String,
+    pub run_blake3: String,
+    pub abstention_reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regeocode: Option<GeoAcquisitionRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receipt_blake3: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoRetryTerminal {
+    Resolved,
+    AbstainedAtCeiling,
+    Blocked,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoRetryLoopArtifact {
+    pub version: String,
+    pub subject_id: String,
+    pub policy: GeoRetryPolicy,
+    pub passes: Vec<GeoRetryPass>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal: Option<GeoRetryTerminal>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoRetryErrorCode {
+    UnsupportedVersion,
+    InvalidInput,
+    BudgetExceeded,
+    ArithmeticOverflow,
+    RetryPassCeiling,
+    RetryPolicyUnbounded,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoRetryError {
+    pub code: GeoRetryErrorCode,
+    pub message: String,
+    pub detail: BTreeMap<String, String>,
+}
+
+impl GeoRetryError {
+    fn new(
+        code: GeoRetryErrorCode,
+        message: impl Into<String>,
+        detail: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
+    ) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            detail: detail
+                .into_iter()
+                .map(|(key, value)| (key.into(), value.into()))
+                .collect(),
+        }
+    }
+
+    fn invalid(
+        message: impl Into<String>,
+        detail: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
+    ) -> Self {
+        Self::new(GeoRetryErrorCode::InvalidInput, message, detail)
+    }
+
+    fn unsupported_version(actual: &str) -> Self {
+        Self::new(
+            GeoRetryErrorCode::UnsupportedVersion,
+            "Geo retry loop artifact declares an unsupported version",
+            [
+                ("expected", CANON_GEO_RETRY_LOOP_VERSION.to_string()),
+                ("actual", actual.to_string()),
+            ],
+        )
+    }
+
+    fn policy_unbounded() -> Self {
+        Self::new(
+            GeoRetryErrorCode::RetryPolicyUnbounded,
+            "Geo retry policy must declare a positive bounded max_passes value",
+            [("field", "max_passes")],
+        )
+    }
+}
+
+impl fmt::Display for GeoRetryError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{:?}: {}", self.code, self.message)
+    }
+}
+
+impl Error for GeoRetryError {}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GeoPointPopulationErrorCode {
@@ -113,6 +233,168 @@ impl fmt::Display for GeoPointPopulationError {
 }
 
 impl Error for GeoPointPopulationError {}
+
+pub fn next_retry_pass(
+    loop_state: &GeoRetryLoopArtifact,
+    latest_run: &GeoRun,
+) -> Result<Option<GeoAcquisitionRequest>, GeoRetryError> {
+    validate_retry_loop_artifact(loop_state)?;
+    validate_latest_run(latest_run)?;
+
+    if loop_state.terminal.is_some() {
+        return Ok(None);
+    }
+    if loop_state.passes.len() >= usize::from(loop_state.policy.max_passes) {
+        return Ok(None);
+    }
+    match latest_run_disposition(latest_run) {
+        RetryRunDisposition::Abstained(_) => {
+            Ok(Some(loop_state.policy.regeocode_request_template.clone()))
+        }
+        RetryRunDisposition::Resolved | RetryRunDisposition::Blocked(_) => Ok(None),
+    }
+}
+
+pub fn record_pass(
+    loop_state: &mut GeoRetryLoopArtifact,
+    run: &GeoRun,
+    receipt: Option<&GeoAcquisitionReceipt>,
+) -> Result<(), GeoRetryError> {
+    validate_retry_loop_artifact(loop_state)?;
+    validate_latest_run(run)?;
+    if loop_state.terminal.is_some() {
+        return Err(GeoRetryError::invalid(
+            "Geo retry loop is already terminal",
+            [("field", "terminal")],
+        ));
+    }
+    if loop_state
+        .passes
+        .iter()
+        .any(|pass| pass.run_blake3 == run.semantic_hash)
+    {
+        return Err(GeoRetryError::invalid(
+            "Geo retry loop cannot record the same run semantic hash twice",
+            [
+                ("field", "passes[].run_blake3".to_string()),
+                ("duplicate_run_blake3", run.semantic_hash.clone()),
+            ],
+        ));
+    }
+
+    let disposition = latest_run_disposition(run);
+    if loop_state.passes.len() >= usize::from(loop_state.policy.max_passes) {
+        return match disposition {
+            RetryRunDisposition::Abstained(_) => {
+                loop_state.terminal = Some(GeoRetryTerminal::AbstainedAtCeiling);
+                validate_retry_loop_artifact(loop_state)
+            }
+            RetryRunDisposition::Resolved => {
+                loop_state.terminal = Some(GeoRetryTerminal::Resolved);
+                validate_retry_loop_artifact(loop_state)
+            }
+            RetryRunDisposition::Blocked(_) => {
+                loop_state.terminal = Some(GeoRetryTerminal::Blocked);
+                validate_retry_loop_artifact(loop_state)
+            }
+        };
+    }
+
+    let request = loop_state.policy.regeocode_request_template.clone();
+    let receipt_blake3 = match receipt {
+        Some(receipt) => Some(validate_receipt_for_retry_request(&request, receipt)?),
+        None => None,
+    };
+    let abstention_reason = match disposition {
+        RetryRunDisposition::Abstained(reason) => reason,
+        RetryRunDisposition::Resolved => "resolved".to_string(),
+        RetryRunDisposition::Blocked(reason) => reason,
+    };
+    let index = u8::try_from(loop_state.passes.len() + 1).map_err(|_| {
+        GeoRetryError::new(
+            GeoRetryErrorCode::ArithmeticOverflow,
+            "Geo retry pass index exceeded u8 range",
+            [("field", "passes[].index")],
+        )
+    })?;
+
+    loop_state.passes.push(GeoRetryPass {
+        index,
+        plan_blake3: run.plan_ref.semantic_hash.clone(),
+        run_blake3: run.semantic_hash.clone(),
+        abstention_reason,
+        regeocode: Some(request),
+        receipt_blake3,
+    });
+
+    match latest_run_disposition(run) {
+        RetryRunDisposition::Resolved => loop_state.terminal = Some(GeoRetryTerminal::Resolved),
+        RetryRunDisposition::Blocked(_) => loop_state.terminal = Some(GeoRetryTerminal::Blocked),
+        RetryRunDisposition::Abstained(_) => {
+            if loop_state.passes.len() >= usize::from(loop_state.policy.max_passes) {
+                loop_state.terminal = Some(GeoRetryTerminal::AbstainedAtCeiling);
+            }
+        }
+    }
+
+    validate_retry_loop_artifact(loop_state)
+}
+
+pub fn validate_retry_loop_artifact(artifact: &GeoRetryLoopArtifact) -> Result<(), GeoRetryError> {
+    if artifact.version != CANON_GEO_RETRY_LOOP_VERSION {
+        return Err(GeoRetryError::unsupported_version(&artifact.version));
+    }
+    validate_retry_string("subject_id", &artifact.subject_id)?;
+    validate_retry_policy(&artifact.policy)?;
+    if artifact.passes.len() > usize::from(artifact.policy.max_passes) {
+        return Err(GeoRetryError::invalid(
+            "Geo retry loop recorded more passes than its bounded policy allows",
+            [
+                ("field", "passes".to_string()),
+                ("max_passes", artifact.policy.max_passes.to_string()),
+                ("passes", artifact.passes.len().to_string()),
+            ],
+        ));
+    }
+    validate_retry_passes(artifact)?;
+    if artifact.terminal.is_none()
+        && artifact.passes.len() >= usize::from(artifact.policy.max_passes)
+    {
+        return Err(GeoRetryError::new(
+            GeoRetryErrorCode::RetryPassCeiling,
+            "Geo retry loop reached its pass ceiling without a terminal marker",
+            [
+                ("field", "terminal".to_string()),
+                ("last_abstention_reason", last_abstention_reason(artifact)),
+            ],
+        ));
+    }
+    if artifact.terminal == Some(GeoRetryTerminal::AbstainedAtCeiling)
+        && artifact.passes.len() != usize::from(artifact.policy.max_passes)
+    {
+        return Err(GeoRetryError::invalid(
+            "Geo retry ceiling terminal must be recorded exactly at max_passes",
+            [
+                ("field", "terminal".to_string()),
+                ("max_passes", artifact.policy.max_passes.to_string()),
+                ("passes", artifact.passes.len().to_string()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+pub fn canonical_retry_loop_bytes(
+    artifact: &GeoRetryLoopArtifact,
+) -> Result<Vec<u8>, GeoRetryError> {
+    validate_retry_loop_artifact(artifact)?;
+    serde_json::to_vec(artifact).map_err(|error| {
+        GeoRetryError::invalid(
+            "Geo retry loop artifact could not be serialized",
+            [("serde_error", error.to_string())],
+        )
+    })
+}
 
 pub fn validate_point_population_artifact(
     artifact: &GeoPointPopulationArtifact,
@@ -177,6 +459,221 @@ pub fn canonical_point_population_bytes(
             [("error", error.to_string())],
         )
     })
+}
+
+fn validate_retry_policy(policy: &GeoRetryPolicy) -> Result<(), GeoRetryError> {
+    if policy.max_passes == 0 {
+        return Err(GeoRetryError::policy_unbounded());
+    }
+    validate_geo_acquisition_request(&policy.regeocode_request_template).map_err(|error| {
+        GeoRetryError::invalid(
+            "Geo retry policy contains an invalid acquisition request template",
+            [
+                ("field", "regeocode_request_template".to_string()),
+                ("source_code", format!("{:?}", error.code)),
+                ("source_message", error.message),
+            ],
+        )
+    })
+}
+
+fn validate_retry_passes(artifact: &GeoRetryLoopArtifact) -> Result<(), GeoRetryError> {
+    let mut run_hashes = BTreeSet::new();
+    for (position, pass) in artifact.passes.iter().enumerate() {
+        let expected_index = u8::try_from(position + 1).map_err(|_| {
+            GeoRetryError::new(
+                GeoRetryErrorCode::ArithmeticOverflow,
+                "Geo retry pass index exceeded u8 range",
+                [("field", "passes[].index")],
+            )
+        })?;
+        if pass.index != expected_index {
+            return Err(GeoRetryError::invalid(
+                "Geo retry passes must be indexed sequentially from one",
+                [
+                    ("field", "passes[].index".to_string()),
+                    ("expected", expected_index.to_string()),
+                    ("actual", pass.index.to_string()),
+                ],
+            ));
+        }
+        validate_prefixed_blake3("passes[].plan_blake3", &pass.plan_blake3)?;
+        validate_prefixed_blake3("passes[].run_blake3", &pass.run_blake3)?;
+        validate_retry_string("passes[].abstention_reason", &pass.abstention_reason)?;
+        if !run_hashes.insert(pass.run_blake3.as_str()) {
+            return Err(GeoRetryError::invalid(
+                "Geo retry passes must not repeat a run semantic hash",
+                [
+                    ("field", "passes[].run_blake3".to_string()),
+                    ("duplicate_run_blake3", pass.run_blake3.clone()),
+                ],
+            ));
+        }
+        if let Some(request) = &pass.regeocode {
+            validate_geo_acquisition_request(request).map_err(|error| {
+                GeoRetryError::invalid(
+                    "Geo retry pass contains an invalid acquisition request",
+                    [
+                        ("field", "passes[].regeocode".to_string()),
+                        ("source_code", format!("{:?}", error.code)),
+                        ("source_message", error.message),
+                    ],
+                )
+            })?;
+        }
+        if let Some(receipt_blake3) = &pass.receipt_blake3 {
+            validate_prefixed_blake3("passes[].receipt_blake3", receipt_blake3)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_latest_run(run: &GeoRun) -> Result<(), GeoRetryError> {
+    validate_geo_run(run).map_err(|error| {
+        GeoRetryError::invalid(
+            "Geo retry loop requires a valid GeoRun",
+            [
+                ("field", "latest_run".to_string()),
+                ("source_code", format!("{:?}", error.code)),
+                ("source_message", error.message),
+            ],
+        )
+    })
+}
+
+fn validate_receipt_for_retry_request(
+    request: &GeoAcquisitionRequest,
+    receipt: &GeoAcquisitionReceipt,
+) -> Result<String, GeoRetryError> {
+    let receipt_blake3 = prefixed_hash(&serde_json::to_vec(receipt).map_err(|error| {
+        GeoRetryError::invalid(
+            "Geo retry acquisition receipt could not be serialized",
+            [("serde_error", error.to_string())],
+        )
+    })?);
+    let expected_request_hash =
+        geo_acquisition_request_semantic_hash(request).map_err(|error| {
+            GeoRetryError::invalid(
+                "Geo retry acquisition request template could not be hashed",
+                [
+                    ("field", "regeocode_request_template".to_string()),
+                    ("source_code", format!("{:?}", error.code)),
+                    ("source_message", error.message),
+                ],
+            )
+        })?;
+    if receipt.request_semantic_hash != expected_request_hash {
+        return Err(GeoRetryError::invalid(
+            "Geo retry receipt request_semantic_hash does not match the emitted acquisition request",
+            [
+                ("field", "receipt.request_semantic_hash".to_string()),
+                ("receipt_blake3", receipt_blake3),
+                ("expected", expected_request_hash),
+                ("actual", receipt.request_semantic_hash.clone()),
+            ],
+        ));
+    }
+    validate_geo_acquisition_receipt(request, receipt).map_err(|error| {
+        GeoRetryError::invalid(
+            "Geo retry receipt does not satisfy the emitted acquisition request",
+            [
+                ("field", "receipt".to_string()),
+                ("receipt_blake3", receipt_blake3.clone()),
+                ("source_code", format!("{:?}", error.code)),
+                ("source_message", error.message),
+            ],
+        )
+    })?;
+    Ok(receipt_blake3)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RetryRunDisposition {
+    Resolved,
+    Abstained(String),
+    Blocked(String),
+}
+
+fn latest_run_disposition(run: &GeoRun) -> RetryRunDisposition {
+    match run.status {
+        GeoRunStatus::Completed => RetryRunDisposition::Resolved,
+        GeoRunStatus::Abstained => RetryRunDisposition::Abstained(
+            first_blocker_id(run).unwrap_or_else(|| "abstained:ambiguous_residual".to_string()),
+        ),
+        GeoRunStatus::WaitingForInput | GeoRunStatus::Partial | GeoRunStatus::UnsupportedGrain => {
+            first_blocker_id(run).map_or_else(
+                || RetryRunDisposition::Blocked(status_reason(run.status)),
+                RetryRunDisposition::Abstained,
+            )
+        }
+        GeoRunStatus::Failed
+        | GeoRunStatus::Cancelled
+        | GeoRunStatus::BudgetFallback
+        | GeoRunStatus::Contradicted => RetryRunDisposition::Blocked(status_reason(run.status)),
+    }
+}
+
+fn first_blocker_id(run: &GeoRun) -> Option<String> {
+    run.blockers
+        .first()
+        .map(|blocker| blocker.blocker_id.clone())
+}
+
+fn status_reason(status: GeoRunStatus) -> String {
+    match status {
+        GeoRunStatus::Completed => "resolved",
+        GeoRunStatus::Partial => "partial",
+        GeoRunStatus::WaitingForInput => "waiting_for_input",
+        GeoRunStatus::UnsupportedGrain => "unsupported_grain",
+        GeoRunStatus::Failed => "failed",
+        GeoRunStatus::Cancelled => "cancelled",
+        GeoRunStatus::BudgetFallback => "budget_fallback",
+        GeoRunStatus::Abstained => "abstained",
+        GeoRunStatus::Contradicted => "contradicted",
+    }
+    .to_string()
+}
+
+fn last_abstention_reason(artifact: &GeoRetryLoopArtifact) -> String {
+    artifact
+        .passes
+        .last()
+        .map(|pass| pass.abstention_reason.clone())
+        .unwrap_or_default()
+}
+
+fn validate_retry_string(field: &'static str, value: &str) -> Result<(), GeoRetryError> {
+    if value.is_empty() || value.trim() != value {
+        return Err(GeoRetryError::invalid(
+            "Geo retry string fields must be non-empty and canonical-trimmed",
+            [("field", field.to_string()), ("value", value.to_string())],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_prefixed_blake3(field: &'static str, value: &str) -> Result<(), GeoRetryError> {
+    let Some(hex) = value.strip_prefix("blake3:") else {
+        return Err(invalid_retry_blake3(field, value));
+    };
+    if hex.len() != 64
+        || !hex.bytes().all(|byte| byte.is_ascii_hexdigit())
+        || hex.bytes().any(|byte| byte.is_ascii_uppercase())
+    {
+        return Err(invalid_retry_blake3(field, value));
+    }
+    Ok(())
+}
+
+fn invalid_retry_blake3(field: &'static str, value: &str) -> GeoRetryError {
+    GeoRetryError::invalid(
+        "Geo retry digest fields must be blake3-prefixed lowercase fixed-width hex",
+        [("field", field.to_string()), ("value", value.to_string())],
+    )
+}
+
+fn prefixed_hash(bytes: &[u8]) -> String {
+    format!("blake3:{}", blake3::hash(bytes).to_hex())
 }
 
 fn validate_release_pins(

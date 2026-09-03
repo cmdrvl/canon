@@ -1,0 +1,112 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.retry_loop.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.retry_loop.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_retry_loop.v0",
+      "type": "string"
+    },
+    "subject_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policy": {
+      "$ref": "#/$defs/policy"
+    },
+    "passes": {
+      "type": "array",
+      "maxItems": 255,
+      "items": {
+        "$ref": "#/$defs/pass"
+      }
+    },
+    "terminal": {
+      "$ref": "#/$defs/terminal"
+    }
+  },
+  "required": [
+    "version",
+    "subject_id",
+    "policy",
+    "passes"
+  ],
+  "$defs": {
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_passes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 255
+        },
+        "regeocode_request_template": {
+          "$ref": "canon.geo.acquisition_request.v0.schema.json"
+        }
+      },
+      "required": [
+        "max_passes",
+        "regeocode_request_template"
+      ]
+    },
+    "pass": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 255
+        },
+        "plan_blake3": {
+          "$ref": "#/$defs/blake3_digest"
+        },
+        "run_blake3": {
+          "$ref": "#/$defs/blake3_digest"
+        },
+        "abstention_reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "regeocode": {
+          "$ref": "canon.geo.acquisition_request.v0.schema.json"
+        },
+        "receipt_blake3": {
+          "$ref": "#/$defs/blake3_digest"
+        }
+      },
+      "required": [
+        "index",
+        "plan_blake3",
+        "run_blake3",
+        "abstention_reason"
+      ]
+    },
+    "terminal": {
+      "type": "string",
+      "enum": [
+        "resolved",
+        "abstained_at_ceiling",
+        "blocked"
+      ]
+    },
+    "error_code": {
+      "type": "string",
+      "enum": [
+        "unsupported_version",
+        "invalid_input",
+        "budget_exceeded",
+        "arithmetic_overflow",
+        "retry_pass_ceiling",
+        "retry_policy_unbounded"
+      ]
+    },
+    "blake3_digest": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    }
+  }
+}
