@@ -38,6 +38,10 @@ fn schema_declares_generic_registry_build_contract() {
         schema["x-canon-contract"]["restricted_public_manifest_leak_forbidden"],
         true
     );
+    assert_eq!(
+        schema["x-canon-contract"]["mapping_requires_fact_review_policy_refs"],
+        true
+    );
 
     let kinds = schema["$defs"]["package_kind"]["enum"]
         .as_array()
@@ -80,12 +84,24 @@ fn unknown_domain_ids_round_trip_and_compile_exact_outputs() {
             && relationship.relation_type_id == "rel.synthetic:adjacent_to"
     }));
     assert_eq!(compiled.unresolved_conflicts, Vec::new());
-    assert!(
-        compiled
-            .proof_chains
-            .iter()
-            .any(|proof| proof.package_digests.contains(&digest('d')))
-    );
+    assert!(compiled.proof_chains.iter().any(|proof| {
+        proof.package_digests.contains(&digest('d'))
+            && proof
+                .review_refs
+                .contains(&"review://fact.alpha".to_string())
+            && proof
+                .policy_refs
+                .contains(&"policy://generic-reviewed-identity-fact".to_string())
+    }));
+
+    let second_domain =
+        compile_domain_registry_package(alternate_domain_build()).expect("second domain compiles");
+    assert!(second_domain.aliases.iter().any(|alias| {
+        alias.domain_id == "opaque.second-domain:identifier-900"
+            && alias.namespace_id == "ns.second:label"
+            && alias.alias == "Second Domain Label"
+            && alias.canonical_id == "RID-900"
+    }));
 }
 
 #[test]
@@ -167,6 +183,78 @@ fn semantic_diff_exposes_additions_remaps_conflicts_and_package_changes() {
     assert_eq!(
         diff.package_changes[0].package_kind,
         DomainPackageKind::Ontology
+    );
+}
+
+#[test]
+fn mapping_without_review_or_policy_reference_refuses_compile() {
+    let mut missing_review = base_build();
+    missing_review.facts[0].review_refs.clear();
+    let error = compile_domain_registry_package(missing_review)
+        .expect_err("fact without review evidence refuses");
+    assert_eq!(
+        error.code,
+        DomainRegistryBuildErrorCode::MissingJustification
+    );
+    assert!(error.message.contains("fact.alpha"));
+    assert!(error.message.contains("review_refs"));
+
+    let mut missing_policy = base_build();
+    missing_policy.facts[0].policy_refs.clear();
+    let error = compile_domain_registry_package(missing_policy)
+        .expect_err("fact without policy evidence refuses");
+    assert_eq!(
+        error.code,
+        DomainRegistryBuildErrorCode::MissingJustification
+    );
+    assert!(error.message.contains("fact.alpha"));
+    assert!(error.message.contains("policy_refs"));
+}
+
+#[test]
+fn conflicting_fact_pair_without_trust_policy_yields_unresolved_conflict() {
+    let mut build = base_build();
+    build.facts.push(fact(
+        "fact.alpha-competing",
+        "opaque.alpha:external-001",
+        "RID-999",
+        "Alpha One Alternate",
+        false,
+    ));
+
+    let compiled = compile_domain_registry_package(build).expect("conflict compiles");
+
+    assert!(
+        compiled
+            .aliases
+            .iter()
+            .all(|alias| alias.domain_id != "opaque.alpha:external-001"),
+        "conflicted mappings must not choose a silent winner"
+    );
+    let conflict = compiled
+        .unresolved_conflicts
+        .iter()
+        .find(|conflict| conflict.kind == DomainConflictKind::Remap)
+        .expect("remap conflict emitted");
+    assert_eq!(
+        conflict.domain_id.as_deref(),
+        Some("opaque.alpha:external-001")
+    );
+    assert!(conflict.fact_ids.contains(&"fact.alpha".to_string()));
+    assert!(
+        conflict
+            .fact_ids
+            .contains(&"fact.alpha-competing".to_string())
+    );
+    assert!(
+        conflict
+            .review_refs
+            .contains(&"review://fact.alpha-competing".to_string())
+    );
+    assert!(
+        conflict
+            .policy_refs
+            .contains(&"policy://generic-reviewed-identity-fact".to_string())
     );
 }
 
@@ -289,6 +377,28 @@ fn base_build() -> DomainRegistryBuildPackage {
     }
 }
 
+fn alternate_domain_build() -> DomainRegistryBuildPackage {
+    let mut build = base_build();
+    build.build_id = "build.synthetic.002".to_string();
+    build.registry_id = "registry.second.synthetic".to_string();
+    build.registry_version = "2026.07.12".to_string();
+    build.facts = vec![DomainFact {
+        fact_id: "fact.second-domain".to_string(),
+        domain_id: "opaque.second-domain:identifier-900".to_string(),
+        canonical_id: "RID-900".to_string(),
+        alias: "Second Domain Label".to_string(),
+        namespace_id: "ns.second:label".to_string(),
+        source_package_id: "pkg.synthetic.fact".to_string(),
+        proof_refs: vec!["proof://fact.second-domain".to_string()],
+        review_refs: vec!["review://fact.second-domain".to_string()],
+        policy_refs: vec!["policy://generic-reviewed-identity-fact".to_string()],
+        provenance: provenance("pkg.synthetic.fact", "source://public/second-domain", None),
+        restricted_value: false,
+    }];
+    build.relationships = Vec::new();
+    build
+}
+
 fn package_pins() -> Vec<DomainPackagePin> {
     [
         (DomainPackageKind::Ontology, "pkg.synthetic.ontology", 'a'),
@@ -343,6 +453,8 @@ fn fact(
         namespace_id: "ns.unknown:display".to_string(),
         source_package_id: "pkg.synthetic.fact".to_string(),
         proof_refs: vec![format!("proof://{fact_id}")],
+        review_refs: vec![format!("review://{fact_id}")],
+        policy_refs: vec!["policy://generic-reviewed-identity-fact".to_string()],
         provenance: provenance("pkg.synthetic.fact", "source://public/facts", None),
         restricted_value,
     }
@@ -372,6 +484,8 @@ fn relationship(relationship_id: &str) -> DomainRelationshipFact {
         relation_type_id: "rel.synthetic:adjacent_to".to_string(),
         source_package_id: "pkg.synthetic.vocabulary".to_string(),
         proof_refs: vec![format!("proof://{relationship_id}")],
+        review_refs: vec![format!("review://{relationship_id}")],
+        policy_refs: vec!["policy://generic-reviewed-relationship-fact".to_string()],
         provenance: provenance(
             "pkg.synthetic.vocabulary",
             "source://public/relations",

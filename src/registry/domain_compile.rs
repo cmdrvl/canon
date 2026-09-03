@@ -26,6 +26,7 @@ pub enum DomainRegistryBuildErrorCode {
     ArtifactContract,
     CompatibilityPolicy,
     Conflict,
+    MissingJustification,
     RestrictedDataLeak,
     #[default]
     Unimplemented,
@@ -128,6 +129,10 @@ pub struct DomainFact {
     pub source_package_id: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub proof_refs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub review_refs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub policy_refs: Vec<String>,
     pub provenance: DomainProvenanceRef,
     #[serde(default)]
     pub restricted_value: bool,
@@ -142,6 +147,10 @@ pub struct DomainRelationshipFact {
     pub source_package_id: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub proof_refs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub review_refs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub policy_refs: Vec<String>,
     pub provenance: DomainProvenanceRef,
     #[serde(default)]
     pub restricted_value: bool,
@@ -222,6 +231,10 @@ pub struct DomainRegistryConflict {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub proof_refs: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub review_refs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub policy_refs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub source_package_ids: Vec<String>,
 }
 
@@ -238,6 +251,10 @@ pub struct DomainProofChain {
     pub package_digests: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub proof_refs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub review_refs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub policy_refs: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -783,6 +800,8 @@ fn remap_conflicts(
             fact_ids,
             relationship_ids: Vec::new(),
             proof_refs,
+            review_refs: sorted_flattened_refs(facts.iter().map(|fact| &fact.review_refs)),
+            policy_refs: sorted_flattened_refs(facts.iter().map(|fact| &fact.policy_refs)),
             source_package_ids,
         })?);
     }
@@ -833,6 +852,8 @@ fn alias_collision_conflicts(
             fact_ids,
             relationship_ids: Vec::new(),
             proof_refs,
+            review_refs: sorted_flattened_refs(facts.iter().map(|fact| &fact.review_refs)),
+            policy_refs: sorted_flattened_refs(facts.iter().map(|fact| &fact.policy_refs)),
             source_package_ids,
         })?);
     }
@@ -884,6 +905,8 @@ fn relationship_collision_conflicts(
             fact_ids: Vec::new(),
             relationship_ids: vec![relationship_id],
             proof_refs,
+            review_refs: sorted_flattened_refs(relationships.iter().map(|rel| &rel.review_refs)),
+            policy_refs: sorted_flattened_refs(relationships.iter().map(|rel| &rel.policy_refs)),
             source_package_ids,
         })?);
     }
@@ -910,6 +933,8 @@ fn proof_chain_for_fact(
         source_package_ids: vec![fact.source_package_id.clone()],
         package_digests: vec![package_digest],
         proof_refs: fact.proof_refs.clone(),
+        review_refs: fact.review_refs.clone(),
+        policy_refs: fact.policy_refs.clone(),
     })
 }
 
@@ -936,6 +961,8 @@ fn proof_chain_for_relationship(
         source_package_ids: vec![relationship.source_package_id.clone()],
         package_digests: vec![package_digest],
         proof_refs: relationship.proof_refs.clone(),
+        review_refs: relationship.review_refs.clone(),
+        policy_refs: relationship.policy_refs.clone(),
     })
 }
 
@@ -952,6 +979,10 @@ fn proof_chain_with_digest(
     proof_chain.package_digests.dedup();
     proof_chain.proof_refs.sort();
     proof_chain.proof_refs.dedup();
+    proof_chain.review_refs.sort();
+    proof_chain.review_refs.dedup();
+    proof_chain.policy_refs.sort();
+    proof_chain.policy_refs.dedup();
     proof_chain.proof_chain_id = digest_struct("proof", &proof_chain)?;
     Ok(proof_chain)
 }
@@ -967,6 +998,10 @@ fn conflict_with_digest(
     conflict.relationship_ids.dedup();
     conflict.proof_refs.sort();
     conflict.proof_refs.dedup();
+    conflict.review_refs.sort();
+    conflict.review_refs.dedup();
+    conflict.policy_refs.sort();
+    conflict.policy_refs.dedup();
     conflict.source_package_ids.sort();
     conflict.source_package_ids.dedup();
     conflict.conflict_id = digest_struct("conflict", &conflict)?;
@@ -1199,15 +1234,18 @@ fn normalize_fact(
     pinned_package_ids: &BTreeSet<String>,
     known_licenses: &BTreeSet<String>,
 ) -> DomainRegistryBuildResult<DomainFact> {
+    let fact_id = normalize_non_empty(fact.fact_id, "fact_id")?;
     let source_package_id = normalize_known_package_id(fact.source_package_id, pinned_package_ids)?;
     Ok(DomainFact {
-        fact_id: normalize_non_empty(fact.fact_id, "fact_id")?,
+        fact_id: fact_id.clone(),
         domain_id: normalize_non_empty(fact.domain_id, "domain_id")?,
         canonical_id: normalize_non_empty(fact.canonical_id, "canonical_id")?,
         alias: normalize_non_empty(fact.alias, "alias")?,
         namespace_id: normalize_non_empty(fact.namespace_id, "namespace_id")?,
         source_package_id,
-        proof_refs: normalize_string_vec(fact.proof_refs, "proof_ref")?,
+        proof_refs: normalize_required_refs(fact.proof_refs, "proof_refs", &fact_id)?,
+        review_refs: normalize_required_refs(fact.review_refs, "review_refs", &fact_id)?,
+        policy_refs: normalize_required_refs(fact.policy_refs, "policy_refs", &fact_id)?,
         provenance: normalize_provenance(fact.provenance, pinned_package_ids, known_licenses)?,
         restricted_value: fact.restricted_value,
     })
@@ -1218,15 +1256,30 @@ fn normalize_relationship(
     pinned_package_ids: &BTreeSet<String>,
     known_licenses: &BTreeSet<String>,
 ) -> DomainRegistryBuildResult<DomainRelationshipFact> {
+    let relationship_id = normalize_non_empty(relationship.relationship_id, "relationship_id")?;
     let source_package_id =
         normalize_known_package_id(relationship.source_package_id, pinned_package_ids)?;
     Ok(DomainRelationshipFact {
-        relationship_id: normalize_non_empty(relationship.relationship_id, "relationship_id")?,
+        relationship_id: relationship_id.clone(),
         left_domain_id: normalize_non_empty(relationship.left_domain_id, "left_domain_id")?,
         right_domain_id: normalize_non_empty(relationship.right_domain_id, "right_domain_id")?,
         relation_type_id: normalize_non_empty(relationship.relation_type_id, "relation_type_id")?,
         source_package_id,
-        proof_refs: normalize_string_vec(relationship.proof_refs, "proof_ref")?,
+        proof_refs: normalize_required_refs(
+            relationship.proof_refs,
+            "proof_refs",
+            &relationship_id,
+        )?,
+        review_refs: normalize_required_refs(
+            relationship.review_refs,
+            "review_refs",
+            &relationship_id,
+        )?,
+        policy_refs: normalize_required_refs(
+            relationship.policy_refs,
+            "policy_refs",
+            &relationship_id,
+        )?,
         provenance: normalize_provenance(
             relationship.provenance,
             pinned_package_ids,
@@ -1325,6 +1378,21 @@ fn normalize_string_vec(
     Ok(normalized)
 }
 
+fn normalize_required_refs(
+    values: Vec<String>,
+    field: &str,
+    artifact_id: &str,
+) -> DomainRegistryBuildResult<Vec<String>> {
+    let refs = normalize_string_vec(values, field)?;
+    if refs.is_empty() {
+        return Err(error(
+            DomainRegistryBuildErrorCode::MissingJustification,
+            format!("{artifact_id} must declare at least one {field} entry"),
+        ));
+    }
+    Ok(refs)
+}
+
 fn normalize_non_empty(value: String, field: &str) -> DomainRegistryBuildResult<String> {
     let trimmed = ascii_trim(&value).to_string();
     if trimmed.is_empty() {
@@ -1384,8 +1452,11 @@ fn package_digest_by_id(pins: &[DomainPackagePin]) -> BTreeMap<String, String> {
 fn sorted_flattened_proof_refs<'a>(
     proof_refs: impl Iterator<Item = &'a Vec<String>>,
 ) -> Vec<String> {
-    proof_refs
-        .flat_map(|refs| refs.iter().cloned())
+    sorted_flattened_refs(proof_refs)
+}
+
+fn sorted_flattened_refs<'a>(refs: impl Iterator<Item = &'a Vec<String>>) -> Vec<String> {
+    refs.flat_map(|refs| refs.iter().cloned())
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect()

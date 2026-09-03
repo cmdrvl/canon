@@ -69,6 +69,7 @@
     "semantic_diff_exposes_additions_remaps_conflicts_package_changes": true,
     "relation_sidecars_do_not_imply_identity": true,
     "restricted_public_manifest_leak_forbidden": true,
+    "mapping_requires_fact_review_policy_refs": true,
     "domain_specific_core_enums_forbidden": true,
     "required_package_kinds": [
       "ontology",
@@ -229,6 +230,8 @@
         "namespace_id",
         "source_package_id",
         "proof_refs",
+        "review_refs",
+        "policy_refs",
         "provenance",
         "restricted_value"
       ],
@@ -253,6 +256,21 @@
         },
         "proof_refs": {
           "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/non_empty_string"
+          }
+        },
+        "review_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/non_empty_string"
+          }
+        },
+        "policy_refs": {
+          "type": "array",
+          "minItems": 1,
           "items": {
             "$ref": "#/$defs/non_empty_string"
           }
@@ -275,6 +293,8 @@
         "relation_type_id",
         "source_package_id",
         "proof_refs",
+        "review_refs",
+        "policy_refs",
         "provenance",
         "restricted_value"
       ],
@@ -296,6 +316,21 @@
         },
         "proof_refs": {
           "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/non_empty_string"
+          }
+        },
+        "review_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/non_empty_string"
+          }
+        },
+        "policy_refs": {
+          "type": "array",
+          "minItems": 1,
           "items": {
             "$ref": "#/$defs/non_empty_string"
           }

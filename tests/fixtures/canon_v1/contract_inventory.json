@@ -1386,7 +1386,13 @@
       "source_path": "src/project/run.rs"
     },
     { "id": "canon.project.state.v1", "family": "project", "action": "preserve" },
-    { "id": "canon.registry.build.v1", "family": "registry", "action": "preserve" },
+    {
+      "id": "canon.registry.build.v1",
+      "family": "registry",
+      "action": "preserve",
+      "access_boundary": "public_schema",
+      "source_path": "schemas/canon.registry.build.v1.schema.json"
+    },
     { "id": "canon.registry.merge_plan.v1", "family": "registry", "action": "preserve" },
     { "id": "canon.registry.temporal_projection_contract.v1", "family": "registry", "action": "preserve" },
     {
