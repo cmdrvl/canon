@@ -1561,27 +1561,29 @@ fn sealed_label(
             format!("material:{trial_id}:{canonical_record_id}").as_bytes(),
         ),
         disposition,
-        lookalike_signal_hashes: hard_negative
-            .then(|| vec![witness::hash_bytes(b"name-surface-lookalike")])
-            .unwrap_or_default(),
-        corroborating_attribute_lanes: hard_negative
-            .then(|| {
-                vec![
-                    "amount".to_string(),
-                    "category".to_string(),
-                    "date".to_string(),
-                ]
-            })
-            .unwrap_or_default(),
-        corroborating_attribute_hashes: hard_negative
-            .then(|| {
-                vec![
-                    witness::hash_bytes(b"amount-refutes-identity"),
-                    witness::hash_bytes(b"category-refutes-identity"),
-                    witness::hash_bytes(b"date-refutes-identity"),
-                ]
-            })
-            .unwrap_or_default(),
+        lookalike_signal_hashes: if hard_negative {
+            vec![witness::hash_bytes(b"name-surface-lookalike")]
+        } else {
+            Vec::new()
+        },
+        corroborating_attribute_lanes: if hard_negative {
+            vec![
+                "amount".to_string(),
+                "category".to_string(),
+                "date".to_string(),
+            ]
+        } else {
+            Vec::new()
+        },
+        corroborating_attribute_hashes: if hard_negative {
+            vec![
+                witness::hash_bytes(b"amount-refutes-identity"),
+                witness::hash_bytes(b"category-refutes-identity"),
+                witness::hash_bytes(b"date-refutes-identity"),
+            ]
+        } else {
+            Vec::new()
+        },
         hard_negative_basis: hard_negative.then(|| {
             "candidate-like name surface refuted by amount/date/category corroboration".to_string()
         }),
