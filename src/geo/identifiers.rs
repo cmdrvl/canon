@@ -618,22 +618,10 @@ pub fn canonical_tile_identifier_stability_bytes(
 ) -> Result<Vec<u8>, GeoIdentifierError> {
     validate_tile_identifier_stability_artifact(artifact)?;
     let mut canonical = artifact.clone();
-    canonical
-        .diff
-        .retained_cluster_ids
-        .sort_by(|left, right| left.cmp(right));
-    canonical
-        .diff
-        .added_cluster_ids
-        .sort_by(|left, right| left.cmp(right));
-    canonical
-        .diff
-        .tombstoned_cluster_ids
-        .sort_by(|left, right| left.cmp(right));
-    canonical
-        .diff
-        .merged_prior_ids
-        .sort_by(|left, right| left.cmp(right));
+    canonical.diff.retained_cluster_ids.sort();
+    canonical.diff.added_cluster_ids.sort();
+    canonical.diff.tombstoned_cluster_ids.sort();
+    canonical.diff.merged_prior_ids.sort();
     canonical
         .client_alias_impacts
         .sort_by(|left, right| left.client_alias.cmp(&right.client_alias));

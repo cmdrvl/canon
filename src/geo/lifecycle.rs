@@ -1130,7 +1130,7 @@ fn validate_bbl_key(field: &'static str, value: &str) -> Result<(), GeoAsOfResol
 
 fn validate_as_of_utc_day(field: &'static str, value: &str) -> Result<(), GeoAsOfResolutionError> {
     validate_utc_day(field, value)
-        .map_err(|error| GeoAsOfResolutionError::invalid(error.message, error.detail.into_iter()))
+        .map_err(|error| GeoAsOfResolutionError::invalid(error.message, error.detail))
 }
 
 fn validate_as_of_blake3_uri(
@@ -1138,12 +1138,12 @@ fn validate_as_of_blake3_uri(
     value: &str,
 ) -> Result<(), GeoAsOfResolutionError> {
     validate_blake3_uri(field, value)
-        .map_err(|error| GeoAsOfResolutionError::invalid(error.message, error.detail.into_iter()))
+        .map_err(|error| GeoAsOfResolutionError::invalid(error.message, error.detail))
 }
 
 fn validate_as_of_string(field: &'static str, value: &str) -> Result<(), GeoAsOfResolutionError> {
     validate_string(field, value)
-        .map_err(|error| GeoAsOfResolutionError::invalid(error.message, error.detail.into_iter()))
+        .map_err(|error| GeoAsOfResolutionError::invalid(error.message, error.detail))
 }
 
 fn as_of_invalid_field(
