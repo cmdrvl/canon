@@ -67,6 +67,7 @@ use canon::geo::{
     CANON_GEO_H7_ROUND_AMOUNT_LATTICE_CENTS,
     CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
     CANON_GEO_LOCAL_FRAME_VERSION, CANON_GEO_MULTISOURCE_REQUEST_VERSION,
+    CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION,
     CANON_GEO_PAD_ADDRESS_SET_VERSION, CANON_GEO_PAD_MEMBERSHIP_VERSION,
     CANON_GEO_POINT_POPULATION_VERSION, CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
     CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
@@ -97,35 +98,38 @@ use canon::geo::{
     GeoIdentityParticipation, GeoIntegerMeasure, GeoIntegerMemberValue, GeoIntegerValueOrigin,
     GeoLabeledCompositionCase, GeoLicenseClass, GeoLocalAcquisitionState, GeoLocalArtifactRef,
     GeoLocalFrameContract, GeoMultisourceRequest, GeoMultisourceSource, GeoNativeEntityScope,
-    GeoNumericBound, GeoNumericMeasure, GeoNycBorough, GeoPadAddressMember, GeoPadAddressSet,
-    GeoPlanInventoryRef, GeoPointPopulationArtifact, GeoPopulationCaseEvidenceOverlay,
-    GeoPopulationEvaluationRequest, GeoPopulationEvidenceStackRequest, GeoPreResolutionArtifact,
-    GeoPreResolutionBuildReceipt, GeoPreResolutionCorpusKind, GeoPreResolutionProofClass,
-    GeoPreResolutionRequest, GeoPreResolutionRunStatus, GeoPreResolutionSourceCorpus,
-    GeoPreResolutionSourceRow, GeoProjectionProvenance, GeoPropagationBudget,
-    GeoProspectiveObservation, GeoProspectiveOutcome, GeoQuestion, GeoRegionalInventory,
-    GeoRegionalSourceInstance, GeoReliabilityOrder, GeoRequestedGrain, GeoResourceBudget,
-    GeoResourceCounter, GeoRhoBasis, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind,
-    GeoSeparationRequest, GeoSourceAvailability, GeoSourceAxisDomain, GeoSourceGeometry,
-    GeoSourcePointDecimal, GeoSourcePointFixed, GeoSourceRelease, GeoStreetDirection,
-    GeoStreetSuffix, GeoSubjectBinding, GeoSubjectBindingClass, GeoTelemetryDeclaration,
-    GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
-    GeoTileCandidateReachReference, GeoTileCandidateReachReferenceKind, GeoTileDecisionBatch,
-    GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileFeatureRef,
+    GeoNextAction, GeoNextActionClass, GeoNextActionKind, GeoNextEvidenceRequest, GeoNumericBound,
+    GeoNumericMeasure, GeoNycBorough, GeoPadAddressMember, GeoPadAddressSet, GeoPlanInventoryRef,
+    GeoPointPopulationArtifact, GeoPopulationCaseEvidenceOverlay, GeoPopulationEvaluationRequest,
+    GeoPopulationEvidenceStackRequest, GeoPreResolutionArtifact, GeoPreResolutionBuildReceipt,
+    GeoPreResolutionCorpusKind, GeoPreResolutionProofClass, GeoPreResolutionRequest,
+    GeoPreResolutionRunStatus, GeoPreResolutionSourceCorpus, GeoPreResolutionSourceRow,
+    GeoProjectionProvenance, GeoPropagationBudget, GeoProspectiveObservation,
+    GeoProspectiveOutcome, GeoQuestion, GeoRegionalInventory, GeoRegionalSourceInstance,
+    GeoReliabilityOrder, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter, GeoRhoBasis,
+    GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoSeparationRequest,
+    GeoSourceAvailability, GeoSourceAxisDomain, GeoSourceGeometry, GeoSourcePointDecimal,
+    GeoSourcePointFixed, GeoSourceRelease, GeoStreetDirection, GeoStreetSuffix, GeoSubjectBinding,
+    GeoSubjectBindingClass, GeoTelemetryDeclaration, GeoTelemetryMetric,
+    GeoTelemetrySemanticEffect, GeoTemporalScope, GeoTileCandidateReachReference,
+    GeoTileCandidateReachReferenceKind, GeoTileDecisionBatch, GeoTileDecisionMember,
+    GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileFeatureRef,
     GeoTileReconciliationArtifact, GeoTileReconciliationRequest, GeoTileSourceBinding,
     GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoTruthPlane, GeoValueOrigin,
     GeoWarehouseEvidenceRow, GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest,
-    GeoWarehouseParcelRow, GeoWarehouseRowsRequest, canonical_error_population_bytes,
-    canonical_explanation_bytes, canonical_pre_resolution_bytes, canonical_propagation_bytes,
-    canonical_redacted_artifact_bytes, canonical_separation_bytes,
+    GeoWarehouseParcelRow, GeoWarehouseRowsRequest, canonical_composition_bytes,
+    canonical_error_population_bytes, canonical_explanation_bytes, canonical_next_evidence_bytes,
+    canonical_next_evidence_request_bytes, canonical_pre_resolution_bytes,
+    canonical_propagation_bytes, canonical_redacted_artifact_bytes, canonical_separation_bytes,
     canonical_separation_request_bytes, compile_evidence, correction_sets,
     default_geo_capabilities, evaluate_pad_membership, evaluate_population,
     ingest_client_geometry_tile, materialize_geo_multisource, materialize_geometry_tile,
     materialize_h7_population_rows, materialize_home_cells, materialize_pre_resolution,
     materialize_tile_work_unit, materialize_warehouse_geometry, minimal_core, parse_address_forest,
-    propagate, reconcile_tile_decisions, redact_geo_artifact, regional_inventory_semantic_hash,
-    separate, solve_composition, stack_population_evidence, validate_point_population_artifact,
-    validate_pre_resolution_artifact, validate_redacted_artifact,
+    propagate, recommend, reconcile_tile_decisions, redact_geo_artifact,
+    regional_inventory_semantic_hash, separate, solve_composition, stack_population_evidence,
+    validate_point_population_artifact, validate_pre_resolution_artifact,
+    validate_redacted_artifact,
 };
 use canon::geo::{
     CANON_GEO_TEMPORAL_CONTAINMENT_VERSION, GeoTemporalContainmentArtifact,
@@ -158,6 +162,10 @@ const TEMPORAL_CONTAINMENT_SCHEMA: &str =
     include_str!("../schemas/canon.geo.temporal_containment.v0.schema.json");
 const PROPAGATION_SCHEMA: &str = include_str!("../schemas/canon.geo.propagation.v0.schema.json");
 const EXPLANATION_SCHEMA: &str = include_str!("../schemas/canon.geo.explanation.v0.schema.json");
+const NEXT_EVIDENCE_REQUEST_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.next_evidence_request.v0.schema.json");
+const NEXT_EVIDENCE_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.next_evidence.v0.schema.json");
 const ASSESSMENT_ROLL_OWNER_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.assessment_roll_owner_request.v0.schema.json");
 const ASSESSMENT_ROLL_OWNER_SCHEMA: &str =
@@ -286,6 +294,7 @@ fn external_schema_source(schema_file: &str, reference: &str) -> &'static str {
     match schema_file {
         "canon.geo.address_parse_request.v0.schema.json" => ADDRESS_PARSE_REQUEST_SCHEMA,
         "canon.geo.address_parse_forest.v0.schema.json" => ADDRESS_PARSE_FOREST_SCHEMA,
+        "canon.geo.acquisition_request.v0.schema.json" => ACQUISITION_REQUEST_SCHEMA,
         "canon.geo.pad_address_set.v0.schema.json" => PAD_ADDRESS_SET_SCHEMA,
         "canon.geo.pad_membership.v0.schema.json" => PAD_MEMBERSHIP_SCHEMA,
         "canon.geo.composition_request.v0.schema.json" => COMPOSITION_REQUEST_SCHEMA,
@@ -297,6 +306,7 @@ fn external_schema_source(schema_file: &str, reference: &str) -> &'static str {
             POPULATION_EVIDENCE_STACK_REQUEST_SCHEMA
         }
         "canon.geo.regional_inventory.v1.schema.json" => CONTROL_REGIONAL_INVENTORY_SCHEMA,
+        "canon.geo.resource_budget.v0.schema.json" => CONTROL_RESOURCE_BUDGET_SCHEMA,
         _ => panic!("external $ref {reference} is not registered in the schema test"),
     }
 }
@@ -695,6 +705,10 @@ fn address_pad_membership() -> canon::geo::GeoPadMembershipEvaluation {
 
 fn control_digest(label: &str) -> String {
     format!("blake3:{}", blake3::hash(label.as_bytes()).to_hex())
+}
+
+fn prefixed_blake3(bytes: &[u8]) -> String {
+    format!("blake3:{}", blake3::hash(bytes).to_hex())
 }
 
 fn contract_blake3_digest(digest_id: &str, bytes: &[u8]) -> GeoDigest {
@@ -1389,6 +1403,48 @@ fn separation_request() -> GeoSeparationRequest {
             ],
         }],
     }
+}
+
+fn next_evidence_fixture() -> (
+    canon::geo::GeoCompositionArtifact,
+    canon::geo::GeoSeparationArtifact,
+    GeoNextEvidenceRequest,
+) {
+    let composition =
+        solve_composition(&composition_request()).expect("schema next-evidence composition solves");
+    let separation = separate(&separation_request(), &GeoExplanationBudget::default())
+        .expect("schema next-evidence separation builds");
+    let observation = separation
+        .per_observation
+        .first()
+        .expect("schema separation has an observation");
+    let candidates = vec![GeoNextAction {
+        action_id: observation.observation_id.clone(),
+        class: GeoNextActionClass::SeparateResidual,
+        kind: GeoNextActionKind::Observe(observation.observation_id.clone()),
+        observation_id: Some(observation.observation_id.clone()),
+        cost_units: 2,
+        separation: observation.per_outcome.clone(),
+        worst_case_remaining: observation.worst_case_remaining,
+        redundant: observation.redundant,
+        lineage_ids: Vec::new(),
+        dominated_by: Vec::new(),
+        stop_reason: None,
+    }];
+    let request = GeoNextEvidenceRequest {
+        version: CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION.to_string(),
+        composition_blake3: prefixed_blake3(
+            &canonical_composition_bytes(&composition).expect("schema composition canonicalizes"),
+        ),
+        separation_blake3: prefixed_blake3(
+            &canonical_separation_bytes(&separation).expect("schema separation canonicalizes"),
+        ),
+        candidates,
+        policy: None,
+        budget: control_budget(),
+        budget_spent: BTreeMap::new(),
+    };
+    (composition, separation, request)
 }
 
 fn schema_rho_contract(id: &str) -> GeoRhoContract {
@@ -2582,6 +2638,45 @@ fn separation_schema_matches_a_real_instance() {
         SEPARATION_SCHEMA,
         "canon.geo.separation.v0",
         CANON_GEO_SEPARATION_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn next_evidence_request_schema_matches_a_real_instance() {
+    let (_, _, request) = next_evidence_fixture();
+    let canonical_bytes = canonical_next_evidence_request_bytes(&request)
+        .expect("next-evidence request canonicalizes");
+    let instance: Value = serde_json::from_slice(&canonical_bytes)
+        .expect("canonical next-evidence request JSON parses");
+    assert_drift_free(
+        NEXT_EVIDENCE_REQUEST_SCHEMA,
+        "canon.geo.next_evidence_request.v0",
+        CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn next_evidence_schema_matches_a_real_instance() {
+    let (composition, separation, request) = next_evidence_fixture();
+    let artifact = recommend(
+        &composition,
+        &separation,
+        &request.candidates,
+        request.policy.as_ref(),
+        &request.budget,
+        &request.budget_spent,
+    )
+    .expect("schema next-evidence artifact builds");
+    let canonical_bytes =
+        canonical_next_evidence_bytes(&artifact).expect("next-evidence artifact canonicalizes");
+    let instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("canonical next-evidence JSON parses");
+    assert_drift_free(
+        NEXT_EVIDENCE_SCHEMA,
+        "canon.geo.next_evidence.v0",
+        CANON_GEO_NEXT_EVIDENCE_VERSION,
         &instance,
     );
 }

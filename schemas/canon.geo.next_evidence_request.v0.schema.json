@@ -1,0 +1,291 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.next_evidence_request.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.next_evidence_request.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_next_evidence_request.v0",
+      "type": "string"
+    },
+    "composition_blake3": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "separation_blake3": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/next_action"
+      }
+    },
+    "policy": {
+      "$ref": "#/$defs/next_evidence_policy"
+    },
+    "budget": {
+      "$ref": "canon.geo.resource_budget.v0.schema.json"
+    },
+    "budget_spent": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  },
+  "required": [
+    "version",
+    "composition_blake3",
+    "separation_blake3",
+    "candidates",
+    "budget"
+  ],
+  "$defs": {
+    "next_action_class": {
+      "type": "string",
+      "enum": [
+        "repair_reach",
+        "diagnose_conflict",
+        "separate_residual",
+        "raise_claim_class",
+        "stop"
+      ]
+    },
+    "stop_reason": {
+      "type": "string",
+      "enum": [
+        "claim_forced",
+        "all_actions_redundant",
+        "grain_unsupported",
+        "honest_ambiguity",
+        "budget_exceeded"
+      ]
+    },
+    "next_action_kind": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "acquire",
+            "adjudicate",
+            "observe",
+            "stop"
+          ]
+        },
+        "payload": true
+      },
+      "required": [
+        "kind"
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "acquire"
+            },
+            "payload": {
+              "$ref": "canon.geo.acquisition_request.v0.schema.json"
+            }
+          },
+          "required": [
+            "kind",
+            "payload"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "adjudicate"
+            },
+            "payload": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "payload"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "observe"
+            },
+            "payload": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "payload"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "stop"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "not": {
+            "required": [
+              "payload"
+            ]
+          }
+        }
+      ]
+    },
+    "outcome_separation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "outcome_id": {
+          "type": "string"
+        },
+        "residual_model_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "count_exact": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "outcome_id",
+        "residual_model_count",
+        "count_exact"
+      ]
+    },
+    "next_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "type": "string"
+        },
+        "class": {
+          "$ref": "#/$defs/next_action_class"
+        },
+        "kind": {
+          "$ref": "#/$defs/next_action_kind"
+        },
+        "observation_id": {
+          "type": "string"
+        },
+        "cost_units": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "separation": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/outcome_separation"
+          }
+        },
+        "worst_case_remaining": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "redundant": {
+          "type": "boolean"
+        },
+        "lineage_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "dominated_by": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "stop_reason": {
+          "$ref": "#/$defs/stop_reason"
+        }
+      },
+      "required": [
+        "action_id",
+        "class",
+        "kind",
+        "cost_units",
+        "separation",
+        "worst_case_remaining",
+        "redundant"
+      ]
+    },
+    "decision_policy_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "policy_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "content_hash": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "policy_id",
+        "version",
+        "content_hash"
+      ]
+    },
+    "loss_model_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "loss_model_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "content_hash": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "loss_model_id",
+        "version",
+        "content_hash"
+      ]
+    },
+    "next_evidence_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "policy": {
+          "$ref": "#/$defs/decision_policy_ref"
+        },
+        "loss_model": {
+          "$ref": "#/$defs/loss_model_ref"
+        }
+      },
+      "required": [
+        "policy"
+      ]
+    }
+  },
+  "x-canon-contract": {
+    "runtime_only_invariants": [
+      "candidate action ids are strictly sorted",
+      "budget_spent keys name GeoResourceBudget deterministic_bounds semantic_id values",
+      "total ordering is not part of the request; it is emitted only when policy.loss_model is present"
+    ]
+  }
+}
