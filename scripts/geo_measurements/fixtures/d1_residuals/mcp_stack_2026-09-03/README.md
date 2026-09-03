@@ -13,3 +13,12 @@ asserted ABS-EE sqft, EmpiricalCalibration with admissible_hard_band (calibratio
 truth subjects in band); (2) rho.address.geocode.parcel_containment, PreferMember soft preference per
 geocode point-in-parcel hit (calibration_pip.json: 50/70 subjects hit a truth lot). Proof class: observed
 warehouse snapshot, not a frozen gate input. See compare.py for the per-case table.
+
+## Second pass: tax-roll owner exclusion (same day)
+
+Third channel, rho.owner.taxroll_borrower_match: PLUTO 26v1 OWNERNAME against ACRIS party_type 1 names for the
+subject document, encoded as IntegerSumBand(owner_mismatch, min 0, max 0) so any lot whose tax owner matches no
+borrower is excluded (overlay_request_owner.json, calibration_owner.json: 194/224 truth lots match, 43/58 subjects
+fully). Stacked on the PAD-only base (evaluation_pad_plus_owner.json) and on the size+geocode stack
+(evaluation_all_layers.json). condo_bridge_measurement.json maps truth unit lots to the single PLUTO billing lot
+on the block; it recovers 3 of 18 condo subjects, the rest need the Digital Tax Map (cmdrvl-curves bd-2q5m).

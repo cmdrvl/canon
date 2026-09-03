@@ -1,0 +1,1397 @@
+[
+ {
+  "sid": "h7-subject:non-round:c8217df560eb3d08527d5f562299988dd2e287326ca61590a0c9f462bf1ab251",
+  "loan": "6668e47c",
+  "borrowers": [
+   "444 86 BLUE LLC"
+  ],
+  "N": 43,
+  "kept": 1,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 1,
+  "truth_match_kinds": {
+   "exact": 1,
+   "none": 1
+  },
+  "cand_kinds": {
+   "none": 42,
+   "exact": 1
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:97ae3eeb8035a1914b178d2cf3a447b50735e954a33067d57d6e9a5e1c3e6d58",
+  "loan": "5081a27f",
+  "borrowers": [
+   "KEW GARDENS OWNERS CORP"
+  ],
+  "N": 3,
+  "kept": 1,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 1,
+  "truth_match_kinds": {
+   "exact": 1,
+   "none": 1
+  },
+  "cand_kinds": {
+   "exact": 1,
+   "none": 2
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:947b6d4949589dd94789958dcae3b2131e6e93cf55d9fd661b2c247a63dfc387",
+  "loan": "11306d29",
+  "borrowers": [
+   "149 PARTNERS LLC"
+  ],
+  "N": 28,
+  "kept": 2,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "exact": 2
+  },
+  "cand_kinds": {
+   "none": 26,
+   "exact": 2
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:ae5fa9ee31b1670d1af89f8fd3632c4f207957a15486b4007a6776495f960309",
+  "loan": "e91ba17e",
+  "borrowers": [
+   "KINGSBRIDGE ASSOCIATES  LLC",
+   "KINGSBRIDGE ASSOCIATES II  LLC"
+  ],
+  "N": 236,
+  "kept": 2,
+  "truth_n": 4,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "exact": 1,
+   "token": 1
+  },
+  "cand_kinds": {
+   "none": 234,
+   "exact": 1,
+   "token": 1
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:cf2f4789d585f12299a6629be9757434edb1259b3451a8b95addbdb1bd3ad55e",
+  "loan": "b986131b",
+  "borrowers": [
+   "900 FLUSHING AVE LLC",
+   "ST JOHNS GROUP LLC"
+  ],
+  "N": 75,
+  "kept": 10,
+  "truth_n": 3,
+  "truth_attr": 3,
+  "truth_kept": 3,
+  "truth_match_kinds": {
+   "exact": 3
+  },
+  "cand_kinds": {
+   "none": 65,
+   "token": 7,
+   "exact": 3
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:56f3e4fa43b049e025eebbc3548ddebd72c1759bb2490d720fe7dfc39e3a30dd",
+  "loan": "c7aae0bb",
+  "borrowers": [
+   "1392 NELSON LLC",
+   "3605 HOLLAND NY LLC"
+  ],
+  "N": 110,
+  "kept": 2,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "exact": 2
+  },
+  "cand_kinds": {
+   "none": 108,
+   "exact": 2
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:84b4195d0c6095348830cdee94ada12a4db1483ab31f88aacb4c9b1c1335e916",
+  "loan": "dfc0f3e1",
+  "borrowers": [
+   "2302 14 36 AVE LLC",
+   "419 WEST 128 LLC",
+   "502 WEST 143 LLC",
+   "507 WEST 168 LLC",
+   "517 WEST 169 LLC",
+   "533 WEST 151 LLC"
+  ],
+  "N": 176,
+  "kept": 18,
+  "truth_n": 6,
+  "truth_attr": 6,
+  "truth_kept": 6,
+  "truth_match_kinds": {
+   "exact": 6
+  },
+  "cand_kinds": {
+   "none": 158,
+   "token": 12,
+   "exact": 6
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:37ab22474cdc2c5e7031b19537a5516d80e12f0e57da3edf8eb45b08e2f8f5d4",
+  "loan": "0b296a95",
+  "borrowers": [
+   "CG WEST 181ST STREET LLC"
+  ],
+  "N": 19,
+  "kept": 4,
+  "truth_n": 3,
+  "truth_attr": 3,
+  "truth_kept": 3,
+  "truth_match_kinds": {
+   "exact": 3
+  },
+  "cand_kinds": {
+   "none": 15,
+   "token": 2,
+   "exact": 2
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:f6dfda5297186039d20a3be759370b98d62463ad7e863f900eb8a66eac2497e6",
+  "loan": "7f1c77c1",
+  "borrowers": [
+   "HATZLACHA 52 LLC"
+  ],
+  "N": 29,
+  "kept": 0,
+  "truth_n": 16,
+  "truth_attr": 0,
+  "truth_kept": 0,
+  "truth_match_kinds": {},
+  "cand_kinds": {
+   "none": 29
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:fd771efaa8d381c6a177515ebe97b7e2354d75604ea8be9a05b6336015ae4135",
+  "loan": "b825ec3c",
+  "borrowers": [
+   "6035 BROADWAY OWNERS CORP"
+  ],
+  "N": 6,
+  "kept": 1,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "exact": 1,
+   "token": 1
+  },
+  "cand_kinds": {
+   "none": 5,
+   "exact": 1
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:1ad5bdba3889b00b072822850d087dbd433dbc1fe560d90751fc6b7e5ef55cda",
+  "loan": "8d71ae8d",
+  "borrowers": [
+   "64 TRYLINE LLC"
+  ],
+  "N": 58,
+  "kept": 0,
+  "truth_n": 3,
+  "truth_attr": 3,
+  "truth_kept": 0,
+  "truth_match_kinds": {
+   "none": 3
+  },
+  "cand_kinds": {
+   "none": 58
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:655a127dc453d12220696e0a0f76929d2ab8dd91ebd1dbe363173e50408fb34b",
+  "loan": "beeb77b9",
+  "borrowers": [
+   "7MDR OF QUEENS  INC",
+   "RMDM OF NEW YORK 87  INC"
+  ],
+  "N": 53,
+  "kept": 2,
+  "truth_n": 147,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "exact": 1,
+   "token": 1
+  },
+  "cand_kinds": {
+   "none": 51,
+   "exact": 1,
+   "token": 1
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:e1ee05351a5b681c0dcda44e19dd575c686c3c630809c137bd64cc3232bc256c",
+  "loan": "6bfe47de",
+  "borrowers": [
+   "REGENCY GARDENS APARTMENT CORP"
+  ],
+  "N": 41,
+  "kept": 2,
+  "truth_n": 3,
+  "truth_attr": 3,
+  "truth_kept": 3,
+  "truth_match_kinds": {
+   "exact": 3
+  },
+  "cand_kinds": {
+   "none": 39,
+   "exact": 2
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:1f301680cb0f2c88d43c40f0869779eca34a07dfaca12b657b4509486df60a46",
+  "loan": "073ad3a0",
+  "borrowers": [
+   "KUSHNER VILLAGE 329 EAST 9TH LLC",
+   "VILLAGE KF 516 EAST 13TH LLC"
+  ],
+  "N": 92,
+  "kept": 6,
+  "truth_n": 6,
+  "truth_attr": 6,
+  "truth_kept": 0,
+  "truth_match_kinds": {
+   "none": 6
+  },
+  "cand_kinds": {
+   "none": 86,
+   "token": 6
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:4bb51b76b9a709ec6f9cc298ac7e441f77a1320ee4edac1124efa9b11c05293f",
+  "loan": "e7b0bdb8",
+  "borrowers": [
+   "1697 AMSTERDAM OWNER LLC",
+   "2500 SEVENTH OWNER LLC",
+   "593 TENTH OWNER LLC",
+   "676 NINTH OWNER LLC",
+   "706 AMSTERDAM OWNER LLC",
+   "790 NINTH OWNER LLC",
+   "796 NINTH OWNER LLC"
+  ],
+  "N": 184,
+  "kept": 7,
+  "truth_n": 10,
+  "truth_attr": 10,
+  "truth_kept": 10,
+  "truth_match_kinds": {
+   "exact": 10
+  },
+  "cand_kinds": {
+   "none": 177,
+   "exact": 7
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:3899edce2a164eda4fdfae93de6203c73c09477b1dfe6520e97fa734307c25c3",
+  "loan": "2e3fac03",
+  "borrowers": [
+   "1689 STERLING LLC",
+   "316 PARCHEN LLC",
+   "RUTLAND CAPITAL LLC"
+  ],
+  "N": 114,
+  "kept": 3,
+  "truth_n": 4,
+  "truth_attr": 4,
+  "truth_kept": 3,
+  "truth_match_kinds": {
+   "exact": 3,
+   "none": 1
+  },
+  "cand_kinds": {
+   "none": 110,
+   "exact": 3,
+   "no_owner": 1
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:20869bd800113cc1e8656827b4e09582b9d998b874cce0f8a6b7225ea9ab9893",
+  "loan": "7402ec72",
+  "borrowers": [
+   "44 46 WEST 65TH APARTMENT CORP"
+  ],
+  "N": 19,
+  "kept": 3,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "token": 2
+  },
+  "cand_kinds": {
+   "none": 16,
+   "token": 3
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:607a641f16e5c5a60a0490d5b38d606e4d15bb34078183255c3f84935c6f56e6",
+  "loan": "d34cdcf8",
+  "borrowers": [
+   "118 120 EAST FOURTH OWNER LLC",
+   "199 203 EAST FOURTH OWNER LLC",
+   "315 EAST 10TH STREET LLC"
+  ],
+  "N": 129,
+  "kept": 18,
+  "truth_n": 6,
+  "truth_attr": 6,
+  "truth_kept": 5,
+  "truth_match_kinds": {
+   "token": 5,
+   "none": 1
+  },
+  "cand_kinds": {
+   "none": 111,
+   "token": 18
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:95ffa8e15d66c259fb48f50e0ba3623ad1a34990d430f4513091658055c1f1fd",
+  "loan": "4b2d7fc3",
+  "borrowers": [
+   "6035 BROADWAY OWNERS CORP"
+  ],
+  "N": 6,
+  "kept": 1,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "exact": 1,
+   "token": 1
+  },
+  "cand_kinds": {
+   "none": 5,
+   "exact": 1
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:b76aa620c96bfba4de6cabde58b67c576c15ab7ad7e6a16d24e87a2069a30ec5",
+  "loan": "870c78d3",
+  "borrowers": [
+   "SLA CAPITAL   REALTY LLC"
+  ],
+  "N": 18,
+  "kept": 3,
+  "truth_n": 3,
+  "truth_attr": 3,
+  "truth_kept": 3,
+  "truth_match_kinds": {
+   "exact": 3
+  },
+  "cand_kinds": {
+   "exact": 3,
+   "none": 15
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:68a1a4ced3f7c16edc483b877013238d0e2c26692c9ef0a5a721e6bb25872612",
+  "loan": "e134fd1e",
+  "borrowers": [
+   "2904 CARBONELL LLC",
+   "KONDO ENTERPRISES INC"
+  ],
+  "N": 27,
+  "kept": 0,
+  "truth_n": 2,
+  "truth_attr": 0,
+  "truth_kept": 0,
+  "truth_match_kinds": {},
+  "cand_kinds": {
+   "none": 27
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:8ac12f0a324a578c82b0016151b093c3304c8160711294554b01eaecf837bd7b",
+  "loan": "b9045ea0",
+  "borrowers": [
+   "27 BED STUY HOUSING DEVELOPMENT FUND CORPORATION",
+   "27 BED STUY LLC"
+  ],
+  "N": 755,
+  "kept": 37,
+  "truth_n": 26,
+  "truth_attr": 26,
+  "truth_kept": 26,
+  "truth_match_kinds": {
+   "token": 26
+  },
+  "cand_kinds": {
+   "token": 37,
+   "none": 716,
+   "no_owner": 2
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:d2cfbf35920510e5b64e5ce9b946ce17317ba26ad9a740bf3381ce8add5126f5",
+  "loan": "f46f9ea4",
+  "borrowers": [
+   "1503 TELLER BX LLC",
+   "171 HERZL STREET LLC",
+   "2822 UNIVERSE LLC"
+  ],
+  "N": 92,
+  "kept": 4,
+  "truth_n": 3,
+  "truth_attr": 3,
+  "truth_kept": 3,
+  "truth_match_kinds": {
+   "exact": 3
+  },
+  "cand_kinds": {
+   "none": 88,
+   "exact": 3,
+   "token": 1
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:f970390c493da3e962182756639afd861946bb781d236481165898bd617f4952",
+  "loan": "59d308b7",
+  "borrowers": [
+   "EV 1ST AVENUE PROPERTY OWNER  L P",
+   "EV AVENUE A PROPERTY OWNER  L P",
+   "KUSHNER VILLAGE 325 EAST 10TH LLC",
+   "VILLAGE KF 2 ASSOCIATES LLC"
+  ],
+  "N": 154,
+  "kept": 12,
+  "truth_n": 5,
+  "truth_attr": 5,
+  "truth_kept": 0,
+  "truth_match_kinds": {
+   "none": 5
+  },
+  "cand_kinds": {
+   "none": 142,
+   "token": 12
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:7e3690f74c34f5b945ab0866c8af2f7bf06eaaa12e7b1d22c8c35f43468e8496",
+  "loan": "6adf5e50",
+  "borrowers": [
+   "CROCHERON TENANTS CORP"
+  ],
+  "N": 27,
+  "kept": 7,
+  "truth_n": 6,
+  "truth_attr": 6,
+  "truth_kept": 6,
+  "truth_match_kinds": {
+   "exact": 6
+  },
+  "cand_kinds": {
+   "exact": 5,
+   "none": 20,
+   "token": 2
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:16bdd00a842361459f9a38c48354b5b2545a871c22e378b1fe4a37b641655963",
+  "loan": "c6da00e8",
+  "borrowers": [
+   "BH LIVINGSTON INVESTORS LLC",
+   "BH LIVINGSTON LLC",
+   "KFIR CAPITAL LIVINGSTON JB LLC",
+   "KFIR CAPITAL LIVINGSTON SF LLC",
+   "QUALITY BH LIVINGSTON LLC",
+   "YH LIVINGSTON LLC"
+  ],
+  "N": 12,
+  "kept": 0,
+  "truth_n": 3,
+  "truth_attr": 0,
+  "truth_kept": 0,
+  "truth_match_kinds": {},
+  "cand_kinds": {
+   "none": 12
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:ce9f18ea767e4e101ba7a073b26a2b6cfa32f452dd5fb34d935d79acfda7b8a5",
+  "loan": "5f20d7e1",
+  "borrowers": [
+   "CORE DRIGGS LLC"
+  ],
+  "N": 16,
+  "kept": 0,
+  "truth_n": 3,
+  "truth_attr": 0,
+  "truth_kept": 0,
+  "truth_match_kinds": {},
+  "cand_kinds": {
+   "none": 16
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:524efa302815a83e7e33419b92fdb25064300e6185537c4c4ae1aca9effbd356",
+  "loan": "76f1aad8",
+  "borrowers": [
+   "18 31 42ND STREET ASTORIA LLC"
+  ],
+  "N": 49,
+  "kept": 5,
+  "truth_n": 4,
+  "truth_attr": 4,
+  "truth_kept": 4,
+  "truth_match_kinds": {
+   "exact": 4
+  },
+  "cand_kinds": {
+   "none": 44,
+   "token": 5
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:45ec05135653deebc211f6056f6d6492a947a8a2ed73dd86c26e6126e3d00a67",
+  "loan": "6134edf4",
+  "borrowers": [
+   "JEFFREY GARDENS APARTMENT CORP"
+  ],
+  "N": 31,
+  "kept": 2,
+  "truth_n": 3,
+  "truth_attr": 3,
+  "truth_kept": 3,
+  "truth_match_kinds": {
+   "token": 1,
+   "exact": 2
+  },
+  "cand_kinds": {
+   "none": 29,
+   "token": 1,
+   "exact": 1
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:6b36cd934c9236f06c0f45d7d71ce4cfecedba98390b2da5947ee8fcf3c943ef",
+  "loan": "13fe14e9",
+  "borrowers": [
+   "530 PARK COMMERCIAL HOLDINGS LLC",
+   "R F CENTURY RETAIL LLC"
+  ],
+  "N": 24,
+  "kept": 1,
+  "truth_n": 4,
+  "truth_attr": 0,
+  "truth_kept": 0,
+  "truth_match_kinds": {},
+  "cand_kinds": {
+   "none": 23,
+   "token": 1
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:5934bb9370d31d9b1fa687544020e5e006512cb16d073ed3712ba0cf37a17c36",
+  "loan": "a8934322",
+  "borrowers": [
+   "BEACH 65TH ST HOLDINGS LLC"
+  ],
+  "N": 11,
+  "kept": 0,
+  "truth_n": 3,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "token": 2
+  },
+  "cand_kinds": {
+   "none": 11
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:e3a5228d84bb6bf01ff03e2849e4a996f223cb1fcff79eff04a65d84dcfa8deb",
+  "loan": "d709ee23",
+  "borrowers": [
+   "SKY VIEW NORTHERN TENANT LP"
+  ],
+  "N": 9,
+  "kept": 0,
+  "truth_n": 10,
+  "truth_attr": 0,
+  "truth_kept": 0,
+  "truth_match_kinds": {},
+  "cand_kinds": {
+   "none": 9
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:2808547cf99b9ac8c5c091cd58f3aab0851274c3ab2550237fdc9f23ff5a0a7f",
+  "loan": "645469ab",
+  "borrowers": [
+   "FEIL RIVERDALE LLC"
+  ],
+  "N": 7,
+  "kept": 3,
+  "truth_n": 3,
+  "truth_attr": 3,
+  "truth_kept": 3,
+  "truth_match_kinds": {
+   "exact": 3
+  },
+  "cand_kinds": {
+   "exact": 3,
+   "none": 4
+  }
+ },
+ {
+  "sid": "h7-subject:non-round:0e60eb66adadc21f4be4187e6ca87242d544bcce4ae57592bdc1f65cde1a8001",
+  "loan": "ba808176",
+  "borrowers": [
+   "9703 LLC"
+  ],
+  "N": 48,
+  "kept": 1,
+  "truth_n": 3,
+  "truth_attr": 0,
+  "truth_kept": 0,
+  "truth_match_kinds": {},
+  "cand_kinds": {
+   "none": 47,
+   "exact": 1
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:a6dd2e3136d10b2068ef95de45f80a233063493140468f1d4f943c20f9f0c205",
+  "loan": "d0e218bc",
+  "borrowers": [
+   "FIRST SIGMA DE LLC"
+  ],
+  "N": 5,
+  "kept": 0,
+  "truth_n": 7,
+  "truth_attr": 7,
+  "truth_kept": 7,
+  "truth_match_kinds": {
+   "exact": 7
+  },
+  "cand_kinds": {
+   "none": 5
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:a7dac634b44cc8175e7bde5b0a386f2ecda11361200f3b04bce5a3b84aa73ee3",
+  "loan": "9970d913",
+  "borrowers": [
+   "FIRST SIGMA DE LLC"
+  ],
+  "N": 35,
+  "kept": 0,
+  "truth_n": 7,
+  "truth_attr": 7,
+  "truth_kept": 7,
+  "truth_match_kinds": {
+   "exact": 7
+  },
+  "cand_kinds": {
+   "none": 35
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:9321e1c2650cce00f18b45f17c9a8f124b89d38912c52275d94e9570a69862db",
+  "loan": "61d6cd03",
+  "borrowers": [
+   "SAXONY TOWERS REALTY CORP"
+  ],
+  "N": 29,
+  "kept": 1,
+  "truth_n": 4,
+  "truth_attr": 4,
+  "truth_kept": 3,
+  "truth_match_kinds": {
+   "token": 3,
+   "none": 1
+  },
+  "cand_kinds": {
+   "none": 28,
+   "token": 1
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:68f1e66c57a4b35a301701ef284c0ad4fcbae8459fd3d193bf760c1f3a8b5e12",
+  "loan": "5387c521",
+  "borrowers": [
+   "111 117 WEST 96TH STREET OWNERS  INC"
+  ],
+  "N": 10,
+  "kept": 6,
+  "truth_n": 4,
+  "truth_attr": 4,
+  "truth_kept": 4,
+  "truth_match_kinds": {
+   "token": 4
+  },
+  "cand_kinds": {
+   "token": 6,
+   "none": 4
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:a32cf2aeb36b3b0a113822dddd8137d054b2f59b7146a2c664483b2d0f686678",
+  "loan": "42bb478b",
+  "borrowers": [
+   "BRUCKNER II LLC",
+   "BRUCKNER III LLC",
+   "BRUCKNER IV LLC",
+   "BRUCKNER PARTNERS LLC"
+  ],
+  "N": 13,
+  "kept": 2,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "exact": 2
+  },
+  "cand_kinds": {
+   "none": 10,
+   "exact": 2,
+   "no_owner": 1
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:7b694e770de8331827bf785d9303bf2d5d8857fdc235011fa2a9b0c2cf37dbf6",
+  "loan": "0048d206",
+  "borrowers": [
+   "TALBOT APARTMENTS  INC"
+  ],
+  "N": 21,
+  "kept": 5,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "exact": 1,
+   "token": 1
+  },
+  "cand_kinds": {
+   "none": 16,
+   "token": 4,
+   "exact": 1
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:4e262201c8bba72398744b8bd7361b5e421fe4935f723068ae0234631f3ea437",
+  "loan": "a7ae4cbb",
+  "borrowers": [
+   "CSB COURTLANDT LLC",
+   "CSB LESSEE LLC"
+  ],
+  "N": 24,
+  "kept": 1,
+  "truth_n": 3,
+  "truth_attr": 0,
+  "truth_kept": 0,
+  "truth_match_kinds": {},
+  "cand_kinds": {
+   "none": 23,
+   "exact": 1
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:5605d0d3f0f90d8112d6f8cecfadd323843a99158ce337e981da62902fe8e5f1",
+  "loan": "eba02144",
+  "borrowers": [
+   "WEST 23RD STREET OWNERS CORP"
+  ],
+  "N": 61,
+  "kept": 16,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 1,
+  "truth_match_kinds": {
+   "none": 1,
+   "exact": 1
+  },
+  "cand_kinds": {
+   "none": 45,
+   "token": 15,
+   "exact": 1
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:61ff4697c949b77dc45ed97955fe1ef7540aeb36ca3cbd813b9287aa68d1a000",
+  "loan": "327d8ca4",
+  "borrowers": [
+   "CORNER VIEW ASSOCIATION  INC"
+  ],
+  "N": 128,
+  "kept": 2,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "token": 2
+  },
+  "cand_kinds": {
+   "none": 126,
+   "token": 2
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:69dbf5dad6b0ea938a91beeff6e9efb3edd9b090b7bc857b1a2646244c3ba394",
+  "loan": "0bf44dbc",
+  "borrowers": [
+   "1809 EMMONS AVENUE RETAIL LLC"
+  ],
+  "N": 25,
+  "kept": 0,
+  "truth_n": 25,
+  "truth_attr": 0,
+  "truth_kept": 0,
+  "truth_match_kinds": {},
+  "cand_kinds": {
+   "none": 25
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:7176a1130cca70a76987dbbdb48dfff230c8fc62a9b6fbd53ca6ef98fc9e5215",
+  "loan": "0b247680",
+  "borrowers": [
+   "THOR ATLANTIC GARDENS LLC"
+  ],
+  "N": 41,
+  "kept": 9,
+  "truth_n": 9,
+  "truth_attr": 9,
+  "truth_kept": 9,
+  "truth_match_kinds": {
+   "token": 9
+  },
+  "cand_kinds": {
+   "none": 32,
+   "token": 9
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:afbc72166d302b7488178d320d3eec29c606247a249074f0950e6b386022669b",
+  "loan": "3330deb3",
+  "borrowers": [
+   "208 216 EAST 82ND ST  OWNERS CORP"
+  ],
+  "N": 31,
+  "kept": 3,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 1,
+  "truth_match_kinds": {
+   "token": 1,
+   "none": 1
+  },
+  "cand_kinds": {
+   "none": 28,
+   "token": 3
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:0a6ff10eaf74e3ff8cde56399cf9297813f3833885064be70351eae286e6da9b",
+  "loan": "08b389ea",
+  "borrowers": [
+   "5 HANOVER SQUARE LLC"
+  ],
+  "N": 6,
+  "kept": 3,
+  "truth_n": 3,
+  "truth_attr": 0,
+  "truth_kept": 0,
+  "truth_match_kinds": {},
+  "cand_kinds": {
+   "token": 3,
+   "none": 3
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:5f7e0ce3c68a0aa33aad5547125b2eb574b05b523a0bc901e64d757f94d18108",
+  "loan": "1785a5ed",
+  "borrowers": [
+   "520 W  50TH ST   INC"
+  ],
+  "N": 66,
+  "kept": 3,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "token": 2
+  },
+  "cand_kinds": {
+   "none": 63,
+   "token": 3
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:9edc5d1ad11f6c2897c1b2f2c3fc015fbe75fb018fb289092e38b224540bdb01",
+  "loan": "f2149707",
+  "borrowers": [
+   "THE KNOLLS COOPERATIVE SECTION NO  1  INC"
+  ],
+  "N": 13,
+  "kept": 1,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 0,
+  "truth_match_kinds": {
+   "none": 2
+  },
+  "cand_kinds": {
+   "none": 12,
+   "token": 1
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:6506716451b8405fbd83f48449d4f858881f94bc3b8a7ea3001e7b5399a3a018",
+  "loan": "49d6e4dc",
+  "borrowers": [
+   "11 20 46TH ROAD OWNER LLC",
+   "74 KENT OWNER LLC"
+  ],
+  "N": 20,
+  "kept": 2,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "exact": 2
+  },
+  "cand_kinds": {
+   "none": 18,
+   "exact": 2
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:33c142c87a053e1201c7f5ee7c59ca4be8a7cee27de20f6671f04eed4134ed24",
+  "loan": "c8aaebd5",
+  "borrowers": [
+   "THE CASINO MANSIONS COMPANY"
+  ],
+  "N": 19,
+  "kept": 2,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "exact": 2
+  },
+  "cand_kinds": {
+   "exact": 2,
+   "none": 17
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:0a8342fd463d4869d604e870c300e5f43f452e10ff8d815b2e53e26302743be6",
+  "loan": "abc2df54",
+  "borrowers": [
+   "BRIARWOOD OWNERS  CORP"
+  ],
+  "N": 72,
+  "kept": 1,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "token": 2
+  },
+  "cand_kinds": {
+   "none": 71,
+   "token": 1
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:3a1927e4492bb6af5eac369d899c37a71dffd9dea27762f5f1894d5abe0cea0a",
+  "loan": "b34ace20",
+  "borrowers": [
+   "HIGHPOINT ON THE HUDSON OWNERS  INC"
+  ],
+  "N": 15,
+  "kept": 4,
+  "truth_n": 4,
+  "truth_attr": 4,
+  "truth_kept": 4,
+  "truth_match_kinds": {
+   "token": 4
+  },
+  "cand_kinds": {
+   "none": 11,
+   "token": 4
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:3709a9d00478c8ed94c040f6cd950bec0ea503523b5cb8609d04cce3ce2d5d1a",
+  "loan": "fe7fe96d",
+  "borrowers": [
+   "87 89 PEARL LLC",
+   "AHEAD REALTY LLC",
+   "PH WATER STREET LLC"
+  ],
+  "N": 32,
+  "kept": 1,
+  "truth_n": 6,
+  "truth_attr": 1,
+  "truth_kept": 1,
+  "truth_match_kinds": {
+   "exact": 1
+  },
+  "cand_kinds": {
+   "exact": 1,
+   "none": 31
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:f608ce46d91a6e61eddb84f291cbb81c8fe43cb3a2fddc12d78c438fb55fc3a8",
+  "loan": "2b7bc3d7",
+  "borrowers": [
+   "126 BEDFORD AVENUE OWNER LLC",
+   "152 NORMAN AVENUE OWNER LLC"
+  ],
+  "N": 63,
+  "kept": 4,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "exact": 2
+  },
+  "cand_kinds": {
+   "none": 59,
+   "exact": 2,
+   "token": 2
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:865c66c667292597a971c715ec92735a99d0a77455110ff8be59d7cbf8e8bcdd",
+  "loan": "433c6803",
+  "borrowers": [
+   "WEST 12TH STREET TENANTS CORP"
+  ],
+  "N": 54,
+  "kept": 5,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 0,
+  "truth_match_kinds": {
+   "none": 2
+  },
+  "cand_kinds": {
+   "none": 49,
+   "token": 5
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:9e0c46691db2317fd638d4b389c4df858d9e6f26237d9e529af19101ca2dc820",
+  "loan": "9a06659b",
+  "borrowers": [
+   "THE RIDGE OWNERS CORP"
+  ],
+  "N": 36,
+  "kept": 17,
+  "truth_n": 14,
+  "truth_attr": 14,
+  "truth_kept": 14,
+  "truth_match_kinds": {
+   "token": 14
+  },
+  "cand_kinds": {
+   "none": 19,
+   "token": 17
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:343b390cda556db86a9448d2c13ca79b520630785f78471403c475e653c5f639",
+  "loan": "076f078b",
+  "borrowers": [
+   "6035 BROADWAY OWNERS CORP"
+  ],
+  "N": 6,
+  "kept": 1,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "exact": 1,
+   "token": 1
+  },
+  "cand_kinds": {
+   "none": 5,
+   "exact": 1
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:f5588ba9a55f697afea24ed55d8b34f58e1b544ad9bc5af07b6eaf49ae430ef7",
+  "loan": "913f6191",
+  "borrowers": [
+   "104 LINDEN BLVD  LLC",
+   "1416 ST MARKS AVE  LLC",
+   "4415 3 AVE  LLC",
+   "4417 3 AVE LLC"
+  ],
+  "N": 154,
+  "kept": 7,
+  "truth_n": 4,
+  "truth_attr": 4,
+  "truth_kept": 4,
+  "truth_match_kinds": {
+   "exact": 3,
+   "token": 1
+  },
+  "cand_kinds": {
+   "none": 147,
+   "exact": 3,
+   "token": 4
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:a24d5b94519f5310ebb3fbb19862594340607139c84c14b0c789a71244008471",
+  "loan": "784461d8",
+  "borrowers": [
+   "951 BROADWAY BUSHWICK BUILDERS SPONSOR LLC",
+   "951 MADISON HH LLC",
+   "DG 951 SPONSOR LLC",
+   "FELDMAN 951 MADISON SPONSOR LLC",
+   "IDST 951 SPONSOR LLC"
+  ],
+  "N": 46,
+  "kept": 2,
+  "truth_n": 2,
+  "truth_attr": 0,
+  "truth_kept": 0,
+  "truth_match_kinds": {},
+  "cand_kinds": {
+   "none": 44,
+   "token": 2
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:03ff08e79939253c5baa893d07f37d872d3d9b41b611d036fa72ee1ae531c2ae",
+  "loan": "2a2d2adf",
+  "borrowers": [
+   "110 S 2 WBURG LLC",
+   "110 S 4 RLA LLC",
+   "175 S 4 RLA LLC",
+   "175 S 4 WBURG LLC"
+  ],
+  "N": 50,
+  "kept": 2,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "token": 1,
+   "exact": 1
+  },
+  "cand_kinds": {
+   "none": 48,
+   "token": 1,
+   "exact": 1
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:13ff475129dbf3a8874ae7ab326c4ca40ef96552cb935aaf8435450c014a0d6a",
+  "loan": "c88a233f",
+  "borrowers": [
+   "574 MANHATTAN AVE OWNER  LLC",
+   "591 MANHATTAN AVE OWNER LLC",
+   "592 MANHATTAN AVE OWNER  LLC",
+   "593 MANHATTAN AVE OWNER  LLC",
+   "595 MANHATTAN AVE OWNER  LLC",
+   "602 MANHATTAN AVE OWNER  LLC",
+   "872 LORIMER ST OWNER LLC"
+  ],
+  "N": 78,
+  "kept": 11,
+  "truth_n": 7,
+  "truth_attr": 7,
+  "truth_kept": 7,
+  "truth_match_kinds": {
+   "exact": 5,
+   "token": 2
+  },
+  "cand_kinds": {
+   "none": 67,
+   "token": 6,
+   "exact": 5
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:f666262caacbe856aca99ad1ae40d1dea21df4a20be827e9ed693f4515c6647b",
+  "loan": "b85b0818",
+  "borrowers": [
+   "451 WEST OWNERS LTD"
+  ],
+  "N": 1,
+  "kept": 0,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 1,
+  "truth_match_kinds": {
+   "none": 1,
+   "exact": 1
+  },
+  "cand_kinds": {
+   "none": 1
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:91b2df274815b9997ac6ff6e772f2e142c7b3eac3ea61777131611896d6095a6",
+  "loan": "9b01e880",
+  "borrowers": [
+   "SMITELL LLC",
+   "SMITELL RETAIL LLC",
+   "SMITELL SPONSOR LLC"
+  ],
+  "N": 25,
+  "kept": 0,
+  "truth_n": 172,
+  "truth_attr": 0,
+  "truth_kept": 0,
+  "truth_match_kinds": {},
+  "cand_kinds": {
+   "none": 25
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:1fdc13503b4934adefd3d065201b7036559d1bd5ea2430095f6c51290cd3f888",
+  "loan": "b1409df0",
+  "borrowers": [
+   "244 246 EAST 90TH STREET RESIDENTS  INC"
+  ],
+  "N": 66,
+  "kept": 6,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "token": 2
+  },
+  "cand_kinds": {
+   "none": 59,
+   "no_owner": 1,
+   "token": 6
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:2418355a0c965813e4d8d3922a97f886d3e79211ba7c8ddf85b34718259cc4ae",
+  "loan": "07571f6c",
+  "borrowers": [
+   "321 323 COURT STREET LLC"
+  ],
+  "N": 58,
+  "kept": 3,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "exact": 2
+  },
+  "cand_kinds": {
+   "exact": 2,
+   "none": 55,
+   "token": 1
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:3991a5741b4f55913b9dc7a66ad63b6a5d93b39bf7b30b82618163dfbcf09625",
+  "loan": "49a1e6bb",
+  "borrowers": [
+   "WEST 24TH OWNERS CORP"
+  ],
+  "N": 50,
+  "kept": 2,
+  "truth_n": 3,
+  "truth_attr": 3,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "exact": 2,
+   "none": 1
+  },
+  "cand_kinds": {
+   "none": 48,
+   "exact": 2
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:51eae762b75edfcd0d73a0e6de35dd3e29c36e8a207ca7d8c5a154ec6bcd7301",
+  "loan": "e8e5a5f2",
+  "borrowers": [
+   "82 HORATIO OWNERS LTD"
+  ],
+  "N": 26,
+  "kept": 1,
+  "truth_n": 4,
+  "truth_attr": 4,
+  "truth_kept": 1,
+  "truth_match_kinds": {
+   "exact": 1,
+   "none": 3
+  },
+  "cand_kinds": {
+   "none": 25,
+   "exact": 1
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:c1803335d23eff218e1d19afd43acbdd7b552e79522646ce12b7623e2b14c020",
+  "loan": "2bd9a92f",
+  "borrowers": [
+   "243 REALTY LLC",
+   "386 REALTY LLC"
+  ],
+  "N": 113,
+  "kept": 2,
+  "truth_n": 2,
+  "truth_attr": 2,
+  "truth_kept": 2,
+  "truth_match_kinds": {
+   "exact": 2
+  },
+  "cand_kinds": {
+   "none": 111,
+   "exact": 2
+  }
+ },
+ {
+  "sid": "h7-subject:round-exact-lender:8fd55140aa370ed0de8a0165bdc2badf437576fa21ed6840f7cdc922380e5a01",
+  "loan": "7b18a441",
+  "borrowers": [
+   "334 EAST 148TH LLC",
+   "552 SOUTHERN BLVD  LLC",
+   "818 STERLING LLC"
+  ],
+  "N": 78,
+  "kept": 2,
+  "truth_n": 3,
+  "truth_attr": 3,
+  "truth_kept": 3,
+  "truth_match_kinds": {
+   "exact": 3
+  },
+  "cand_kinds": {
+   "none": 76,
+   "exact": 2
+  }
+ }
+]

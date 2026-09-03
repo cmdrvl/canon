@@ -1,0 +1,237 @@
+{
+ "method": "truth unit lots (1001-7499) mapped to the single 75xx billing lot on the same block in PLUTO 26v1; blocks with 0 or >1 billing lots left unmapped",
+ "rows": [
+  {
+   "sid": "h7-subject:non-round:0e60eb66adadc21f4be4187e6ca87242d544bcce4ae57592bdc1f65cde1a8001",
+   "loan": "ba808176",
+   "unit_lots": 3,
+   "billing_candidates_on_block": [
+    1,
+    1,
+    1
+   ],
+   "truth_in_universe_before": "0/3",
+   "truth_in_universe_after": "1/1",
+   "kind": "reach_gained"
+  },
+  {
+   "sid": "h7-subject:non-round:16bdd00a842361459f9a38c48354b5b2545a871c22e378b1fe4a37b641655963",
+   "loan": "c6da00e8",
+   "unit_lots": 3,
+   "billing_candidates_on_block": [
+    2,
+    2,
+    2
+   ],
+   "truth_in_universe_before": "0/3",
+   "truth_in_universe_after": "0/0",
+   "kind": "still_unreached"
+  },
+  {
+   "sid": "h7-subject:non-round:655a127dc453d12220696e0a0f76929d2ab8dd91ebd1dbe363173e50408fb34b",
+   "loan": "beeb77b9",
+   "unit_lots": 145,
+   "billing_candidates_on_block": [
+    3,
+    3,
+    3
+   ],
+   "truth_in_universe_before": "2/147",
+   "truth_in_universe_after": "2/2",
+   "kind": "still_unreached"
+  },
+  {
+   "sid": "h7-subject:non-round:68a1a4ced3f7c16edc483b877013238d0e2c26692c9ef0a5a721e6bb25872612",
+   "loan": "e134fd1e",
+   "unit_lots": 2,
+   "billing_candidates_on_block": [
+    6,
+    1
+   ],
+   "truth_in_universe_before": "0/2",
+   "truth_in_universe_after": "0/1",
+   "kind": "still_unreached"
+  },
+  {
+   "sid": "h7-subject:non-round:6b36cd934c9236f06c0f45d7d71ce4cfecedba98390b2da5947ee8fcf3c943ef",
+   "loan": "13fe14e9",
+   "unit_lots": 4,
+   "billing_candidates_on_block": [
+    4,
+    4,
+    4
+   ],
+   "truth_in_universe_before": "0/4",
+   "truth_in_universe_after": "0/0",
+   "kind": "still_unreached"
+  },
+  {
+   "sid": "h7-subject:non-round:95ffa8e15d66c259fb48f50e0ba3623ad1a34990d430f4513091658055c1f1fd",
+   "loan": "4b2d7fc3",
+   "unit_lots": 2,
+   "billing_candidates_on_block": [
+    0,
+    0
+   ],
+   "truth_in_universe_before": "1/2",
+   "truth_in_universe_after": "0/0",
+   "kind": "still_unreached"
+  },
+  {
+   "sid": "h7-subject:non-round:ae5fa9ee31b1670d1af89f8fd3632c4f207957a15486b4007a6776495f960309",
+   "loan": "e91ba17e",
+   "unit_lots": 2,
+   "billing_candidates_on_block": [
+    4,
+    4
+   ],
+   "truth_in_universe_before": "2/4",
+   "truth_in_universe_after": "2/2",
+   "kind": "still_unreached"
+  },
+  {
+   "sid": "h7-subject:non-round:ce9f18ea767e4e101ba7a073b26a2b6cfa32f452dd5fb34d935d79acfda7b8a5",
+   "loan": "5f20d7e1",
+   "unit_lots": 3,
+   "billing_candidates_on_block": [
+    2,
+    2,
+    2
+   ],
+   "truth_in_universe_before": "0/3",
+   "truth_in_universe_after": "0/0",
+   "kind": "still_unreached"
+  },
+  {
+   "sid": "h7-subject:non-round:e3a5228d84bb6bf01ff03e2849e4a996f223cb1fcff79eff04a65d84dcfa8deb",
+   "loan": "d709ee23",
+   "unit_lots": 10,
+   "billing_candidates_on_block": [
+    2,
+    2,
+    2
+   ],
+   "truth_in_universe_before": "0/10",
+   "truth_in_universe_after": "0/0",
+   "kind": "still_unreached"
+  },
+  {
+   "sid": "h7-subject:non-round:f6dfda5297186039d20a3be759370b98d62463ad7e863f900eb8a66eac2497e6",
+   "loan": "7f1c77c1",
+   "unit_lots": 16,
+   "billing_candidates_on_block": [
+    6,
+    6,
+    6
+   ],
+   "truth_in_universe_before": "0/16",
+   "truth_in_universe_after": "0/0",
+   "kind": "still_unreached"
+  },
+  {
+   "sid": "h7-subject:non-round:fd771efaa8d381c6a177515ebe97b7e2354d75604ea8be9a05b6336015ae4135",
+   "loan": "b825ec3c",
+   "unit_lots": 2,
+   "billing_candidates_on_block": [
+    0,
+    0
+   ],
+   "truth_in_universe_before": "1/2",
+   "truth_in_universe_after": "0/0",
+   "kind": "still_unreached"
+  },
+  {
+   "sid": "h7-subject:round-exact-lender:0a6ff10eaf74e3ff8cde56399cf9297813f3833885064be70351eae286e6da9b",
+   "loan": "08b389ea",
+   "unit_lots": 3,
+   "billing_candidates_on_block": [
+    2,
+    2,
+    2
+   ],
+   "truth_in_universe_before": "0/3",
+   "truth_in_universe_after": "0/0",
+   "kind": "still_unreached"
+  },
+  {
+   "sid": "h7-subject:round-exact-lender:343b390cda556db86a9448d2c13ca79b520630785f78471403c475e653c5f639",
+   "loan": "076f078b",
+   "unit_lots": 2,
+   "billing_candidates_on_block": [
+    0,
+    0
+   ],
+   "truth_in_universe_before": "1/2",
+   "truth_in_universe_after": "0/0",
+   "kind": "still_unreached"
+  },
+  {
+   "sid": "h7-subject:round-exact-lender:3709a9d00478c8ed94c040f6cd950bec0ea503523b5cb8609d04cce3ce2d5d1a",
+   "loan": "fe7fe96d",
+   "unit_lots": 5,
+   "billing_candidates_on_block": [
+    4,
+    4,
+    4
+   ],
+   "truth_in_universe_before": "1/6",
+   "truth_in_universe_after": "1/1",
+   "kind": "still_unreached"
+  },
+  {
+   "sid": "h7-subject:round-exact-lender:4e262201c8bba72398744b8bd7361b5e421fe4935f723068ae0234631f3ea437",
+   "loan": "a7ae4cbb",
+   "unit_lots": 2,
+   "billing_candidates_on_block": [
+    1,
+    1
+   ],
+   "truth_in_universe_before": "0/3",
+   "truth_in_universe_after": "1/2",
+   "kind": "reach_gained"
+  },
+  {
+   "sid": "h7-subject:round-exact-lender:69dbf5dad6b0ea938a91beeff6e9efb3edd9b090b7bc857b1a2646244c3ba394",
+   "loan": "0bf44dbc",
+   "unit_lots": 25,
+   "billing_candidates_on_block": [
+    1,
+    1,
+    1
+   ],
+   "truth_in_universe_before": "0/25",
+   "truth_in_universe_after": "1/1",
+   "kind": "reach_gained"
+  },
+  {
+   "sid": "h7-subject:round-exact-lender:91b2df274815b9997ac6ff6e772f2e142c7b3eac3ea61777131611896d6095a6",
+   "loan": "9b01e880",
+   "unit_lots": 172,
+   "billing_candidates_on_block": [
+    2,
+    2,
+    2
+   ],
+   "truth_in_universe_before": "0/172",
+   "truth_in_universe_after": "0/0",
+   "kind": "still_unreached"
+  },
+  {
+   "sid": "h7-subject:round-exact-lender:a24d5b94519f5310ebb3fbb19862594340607139c84c14b0c789a71244008471",
+   "loan": "784461d8",
+   "unit_lots": 2,
+   "billing_candidates_on_block": [
+    2,
+    2
+   ],
+   "truth_in_universe_before": "0/2",
+   "truth_in_universe_after": "0/0",
+   "kind": "still_unreached"
+  }
+ ],
+ "stats": {
+  "reach_gained": 3,
+  "still_unreached": 15,
+  "no_unit_lots": 52
+ }
+}

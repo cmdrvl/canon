@@ -1,0 +1,643 @@
+{
+ "population_id": "h7-d1-residuals-2026-09-03",
+ "method": "MapPLUTO/PLUTO 26v1 OWNERNAME vs ACRIS party_type 1 PARTY_NAME_NORM for the subject document; exact norm equality or stop-word-stripped token containment / >=2 shared tokens",
+ "rule": "a lot whose tax owner matches no borrower is excluded (owner_mismatch sum == 0); applied only when at least one candidate lot matches",
+ "rows": [
+  {
+   "subject_id": "h7-subject:non-round:1ad5bdba3889b00b072822850d087dbd433dbc1fe560d90751fc6b7e5ef55cda",
+   "truth_lots_with_owner": 3,
+   "truth_lots_matching": 0,
+   "kinds": [
+    "none",
+    "none",
+    "none"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:1f301680cb0f2c88d43c40f0869779eca34a07dfaca12b657b4509486df60a46",
+   "truth_lots_with_owner": 6,
+   "truth_lots_matching": 0,
+   "kinds": [
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:20869bd800113cc1e8656827b4e09582b9d998b874cce0f8a6b7225ea9ab9893",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "token",
+    "token"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:2808547cf99b9ac8c5c091cd58f3aab0851274c3ab2550237fdc9f23ff5a0a7f",
+   "truth_lots_with_owner": 3,
+   "truth_lots_matching": 3,
+   "kinds": [
+    "exact",
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:37ab22474cdc2c5e7031b19537a5516d80e12f0e57da3edf8eb45b08e2f8f5d4",
+   "truth_lots_with_owner": 3,
+   "truth_lots_matching": 3,
+   "kinds": [
+    "exact",
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:3899edce2a164eda4fdfae93de6203c73c09477b1dfe6520e97fa734307c25c3",
+   "truth_lots_with_owner": 4,
+   "truth_lots_matching": 3,
+   "kinds": [
+    "exact",
+    "none",
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:45ec05135653deebc211f6056f6d6492a947a8a2ed73dd86c26e6126e3d00a67",
+   "truth_lots_with_owner": 3,
+   "truth_lots_matching": 3,
+   "kinds": [
+    "token",
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:4bb51b76b9a709ec6f9cc298ac7e441f77a1320ee4edac1124efa9b11c05293f",
+   "truth_lots_with_owner": 10,
+   "truth_lots_matching": 10,
+   "kinds": [
+    "exact",
+    "exact",
+    "exact",
+    "exact",
+    "exact",
+    "exact",
+    "exact",
+    "exact",
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:524efa302815a83e7e33419b92fdb25064300e6185537c4c4ae1aca9effbd356",
+   "truth_lots_with_owner": 4,
+   "truth_lots_matching": 4,
+   "kinds": [
+    "exact",
+    "exact",
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:56f3e4fa43b049e025eebbc3548ddebd72c1759bb2490d720fe7dfc39e3a30dd",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:5934bb9370d31d9b1fa687544020e5e006512cb16d073ed3712ba0cf37a17c36",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "token",
+    "token"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:607a641f16e5c5a60a0490d5b38d606e4d15bb34078183255c3f84935c6f56e6",
+   "truth_lots_with_owner": 6,
+   "truth_lots_matching": 5,
+   "kinds": [
+    "token",
+    "token",
+    "token",
+    "none",
+    "token",
+    "token"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:655a127dc453d12220696e0a0f76929d2ab8dd91ebd1dbe363173e50408fb34b",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "exact",
+    "token"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:7e3690f74c34f5b945ab0866c8af2f7bf06eaaa12e7b1d22c8c35f43468e8496",
+   "truth_lots_with_owner": 6,
+   "truth_lots_matching": 6,
+   "kinds": [
+    "exact",
+    "exact",
+    "exact",
+    "exact",
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:84b4195d0c6095348830cdee94ada12a4db1483ab31f88aacb4c9b1c1335e916",
+   "truth_lots_with_owner": 6,
+   "truth_lots_matching": 6,
+   "kinds": [
+    "exact",
+    "exact",
+    "exact",
+    "exact",
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:8ac12f0a324a578c82b0016151b093c3304c8160711294554b01eaecf837bd7b",
+   "truth_lots_with_owner": 26,
+   "truth_lots_matching": 26,
+   "kinds": [
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:947b6d4949589dd94789958dcae3b2131e6e93cf55d9fd661b2c247a63dfc387",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:95ffa8e15d66c259fb48f50e0ba3623ad1a34990d430f4513091658055c1f1fd",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "exact",
+    "token"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:97ae3eeb8035a1914b178d2cf3a447b50735e954a33067d57d6e9a5e1c3e6d58",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 1,
+   "kinds": [
+    "exact",
+    "none"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:ae5fa9ee31b1670d1af89f8fd3632c4f207957a15486b4007a6776495f960309",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "exact",
+    "token"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:b76aa620c96bfba4de6cabde58b67c576c15ab7ad7e6a16d24e87a2069a30ec5",
+   "truth_lots_with_owner": 3,
+   "truth_lots_matching": 3,
+   "kinds": [
+    "exact",
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:c8217df560eb3d08527d5f562299988dd2e287326ca61590a0c9f462bf1ab251",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 1,
+   "kinds": [
+    "exact",
+    "none"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:cf2f4789d585f12299a6629be9757434edb1259b3451a8b95addbdb1bd3ad55e",
+   "truth_lots_with_owner": 3,
+   "truth_lots_matching": 3,
+   "kinds": [
+    "exact",
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:d2cfbf35920510e5b64e5ce9b946ce17317ba26ad9a740bf3381ce8add5126f5",
+   "truth_lots_with_owner": 3,
+   "truth_lots_matching": 3,
+   "kinds": [
+    "exact",
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:e1ee05351a5b681c0dcda44e19dd575c686c3c630809c137bd64cc3232bc256c",
+   "truth_lots_with_owner": 3,
+   "truth_lots_matching": 3,
+   "kinds": [
+    "exact",
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:f970390c493da3e962182756639afd861946bb781d236481165898bd617f4952",
+   "truth_lots_with_owner": 5,
+   "truth_lots_matching": 0,
+   "kinds": [
+    "none",
+    "none",
+    "none",
+    "none",
+    "none"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:non-round:fd771efaa8d381c6a177515ebe97b7e2354d75604ea8be9a05b6336015ae4135",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "exact",
+    "token"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:03ff08e79939253c5baa893d07f37d872d3d9b41b611d036fa72ee1ae531c2ae",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "token",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:0a8342fd463d4869d604e870c300e5f43f452e10ff8d815b2e53e26302743be6",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "token",
+    "token"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:13ff475129dbf3a8874ae7ab326c4ca40ef96552cb935aaf8435450c014a0d6a",
+   "truth_lots_with_owner": 7,
+   "truth_lots_matching": 7,
+   "kinds": [
+    "exact",
+    "exact",
+    "token",
+    "token",
+    "exact",
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:1fdc13503b4934adefd3d065201b7036559d1bd5ea2430095f6c51290cd3f888",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "token",
+    "token"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:2418355a0c965813e4d8d3922a97f886d3e79211ba7c8ddf85b34718259cc4ae",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:33c142c87a053e1201c7f5ee7c59ca4be8a7cee27de20f6671f04eed4134ed24",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:343b390cda556db86a9448d2c13ca79b520630785f78471403c475e653c5f639",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "exact",
+    "token"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:3709a9d00478c8ed94c040f6cd950bec0ea503523b5cb8609d04cce3ce2d5d1a",
+   "truth_lots_with_owner": 1,
+   "truth_lots_matching": 1,
+   "kinds": [
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:3991a5741b4f55913b9dc7a66ad63b6a5d93b39bf7b30b82618163dfbcf09625",
+   "truth_lots_with_owner": 3,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "exact",
+    "none",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:3a1927e4492bb6af5eac369d899c37a71dffd9dea27762f5f1894d5abe0cea0a",
+   "truth_lots_with_owner": 4,
+   "truth_lots_matching": 4,
+   "kinds": [
+    "token",
+    "token",
+    "token",
+    "token"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:51eae762b75edfcd0d73a0e6de35dd3e29c36e8a207ca7d8c5a154ec6bcd7301",
+   "truth_lots_with_owner": 4,
+   "truth_lots_matching": 1,
+   "kinds": [
+    "exact",
+    "none",
+    "none",
+    "none"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:5605d0d3f0f90d8112d6f8cecfadd323843a99158ce337e981da62902fe8e5f1",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 1,
+   "kinds": [
+    "none",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:5f7e0ce3c68a0aa33aad5547125b2eb574b05b523a0bc901e64d757f94d18108",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "token",
+    "token"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:61ff4697c949b77dc45ed97955fe1ef7540aeb36ca3cbd813b9287aa68d1a000",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "token",
+    "token"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:6506716451b8405fbd83f48449d4f858881f94bc3b8a7ea3001e7b5399a3a018",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:68f1e66c57a4b35a301701ef284c0ad4fcbae8459fd3d193bf760c1f3a8b5e12",
+   "truth_lots_with_owner": 4,
+   "truth_lots_matching": 4,
+   "kinds": [
+    "token",
+    "token",
+    "token",
+    "token"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:7176a1130cca70a76987dbbdb48dfff230c8fc62a9b6fbd53ca6ef98fc9e5215",
+   "truth_lots_with_owner": 9,
+   "truth_lots_matching": 9,
+   "kinds": [
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:7b694e770de8331827bf785d9303bf2d5d8857fdc235011fa2a9b0c2cf37dbf6",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "exact",
+    "token"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:865c66c667292597a971c715ec92735a99d0a77455110ff8be59d7cbf8e8bcdd",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 0,
+   "kinds": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:8fd55140aa370ed0de8a0165bdc2badf437576fa21ed6840f7cdc922380e5a01",
+   "truth_lots_with_owner": 3,
+   "truth_lots_matching": 3,
+   "kinds": [
+    "exact",
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:9321e1c2650cce00f18b45f17c9a8f124b89d38912c52275d94e9570a69862db",
+   "truth_lots_with_owner": 4,
+   "truth_lots_matching": 3,
+   "kinds": [
+    "token",
+    "token",
+    "none",
+    "token"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:9e0c46691db2317fd638d4b389c4df858d9e6f26237d9e529af19101ca2dc820",
+   "truth_lots_with_owner": 14,
+   "truth_lots_matching": 14,
+   "kinds": [
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token",
+    "token"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:9edc5d1ad11f6c2897c1b2f2c3fc015fbe75fb018fb289092e38b224540bdb01",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 0,
+   "kinds": [
+    "none",
+    "none"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:a32cf2aeb36b3b0a113822dddd8137d054b2f59b7146a2c664483b2d0f686678",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:a6dd2e3136d10b2068ef95de45f80a233063493140468f1d4f943c20f9f0c205",
+   "truth_lots_with_owner": 7,
+   "truth_lots_matching": 7,
+   "kinds": [
+    "exact",
+    "exact",
+    "exact",
+    "exact",
+    "exact",
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:a7dac634b44cc8175e7bde5b0a386f2ecda11361200f3b04bce5a3b84aa73ee3",
+   "truth_lots_with_owner": 7,
+   "truth_lots_matching": 7,
+   "kinds": [
+    "exact",
+    "exact",
+    "exact",
+    "exact",
+    "exact",
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:afbc72166d302b7488178d320d3eec29c606247a249074f0950e6b386022669b",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 1,
+   "kinds": [
+    "token",
+    "none"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:c1803335d23eff218e1d19afd43acbdd7b552e79522646ce12b7623e2b14c020",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:f5588ba9a55f697afea24ed55d8b34f58e1b544ad9bc5af07b6eaf49ae430ef7",
+   "truth_lots_with_owner": 4,
+   "truth_lots_matching": 4,
+   "kinds": [
+    "exact",
+    "exact",
+    "exact",
+    "token"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:f608ce46d91a6e61eddb84f291cbb81c8fe43cb3a2fddc12d78c438fb55fc3a8",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 2,
+   "kinds": [
+    "exact",
+    "exact"
+   ]
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:f666262caacbe856aca99ad1ae40d1dea21df4a20be827e9ed693f4515c6647b",
+   "truth_lots_with_owner": 2,
+   "truth_lots_matching": 1,
+   "kinds": [
+    "none",
+    "exact"
+   ]
+  }
+ ],
+ "coverage": {
+  "subjects": 58,
+  "subjects_all_truth_match": 43,
+  "truth_lots": 224,
+  "truth_lots_matching": 194
+ }
+}
