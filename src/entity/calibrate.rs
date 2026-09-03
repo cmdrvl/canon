@@ -845,7 +845,7 @@ fn truth_space_row(
     let passes_quality_gates = precision_basis_points
         .is_some_and(|precision| precision >= CALIBRATE_PRECISION_MIN_BASIS_POINTS)
         && recall_basis_points.is_some_and(|recall| recall >= CALIBRATE_RECALL_MIN_BASIS_POINTS)
-        && critical_false_merges <= CALIBRATE_CRITICAL_FALSE_MERGES_MAX;
+        && critical_false_merges == CALIBRATE_CRITICAL_FALSE_MERGES_MAX;
 
     CalibrateTruthSpaceRow {
         row_index: 0,
@@ -1091,7 +1091,7 @@ fn optional_score(
 ) -> Result<Option<u32>, Refusal> {
     for field in fields {
         if let Some(found) = nested_value(value, field) {
-            return parse_score_value(found, canonical_field, *field, record_number).map(Some);
+            return parse_score_value(found, canonical_field, field, record_number).map(Some);
         }
     }
     Ok(None)
