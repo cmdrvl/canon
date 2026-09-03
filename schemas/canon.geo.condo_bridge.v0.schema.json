@@ -1,0 +1,176 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.condo_bridge.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.condo_bridge.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": "canon_geo_condo_bridge.v0", "type": "string" },
+    "method": {
+      "const": "PAD BBL current release: unit lot -> BILLING_BBL_KEY via exact row or LOW/HIGH range; truth plane re-expressed at billing-lot grain",
+      "type": "string"
+    },
+    "source_dataset": { "type": "string" },
+    "source_release": { "type": "string" },
+    "source_lineage_ids": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "request_blake3": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "stats": { "$ref": "#/$defs/stats" },
+    "rows": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/case" }
+    }
+  },
+  "required": [
+    "version",
+    "method",
+    "source_dataset",
+    "source_release",
+    "source_lineage_ids",
+    "request_blake3",
+    "stats",
+    "rows"
+  ],
+  "$defs": {
+    "bbl": {
+      "type": "string",
+      "pattern": "^[0-9]{10}$"
+    },
+    "reach_count": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "truth_members_in_universe": { "type": "integer", "minimum": 0 },
+        "truth_members": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["truth_members_in_universe", "truth_members"]
+    },
+    "stats": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cases": { "type": "integer", "minimum": 0 },
+        "fully_reached": { "type": "integer", "minimum": 0 },
+        "partial": { "type": "integer", "minimum": 0 },
+        "unreached": { "type": "integer", "minimum": 0 },
+        "truth_unit_lots": { "type": "integer", "minimum": 0 },
+        "truth_unit_lots_mapped": { "type": "integer", "minimum": 0 },
+        "truth_unit_lots_unmapped": { "type": "integer", "minimum": 0 }
+      },
+      "required": [
+        "cases",
+        "fully_reached",
+        "partial",
+        "unreached",
+        "truth_unit_lots",
+        "truth_unit_lots_mapped",
+        "truth_unit_lots_unmapped"
+      ]
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "case_id": { "type": "string" },
+        "loan_key": { "type": "string" },
+        "unit_lots": { "type": "integer", "minimum": 0 },
+        "lot_mappings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/lot_mapping" }
+        },
+        "unmapped_lots": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/unmapped_lot" }
+        },
+        "truth_original_grain": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/bbl" }
+        },
+        "universe_original_grain": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/bbl" }
+        },
+        "truth_billing_grain": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/bbl" }
+        },
+        "universe_billing_grain": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/bbl" }
+        },
+        "before": { "$ref": "#/$defs/reach_count" },
+        "after": { "$ref": "#/$defs/reach_count" },
+        "kind": {
+          "type": "string",
+          "enum": ["fully_reached", "partial", "unreached"]
+        }
+      },
+      "required": [
+        "case_id",
+        "unit_lots",
+        "lot_mappings",
+        "unmapped_lots",
+        "truth_original_grain",
+        "universe_original_grain",
+        "truth_billing_grain",
+        "universe_billing_grain",
+        "before",
+        "after",
+        "kind"
+      ]
+    },
+    "lot_mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "unit_lot": { "$ref": "#/$defs/bbl" },
+        "status": { "type": "string", "enum": ["mapped", "unmapped"] },
+        "billing_lot": { "$ref": "#/$defs/bbl" },
+        "condo_number": { "type": "integer", "minimum": 0 },
+        "candidate_billing_lots": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/bbl" }
+        },
+        "pad_bbl_keys": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/bbl" }
+        },
+        "match_kind": {
+          "type": "string",
+          "enum": ["exact_row", "range"]
+        }
+      },
+      "required": ["unit_lot", "status"]
+    },
+    "unmapped_lot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "unit_lot": { "$ref": "#/$defs/bbl" },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "no_pad_bbl_row",
+            "missing_billing_lot",
+            "ambiguous_billing_lots"
+          ]
+        },
+        "candidate_billing_lots": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/bbl" }
+        },
+        "pad_bbl_keys": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/bbl" }
+        }
+      },
+      "required": ["unit_lot", "reason"]
+    }
+  }
+}
