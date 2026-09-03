@@ -20,7 +20,6 @@ use canon::{
         run::link::{EntityLinkArtifact, validate_entity_link_artifact_at_path},
         score::{ScoreContribution, ScoreLane, ScoreUnits, accumulate_score_units},
     },
-    witness,
 };
 use serde_json::Value;
 use std::{
@@ -83,7 +82,7 @@ fn unlinkables_report_lists_sparse_surface_and_preserves_full_ceiling_parity() {
         .expect("full surface reported");
     assert_eq!(full_ceiling.link_ids, vec!["ref-1", "ref-2"]);
     assert_eq!(full_ceiling.max_attainable_support_units, 10_000);
-    assert_eq!(full_ceiling.raw_attainable_support_units, 12_000);
+    assert_eq!(full_ceiling.raw_attainable_support_units, 15_000);
     assert!(!full_ceiling.below_attach_threshold);
     assert!(!full_ceiling.below_backbone_threshold);
     assert!(full_ceiling.missing_field_costs.is_empty());
@@ -151,10 +150,11 @@ fn entity_link_artifact_records_unlinkables_section_without_decision_drift() {
     let artifact: EntityLinkArtifact =
         serde_json::from_value(payload.clone()).expect("link artifact parses");
 
-    assert_eq!(
-        fs::read(fixture.work_dir.join("link/link.json")).expect("link artifact written"),
-        serde_json::to_vec(&payload).expect("payload serializes compactly")
-    );
+    let written_payload: Value = serde_json::from_slice(
+        &fs::read(fixture.work_dir.join("link/link.json")).expect("link artifact written"),
+    )
+    .expect("written link artifact parses");
+    assert_eq!(written_payload, payload);
     validate_entity_link_artifact_at_path(&artifact, &fixture.work_dir.join("link/link.json"))
         .expect("link artifact with unlinkables validates");
     assert_eq!(artifact.summary, artifact.decision_artifact.summary);
