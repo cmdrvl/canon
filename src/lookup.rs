@@ -1,12 +1,46 @@
 #[cfg(test)]
 use crate::SpecialReason;
-use crate::{InputValues, Mapping, Registry, ResolveResult, Summary, UnresolvedEntry};
-use rusqlite::{Connection, OpenFlags, params};
+use crate::{
+    InputValues, Mapping, Registry, ResolveResult, Summary, UnresolvedEntry,
+    identity_scope::{
+        CanonicalTypeRef, ExactLookupQualification, IdentifierNamespaceRef, IdentityScope,
+        QualifiedIdentityRef, qualify_exact_lookup,
+    },
+};
+use rusqlite::{Connection, OpenFlags, Row, params};
+
+const LEGACY_REGISTRY_CANONICAL_TYPE_DIGEST: &str =
+    "blake3:42881f8ac1a32c3b2e04c1f1ec0fbf50a4529549819163e8326f9ebd96435370";
+
+/// Optional descriptor carried by callers that need scoped exact lookup.
+#[derive(Debug, Clone, Default)]
+pub struct ExactLookupContext {
+    pub namespace: Option<IdentifierNamespaceRef>,
+    pub scope: Option<IdentityScope>,
+}
+
+#[derive(Debug)]
+struct CandidateEntry {
+    canonical_id: String,
+    canonical_type: String,
+    rule_id: String,
+    namespace: Option<IdentifierNamespaceRef>,
+    scope: IdentityScope,
+}
 
 /// Resolve input values against registry and return mapping results
 pub fn resolve_values(
     registry: &Registry,
     input_values: &InputValues,
+) -> Result<ResolveResult, LookupError> {
+    resolve_values_with_context(registry, input_values, &ExactLookupContext::default())
+}
+
+/// Resolve input values against registry with an explicit exact-lookup scope.
+pub fn resolve_values_with_context(
+    registry: &Registry,
+    input_values: &InputValues,
+    context: &ExactLookupContext,
 ) -> Result<ResolveResult, LookupError> {
     // Open SQLite connection
     let conn = Connection::open_with_flags(
@@ -23,43 +57,30 @@ pub fn resolve_values(
         // Prepare statement for efficient querying
         let mut stmt = conn
             .prepare(
-                "SELECT canonical_id, canonical_type, rule_id
+                "SELECT canonical_id, canonical_type, rule_id, namespace, scope
                  FROM entries
                  WHERE input = ?1
-                 ORDER BY source_file ASC, entry_order ASC
-                 LIMIT 1",
+                 ORDER BY source_file ASC, entry_order ASC",
             )
             .map_err(|e| LookupError::Database(format!("Cannot prepare query statement: {}", e)))?;
 
         // Query each unique input value
         for input_value in input_values.values.keys() {
-            match stmt.query_row(params![input_value], |row| {
-                Ok((
-                    row.get::<_, String>(0)?, // canonical_id
-                    row.get::<_, String>(1)?, // canonical_type
-                    row.get::<_, String>(2)?, // rule_id
-                ))
-            }) {
-                Ok((canonical_id, canonical_type, rule_id)) => {
+            match first_qualified_candidate(&mut stmt, input_value, context)? {
+                Some(candidate) => {
                     mappings.push(Mapping {
                         input: input_value.clone(),
-                        canonical_id,
-                        canonical_type,
-                        rule_id,
+                        canonical_id: candidate.canonical_id,
+                        canonical_type: candidate.canonical_type,
+                        rule_id: candidate.rule_id,
                         confidence: "deterministic".to_string(),
                     });
                 }
-                Err(rusqlite::Error::QueryReturnedNoRows) => {
+                None => {
                     unresolved.push(UnresolvedEntry {
                         input: Some(input_value.clone()),
                         reason: "no matching rule".to_string(),
                     });
-                }
-                Err(e) => {
-                    return Err(LookupError::Database(format!(
-                        "Query error for '{}': {}",
-                        input_value, e
-                    )));
                 }
             }
         }
@@ -101,10 +122,139 @@ pub fn resolve_values(
     })
 }
 
+fn first_qualified_candidate(
+    stmt: &mut rusqlite::Statement<'_>,
+    input_value: &str,
+    context: &ExactLookupContext,
+) -> Result<Option<CandidateEntry>, LookupError> {
+    let mut rows = stmt
+        .query(params![input_value])
+        .map_err(|e| LookupError::Database(format!("Query error for '{}': {}", input_value, e)))?;
+
+    while let Some(row) = rows
+        .next()
+        .map_err(|e| LookupError::Database(format!("Query error for '{}': {}", input_value, e)))?
+    {
+        let candidate = CandidateEntry::from_row(row, input_value)?;
+        if candidate_is_qualified(input_value, &candidate, context)? {
+            return Ok(Some(candidate));
+        }
+    }
+
+    Ok(None)
+}
+
+impl CandidateEntry {
+    fn from_row(row: &Row<'_>, input_value: &str) -> Result<Self, LookupError> {
+        let namespace_json = row.get::<_, Option<String>>(3).map_err(|e| {
+            LookupError::Database(format!("Query error for '{}': {}", input_value, e))
+        })?;
+        let scope_json = row.get::<_, Option<String>>(4).map_err(|e| {
+            LookupError::Database(format!("Query error for '{}': {}", input_value, e))
+        })?;
+
+        Ok(Self {
+            canonical_id: row.get(0).map_err(|e| {
+                LookupError::Database(format!("Query error for '{}': {}", input_value, e))
+            })?,
+            canonical_type: row.get(1).map_err(|e| {
+                LookupError::Database(format!("Query error for '{}': {}", input_value, e))
+            })?,
+            rule_id: row.get(2).map_err(|e| {
+                LookupError::Database(format!("Query error for '{}': {}", input_value, e))
+            })?,
+            namespace: parse_optional_json(namespace_json, "namespace", input_value)?,
+            scope: parse_optional_json(scope_json, "scope", input_value)?.unwrap_or_default(),
+        })
+    }
+}
+
+fn parse_optional_json<T: serde::de::DeserializeOwned>(
+    value: Option<String>,
+    field: &str,
+    input_value: &str,
+) -> Result<Option<T>, LookupError> {
+    value
+        .map(|json| {
+            serde_json::from_str(&json).map_err(|error| {
+                LookupError::IdentityScope(format!(
+                    "Invalid scoped registry {field} for input '{input_value}': {error}"
+                ))
+            })
+        })
+        .transpose()
+}
+
+fn candidate_is_qualified(
+    input_value: &str,
+    candidate: &CandidateEntry,
+    context: &ExactLookupContext,
+) -> Result<bool, LookupError> {
+    let canonical_type = legacy_canonical_type_ref(&candidate.canonical_type);
+    let candidate_namespace = candidate
+        .namespace
+        .clone()
+        .unwrap_or_else(legacy_alias_namespace_ref);
+    let query_namespace =
+        query_namespace_for_context(context, &candidate_namespace, &candidate.scope);
+    let query = QualifiedIdentityRef {
+        version: String::new(),
+        identifier_value: input_value.to_string(),
+        canonical_type: canonical_type.clone(),
+        namespace: query_namespace,
+        scope: context.scope.clone().unwrap_or_default(),
+    };
+    let candidate = QualifiedIdentityRef {
+        version: String::new(),
+        identifier_value: input_value.to_string(),
+        canonical_type,
+        namespace: candidate_namespace,
+        scope: candidate.scope.clone(),
+    };
+
+    Ok(matches!(
+        qualify_exact_lookup(&query, &candidate).map_err(|error| {
+            LookupError::IdentityScope(format!(
+                "Exact lookup qualification failed for input '{input_value}': {error}"
+            ))
+        })?,
+        ExactLookupQualification::QualifiedMatch
+    ))
+}
+
+fn query_namespace_for_context(
+    context: &ExactLookupContext,
+    candidate_namespace: &IdentifierNamespaceRef,
+    candidate_scope: &IdentityScope,
+) -> IdentifierNamespaceRef {
+    if let Some(namespace) = &context.namespace {
+        return namespace.clone();
+    }
+    if context.scope.is_some() || candidate_scope.dimensions.is_empty() {
+        return candidate_namespace.clone();
+    }
+    legacy_alias_namespace_ref()
+}
+
+fn legacy_canonical_type_ref(canonical_type: &str) -> CanonicalTypeRef {
+    CanonicalTypeRef::Extension {
+        package_digest: LEGACY_REGISTRY_CANONICAL_TYPE_DIGEST.to_string(),
+        vocabulary: "registry_mapping_canonical_type".to_string(),
+        value: canonical_type.to_string(),
+    }
+}
+
+fn legacy_alias_namespace_ref() -> IdentifierNamespaceRef {
+    IdentifierNamespaceRef::Core {
+        class: crate::identity_scope::CoreIdentifierNamespaceClass::AliasSurface,
+    }
+}
+
 /// Lookup engine errors
 #[derive(Debug)]
 pub enum LookupError {
     Database(String),
+    IdentityScope(String),
     Invariant(String),
 }
 
@@ -112,6 +262,7 @@ impl std::fmt::Display for LookupError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             LookupError::Database(msg) => write!(f, "Database error: {}", msg),
+            LookupError::IdentityScope(msg) => write!(f, "Identity scope error: {}", msg),
             LookupError::Invariant(msg) => write!(f, "Invariant violation: {}", msg),
         }
     }
@@ -140,7 +291,9 @@ mod tests {
                 canonical_type TEXT,
                 rule_id TEXT,
                 source_file TEXT,
-                entry_order INTEGER
+                entry_order INTEGER,
+                namespace TEXT,
+                scope TEXT
             )",
             [],
         )

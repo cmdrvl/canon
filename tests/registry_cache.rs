@@ -2,7 +2,8 @@
 
 use canon::{
     InputFormat, InputValues, SpecialReason,
-    lookup::resolve_values,
+    identity_scope::{IdentifierNamespaceRef, IdentityScope},
+    lookup::{ExactLookupContext, resolve_values, resolve_values_with_context},
     registry::{compile_registry_package, load_registry},
     registry_lint::{RegistryLintProfile, lint},
 };
@@ -23,6 +24,10 @@ fn source_local_namespace() -> serde_json::Value {
 }
 
 fn source_scoped_scope() -> serde_json::Value {
+    source_scoped_scope_for("deal:COMM-2014-UBS4")
+}
+
+fn source_scoped_scope_for(dataset: &str) -> serde_json::Value {
     serde_json::json!({
         "dimensions": [
             {
@@ -42,11 +47,26 @@ fn source_scoped_scope() -> serde_json::Value {
                 },
                 "binding": {
                     "binding": "exact",
-                    "value": "deal:COMM-2014-UBS4"
+                    "value": dataset
                 }
             }
         ]
     })
+}
+
+fn source_local_namespace_ref() -> IdentifierNamespaceRef {
+    serde_json::from_value(source_local_namespace()).expect("source local namespace fixture parses")
+}
+
+fn source_scoped_scope_ref(dataset: &str) -> IdentityScope {
+    serde_json::from_value(source_scoped_scope_for(dataset)).expect("source scoped fixture parses")
+}
+
+fn source_scoped_context(dataset: &str) -> ExactLookupContext {
+    ExactLookupContext {
+        namespace: Some(source_local_namespace_ref()),
+        scope: Some(source_scoped_scope_ref(dataset)),
+    }
 }
 
 fn write_registry_metadata(
@@ -176,7 +196,11 @@ fn scoped_mapping_metadata_is_carried_in_index_and_lints_clean() -> Result<(), B
     )?;
 
     let registry = load_registry(temp.path())?;
-    let result = resolve_values(&registry, &input_values(&["41-001"]))?;
+    let result = resolve_values_with_context(
+        &registry,
+        &input_values(&["41-001"]),
+        &source_scoped_context("deal:COMM-2014-UBS4"),
+    )?;
 
     assert_eq!(result.mappings.len(), 1);
     assert_eq!(result.mappings[0].canonical_id, "PROPERTY-0001");
@@ -207,6 +231,66 @@ fn scoped_mapping_metadata_is_carried_in_index_and_lints_clean() -> Result<(), B
     let package = compile_registry_package(temp.path()).expect("scoped registry packages");
     assert_eq!(package.entry_count, 1);
     assert_eq!(package.effective_mapping_count, 1);
+
+    cleanup_cache_file(&registry.db_path);
+    Ok(())
+}
+
+#[test]
+fn scoped_lookup_requires_matching_query_scope_not_bare_first_match() -> Result<(), Box<dyn Error>>
+{
+    let temp = TempDir::new()?;
+    write_registry_metadata(temp.path(), "scoped-collision", "1.0.0", 2)?;
+    write_mapping_file(
+        temp.path(),
+        "00-first-deal.json",
+        &[serde_json::json!({
+            "input": "41-001",
+            "canonical_id": "PROPERTY-FIRST-DEAL",
+            "canonical_type": "property",
+            "rule_id": "ABS_EE_ASSET_NUMBER",
+            "namespace": source_local_namespace(),
+            "scope": source_scoped_scope_for("deal:first")
+        })],
+    )?;
+    write_mapping_file(
+        temp.path(),
+        "01-second-deal.json",
+        &[serde_json::json!({
+            "input": "41-001",
+            "canonical_id": "PROPERTY-SECOND-DEAL",
+            "canonical_type": "property",
+            "rule_id": "ABS_EE_ASSET_NUMBER",
+            "namespace": source_local_namespace(),
+            "scope": source_scoped_scope_for("deal:second")
+        })],
+    )?;
+
+    let registry = load_registry(temp.path())?;
+
+    let bare = resolve_values(&registry, &input_values(&["41-001"]))?;
+    assert!(bare.mappings.is_empty());
+    assert_eq!(bare.unresolved.len(), 1);
+    assert_eq!(bare.unresolved[0].input.as_deref(), Some("41-001"));
+
+    let wrong_scope = resolve_values_with_context(
+        &registry,
+        &input_values(&["41-001"]),
+        &source_scoped_context("deal:third"),
+    )?;
+    assert!(wrong_scope.mappings.is_empty());
+    assert_eq!(wrong_scope.unresolved.len(), 1);
+
+    let second_scope = resolve_values_with_context(
+        &registry,
+        &input_values(&["41-001"]),
+        &source_scoped_context("deal:second"),
+    )?;
+    assert_eq!(second_scope.mappings.len(), 1);
+    assert_eq!(
+        second_scope.mappings[0].canonical_id,
+        "PROPERTY-SECOND-DEAL"
+    );
 
     cleanup_cache_file(&registry.db_path);
     Ok(())
