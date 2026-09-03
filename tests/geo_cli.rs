@@ -1509,7 +1509,7 @@ fn geo_replan_from_acquisition_advances_inventory_and_emits_new_plan() {
     assert_eq!(replanned["external_requests"].as_array().unwrap().len(), 0);
     assert_eq!(
         replanned["project_plan"]["nodes"].as_array().unwrap().len(),
-        5
+        6
     );
     assert_ne!(replanned["plan_id"], base_plan_before["plan_id"]);
 

@@ -7,6 +7,7 @@
 //! catalog.  Missing local evidence becomes a typed external request or an
 //! explicit discovery gap.
 
+use super::executor::{GEO_PROPAGATE_OUTPUT_ID, GEO_PROPAGATE_STAGE_COMMAND};
 use super::satisfy::{
     CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION, GeoInventoryAdvancementEffect,
     GeoRegionalInventoryAdvancement, GeoRegionalInventorySourceAdvancement, GeoSatisfyError,
@@ -55,7 +56,7 @@ const HOME_CELLS_COMMAND: &str = "canon geo materialize-home-cells --rows <ROWS.
 const TILE_WORK_COMMAND: &str = "canon geo tile-work --request <REQUEST.json>";
 const MATERIALIZE_EVIDENCE_COMMAND: &str = "canon geo materialize-evidence --rows <ROWS.json>";
 const COMPILE_EVIDENCE_COMMAND: &str = "canon geo compile-evidence --request <REQUEST.json>";
-const PROPAGATE_COMMAND: &str = "canon.geo.stage.propagate.v0";
+const PROPAGATE_COMMAND: &str = GEO_PROPAGATE_STAGE_COMMAND;
 const SOLVE_COMMAND: &str = "canon geo solve --request <REQUEST.json>";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2072,14 +2073,19 @@ fn grain_project_stages(
         } else {
             Vec::new()
         };
+        let output_id = if matches!(stage, GeoPlanStage::PropagateConstraints) {
+            GEO_PROPAGATE_OUTPUT_ID
+        } else {
+            suffix
+        };
         let node = project_node(
             &node_id,
             kind,
             command,
             dependencies,
             content_hash_inputs,
-            suffix,
-            &format!("geo/{}/{suffix}.json", level_name(level)),
+            output_id,
+            &format!("geo/{}/{output_id}.json", level_name(level)),
             limits.clone(),
         );
         let preconditions = match stage {

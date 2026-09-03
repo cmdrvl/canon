@@ -120,7 +120,7 @@ fn geo_run_executes_real_kernels_and_folds_input_hashes() {
             .expect("project report")
             .executed_nodes
             .len(),
-        5
+        6
     );
     assert_ne!(
         run.plan_ref.project_graph_hash,

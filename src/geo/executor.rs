@@ -54,6 +54,7 @@ pub const GEO_MATERIALIZE_EVIDENCE_COMMAND: &str =
 pub const GEO_COMPILE_EVIDENCE_COMMAND: &str =
     "canon geo compile-evidence --request <REQUEST.json>";
 pub const GEO_PROPAGATE_STAGE_COMMAND: &str = "canon.geo.stage.propagate.v0";
+pub const GEO_PROPAGATE_OUTPUT_ID: &str = "propagation";
 pub const GEO_SOLVE_COMMAND: &str = "canon geo solve --request <REQUEST.json>";
 pub const GEO_CLIENT_TILE_INGEST_STAGE_COMMAND: &str = "canon.geo.stage.client_tile_ingest.v0";
 pub const CANON_GEO_CLIENT_TILE_SOURCE_VERSION: &str = "canon_geo_client_tile_source.v0";
@@ -579,7 +580,7 @@ impl GeoProjectNodeExecutor {
             usage.insert(format!("propagation_fallback.{}", fallback.counter), 1);
         }
         Ok(GeoLeafExecution {
-            output_id: "propagation",
+            output_id: GEO_PROPAGATE_OUTPUT_ID,
             output_contract: CANON_GEO_PROPAGATION_VERSION,
             output_bytes: bytes,
             deterministic_usage: usage,
@@ -608,7 +609,7 @@ impl GeoProjectNodeExecutor {
         });
         let request = if let Some(propagation) = self.optional_declared_dependency_artifact(
             node,
-            "propagation",
+            GEO_PROPAGATE_OUTPUT_ID,
             CANON_GEO_PROPAGATION_VERSION,
         )? {
             let propagation_artifact: GeoPropagationArtifact =
@@ -1359,7 +1360,7 @@ impl GeoExecutorCommand {
             Self::ClientTileIngest => "client_tile",
             Self::MaterializeEvidence => "materialize_evidence",
             Self::CompileEvidence => "compile_evidence",
-            Self::Propagate => "propagation",
+            Self::Propagate => GEO_PROPAGATE_OUTPUT_ID,
             Self::Solve => "solve",
         }
     }
@@ -1568,7 +1569,7 @@ fn contract_for_output_id(output_id: &str) -> Option<&'static str> {
         "client_tile" => Some(CANON_GEO_GEOMETRY_TILE_VERSION),
         "materialize_evidence" => Some(CANON_GEO_EVIDENCE_REQUEST_VERSION),
         "compile_evidence" => Some(CANON_GEO_EVIDENCE_COMPILATION_VERSION),
-        "propagation" => Some(CANON_GEO_PROPAGATION_VERSION),
+        GEO_PROPAGATE_OUTPUT_ID => Some(CANON_GEO_PROPAGATION_VERSION),
         "solve" => Some(CANON_GEO_COMPOSITION_VERSION),
         _ => None,
     }
