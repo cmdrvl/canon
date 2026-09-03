@@ -8,6 +8,7 @@
 pub mod address;
 pub mod cli;
 pub mod composition;
+pub mod condo;
 pub mod control;
 pub mod discovery;
 pub mod evaluation;
@@ -33,6 +34,7 @@ pub mod tile;
 
 pub use address::*;
 pub use composition::*;
+pub use condo::*;
 pub use control::*;
 pub use discovery::*;
 pub use evaluation::*;
