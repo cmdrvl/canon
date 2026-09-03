@@ -157,6 +157,7 @@ impl MetricFixture {
     fn metric(&self) -> SimilarityMetric {
         match self.metric.as_str() {
             "levenshtein_normalized" => SimilarityMetric::LevenshteinNormalized,
+            "damerau_levenshtein_normalized" => SimilarityMetric::DamerauLevenshteinNormalized,
             "jaro_winkler" => SimilarityMetric::JaroWinkler,
             "dice_sorensen" => SimilarityMetric::DiceSorensen,
             "token_sort_ratio" => SimilarityMetric::TokenSortRatio,
