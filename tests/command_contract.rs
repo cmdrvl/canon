@@ -4,6 +4,14 @@ use assert_cmd::Command;
 use canon::{
     RefusalCode,
     cli::Cli,
+    entity::{
+        EntityArtifactMetadata, EntityInputReference, EntityPatchNamespaces,
+        EntityProfileReference, EntityRegistrySnapshot, EntityStrategyReference,
+        review::{ReviewQueueArtifact, ReviewQueueItem},
+        review_export::{NativeReviewExportRequest, build_native_review_artifact},
+        review_import::{NativeReviewDecisionAction, NativeReviewGroupDecision},
+        solve::SolveReconciliationState,
+    },
     operator::{
         public_leaf_commands_from, public_leaf_long_flags_from, stable_manifest_digest,
         validate_operator_manifest_json,
@@ -235,6 +243,138 @@ fn refusal_taxonomy_keeps_entity_artifact_contract_distinct_from_geo_unavailable
         json!("E_GEO_COMMAND_UNAVAILABLE")
     );
     assert_ne!(entity_code, &RefusalCode::EGeoCommandUnavailable);
+}
+
+#[test]
+fn entity_review_import_cli_expands_group_decisions_against_source_review() {
+    let temp = tempdir().expect("tempdir");
+    let source_review = command_contract_native_review_artifact();
+    let source_review_path = temp.path().join("native-review.json");
+    fs::write(
+        &source_review_path,
+        serde_json::to_vec(&source_review).expect("source review serializes"),
+    )
+    .expect("source review written");
+    let group = source_review
+        .review_groups
+        .first()
+        .expect("native review group exists");
+    let group_decision = NativeReviewGroupDecision {
+        evidence_signature_id: group.signature_id.clone(),
+        action: NativeReviewDecisionAction::Defer,
+        operator_id: "operator:contract".to_string(),
+        reason_code: "review_signature_defer".to_string(),
+        note: "reviewed once by signature".to_string(),
+        source_review_artifact_hash: source_review.artifact_content_hash.clone(),
+        run_content_hash: source_review.binding.run_content_hash.clone(),
+        policy_content_hash: source_review.binding.policy_content_hash.clone(),
+        registry_snapshot_hash: source_review.binding.registry_snapshot_hash.clone(),
+        target_canonical_id: None,
+        relation: None,
+    };
+    let decision_path = temp.path().join("group-decisions.json");
+    fs::write(
+        &decision_path,
+        serde_json::to_vec(&json!({
+            "version": "canon_entity_native_review_decisions.v0",
+            "group_decisions": [group_decision],
+            "decisions": []
+        }))
+        .expect("decision envelope serializes"),
+    )
+    .expect("decisions written");
+
+    let import_args = vec![
+        "entity".to_string(),
+        "review".to_string(),
+        "import".to_string(),
+        path_arg(&decision_path),
+        "--registry".to_string(),
+        path_arg(temp.path()),
+        "--next-version".to_string(),
+        "0.1.1".to_string(),
+        "--source-review".to_string(),
+        path_arg(&source_review_path),
+        "--emit".to_string(),
+        "json".to_string(),
+    ];
+    let output = canon_command()
+        .args(&import_args)
+        .output()
+        .expect("native group import command runs");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "group import should succeed\nstdout={}\nstderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "group import wrote stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let receipt: Value =
+        serde_json::from_slice(&output.stdout).expect("native import receipt JSON");
+    assert_eq!(receipt["version"], "canon_entity_native_review_import.v0");
+    assert_eq!(receipt["accepted_decisions"], json!(group.member_count));
+    assert_eq!(
+        receipt["patches"]["defer_patches"]
+            .as_array()
+            .expect("defer patches array")
+            .len(),
+        group.member_count as usize
+    );
+
+    let stale_decision_path = temp.path().join("stale-group-decisions.json");
+    fs::write(
+        &stale_decision_path,
+        serde_json::to_vec(&json!({
+            "version": "canon_entity_native_review_decisions.v0",
+            "group_decisions": [{
+                "evidence_signature_id": "signature:blake3:not-current",
+                "action": "defer",
+                "operator_id": "operator:contract",
+                "reason_code": "stale_group",
+                "note": "stale signature should refuse",
+                "source_review_artifact_hash": source_review.artifact_content_hash,
+                "run_content_hash": source_review.binding.run_content_hash,
+                "policy_content_hash": source_review.binding.policy_content_hash,
+                "registry_snapshot_hash": source_review.binding.registry_snapshot_hash
+            }],
+            "decisions": []
+        }))
+        .expect("stale decision envelope serializes"),
+    )
+    .expect("stale decisions written");
+    let stale_import_args = vec![
+        "entity".to_string(),
+        "review".to_string(),
+        "import".to_string(),
+        path_arg(&stale_decision_path),
+        "--registry".to_string(),
+        path_arg(temp.path()),
+        "--next-version".to_string(),
+        "0.1.1".to_string(),
+        "--source-review".to_string(),
+        path_arg(&source_review_path),
+        "--emit".to_string(),
+        "json".to_string(),
+    ];
+    let stale_output = canon_command()
+        .args(&stale_import_args)
+        .output()
+        .expect("stale group import command runs");
+    assert_eq!(stale_output.status.code(), Some(2));
+    let refusal: Value =
+        serde_json::from_slice(&stale_output.stdout).expect("native import refusal JSON");
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(refusal["refusal"]["code"], "E_ENTITY_REVIEW_IMPORT");
+    assert_eq!(
+        refusal["refusal"]["detail"]["field"],
+        "evidence_signature_id"
+    );
+    assert_eq!(refusal["refusal"]["detail"]["writes_performed"], false);
 }
 
 #[test]
@@ -612,6 +752,77 @@ fn assert_side_effect_contract(case: &RuntimeCase, row: &OperatorRow) {
 
 fn canon_command() -> Command {
     Command::new(env!("CARGO_BIN_EXE_canon"))
+}
+
+fn command_contract_native_review_artifact() -> canon::entity::review_export::NativeReviewArtifact {
+    build_native_review_artifact(NativeReviewExportRequest {
+        review_queue: ReviewQueueArtifact {
+            version: "canon_entity_review_queue.v0".to_string(),
+            artifact_content_hash: "blake3:command-contract-review-queue".to_string(),
+            metadata: command_contract_entity_metadata(),
+            summary: canon::entity::EntityDeterministicSummary::default(),
+            source_solve_hash: "blake3:command-contract-solve".to_string(),
+            source_link_hash: None,
+            review_items: vec![ReviewQueueItem {
+                review_id: "review:command-contract:001".to_string(),
+                ambiguity_key: "signature:fixture".to_string(),
+                component_id: "component:command-contract:001".to_string(),
+                state: SolveReconciliationState::Escrow,
+                proposed_action: "manual_review".to_string(),
+                review_priority_units: 4_200,
+                priority_reasons: vec!["operator_review_required".to_string()],
+                affected_rows: 1,
+                affected_deals: 1,
+                surface_ids: vec!["surface:left".to_string(), "surface:right".to_string()],
+                strongest_positive_cut: None,
+                strongest_negative_cut: None,
+                relation_hints: Vec::new(),
+                provenance_samples: Vec::new(),
+            }],
+        },
+        run_content_hash: "blake3:command-contract-run".to_string(),
+        policy_content_hash: "blake3:command-contract-policy".to_string(),
+    })
+    .expect("command-contract native review artifact builds")
+}
+
+fn command_contract_entity_metadata() -> EntityArtifactMetadata {
+    EntityArtifactMetadata {
+        profile: EntityProfileReference {
+            id: "command_contract".to_string(),
+            version: "0.1.0".to_string(),
+            entity_type: "tenant_label".to_string(),
+            identity_semantics: "canonical_display_label".to_string(),
+            canonical_type: "tenant_label".to_string(),
+            patch_namespaces: EntityPatchNamespaces {
+                aliases: "tenant_label.aliases".to_string(),
+                distinct: "tenant_label.distinct".to_string(),
+                relations: "tenant_label.relations".to_string(),
+            },
+            content_hash: Some("blake3:command-contract-profile".to_string()),
+        },
+        strategy: EntityStrategyReference {
+            id: "command_contract.signature_review".to_string(),
+            version: "0.1.0".to_string(),
+            content_hash: "blake3:command-contract-strategy".to_string(),
+        },
+        registry_snapshot: EntityRegistrySnapshot {
+            id: "tenant-labels".to_string(),
+            version: "2026.09.03".to_string(),
+            source: "registries/tenant-labels".to_string(),
+            lookup_snapshot_hash: "blake3:command-contract-registry".to_string(),
+            sidecar_snapshot_hash: Some("blake3:command-contract-sidecars".to_string()),
+        },
+        patch_namespace: "tenant_label.aliases".to_string(),
+        input: Some(EntityInputReference {
+            row_count: 1,
+            content_hash: "blake3:command-contract-input".to_string(),
+        }),
+        upstream_artifacts: Vec::new(),
+        patch_set: None,
+        namekit: None,
+        artifact_content_hash: String::new(),
+    }
 }
 
 struct RuntimeHarness {

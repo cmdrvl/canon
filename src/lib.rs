@@ -48,15 +48,15 @@ use crate::cli::{
     EntityIndexBuildCli, EntityIndexCommand, EntityIndexSubcommand, EntityLinkCli,
     EntityPrepareCli, EntityProfileCommand, EntityProfileInitCli, EntityProfileListCli,
     EntityProfileSubcommand, EntityPromoteCli, EntityReviewCommand, EntityReviewExportArtifact,
-    EntityReviewExportCli, EntityReviewExportEmitMode, EntityReviewImportCli, EntityReviewInclude,
-    EntityReviewSubcommand, EntityRunCli, EntitySolveCli, EntityStreamEmitMode, EntitySubcommand,
-    PackageCli, PackagePackCli, PackageSubcommand, RegistryAddEntryCli, RegistryAuditCli,
-    RegistryBuildCli, RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode,
-    RegistryExportCli, RegistryExportFormatCli, RegistryLintCli, RegistryLintProfile,
-    RegistryMintCli, RegistryNextIdCli, RegistryPlainJsonEmitMode, RegistryProviderSchemaCli,
-    RegistryProvidersCli, RegistrySubcommand, RegistryVersionBumpMode, StrategyAuditCli,
-    StrategyCommand, StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli, StrategyGradeArg,
-    StrategyKeyTypeArg, StrategyListCli, StrategyProfileCli, StrategyPromoteCli,
+    EntityReviewExportCli, EntityReviewExportEmitMode, EntityReviewGroupBy, EntityReviewImportCli,
+    EntityReviewInclude, EntityReviewSubcommand, EntityRunCli, EntitySolveCli,
+    EntityStreamEmitMode, EntitySubcommand, PackageCli, PackagePackCli, PackageSubcommand,
+    RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli, RegistryDefaultIdSchemeCli,
+    RegistryDiffCli, RegistryEmitMode, RegistryExportCli, RegistryExportFormatCli, RegistryLintCli,
+    RegistryLintProfile, RegistryMintCli, RegistryNextIdCli, RegistryPlainJsonEmitMode,
+    RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand, RegistryVersionBumpMode,
+    StrategyAuditCli, StrategyCommand, StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli,
+    StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli, StrategyProfileCli, StrategyPromoteCli,
     StrategyRegisterCli, StrategyResolveCli, StrategyStatusArg, StrategySubcommand,
     StrategyUpdateCli,
 };
@@ -3013,6 +3013,15 @@ fn run_entity_review_export_command(export: &EntityReviewExportCli) -> Result<u8
     {
         return emit_entity_refusal(entity_review_export_html_refusal(), false, false);
     }
+    if matches!(export.group_by, Some(EntityReviewGroupBy::Signature))
+        && !matches!(export.artifact, EntityReviewExportArtifact::NativeReview)
+    {
+        return emit_entity_refusal(
+            entity_review_export_group_by_signature_refusal(),
+            matches!(export.emit, EntityReviewExportEmitMode::Json),
+            false,
+        );
+    }
 
     let (result_probe, result_bytes) =
         match read_entity_lifecycle_json_artifact(&export.result, "entity result artifact") {
@@ -3270,7 +3279,11 @@ fn run_entity_native_review_import_command(
         Ok(context) => context,
         Err(refusal) => return emit_entity_refusal(refusal.to_canon_output(), true, summary_mode),
     };
-    let decisions = match parse_native_review_decisions(&import.review, review_bytes) {
+    let decisions = match parse_native_review_decisions(
+        &import.review,
+        review_bytes,
+        Some(&source_review_artifact),
+    ) {
         Ok(decisions) => decisions,
         Err(refusal_output) => return emit_entity_refusal(refusal_output, true, summary_mode),
     };
@@ -3292,6 +3305,7 @@ fn run_entity_native_review_import_command(
 fn parse_native_review_decisions(
     path: &Path,
     bytes: &[u8],
+    source_review_artifact: Option<&serde_json::Value>,
 ) -> Result<Vec<entity::review_import::NativeReviewDecision>, CanonOutput> {
     let text = std::str::from_utf8(bytes).map_err(|error| {
         native_review_import_refusal(
@@ -3310,6 +3324,11 @@ fn parse_native_review_decisions(
         .is_some_and(|extension| extension.eq_ignore_ascii_case("csv"))
     {
         entity::review_import::parse_native_review_import_csv(text)
+    } else if let Some(source_review_artifact) = source_review_artifact {
+        entity::review_import::parse_native_review_import_json_with_source(
+            text,
+            source_review_artifact,
+        )
     } else {
         entity::review_import::parse_native_review_import_json(text)
     };
@@ -5936,6 +5955,19 @@ fn entity_review_export_html_refusal() -> CanonOutput {
             "stage": "review_export",
             "field": "emit",
             "actual": "html",
+            "expected": "--artifact native-review",
+            "writes_performed": false
+        }),
+    )
+}
+
+fn entity_review_export_group_by_signature_refusal() -> CanonOutput {
+    native_entity_artifact_contract_refusal(
+        "Entity review signature grouping requires --artifact native-review",
+        serde_json::json!({
+            "stage": "review_export",
+            "field": "group_by",
+            "actual": "signature",
             "expected": "--artifact native-review",
             "writes_performed": false
         }),

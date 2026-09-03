@@ -105,6 +105,13 @@ pub enum EntityReviewExportArtifact {
     NativeReview,
 }
 
+/// Optional grouping mode for entity review export presentation
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum EntityReviewGroupBy {
+    /// Group native review items by deterministic evidence signature
+    Signature,
+}
+
 /// Include selector for entity review export
 #[derive(Debug, Clone, ValueEnum, Default)]
 pub enum EntityReviewInclude {
@@ -2310,6 +2317,10 @@ pub struct EntityReviewExportCli {
     /// Which reviewable records to include
     #[arg(long, value_enum, default_value = "all")]
     pub include: EntityReviewInclude,
+
+    /// Presentation grouping for native review artifacts
+    #[arg(long = "group-by", value_enum)]
+    pub group_by: Option<EntityReviewGroupBy>,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -3618,6 +3629,8 @@ mod tests {
             "native-review",
             "--emit",
             "html",
+            "--group-by",
+            "signature",
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
@@ -3634,6 +3647,10 @@ mod tests {
             ));
             assert!(matches!(export.emit, EntityReviewExportEmitMode::Html));
             assert!(matches!(export.include, EntityReviewInclude::All));
+            assert!(matches!(
+                export.group_by,
+                Some(EntityReviewGroupBy::Signature)
+            ));
         }
     }
 

@@ -62,7 +62,7 @@
       "canon entity apply <RESULT.json> --rows <ROWS> --registry <REGISTRY_DIR> [--column <COL>] [--out <PATH>|--output <PATH>] [--work-dir <DIR>] [--require-full-resolution|--allow-partial-output] [--emit json|summary]",
       "canon entity profile list [--emit json|summary]",
       "canon entity profile init <PROFILE> --output <PROFILE.yaml>",
-      "canon entity review export <RESULT.json> [--artifact queue|native-review] [--emit json|csv|html] [--include resolved|escrow|contradictions|all]",
+      "canon entity review export <RESULT.json> [--artifact queue|native-review] [--group-by signature] [--emit json|csv|html] [--include resolved|escrow|contradictions|all]",
       "canon entity review import <REVIEW.json|csv> --registry <REGISTRY_DIR> --next-version <VERSION> [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]",
       "canon entity explain <RESULT.json> --row <SOURCE_ROW_ID>|--surface-id <SURFACE_ID>|--canon-id <CANON_ID>|--escrow-id <ESCROW_ID> [--emit json|summary]",
       "canon inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json|summary]",
@@ -7298,8 +7298,8 @@
     },
     {
       "name": "entity review export",
-      "usage": "canon entity review export <RESULT.json> [--artifact queue|native-review] [--emit json|csv|html] [--include resolved|escrow|contradictions|all]",
-      "description": "Export the default deterministic review queue, or with --artifact native-review export canon_entity_native_review.v0 as JSON, CSV, or offline HTML with self-hash and exact mode-context validation",
+      "usage": "canon entity review export <RESULT.json> [--artifact queue|native-review] [--group-by signature] [--emit json|csv|html] [--include resolved|escrow|contradictions|all]",
+      "description": "Export the default deterministic review queue, or with --artifact native-review export canon_entity_native_review.v0 as JSON, CSV, or offline HTML with self-hash, exact mode-context validation, and optional evidence-signature grouping",
       "output_mode": "mixed",
       "output_schema": "canon_entity_review_export.v0",
       "alternate_output_schemas": [
@@ -7347,6 +7347,15 @@
           "type": "string",
           "default": "all",
           "description": "Review item filter: resolved, escrow, contradictions, or all"
+        },
+        {
+          "name": "group_by",
+          "flag": "--group-by",
+          "type": "enum",
+          "values": [
+            "signature"
+          ],
+          "description": "Native review presentation grouping; signature groups canon_entity_native_review.v0 items by deterministic evidence signature without changing decision authority"
         }
       ],
       "status": "implemented",

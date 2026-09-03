@@ -161,7 +161,7 @@ canon entity solve <ROWS> [--profile <PROFILE>] --strategy <YAML> --evidence <JS
 canon entity audit <RESULT.json> --suite <DIR> [--emit json|summary]
 canon entity promote <RESULT.json> --audit <AUDIT.json> --registry <REGISTRY> --next-version <VER> [--emit json|summary]
 canon entity apply <RESULT.json> --rows <ROWS> --registry <REGISTRY> [--column <COL>] [--output <PATH>] [--work-dir <DIR>] [--require-full-resolution|--allow-partial-output] [--emit json|summary]
-canon entity review export <RESULT.json> [--artifact queue|native-review] [--emit json|csv|html] [--include resolved|escrow|contradictions|all]
+canon entity review export <RESULT.json> [--artifact queue|native-review] [--group-by signature] [--emit json|csv|html] [--include resolved|escrow|contradictions|all]
 canon entity review import <REVIEW.json|csv> --registry <REGISTRY> --next-version <VER> [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]
 canon entity explain <RESULT.json> --row <ROW_ID>|--surface-id <SURFACE_ID>|--canon-id <CANON_ID>|--escrow-id <ESCROW_ID> [--emit json|summary]
 canon entity profile list [--emit json|summary]
@@ -581,12 +581,15 @@ lookup path and it does not change `canon.v0` exact-match semantics.
 
 ### Entity review subcommands
 
-`canon entity review export <RESULT.json> [--artifact queue|native-review] [--emit json|csv|html] [--include resolved|escrow|contradictions|all]`
+`canon entity review export <RESULT.json> [--artifact queue|native-review] [--group-by signature] [--emit json|csv|html] [--include resolved|escrow|contradictions|all]`
 - defaults to `--artifact queue`, preserving the existing queue/v1 and legacy
   review export behavior and `canon_entity_review_export.v0`
 - `--artifact native-review` emits `canon_entity_native_review.v0` for native
   solve, run, or link artifacts; `--emit html` is valid only for this explicit
   native artifact path
+- `--group-by signature` is valid only with `--artifact native-review` and
+  carries deterministic evidence-signature groups as presentation data; it does
+  not auto-accept, bypass member binding checks, or change patch semantics
 - includes deterministic review IDs, source row IDs, observed names, anchors,
   incumbent overlaps, evidence scores, contradiction reasons, and proposed
   review actions
@@ -595,17 +598,19 @@ lookup path and it does not change `canon.v0` exact-match semantics.
 - native review artifacts carry an artifact self-hash, run/policy/registry
   binding, and exact cluster/link mode context; candidate-free unmatched
   directional links carry `right_surface_id: null` and defer-only allowed actions
-- native JSON and CSV exports are deterministic decision envelopes, and native
-  HTML is a static offline projection of that artifact
+- native JSON and CSV exports are deterministic decision envelopes, native JSON
+  may carry `group_decisions` that expand against the cited source review
+  artifact, and native HTML is a static offline projection of that artifact
 
 `canon entity review import <REVIEW.json|csv> --registry <REGISTRY> --next-version <VER> [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]`
 - without `--source-review`, imports the existing queue review decisions into
   alias, trusted-anchor, pending-escrow, and cannot-link sidecars, then bumps
   `registry.json` to `--next-version`
 - with `--source-review <canon_entity_native_review.v0>`, treats the positional
-  `<REVIEW>` file as native JSON/CSV decisions and emits
-  a typed `canon_entity_native_review_import.v0` patch receipt only; native
-  import does not read or mutate the registry and does not consume `--audit` or
+  `<REVIEW>` file as native JSON/CSV decisions, expands JSON
+  `group_decisions` against the source review artifact, and emits a typed
+  `canon_entity_native_review_import.v0` patch receipt only; native import does
+  not read or mutate the registry and does not consume `--audit` or
   `--next-version` beyond Clap-required compatibility
 - default queue import uses the required `--registry` and `--next-version`
   arguments; `--audit` remains required for default alias/anchor promotion
@@ -613,7 +618,8 @@ lookup path and it does not change `canon.v0` exact-match semantics.
 - default queue import refuses malformed decisions, duplicate review IDs, stale
   registry snapshots, alias overwrites, trusted-anchor conflicts, and unchanged
   or empty next versions; native import refuses malformed/duplicate decisions,
-  source-review self-hash mismatches, and exact mode-context mismatches
+  source-review self-hash mismatches, stale or unknown evidence-signature group
+  decisions, and exact mode-context mismatches
 - default import emits `canon_entity_review_import.v0` with registry before/after
   hashes, write counts, and BLAKE3 proof hashes for review input, optional audit
   input, alias patch, anchor patch, and escrow patch
