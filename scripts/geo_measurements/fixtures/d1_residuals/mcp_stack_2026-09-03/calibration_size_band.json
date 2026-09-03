@@ -1,0 +1,126 @@
+{
+ "population_id": "h7-d1-residuals-2026-09-03",
+ "method": "sum(MapPLUTO 26v1 BLDGAREA over truth parcels) / sum(ABS-EE SIZE where SIZE_MEASURE=SQFT and SIZE>=500) per solver subject",
+ "band": [
+  0.5,
+  2.6
+ ],
+ "rows": [
+  {
+   "subject_id": "h7-subject:non-round:1ad5bdba3889b00b072822850d087dbd433dbc1fe560d90751fc6b7e5ef55cda",
+   "asserted_sqft": 18000.0,
+   "truth_bldgarea": 22500,
+   "ratio": 1.25,
+   "in_band": true
+  },
+  {
+   "subject_id": "h7-subject:non-round:1f301680cb0f2c88d43c40f0869779eca34a07dfaca12b657b4509486df60a46",
+   "asserted_sqft": 2300.0,
+   "truth_bldgarea": 49513,
+   "ratio": 21.5274,
+   "in_band": false
+  },
+  {
+   "subject_id": "h7-subject:non-round:2808547cf99b9ac8c5c091cd58f3aab0851274c3ab2550237fdc9f23ff5a0a7f",
+   "asserted_sqft": 8867.0,
+   "truth_bldgarea": 6724,
+   "ratio": 0.7583,
+   "in_band": true
+  },
+  {
+   "subject_id": "h7-subject:non-round:524efa302815a83e7e33419b92fdb25064300e6185537c4c4ae1aca9effbd356",
+   "asserted_sqft": 17636.0,
+   "truth_bldgarea": 17872,
+   "ratio": 1.0134,
+   "in_band": true
+  },
+  {
+   "subject_id": "h7-subject:non-round:8ac12f0a324a578c82b0016151b093c3304c8160711294554b01eaecf837bd7b",
+   "asserted_sqft": 29700.0,
+   "truth_bldgarea": 193433,
+   "ratio": 6.5129,
+   "in_band": false
+  },
+  {
+   "subject_id": "h7-subject:non-round:947b6d4949589dd94789958dcae3b2131e6e93cf55d9fd661b2c247a63dfc387",
+   "asserted_sqft": 40315.0,
+   "truth_bldgarea": 31350,
+   "ratio": 0.7776,
+   "in_band": true
+  },
+  {
+   "subject_id": "h7-subject:non-round:b76aa620c96bfba4de6cabde58b67c576c15ab7ad7e6a16d24e87a2069a30ec5",
+   "asserted_sqft": 7400.0,
+   "truth_bldgarea": 36361,
+   "ratio": 4.9136,
+   "in_band": false
+  },
+  {
+   "subject_id": "h7-subject:non-round:c8217df560eb3d08527d5f562299988dd2e287326ca61590a0c9f462bf1ab251",
+   "asserted_sqft": 11000.0,
+   "truth_bldgarea": 11000,
+   "ratio": 1.0,
+   "in_band": true
+  },
+  {
+   "subject_id": "h7-subject:non-round:e1ee05351a5b681c0dcda44e19dd575c686c3c630809c137bd64cc3232bc256c",
+   "asserted_sqft": 182845.0,
+   "truth_bldgarea": 455607,
+   "ratio": 2.4918,
+   "in_band": true
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:03ff08e79939253c5baa893d07f37d872d3d9b41b611d036fa72ee1ae531c2ae",
+   "asserted_sqft": 7780.0,
+   "truth_bldgarea": 7700,
+   "ratio": 0.9897,
+   "in_band": true
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:13ff475129dbf3a8874ae7ab326c4ca40ef96552cb935aaf8435450c014a0d6a",
+   "asserted_sqft": 26281.0,
+   "truth_bldgarea": 30873,
+   "ratio": 1.1747,
+   "in_band": true
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:2418355a0c965813e4d8d3922a97f886d3e79211ba7c8ddf85b34718259cc4ae",
+   "asserted_sqft": 10093.0,
+   "truth_bldgarea": 13620,
+   "ratio": 1.3495,
+   "in_band": true
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:6506716451b8405fbd83f48449d4f858881f94bc3b8a7ea3001e7b5399a3a018",
+   "asserted_sqft": 31745.0,
+   "truth_bldgarea": 45961,
+   "ratio": 1.4478,
+   "in_band": true
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:8fd55140aa370ed0de8a0165bdc2badf437576fa21ed6840f7cdc922380e5a01",
+   "asserted_sqft": 33006.0,
+   "truth_bldgarea": 44844,
+   "ratio": 1.3587,
+   "in_band": true
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:a32cf2aeb36b3b0a113822dddd8137d054b2f59b7146a2c664483b2d0f686678",
+   "asserted_sqft": 185314.0,
+   "truth_bldgarea": 154380,
+   "ratio": 0.8331,
+   "in_band": true
+  },
+  {
+   "subject_id": "h7-subject:round-exact-lender:f608ce46d91a6e61eddb84f291cbb81c8fe43cb3a2fddc12d78c438fb55fc3a8",
+   "asserted_sqft": 10000.0,
+   "truth_bldgarea": 9900,
+   "ratio": 0.99,
+   "in_band": true
+  }
+ ],
+ "coverage": {
+  "n": 16,
+  "in_band": 13
+ }
+}

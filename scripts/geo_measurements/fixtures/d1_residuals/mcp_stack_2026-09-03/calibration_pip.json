@@ -1,0 +1,10 @@
+{
+ "population_id": "h7-d1-residuals-2026-09-03",
+ "method": "ABS-EE property lat/long ST_CONTAINS MapPLUTO 26v1 parcel, restricted to legal borough",
+ "coverage": {
+  "all_hits_truth": 43,
+  "no_hit_in_borough": 1,
+  "hits_not_truth": 20,
+  "some_hits_truth": 7
+ }
+}
