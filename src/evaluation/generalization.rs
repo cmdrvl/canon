@@ -7443,7 +7443,9 @@ fn semantic_content_hash_for_loaded_artifact(
     artifact: &LoadedGeneralizationArtifactRef,
 ) -> GeneralizationResult<String> {
     match &artifact.artifact {
-        LoadedGeneralizationArtifact::Link(link) => semantic_entity_link_content_hash(link.as_ref()),
+        LoadedGeneralizationArtifact::Link(link) => {
+            semantic_entity_link_content_hash(link.as_ref())
+        }
         _ => Ok(artifact.reference.content_hash.clone()),
     }
 }

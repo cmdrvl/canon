@@ -1,25 +1,22 @@
-use canon::{
-    entity::{
-        EntityPatchNamespaces,
-        diagnostics::{
-            EntityUnlinkablesReport, EntityUnlinkablesReportRequest, EntityUnlinkablesSurfaceInput,
-            EntityUnlinkablesSurfaceSide, EntityUnlinkablesThresholds,
-            build_entity_unlinkables_report,
-        },
-        edge::EdgeEvidenceHit,
-        evidence::{ExactViewSupportRequest, exact_view_support_hit},
-        prepare::{
-            PreparedExactLookup, PreparedExactLookupStatus, PreparedNormalizedView,
-            PreparedSurfaceRecord,
-        },
-        profile::{EntityEvidenceLanes, EntityOperatorSpec, EntityProfileDocument},
-        record_link::{
-            RecordLinkFeatureKind, RecordLinkFeaturePolicy, RecordLinkFeatureValue,
-            RecordLinkSupportPolicy, record_link_self_support_feature,
-        },
-        run::link::{EntityLinkArtifact, validate_entity_link_artifact_at_path},
-        score::{ScoreContribution, ScoreLane, ScoreUnits, accumulate_score_units},
+use canon::entity::{
+    EntityPatchNamespaces,
+    diagnostics::{
+        EntityUnlinkablesReport, EntityUnlinkablesReportRequest, EntityUnlinkablesSurfaceInput,
+        EntityUnlinkablesSurfaceSide, EntityUnlinkablesThresholds, build_entity_unlinkables_report,
     },
+    edge::EdgeEvidenceHit,
+    evidence::{ExactViewSupportRequest, exact_view_support_hit},
+    prepare::{
+        PreparedExactLookup, PreparedExactLookupStatus, PreparedNormalizedView,
+        PreparedSurfaceRecord,
+    },
+    profile::{EntityEvidenceLanes, EntityOperatorSpec, EntityProfileDocument},
+    record_link::{
+        RecordLinkFeatureKind, RecordLinkFeaturePolicy, RecordLinkFeatureValue,
+        RecordLinkSupportPolicy, record_link_self_support_feature,
+    },
+    run::link::{EntityLinkArtifact, validate_entity_link_artifact_at_path},
+    score::{ScoreContribution, ScoreLane, ScoreUnits, accumulate_score_units},
 };
 use serde_json::Value;
 use std::{
