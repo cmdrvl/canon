@@ -1622,6 +1622,13 @@
       "source_path": "src/geo/executor.rs"
     },
     {
+      "id": "canon-geo-evaluate-run-section-mirror.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/geo/evaluation.rs"
+    },
+    {
       "id": "canon_geo_entity_projection.v0",
       "family": "geo",
       "action": "preserve",
