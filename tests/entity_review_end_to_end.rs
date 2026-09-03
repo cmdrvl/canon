@@ -39,6 +39,7 @@ fn native_review_export_projects_cluster_and_link_json_csv_html() {
         review_export::native_review_artifact_hash(&artifact).expect("hash recomputes"),
         artifact.artifact_content_hash
     );
+    review_export::validate_native_review_waterfalls(&artifact).expect("waterfalls validate");
     assert_eq!(artifact.binding.run_content_hash, "blake3:run");
     assert_eq!(artifact.binding.policy_content_hash, "blake3:policy");
     assert_eq!(artifact.binding.registry_snapshot_hash, "blake3:registry");
@@ -273,6 +274,10 @@ fn native_review_import_verifies_artifact_hash_and_canonical_shape() {
             "surf:charlie_servicer".to_string(),
         ],
     };
+    link_item.evidence_signature =
+        review_export::native_evidence_signature_for_item(link_item).expect("signature reseals");
+    resealed_invalid.review_groups =
+        review_export::build_native_review_signature_groups(&resealed_invalid.review_items);
     reseal_native_artifact(&mut resealed_invalid);
     let resealed_invalid_value =
         serde_json::to_value(&resealed_invalid).expect("resealed invalid value");
@@ -703,6 +708,7 @@ fn evidence_cut(
         score_units: ScoreUnits::saturating_from_units(score_units),
         evidence_count: 1,
         evidence_reason_codes: vec![reason_code.to_string()],
+        evidence_hits: Vec::new(),
     }
 }
 

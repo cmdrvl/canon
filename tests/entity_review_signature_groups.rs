@@ -394,6 +394,7 @@ fn evidence_cut(
         score_units: ScoreUnits::saturating_from_units(score_units),
         evidence_count: 1,
         evidence_reason_codes: vec![reason_code.to_string()],
+        evidence_hits: Vec::new(),
     }
 }
 

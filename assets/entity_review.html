@@ -247,6 +247,29 @@
     .cue { color: var(--warn); }
     .missing { color: var(--muted); font-style: italic; }
     .ok { color: var(--good); }
+    .waterfall-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .waterfall-table th, .waterfall-table td {
+      border-bottom: 1px solid var(--line);
+      padding: 5px 6px;
+      text-align: left;
+      vertical-align: top;
+      overflow-wrap: anywhere;
+    }
+    .waterfall-table th {
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .waterfall-total {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 6px;
+      color: var(--muted);
+    }
     @media (max-width: 820px) {
       main { grid-template-columns: 1fr; }
       aside { position: static; }
@@ -334,6 +357,46 @@
       }
       const hints = item.mode_context.relation_hints || [];
       return hints.length ? text(hints[0].relation) : "";
+    }
+    function frequencyLabel(valueFrequency) {
+      if (!valueFrequency) {
+        return "";
+      }
+      return `${valueFrequency.band} count=${valueFrequency.count} table=${valueFrequency.table_hash}`;
+    }
+    function renderWaterfall(item) {
+      const waterfall = item.evidence_waterfall || { score_total_units: 0, raw_support_score_units: 0, threshold_lines: [], contributions: [] };
+      const contributions = waterfall.contributions || [];
+      const thresholds = waterfall.threshold_lines || [];
+      const thresholdRows = thresholds.length
+        ? thresholds.map((line) => li(`${line.threshold_id}: ${line.score_units == null ? "not bound" : line.score_units}${line.delta_units == null ? "" : ` delta=${line.delta_units}`}`)).join("")
+        : li("none");
+      const contributionRows = contributions.map((contribution) => `
+        <tr>
+          <td>${escapeHtml(contribution.lane)}</td>
+          <td>${escapeHtml(contribution.operator)}<br>${escapeHtml(contribution.view_field)}</td>
+          <td>${escapeHtml((contribution.reason_codes || []).join(", "))}</td>
+          <td>${escapeHtml(contribution.score_units)}</td>
+          <td>${escapeHtml(contribution.running_total_units)}</td>
+          <td>${escapeHtml(frequencyLabel(contribution.value_frequency))}</td>
+        </tr>
+      `).join("");
+      const table = contributionRows ? `
+        <table class="waterfall-table">
+          <thead>
+            <tr><th>Lane</th><th>Operator / Field</th><th>Reason</th><th>Score</th><th>Running</th><th>Frequency</th></tr>
+          </thead>
+          <tbody>${contributionRows}</tbody>
+        </table>
+      ` : `<ul>${li("none")}</ul>`;
+      return `
+        <div class="waterfall-total">
+          <span>score=${escapeHtml(waterfall.score_total_units)}</span>
+          <span>raw_support=${escapeHtml(waterfall.raw_support_score_units)}</span>
+        </div>
+        ${table}
+        <div class="block"><h3>Thresholds</h3><ul>${thresholdRows}</ul></div>
+      `;
     }
     function decisionState(item) {
       if (!state.decisions[item.review_id]) {
@@ -485,7 +548,7 @@
           </div>
           <div class="block"><h3>Evidence Signature</h3><ul>${li(item.evidence_signature.signature_id || "none")}</ul></div>
           <div class="block"><h3>Surfaces</h3><ul>${surfaceRows(item).join("")}</ul></div>
-          <div class="block"><h3>Evidence Waterfall</h3><ul>${item.evidence_waterfall_refs.map((ref) => li(`${ref.lane}: ${ref.left_surface_id} / ${ref.right_surface_id} score=${ref.score_units}`)).join("") || li("none")}</ul></div>
+          <div class="block"><h3>Evidence Waterfall</h3>${renderWaterfall(item)}</div>
           <div class="block"><h3>Conflicts</h3><ul>${conflicts}</ul></div>
           <div class="block"><h3>Related Distinct Cues</h3><ul>${cues}</ul></div>
           <div class="block"><h3>Provenance</h3><ul>${item.provenance.map((row) => li(`${row.surface_id} ${row.row_id} ${row.source}: ${row.raw_value}`)).join("") || li("none")}</ul></div>

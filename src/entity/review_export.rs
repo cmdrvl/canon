@@ -8,6 +8,7 @@ use crate::{
         EntityArtifactMetadata, EntityDeterministicSummary,
         error::EntityRefusalKind,
         review::{ReviewProvenanceSample, ReviewQueueArtifact, ReviewQueueItem},
+        score::{ENTITY_SCORE_SCALE, ScoreLane},
         solve::SolveEvidenceCut,
     },
 };
@@ -81,6 +82,8 @@ pub struct NativeReviewItem {
     pub observations: Vec<NativeReviewObservation>,
     pub candidate_clusters: Vec<NativeCandidateCluster>,
     pub candidate_links: Vec<NativeCandidateLink>,
+    #[serde(default)]
+    pub evidence_waterfall: NativeEvidenceWaterfall,
     pub evidence_waterfall_refs: Vec<NativeEvidenceWaterfallRef>,
     pub conflicts: Vec<NativeReviewConflict>,
     pub related_distinct_cues: Vec<NativeRelatedDistinctCue>,
@@ -221,6 +224,53 @@ pub struct NativeEvidenceWaterfallRef {
     pub reason_codes: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct NativeEvidenceWaterfall {
+    pub score_total_units: u32,
+    pub raw_support_score_units: u64,
+    pub threshold_lines: Vec<NativeEvidenceWaterfallThresholdLine>,
+    pub contributions: Vec<NativeEvidenceWaterfallContribution>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeEvidenceWaterfallThresholdLine {
+    pub threshold_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score_units: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delta_units: Option<i64>,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeEvidenceWaterfallContribution {
+    pub evidence_ref_id: String,
+    pub lane: String,
+    pub operator: String,
+    pub view_field: String,
+    pub left_surface_id: String,
+    pub right_surface_id: String,
+    pub evidence_count: u64,
+    pub reason_codes: Vec<String>,
+    pub source_score_units: u32,
+    pub score_units: u32,
+    pub running_total_units: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value_frequency: Option<NativeEvidenceWaterfallValueFrequency>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeEvidenceWaterfallValueFrequency {
+    pub table_hash: String,
+    pub view_field: String,
+    pub count: u64,
+    pub band: String,
+    pub floor_applied: bool,
+    pub multiplier_basis_points: u32,
+    pub original_score_units: u32,
+    pub adjusted_score_units: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NativeReviewConflict {
     pub conflict_id: String,
@@ -352,6 +402,7 @@ pub fn render_native_review_csv(artifact: &NativeReviewArtifact) -> Result<Strin
             "observations_json",
             "candidate_clusters_json",
             "candidate_links_json",
+            "evidence_waterfall_json",
             "evidence_waterfall_refs_json",
             "conflicts_json",
             "related_distinct_cues_json",
@@ -379,6 +430,7 @@ pub fn render_native_review_csv(artifact: &NativeReviewArtifact) -> Result<Strin
                 serde_json::to_string(&item.observations).map_err(json_refusal)?,
                 serde_json::to_string(&item.candidate_clusters).map_err(json_refusal)?,
                 serde_json::to_string(&item.candidate_links).map_err(json_refusal)?,
+                serde_json::to_string(&item.evidence_waterfall).map_err(json_refusal)?,
                 serde_json::to_string(&item.evidence_waterfall_refs).map_err(json_refusal)?,
                 serde_json::to_string(&item.conflicts).map_err(json_refusal)?,
                 serde_json::to_string(&item.related_distinct_cues).map_err(json_refusal)?,
@@ -446,6 +498,7 @@ fn native_review_item(
     let observations = native_observations(&item.provenance_samples);
     let candidate_clusters = native_candidate_clusters(item, mode);
     let evidence_waterfall_refs = native_evidence_waterfall_refs(item);
+    let evidence_waterfall = native_evidence_waterfall(item);
     let conflicts = native_conflicts(item);
     let related_distinct_cues = native_related_distinct_cues(item);
     let impact = NativeReviewImpact {
@@ -476,6 +529,7 @@ fn native_review_item(
         observations,
         candidate_clusters,
         candidate_links,
+        evidence_waterfall,
         evidence_waterfall_refs,
         conflicts,
         related_distinct_cues,
@@ -681,6 +735,418 @@ fn evidence_ref(lane: &str, cut: &SolveEvidenceCut) -> NativeEvidenceWaterfallRe
         evidence_count: cut.evidence_count,
         reason_codes: cut.evidence_reason_codes.clone(),
     }
+}
+
+fn native_evidence_waterfall(item: &ReviewQueueItem) -> NativeEvidenceWaterfall {
+    let mut sources = Vec::new();
+    if let Some(cut) = &item.strongest_positive_cut {
+        sources.extend(waterfall_sources_from_cut("support", cut));
+    }
+    if let Some(cut) = &item.strongest_negative_cut {
+        sources.extend(waterfall_sources_from_cut("anti_merge", cut));
+    }
+    sources.sort_by(waterfall_source_cmp);
+
+    let mut remaining_support_units = u64::from(ENTITY_SCORE_SCALE);
+    let mut contributions = Vec::new();
+    for source in sources {
+        let score_units = if source.lane == "support" {
+            let score_units = u64::from(source.source_score_units).min(remaining_support_units);
+            remaining_support_units -= score_units;
+            score_units as u32
+        } else {
+            0
+        };
+        contributions.push(NativeEvidenceWaterfallContribution {
+            evidence_ref_id: source.evidence_ref_id,
+            lane: source.lane,
+            operator: source.operator,
+            view_field: source.view_field,
+            left_surface_id: source.left_surface_id,
+            right_surface_id: source.right_surface_id,
+            evidence_count: source.evidence_count,
+            reason_codes: source.reason_codes,
+            source_score_units: source.source_score_units,
+            score_units,
+            running_total_units: 0,
+            value_frequency: source.value_frequency,
+        });
+    }
+    contributions.sort_by(native_waterfall_contribution_cmp);
+
+    let mut running_total_units = 0u64;
+    let mut raw_support_score_units = 0u64;
+    for contribution in &mut contributions {
+        if contribution.lane == "support" {
+            raw_support_score_units += u64::from(contribution.source_score_units);
+        }
+        running_total_units += u64::from(contribution.score_units);
+        contribution.running_total_units = running_total_units as u32;
+    }
+    let score_total_units = running_total_units as u32;
+
+    NativeEvidenceWaterfall {
+        score_total_units,
+        raw_support_score_units,
+        threshold_lines: unavailable_threshold_lines(score_total_units),
+        contributions,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NativeEvidenceWaterfallSource {
+    evidence_ref_id: String,
+    lane: String,
+    operator: String,
+    view_field: String,
+    left_surface_id: String,
+    right_surface_id: String,
+    evidence_count: u64,
+    reason_codes: Vec<String>,
+    source_score_units: u32,
+    value_frequency: Option<NativeEvidenceWaterfallValueFrequency>,
+}
+
+fn waterfall_sources_from_cut(
+    lane: &str,
+    cut: &SolveEvidenceCut,
+) -> Vec<NativeEvidenceWaterfallSource> {
+    let evidence_ref_id = format!(
+        "evidence:{}:{}:{}",
+        lane,
+        stable_suffix(&cut.left_surface_id),
+        stable_suffix(&cut.right_surface_id)
+    );
+    if !cut.evidence_hits.is_empty() {
+        let mut sources = cut
+            .evidence_hits
+            .iter()
+            .map(|hit| NativeEvidenceWaterfallSource {
+                evidence_ref_id: evidence_ref_id.clone(),
+                lane: score_lane_string(hit.lane),
+                operator: normalized_signature_part(&hit.operator_id, "unattributed", "operator"),
+                view_field: normalized_signature_part(&hit.namespace, "unspecified", "view_field"),
+                left_surface_id: cut.left_surface_id.clone(),
+                right_surface_id: cut.right_surface_id.clone(),
+                evidence_count: 1,
+                reason_codes: vec![hit.reason_code.clone()],
+                source_score_units: hit.score_units.as_u32(),
+                value_frequency: value_frequency_from_explanation(&hit.explanation),
+            })
+            .collect::<Vec<_>>();
+        sources.sort_by(waterfall_source_cmp);
+        return sources;
+    }
+
+    let reason_codes = sorted_unique(cut.evidence_reason_codes.clone());
+    let (operator, view_field) = fallback_operator_view_field(&reason_codes);
+    vec![NativeEvidenceWaterfallSource {
+        evidence_ref_id,
+        lane: lane.to_string(),
+        operator,
+        view_field,
+        left_surface_id: cut.left_surface_id.clone(),
+        right_surface_id: cut.right_surface_id.clone(),
+        evidence_count: cut.evidence_count,
+        reason_codes,
+        source_score_units: cut.score_units.as_u32(),
+        value_frequency: None,
+    }]
+}
+
+fn fallback_operator_view_field(reason_codes: &[String]) -> (String, String) {
+    match reason_codes {
+        [reason_code] => signature_operator_view_field(reason_code),
+        [] => ("unattributed".to_string(), "unspecified".to_string()),
+        _ => ("operator:mixed".to_string(), "view_field:mixed".to_string()),
+    }
+}
+
+fn value_frequency_from_explanation(
+    explanation: &str,
+) -> Option<NativeEvidenceWaterfallValueFrequency> {
+    if !explanation.contains("value_frequency") {
+        return None;
+    }
+    let params = explanation
+        .split_whitespace()
+        .filter_map(|part| part.split_once('='))
+        .collect::<BTreeMap<_, _>>();
+    Some(NativeEvidenceWaterfallValueFrequency {
+        table_hash: params.get("table_hash")?.to_string(),
+        view_field: params.get("view")?.to_string(),
+        count: params.get("count")?.parse().ok()?,
+        band: params.get("band")?.to_string(),
+        floor_applied: params.get("floor_applied")?.parse().ok()?,
+        multiplier_basis_points: params.get("multiplier_basis_points")?.parse().ok()?,
+        original_score_units: params.get("original_score_units")?.parse().ok()?,
+        adjusted_score_units: params.get("adjusted_score_units")?.parse().ok()?,
+    })
+}
+
+fn unavailable_threshold_lines(
+    score_total_units: u32,
+) -> Vec<NativeEvidenceWaterfallThresholdLine> {
+    ["backbone_score_min", "attach_score_min", "abstain_margin"]
+        .into_iter()
+        .map(|threshold_id| NativeEvidenceWaterfallThresholdLine {
+            threshold_id: threshold_id.to_string(),
+            score_units: None,
+            delta_units: None,
+            source: format!("not_bound_in_review_queue_v0; pair_score_total={score_total_units}"),
+        })
+        .collect()
+}
+
+fn score_lane_string(lane: ScoreLane) -> String {
+    match lane {
+        ScoreLane::Support => "support",
+        ScoreLane::AntiMerge => "anti_merge",
+        ScoreLane::RelationHint => "relation_hint",
+    }
+    .to_string()
+}
+
+fn waterfall_source_cmp(
+    left: &NativeEvidenceWaterfallSource,
+    right: &NativeEvidenceWaterfallSource,
+) -> std::cmp::Ordering {
+    right
+        .source_score_units
+        .cmp(&left.source_score_units)
+        .then_with(|| left.operator.cmp(&right.operator))
+        .then_with(|| left.view_field.cmp(&right.view_field))
+        .then_with(|| left.lane.cmp(&right.lane))
+        .then_with(|| left.reason_codes.cmp(&right.reason_codes))
+        .then_with(|| left.evidence_ref_id.cmp(&right.evidence_ref_id))
+        .then_with(|| left.left_surface_id.cmp(&right.left_surface_id))
+        .then_with(|| left.right_surface_id.cmp(&right.right_surface_id))
+}
+
+fn native_waterfall_contribution_cmp(
+    left: &NativeEvidenceWaterfallContribution,
+    right: &NativeEvidenceWaterfallContribution,
+) -> std::cmp::Ordering {
+    right
+        .score_units
+        .cmp(&left.score_units)
+        .then_with(|| left.operator.cmp(&right.operator))
+        .then_with(|| left.view_field.cmp(&right.view_field))
+        .then_with(|| left.lane.cmp(&right.lane))
+        .then_with(|| left.reason_codes.cmp(&right.reason_codes))
+        .then_with(|| left.evidence_ref_id.cmp(&right.evidence_ref_id))
+        .then_with(|| left.left_surface_id.cmp(&right.left_surface_id))
+        .then_with(|| left.right_surface_id.cmp(&right.right_surface_id))
+}
+
+pub fn validate_native_review_waterfalls(artifact: &NativeReviewArtifact) -> Result<(), Refusal> {
+    for item in &artifact.review_items {
+        validate_native_review_item_waterfall(item)?;
+    }
+    Ok(())
+}
+
+fn validate_native_review_item_waterfall(item: &NativeReviewItem) -> Result<(), Refusal> {
+    let expected_score_total_units = support_ref_score_total(&item.evidence_waterfall_refs);
+    if item.evidence_waterfall.score_total_units != expected_score_total_units {
+        return Err(native_review_refusal(
+            EntityRefusalKind::ArtifactContract,
+            "Native review evidence waterfall score does not match evidence refs",
+            json!({
+                "stage": "native_review_export",
+                "field": "review_items.evidence_waterfall.score_total_units",
+                "review_id": item.review_id,
+                "expected": expected_score_total_units,
+                "actual": item.evidence_waterfall.score_total_units
+            }),
+        ));
+    }
+
+    let refs_by_id = item
+        .evidence_waterfall_refs
+        .iter()
+        .map(|reference| (reference.evidence_ref_id.as_str(), reference))
+        .collect::<BTreeMap<_, _>>();
+    let mut running_total_units = 0u64;
+    let mut raw_support_score_units = 0u64;
+    let mut previous: Option<&NativeEvidenceWaterfallContribution> = None;
+    for contribution in &item.evidence_waterfall.contributions {
+        validate_waterfall_contribution_shape(item, contribution, &refs_by_id)?;
+        if let Some(previous) = previous
+            && native_waterfall_contribution_cmp(previous, contribution).is_gt()
+        {
+            return Err(native_review_refusal(
+                EntityRefusalKind::ArtifactContract,
+                "Native review evidence waterfall contributions are not deterministically ordered",
+                json!({
+                    "stage": "native_review_export",
+                    "field": "review_items.evidence_waterfall.contributions",
+                    "review_id": item.review_id,
+                    "previous": previous,
+                    "actual": contribution
+                }),
+            ));
+        }
+        if contribution.lane == "support" {
+            raw_support_score_units += u64::from(contribution.source_score_units);
+        } else if contribution.score_units != 0 {
+            return Err(native_review_refusal(
+                EntityRefusalKind::ArtifactContract,
+                "Native review evidence waterfall non-support evidence cannot add to pair score",
+                json!({
+                    "stage": "native_review_export",
+                    "field": "review_items.evidence_waterfall.contributions.score_units",
+                    "review_id": item.review_id,
+                    "evidence_ref_id": contribution.evidence_ref_id,
+                    "lane": contribution.lane,
+                    "actual": contribution.score_units
+                }),
+            ));
+        }
+        if contribution.score_units > contribution.source_score_units {
+            return Err(native_review_refusal(
+                EntityRefusalKind::ArtifactContract,
+                "Native review evidence waterfall contribution exceeds its source score",
+                json!({
+                    "stage": "native_review_export",
+                    "field": "review_items.evidence_waterfall.contributions.score_units",
+                    "review_id": item.review_id,
+                    "evidence_ref_id": contribution.evidence_ref_id,
+                    "source_score_units": contribution.source_score_units,
+                    "actual": contribution.score_units
+                }),
+            ));
+        }
+        running_total_units += u64::from(contribution.score_units);
+        if running_total_units > u64::from(ENTITY_SCORE_SCALE)
+            || contribution.running_total_units != running_total_units as u32
+        {
+            return Err(native_review_refusal(
+                EntityRefusalKind::ArtifactContract,
+                "Native review evidence waterfall running total is inconsistent",
+                json!({
+                    "stage": "native_review_export",
+                    "field": "review_items.evidence_waterfall.contributions.running_total_units",
+                    "review_id": item.review_id,
+                    "evidence_ref_id": contribution.evidence_ref_id,
+                    "expected": running_total_units,
+                    "actual": contribution.running_total_units
+                }),
+            ));
+        }
+        previous = Some(contribution);
+    }
+
+    if running_total_units != u64::from(item.evidence_waterfall.score_total_units) {
+        return Err(native_review_refusal(
+            EntityRefusalKind::ArtifactContract,
+            "Native review evidence waterfall contributions do not sum to the pair score",
+            json!({
+                "stage": "native_review_export",
+                "field": "review_items.evidence_waterfall.contributions",
+                "review_id": item.review_id,
+                "expected": item.evidence_waterfall.score_total_units,
+                "actual": running_total_units
+            }),
+        ));
+    }
+    if raw_support_score_units != item.evidence_waterfall.raw_support_score_units {
+        return Err(native_review_refusal(
+            EntityRefusalKind::ArtifactContract,
+            "Native review evidence waterfall raw support total is inconsistent",
+            json!({
+                "stage": "native_review_export",
+                "field": "review_items.evidence_waterfall.raw_support_score_units",
+                "review_id": item.review_id,
+                "expected": raw_support_score_units,
+                "actual": item.evidence_waterfall.raw_support_score_units
+            }),
+        ));
+    }
+    validate_waterfall_threshold_lines(item)
+}
+
+fn validate_waterfall_contribution_shape(
+    item: &NativeReviewItem,
+    contribution: &NativeEvidenceWaterfallContribution,
+    refs_by_id: &BTreeMap<&str, &NativeEvidenceWaterfallRef>,
+) -> Result<(), Refusal> {
+    let reference = refs_by_id
+        .get(contribution.evidence_ref_id.as_str())
+        .ok_or_else(|| {
+            native_review_refusal(
+                EntityRefusalKind::ArtifactContract,
+                "Native review evidence waterfall contribution references an unknown evidence ref",
+                json!({
+                    "stage": "native_review_export",
+                    "field": "review_items.evidence_waterfall.contributions.evidence_ref_id",
+                    "review_id": item.review_id,
+                    "actual": contribution.evidence_ref_id
+                }),
+            )
+        })?;
+    for (field, expected, actual) in [
+        ("lane", reference.lane.as_str(), contribution.lane.as_str()),
+        (
+            "left_surface_id",
+            reference.left_surface_id.as_str(),
+            contribution.left_surface_id.as_str(),
+        ),
+        (
+            "right_surface_id",
+            reference.right_surface_id.as_str(),
+            contribution.right_surface_id.as_str(),
+        ),
+    ] {
+        if expected != actual {
+            return Err(native_review_refusal(
+                EntityRefusalKind::ArtifactContract,
+                "Native review evidence waterfall contribution does not match its evidence ref",
+                json!({
+                    "stage": "native_review_export",
+                    "field": format!("review_items.evidence_waterfall.contributions.{field}"),
+                    "review_id": item.review_id,
+                    "evidence_ref_id": contribution.evidence_ref_id,
+                    "expected": expected,
+                    "actual": actual
+                }),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_waterfall_threshold_lines(item: &NativeReviewItem) -> Result<(), Refusal> {
+    for threshold in &item.evidence_waterfall.threshold_lines {
+        if let Some(score_units) = threshold.score_units {
+            let expected_delta =
+                i64::from(score_units) - i64::from(item.evidence_waterfall.score_total_units);
+            if threshold.delta_units != Some(expected_delta) {
+                return Err(native_review_refusal(
+                    EntityRefusalKind::ArtifactContract,
+                    "Native review evidence waterfall threshold delta is inconsistent",
+                    json!({
+                        "stage": "native_review_export",
+                        "field": "review_items.evidence_waterfall.threshold_lines.delta_units",
+                        "review_id": item.review_id,
+                        "threshold_id": threshold.threshold_id,
+                        "expected": expected_delta,
+                        "actual": threshold.delta_units
+                    }),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn support_ref_score_total(refs: &[NativeEvidenceWaterfallRef]) -> u32 {
+    let support_units = refs
+        .iter()
+        .filter(|reference| reference.lane == "support")
+        .map(|reference| u64::from(reference.score_units))
+        .sum::<u64>();
+    support_units.min(u64::from(ENTITY_SCORE_SCALE)) as u32
 }
 
 fn native_conflicts(item: &ReviewQueueItem) -> Vec<NativeReviewConflict> {
@@ -923,11 +1389,10 @@ fn native_signature_group_score_stats(
 }
 
 fn item_signature_score_units(item: &NativeReviewItem) -> u32 {
-    item.evidence_waterfall_refs
-        .iter()
-        .map(|evidence| evidence.score_units)
-        .max()
-        .unwrap_or(item.impact.review_priority_units)
+    if item.evidence_waterfall.contributions.is_empty() {
+        return item.evidence_waterfall.score_total_units;
+    }
+    item.evidence_waterfall.score_total_units
 }
 
 fn native_contradiction_class(item: &NativeReviewItem) -> String {
@@ -965,27 +1430,26 @@ fn native_mode_context_class(item: &NativeReviewItem) -> String {
 
 fn native_signature_hit_vector(item: &NativeReviewItem) -> Vec<NativeReviewEvidenceSignatureHit> {
     let mut hits = Vec::new();
-    for evidence in &item.evidence_waterfall_refs {
-        let reason_codes = sorted_unique(evidence.reason_codes.clone());
+    for contribution in &item.evidence_waterfall.contributions {
+        let reason_codes = sorted_unique(contribution.reason_codes.clone());
         if reason_codes.is_empty() {
             hits.push(NativeReviewEvidenceSignatureHit {
-                lane: evidence.lane.clone(),
-                operator: "unattributed".to_string(),
-                view_field: "unspecified".to_string(),
-                score_band: score_band(evidence.score_units),
-                evidence_count: evidence.evidence_count,
+                lane: contribution.lane.clone(),
+                operator: contribution.operator.clone(),
+                view_field: contribution.view_field.clone(),
+                score_band: score_band(contribution.score_units),
+                evidence_count: contribution.evidence_count,
                 reason_codes: Vec::new(),
             });
             continue;
         }
         for reason_code in reason_codes {
-            let (operator, view_field) = signature_operator_view_field(&reason_code);
             hits.push(NativeReviewEvidenceSignatureHit {
-                lane: evidence.lane.clone(),
-                operator,
-                view_field,
-                score_band: score_band(evidence.score_units),
-                evidence_count: evidence.evidence_count,
+                lane: contribution.lane.clone(),
+                operator: contribution.operator.clone(),
+                view_field: contribution.view_field.clone(),
+                score_band: score_band(contribution.score_units),
+                evidence_count: contribution.evidence_count,
                 reason_codes: vec![reason_code],
             });
         }

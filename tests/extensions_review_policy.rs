@@ -842,6 +842,7 @@ fn review_queue() -> ReviewQueueArtifact {
                 score_units: ScoreUnits::saturating_from_units(6000),
                 evidence_count: 1,
                 evidence_reason_codes: vec!["relation_only".to_string()],
+                evidence_hits: Vec::new(),
             }),
             strongest_negative_cut: None,
             relation_hints: vec![ReviewRelationHint {
@@ -882,6 +883,7 @@ fn mixed_review_queue() -> ReviewQueueArtifact {
             score_units: ScoreUnits::saturating_from_units(7000),
             evidence_count: 2,
             evidence_reason_codes: vec!["identity_match".to_string()],
+            evidence_hits: Vec::new(),
         }),
         strongest_negative_cut: None,
         relation_hints: Vec::new(),

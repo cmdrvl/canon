@@ -23,7 +23,7 @@ use crate::{
             NativeReviewItem as ExportNativeReviewItem, NativeReviewMode as ExportNativeReviewMode,
             NativeReviewModeContext as ExportNativeReviewModeContext,
             build_native_review_signature_groups, native_evidence_signature_for_item,
-            native_review_artifact_hash,
+            native_review_artifact_hash, validate_native_review_waterfalls,
         },
         schema::{
             CANON_ENTITY_REVIEW_IMPORT_VERSION, CANON_ENTITY_REVIEW_QUEUE_VERSION,
@@ -1185,6 +1185,7 @@ fn validate_native_review_artifact(
             }),
         ));
     }
+    validate_native_review_waterfalls(&typed)?;
     validate_native_review_signature_derivations(&typed)?;
     Ok(typed)
 }

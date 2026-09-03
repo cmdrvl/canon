@@ -12,9 +12,10 @@ use crate::entity::{
         CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactMetadata, EntityArtifactReference,
         EntityDeterministicSummary,
     },
+    edge::EdgeEvidenceHit,
     error::EntityRefusalKind,
     graph::{CannotLinkEvidenceEdge, EntityEvidenceGraph, SignedEvidenceEdge},
-    score::ScoreUnits,
+    score::{ScoreLane, ScoreUnits},
 };
 use crate::witness;
 use serde::{Deserialize, Serialize};
@@ -117,6 +118,19 @@ pub struct SolveEvidenceCut {
     pub score_units: ScoreUnits,
     pub evidence_count: u64,
     pub evidence_reason_codes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence_hits: Vec<SolveEvidenceCutHit>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SolveEvidenceCutHit {
+    pub lane: ScoreLane,
+    pub namespace: String,
+    pub operator_id: String,
+    pub reason_code: String,
+    pub score_units: ScoreUnits,
+    pub hard_cannot_link: bool,
+    pub explanation: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1667,6 +1681,7 @@ fn signed_evidence_cut(edge: &SignedEvidenceEdge) -> SolveEvidenceCut {
         evidence_reason_codes: evidence_reason_codes(
             edge.evidence.iter().map(|hit| hit.reason_code.as_str()),
         ),
+        evidence_hits: solve_evidence_cut_hits(&edge.evidence),
     }
 }
 
@@ -1679,7 +1694,22 @@ fn cannot_link_evidence_cut(edge: &CannotLinkEvidenceEdge) -> SolveEvidenceCut {
         evidence_reason_codes: evidence_reason_codes(
             edge.evidence.iter().map(|hit| hit.reason_code.as_str()),
         ),
+        evidence_hits: solve_evidence_cut_hits(&edge.evidence),
     }
+}
+
+fn solve_evidence_cut_hits(hits: &[EdgeEvidenceHit]) -> Vec<SolveEvidenceCutHit> {
+    hits.iter()
+        .map(|hit| SolveEvidenceCutHit {
+            lane: hit.lane,
+            namespace: hit.namespace.clone(),
+            operator_id: hit.operator_id.clone(),
+            reason_code: hit.reason_code.clone(),
+            score_units: hit.score_units,
+            hard_cannot_link: hit.hard_cannot_link,
+            explanation: hit.explanation.clone(),
+        })
+        .collect()
 }
 
 fn cannot_link_violation(edge: &CannotLinkEvidenceEdge) -> SolveCannotLinkViolation {
