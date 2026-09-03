@@ -318,6 +318,41 @@ canon tape.csv --registry registries/cusip-isin/ --column cusip \
 
 ---
 
+## Embeddable Rust API
+
+Rust callers can use `canon::sdk` when spawning the CLI per row would be the
+wrong boundary. The SDK covers immutable operations only: package open/verify,
+exact batch lookup, row-preserving CSV mapping, JSON artifact/evidence/explain
+readers, project run event readers, and read-only registry metadata.
+
+Each SDK request carries `api_version: SdkApiVersion::v1()`. The stable promise
+is at the operation and artifact boundary: request/response structs, refusal
+codes, package/archive bytes, mapping artifacts, registry metadata, and bounded
+pages. Internal solver, operator, workbench, provider, and scheduler structs are
+not stabilized as public embedding contracts.
+
+The CLI and SDK delegate to the same parser, registry loader, lookup engine,
+package verifier, and serializers. `tests/sdk_conformance.rs` runs both against
+the same fixtures and asserts byte-identical JSON mapping artifacts, CSV output,
+mapping sidecars, and refusal codes. The default library build remains local
+and offline; no adapter, cloud, or network feature is required to use the SDK
+surface.
+
+```rust
+use canon::sdk::{ExactMappingRequest, exact_mapping_artifact};
+use std::path::PathBuf;
+
+let artifact = exact_mapping_artifact(ExactMappingRequest::v1(
+    PathBuf::from("tape.csv"),
+    PathBuf::from("registries/cusip-isin"),
+    "cusip",
+))?;
+
+assert!(artifact.exit_code <= 1);
+```
+
+---
+
 ## How canon Compares
 
 | Capability | canon | VLOOKUP / INDEX-MATCH | Custom Python script | MDM platform |

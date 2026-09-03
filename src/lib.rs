@@ -30,6 +30,7 @@ pub mod registry;
 pub mod registry_lint;
 #[doc(hidden)]
 pub mod resolve;
+pub mod sdk;
 pub mod temporal;
 pub mod strategy {
     pub mod tournament;
