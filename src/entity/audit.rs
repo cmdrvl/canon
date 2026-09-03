@@ -20,6 +20,7 @@ use crate::{
             EntityDeterministicSummary,
         },
         error::EntityRefusalKind,
+        graph::EntityClusterShapeReport,
         review::{required_value_string, value_string_or, value_u64_or},
         schema::{
             entity_v1_artifact_reference, entity_v1_lifecycle_metadata_from_source,
@@ -68,6 +69,8 @@ pub struct EntityAuditArtifact {
     pub artifact_content_hash: String,
     pub metadata: EntityArtifactMetadata,
     pub summary: EntityDeterministicSummary,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster_shape: Option<EntityClusterShapeReport>,
     pub suite_id: String,
     pub suite_version: String,
     pub audited_artifact: EntityArtifactReference,
@@ -93,6 +96,20 @@ pub enum EntityAuditGateStatus {
 }
 
 pub fn run_entity_audit(request: EntityAuditRequest) -> Result<EntityAuditArtifact, Refusal> {
+    run_entity_audit_inner(request, None)
+}
+
+pub fn run_entity_audit_with_cluster_shape(
+    request: EntityAuditRequest,
+    cluster_shape: EntityClusterShapeReport,
+) -> Result<EntityAuditArtifact, Refusal> {
+    run_entity_audit_inner(request, Some(cluster_shape))
+}
+
+fn run_entity_audit_inner(
+    request: EntityAuditRequest,
+    cluster_shape: Option<EntityClusterShapeReport>,
+) -> Result<EntityAuditArtifact, Refusal> {
     if request.expected.consumer_stage != EntityChainStage::Audit {
         return Err(audit_artifact_refusal(
             "Audit expectations must target the audit stage",
@@ -133,6 +150,7 @@ pub fn run_entity_audit(request: EntityAuditRequest) -> Result<EntityAuditArtifa
             &certified_artifacts,
             &gates,
         ),
+        cluster_shape,
         suite_id: request.suite.id,
         suite_version: request.suite.version,
         audited_artifact,
@@ -151,6 +169,20 @@ pub struct EntityAuditV1Request<'a> {
 }
 
 pub fn run_entity_audit_v1(request: EntityAuditV1Request<'_>) -> Result<Value, Refusal> {
+    run_entity_audit_v1_inner(request, None)
+}
+
+pub fn run_entity_audit_v1_with_cluster_shape(
+    request: EntityAuditV1Request<'_>,
+    cluster_shape: EntityClusterShapeReport,
+) -> Result<Value, Refusal> {
+    run_entity_audit_v1_inner(request, Some(cluster_shape))
+}
+
+fn run_entity_audit_v1_inner(
+    request: EntityAuditV1Request<'_>,
+    cluster_shape: Option<EntityClusterShapeReport>,
+) -> Result<Value, Refusal> {
     validate_audit_v1_source(&request.result_artifact)?;
     let source_hash = required_value_string(
         &request.result_artifact,
@@ -195,6 +227,15 @@ pub fn run_entity_audit_v1(request: EntityAuditV1Request<'_>) -> Result<Value, R
         },
         "gates": gates
     });
+    if let Some(cluster_shape) = cluster_shape {
+        artifact
+            .as_object_mut()
+            .expect("audit artifact is a JSON object")
+            .insert(
+                "cluster_shape".to_string(),
+                serde_json::to_value(cluster_shape).expect("cluster shape report serializes"),
+            );
+    }
     finalize_entity_v1_self_hash(&mut artifact)?;
     Ok(artifact)
 }

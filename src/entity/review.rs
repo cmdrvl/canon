@@ -9,6 +9,7 @@ use crate::{
         CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactMetadata, EntityArtifactReference,
         EntityArtifactStageV1, EntityDeterministicSummary,
         error::EntityRefusalKind,
+        graph::EntityClusterShapeReport,
         run::link::{
             ENTITY_LINK_VERSION, EntityLinkArtifact, validate_entity_link_artifact_contract,
         },
@@ -301,6 +302,20 @@ pub struct ReviewV1ExportRequest {
 }
 
 pub fn build_review_v1_artifact(request: ReviewV1ExportRequest) -> Result<Value, Refusal> {
+    build_review_v1_artifact_inner(request, None)
+}
+
+pub fn build_review_v1_artifact_with_cluster_shape(
+    request: ReviewV1ExportRequest,
+    cluster_shape: EntityClusterShapeReport,
+) -> Result<Value, Refusal> {
+    build_review_v1_artifact_inner(request, Some(cluster_shape))
+}
+
+fn build_review_v1_artifact_inner(
+    request: ReviewV1ExportRequest,
+    cluster_shape: Option<EntityClusterShapeReport>,
+) -> Result<Value, Refusal> {
     validate_review_v1_source(&request.result_artifact)?;
     let source_hash = required_value_string(
         &request.result_artifact,
@@ -314,7 +329,10 @@ pub fn build_review_v1_artifact(request: ReviewV1ExportRequest) -> Result<Value,
         EntityArtifactStageV1::Review,
         vec![source_ref],
     )?;
-    let review_items = review_items_from_v1_result(&request.result_artifact, request.include)?;
+    let mut review_items = review_items_from_v1_result(&request.result_artifact, request.include)?;
+    if let Some(cluster_shape) = cluster_shape.as_ref() {
+        sort_v1_review_items_by_cluster_suspicion(&mut review_items, cluster_shape);
+    }
     let review_item_count = review_items.len() as u64;
     let source_review_groups = summary_count_any(
         &request.result_artifact,
@@ -356,6 +374,16 @@ pub fn build_review_v1_artifact(request: ReviewV1ExportRequest) -> Result<Value,
             "promote": "canon entity promote <RESULT.json> --audit <AUDIT.json> --registry <REGISTRY> --next-version <VER>"
         }
     });
+    if let Some(cluster_shape) = cluster_shape {
+        artifact
+            .as_object_mut()
+            .expect("review artifact is a JSON object")
+            .insert(
+                "cluster_shape".to_string(),
+                serde_json::to_value(cluster_shape).expect("cluster shape report serializes"),
+            );
+        artifact["summary"]["labels"]["order_by"] = Value::String("suspicion".to_string());
+    }
     finalize_entity_v1_self_hash(&mut artifact)?;
     Ok(artifact)
 }
@@ -823,6 +851,35 @@ fn review_items_from_v1_result(
         value_string_or(left, &["review_id"], "").cmp(value_string_or(right, &["review_id"], ""))
     });
     Ok(items)
+}
+
+fn sort_v1_review_items_by_cluster_suspicion(
+    items: &mut [Value],
+    cluster_shape: &EntityClusterShapeReport,
+) {
+    let ranks = cluster_shape
+        .clusters
+        .iter()
+        .map(|cluster| (cluster.cluster_id.as_str(), cluster.suspicion_rank))
+        .collect::<BTreeMap<_, _>>();
+    items.sort_by(|left, right| {
+        let left_rank = review_item_cluster_rank(left, &ranks);
+        let right_rank = review_item_cluster_rank(right, &ranks);
+        left_rank.cmp(&right_rank).then_with(|| {
+            value_string_or(left, &["review_id"], "").cmp(value_string_or(
+                right,
+                &["review_id"],
+                "",
+            ))
+        })
+    });
+}
+
+fn review_item_cluster_rank(item: &Value, ranks: &BTreeMap<&str, u64>) -> u64 {
+    item.get("component_id")
+        .and_then(Value::as_str)
+        .and_then(|component_id| ranks.get(component_id).copied())
+        .unwrap_or(u64::MAX)
 }
 
 fn review_items_from_v1_alias_proposals(

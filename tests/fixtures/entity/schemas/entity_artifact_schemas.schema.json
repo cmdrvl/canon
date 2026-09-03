@@ -16,6 +16,168 @@
       ],
       "type": "object"
     },
+    "cluster_shape": {
+      "additionalProperties": false,
+      "properties": {
+        "clusters": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "bridge_edge_count": {
+                "description": "Count of reported internal bridge edges; two-node clusters report zero by contract.",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "bridge_edges": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "left_surface_id": {
+                      "type": "string"
+                    },
+                    "right_surface_id": {
+                      "type": "string"
+                    },
+                    "score_units": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "left_surface_id",
+                    "right_surface_id",
+                    "score_units"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "cluster_id": {
+                "type": "string"
+              },
+              "canonical_id": {
+                "type": "string"
+              },
+              "diameter": {
+                "description": "Maximum finite shortest-path distance in integer edge hops.",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "disconnected_pair_count": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "edge_density_basis_points": {
+                "description": "Floor of scored internal edges divided by possible unordered surface pairs, scaled to 10000 basis points.",
+                "maximum": 10000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "min_internal_edge_score_units": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "possible_edge_count": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "scored_edge_count": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "size": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "suspicion_rank": {
+                "description": "One-based deterministic review ordering after density asc, bridge count desc, diameter desc, min score asc, size desc, cluster_id asc.",
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "bridge_edge_count",
+              "bridge_edges",
+              "cluster_id",
+              "diameter",
+              "disconnected_pair_count",
+              "edge_density_basis_points",
+              "possible_edge_count",
+              "scored_edge_count",
+              "size",
+              "suspicion_rank"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "ranking_policy": {
+          "additionalProperties": false,
+          "properties": {
+            "order": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "tie_break": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "order",
+            "tie_break"
+          ],
+          "type": "object"
+        },
+        "summary": {
+          "additionalProperties": false,
+          "properties": {
+            "bridge_edge_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "cluster_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "max_diameter": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "scored_edge_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "surface_count": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "bridge_edge_count",
+            "cluster_count",
+            "max_diameter",
+            "scored_edge_count",
+            "surface_count"
+          ],
+          "type": "object"
+        },
+        "version": {
+          "const": "canon_entity_cluster_shape.v0"
+        }
+      },
+      "required": [
+        "clusters",
+        "ranking_policy",
+        "summary",
+        "version"
+      ],
+      "type": "object"
+    },
     "hash": {
       "type": "string",
       "x-canon-format": "blake3-hash"
@@ -280,6 +442,9 @@
       "properties": {
         "artifact_content_hash": {
           "$ref": "#/$defs/hash"
+        },
+        "cluster_shape": {
+          "$ref": "#/$defs/cluster_shape"
         },
         "gates": {
           "items": {
@@ -605,6 +770,9 @@
       "properties": {
         "artifact_content_hash": {
           "$ref": "#/$defs/hash"
+        },
+        "cluster_shape": {
+          "$ref": "#/$defs/cluster_shape"
         },
         "metadata": {
           "$ref": "#/$defs/metadata"

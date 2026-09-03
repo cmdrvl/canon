@@ -18,7 +18,12 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, BTreeSet, VecDeque},
+};
+
+pub const CANON_ENTITY_CLUSTER_SHAPE_VERSION: &str = "canon_entity_cluster_shape.v0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct EntityEvidenceGraph {
@@ -622,4 +627,367 @@ fn graph_artifact_contract_refusal(message: &'static str, detail: serde_json::Va
                 .to_string(),
         ),
     )
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityClusterShapeInput {
+    pub clusters: Vec<EntityClusterShapeClusterInput>,
+    pub scored_edges: Vec<EntityClusterShapeEdgeInput>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityClusterShapeClusterInput {
+    pub cluster_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_id: Option<String>,
+    pub surface_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityClusterShapeEdgeInput {
+    pub left_surface_id: String,
+    pub right_surface_id: String,
+    pub score_units: ScoreUnits,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityClusterShapeReport {
+    pub version: String,
+    pub summary: EntityClusterShapeSummary,
+    pub ranking_policy: EntityClusterShapeRankingPolicy,
+    pub clusters: Vec<EntityClusterShapeMetrics>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityClusterShapeSummary {
+    pub cluster_count: u64,
+    pub surface_count: u64,
+    pub scored_edge_count: u64,
+    pub bridge_edge_count: u64,
+    pub max_diameter: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityClusterShapeRankingPolicy {
+    pub order: Vec<String>,
+    pub tie_break: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityClusterShapeMetrics {
+    pub suspicion_rank: u64,
+    pub cluster_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_id: Option<String>,
+    pub size: u64,
+    pub possible_edge_count: u64,
+    pub scored_edge_count: u64,
+    pub edge_density_basis_points: u32,
+    pub bridge_edge_count: u64,
+    pub bridge_edges: Vec<EntityClusterShapeBridgeEdge>,
+    pub diameter: u64,
+    pub disconnected_pair_count: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_internal_edge_score_units: Option<ScoreUnits>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct EntityClusterShapeBridgeEdge {
+    pub left_surface_id: String,
+    pub right_surface_id: String,
+    pub score_units: ScoreUnits,
+}
+
+impl EntityClusterShapeInput {
+    pub fn from_graph(
+        clusters: Vec<EntityClusterShapeClusterInput>,
+        graph: &EntityEvidenceGraph,
+    ) -> Self {
+        let scored_edges = graph
+            .support_edges
+            .iter()
+            .map(|edge| EntityClusterShapeEdgeInput {
+                left_surface_id: edge.left_surface_id.clone(),
+                right_surface_id: edge.right_surface_id.clone(),
+                score_units: edge.score_units,
+            })
+            .collect();
+        Self {
+            clusters,
+            scored_edges,
+        }
+    }
+}
+
+pub fn build_entity_cluster_shape_report(
+    input: EntityClusterShapeInput,
+) -> EntityClusterShapeReport {
+    let mut clusters = input
+        .clusters
+        .into_iter()
+        .map(|cluster| cluster_shape_metrics(&cluster, &input.scored_edges))
+        .collect::<Vec<_>>();
+    clusters.sort_by(cluster_shape_suspicion_cmp);
+    for (index, cluster) in clusters.iter_mut().enumerate() {
+        cluster.suspicion_rank = u64::try_from(index + 1).expect("cluster rank fits u64");
+    }
+
+    let summary = EntityClusterShapeSummary {
+        cluster_count: clusters.len() as u64,
+        surface_count: clusters.iter().map(|cluster| cluster.size).sum(),
+        scored_edge_count: clusters
+            .iter()
+            .map(|cluster| cluster.scored_edge_count)
+            .sum(),
+        bridge_edge_count: clusters
+            .iter()
+            .map(|cluster| cluster.bridge_edge_count)
+            .sum(),
+        max_diameter: clusters
+            .iter()
+            .map(|cluster| cluster.diameter)
+            .max()
+            .unwrap_or(0),
+    };
+
+    EntityClusterShapeReport {
+        version: CANON_ENTITY_CLUSTER_SHAPE_VERSION.to_string(),
+        summary,
+        ranking_policy: EntityClusterShapeRankingPolicy {
+            order: vec![
+                "edge_density_basis_points_asc".to_string(),
+                "bridge_edge_count_desc".to_string(),
+                "diameter_desc".to_string(),
+                "min_internal_edge_score_units_asc".to_string(),
+                "size_desc".to_string(),
+            ],
+            tie_break: vec!["canonical_id_asc".to_string(), "cluster_id_asc".to_string()],
+        },
+        clusters,
+    }
+}
+
+pub fn cluster_shape_suspicion_cmp(
+    left: &EntityClusterShapeMetrics,
+    right: &EntityClusterShapeMetrics,
+) -> Ordering {
+    left.edge_density_basis_points
+        .cmp(&right.edge_density_basis_points)
+        .then_with(|| right.bridge_edge_count.cmp(&left.bridge_edge_count))
+        .then_with(|| right.diameter.cmp(&left.diameter))
+        .then_with(|| {
+            min_score_sort_key(left.min_internal_edge_score_units)
+                .cmp(&min_score_sort_key(right.min_internal_edge_score_units))
+        })
+        .then_with(|| right.size.cmp(&left.size))
+        .then_with(|| cluster_shape_tie_break_id(left).cmp(cluster_shape_tie_break_id(right)))
+        .then_with(|| left.cluster_id.cmp(&right.cluster_id))
+}
+
+fn cluster_shape_metrics(
+    cluster: &EntityClusterShapeClusterInput,
+    scored_edges: &[EntityClusterShapeEdgeInput],
+) -> EntityClusterShapeMetrics {
+    let surface_ids = sorted_unique_non_empty(cluster.surface_ids.clone());
+    let surface_set = surface_ids.iter().cloned().collect::<BTreeSet<_>>();
+    let internal_edges = internal_scored_edges(&surface_set, scored_edges);
+    let possible_edge_count = possible_pair_count(surface_ids.len() as u64);
+    let scored_edge_count = internal_edges.len() as u64;
+    let adjacency = cluster_adjacency(&surface_ids, &internal_edges);
+    let bridge_edges = bridge_edges(&surface_ids, &internal_edges, &adjacency);
+    let (diameter, disconnected_pair_count) =
+        diameter_and_disconnected_pairs(&surface_ids, &adjacency);
+    let min_internal_edge_score_units = internal_edges.values().map(|edge| edge.score_units).min();
+
+    EntityClusterShapeMetrics {
+        suspicion_rank: 0,
+        cluster_id: cluster.cluster_id.clone(),
+        canonical_id: cluster.canonical_id.clone(),
+        size: surface_ids.len() as u64,
+        possible_edge_count,
+        scored_edge_count,
+        edge_density_basis_points: density_basis_points(scored_edge_count, possible_edge_count),
+        bridge_edge_count: bridge_edges.len() as u64,
+        bridge_edges,
+        diameter,
+        disconnected_pair_count,
+        min_internal_edge_score_units,
+    }
+}
+
+fn sorted_unique_non_empty(mut surface_ids: Vec<String>) -> Vec<String> {
+    surface_ids.retain(|surface_id| !surface_id.trim().is_empty());
+    surface_ids.sort();
+    surface_ids.dedup();
+    surface_ids
+}
+
+fn internal_scored_edges(
+    surface_set: &BTreeSet<String>,
+    scored_edges: &[EntityClusterShapeEdgeInput],
+) -> BTreeMap<SurfacePair, EntityClusterShapeBridgeEdge> {
+    let mut internal_edges: BTreeMap<SurfacePair, EntityClusterShapeBridgeEdge> = BTreeMap::new();
+    for edge in scored_edges {
+        let Some(pair) = SurfacePair::new(&edge.left_surface_id, &edge.right_surface_id) else {
+            continue;
+        };
+        if !surface_set.contains(&pair.left_surface_id)
+            || !surface_set.contains(&pair.right_surface_id)
+        {
+            continue;
+        }
+        let candidate = EntityClusterShapeBridgeEdge {
+            left_surface_id: pair.left_surface_id.clone(),
+            right_surface_id: pair.right_surface_id.clone(),
+            score_units: edge.score_units,
+        };
+        match internal_edges.entry(pair) {
+            std::collections::btree_map::Entry::Occupied(mut entry) => {
+                let current = entry.get_mut();
+                if candidate.score_units > current.score_units {
+                    *current = candidate;
+                }
+            }
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(candidate);
+            }
+        }
+    }
+    internal_edges
+}
+
+fn cluster_adjacency(
+    surface_ids: &[String],
+    internal_edges: &BTreeMap<SurfacePair, EntityClusterShapeBridgeEdge>,
+) -> BTreeMap<String, BTreeSet<String>> {
+    let mut adjacency = surface_ids
+        .iter()
+        .map(|surface_id| (surface_id.clone(), BTreeSet::new()))
+        .collect::<BTreeMap<_, _>>();
+    for pair in internal_edges.keys() {
+        adjacency
+            .entry(pair.left_surface_id.clone())
+            .or_default()
+            .insert(pair.right_surface_id.clone());
+        adjacency
+            .entry(pair.right_surface_id.clone())
+            .or_default()
+            .insert(pair.left_surface_id.clone());
+    }
+    adjacency
+}
+
+fn bridge_edges(
+    surface_ids: &[String],
+    internal_edges: &BTreeMap<SurfacePair, EntityClusterShapeBridgeEdge>,
+    adjacency: &BTreeMap<String, BTreeSet<String>>,
+) -> Vec<EntityClusterShapeBridgeEdge> {
+    if surface_ids.len() <= 2 {
+        return Vec::new();
+    }
+    internal_edges
+        .iter()
+        .filter(|(pair, _)| {
+            !reachable_without_edge(
+                &pair.left_surface_id,
+                &pair.right_surface_id,
+                pair,
+                adjacency,
+            )
+        })
+        .map(|(_, edge)| edge.clone())
+        .collect()
+}
+
+fn reachable_without_edge(
+    start: &str,
+    target: &str,
+    removed: &SurfacePair,
+    adjacency: &BTreeMap<String, BTreeSet<String>>,
+) -> bool {
+    let mut seen = BTreeSet::new();
+    let mut queue = VecDeque::from([start.to_string()]);
+    while let Some(surface_id) = queue.pop_front() {
+        if surface_id == target {
+            return true;
+        }
+        if !seen.insert(surface_id.clone()) {
+            continue;
+        }
+        for next in adjacency.get(&surface_id).into_iter().flatten() {
+            if edge_matches(&surface_id, next, removed) {
+                continue;
+            }
+            if !seen.contains(next) {
+                queue.push_back(next.clone());
+            }
+        }
+    }
+    false
+}
+
+fn edge_matches(left: &str, right: &str, pair: &SurfacePair) -> bool {
+    (left == pair.left_surface_id && right == pair.right_surface_id)
+        || (left == pair.right_surface_id && right == pair.left_surface_id)
+}
+
+fn diameter_and_disconnected_pairs(
+    surface_ids: &[String],
+    adjacency: &BTreeMap<String, BTreeSet<String>>,
+) -> (u64, u64) {
+    let mut diameter = 0_u64;
+    let mut disconnected_pair_count = 0_u64;
+    for (left_index, left) in surface_ids.iter().enumerate() {
+        let distances = shortest_path_distances(left, adjacency);
+        for right in surface_ids.iter().skip(left_index + 1) {
+            if let Some(distance) = distances.get(right) {
+                diameter = diameter.max(*distance);
+            } else {
+                disconnected_pair_count += 1;
+            }
+        }
+    }
+    (diameter, disconnected_pair_count)
+}
+
+fn shortest_path_distances(
+    start: &str,
+    adjacency: &BTreeMap<String, BTreeSet<String>>,
+) -> BTreeMap<String, u64> {
+    let mut distances = BTreeMap::from([(start.to_string(), 0)]);
+    let mut queue = VecDeque::from([start.to_string()]);
+    while let Some(surface_id) = queue.pop_front() {
+        let next_distance = distances[&surface_id] + 1;
+        for next in adjacency.get(&surface_id).into_iter().flatten() {
+            if distances.contains_key(next) {
+                continue;
+            }
+            distances.insert(next.clone(), next_distance);
+            queue.push_back(next.clone());
+        }
+    }
+    distances
+}
+
+const fn possible_pair_count(size: u64) -> u64 {
+    size.saturating_mul(size.saturating_sub(1)) / 2
+}
+
+fn density_basis_points(scored_edge_count: u64, possible_edge_count: u64) -> u32 {
+    if possible_edge_count == 0 {
+        return 0;
+    }
+    let scaled = (u128::from(scored_edge_count) * 10_000) / u128::from(possible_edge_count);
+    u32::try_from(scaled).expect("density basis points fit u32")
+}
+
+fn min_score_sort_key(score_units: Option<ScoreUnits>) -> u32 {
+    score_units.map(ScoreUnits::as_u32).unwrap_or(u32::MAX)
+}
+
+fn cluster_shape_tie_break_id(cluster: &EntityClusterShapeMetrics) -> &str {
+    cluster
+        .canonical_id
+        .as_deref()
+        .unwrap_or(cluster.cluster_id.as_str())
 }
