@@ -6,9 +6,10 @@ use super::{
 };
 use crate::{
     Refusal,
+    identity_scope::IdentityScope,
     registry::add_entry::{
         RegistryAddEntryAliasEntry, RegistryAddEntryLintSummary, RegistryAddEntryRegistry,
-        RegistryVersionBump,
+        RegistryAliasWriteEntry, RegistryVersionBump,
     },
     registry_lint::{RegistryLintProfile, RegistryLintSeverity},
 };
@@ -70,11 +71,21 @@ struct RegistryMintPlan {
 }
 
 pub fn mint(request: RegistryMintRequest) -> Result<RegistryMintOutput, Refusal> {
-    let plan = plan_mint(request)?;
+    mint_with_scope(request, None)
+}
+
+pub fn mint_with_scope(
+    request: RegistryMintRequest,
+    scope: Option<IdentityScope>,
+) -> Result<RegistryMintOutput, Refusal> {
+    let plan = plan_mint_with_scope(request, scope)?;
     commit_mint_plan(plan)
 }
 
-fn plan_mint(request: RegistryMintRequest) -> Result<RegistryMintPlan, Refusal> {
+fn plan_mint_with_scope(
+    request: RegistryMintRequest,
+    scope: Option<IdentityScope>,
+) -> Result<RegistryMintPlan, Refusal> {
     if request.canonical_id.is_some() && request.prefix.is_some() {
         return Err(add_entry::parse_refusal(
             &request.registry,
@@ -91,6 +102,11 @@ fn plan_mint(request: RegistryMintRequest) -> Result<RegistryMintPlan, Refusal> 
             "canon registry mint --with-alias aliases.json='Input:RULE' ...",
         ));
     }
+    let scope = add_entry::finalize_requested_scope(
+        &request.registry,
+        scope,
+        "canon registry mint --scope DIMENSION=VALUE ...",
+    )?;
 
     let registry_path = request.registry.join("registry.json");
     let (registry_json, registry_meta, mapping_files) = load_registry_definition(&request.registry)
@@ -147,6 +163,7 @@ fn plan_mint(request: RegistryMintRequest) -> Result<RegistryMintPlan, Refusal> 
         &canonical_id,
         &canonical_type,
         &request.with_alias,
+        scope.as_ref(),
         &mapping_files,
     )?;
     let version_after = add_entry::resolve_next_version(
@@ -176,7 +193,7 @@ fn plan_mint(request: RegistryMintRequest) -> Result<RegistryMintPlan, Refusal> 
         entry_count_after,
     )?;
 
-    let mut aliases_by_file = BTreeMap::<String, Vec<RegistryAddEntryAliasEntry>>::new();
+    let mut aliases_by_file = BTreeMap::<String, Vec<RegistryAliasWriteEntry>>::new();
     for alias in parsed_aliases {
         aliases_by_file
             .entry(alias.alias_file.clone())
@@ -193,7 +210,11 @@ fn plan_mint(request: RegistryMintRequest) -> Result<RegistryMintPlan, Refusal> 
             &alias_path,
             file_aliases,
         )?;
-        aliases.extend(file_aliases.iter().cloned());
+        aliases.extend(
+            file_aliases
+                .iter()
+                .map(RegistryAliasWriteEntry::output_entry),
+        );
         alias_writes.push((alias_path, alias_bytes));
     }
 
@@ -240,8 +261,9 @@ fn parse_aliases(
     canonical_id: &str,
     canonical_type: &str,
     raw_aliases: &[String],
+    scope: Option<&IdentityScope>,
     mapping_files: &[MappingFile],
-) -> Result<Vec<RegistryAddEntryAliasEntry>, Refusal> {
+) -> Result<Vec<RegistryAliasWriteEntry>, Refusal> {
     let mut seen_inputs = BTreeSet::<String>::new();
     let mut aliases = Vec::new();
     for raw in raw_aliases {
@@ -281,7 +303,7 @@ fn parse_aliases(
             false,
             "Use --with-alias aliases.json='Input:RULE_ID'",
         )?;
-        add_entry::ensure_input_is_new(registry, &input, mapping_files)?;
+        add_entry::ensure_input_is_new_in_scope(registry, &input, scope, mapping_files)?;
         if !seen_inputs.insert(input.clone()) {
             return Err(add_entry::parse_refusal(
                 registry,
@@ -290,12 +312,13 @@ fn parse_aliases(
                 "Remove duplicate --with-alias inputs, then rerun",
             ));
         }
-        aliases.push(RegistryAddEntryAliasEntry {
+        aliases.push(RegistryAliasWriteEntry {
             alias_file,
             input,
             canonical_id: canonical_id.to_string(),
             canonical_type: canonical_type.to_string(),
             rule_id,
+            scope: scope.cloned(),
         });
     }
     Ok(aliases)

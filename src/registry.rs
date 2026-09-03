@@ -4,7 +4,7 @@ use crate::{
     RegistryDiffVersion, RegistryMeta,
     identity_scope::{
         CoreIdentifierNamespaceClass, CoreScopeDimension, IdentifierNamespaceRef, IdentityScope,
-        ScopeBinding, ScopeDimensionRef, finalize_scope,
+        ScopeBinding, ScopeDimensionBinding, ScopeDimensionRef, finalize_scope,
     },
     paths::{self, RegistryIndexCacheMode},
 };
@@ -34,12 +34,12 @@ pub mod transaction;
 
 pub use add_entry::{
     RegistryAddEntryOutput, RegistryAddEntryPlan, RegistryAddEntryRequest, RegistryVersionBump,
-    add_entry, plan_add_entry,
+    add_entry, add_entry_with_scope, plan_add_entry, plan_add_entry_with_scope,
 };
 pub use id_scheme::{
     RegistryDefaultIdSchemeOutput, RegistryDefaultIdSchemeRequest, set_default_id_scheme,
 };
-pub use mint::{RegistryMintOutput, RegistryMintRequest, mint};
+pub use mint::{RegistryMintOutput, RegistryMintRequest, mint, mint_with_scope};
 pub use next_id::{RegistryNextIdOutput, RegistryNextIdRequest, next_id};
 pub use package::{
     REGISTRY_MERGE_PLAN_SCHEMA_VERSION, REGISTRY_PACKAGE_SCHEMA_VERSION, RegistryMergeBlastRadius,
@@ -541,6 +541,57 @@ pub(crate) fn finalize_mapping_scope_metadata(
     }
 
     Ok(finalized_scope)
+}
+
+/// Parse repeatable CLI `--scope DIMENSION=VALUE` bindings into the registry
+/// identity-scope contract.
+pub fn parse_scope_flag_bindings(raw_scopes: &[String]) -> Result<Option<IdentityScope>, String> {
+    if raw_scopes.is_empty() {
+        return Ok(None);
+    }
+
+    let mut dimensions = Vec::with_capacity(raw_scopes.len());
+    for raw_scope in raw_scopes {
+        let (dimension, value) = raw_scope
+            .split_once('=')
+            .ok_or_else(|| format!("Invalid --scope '{raw_scope}'; expected DIMENSION=VALUE"))?;
+        let dimension = ascii_trim_registry(dimension);
+        let value = ascii_trim_registry(value);
+        if dimension.is_empty() || value.is_empty() {
+            return Err(format!(
+                "Invalid --scope '{raw_scope}'; DIMENSION and VALUE must be non-empty after ASCII trim"
+            ));
+        }
+        dimensions.push(ScopeDimensionBinding {
+            dimension: parse_scope_dimension_flag(dimension)?,
+            binding: ScopeBinding::Exact {
+                value: value.to_string(),
+            },
+        });
+    }
+
+    finalize_scope(IdentityScope { dimensions }, None)
+        .map(Some)
+        .map_err(|error| error.to_string())
+}
+
+fn parse_scope_dimension_flag(dimension: &str) -> Result<ScopeDimensionRef, String> {
+    let dimension = match dimension {
+        "dataset" | "deal" => CoreScopeDimension::Dataset,
+        "jurisdiction" => CoreScopeDimension::Jurisdiction,
+        "source_system" => CoreScopeDimension::SourceSystem,
+        "profile" => CoreScopeDimension::Profile,
+        _ => {
+            return Err(format!(
+                "Unsupported --scope dimension '{dimension}'; expected dataset, deal, jurisdiction, source_system, or profile"
+            ));
+        }
+    };
+    Ok(ScopeDimensionRef::Core { dimension })
+}
+
+fn ascii_trim_registry(value: &str) -> &str {
+    value.trim_matches(|ch: char| ch.is_ascii_whitespace())
 }
 
 fn validate_identifier_namespace(namespace: &IdentifierNamespaceRef) -> Result<(), String> {

@@ -5,6 +5,7 @@ use super::{
 };
 use crate::{
     Refusal, RefusalCode, RegistryMeta,
+    identity_scope::IdentityScope,
     registry_lint::{RegistryLintOutput, RegistryLintProfile, RegistryLintSeverity},
 };
 use serde::Serialize;
@@ -59,6 +60,28 @@ pub struct RegistryAddEntryAliasEntry {
     pub rule_id: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct RegistryAliasWriteEntry {
+    pub alias_file: String,
+    pub input: String,
+    pub canonical_id: String,
+    pub canonical_type: String,
+    pub rule_id: String,
+    pub scope: Option<IdentityScope>,
+}
+
+impl RegistryAliasWriteEntry {
+    pub(super) fn output_entry(&self) -> RegistryAddEntryAliasEntry {
+        RegistryAddEntryAliasEntry {
+            alias_file: self.alias_file.clone(),
+            input: self.input.clone(),
+            canonical_id: self.canonical_id.clone(),
+            canonical_type: self.canonical_type.clone(),
+            rule_id: self.rule_id.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RegistryAddEntryLintSummary {
     pub enabled: bool,
@@ -105,13 +128,32 @@ pub struct RegistryAddEntryPlan {
 }
 
 pub fn add_entry(request: RegistryAddEntryRequest) -> Result<RegistryAddEntryOutput, Refusal> {
-    let plan = plan_add_entry(request)?;
+    add_entry_with_scope(request, None)
+}
+
+pub fn add_entry_with_scope(
+    request: RegistryAddEntryRequest,
+    scope: Option<IdentityScope>,
+) -> Result<RegistryAddEntryOutput, Refusal> {
+    let plan = plan_add_entry_with_scope(request, scope)?;
     commit_add_entry_plan(plan)
 }
 
 pub fn plan_add_entry(request: RegistryAddEntryRequest) -> Result<RegistryAddEntryPlan, Refusal> {
+    plan_add_entry_with_scope(request, None)
+}
+
+pub fn plan_add_entry_with_scope(
+    request: RegistryAddEntryRequest,
+    scope: Option<IdentityScope>,
+) -> Result<RegistryAddEntryPlan, Refusal> {
     let _guard = acquire_registry_mutation_guard(&request.registry)
         .map_err(|error| io_refusal(&request.registry, error))?;
+    let scope = finalize_requested_scope(
+        &request.registry,
+        scope,
+        "canon registry add-entry --scope DIMENSION=VALUE ...",
+    )?;
     let registry_path = request.registry.join("registry.json");
     let (registry_json, registry_meta, mapping_files) = load_registry_definition(&request.registry)
         .map_err(|error| {
@@ -146,7 +188,7 @@ pub fn plan_add_entry(request: RegistryAddEntryRequest) -> Result<RegistryAddEnt
         &canonical_id,
         registry_json.default_id_scheme.as_ref(),
     )?;
-    ensure_input_is_new(&request.registry, &input, &mapping_files)?;
+    ensure_input_is_new_in_scope(&request.registry, &input, scope.as_ref(), &mapping_files)?;
     let canonical_type = resolve_canonical_type(
         &request.registry,
         &canonical_id,
@@ -189,6 +231,7 @@ pub fn plan_add_entry(request: RegistryAddEntryRequest) -> Result<RegistryAddEnt
         &canonical_id,
         &canonical_type,
         &rule_id,
+        scope.as_ref(),
     )?;
 
     let alias_file = request.alias_file;
@@ -229,6 +272,21 @@ pub fn plan_add_entry(request: RegistryAddEntryRequest) -> Result<RegistryAddEnt
         alias_bytes,
         lint_enabled: !request.no_lint,
         output,
+    })
+}
+
+pub(super) fn finalize_requested_scope(
+    registry: &Path,
+    scope: Option<IdentityScope>,
+    next_command: &str,
+) -> Result<Option<IdentityScope>, Refusal> {
+    super::finalize_mapping_scope_metadata(None, scope).map_err(|error| {
+        parse_refusal(
+            registry,
+            "Invalid --scope for registry mutation",
+            json!({ "scope_error": error }),
+            next_command,
+        )
     })
 }
 
@@ -381,14 +439,15 @@ pub(super) fn validate_default_id_scheme(
     Ok(())
 }
 
-pub(super) fn ensure_input_is_new(
+pub(super) fn ensure_input_is_new_in_scope(
     registry: &Path,
     input: &str,
+    proposed_scope: Option<&IdentityScope>,
     mapping_files: &[MappingFile],
 ) -> Result<(), Refusal> {
     for mapping_file in mapping_files {
         for entry in &mapping_file.entries {
-            if entry.input == input {
+            if entry.input == input && scopes_collide(entry.scope.as_ref(), proposed_scope) {
                 return Err(parse_refusal(
                     registry,
                     "Registry already contains this input value",
@@ -399,6 +458,7 @@ pub(super) fn ensure_input_is_new(
                             "canonical_type": entry.canonical_type,
                             "rule_id": entry.rule_id,
                             "source_file": mapping_file.path.display().to_string(),
+                            "scope": entry.scope,
                         }
                     }),
                     "Choose a new input alias or edit the existing mapping intentionally",
@@ -407,6 +467,16 @@ pub(super) fn ensure_input_is_new(
         }
     }
     Ok(())
+}
+
+fn scopes_collide(
+    existing_scope: Option<&IdentityScope>,
+    proposed_scope: Option<&IdentityScope>,
+) -> bool {
+    match (existing_scope, proposed_scope) {
+        (Some(existing), Some(proposed)) => existing == proposed,
+        _ => true,
+    }
 }
 
 pub(super) fn resolve_canonical_type(
@@ -583,7 +653,7 @@ fn build_registry_bytes_from_source(
 pub(super) fn build_alias_bytes_with_entries(
     registry: &Path,
     alias_path: &Path,
-    new_entries: &[RegistryAddEntryAliasEntry],
+    new_entries: &[RegistryAliasWriteEntry],
 ) -> Result<Vec<u8>, Refusal> {
     let bytes = fs::read(alias_path).map_err(|error| io_refusal(alias_path, error))?;
     build_alias_bytes_with_entries_from_source(registry, alias_path, &bytes, new_entries)
@@ -597,18 +667,20 @@ fn build_alias_bytes_from_source(
     canonical_id: &str,
     canonical_type: &str,
     rule_id: &str,
+    scope: Option<&IdentityScope>,
 ) -> Result<Vec<u8>, Refusal> {
     let alias_file = alias_path
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or_default()
         .to_string();
-    let entry = RegistryAddEntryAliasEntry {
+    let entry = RegistryAliasWriteEntry {
         alias_file,
         input: input.to_string(),
         canonical_id: canonical_id.to_string(),
         canonical_type: canonical_type.to_string(),
         rule_id: rule_id.to_string(),
+        scope: scope.cloned(),
     };
     build_alias_bytes_with_entries_from_source(registry, alias_path, source_bytes, &[entry])
 }
@@ -617,7 +689,7 @@ fn build_alias_bytes_with_entries_from_source(
     registry: &Path,
     alias_path: &Path,
     source_bytes: &[u8],
-    new_entries: &[RegistryAddEntryAliasEntry],
+    new_entries: &[RegistryAliasWriteEntry],
 ) -> Result<Vec<u8>, Refusal> {
     let mut entries: Vec<Value> = serde_json::from_slice(source_bytes).map_err(|error| {
         Refusal::bad_registry(
@@ -629,12 +701,21 @@ fn build_alias_bytes_with_entries_from_source(
         )
     })?;
     for entry in new_entries {
-        entries.push(json!({
+        let mut alias = json!({
             "input": entry.input,
             "canonical_id": entry.canonical_id,
             "canonical_type": entry.canonical_type,
             "rule_id": entry.rule_id,
-        }));
+        });
+        if let Some(scope) = &entry.scope {
+            alias["scope"] = serde_json::to_value(scope).map_err(|error| {
+                Refusal::bad_registry(
+                    &registry.display().to_string(),
+                    &format!("Failed to serialize proposed alias scope: {error}"),
+                )
+            })?;
+        }
+        entries.push(alias);
     }
     to_pretty_bytes(&entries, registry)
 }

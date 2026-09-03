@@ -2,9 +2,14 @@
 
 use canon::{
     InputFormat, InputValues, SpecialReason,
-    identity_scope::{IdentifierNamespaceRef, IdentityScope},
+    identity_scope::{
+        CoreScopeDimension, IdentifierNamespaceRef, IdentityScope, ScopeBinding, ScopeDimensionRef,
+    },
     lookup::{ExactLookupContext, resolve_values, resolve_values_with_context},
-    registry::{compile_registry_package, load_registry},
+    registry::{
+        RegistryAddEntryRequest, RegistryMintRequest, add_entry_with_scope,
+        compile_registry_package, load_registry, mint_with_scope, parse_scope_flag_bindings,
+    },
     registry_lint::{RegistryLintProfile, lint},
 };
 use rusqlite::{Connection, params};
@@ -66,6 +71,19 @@ fn source_scoped_context(dataset: &str) -> ExactLookupContext {
     ExactLookupContext {
         namespace: Some(source_local_namespace_ref()),
         scope: Some(source_scoped_scope_ref(dataset)),
+    }
+}
+
+fn cli_deal_scope(value: &str) -> IdentityScope {
+    parse_scope_flag_bindings(&[format!("deal={value}")])
+        .expect("deal scope parses")
+        .expect("scope is present")
+}
+
+fn cli_deal_context(value: &str) -> ExactLookupContext {
+    ExactLookupContext {
+        namespace: None,
+        scope: Some(cli_deal_scope(value)),
     }
 }
 
@@ -291,6 +309,133 @@ fn scoped_lookup_requires_matching_query_scope_not_bare_first_match() -> Result<
         second_scope.mappings[0].canonical_id,
         "PROPERTY-SECOND-DEAL"
     );
+
+    cleanup_cache_file(&registry.db_path);
+    Ok(())
+}
+
+#[test]
+fn scope_flag_parser_maps_deal_to_dataset_and_refuses_malformed_bindings() {
+    let parsed = parse_scope_flag_bindings(&["deal=CIK1690255".to_string()])
+        .expect("deal scope parses")
+        .expect("scope present");
+
+    assert_eq!(parsed.dimensions.len(), 1);
+    assert_eq!(
+        parsed.dimensions[0].dimension,
+        ScopeDimensionRef::Core {
+            dimension: CoreScopeDimension::Dataset
+        }
+    );
+    assert_eq!(
+        parsed.dimensions[0].binding,
+        ScopeBinding::Exact {
+            value: "CIK1690255".to_string()
+        }
+    );
+
+    let malformed =
+        parse_scope_flag_bindings(&["deal".to_string()]).expect_err("missing '=' refuses");
+    assert!(malformed.contains("DIMENSION=VALUE"));
+
+    let empty_value =
+        parse_scope_flag_bindings(&["deal=".to_string()]).expect_err("empty value refuses");
+    assert!(empty_value.contains("non-empty"));
+
+    let duplicate_dimension = parse_scope_flag_bindings(&[
+        "deal=CIK1690255".to_string(),
+        "dataset=CIK0000000".to_string(),
+    ])
+    .expect_err("deal aliases dataset, so conflicting duplicate refuses");
+    assert!(duplicate_dimension.contains("multiple bindings"));
+}
+
+#[test]
+fn scoped_mint_and_add_entry_allow_same_alias_only_across_distinct_scopes()
+-> Result<(), Box<dyn Error>> {
+    let temp = TempDir::new()?;
+    write_registry_metadata(temp.path(), "scoped-cli", "1.0.0", 0)?;
+    write_mapping_file(temp.path(), "properties.json", &[])?;
+
+    let first_scope = cli_deal_scope("CIK1690255");
+    let second_scope = cli_deal_scope("CIK0000002");
+    mint_with_scope(
+        RegistryMintRequest {
+            registry: temp.path().to_path_buf(),
+            canonical_id: Some("PROP-001".to_string()),
+            prefix: None,
+            canonical_type: "cmbs_property".to_string(),
+            with_alias: vec!["properties.json=41-001:absee_property_alias".to_string()],
+            bump: None,
+            next_version: None,
+            no_lint: true,
+        },
+        Some(first_scope.clone()),
+    )
+    .expect("scoped mint succeeds");
+
+    add_entry_with_scope(
+        RegistryAddEntryRequest {
+            registry: temp.path().to_path_buf(),
+            alias_file: "properties.json".to_string(),
+            canonical_id: "PROP-002".to_string(),
+            input: "41-001".to_string(),
+            rule_id: "absee_property_alias".to_string(),
+            canonical_type: Some("cmbs_property".to_string()),
+            bump: None,
+            next_version: None,
+            no_lint: true,
+        },
+        Some(second_scope.clone()),
+    )
+    .expect("same asset number in another deal scope succeeds");
+
+    let duplicate_same_scope = add_entry_with_scope(
+        RegistryAddEntryRequest {
+            registry: temp.path().to_path_buf(),
+            alias_file: "properties.json".to_string(),
+            canonical_id: "PROP-003".to_string(),
+            input: "41-001".to_string(),
+            rule_id: "absee_property_alias".to_string(),
+            canonical_type: Some("cmbs_property".to_string()),
+            bump: None,
+            next_version: None,
+            no_lint: true,
+        },
+        Some(first_scope),
+    )
+    .expect_err("duplicate local id in the same scope refuses");
+    assert_eq!(duplicate_same_scope.code, canon::RefusalCode::EParse);
+
+    let aliases: serde_json::Value =
+        serde_json::from_slice(&fs::read(temp.path().join("properties.json"))?)?;
+    let aliases = aliases.as_array().expect("aliases array");
+    assert_eq!(aliases.len(), 2);
+    assert!(aliases.iter().all(|entry| entry.get("scope").is_some()));
+
+    let registry = load_registry(temp.path())?;
+    let bare = resolve_values(&registry, &input_values(&["41-001"]))?;
+    assert!(
+        bare.mappings.is_empty(),
+        "bare lookup must not pick an arbitrary scoped row"
+    );
+    assert_eq!(bare.unresolved.len(), 1);
+
+    let wrong_scope = resolve_values_with_context(
+        &registry,
+        &input_values(&["41-001"]),
+        &cli_deal_context("CIK0000003"),
+    )?;
+    assert!(wrong_scope.mappings.is_empty());
+    assert_eq!(wrong_scope.unresolved.len(), 1);
+
+    let second_deal = resolve_values_with_context(
+        &registry,
+        &input_values(&["41-001"]),
+        &cli_deal_context("CIK0000002"),
+    )?;
+    assert_eq!(second_deal.mappings.len(), 1);
+    assert_eq!(second_deal.mappings[0].canonical_id, "PROP-002");
 
     cleanup_cache_file(&registry.db_path);
     Ok(())
