@@ -54,7 +54,7 @@ fn t01_additive_band_forces_required_member_without_overpruning() {
     let artifact =
         propagate(&request, None, &GeoPropagationBudget::default()).expect("propagation succeeds");
 
-    assert_eq!(artifact.fixpoint_reached, true);
+    assert!(artifact.fixpoint_reached);
     assert_eq!(artifact.prunings.len(), 1);
     assert_eq!(
         artifact.prunings[0].propagator,
