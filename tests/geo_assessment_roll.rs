@@ -10,9 +10,9 @@ use canon::geo::assessment_roll::{
 };
 use canon::geo::{
     GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoPopulationCaseEvidenceOverlay,
-    GeoPopulationCaseStatus, GeoPopulationEvaluationRequest, GeoPopulationEvidenceStackRequest,
-    GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind, evaluate_population,
-    stack_population_evidence,
+    GeoPopulationCaseStatus, GeoPopulationEvaluationArtifact, GeoPopulationEvaluationRequest,
+    GeoPopulationEvidenceStackRequest, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
+    evaluate_population, stack_population_evidence,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -27,6 +27,11 @@ const MCP_STACK_DIR: &str = "scripts/geo_measurements/fixtures/d1_residuals/mcp_
 const ROLL_SOURCE_DATASET: &str =
     "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.PROPERTY_VALUATION_FY2026P3_x_ACRIS_PARTIES";
 const ROLL_SOURCE_RELEASE: &str = "FY2026P3_acris-latest";
+const BOUNDED_REPLAY_LOAN_PREFIXES: &[&str] = &[
+    "6668e47c", // dossier case and deed-exact case
+    "ba808176", // dossier case
+    "c6da00e8", "645469ab", "11306d29", "07571f6c", "2b7bc3d7",
+];
 
 #[derive(Debug, Default, PartialEq, Eq)]
 struct OwnerOverlaySignature {
@@ -46,7 +51,15 @@ struct RollFixtureRow {
     condo: String,
 }
 
+/// Full retained 70-case replay against `evaluation_roll_exact_owner_gsf_band.json`.
+///
+/// Run with:
+/// `cargo test --test geo_assessment_roll assessment_roll_stage_replays_retained_d1_roll_owner_counts -- --ignored --exact`
+///
+/// Observed runtime on the 2026-09-03 shared checkout: >300s before manual
+/// interruption, so this remains opt-in and is not part of the default suite.
 #[test]
+#[ignore]
 fn assessment_roll_stage_replays_retained_d1_roll_owner_counts() {
     let base_population: GeoPopulationEvaluationRequest =
         read_json(rooted(&[FIXTURE_DIR, "h7_population_request.json"]));
@@ -113,6 +126,72 @@ fn assessment_roll_stage_replays_retained_d1_roll_owner_counts() {
         retained_evaluation["summary"]["solver_truth_exclusion_cases"]
             .as_u64()
             .expect("retained truth exclusion count")
+    );
+}
+
+/// Bounded direct replay for the named G1 subset: dossier cases `6668e47c`
+/// and `ba808176`, plus deed-exact cases `c6da00e8`, `645469ab`,
+/// `11306d29`, `6668e47c`, `07571f6c`, and `2b7bc3d7`.
+///
+/// Run with:
+/// `cargo test --test geo_assessment_roll assessment_roll_stage_replays_named_d1_subset -- --exact`
+///
+/// Observed runtime on the 2026-09-03 shared checkout: 1.09s for the
+/// `geo_assessment_roll` test binary after compilation.
+#[test]
+fn assessment_roll_stage_replays_named_d1_subset() {
+    let base_population: GeoPopulationEvaluationRequest =
+        read_json(rooted(&[FIXTURE_DIR, "h7_population_request.json"]));
+    let expected_widened_population: GeoPopulationEvaluationRequest = read_json_gz(rooted(&[
+        MCP_STACK_DIR,
+        "population_request_roll_universe.json.gz",
+    ]));
+    let retained_overlay: GeoPopulationEvidenceStackRequest = read_json_gz(rooted(&[
+        MCP_STACK_DIR,
+        "overlay_request_roll_exact_owner_gsf_band.json.gz",
+    ]));
+    let retained_evaluation: Value = read_json(rooted(&[
+        MCP_STACK_DIR,
+        "evaluation_roll_exact_owner_gsf_band.json",
+    ]));
+    let case_ids =
+        retained_case_ids_for_loan_prefixes(&retained_overlay, BOUNDED_REPLAY_LOAN_PREFIXES);
+    assert_eq!(
+        case_ids.len(),
+        7,
+        "the named subset has seven unique retained 26v2 solver cases"
+    );
+
+    let population = select_population_cases(&base_population, &case_ids);
+    let expected_widened_population =
+        select_population_cases(&expected_widened_population, &case_ids);
+    let retained_overlay = select_overlay_cases(&retained_overlay, &case_ids);
+    let request = assessment_roll_owner_fixture_request(&population, &retained_overlay);
+    let artifact =
+        produce_assessment_roll_owner_evidence(&request).expect("owner stage produces artifact");
+
+    assert_eq!(artifact.summary.cases, case_ids.len() as u64);
+    assert_eq!(
+        universe_by_case(&artifact.widened_population),
+        universe_by_case(&expected_widened_population),
+        "bounded replay must reproduce assessment-roll block widening"
+    );
+    assert_eq!(
+        owner_signature(&artifact.overlay),
+        owner_signature(&retained_overlay),
+        "bounded replay must reproduce retained owner evidence for the named subset"
+    );
+
+    let combined_overlay = retained_overlay_with_stage_owner(&retained_overlay, &artifact.overlay);
+    let stacked = stack_population_evidence(&artifact.widened_population, &combined_overlay)
+        .expect("bounded stage owner overlay stacks with retained non-owner channels");
+    let evaluation =
+        evaluate_population(&stacked.population).expect("bounded stacked population evaluates");
+    assert_eq!(evaluation.summary.cases, case_ids.len() as u64);
+    assert_named_case_statuses_and_forced_sets_match_retained(
+        &evaluation,
+        &retained_evaluation,
+        &case_ids,
     );
 }
 
@@ -516,6 +595,150 @@ fn owner_overlay_case_count(overlay: &GeoPopulationEvidenceStackRequest) -> u64 
                 .any(|observation| is_owner_contract(&observation.contract_id))
         })
         .count() as u64
+}
+
+fn retained_case_ids_for_loan_prefixes(
+    overlay: &GeoPopulationEvidenceStackRequest,
+    loan_prefixes: &[&str],
+) -> BTreeSet<String> {
+    let requested_prefixes = loan_prefixes.iter().copied().collect::<BTreeSet<_>>();
+    let mut cases_by_prefix = requested_prefixes
+        .iter()
+        .map(|prefix| (prefix.to_string(), BTreeSet::<String>::new()))
+        .collect::<BTreeMap<_, _>>();
+    for case_overlay in &overlay.case_overlays {
+        for source_record in case_overlay
+            .observations
+            .iter()
+            .flat_map(|observation| &observation.source_records)
+        {
+            for prefix in &requested_prefixes {
+                if source_record.source_record_id.contains(prefix) {
+                    cases_by_prefix
+                        .get_mut(*prefix)
+                        .expect("prefix entry exists")
+                        .insert(case_overlay.case_id.clone());
+                }
+            }
+        }
+    }
+
+    let mut selected = BTreeSet::new();
+    for (prefix, cases) in cases_by_prefix {
+        assert_eq!(
+            cases.len(),
+            1,
+            "loan prefix {prefix} must bind to exactly one retained overlay case"
+        );
+        selected.extend(cases);
+    }
+    selected
+}
+
+fn select_population_cases(
+    population: &GeoPopulationEvaluationRequest,
+    case_ids: &BTreeSet<String>,
+) -> GeoPopulationEvaluationRequest {
+    let cases = population
+        .cases
+        .iter()
+        .filter(|case| case_ids.contains(&case.id))
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        cases.len(),
+        case_ids.len(),
+        "selected population must contain every named replay case"
+    );
+    GeoPopulationEvaluationRequest {
+        version: population.version.clone(),
+        max_cases: cases.len(),
+        cases,
+    }
+}
+
+fn select_overlay_cases(
+    overlay: &GeoPopulationEvidenceStackRequest,
+    case_ids: &BTreeSet<String>,
+) -> GeoPopulationEvidenceStackRequest {
+    let case_overlays = overlay
+        .case_overlays
+        .iter()
+        .filter(|case_overlay| case_ids.contains(&case_overlay.case_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        case_overlays.len(),
+        case_ids.len(),
+        "selected overlay must contain every named replay case"
+    );
+    let max_overlay_observations = case_overlays
+        .iter()
+        .map(|case| case.observations.len())
+        .sum();
+    GeoPopulationEvidenceStackRequest {
+        version: overlay.version.clone(),
+        max_overlay_cases: case_overlays.len(),
+        max_overlay_observations,
+        case_overlays,
+    }
+}
+
+fn assert_named_case_statuses_and_forced_sets_match_retained(
+    evaluation: &GeoPopulationEvaluationArtifact,
+    retained_evaluation: &Value,
+    case_ids: &BTreeSet<String>,
+) {
+    let retained_cases = retained_evaluation_cases_by_id(retained_evaluation);
+    let actual_cases = evaluation
+        .cases
+        .iter()
+        .map(|case| {
+            (
+                case.case_id.clone(),
+                serde_json::to_value(case).expect("evaluation case serializes"),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(
+        actual_cases.len(),
+        case_ids.len(),
+        "bounded replay should evaluate exactly the selected cases"
+    );
+
+    for case_id in case_ids {
+        let actual = actual_cases
+            .get(case_id)
+            .unwrap_or_else(|| panic!("bounded replay missing actual case {case_id}"));
+        let expected = retained_cases
+            .get(case_id)
+            .unwrap_or_else(|| panic!("retained evaluation missing case {case_id}"));
+        assert_eq!(
+            actual["status"], expected["status"],
+            "{case_id} status must match retained evaluation"
+        );
+        assert_eq!(
+            actual["hard_forced"], expected["hard_forced"],
+            "{case_id} hard forced set must match retained evaluation"
+        );
+    }
+}
+
+fn retained_evaluation_cases_by_id(retained_evaluation: &Value) -> BTreeMap<String, &Value> {
+    retained_evaluation["cases"]
+        .as_array()
+        .expect("retained evaluation cases must be an array")
+        .iter()
+        .map(|case| {
+            (
+                case["case_id"]
+                    .as_str()
+                    .expect("retained evaluation case_id must be a string")
+                    .to_string(),
+                case,
+            )
+        })
+        .collect()
 }
 
 fn is_owner_contract(contract_id: &str) -> bool {
