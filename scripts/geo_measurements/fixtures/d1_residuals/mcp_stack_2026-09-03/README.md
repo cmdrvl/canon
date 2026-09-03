@@ -22,3 +22,17 @@ borrower is excluded (overlay_request_owner.json, calibration_owner.json: 194/22
 fully). Stacked on the PAD-only base (evaluation_pad_plus_owner.json) and on the size+geocode stack
 (evaluation_all_layers.json). condo_bridge_measurement.json maps truth unit lots to the single PLUTO billing lot
 on the block; it recovers 3 of 18 condo subjects, the rest need the Digital Tax Map (cmdrvl-curves bd-2q5m).
+
+## Third pass: sources found in the warehouse after re-checking the catalog
+
+- NYC Building Footprints (SOURCE.NYC_BUILDING_FOOTPRINTS_HOT): footprints.json, calibration_footprint.json. Active BIN
+  count over truth lots >= filed property count - 1 on 60/60; admitted as a floor (weak: 7 cases).
+- PAD BBL (SOURCE.NYC_DCP_PAD_BBL_HOT): pad_bbl.json.gz, condo_bridge_pad.json. Unit lot -> billing lot via
+  LOW/HIGH ranges; 10/18 condo subjects fully reached at billing grain.
+- DOF assessment roll FY2026 final (DBT_WRANGLING_NYC_OPENDATA ... PROPERTY_VALUATION ... __STRUCTURED):
+  assessment_roll_fy2026p3_lots.json.gz, calibration_roll_owner.json. Holds 619/623 truth lots at unit-lot grain
+  with current owner names. population_request_roll_universe.json.gz widens every case universe to the roll lots
+  on its blocks; overlay_request_roll_universe.json.gz re-applies PAD, roll-owner exclusion (hard) and geocode
+  preferences; evaluation_roll_universe_owner.json is the result (truth fully in universe 47/70, both dossier
+  cases hold the truth inside a 16- and 15-set residual). evaluation_soft_owner_footprint.json shows owner as a
+  soft preference leaves the residual unchanged.
