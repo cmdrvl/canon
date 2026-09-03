@@ -22,9 +22,10 @@ use canon::geo::{
     CANON_GEO_PAD_MEMBERSHIP_VERSION, CANON_GEO_PLAN_VERSION,
     CANON_GEO_POPULATION_EVALUATION_VERSION, CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
     CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
-    CANON_GEO_QUESTION_VERSION, CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION,
-    CANON_GEO_REGIONAL_INVENTORY_VERSION, CANON_GEO_RESIDUAL_BENCHMARK_VERSION,
-    CANON_GEO_RESIDUAL_OBDD_VERSION, CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_RUN_VERSION,
+    CANON_GEO_PROPAGATION_VERSION, CANON_GEO_QUESTION_VERSION,
+    CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
+    CANON_GEO_RESIDUAL_BENCHMARK_VERSION, CANON_GEO_RESIDUAL_OBDD_VERSION,
+    CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_RUN_VERSION,
     CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_RECONCILIATION_VERSION,
     CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
     CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_VERSION,
@@ -153,6 +154,7 @@ fn contract_versions(contracts: &[GeoContractCapability]) -> BTreeSet<&str> {
 fn expected_implemented_contracts() -> BTreeSet<&'static str> {
     BTreeSet::from([
         CANON_GEO_QUESTION_VERSION,
+        CANON_GEO_PROPAGATION_VERSION,
         CANON_GEO_CAPABILITIES_VERSION,
         CANON_GEO_REGIONAL_INVENTORY_VERSION,
         CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION,
@@ -289,6 +291,15 @@ fn expected_implemented_commands()
             "canon geo solve --request <REQUEST.json>",
             (
                 CANON_GEO_COMPOSITION_VERSION,
+                GeoCommandSurface::Leaf,
+                true,
+                false,
+            ),
+        ),
+        (
+            "canon.geo.stage.propagate.v0",
+            (
+                CANON_GEO_PROPAGATION_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
                 false,
@@ -791,6 +802,9 @@ fn geo_capabilities_cover_compiled_leaf_commands_and_public_contracts() {
         .implemented
         .iter()
         .chain(artifact.commands.unavailable.iter())
+        // Run-stage executors (`canon.geo.stage.*`) are advertised so the planner
+        // can bind them, but they have no Clap verb by design (plan §19.3).
+        .filter(|command| command.command.starts_with("canon geo "))
         .map(|command| {
             command_leaf(&command.command, &clap_leafs)
                 .unwrap_or_else(|| panic!("{} is not a compiled Geo Clap leaf", command.command))
