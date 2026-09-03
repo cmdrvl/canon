@@ -3892,12 +3892,11 @@ fn validate_support_operator_params(profile: &EntityProfileDocument) -> Result<(
                     required_support_view_name(spec, "date_transposed_digits")?;
                 }
             }
-            "two_token_reversal" => {
+            "two_token_reversal"
                 if optional_score_units_param(spec, "score_units", "score")?
-                    != Some(ScoreUnits::ZERO)
-                {
-                    required_support_view_name(spec, "two_token_reversal")?;
-                }
+                    != Some(ScoreUnits::ZERO) =>
+            {
+                required_support_view_name(spec, "two_token_reversal")?;
             }
             _ => {}
         }
