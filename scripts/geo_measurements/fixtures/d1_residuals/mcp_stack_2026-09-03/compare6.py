@@ -1,5 +1,5 @@
 import json, os
-names=[('eval_base.json','PAD'),('eval_mcp.json','+size+geo'),('eval_owner.json','PAD+owner(hard)'),('eval_all.json','all, owner hard'),('eval_soft.json','all, owner soft+floor'),('eval_roll.json','roll universe+owner')]
+names=[('eval_base.json','PAD'),('eval_mcp.json','+size+geo'),('eval_owner.json','PAD+owner(hard)'),('eval_all.json','all, owner hard'),('eval_soft.json','all, owner soft+floor'),('eval_roll.json','roll universe+owner'),('eval_roll2.json','roll, exact owner+gsf band')]
 subs={}
 for s in json.load(open('subjects.json')): subs.setdefault(s['subject_id'],s)
 bridge={r['sid']:r for r in json.load(open('condo_bridge_pad.json'))['rows']}

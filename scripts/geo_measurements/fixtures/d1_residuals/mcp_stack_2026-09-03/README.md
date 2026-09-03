@@ -36,3 +36,12 @@ on the block; it recovers 3 of 18 condo subjects, the rest need the Digital Tax 
   preferences; evaluation_roll_universe_owner.json is the result (truth fully in universe 47/70, both dossier
   cases hold the truth inside a 16- and 15-set residual). evaluation_soft_owner_footprint.json shows owner as a
   soft preference leaves the residual unchanged.
+
+## Fourth pass: exact owner as hard, affiliates as preference, roll square-footage band
+
+overlay_request_roll_exact_owner_gsf_band.json.gz on population_request_roll_universe.json.gz. Exact
+normalized-name equality between the roll OWNER and an ACRIS borrower is the hard exclusion (calibration
+201/619 truth lots, 27/70 subjects fully exact); stop-word token matches become prefer_member; sum of roll
+GROSS_SQFT over the chosen lots must fall in 0.7x..1.6x of the filed ABS-EE square feet (17/25 truth subjects
+in band). evaluation_roll_exact_owner_gsf_band.json: 16 resolved of which 6 exactly equal the deed truth
+(444 86th Street among them), 44 ambiguous, 4 conflict, 15 truth exclusions. compare6.py prints all seven stacks.
