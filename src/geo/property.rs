@@ -293,7 +293,7 @@ pub fn materialize_property_assertions(
     validate_property_assertion_request(request)?;
 
     let mut assertions = request.assertions.clone();
-    assertions.sort_by(|left, right| document_request_key(left).cmp(&document_request_key(right)));
+    assertions.sort_by_key(document_request_key);
     let ledger_rows = ledger_rows_for_assertions(&assertions)?;
     let source_ledger_bytes = canonical_property_ledger_bytes(&ledger_rows)?;
     let registry_proposal = registry_proposal_from_ledger_rows(&source_ledger_bytes, &ledger_rows)
