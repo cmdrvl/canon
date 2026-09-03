@@ -18,11 +18,11 @@ use crate::{
         CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoClientTileIngestRequest, GeoCompositionArtifact,
         GeoCompositionStatus, GeoControlEntityLevel, GeoEntityLevel,
         GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
-        GeoEvidenceCompilationRequest, GeoExplanationBudget, GeoGeometryTileArtifact,
-        GeoHomeCellAssignmentArtifact, GeoHomeCellRowsRequest, GeoPlan, GeoPlanComponentScope,
-        GeoPlanExactSolveScope, GeoPlanProducedArtifactRef, GeoPropagationArtifact,
-        GeoPropagationBudget, GeoTileCandidateReachStatus, GeoTileWorkRequest,
-        GeoTileWorkUnitArtifact, GeoWarehouseRowsRequest, apply_prunings,
+        GeoEvidenceCompilationRequest, GeoExplanationArtifact, GeoExplanationBudget,
+        GeoGeometryTileArtifact, GeoHomeCellAssignmentArtifact, GeoHomeCellRowsRequest, GeoPlan,
+        GeoPlanComponentScope, GeoPlanExactSolveScope, GeoPlanProducedArtifactRef,
+        GeoPropagationArtifact, GeoPropagationBudget, GeoTileCandidateReachStatus,
+        GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoWarehouseRowsRequest, apply_prunings,
         assessment_roll::{
             CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION,
             CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION, GeoAssessmentRollOwnerArtifact,
@@ -2136,7 +2136,7 @@ fn ensure_canonical_artifact_bytes(
             )
         }
         CANON_GEO_EXPLANATION_VERSION => {
-            let artifact: super::GeoExplanationArtifact =
+            let artifact: GeoExplanationArtifact =
                 parse_json_target(&node, bytes, CANON_GEO_EXPLANATION_VERSION)?;
             validate_explanation_artifact(&artifact)
                 .map_err(|error| leaf_error_target(&node, "explanation validation", error))?;
