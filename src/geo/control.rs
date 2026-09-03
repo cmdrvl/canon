@@ -37,6 +37,11 @@ use super::{
         CANON_GEO_GEOMETRY_VALUE_VERSION, CANON_GEO_LOCAL_FRAME_VERSION,
         CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_VERSION,
     },
+    identifiers::{
+        CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
+        CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION,
+    },
+    lifecycle::{CANON_GEO_AS_OF_RESOLUTION_REQUEST_VERSION, CANON_GEO_AS_OF_RESOLUTION_VERSION},
     materialize::{
         CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
         CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
@@ -1209,6 +1214,26 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "residual-aware next-evidence recommendation artifact contract",
         ),
         contract(
+            CANON_GEO_AS_OF_RESOLUTION_REQUEST_VERSION,
+            "schemas/canon.geo.as_of_resolution.v0.schema.json#/$defs/request",
+            "MapPLUTO parcel as-of resolution request contract",
+        ),
+        contract(
+            CANON_GEO_AS_OF_RESOLUTION_VERSION,
+            "schemas/canon.geo.as_of_resolution.v0.schema.json",
+            "MapPLUTO parcel as-of resolution artifact contract",
+        ),
+        contract(
+            CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
+            "schemas/canon.geo.tile_identifier_stability.v0.schema.json#/$defs/request",
+            "tile refresh identifier stability request contract",
+        ),
+        contract(
+            CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION,
+            "schemas/canon.geo.tile_identifier_stability.v0.schema.json",
+            "tile refresh identifier stability and stale-alias artifact contract",
+        ),
+        contract(
             CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION,
             "schemas/canon.geo.assessment_roll_owner_request.v0.schema.json",
             "assessment-roll owner evidence request contract",
@@ -1469,6 +1494,20 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
             "canon.geo.stage.next_evidence.v0",
             GeoCommandSurface::Leaf,
             CANON_GEO_NEXT_EVIDENCE_VERSION,
+            true,
+            false,
+        ),
+        command(
+            "canon.geo.stage.as_of_resolution.v0",
+            GeoCommandSurface::Leaf,
+            CANON_GEO_AS_OF_RESOLUTION_VERSION,
+            true,
+            false,
+        ),
+        command(
+            "canon.geo.stage.tile_identifier_stability.v0",
+            GeoCommandSurface::Leaf,
+            CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION,
             true,
             false,
         ),

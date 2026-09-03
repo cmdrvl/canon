@@ -17,20 +17,24 @@ use crate::{
         CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
         CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION,
         CANON_GEO_PLAN_VERSION, CANON_GEO_PROPAGATION_VERSION, CANON_GEO_SEPARATION_VERSION,
-        CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
-        CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoAcquisitionDenominator, GeoAcquisitionProofClass,
-        GeoAcquisitionSatisfaction, GeoAcquisitionTerminalState, GeoCompositionArtifact,
-        GeoCompositionStatus, GeoDigest, GeoDigestAlgorithm, GeoPlan, GeoPlanError,
-        GeoPlanExternalRequest, GeoPlanGrainStatus, GeoPlanNodeOverlay, GeoPlanStage,
-        GeoPlanStatus, GeoResolvedClaim, GeoResolvedClaimClass, GeoSatisfactionExecutionRef,
-        GeoSatisfactionFileAudit, GeoSatisfactionFinding, GeoSatisfactionLocalInputBinding,
-        GeoSatisfactionRunInputRef, GeoSatisfactionStatus, GeoTileWorkUnitArtifact,
+        CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
+        CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
+        CANON_GEO_TILE_WORK_UNIT_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
+        GeoAcquisitionDenominator, GeoAcquisitionProofClass, GeoAcquisitionSatisfaction,
+        GeoAcquisitionTerminalState, GeoCompositionArtifact, GeoCompositionStatus, GeoDigest,
+        GeoDigestAlgorithm, GeoPlan, GeoPlanError, GeoPlanExternalRequest, GeoPlanGrainStatus,
+        GeoPlanNodeOverlay, GeoPlanStage, GeoPlanStatus, GeoResolvedClaim, GeoResolvedClaimClass,
+        GeoSatisfactionExecutionRef, GeoSatisfactionFileAudit, GeoSatisfactionFinding,
+        GeoSatisfactionLocalInputBinding, GeoSatisfactionRunInputRef, GeoSatisfactionStatus,
+        GeoTileWorkUnitArtifact,
         assessment_roll::{
             CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION,
             CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION,
         },
         condo::{CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION, CANON_GEO_CONDO_BRIDGE_VERSION},
         executor::CANON_GEO_CLIENT_TILE_SOURCE_VERSION,
+        executor::GEO_AS_OF_RESOLUTION_OUTPUT_ID,
+        executor::GEO_AS_OF_RESOLUTION_STAGE_COMMAND,
         executor::GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID,
         executor::GEO_ASSESSMENT_ROLL_OWNER_STAGE_COMMAND,
         executor::GEO_CLIENT_TILE_INGEST_STAGE_COMMAND,
@@ -52,12 +56,17 @@ use crate::{
         executor::GEO_ROWS_BINDING_ID,
         executor::GEO_SEPARATION_OUTPUT_ID,
         executor::GEO_SOLVE_COMMAND,
+        executor::GEO_TILE_IDENTIFIER_STABILITY_OUTPUT_ID,
+        executor::GEO_TILE_IDENTIFIER_STABILITY_STAGE_COMMAND,
         executor::GEO_TILE_WORK_COMMAND,
         executor::GeoExecutorDependencyOutput,
         executor::GeoExecutorInputBinding,
         executor::GeoProjectNodeExecutor,
         executor::validate_canonical_geo_artifact_bytes,
         footprint_roll::CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION,
+        lifecycle::{
+            CANON_GEO_AS_OF_RESOLUTION_REQUEST_VERSION, CANON_GEO_AS_OF_RESOLUTION_VERSION,
+        },
         validate_geo_plan,
     },
     project::{
@@ -2260,6 +2269,10 @@ fn output_contract_for_command(command: &str) -> Option<&'static str> {
         GEO_PROPAGATE_STAGE_COMMAND => Some(CANON_GEO_PROPAGATION_VERSION),
         GEO_EXPLAIN_STAGE_COMMAND => Some(CANON_GEO_EXPLANATION_VERSION),
         GEO_NEXT_EVIDENCE_STAGE_COMMAND => Some(CANON_GEO_NEXT_EVIDENCE_VERSION),
+        GEO_AS_OF_RESOLUTION_STAGE_COMMAND => Some(CANON_GEO_AS_OF_RESOLUTION_VERSION),
+        GEO_TILE_IDENTIFIER_STABILITY_STAGE_COMMAND => {
+            Some(CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION)
+        }
         GEO_ASSESSMENT_ROLL_OWNER_STAGE_COMMAND => Some(CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION),
         GEO_CONDO_BRIDGE_STAGE_COMMAND => Some(CANON_GEO_CONDO_BRIDGE_VERSION),
         GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND => Some(CANON_GEO_EVIDENCE_REQUEST_VERSION),
@@ -2278,6 +2291,10 @@ fn output_id_for_command(command: &str) -> Option<&'static str> {
         GEO_PROPAGATE_STAGE_COMMAND => Some(GEO_PROPAGATE_OUTPUT_ID),
         GEO_EXPLAIN_STAGE_COMMAND => Some(GEO_EXPLAIN_OUTPUT_ID),
         GEO_NEXT_EVIDENCE_STAGE_COMMAND => Some(GEO_NEXT_EVIDENCE_OUTPUT_ID),
+        GEO_AS_OF_RESOLUTION_STAGE_COMMAND => Some(GEO_AS_OF_RESOLUTION_OUTPUT_ID),
+        GEO_TILE_IDENTIFIER_STABILITY_STAGE_COMMAND => {
+            Some(GEO_TILE_IDENTIFIER_STABILITY_OUTPUT_ID)
+        }
         GEO_ASSESSMENT_ROLL_OWNER_STAGE_COMMAND => Some(GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID),
         GEO_CONDO_BRIDGE_STAGE_COMMAND => Some(GEO_CONDO_BRIDGE_OUTPUT_ID),
         GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND => Some(GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID),
@@ -2297,6 +2314,10 @@ fn output_contract_for_output_id(output_id: &str) -> Option<&'static str> {
         GEO_EXPLAIN_OUTPUT_ID => Some(CANON_GEO_EXPLANATION_VERSION),
         GEO_SEPARATION_OUTPUT_ID => Some(CANON_GEO_SEPARATION_VERSION),
         GEO_NEXT_EVIDENCE_OUTPUT_ID => Some(CANON_GEO_NEXT_EVIDENCE_VERSION),
+        GEO_AS_OF_RESOLUTION_OUTPUT_ID => Some(CANON_GEO_AS_OF_RESOLUTION_VERSION),
+        GEO_TILE_IDENTIFIER_STABILITY_OUTPUT_ID => {
+            Some(CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION)
+        }
         GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID => Some(CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION),
         GEO_CONDO_BRIDGE_OUTPUT_ID => Some(CANON_GEO_CONDO_BRIDGE_VERSION),
         GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID => Some(CANON_GEO_EVIDENCE_REQUEST_VERSION),
@@ -2356,6 +2377,18 @@ fn input_specs_for_command(command: &str) -> Option<Vec<GeoInputSpec>> {
             required: true,
             accepted_contracts: &[CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION],
             reason: "next-evidence requires a local typed recommendation request",
+        }]),
+        GEO_AS_OF_RESOLUTION_STAGE_COMMAND => Some(vec![GeoInputSpec {
+            binding_id: GEO_REQUEST_BINDING_ID,
+            required: true,
+            accepted_contracts: &[CANON_GEO_AS_OF_RESOLUTION_REQUEST_VERSION],
+            reason: "as-of resolution requires a local typed MapPLUTO vintage request",
+        }]),
+        GEO_TILE_IDENTIFIER_STABILITY_STAGE_COMMAND => Some(vec![GeoInputSpec {
+            binding_id: GEO_REQUEST_BINDING_ID,
+            required: true,
+            accepted_contracts: &[CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION],
+            reason: "tile identifier stability requires a local typed vintage-diff request",
         }]),
         GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND => Some(vec![GeoInputSpec {
             binding_id: GEO_REQUEST_BINDING_ID,

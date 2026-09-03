@@ -9,35 +9,39 @@
 
 use crate::{
     geo::{
+        CANON_GEO_AS_OF_RESOLUTION_REQUEST_VERSION, CANON_GEO_AS_OF_RESOLUTION_VERSION,
         CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION, CANON_GEO_COMPOSITION_REQUEST_VERSION,
         CANON_GEO_COMPOSITION_VERSION, CANON_GEO_EVIDENCE_COMPILATION_VERSION,
         CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_EXPLANATION_VERSION,
         CANON_GEO_GEOMETRY_TILE_VERSION, CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
         CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION,
         CANON_GEO_NEXT_EVIDENCE_VERSION, CANON_GEO_PROPAGATION_VERSION,
-        CANON_GEO_SEPARATION_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
+        CANON_GEO_SEPARATION_VERSION, CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
+        CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
         CANON_GEO_TILE_WORK_UNIT_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
-        GeoClientTileIngestRequest, GeoCompositionArtifact, GeoCompositionStatus,
-        GeoControlEntityLevel, GeoEntityLevel, GeoEvidenceCompilationArtifact,
-        GeoEvidenceCompilationReference, GeoEvidenceCompilationRequest, GeoExplanationArtifact,
-        GeoExplanationBudget, GeoGeometryTileArtifact, GeoHomeCellAssignmentArtifact,
-        GeoHomeCellRowsRequest, GeoNextEvidenceArtifact, GeoNextEvidenceRequest, GeoPlan,
-        GeoPlanComponentScope, GeoPlanExactSolveScope, GeoPlanProducedArtifactRef,
-        GeoPropagationArtifact, GeoPropagationBudget, GeoSeparationArtifact,
-        GeoTileCandidateReachStatus, GeoTileWorkRequest, GeoTileWorkUnitArtifact,
-        GeoWarehouseRowsRequest, apply_prunings,
+        GeoAsOfResolutionArtifact, GeoAsOfResolutionRequest, GeoClientTileIngestRequest,
+        GeoCompositionArtifact, GeoCompositionStatus, GeoControlEntityLevel, GeoEntityLevel,
+        GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
+        GeoEvidenceCompilationRequest, GeoExplanationArtifact, GeoExplanationBudget,
+        GeoGeometryTileArtifact, GeoHomeCellAssignmentArtifact, GeoHomeCellRowsRequest,
+        GeoNextEvidenceArtifact, GeoNextEvidenceRequest, GeoPlan, GeoPlanComponentScope,
+        GeoPlanExactSolveScope, GeoPlanProducedArtifactRef, GeoPropagationArtifact,
+        GeoPropagationBudget, GeoSeparationArtifact, GeoTileCandidateReachStatus,
+        GeoTileIdentifierStabilityArtifact, GeoTileIdentifierStabilityRequest, GeoTileWorkRequest,
+        GeoTileWorkUnitArtifact, GeoWarehouseRowsRequest, apply_prunings,
         assessment_roll::{
             CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION,
             CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION, GeoAssessmentRollOwnerArtifact,
             GeoAssessmentRollOwnerRequest, canonical_assessment_roll_owner_bytes,
             produce_assessment_roll_owner_evidence, validate_assessment_roll_owner_artifact,
         },
-        canonical_composition_bytes, canonical_evidence_compilation_bytes,
-        canonical_explanation_bytes, canonical_geometry_tile_bytes,
-        canonical_home_cell_assignment_bytes, canonical_materialized_evidence_request_bytes,
-        canonical_next_evidence_bytes, canonical_next_evidence_request_bytes,
-        canonical_propagation_bytes, canonical_separation_bytes, canonical_tile_work_unit_bytes,
-        compile_evidence,
+        canonical_as_of_resolution_bytes, canonical_composition_bytes,
+        canonical_evidence_compilation_bytes, canonical_explanation_bytes,
+        canonical_geometry_tile_bytes, canonical_home_cell_assignment_bytes,
+        canonical_materialized_evidence_request_bytes, canonical_next_evidence_bytes,
+        canonical_next_evidence_request_bytes, canonical_propagation_bytes,
+        canonical_separation_bytes, canonical_tile_identifier_stability_bytes,
+        canonical_tile_work_unit_bytes, check_tile_identifier_stability, compile_evidence,
         condo::{
             CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION, CANON_GEO_CONDO_BRIDGE_VERSION,
             GeoCondoBridgeArtifact, GeoCondoBridgeRequest, build_condo_bridge,
@@ -50,10 +54,11 @@ use crate::{
         },
         ingest_client_geometry_tile, materialize_home_cells, materialize_tile_work_unit,
         materialize_warehouse_rows, minimal_core, propagate, recommend_from_request,
-        reliability_order_from_evidence, solve_composition, validate_evidence_compilation_artifact,
+        reliability_order_from_evidence, resolve_geo_as_of, solve_composition,
+        validate_as_of_resolution_artifact, validate_evidence_compilation_artifact,
         validate_explanation_artifact, validate_next_evidence_artifact,
         validate_next_evidence_request, validate_propagation_artifact,
-        validate_separation_artifact,
+        validate_separation_artifact, validate_tile_identifier_stability_artifact,
     },
     project::{
         ProjectDependencyOutput, ProjectNodeExecutionContext, ProjectNodeExecutionResult,
@@ -86,6 +91,11 @@ pub const GEO_EXPLAIN_OUTPUT_ID: &str = "explanation";
 pub const GEO_SEPARATION_OUTPUT_ID: &str = "separation";
 pub const GEO_NEXT_EVIDENCE_STAGE_COMMAND: &str = "canon.geo.stage.next_evidence.v0";
 pub const GEO_NEXT_EVIDENCE_OUTPUT_ID: &str = "next_evidence";
+pub const GEO_AS_OF_RESOLUTION_STAGE_COMMAND: &str = "canon.geo.stage.as_of_resolution.v0";
+pub const GEO_AS_OF_RESOLUTION_OUTPUT_ID: &str = "as_of_resolution";
+pub const GEO_TILE_IDENTIFIER_STABILITY_STAGE_COMMAND: &str =
+    "canon.geo.stage.tile_identifier_stability.v0";
+pub const GEO_TILE_IDENTIFIER_STABILITY_OUTPUT_ID: &str = "tile_identifier_stability";
 pub const GEO_ASSESSMENT_ROLL_OWNER_STAGE_COMMAND: &str =
     "canon.geo.stage.assessment_roll_owner.v0";
 pub const GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID: &str = "assessment_roll_owner";
@@ -302,6 +312,10 @@ impl GeoProjectNodeExecutor {
             GeoExecutorCommand::CompileEvidence => self.execute_compile_evidence(node)?,
             GeoExecutorCommand::AssessmentRollOwner => self.execute_assessment_roll_owner(node)?,
             GeoExecutorCommand::CondoBridge => self.execute_condo_bridge(node)?,
+            GeoExecutorCommand::AsOfResolution => self.execute_as_of_resolution(node)?,
+            GeoExecutorCommand::TileIdentifierStability => {
+                self.execute_tile_identifier_stability(node)?
+            }
             GeoExecutorCommand::FootprintRollEvidence => {
                 self.execute_footprint_roll_evidence(node)?
             }
@@ -668,6 +682,91 @@ impl GeoProjectNodeExecutor {
         Ok(GeoLeafExecution {
             output_id: GEO_CONDO_BRIDGE_OUTPUT_ID,
             output_contract: CANON_GEO_CONDO_BRIDGE_VERSION,
+            output_bytes: bytes,
+            deterministic_usage: usage,
+        })
+    }
+
+    fn execute_as_of_resolution(
+        &self,
+        node: &ProjectPlanNode,
+    ) -> ProjectRunResult<GeoLeafExecution> {
+        let request: GeoAsOfResolutionRequest = self.required_binding_json(
+            node,
+            GEO_REQUEST_BINDING_ID,
+            &[CANON_GEO_AS_OF_RESOLUTION_REQUEST_VERSION],
+        )?;
+        let artifact = resolve_geo_as_of(&request)
+            .map_err(|error| leaf_error(node, "as-of resolution", error))?;
+        validate_as_of_resolution_artifact(&artifact)
+            .map_err(|error| leaf_error(node, "as-of resolution artifact validation", error))?;
+        let bytes = canonical_as_of_resolution_bytes(&artifact)
+            .map_err(|error| leaf_error(node, "as-of resolution serialization", error))?;
+        let mut usage = BTreeMap::new();
+        usage.insert(
+            "as_of_resolution_lookups".to_string(),
+            artifact.summary.lookups,
+        );
+        usage.insert(
+            "as_of_resolution_resolved".to_string(),
+            artifact.summary.resolved,
+        );
+        usage.insert(
+            "as_of_resolution_abstained".to_string(),
+            artifact.summary.abstained,
+        );
+        usage.insert(
+            "as_of_resolution_change_events_used".to_string(),
+            artifact.summary.change_events_used,
+        );
+        Ok(GeoLeafExecution {
+            output_id: GEO_AS_OF_RESOLUTION_OUTPUT_ID,
+            output_contract: CANON_GEO_AS_OF_RESOLUTION_VERSION,
+            output_bytes: bytes,
+            deterministic_usage: usage,
+        })
+    }
+
+    fn execute_tile_identifier_stability(
+        &self,
+        node: &ProjectPlanNode,
+    ) -> ProjectRunResult<GeoLeafExecution> {
+        let request: GeoTileIdentifierStabilityRequest = self.required_binding_json(
+            node,
+            GEO_REQUEST_BINDING_ID,
+            &[CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION],
+        )?;
+        let artifact = check_tile_identifier_stability(&request)
+            .map_err(|error| leaf_error(node, "tile identifier stability", error))?;
+        validate_tile_identifier_stability_artifact(&artifact).map_err(|error| {
+            leaf_error(node, "tile identifier stability artifact validation", error)
+        })?;
+        let bytes = canonical_tile_identifier_stability_bytes(&artifact)
+            .map_err(|error| leaf_error(node, "tile identifier stability serialization", error))?;
+        let mut usage = BTreeMap::new();
+        usage.insert(
+            "tile_identifier_stability_retained_clusters".to_string(),
+            artifact.summary.retained_clusters,
+        );
+        usage.insert(
+            "tile_identifier_stability_added_clusters".to_string(),
+            artifact.summary.added_clusters,
+        );
+        usage.insert(
+            "tile_identifier_stability_tombstoned_clusters".to_string(),
+            artifact.summary.tombstoned_clusters,
+        );
+        usage.insert(
+            "tile_identifier_stability_merged_prior_ids".to_string(),
+            artifact.summary.merged_prior_ids,
+        );
+        usage.insert(
+            "tile_identifier_stability_stale_client_aliases".to_string(),
+            artifact.summary.stale_client_aliases,
+        );
+        Ok(GeoLeafExecution {
+            output_id: GEO_TILE_IDENTIFIER_STABILITY_OUTPUT_ID,
+            output_contract: CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION,
             output_bytes: bytes,
             deterministic_usage: usage,
         })
@@ -1659,6 +1758,8 @@ enum GeoExecutorCommand {
     CompileEvidence,
     AssessmentRollOwner,
     CondoBridge,
+    AsOfResolution,
+    TileIdentifierStability,
     FootprintRollEvidence,
     Propagate,
     Explain,
@@ -1667,7 +1768,7 @@ enum GeoExecutorCommand {
 }
 
 impl GeoExecutorCommand {
-    const SUPPORTED: [Self; 12] = [
+    const SUPPORTED: [Self; 14] = [
         Self::MaterializeHomeCells,
         Self::TileWork,
         Self::ClientTileIngest,
@@ -1675,6 +1776,8 @@ impl GeoExecutorCommand {
         Self::CompileEvidence,
         Self::AssessmentRollOwner,
         Self::CondoBridge,
+        Self::AsOfResolution,
+        Self::TileIdentifierStability,
         Self::FootprintRollEvidence,
         Self::Propagate,
         Self::Explain,
@@ -1691,6 +1794,8 @@ impl GeoExecutorCommand {
             GEO_COMPILE_EVIDENCE_COMMAND => Ok(Self::CompileEvidence),
             GEO_ASSESSMENT_ROLL_OWNER_STAGE_COMMAND => Ok(Self::AssessmentRollOwner),
             GEO_CONDO_BRIDGE_STAGE_COMMAND => Ok(Self::CondoBridge),
+            GEO_AS_OF_RESOLUTION_STAGE_COMMAND => Ok(Self::AsOfResolution),
+            GEO_TILE_IDENTIFIER_STABILITY_STAGE_COMMAND => Ok(Self::TileIdentifierStability),
             GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND => Ok(Self::FootprintRollEvidence),
             GEO_PROPAGATE_STAGE_COMMAND => Ok(Self::Propagate),
             GEO_EXPLAIN_STAGE_COMMAND => Ok(Self::Explain),
@@ -1713,6 +1818,8 @@ impl GeoExecutorCommand {
             | Self::CompileEvidence
             | Self::AssessmentRollOwner
             | Self::CondoBridge
+            | Self::AsOfResolution
+            | Self::TileIdentifierStability
             | Self::FootprintRollEvidence => ProjectPlanNodeKind::Evidence,
             Self::Propagate | Self::Explain | Self::NextEvidence | Self::Solve => {
                 ProjectPlanNodeKind::Solve
@@ -1729,6 +1836,8 @@ impl GeoExecutorCommand {
             Self::CompileEvidence => "compile_evidence",
             Self::AssessmentRollOwner => GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID,
             Self::CondoBridge => GEO_CONDO_BRIDGE_OUTPUT_ID,
+            Self::AsOfResolution => GEO_AS_OF_RESOLUTION_OUTPUT_ID,
+            Self::TileIdentifierStability => GEO_TILE_IDENTIFIER_STABILITY_OUTPUT_ID,
             Self::FootprintRollEvidence => GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID,
             Self::Propagate => GEO_PROPAGATE_OUTPUT_ID,
             Self::Explain => GEO_EXPLAIN_OUTPUT_ID,
@@ -1748,6 +1857,8 @@ impl GeoExecutorCommand {
             }
             Self::AssessmentRollOwner => &[],
             Self::CondoBridge => &[],
+            Self::AsOfResolution => &[],
+            Self::TileIdentifierStability => &[],
             Self::FootprintRollEvidence => &[],
             Self::Propagate => &[("compile_evidence", CANON_GEO_EVIDENCE_COMPILATION_VERSION)],
             Self::Explain => &[
@@ -1775,6 +1886,8 @@ impl GeoExecutorCommand {
             Self::CompileEvidence => "compile-evidence",
             Self::AssessmentRollOwner => "assessment-roll-owner",
             Self::CondoBridge => "condo-bridge",
+            Self::AsOfResolution => "as-of-resolution",
+            Self::TileIdentifierStability => "tile-identifier-stability",
             Self::FootprintRollEvidence => "footprint-roll-evidence",
             Self::Propagate => "propagate",
             Self::Explain => "explain",
@@ -1985,6 +2098,10 @@ fn contract_for_output_id(output_id: &str) -> Option<&'static str> {
         GEO_EXPLAIN_OUTPUT_ID => Some(CANON_GEO_EXPLANATION_VERSION),
         GEO_SEPARATION_OUTPUT_ID => Some(CANON_GEO_SEPARATION_VERSION),
         GEO_NEXT_EVIDENCE_OUTPUT_ID => Some(CANON_GEO_NEXT_EVIDENCE_VERSION),
+        GEO_AS_OF_RESOLUTION_OUTPUT_ID => Some(CANON_GEO_AS_OF_RESOLUTION_VERSION),
+        GEO_TILE_IDENTIFIER_STABILITY_OUTPUT_ID => {
+            Some(CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION)
+        }
         "solve" => Some(CANON_GEO_COMPOSITION_VERSION),
         _ => None,
     }
@@ -2200,6 +2317,31 @@ fn ensure_canonical_artifact_bytes(
                 contract,
                 bytes,
                 canonical_condo_bridge_bytes(&artifact),
+            )
+        }
+        CANON_GEO_AS_OF_RESOLUTION_VERSION => {
+            let artifact: GeoAsOfResolutionArtifact =
+                parse_json_target(&node, bytes, CANON_GEO_AS_OF_RESOLUTION_VERSION)?;
+            validate_as_of_resolution_artifact(&artifact)
+                .map_err(|error| leaf_error_target(&node, "as-of resolution validation", error))?;
+            require_exact_bytes(
+                &node,
+                contract,
+                bytes,
+                canonical_as_of_resolution_bytes(&artifact),
+            )
+        }
+        CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION => {
+            let artifact: GeoTileIdentifierStabilityArtifact =
+                parse_json_target(&node, bytes, CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION)?;
+            validate_tile_identifier_stability_artifact(&artifact).map_err(|error| {
+                leaf_error_target(&node, "tile identifier stability validation", error)
+            })?;
+            require_exact_bytes(
+                &node,
+                contract,
+                bytes,
+                canonical_tile_identifier_stability_bytes(&artifact),
             )
         }
         CANON_GEO_EXPLANATION_VERSION => {
