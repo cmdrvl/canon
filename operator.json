@@ -7717,6 +7717,12 @@
       "action": "escalate"
     },
     {
+      "code": "E_SCOPE_REQUIRED",
+      "message": "Registry contains scoped mapping entries and bare lookup did not provide --scope",
+      "action": "retry_with_flag",
+      "flag": "--scope"
+    },
+    {
       "code": "E_COLUMN_NOT_FOUND",
       "message": "Column does not exist in header",
       "action": "fix_input"

@@ -4413,6 +4413,122 @@ fn test_json_mode_success_to_stdout() {
 }
 
 #[test]
+fn scoped_registry_requires_scope_for_public_bare_lookup() {
+    let temp = tempdir().unwrap();
+    let registry = temp.path().join("registry");
+    std::fs::create_dir(&registry).unwrap();
+    write_registry_metadata(&registry, "scoped-properties", "1.0.0", 2);
+    write_mapping_file(
+        &registry,
+        "00-first-deal.json",
+        serde_json::json!([{
+            "input": "41-001",
+            "canonical_id": "PROPERTY-FIRST-DEAL",
+            "canonical_type": "property",
+            "rule_id": "ABS_EE_ASSET_NUMBER",
+            "namespace": {
+                "kind": "core",
+                "class": "source_local_id"
+            },
+            "scope": {
+                "dimensions": [
+                    {
+                        "dimension": {
+                            "kind": "core",
+                            "dimension": "source_system"
+                        },
+                        "binding": {
+                            "binding": "exact",
+                            "value": "sec_abs_ee"
+                        }
+                    },
+                    {
+                        "dimension": {
+                            "kind": "core",
+                            "dimension": "dataset"
+                        },
+                        "binding": {
+                            "binding": "exact",
+                            "value": "deal:first"
+                        }
+                    }
+                ]
+            }
+        }]),
+    );
+    write_mapping_file(
+        &registry,
+        "01-second-deal.json",
+        serde_json::json!([{
+            "input": "41-001",
+            "canonical_id": "PROPERTY-SECOND-DEAL",
+            "canonical_type": "property",
+            "rule_id": "ABS_EE_ASSET_NUMBER",
+            "namespace": {
+                "kind": "core",
+                "class": "source_local_id"
+            },
+            "scope": {
+                "dimensions": [
+                    {
+                        "dimension": {
+                            "kind": "core",
+                            "dimension": "source_system"
+                        },
+                        "binding": {
+                            "binding": "exact",
+                            "value": "sec_abs_ee"
+                        }
+                    },
+                    {
+                        "dimension": {
+                            "kind": "core",
+                            "dimension": "dataset"
+                        },
+                        "binding": {
+                            "binding": "exact",
+                            "value": "deal:second"
+                        }
+                    }
+                ]
+            }
+        }]),
+    );
+    let input = temp.path().join("assets.csv");
+    write_seed_csv(&input, "asset_number\n41-001\n");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .arg(&input)
+        .arg("--registry")
+        .arg(&registry)
+        .arg("--column")
+        .arg("asset_number")
+        .arg("--emit")
+        .arg("json")
+        .assert()
+        .code(2);
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).expect("refusal json");
+
+    assert_eq!(payload["outcome"], "REFUSAL");
+    assert_eq!(payload["mappings"], serde_json::json!([]));
+    assert_eq!(payload["unresolved"], serde_json::json!([]));
+    assert_eq!(payload["refusal"]["code"], "E_SCOPE_REQUIRED");
+    assert_eq!(
+        payload["refusal"]["detail"]["reason"],
+        "scoped_registry_requires_query_scope"
+    );
+    assert_eq!(payload["refusal"]["detail"]["required_flag"], "--scope");
+    assert_eq!(payload["refusal"]["detail"]["writes_performed"], false);
+    assert!(
+        payload["refusal"]["next_command"]
+            .as_str()
+            .expect("next command")
+            .contains("--scope")
+    );
+}
+
+#[test]
 fn test_csv_mode_success_to_stdout() {
     let output = Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("tests/fixtures/inputs/all_resolved.csv")

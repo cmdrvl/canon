@@ -7113,6 +7113,7 @@ fn run_registry_audit_pipeline(
     let input_values =
         input::parse_input(&audit.seed, &audit.column, audit.max_bytes, audit.max_rows)
             .map_err(create_input_refusal)?;
+    enforce_unscoped_lookup_scope(&registry, &audit.registry)?;
     let resolve_result =
         lookup::resolve_values(&registry, &input_values).map_err(create_lookup_refusal)?;
 
@@ -7510,6 +7511,7 @@ fn run_pipeline(
     }
 
     // Step 8: Resolve values
+    enforce_unscoped_lookup_scope(&registry, registry_path)?;
     let resolve_result =
         lookup::resolve_values(&registry, &input_values).map_err(create_lookup_refusal)?;
 
@@ -7841,6 +7843,35 @@ fn create_lookup_refusal(error: lookup::LookupError) -> CanonOutput {
         error.to_string(),
         serde_json::json!({}),
         None,
+    )
+}
+
+#[allow(clippy::result_large_err)]
+fn enforce_unscoped_lookup_scope(
+    registry: &Registry,
+    registry_path: &Path,
+) -> Result<(), CanonOutput> {
+    match lookup::registry_has_scoped_entries(registry) {
+        Ok(false) => Ok(()),
+        Ok(true) => Err(create_scope_required_refusal(registry, registry_path)),
+        Err(error) => Err(create_lookup_refusal(error)),
+    }
+}
+
+fn create_scope_required_refusal(registry: &Registry, registry_path: &Path) -> CanonOutput {
+    refusal::create_refusal(
+        RefusalCode::EScopeRequired,
+        "Registry contains scoped mapping entries; bare lookup requires an explicit scope"
+            .to_string(),
+        serde_json::json!({
+            "reason": "scoped_registry_requires_query_scope",
+            "registry": registry_path.display().to_string(),
+            "registry_id": registry.meta.id,
+            "registry_version": registry.meta.version,
+            "required_flag": "--scope",
+            "writes_performed": false
+        }),
+        Some("Rerun with --scope <SCOPE> after selecting the intended registry scope".to_string()),
     )
 }
 
@@ -8401,6 +8432,7 @@ pub enum RefusalCode {
     EStrategyProofInvalid,
     EStrategyVersionBumpRequired,
     EBadStrategy,
+    EScopeRequired,
     ETooManyCandidates,
     EEmptyTape,
     EIncompatibleTapes,
@@ -8444,6 +8476,7 @@ impl Serialize for RefusalCode {
             RefusalCode::EStrategyProofInvalid => "E_STRATEGY_PROOF_INVALID",
             RefusalCode::EStrategyVersionBumpRequired => "E_STRATEGY_VERSION_BUMP_REQUIRED",
             RefusalCode::EBadStrategy => "E_BAD_STRATEGY",
+            RefusalCode::EScopeRequired => "E_SCOPE_REQUIRED",
             RefusalCode::ETooManyCandidates => "E_TOO_MANY_CANDIDATES",
             RefusalCode::EEmptyTape => "E_EMPTY_TAPE",
             RefusalCode::EIncompatibleTapes => "E_INCOMPATIBLE_TAPES",
@@ -8554,6 +8587,9 @@ impl RefusalCode {
                 "Pass --next-version, then rerun canon strategy register"
             }
             RefusalCode::EBadStrategy => "Fix the strategy YAML, then rerun canon with --strategy",
+            RefusalCode::EScopeRequired => {
+                "Rerun with --scope <SCOPE> after selecting the intended registry scope"
+            }
             RefusalCode::ETooManyCandidates => {
                 "Tighten candidate_filter or raise --max-candidates, then rerun canon entity link"
             }

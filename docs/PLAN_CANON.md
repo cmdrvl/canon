@@ -1035,6 +1035,7 @@ pack seal evidence/ --note "Q4 recon with canonical IDs"
 | `E_ENCODING` | Unsupported text encoding | Convert/re-export as UTF-8 |
 | `E_CSV_PARSE` | CSV parse failure | Re-export as standard CSV |
 | `E_BAD_REGISTRY` | Registry format invalid (missing `registry.json`, malformed entries) | Fix registry |
+| `E_SCOPE_REQUIRED` | Scoped registry lookup was attempted without a query scope | Rerun with `--scope <SCOPE>` after selecting the intended registry scope |
 | `E_COLUMN_NOT_FOUND` | `--column` doesn't exist in input | Check column name |
 | `E_PARSE` | Can't parse JSONL input or unrecognized/missing file extension | Check format; use `.csv`, `.tsv`, `.jsonl`, or `.ndjson` extension |
 | `E_EMPTY_INPUT` | Input has no processable data (header only, empty JSONL, or all rows are blank records) | Check input file |

@@ -1164,6 +1164,7 @@ Every refusal includes the error code, a concrete message, and a recovery path.
 | `E_ENCODING` | Unsupported text encoding | Convert/re-export as UTF-8 |
 | `E_CSV_PARSE` | CSV parse failure | Re-export as standard CSV |
 | `E_BAD_REGISTRY` | Registry format invalid | Fix `registry.json` or mapping files |
+| `E_SCOPE_REQUIRED` | Scoped registry lookup without a query scope | Rerun with `--scope <SCOPE>` after selecting the intended registry scope |
 | `E_COLUMN_NOT_FOUND` | `--column` doesn't exist in input | Check column name |
 | `E_PARSE` | Can't parse input or unrecognized extension | Use `.csv`, `.tsv`, `.jsonl`, or `.ndjson` |
 | `E_EMPTY_INPUT` | No processable data | Check input file |
