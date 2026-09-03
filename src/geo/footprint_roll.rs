@@ -132,20 +132,11 @@ impl Default for GeoFootprintRollSourceConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeoFootprintRollCalibration {
     pub assessment_roll_gross_sqft_band: GeoAssessmentRollGrossSqftBandCalibration,
     pub footprint_building_count_floor: GeoFootprintBuildingCountFloorCalibration,
-}
-
-impl Default for GeoFootprintRollCalibration {
-    fn default() -> Self {
-        Self {
-            assessment_roll_gross_sqft_band: GeoAssessmentRollGrossSqftBandCalibration::default(),
-            footprint_building_count_floor: GeoFootprintBuildingCountFloorCalibration::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
