@@ -1003,7 +1003,7 @@ pub struct GeneralizationLeakSourceCompletenessEntry {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LoadedGeneralizationArtifact {
     CandidateRecall(EntityCandidateRecallReport),
-    Link(EntityLinkArtifact),
+    Link(Box<EntityLinkArtifact>),
     LinkObservationSurfaceBindings(Vec<EntityLinkObservationSurfaceBinding>),
     Run(EntityRunArtifact),
     Solve(SolveArtifact),
@@ -2163,7 +2163,7 @@ pub fn load_generalization_artifact_ref(
         GeneralizationArtifactKind::Link => {
             let value: Value = serde_json::from_slice(&bytes).map_err(artifact_error)?;
             validate_json_version(field, &value, &reference.version)?;
-            LoadedGeneralizationArtifact::Link(parse_link_artifact(&bytes)?)
+            LoadedGeneralizationArtifact::Link(Box::new(parse_link_artifact(&bytes)?))
         }
         GeneralizationArtifactKind::LinkObservationSurfaceBindings => {
             LoadedGeneralizationArtifact::LinkObservationSurfaceBindings(
@@ -5643,7 +5643,7 @@ fn loaded_link_artifact(
     artifacts
         .iter()
         .find_map(|artifact| match &artifact.artifact {
-            LoadedGeneralizationArtifact::Link(link) => Some(link),
+            LoadedGeneralizationArtifact::Link(link) => Some(link.as_ref()),
             _ => None,
         })
         .ok_or_else(|| {
@@ -7443,7 +7443,7 @@ fn semantic_content_hash_for_loaded_artifact(
     artifact: &LoadedGeneralizationArtifactRef,
 ) -> GeneralizationResult<String> {
     match &artifact.artifact {
-        LoadedGeneralizationArtifact::Link(link) => semantic_entity_link_content_hash(link),
+        LoadedGeneralizationArtifact::Link(link) => semantic_entity_link_content_hash(link.as_ref()),
         _ => Ok(artifact.reference.content_hash.clone()),
     }
 }
