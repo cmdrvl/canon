@@ -32,12 +32,20 @@ use crate::{
         },
         solve::CANON_ENTITY_ALIAS_PROPOSAL_VERSION,
     },
-    registry::{PlannedMutationState, acquire_registry_mutation_guard},
+    identity_scope::{
+        CANON_IDENTITY_SCOPE_VERSION, CanonicalTypeRef, CoreIdentifierNamespaceClass,
+        CrossScopeAliasPolicy, IdentifierNamespaceRef, IdentityScope, QualifiedIdentityRef,
+        authorize_cross_scope_alias,
+    },
+    registry::{
+        PlannedMutationState, acquire_registry_mutation_guard, finalize_mapping_scope_metadata,
+    },
     witness,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{
+    cmp::Ordering,
     collections::{BTreeMap, BTreeSet},
     fs,
     io::Write,
@@ -564,6 +572,8 @@ pub fn decisions_by_review_id(
 
 pub const CANON_ENTITY_NATIVE_REVIEW_IMPORT_VERSION: &str = "canon_entity_native_review_import.v0";
 const REVIEW_IMPORT_ALIAS_PROPOSAL_ALLOWED_ACTIONS: &[&str] = &["accept_alias", "reject_alias"];
+const REVIEW_IMPORT_REGISTRY_CANONICAL_TYPE_DIGEST: &str =
+    "blake3:42881f8ac1a32c3b2e04c1f1ec0fbf50a4529549819163e8326f9ebd96435370";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -2673,12 +2683,25 @@ fn reviewed_decisions_from_v1(review: &Value) -> Vec<Value> {
         .collect()
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct ReviewImportAliasEntry {
     input: String,
     canonical_id: String,
     canonical_type: String,
     rule_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    namespace: Option<IdentifierNamespaceRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    scope: Option<IdentityScope>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    provenance: Option<ReviewImportAliasProvenance>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct ReviewImportAliasProvenance {
+    evidence_ref: String,
+    review_id: String,
+    proposal_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -2785,6 +2808,9 @@ struct ReviewImportAliasProposal {
     rule_id: String,
     component_id: String,
     source_surface_ids: Vec<String>,
+    namespace: Option<IdentifierNamespaceRef>,
+    scope: Option<IdentityScope>,
+    evidence_ref: Option<String>,
 }
 
 #[cfg(test)]
@@ -2816,7 +2842,7 @@ fn review_import_default_queue_plan_from_v1_decisions(
         "metadata.profile.identity_semantics",
     )?;
     let mut seen_reviews = BTreeSet::new();
-    let mut seen_inputs = BTreeSet::new();
+    let mut seen_aliases = Vec::new();
     let mut seen_anchor_keys = BTreeMap::<(String, String), String>::new();
     let mut plan = ReviewImportDefaultQueuePlan::default();
     for decision in decisions {
@@ -2871,24 +2897,10 @@ fn review_import_default_queue_plan_from_v1_decisions(
                     alias_proposals_from_review_item(&review_id, item, canonical_type, &action)?;
                 validate_decision_alias_fields_match_item(&review_id, decision, &proposals)?;
                 for proposal in &proposals {
-                    if !seen_inputs.insert(proposal.input.clone()) {
-                        return Err(review_import_refusal(
-                            EntityRefusalKind::ReviewImport,
-                            "Review import contains duplicate alias inputs",
-                            json!({
-                                "stage": "review_import",
-                                "field": "alias_input",
-                                "input": proposal.input,
-                                "writes_performed": false
-                            }),
-                        ));
-                    }
-                    plan.aliases.push(ReviewImportAliasEntry {
-                        input: proposal.input.clone(),
-                        canonical_id: proposal.canonical_id.clone(),
-                        canonical_type: proposal.canonical_type.clone(),
-                        rule_id: proposal.rule_id.clone(),
-                    });
+                    let alias = review_import_alias_entry_from_proposal(&review_id, proposal)?;
+                    validate_review_import_alias_not_seen(&seen_aliases, &alias)?;
+                    seen_aliases.push(alias.clone());
+                    plan.aliases.push(alias);
                 }
                 let canonical_id = single_alias_canonical_id(&review_id, &proposals)?;
                 extend_trusted_anchor_plan(
@@ -2969,11 +2981,178 @@ fn review_import_default_queue_plan_from_v1_decisions(
             }
         }
     }
-    plan.aliases.sort();
+    sort_review_import_alias_entries(&mut plan.aliases);
     plan.anchors.sort();
     plan.pending_escrows.sort();
     plan.cannot_links.sort();
     Ok(plan)
+}
+
+fn review_import_alias_entry_from_proposal(
+    review_id: &str,
+    proposal: &ReviewImportAliasProposal,
+) -> Result<ReviewImportAliasEntry, Refusal> {
+    authorize_review_import_cross_scope_alias(review_id, proposal)?;
+    Ok(ReviewImportAliasEntry {
+        input: proposal.input.clone(),
+        canonical_id: proposal.canonical_id.clone(),
+        canonical_type: proposal.canonical_type.clone(),
+        rule_id: proposal.rule_id.clone(),
+        namespace: proposal.namespace.clone(),
+        scope: proposal.scope.clone(),
+        provenance: proposal.evidence_ref.as_ref().map(|evidence_ref| {
+            ReviewImportAliasProvenance {
+                evidence_ref: evidence_ref.clone(),
+                review_id: review_id.to_string(),
+                proposal_id: proposal.proposal_id.clone(),
+            }
+        }),
+    })
+}
+
+fn validate_review_import_alias_not_seen(
+    seen_aliases: &[ReviewImportAliasEntry],
+    alias: &ReviewImportAliasEntry,
+) -> Result<(), Refusal> {
+    if let Some(existing) = seen_aliases
+        .iter()
+        .find(|existing| review_import_aliases_collide(existing, alias))
+    {
+        return Err(review_import_refusal(
+            EntityRefusalKind::ReviewImport,
+            "Review import contains duplicate alias inputs in the same scope",
+            json!({
+                "stage": "review_import",
+                "field": "alias_input",
+                "input": alias.input,
+                "existing_scope": existing.scope,
+                "proposed_scope": alias.scope,
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn authorize_review_import_cross_scope_alias(
+    review_id: &str,
+    proposal: &ReviewImportAliasProposal,
+) -> Result<(), Refusal> {
+    let Some(scope) = proposal.scope.as_ref() else {
+        return Ok(());
+    };
+    if scope.dimensions.is_empty() {
+        return Ok(());
+    }
+
+    let canonical_type = review_import_canonical_type_ref(&proposal.canonical_type);
+    let namespace = proposal
+        .namespace
+        .clone()
+        .unwrap_or_else(review_import_alias_surface_namespace);
+    let scoped_alias = QualifiedIdentityRef {
+        version: CANON_IDENTITY_SCOPE_VERSION.to_string(),
+        identifier_value: proposal.input.clone(),
+        canonical_type: canonical_type.clone(),
+        namespace: namespace.clone(),
+        scope: scope.clone(),
+    };
+    let global_property = QualifiedIdentityRef {
+        version: CANON_IDENTITY_SCOPE_VERSION.to_string(),
+        identifier_value: proposal.canonical_id.clone(),
+        canonical_type,
+        namespace,
+        scope: IdentityScope::default(),
+    };
+
+    authorize_cross_scope_alias(
+        &scoped_alias,
+        &global_property,
+        CrossScopeAliasPolicy::RequireExplicitEvidence,
+        proposal.evidence_ref.as_deref(),
+    )
+    .map(|_| ())
+    .map_err(|error| {
+        review_import_refusal(
+            EntityRefusalKind::ReviewImport,
+            "Review import cross-scope alias promotion requires explicit evidence",
+            json!({
+                "stage": "review_import",
+                "field": "alias_proposal.evidence_ref",
+                "reason": "cross_scope_evidence_required",
+                "review_id": review_id,
+                "proposal_id": proposal.proposal_id,
+                "input": proposal.input,
+                "canonical_id": proposal.canonical_id,
+                "policy": "require_explicit_evidence",
+                "identity_scope_error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })
+}
+
+fn review_import_canonical_type_ref(canonical_type: &str) -> CanonicalTypeRef {
+    CanonicalTypeRef::Extension {
+        package_digest: REVIEW_IMPORT_REGISTRY_CANONICAL_TYPE_DIGEST.to_string(),
+        vocabulary: "registry_mapping_canonical_type".to_string(),
+        value: canonical_type.to_string(),
+    }
+}
+
+fn review_import_alias_surface_namespace() -> IdentifierNamespaceRef {
+    IdentifierNamespaceRef::Core {
+        class: CoreIdentifierNamespaceClass::AliasSurface,
+    }
+}
+
+fn sort_review_import_alias_entries(aliases: &mut [ReviewImportAliasEntry]) {
+    aliases.sort_by(review_import_alias_entry_cmp);
+}
+
+fn review_import_alias_entry_cmp(
+    left: &ReviewImportAliasEntry,
+    right: &ReviewImportAliasEntry,
+) -> Ordering {
+    left.input
+        .cmp(&right.input)
+        .then_with(|| left.canonical_id.cmp(&right.canonical_id))
+        .then_with(|| left.canonical_type.cmp(&right.canonical_type))
+        .then_with(|| left.rule_id.cmp(&right.rule_id))
+        .then_with(|| {
+            optional_json_sort_key(&left.namespace).cmp(&optional_json_sort_key(&right.namespace))
+        })
+        .then_with(|| {
+            optional_json_sort_key(&left.scope).cmp(&optional_json_sort_key(&right.scope))
+        })
+        .then_with(|| {
+            optional_json_sort_key(&left.provenance).cmp(&optional_json_sort_key(&right.provenance))
+        })
+}
+
+fn optional_json_sort_key<T: Serialize>(value: &Option<T>) -> String {
+    value
+        .as_ref()
+        .map(|value| serde_json::to_string(value).expect("review import alias sort key serializes"))
+        .unwrap_or_default()
+}
+
+fn review_import_aliases_collide(
+    existing: &ReviewImportAliasEntry,
+    proposed: &ReviewImportAliasEntry,
+) -> bool {
+    existing.input == proposed.input
+        && review_import_scopes_collide(existing.scope.as_ref(), proposed.scope.as_ref())
+}
+
+fn review_import_scopes_collide(
+    existing_scope: Option<&IdentityScope>,
+    proposed_scope: Option<&IdentityScope>,
+) -> bool {
+    match (existing_scope, proposed_scope) {
+        (Some(existing), Some(proposed)) => existing == proposed,
+        _ => true,
+    }
 }
 
 fn single_alias_canonical_id(
@@ -3451,6 +3630,23 @@ fn alias_proposal_from_value(
             "alias_proposal.source_surface_ids",
         ));
     }
+    let namespace =
+        optional_alias_proposal_field::<IdentifierNamespaceRef>(review_id, value, "namespace")?;
+    let scope = optional_alias_proposal_field::<IdentityScope>(review_id, value, "scope")?;
+    let scope = finalize_mapping_scope_metadata(namespace.as_ref(), scope).map_err(|error| {
+        review_import_refusal(
+            EntityRefusalKind::ReviewImport,
+            "Accept-alias review item alias proposal has invalid identity scope metadata",
+            json!({
+                "stage": "review_import",
+                "field": "alias_proposal.scope",
+                "review_id": review_id,
+                "scope_error": error,
+                "writes_performed": false
+            }),
+        )
+    })?;
+    let evidence_ref = optional_alias_proposal_text(review_id, value, "evidence_ref")?;
     Ok(ReviewImportAliasProposal {
         proposal_id,
         input,
@@ -3459,7 +3655,59 @@ fn alias_proposal_from_value(
         rule_id,
         component_id,
         source_surface_ids,
+        namespace,
+        scope,
+        evidence_ref,
     })
+}
+
+fn optional_alias_proposal_field<T: DeserializeOwned>(
+    review_id: &str,
+    value: &Value,
+    field: &'static str,
+) -> Result<Option<T>, Refusal> {
+    value
+        .get(field)
+        .cloned()
+        .map(|raw| {
+            serde_json::from_value::<T>(raw).map_err(|error| {
+                review_import_refusal(
+                    EntityRefusalKind::ReviewImport,
+                    "Accept-alias review item alias proposal has malformed optional metadata",
+                    json!({
+                        "stage": "review_import",
+                        "field": format!("alias_proposal.{field}"),
+                        "review_id": review_id,
+                        "error": error.to_string(),
+                        "writes_performed": false
+                    }),
+                )
+            })
+        })
+        .transpose()
+}
+
+fn optional_alias_proposal_text(
+    review_id: &str,
+    value: &Value,
+    field: &'static str,
+) -> Result<Option<String>, Refusal> {
+    let Some(raw) = value.get(field) else {
+        return Ok(None);
+    };
+    let Some(text) = raw.as_str() else {
+        return Err(review_import_refusal(
+            EntityRefusalKind::ReviewImport,
+            "Accept-alias review item alias proposal optional metadata must be a string",
+            json!({
+                "stage": "review_import",
+                "field": format!("alias_proposal.{field}"),
+                "review_id": review_id,
+                "writes_performed": false
+            }),
+        ));
+    };
+    validate_review_import_alias_text(&format!("alias_proposal.{field}"), text, true).map(Some)
 }
 
 fn missing_alias_proposal_field(review_id: &str, field: &str) -> Refusal {
@@ -3525,7 +3773,7 @@ fn alias_proposal_content_hash(proposal: &Value) -> Result<String, Refusal> {
             }),
         ));
     }
-    let hashable = json!({
+    let mut hashable = json!({
         "version": value_string(proposal, "version").unwrap_or_default(),
         "input": value_string(proposal, "input").unwrap_or_default(),
         "canonical_id": value_string(proposal, "canonical_id").unwrap_or_default(),
@@ -3535,6 +3783,13 @@ fn alias_proposal_content_hash(proposal: &Value) -> Result<String, Refusal> {
         "source_surface_ids": string_array_field(proposal, "source_surface_ids")?,
         "allowed_actions": string_array_field(proposal, "allowed_actions")?
     });
+    if let Some(object) = hashable.as_object_mut() {
+        for field in ["namespace", "scope", "evidence_ref"] {
+            if let Some(value) = proposal.get(field) {
+                object.insert(field.to_string(), value.clone());
+            }
+        }
+    }
     let bytes = serde_json::to_vec(&hashable).map_err(|error| {
         review_import_refusal(
             EntityRefusalKind::ReviewImport,
@@ -4595,18 +4850,23 @@ fn validate_alias_conflicts(
 ) -> Result<(), Refusal> {
     let existing = review_import_existing_aliases(registry)?;
     for alias in aliases {
-        if let Some(existing) = existing.get(&alias.input) {
+        if let Some(existing) = existing
+            .iter()
+            .find(|existing| review_import_aliases_collide(existing, alias))
+        {
             return Err(review_import_refusal(
                 EntityRefusalKind::ReviewImport,
-                "Review import alias input already exists in the registry",
+                "Review import alias input already exists in the registry for this scope",
                 json!({
                     "stage": "review_import",
                     "field": "alias_input",
                     "input": alias.input.as_str(),
                     "existing": {
                         "canonical_id": existing.canonical_id.as_str(),
-                        "canonical_type": existing.canonical_type.as_str()
+                        "canonical_type": existing.canonical_type.as_str(),
+                        "scope": existing.scope,
                     },
+                    "proposed_scope": alias.scope,
                     "writes_performed": false
                 }),
             ));
@@ -4615,15 +4875,13 @@ fn validate_alias_conflicts(
     Ok(())
 }
 
-fn review_import_existing_aliases(
-    registry: &Path,
-) -> Result<BTreeMap<String, ReviewImportAliasEntry>, Refusal> {
-    let mut aliases = BTreeMap::new();
+fn review_import_existing_aliases(registry: &Path) -> Result<Vec<ReviewImportAliasEntry>, Refusal> {
+    let mut aliases = Vec::new();
     for path in review_import_mapping_file_paths(registry)? {
         let bytes = fs::read(path.as_path())
             .map_err(|error| review_import_io_refusal(path.as_path(), error))?;
         for entry in parse_review_import_alias_entries(&path, &bytes)? {
-            aliases.insert(entry.input.clone(), entry);
+            aliases.push(entry);
         }
     }
     Ok(aliases)
@@ -4695,12 +4953,55 @@ fn build_review_import_alias_bytes(
         )
     })?;
     for alias in aliases {
-        entries.push(json!({
+        let mut entry = json!({
             "input": alias.input.as_str(),
             "canonical_id": alias.canonical_id.as_str(),
             "canonical_type": alias.canonical_type.as_str(),
             "rule_id": alias.rule_id.as_str()
-        }));
+        });
+        if let Some(namespace) = &alias.namespace {
+            entry["namespace"] = serde_json::to_value(namespace).map_err(|error| {
+                review_import_refusal(
+                    EntityRefusalKind::ReviewImport,
+                    "Review import could not serialize alias namespace",
+                    json!({
+                        "stage": "review_import",
+                        "field": "alias.namespace",
+                        "error": error.to_string(),
+                        "writes_performed": false
+                    }),
+                )
+            })?;
+        }
+        if let Some(scope) = &alias.scope {
+            entry["scope"] = serde_json::to_value(scope).map_err(|error| {
+                review_import_refusal(
+                    EntityRefusalKind::ReviewImport,
+                    "Review import could not serialize alias scope",
+                    json!({
+                        "stage": "review_import",
+                        "field": "alias.scope",
+                        "error": error.to_string(),
+                        "writes_performed": false
+                    }),
+                )
+            })?;
+        }
+        if let Some(provenance) = &alias.provenance {
+            entry["provenance"] = serde_json::to_value(provenance).map_err(|error| {
+                review_import_refusal(
+                    EntityRefusalKind::ReviewImport,
+                    "Review import could not serialize alias provenance",
+                    json!({
+                        "stage": "review_import",
+                        "field": "alias.provenance",
+                        "error": error.to_string(),
+                        "writes_performed": false
+                    }),
+                )
+            })?;
+        }
+        entries.push(entry);
     }
     review_import_pretty_bytes(&entries)
 }
