@@ -173,6 +173,7 @@ pub enum EntityNormalizationOperatorKind {
     Uppercase,
     AsciiTrimUpper,
     NormalizeWhitespace,
+    ReverseTwoTokens,
     Tokenize,
     ReplaceTokens,
     RemoveTokens,
@@ -195,6 +196,7 @@ impl EntityNormalizationOperatorKind {
             EntityNormalizationOperatorKind::Uppercase => "uppercase",
             EntityNormalizationOperatorKind::AsciiTrimUpper => "ascii_trim_upper",
             EntityNormalizationOperatorKind::NormalizeWhitespace => "normalize_whitespace",
+            EntityNormalizationOperatorKind::ReverseTwoTokens => "reverse_two_tokens",
             EntityNormalizationOperatorKind::Tokenize => "tokenize",
             EntityNormalizationOperatorKind::ReplaceTokens => "replace_tokens",
             EntityNormalizationOperatorKind::RemoveTokens => "remove_tokens",
@@ -1271,6 +1273,14 @@ fn apply_normalization_operator(
         EntityNormalizationOperatorKind::NormalizeWhitespace => {
             Ok(join_tokens(tokens(&current), " "))
         }
+        EntityNormalizationOperatorKind::ReverseTwoTokens => {
+            let tokens = tokens(&current);
+            if let [first, second] = tokens.as_slice() {
+                Ok(format!("{second} {first}"))
+            } else {
+                Ok(String::new())
+            }
+        }
         EntityNormalizationOperatorKind::Tokenize => Ok(join_tokens(
             tokens(&current),
             operator_joiner(operator, "tokenize", "|")?.as_str(),
@@ -1484,7 +1494,8 @@ fn allowed_operator_params(op: &EntityNormalizationOperatorKind) -> &'static [&'
         EntityNormalizationOperatorKind::Lowercase
         | EntityNormalizationOperatorKind::Uppercase
         | EntityNormalizationOperatorKind::AsciiTrimUpper
-        | EntityNormalizationOperatorKind::NormalizeWhitespace => &[],
+        | EntityNormalizationOperatorKind::NormalizeWhitespace
+        | EntityNormalizationOperatorKind::ReverseTwoTokens => &[],
         EntityNormalizationOperatorKind::Tokenize => &["joiner"],
         EntityNormalizationOperatorKind::ReplaceTokens => &["replacements"],
         EntityNormalizationOperatorKind::RemoveTokens => &["tokens"],
@@ -1501,7 +1512,8 @@ fn validate_operator_params(
         EntityNormalizationOperatorKind::Lowercase
         | EntityNormalizationOperatorKind::Uppercase
         | EntityNormalizationOperatorKind::AsciiTrimUpper
-        | EntityNormalizationOperatorKind::NormalizeWhitespace => {
+        | EntityNormalizationOperatorKind::NormalizeWhitespace
+        | EntityNormalizationOperatorKind::ReverseTwoTokens => {
             if !operator.params.is_empty() {
                 return Err(artifact_contract_error(format!(
                     "{field}.params must be empty for scalar normalization operators"

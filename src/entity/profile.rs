@@ -845,6 +845,7 @@ const SUPPORTED_NORMALIZE_OPS: &[&str] = &[
     "remove_tokens",
     "strip_suffixes",
     "fingerprint",
+    "reverse_two_tokens",
     "drop_tenant_stopwords",
     "strip_regab_noise",
     "preserve_legal_form",

@@ -61,6 +61,7 @@ fn schema_declares_portable_profile_package_and_mode_support() {
             .expect("supported normalized operators");
     assert!(supported.iter().any(|value| value == "replace_tokens"));
     assert!(supported.iter().any(|value| value == "strip_suffixes"));
+    assert!(supported.iter().any(|value| value == "reverse_two_tokens"));
     assert!(supported.iter().all(|value| value != "identity"));
 }
 
@@ -287,6 +288,58 @@ fn parameterized_normalization_specs_change_output_without_rust_branches() {
         output_a.package_digest, output_b.package_digest,
         "operator parameters must be hash-bound in the canonical package digest"
     );
+}
+
+#[test]
+fn reverse_two_tokens_view_is_executable_and_empty_for_other_arities() {
+    let records = b"observation_id,raw_name,raw_name_reversal\n\
+row-1,SMITH JOHN,SMITH JOHN\n\
+row-2,SMITH JOHN ROBERT,SMITH JOHN ROBERT\n";
+    let mut package = package_with_core_operators(vec![
+        normalization_op(EntityNormalizationOperatorKind::Lowercase),
+        normalization_op(EntityNormalizationOperatorKind::NormalizeWhitespace),
+    ]);
+    package.normalized_views.insert(
+        "organization_reversal".to_string(),
+        EntityNormalizedView {
+            operators: vec![
+                normalization_op(EntityNormalizationOperatorKind::Lowercase),
+                normalization_op(EntityNormalizationOperatorKind::NormalizeWhitespace),
+                normalization_op(EntityNormalizationOperatorKind::ReverseTwoTokens),
+            ],
+        },
+    );
+    package.field_mappings.push(EntityProfileFieldMapping {
+        field_path: "raw_name_reversal".to_string(),
+        object_type: "pkg.synthetic:organization".to_string(),
+        field_role: "blocking_view".to_string(),
+        normalized_view: Some("organization_reversal".to_string()),
+        required: false,
+    });
+    for mode in &mut package.execution_modes {
+        if mode.mode == ProfileModeKind::Cluster {
+            mode.field_paths.push("raw_name_reversal".to_string());
+        }
+    }
+
+    let output = execute_profile_package_records(
+        &package,
+        records,
+        EntityProfileRecordInputFormat::Csv,
+        &cluster_run_request(),
+    )
+    .expect("package with reversal view executes");
+
+    assert_eq!(
+        output.records[0].normalized_views["organization_reversal"],
+        "john smith"
+    );
+    assert_eq!(
+        output.records[1].normalized_views["organization_reversal"], "",
+        "three-token partial reversals must not enter the two-token reversal view"
+    );
+    assert_eq!(output.records[0].canonical_surface, "smith john");
+    assert_eq!(output.records[1].canonical_surface, "smith john robert");
 }
 
 #[test]
