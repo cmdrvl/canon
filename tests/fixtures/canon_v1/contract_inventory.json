@@ -1983,6 +1983,13 @@
       "source_path": "schemas/canon.geo.pre_resolution.v0.schema.json"
     },
     {
+      "id": "canon_geo_collateral_ledger.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/geo/pre_resolve.rs"
+    },
+    {
       "id": "canon_geo_registry_proposal.v0",
       "family": "geo",
       "action": "preserve",
