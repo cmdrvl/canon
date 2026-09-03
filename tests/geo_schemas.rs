@@ -156,6 +156,8 @@ const ASSESSMENT_ROLL_OWNER_REQUEST_SCHEMA: &str =
 const ASSESSMENT_ROLL_OWNER_SCHEMA: &str =
     include_str!("../schemas/canon.geo.assessment_roll_owner.v0.schema.json");
 const CONDO_BRIDGE_SCHEMA: &str = include_str!("../schemas/canon.geo.condo_bridge.v0.schema.json");
+const FOOTPRINT_ROLL_EVIDENCE_REQUEST_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.footprint_roll_evidence_request.v0.schema.json");
 const SEPARATION_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.separation_request.v0.schema.json");
 const SEPARATION_SCHEMA: &str = include_str!("../schemas/canon.geo.separation.v0.schema.json");
@@ -2334,6 +2336,70 @@ fn assessment_roll_owner_schema_matches_a_real_instance() {
         ASSESSMENT_ROLL_OWNER_SCHEMA,
         "canon.geo.assessment_roll_owner.v0",
         CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn footprint_roll_evidence_request_schema_matches_a_real_instance() {
+    let request = GeoFootprintRollEvidenceRequest {
+        version: CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: GeoCompositionProfile::parcel(),
+        case_id: "case-footprint-roll".to_string(),
+        universe: GeoCompositionUniverse {
+            parcels: vec!["1000010001".to_string(), "1000010002".to_string()],
+            buildings: Vec::new(),
+        },
+        loan: GeoFootprintRollLoanFields {
+            loan_key: "loan-footprint-roll".to_string(),
+            filed_size: Some(1_000),
+            size_measure: "SQFT".to_string(),
+            loan_county_property_count: Some(3),
+            size_source_record_id:
+                "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT:loan-footprint-roll:size".to_string(),
+            size_source_vintage: "latest_reporting_period".to_string(),
+            county_property_count_source_record_id:
+                "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY:loan-footprint-roll:county_count"
+                    .to_string(),
+            county_property_count_source_vintage: "current".to_string(),
+        },
+        source_config: GeoFootprintRollSourceConfig::default(),
+        calibration: GeoFootprintRollCalibration::default(),
+        assessment_roll_rows: vec![
+            GeoAssessmentRollGrossSqftRow {
+                bbl: "1000010001".to_string(),
+                gross_sqft: Some(400),
+                units: Some(1),
+            },
+            GeoAssessmentRollGrossSqftRow {
+                bbl: "1000010002".to_string(),
+                gross_sqft: Some(700),
+                units: Some(1),
+            },
+        ],
+        footprint_rows: vec![
+            GeoBuildingFootprintRow {
+                mappluto_bbl: "1000010001".to_string(),
+                bin: "1000010001-bin-1".to_string(),
+                active: true,
+            },
+            GeoBuildingFootprintRow {
+                mappluto_bbl: "1000010002".to_string(),
+                bin: "1000010002-bin-1".to_string(),
+                active: true,
+            },
+        ],
+        max_assignments: 32,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    };
+    let canonical_bytes = canonical_footprint_roll_evidence_request_bytes(&request)
+        .expect("footprint/roll request canonicalizes");
+    let instance: Value = serde_json::from_slice(&canonical_bytes)
+        .expect("canonical footprint/roll request JSON parses");
+    assert_drift_free(
+        FOOTPRINT_ROLL_EVIDENCE_REQUEST_SCHEMA,
+        "canon.geo.footprint_roll_evidence_request.v0",
+        CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION,
         &instance,
     );
 }

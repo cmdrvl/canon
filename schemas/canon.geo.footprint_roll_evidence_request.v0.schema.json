@@ -1,0 +1,288 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.footprint_roll_evidence_request.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.footprint_roll_evidence_request.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_footprint_roll_evidence_request.v0",
+      "type": "string"
+    },
+    "profile": {
+      "$ref": "canon.geo.composition_request.v0.schema.json#/$defs/composition_profile"
+    },
+    "case_id": {
+      "type": "string"
+    },
+    "universe": {
+      "$ref": "canon.geo.composition_request.v0.schema.json#/$defs/universe"
+    },
+    "loan": {
+      "$ref": "#/$defs/loan"
+    },
+    "source_config": {
+      "$ref": "#/$defs/source_config"
+    },
+    "calibration": {
+      "$ref": "#/$defs/calibration"
+    },
+    "assessment_roll_rows": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/assessment_roll_row"
+      }
+    },
+    "footprint_rows": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/footprint_row"
+      }
+    },
+    "max_assignments": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "max_materialized_models": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "version",
+    "profile",
+    "case_id",
+    "universe",
+    "loan",
+    "source_config",
+    "calibration",
+    "assessment_roll_rows",
+    "footprint_rows",
+    "max_assignments",
+    "max_materialized_models"
+  ],
+  "$defs": {
+    "nullable_u64": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "loan": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "loan_key": {
+          "type": "string"
+        },
+        "filed_size": {
+          "$ref": "#/$defs/nullable_u64"
+        },
+        "size_measure": {
+          "type": "string"
+        },
+        "loan_county_property_count": {
+          "$ref": "#/$defs/nullable_u64"
+        },
+        "size_source_record_id": {
+          "type": "string"
+        },
+        "size_source_vintage": {
+          "type": "string"
+        },
+        "county_property_count_source_record_id": {
+          "type": "string"
+        },
+        "county_property_count_source_vintage": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "loan_key",
+        "filed_size",
+        "size_measure",
+        "loan_county_property_count",
+        "size_source_record_id",
+        "size_source_vintage",
+        "county_property_count_source_record_id",
+        "county_property_count_source_vintage"
+      ]
+    },
+    "source_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "assessment_roll_contract_source_dataset": {
+          "type": "string"
+        },
+        "assessment_roll_contract_source_release": {
+          "type": "string"
+        },
+        "assessment_roll_row_source_dataset": {
+          "type": "string"
+        },
+        "assessment_roll_row_source_vintage": {
+          "type": "string"
+        },
+        "footprint_contract_source_dataset": {
+          "type": "string"
+        },
+        "footprint_contract_source_release": {
+          "type": "string"
+        },
+        "footprint_row_source_dataset": {
+          "type": "string"
+        },
+        "footprint_row_source_vintage": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "assessment_roll_contract_source_dataset",
+        "assessment_roll_contract_source_release",
+        "assessment_roll_row_source_dataset",
+        "assessment_roll_row_source_vintage",
+        "footprint_contract_source_dataset",
+        "footprint_contract_source_release",
+        "footprint_row_source_dataset",
+        "footprint_row_source_vintage"
+      ]
+    },
+    "calibration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "assessment_roll_gross_sqft_band": {
+          "$ref": "#/$defs/roll_calibration"
+        },
+        "footprint_building_count_floor": {
+          "$ref": "#/$defs/footprint_calibration"
+        }
+      },
+      "required": [
+        "assessment_roll_gross_sqft_band",
+        "footprint_building_count_floor"
+      ]
+    },
+    "roll_calibration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "population_id": {
+          "type": "string"
+        },
+        "calibration_blake3": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "falsification_rule_id": {
+          "type": "string"
+        },
+        "lower_numerator": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lower_denominator": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "upper_numerator": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "upper_denominator": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "upper_inclusive_padding": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "population_id",
+        "calibration_blake3",
+        "falsification_rule_id",
+        "lower_numerator",
+        "lower_denominator",
+        "upper_numerator",
+        "upper_denominator",
+        "upper_inclusive_padding"
+      ]
+    },
+    "footprint_calibration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "population_id": {
+          "type": "string"
+        },
+        "calibration_blake3": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "falsification_rule_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "population_id",
+        "calibration_blake3",
+        "falsification_rule_id"
+      ]
+    },
+    "assessment_roll_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "BBL": {
+          "type": "string"
+        },
+        "GROSS_SQFT": {
+          "$ref": "#/$defs/nullable_u64"
+        },
+        "UNITS": {
+          "$ref": "#/$defs/nullable_u64"
+        }
+      },
+      "required": [
+        "BBL",
+        "GROSS_SQFT",
+        "UNITS"
+      ]
+    },
+    "footprint_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "MAPPLUTO_BBL": {
+          "type": "string"
+        },
+        "BIN": {
+          "type": "string"
+        },
+        "ACTIVE": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "MAPPLUTO_BBL",
+        "BIN",
+        "ACTIVE"
+      ]
+    }
+  },
+  "x-canon-contract": {
+    "runtime_only_invariants": [
+      "The stage is offline and emits canon_geo_evidence_request.v0 only; it is not a public Geo verb.",
+      "No assessment-roll gross-square-foot band is emitted unless SIZE_MEASURE is SQFT and filed_size is at least 500.",
+      "No footprint building-count floor is emitted unless LOAN_COUNTY_PROPERTY_COUNT - 1 is positive and every candidate lot has at least one active footprint row.",
+      "Both emitted rho contracts carry EmpiricalCalibration with admissible_hard_band true and fixture calibration digests."
+    ]
+  }
+}
