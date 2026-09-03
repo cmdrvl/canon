@@ -3633,6 +3633,18 @@ impl<'a> EdgeSupportScoringContext<'a> {
     }
 }
 
+pub(crate) fn score_edge_candidate_for_prepared_surfaces(
+    profile: &EntityProfileDocument,
+    support_namespace: &str,
+    relation_namespace: &str,
+    surfaces: &[PreparedSurfaceRecord],
+    candidate: &BlockCandidateRecord,
+) -> Result<EdgeEvidenceRecord, Refusal> {
+    let context =
+        EdgeSupportScoringContext::new(profile, support_namespace, relation_namespace, surfaces)?;
+    edge_record_for_candidate(candidate, &context)
+}
+
 fn validate_edge_profile_binding(
     loaded_profile: &LoadedPrepareProfile,
     expected: &crate::entity::EntityProfileReference,

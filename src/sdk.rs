@@ -16,11 +16,25 @@
 //!     plain_json_values: false,
 //! };
 //! ```
+//!
+//! ```compile_fail
+//! use canon::sdk::EntityScorePairRequest;
+//! use serde_json::json;
+//! use std::path::PathBuf;
+//!
+//! let _request = EntityScorePairRequest {
+//!     left: json!({"source_row_id": "left"}),
+//!     right: json!({"source_row_id": "right"}),
+//!     profile: "cmbs_tenant_label".to_string(),
+//!     strategy: PathBuf::from("strategy.yaml"),
+//!     registry: None,
+//! };
+//! ```
 
 use crate::{
     CanonOutput, InputFormat, Mapping, Outcome, Refusal, RefusalCode, RegistryMeta, ResolveResult,
-    SpecialReason, Summary, UnresolvedEntry, distribution, input, lookup, output, project, refusal,
-    registry, witness,
+    SpecialReason, Summary, UnresolvedEntry, distribution, entity, input, lookup, output, project,
+    refusal, registry, witness,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -410,6 +424,65 @@ pub struct ProjectRunEventsResponse {
     pub events: Vec<ProjectRunEvent>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EntityScorePairRequest {
+    pub api_version: SdkApiVersion,
+    pub left: Value,
+    pub right: Value,
+    pub profile: String,
+    pub strategy: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registry: Option<PathBuf>,
+}
+
+impl EntityScorePairRequest {
+    pub fn v1(left: Value, right: Value, profile: impl Into<String>, strategy: PathBuf) -> Self {
+        Self {
+            api_version: SdkApiVersion::v1(),
+            left,
+            right,
+            profile: profile.into(),
+            strategy,
+            registry: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EntityScorePairVerdict {
+    CannotLink,
+    WouldMerge,
+    WouldAttach,
+    WouldEscrow,
+    BelowFloor,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityScorePairThresholds {
+    pub backbone_score_min: u32,
+    pub attach_score_min: u32,
+    pub abstain_margin: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EntityScorePairResponse {
+    pub api_version: SdkApiVersion,
+    pub profile_id: String,
+    pub profile_version: String,
+    pub strategy_hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registry_snapshot_hash: Option<String>,
+    pub left_surface_id: String,
+    pub right_surface_id: String,
+    pub score_units: u32,
+    pub verdict: EntityScorePairVerdict,
+    pub thresholds: EntityScorePairThresholds,
+    pub evidence_record: entity::edge::EdgeEvidenceRecord,
+    pub evidence_waterfall: entity::review_export::NativeEvidenceWaterfall,
+    pub writes_performed: bool,
+}
+
 pub fn exact_mapping_artifact(request: ExactMappingRequest) -> SdkResult<ExactMappingResponse> {
     let resolved = resolve_file(
         &request.input_path,
@@ -685,6 +758,33 @@ pub fn read_project_run_events(
     })
 }
 
+pub fn score_entity_pair(request: EntityScorePairRequest) -> SdkResult<EntityScorePairResponse> {
+    let evaluation = entity::score_pair::score_pair(entity::score_pair::ScorePairRequest {
+        left: &request.left,
+        right: &request.right,
+        profile: &request.profile,
+        strategy: &request.strategy,
+        registry: request.registry.as_deref(),
+    })
+    .map_err(sdk_refusal_from_refusal)?;
+
+    Ok(EntityScorePairResponse {
+        api_version: request.api_version,
+        profile_id: evaluation.profile_id,
+        profile_version: evaluation.profile_version,
+        strategy_hash: evaluation.strategy_hash,
+        registry_snapshot_hash: evaluation.registry_snapshot_hash,
+        left_surface_id: evaluation.left_surface_id,
+        right_surface_id: evaluation.right_surface_id,
+        score_units: evaluation.score_units,
+        verdict: EntityScorePairVerdict::from(evaluation.verdict),
+        thresholds: EntityScorePairThresholds::from(evaluation.thresholds),
+        evidence_record: evaluation.evidence_record,
+        evidence_waterfall: evaluation.evidence_waterfall,
+        writes_performed: false,
+    })
+}
+
 struct ResolvedFile {
     registry_meta: RegistryMeta,
     input_values: crate::InputValues,
@@ -887,6 +987,10 @@ fn too_large_refusal(limit_type: &str, limit: String, actual: String) -> Box<Sdk
     sdk_refusal_from_canon(Refusal::too_large(limit_type, &limit, &actual).to_canon_output())
 }
 
+fn sdk_refusal_from_refusal(refusal: Refusal) -> Box<SdkRefusal> {
+    sdk_refusal_from_canon(refusal.to_canon_output())
+}
+
 fn sdk_refusal_from_canon(output: CanonOutput) -> Box<SdkRefusal> {
     let refusal = output.refusal.as_ref().map(|refusal| (**refusal).clone());
     let refusal = refusal.unwrap_or_else(|| Refusal {
@@ -915,6 +1019,28 @@ struct RegistryMetadataJson {
     default_id_scheme: Option<registry::DefaultIdScheme>,
 }
 
+impl From<entity::score_pair::ScorePairVerdict> for EntityScorePairVerdict {
+    fn from(verdict: entity::score_pair::ScorePairVerdict) -> Self {
+        match verdict {
+            entity::score_pair::ScorePairVerdict::CannotLink => Self::CannotLink,
+            entity::score_pair::ScorePairVerdict::WouldMerge => Self::WouldMerge,
+            entity::score_pair::ScorePairVerdict::WouldAttach => Self::WouldAttach,
+            entity::score_pair::ScorePairVerdict::WouldEscrow => Self::WouldEscrow,
+            entity::score_pair::ScorePairVerdict::BelowFloor => Self::BelowFloor,
+        }
+    }
+}
+
+impl From<entity::score_pair::ScorePairThresholds> for EntityScorePairThresholds {
+    fn from(thresholds: entity::score_pair::ScorePairThresholds) -> Self {
+        Self {
+            backbone_score_min: thresholds.backbone_score_min,
+            attach_score_min: thresholds.attach_score_min,
+            abstain_margin: thresholds.abstain_margin,
+        }
+    }
+}
+
 #[allow(dead_code)]
 fn assert_public_types_are_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
@@ -934,6 +1060,8 @@ fn assert_public_types_are_send_sync() {
     assert_send_sync::<RegistryMetadataResponse>();
     assert_send_sync::<ProjectRunEventsRequest>();
     assert_send_sync::<ProjectRunEventsResponse>();
+    assert_send_sync::<EntityScorePairRequest>();
+    assert_send_sync::<EntityScorePairResponse>();
     assert_send_sync::<SdkRefusal>();
     assert_send_sync::<Box<SdkRefusal>>();
 }

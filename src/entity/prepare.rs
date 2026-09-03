@@ -1210,7 +1210,7 @@ fn assign_surface_ids(surfaces: &mut [PreparedSurfaceRecord]) -> Result<(), Refu
     Ok(())
 }
 
-fn assign_exact_lookups(
+pub(crate) fn assign_exact_lookups(
     surfaces: &mut [PreparedSurfaceRecord],
     registry_dir: &Path,
     registry_snapshot: &PrepareRegistrySnapshot,
@@ -1903,7 +1903,9 @@ fn prepare_stream_provenance_samples(
         .collect()
 }
 
-fn load_prepare_registry_snapshot(registry_dir: &Path) -> Result<PrepareRegistrySnapshot, Refusal> {
+pub(crate) fn load_prepare_registry_snapshot(
+    registry_dir: &Path,
+) -> Result<PrepareRegistrySnapshot, Refusal> {
     let registry_json_path = registry_dir.join("registry.json");
     let registry_json_bytes = fs::read(&registry_json_path).map_err(|error| {
         EntityRefusalKind::RegistrySnapshot.to_refusal(
