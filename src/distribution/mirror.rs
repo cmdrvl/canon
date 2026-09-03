@@ -838,7 +838,9 @@ fn verify_blob_against_entry(
     }
     let inspection = inspect_local_package(&archive_bytes)?;
     let verification = verify_local_package(&archive_bytes)?;
-    if inspection.package.content_digest != entry.package_digest
+    if inspection.package.package_id != entry.package_id
+        || inspection.package.package_version != entry.package_version
+        || inspection.package.content_digest != entry.package_digest
         || inspection.archive_digest != entry.archive_digest
         || inspection.package.canonical_bytes_digest != entry.package_bytes_digest
         || inspection.dependencies != entry.dependencies

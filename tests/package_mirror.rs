@@ -1,25 +1,13 @@
 #![forbid(unsafe_code)]
 
-#[path = "../src/distribution/package.rs"]
-pub mod package;
-
-mod distribution {
-    pub use crate::package;
-
-    pub mod mirror {
-        include!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/src/distribution/mirror.rs"
-        ));
-    }
-}
-
-use distribution::mirror::{
+use canon::distribution::mirror::{
     MirrorAttestationInput, MirrorBundle, MirrorErrorKind, MirrorExportRequest,
     MirrorImportRequest, MirrorPackageInput, MirrorPackageRestoreRequest, MirrorTrustRootInput,
     export_mirror_bundle, import_mirror_bundle, restore_mirror_package, verify_mirror_bundle,
 };
-use package::{inspect_local_package, pack_local_package, verify_local_package};
+use canon::distribution::package::{
+    inspect_local_package, pack_local_package, verify_local_package,
+};
 use serde_json::{Value, json};
 use std::{fs, path::Path};
 use tempfile::TempDir;
@@ -98,7 +86,10 @@ fn full_mirror_bundle_is_deterministic_and_restores_packages() {
         target_dir: target.path(),
     })
     .expect("restore root");
+    let original_verification =
+        verify_local_package(&fixture.root_archive).expect("original package verifies");
     assert_eq!(restore.package_digest, fixture.root_digest);
+    assert_eq!(restore.verification, original_verification);
     assert_eq!(
         restore.verification.package_content_digest,
         fixture.root_digest
@@ -130,6 +121,22 @@ fn missing_dependencies_refuse_unless_declared_as_incremental_base() {
     let verification = verify_mirror_bundle(&incremental).expect("incremental verifies");
     assert_eq!(verification.included_package_count, 1);
     assert_eq!(verification.external_base_package_count, 1);
+
+    let bundle: MirrorBundle = serde_json::from_slice(&incremental).unwrap();
+    assert_eq!(
+        bundle.base_package_digests,
+        vec![fixture.dependency_digest.clone()]
+    );
+    let base_entry = bundle
+        .inventory
+        .iter()
+        .find(|entry| entry.package_digest == fixture.dependency_digest)
+        .expect("base dependency is named in inventory");
+    assert!(!base_entry.included);
+    assert!(base_entry.external_base);
+    assert_eq!(base_entry.blob_digest, None);
+    assert_eq!(base_entry.blob_bytes, None);
+    assert!(base_entry.dependencies.is_empty());
 }
 
 #[test]
@@ -163,15 +170,47 @@ fn verify_detects_missing_blob_attestation_and_ancestor_inventory() {
 }
 
 #[test]
+fn verify_detects_reordered_storage_and_corrupt_inventory_metadata() {
+    let fixture = MirrorFixture::new();
+    let bundle = fixture.full_bundle();
+
+    let mut reordered: MirrorBundle = serde_json::from_slice(&bundle).unwrap();
+    reordered.inventory.reverse();
+    reordered.blobs.reverse();
+    refresh_bundle_digest(&mut reordered);
+    let error = verify_mirror_bundle(&serde_json::to_vec(&reordered).unwrap())
+        .expect_err("reordered storage refuses as noncanonical");
+    assert_eq!(error.kind, MirrorErrorKind::NonCanonicalBundle);
+
+    let mut corrupt_inventory: MirrorBundle = serde_json::from_slice(&bundle).unwrap();
+    let root_entry = corrupt_inventory
+        .inventory
+        .iter_mut()
+        .find(|entry| entry.package_digest == fixture.root_digest)
+        .expect("root entry exists");
+    root_entry.package_id = "pkg.other".to_string();
+    refresh_bundle_digest(&mut corrupt_inventory);
+    let error = verify_mirror_bundle(&serde_json::to_vec(&corrupt_inventory).unwrap())
+        .expect_err("corrupt package id refuses");
+    assert_eq!(error.kind, MirrorErrorKind::CorruptInventory);
+}
+
+#[test]
 fn import_refuses_existing_cache_collisions_without_overwrite() {
     let fixture = MirrorFixture::new();
     let bundle = fixture.full_bundle();
     let cache = TempDir::new().unwrap();
+    let package_dir = cache.path().join("packages");
+    fs::create_dir_all(&package_dir).unwrap();
+    let unrelated = package_dir.join("unrelated.canonpkg");
+    fs::write(&unrelated, b"keep me").unwrap();
+
     let import = import_mirror_bundle(MirrorImportRequest {
         bundle_bytes: &bundle,
         cache_dir: cache.path(),
     })
     .expect("first import");
+    assert_eq!(fs::read(&unrelated).unwrap(), b"keep me");
     let first_path = import.imported[0].path.clone();
     fs::write(&first_path, b"not the package").unwrap();
 
