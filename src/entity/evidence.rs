@@ -111,6 +111,28 @@ pub struct DateNearSupportRequest<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DateTransposedDigitSupportRequest<'a> {
+    pub namespace: &'a str,
+    pub operator_id: &'a str,
+    pub reason_code: &'a str,
+    pub view_name: &'a str,
+    pub left_value: &'a str,
+    pub right_value: &'a str,
+    pub score_units: ScoreUnits,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TwoTokenReversalSupportRequest<'a> {
+    pub namespace: &'a str,
+    pub operator_id: &'a str,
+    pub reason_code: &'a str,
+    pub view_name: &'a str,
+    pub left_value: &'a str,
+    pub right_value: &'a str,
+    pub score_units: ScoreUnits,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CategoricalMatchSupportRequest<'a> {
     pub namespace: &'a str,
     pub operator_id: &'a str,
@@ -398,6 +420,84 @@ pub fn date_near_support_hit(
     )))
 }
 
+pub fn date_transposed_digit_support_hit(
+    request: DateTransposedDigitSupportRequest<'_>,
+) -> Result<Option<EdgeEvidenceHit>, StructuredSupportError> {
+    let left_text = request.left_value.trim();
+    let right_text = request.right_value.trim();
+    let Some(left) = IsoDate::parse_optional(left_text, "left_value")? else {
+        return Ok(None);
+    };
+    let Some(right) = IsoDate::parse_optional(right_text, "right_value")? else {
+        return Ok(None);
+    };
+    if left == right || !is_single_adjacent_digit_transposition(left_text, right_text) {
+        return Ok(None);
+    }
+
+    let damerau = normalized_similarity(
+        SimilarityMetric::DamerauLevenshteinNormalized,
+        left_text,
+        right_text,
+        SimilarityOptions::new(
+            Some(score_units_to_namekit(
+                transposed_date_damerau_cutoff_units(),
+            )),
+            Some(score_units_to_namekit(
+                transposed_date_damerau_cutoff_units(),
+            )),
+        ),
+    );
+    let Some(damerau_score_units) = damerau.score.map(ScoreUnits::from) else {
+        return Ok(None);
+    };
+
+    Ok(Some(EdgeEvidenceHit::new(
+        ScoreLane::Support,
+        request.namespace,
+        request.operator_id,
+        request.reason_code,
+        request.score_units,
+        false,
+        format!(
+            "date view {} matched adjacent digit transposition path={} damerau_score_units={} score_units={}",
+            request.view_name,
+            path_id(damerau.path),
+            damerau_score_units.as_u32(),
+            request.score_units.as_u32()
+        ),
+    )))
+}
+
+pub fn two_token_reversal_support_hit(
+    request: TwoTokenReversalSupportRequest<'_>,
+) -> Option<EdgeEvidenceHit> {
+    let left = request.left_value.trim();
+    let right = request.right_value.trim();
+    if left.is_empty() || right.is_empty() || left == right {
+        return None;
+    }
+    let left_tokens = exactly_two_tokens(left)?;
+    let right_tokens = exactly_two_tokens(right)?;
+    if left_tokens[0] != right_tokens[1] || left_tokens[1] != right_tokens[0] {
+        return None;
+    }
+
+    Some(EdgeEvidenceHit::new(
+        ScoreLane::Support,
+        request.namespace,
+        request.operator_id,
+        request.reason_code,
+        request.score_units,
+        false,
+        format!(
+            "view {} matched two-token reversal with score_units={}",
+            request.view_name,
+            request.score_units.as_u32()
+        ),
+    ))
+}
+
 pub fn categorical_match_support_hit(
     request: CategoricalMatchSupportRequest<'_>,
 ) -> Option<EdgeEvidenceHit> {
@@ -428,6 +528,47 @@ fn token_set<'a>(tokens: &'a [&'a str]) -> BTreeSet<&'a str> {
         .map(|token| token.trim())
         .filter(|token| !token.is_empty())
         .collect()
+}
+
+fn exactly_two_tokens(value: &str) -> Option<[&str; 2]> {
+    let mut tokens = value.split_whitespace();
+    let first = tokens.next()?;
+    let second = tokens.next()?;
+    if tokens.next().is_some() {
+        return None;
+    }
+    Some([first, second])
+}
+
+fn is_single_adjacent_digit_transposition(left: &str, right: &str) -> bool {
+    let left = left.as_bytes();
+    let right = right.as_bytes();
+    if left.len() != right.len() {
+        return false;
+    }
+
+    let differences = left
+        .iter()
+        .zip(right.iter())
+        .enumerate()
+        .filter_map(|(index, (left, right))| (left != right).then_some(index))
+        .collect::<Vec<_>>();
+    if differences.len() != 2 || differences[1] != differences[0] + 1 {
+        return false;
+    }
+
+    let first = differences[0];
+    let second = differences[1];
+    left[first].is_ascii_digit()
+        && left[second].is_ascii_digit()
+        && right[first].is_ascii_digit()
+        && right[second].is_ascii_digit()
+        && left[first] == right[second]
+        && left[second] == right[first]
+}
+
+fn transposed_date_damerau_cutoff_units() -> ScoreUnits {
+    ScoreUnits::from_scaled(9_000).expect("single edit over an ISO date has score_units=9000")
 }
 
 fn score_units_to_namekit(score_units: ScoreUnits) -> SimilarityScore {

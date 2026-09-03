@@ -3,8 +3,10 @@
 use canon::entity::{
     edge::build_edge_evidence_record,
     evidence::{
-        ExactViewSupportRequest, StringSimilaritySupportRequest, TokenOverlapSupportRequest,
-        exact_view_support_hit, string_similarity_support_hit, token_overlap_support_hit,
+        DateNearSupportRequest, DateTransposedDigitSupportRequest, ExactViewSupportRequest,
+        StringSimilaritySupportRequest, TokenOverlapSupportRequest, TwoTokenReversalSupportRequest,
+        date_near_support_hit, date_transposed_digit_support_hit, exact_view_support_hit,
+        string_similarity_support_hit, token_overlap_support_hit, two_token_reversal_support_hit,
     },
     score::{ScoreLane, ScoreUnits},
 };
@@ -130,6 +132,100 @@ fn support_evidence_explainable_and_cutoff_safe() {
         min_shared_tokens: 2,
     });
     assert!(token_hit.is_none());
+}
+
+#[test]
+fn transposed_digit_date_support_is_distinct_from_date_range() {
+    let near = date_near_support_hit(DateNearSupportRequest {
+        namespace: "date",
+        operator_id: "date_near:maturity_date",
+        reason_code: "date_range_support",
+        view_name: "maturity_date",
+        left_value: "2031-01-12",
+        right_value: "2031-01-21",
+        max_days: 1,
+        score_units: score(7_000),
+    })
+    .expect("valid ISO dates");
+    assert!(
+        near.is_none(),
+        "calendar-distance support must miss before the transposed-digit band is used"
+    );
+
+    let transposed = date_transposed_digit_support_hit(DateTransposedDigitSupportRequest {
+        namespace: "date",
+        operator_id: "date_transposed_digits:maturity_date",
+        reason_code: "transposed_digit_date_support",
+        view_name: "maturity_date",
+        left_value: "2031-01-12",
+        right_value: "2031-01-21",
+        score_units: score(8_250),
+    })
+    .expect("valid ISO dates")
+    .expect("adjacent digit swap emits support");
+
+    assert_eq!(transposed.lane, ScoreLane::Support);
+    assert_eq!(transposed.namespace, "date");
+    assert_eq!(
+        transposed.operator_id,
+        "date_transposed_digits:maturity_date"
+    );
+    assert_eq!(transposed.reason_code, "transposed_digit_date_support");
+    assert_eq!(transposed.score_units, score(8_250));
+    assert!(
+        transposed
+            .explanation
+            .contains("matched adjacent digit transposition")
+    );
+    assert!(transposed.explanation.contains("damerau_score_units=9000"));
+
+    let month_change = date_transposed_digit_support_hit(DateTransposedDigitSupportRequest {
+        namespace: "date",
+        operator_id: "date_transposed_digits:maturity_date",
+        reason_code: "transposed_digit_date_support",
+        view_name: "maturity_date",
+        left_value: "2031-01-12",
+        right_value: "2031-02-12",
+        score_units: score(8_250),
+    })
+    .expect("valid ISO dates");
+    assert!(
+        month_change.is_none(),
+        "a one-character real month change is not an adjacent transposition"
+    );
+}
+
+#[test]
+fn two_token_reversal_support_rejects_partial_three_token_reversal() {
+    let reversal = two_token_reversal_support_hit(TwoTokenReversalSupportRequest {
+        namespace: "name",
+        operator_id: "two_token_reversal:party_name",
+        reason_code: "two_token_reversal_support",
+        view_name: "party_name",
+        left_value: "SMITH JOHN",
+        right_value: "JOHN SMITH",
+        score_units: score(7_500),
+    })
+    .expect("two-token reversal emits support");
+
+    assert_eq!(reversal.lane, ScoreLane::Support);
+    assert_eq!(reversal.operator_id, "two_token_reversal:party_name");
+    assert_eq!(reversal.reason_code, "two_token_reversal_support");
+    assert_eq!(reversal.score_units, score(7_500));
+
+    let partial_three_token = two_token_reversal_support_hit(TwoTokenReversalSupportRequest {
+        namespace: "name",
+        operator_id: "two_token_reversal:party_name",
+        reason_code: "two_token_reversal_support",
+        view_name: "party_name",
+        left_value: "SMITH JOHN ROBERT",
+        right_value: "JOHN SMITH ROBERT",
+        score_units: score(7_500),
+    });
+    assert!(
+        partial_three_token.is_none(),
+        "three-token partial reversals must not borrow the two-token reversal band"
+    );
 }
 
 fn score(units: u32) -> ScoreUnits {
