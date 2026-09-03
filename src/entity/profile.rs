@@ -858,6 +858,8 @@ const SUPPORTED_SUPPORT_OPS: &[&str] = &[
     "token_overlap",
     "string_similarity",
     "tfidf_cosine",
+    "date_transposed_digits",
+    "two_token_reversal",
     "alias_patch_match",
     "reviewed_alias",
 ];

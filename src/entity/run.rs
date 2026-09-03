@@ -44,8 +44,10 @@ use crate::{
         },
         error::EntityRefusalKind,
         evidence::{
-            ExactViewSupportRequest, StringSimilaritySupportRequest, exact_view_support_hit,
-            string_similarity_support_hit,
+            DateTransposedDigitSupportRequest, ExactViewSupportRequest,
+            StringSimilaritySupportRequest, StructuredSupportError, TwoTokenReversalSupportRequest,
+            date_transposed_digit_support_hit, exact_view_support_hit,
+            string_similarity_support_hit, two_token_reversal_support_hit,
         },
         evidence_ir::{CANON_EVIDENCE_VERSION, canonical_bundle_bytes},
         graph::{SignedEvidenceGraphInput, SurfaceIncumbentId, build_signed_evidence_graph},
@@ -3695,6 +3697,12 @@ fn support_hits_for_candidate(
             "exact_view" => exact_view_support_for_spec(spec, left, right, context)?,
             "string_similarity" => string_similarity_support_for_spec(spec, left, right, context)?,
             "tfidf_cosine" => tfidf_support_for_spec(spec, candidate, context)?,
+            "date_transposed_digits" => {
+                date_transposed_digits_support_for_spec(spec, left, right, context)?
+            }
+            "two_token_reversal" => {
+                two_token_reversal_support_for_spec(spec, left, right, context)?
+            }
             _ => None,
         };
         if let Some(hit) = hit {
@@ -3806,6 +3814,57 @@ fn tfidf_support_for_spec(
     }))
 }
 
+fn date_transposed_digits_support_for_spec(
+    spec: &EntityOperatorSpec,
+    left: &PreparedSurfaceRecord,
+    right: &PreparedSurfaceRecord,
+    context: &EdgeSupportScoringContext<'_>,
+) -> Result<Option<EdgeEvidenceHit>, Refusal> {
+    let score_units =
+        optional_score_units_param(spec, "score_units", "score")?.unwrap_or(ScoreUnits::MAX);
+    if score_units == ScoreUnits::ZERO {
+        return Ok(None);
+    }
+    let view_name = required_support_view_name(spec, "date_transposed_digits")?;
+    let operator_id = support_operator_id(spec);
+    date_transposed_digit_support_hit(DateTransposedDigitSupportRequest {
+        namespace: context.support_namespace,
+        operator_id: &operator_id,
+        reason_code: "transposed_digit_date_support",
+        view_name,
+        left_value: support_view_value(left, view_name, "date_transposed_digits")?,
+        right_value: support_view_value(right, view_name, "date_transposed_digits")?,
+        score_units,
+    })
+    .map_err(|error| structured_edge_support_refusal("date_transposed_digits", error))
+}
+
+fn two_token_reversal_support_for_spec(
+    spec: &EntityOperatorSpec,
+    left: &PreparedSurfaceRecord,
+    right: &PreparedSurfaceRecord,
+    context: &EdgeSupportScoringContext<'_>,
+) -> Result<Option<EdgeEvidenceHit>, Refusal> {
+    let score_units =
+        optional_score_units_param(spec, "score_units", "score")?.unwrap_or(ScoreUnits::MAX);
+    if score_units == ScoreUnits::ZERO {
+        return Ok(None);
+    }
+    let view_name = required_support_view_name(spec, "two_token_reversal")?;
+    let operator_id = support_operator_id(spec);
+    Ok(two_token_reversal_support_hit(
+        TwoTokenReversalSupportRequest {
+            namespace: context.support_namespace,
+            operator_id: &operator_id,
+            reason_code: "two_token_reversal_support",
+            view_name,
+            left_value: support_view_value(left, view_name, "two_token_reversal")?,
+            right_value: support_view_value(right, view_name, "two_token_reversal")?,
+            score_units,
+        },
+    ))
+}
+
 fn validate_support_operator_params(profile: &EntityProfileDocument) -> Result<(), Refusal> {
     for spec in &profile.evidence.support {
         match spec.op.as_str() {
@@ -3825,6 +3884,20 @@ fn validate_support_operator_params(profile: &EntityProfileDocument) -> Result<(
             }
             "exact_view" => {
                 optional_score_units_param(spec, "score_units", "score")?;
+            }
+            "date_transposed_digits" => {
+                if optional_score_units_param(spec, "score_units", "score")?
+                    != Some(ScoreUnits::ZERO)
+                {
+                    required_support_view_name(spec, "date_transposed_digits")?;
+                }
+            }
+            "two_token_reversal" => {
+                if optional_score_units_param(spec, "score_units", "score")?
+                    != Some(ScoreUnits::ZERO)
+                {
+                    required_support_view_name(spec, "two_token_reversal")?;
+                }
             }
             _ => {}
         }
@@ -4057,6 +4130,7 @@ fn required_similarity_metric(spec: &EntityOperatorSpec) -> Result<SimilarityMet
         "dice_sorensen" => Ok(SimilarityMetric::DiceSorensen),
         "token_sort_ratio" => Ok(SimilarityMetric::TokenSortRatio),
         "token_set_ratio" => Ok(SimilarityMetric::TokenSetRatio),
+        "damerau_levenshtein_normalized" => Ok(SimilarityMetric::DamerauLevenshteinNormalized),
         _ => Err(edge_support_config_refusal(
             "Profile-declared string similarity metric is unsupported",
             &spec.op,
@@ -4089,6 +4163,18 @@ fn edge_support_config_refusal(
             "writes_performed": false
         }),
         Some("Fix profile support evidence parameters and rerun canon entity evidence".to_string()),
+    )
+}
+
+fn structured_edge_support_refusal(
+    operator: &'static str,
+    error: StructuredSupportError,
+) -> Refusal {
+    edge_support_config_refusal(
+        "Profile-declared structured support evidence is malformed",
+        operator,
+        error.field(),
+        json!({ "reason": error.reason() }),
     )
 }
 
