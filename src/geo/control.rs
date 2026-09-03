@@ -1193,6 +1193,11 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "exact residual composition artifact contract",
         ),
         contract(
+            CANON_GEO_EXPLANATION_VERSION,
+            "schemas/canon.geo.explanation.v0.schema.json",
+            "minimal conflict explanation and correction-set artifact contract",
+        ),
+        contract(
             CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION,
             "schemas/canon.geo.assessment_roll_owner_request.v0.schema.json",
             "assessment-roll owner evidence request contract",
