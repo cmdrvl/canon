@@ -52,7 +52,7 @@ use super::{
     evaluation::{
         CANON_GEO_POPULATION_REQUEST_VERSION, GeoPopulationCaseArtifacts, GeoPopulationError,
         GeoPopulationEvaluationRequest, canonical_population_evaluation_bytes,
-        evaluate_population_with_artifacts,
+        evaluate_population_with_artifacts, evaluate_population_with_run_artifacts,
     },
     evidence::{
         CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
@@ -89,6 +89,7 @@ use super::{
         CANON_GEO_PLAN_VERSION, GeoPlan, GeoPlanError, GeoPlanReplanRequest, GeoPlanRequest,
         canonical_geo_plan_bytes, compile_geo_plan, replan_geo_plan_from_inventory_advancement,
     },
+    propagate::{CANON_GEO_PROPAGATION_VERSION, canonical_propagation_bytes},
     run::{
         CANON_GEO_RUN_VERSION, GeoRunError, GeoRunInputBinding, GeoRunRequest,
         canonical_geo_run_bytes, run_geo_plan,
@@ -769,19 +770,52 @@ fn run_evaluate(args: &GeoEvaluateCli) -> Result<u8, Box<dyn Error>> {
         Ok(request) => request,
         Err(exit_code) => return Ok(exit_code),
     };
-    let evaluated = match evaluate_population_with_artifacts(&request) {
-        Ok(evaluated) => evaluated,
-        Err(error) => return emit_population_error(error),
+    let evaluated = if let Some(artifact_dir) = &args.artifact_dir {
+        let run_workspace = match evaluate_run_workspace(artifact_dir, &request) {
+            Ok(workspace) => workspace,
+            Err(exit_code) => return Ok(exit_code),
+        };
+        let evaluated = match evaluate_population_with_run_artifacts(&request, &run_workspace) {
+            Ok(evaluated) => evaluated,
+            Err(error) => return emit_population_error(error),
+        };
+        if let Err(exit_code) = write_evaluate_artifact_dir(artifact_dir, &evaluated.case_artifacts)
+        {
+            return Ok(exit_code);
+        }
+        evaluated
+    } else {
+        match evaluate_population_with_artifacts(&request) {
+            Ok(evaluated) => evaluated,
+            Err(error) => return emit_population_error(error),
+        }
     };
-    if let Some(artifact_dir) = &args.artifact_dir
-        && let Err(exit_code) = write_evaluate_artifact_dir(artifact_dir, &evaluated.case_artifacts)
-    {
-        return Ok(exit_code);
-    }
     match canonical_population_evaluation_bytes(&evaluated.evaluation) {
         Ok(bytes) => write_canonical(&bytes),
         Err(error) => emit_serialization_refusal("canon_geo_population_evaluation.v0", &error),
     }
+}
+
+fn evaluate_run_workspace(
+    artifact_dir: &Path,
+    request: &GeoPopulationEvaluationRequest,
+) -> Result<PathBuf, u8> {
+    let request_bytes = match serde_json::to_vec(request) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            return Err(
+                emit_serialization_refusal(CANON_GEO_POPULATION_REQUEST_VERSION, &error)
+                    .unwrap_or(2),
+            );
+        }
+    };
+    let mut seed = request_bytes;
+    seed.push(0);
+    seed.extend_from_slice(path_string(artifact_dir).as_bytes());
+    let workspace_digest = blake3::hash(&seed).to_hex().to_string();
+    Ok(PathBuf::from("target")
+        .join("canon_geo_evaluate_run")
+        .join(workspace_digest))
 }
 
 #[derive(Debug, Serialize)]
@@ -794,8 +828,10 @@ struct GeoEvaluateArtifactIndexEntry {
     case_id: String,
     truth_plane: super::evaluation::GeoTruthPlane,
     solve_file: String,
+    propagation_file: String,
     evidence_file: String,
     solver_digest: String,
+    propagation_digest: String,
     compilation_digest: String,
 }
 
@@ -823,6 +859,7 @@ fn write_evaluate_artifact_dir(
             Err(error) => return Err(emit_population_error(error).unwrap_or(2)),
         };
         let evidence_file = format!("{stem}.evidence.json");
+        let propagation_file = format!("{stem}.propagation.json");
         let solve_file = format!("{stem}.solve.json");
         let evidence_bytes = match canonical_evidence_compilation_bytes(&case.evidence) {
             Ok(bytes) => bytes,
@@ -852,6 +889,67 @@ fn write_evaluate_artifact_dir(
             &evidence_bytes,
             &case.case_id,
             "evidence",
+        )?;
+
+        let propagation = match &case.propagation {
+            Some(propagation) => propagation,
+            None => {
+                return Err(emit_population_error(GeoPopulationError::invalid_input(
+                    "Geo evaluate artifact-dir requires a propagation artifact for every case",
+                    [
+                        ("case_id", case.case_id.clone()),
+                        ("artifact_kind", "propagation".to_string()),
+                    ],
+                ))
+                .unwrap_or(2));
+            }
+        };
+        let propagation_bytes = match canonical_propagation_bytes(propagation) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                return Err(emit_population_error(GeoPopulationError::invalid_input(
+                    "Geo evaluate artifact-dir propagation artifact is not canonical",
+                    [
+                        ("case_id", case.case_id.clone()),
+                        ("artifact_kind", "propagation".to_string()),
+                        ("contract", CANON_GEO_PROPAGATION_VERSION.to_string()),
+                        ("error", error.to_string()),
+                    ],
+                ))
+                .unwrap_or(2));
+            }
+        };
+        let propagation_digest = blake3::hash(&propagation_bytes).to_hex().to_string();
+        let expected_propagation_digest = match &case.propagation_digest {
+            Some(digest) => digest,
+            None => {
+                return Err(emit_population_error(GeoPopulationError::invalid_input(
+                    "Geo evaluate artifact-dir case is missing a propagation digest",
+                    [
+                        ("case_id", case.case_id.clone()),
+                        ("artifact_kind", "propagation".to_string()),
+                    ],
+                ))
+                .unwrap_or(2));
+            }
+        };
+        if propagation_digest != *expected_propagation_digest {
+            return Err(emit_population_error(GeoPopulationError::invalid_input(
+                "Geo evaluate artifact-dir propagation bytes do not match the case digest",
+                [
+                    ("case_id", case.case_id.clone()),
+                    ("expected_blake3", expected_propagation_digest.clone()),
+                    ("actual_blake3", propagation_digest.clone()),
+                ],
+            ))
+            .unwrap_or(2));
+        }
+        write_artifact_file(
+            artifact_dir,
+            &propagation_file,
+            &propagation_bytes,
+            &case.case_id,
+            "propagation",
         )?;
 
         let solve = match &case.solve {
@@ -912,8 +1010,10 @@ fn write_evaluate_artifact_dir(
             case_id: case.case_id.clone(),
             truth_plane: case.truth_plane,
             solve_file,
+            propagation_file,
             evidence_file,
             solver_digest: solve_digest,
+            propagation_digest,
             compilation_digest: case.compilation_digest.clone(),
         });
     }

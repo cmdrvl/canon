@@ -8,21 +8,62 @@
 
 use super::{
     composition::{
-        GeoCompositionArtifact, GeoCompositionBackbone, GeoCompositionError,
-        GeoCompositionErrorCode, GeoCompositionModel, GeoCompositionRequest, GeoCompositionStatus,
-        GeoResolvedClaim, GeoResolvedClaimClass, canonical_composition_bytes,
-        canonicalize_composition_request, model_satisfies_request, solve_composition,
+        CANON_GEO_COMPOSITION_VERSION, GeoCompositionArtifact, GeoCompositionBackbone,
+        GeoCompositionError, GeoCompositionErrorCode, GeoCompositionModel, GeoCompositionRequest,
+        GeoCompositionStatus, GeoEntityLevel, GeoResolvedClaim, GeoResolvedClaimClass,
+        canonical_composition_bytes, canonicalize_composition_request, model_satisfies_request,
+        solve_composition,
+    },
+    control::{
+        GeoBudgetAction, GeoClaimClass, GeoControlEntityLevel, GeoEvidenceClass,
+        GeoIdentityParticipation, GeoNativeEntityScope, GeoNumericBound, GeoResourceCounter,
+        GeoSourceRelease, GeoTelemetrySemanticEffect, GeoValueOrigin,
     },
     evidence::{
+        CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
         GeoEvidenceCompilationArtifact, GeoEvidenceCompilationRequest, GeoEvidenceDisposition,
         GeoEvidenceError, canonical_evidence_compilation_bytes, compile_evidence,
     },
+    executor::{
+        GEO_COMPILE_EVIDENCE_COMMAND, GEO_MATERIALIZE_EVIDENCE_COMMAND,
+        GEO_MATERIALIZE_HOME_CELLS_COMMAND, GEO_PROPAGATE_OUTPUT_ID, GEO_PROPAGATE_STAGE_COMMAND,
+        GEO_REQUEST_BINDING_ID, GEO_ROWS_BINDING_ID, GEO_SOLVE_COMMAND, GEO_TILE_WORK_COMMAND,
+    },
+    materialize::{
+        CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoWarehouseBuildingParcelRow, GeoWarehouseEvidenceRow,
+        GeoWarehouseParcelRow, GeoWarehouseRowsRequest,
+        canonical_materialized_evidence_request_bytes,
+    },
+    plan::{
+        CANON_GEO_PLAN_VERSION, GeoPlan, GeoPlanArtifactRef, GeoPlanBudgetRef, GeoPlanClaimEffect,
+        GeoPlanComponentScope, GeoPlanCostEstimateRange, GeoPlanExactSolveScope, GeoPlanGatePlane,
+        GeoPlanGateStatus, GeoPlanGrainOutcome, GeoPlanGrainStatus, GeoPlanInventoryRef,
+        GeoPlanNodeOverlay, GeoPlanPrecondition, GeoPlanProducedArtifactRef, GeoPlanProfileRef,
+        GeoPlanStage, GeoPlanStatus, GeoPlanTransitionSet, geo_plan_semantic_hash,
+    },
+    propagate::{
+        CANON_GEO_PROPAGATION_VERSION, GeoPropagationArtifact, validate_propagation_artifact,
+    },
+    run::{GeoRunArtifactBinding, GeoRunRequest, GeoRunStatus, run_geo_plan},
+    tile::{
+        CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
+        CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION, GeoHomeCellRow,
+        GeoHomeCellRowsRequest, GeoTileFeatureRef, GeoTileSourceBinding, GeoTileWorkRequest,
+    },
 };
+use crate::project::{
+    ProjectExtensionDagNode, ProjectExtensionDagOutput, ProjectExtensionDagRequest,
+    ProjectPlanHashRef, ProjectPlanNodeClass, ProjectPlanNodeKind,
+    ProjectPlanOutputMaterialization, ProjectPlanSideEffectKind, ProjectRunFailurePolicy,
+    ProjectRunPolicy, compile_extension_project_plan, digest_bytes,
+};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
-    fmt,
+    fmt, fs,
+    path::Path,
 };
 
 pub const CANON_GEO_POPULATION_REQUEST_VERSION: &str = "canon_geo_population_request.v0";
@@ -402,8 +443,10 @@ pub struct GeoPopulationCaseArtifacts {
     pub case_id: String,
     pub truth_plane: GeoTruthPlane,
     pub evidence: GeoEvidenceCompilationArtifact,
+    pub propagation: Option<GeoPropagationArtifact>,
     pub solve: Option<GeoCompositionArtifact>,
     pub compilation_digest: String,
+    pub propagation_digest: Option<String>,
     pub solver_digest: Option<String>,
 }
 
@@ -480,6 +523,40 @@ pub fn evaluate_population(
 pub fn evaluate_population_with_artifacts(
     request: &GeoPopulationEvaluationRequest,
 ) -> Result<GeoPopulationEvaluationWithArtifacts, GeoPopulationError> {
+    evaluate_population_with_case_executor(request, execute_case_direct)
+}
+
+pub fn evaluate_population_with_run_artifacts(
+    request: &GeoPopulationEvaluationRequest,
+    workspace_root: impl AsRef<Path>,
+) -> Result<GeoPopulationEvaluationWithArtifacts, GeoPopulationError> {
+    let workspace_root = workspace_root.as_ref();
+    evaluate_population_with_case_executor(request, |case| {
+        execute_case_through_geo_run(case, workspace_root)
+    })
+}
+
+enum GeoPopulationCaseSolveOutcome {
+    Solved(GeoCompositionArtifact),
+    AssignmentBudgetExceeded,
+}
+
+struct GeoPopulationCaseExecution {
+    evidence: GeoEvidenceCompilationArtifact,
+    propagation: Option<GeoPropagationArtifact>,
+    solve: GeoPopulationCaseSolveOutcome,
+    compilation_digest: String,
+    propagation_digest: Option<String>,
+    solver_digest: Option<String>,
+}
+
+fn evaluate_population_with_case_executor<F>(
+    request: &GeoPopulationEvaluationRequest,
+    mut execute_case: F,
+) -> Result<GeoPopulationEvaluationWithArtifacts, GeoPopulationError>
+where
+    F: FnMut(&GeoLabeledCompositionCase) -> Result<GeoPopulationCaseExecution, GeoPopulationError>,
+{
     if request.version != CANON_GEO_POPULATION_REQUEST_VERSION {
         return Err(GeoPopulationError::new(
             GeoPopulationErrorCode::UnsupportedVersion,
@@ -522,19 +599,8 @@ pub fn evaluate_population_with_artifacts(
         // Deliberately compile and solve before reading `case.truth`.
         let case_id = case.id.clone();
         let truth_plane = case.truth_plane;
-        let compilation = compile_evidence(&case.evidence).map_err(map_evidence_error)?;
-        let compilation_digest = blake3::hash(
-            &canonical_evidence_compilation_bytes(&compilation).map_err(|error| {
-                GeoPopulationError::new(
-                    GeoPopulationErrorCode::Composition,
-                    "Geo evidence compilation could not be serialized",
-                    [("error", error.to_string())],
-                )
-            })?,
-        )
-        .to_hex()
-        .to_string();
-        let solved = solve_composition(&compilation.composition_request);
+        let execution = execute_case(&case)?;
+        let compilation = execution.evidence;
 
         let universe = &compilation.composition_request.universe;
         let candidate_members = checked_member_count(
@@ -552,14 +618,14 @@ pub fn evaluate_population_with_artifacts(
         let candidate_reach = candidate_reach_status(truth_members, truth_members_in_universe)?;
         let evidence_metrics = evidence_metrics(&compilation.admissions)?;
 
-        let (evaluation, solve_artifact) = match solved {
-            Err(error) if error.code == GeoCompositionErrorCode::BudgetExceeded => (
+        let (evaluation, solve_artifact) = match execution.solve {
+            GeoPopulationCaseSolveOutcome::AssignmentBudgetExceeded => (
                 GeoPopulationCaseEvaluation {
                     case_id: case.id,
                     truth_plane: case.truth_plane,
                     status: GeoPopulationCaseStatus::AssignmentBudgetExceeded,
                     resolved_claim: None,
-                    compilation_digest: compilation_digest.clone(),
+                    compilation_digest: execution.compilation_digest.clone(),
                     solver_digest: None,
                     candidate_members,
                     truth_members,
@@ -586,18 +652,14 @@ pub fn evaluate_population_with_artifacts(
                 },
                 None,
             ),
-            Err(error) => return Err(map_composition_error(error)),
-            Ok(artifact) => {
-                let solver_digest =
-                    blake3::hash(&canonical_composition_bytes(&artifact).map_err(|error| {
-                        GeoPopulationError::new(
-                            GeoPopulationErrorCode::Composition,
-                            "Geo composition artifact could not be serialized",
-                            [("error", error.to_string())],
-                        )
-                    })?)
-                    .to_hex()
-                    .to_string();
+            GeoPopulationCaseSolveOutcome::Solved(artifact) => {
+                let solver_digest = execution.solver_digest.clone().ok_or_else(|| {
+                    GeoPopulationError::new(
+                        GeoPopulationErrorCode::Composition,
+                        "Geo population case solved without a solver digest",
+                        [("case_id", case_id.as_str())],
+                    )
+                })?;
                 let solver_truth_scored = full_truth_recall;
                 let (backbone_true, backbone_false) =
                     if solver_truth_scored && artifact.backbone_complete {
@@ -636,7 +698,7 @@ pub fn evaluate_population_with_artifacts(
                     status,
                     resolved_claim,
                     residual_count_saturated: artifact.summary.residual_model_count_saturated,
-                    compilation_digest: compilation_digest.clone(),
+                    compilation_digest: execution.compilation_digest.clone(),
                     solver_digest: Some(solver_digest.clone()),
                     candidate_members,
                     truth_members,
@@ -671,8 +733,10 @@ pub fn evaluate_population_with_artifacts(
             case_id,
             truth_plane,
             evidence: compilation,
+            propagation: execution.propagation,
             solve: solve_artifact,
-            compilation_digest,
+            compilation_digest: execution.compilation_digest,
+            propagation_digest: execution.propagation_digest,
             solver_digest: evaluation.solver_digest.clone(),
         });
         evaluations.push(evaluation);
@@ -688,6 +752,937 @@ pub fn evaluate_population_with_artifacts(
         },
         case_artifacts,
     })
+}
+
+fn execute_case_direct(
+    case: &GeoLabeledCompositionCase,
+) -> Result<GeoPopulationCaseExecution, GeoPopulationError> {
+    let compilation = compile_evidence(&case.evidence).map_err(map_evidence_error)?;
+    let compilation_digest = digest_evidence_compilation(&compilation)?;
+    match solve_composition(&compilation.composition_request) {
+        Err(error) if error.code == GeoCompositionErrorCode::BudgetExceeded => {
+            Ok(GeoPopulationCaseExecution {
+                evidence: compilation,
+                propagation: None,
+                solve: GeoPopulationCaseSolveOutcome::AssignmentBudgetExceeded,
+                compilation_digest,
+                propagation_digest: None,
+                solver_digest: None,
+            })
+        }
+        Err(error) => Err(map_composition_error(error)),
+        Ok(artifact) => {
+            let solver_digest = digest_composition(&artifact)?;
+            Ok(GeoPopulationCaseExecution {
+                evidence: compilation,
+                propagation: None,
+                solve: GeoPopulationCaseSolveOutcome::Solved(artifact),
+                compilation_digest,
+                propagation_digest: None,
+                solver_digest: Some(solver_digest),
+            })
+        }
+    }
+}
+
+fn execute_case_through_geo_run(
+    case: &GeoLabeledCompositionCase,
+    workspace_root: &Path,
+) -> Result<GeoPopulationCaseExecution, GeoPopulationError> {
+    let expected_compilation = compile_evidence(&case.evidence).map_err(map_evidence_error)?;
+    let expected_compilation_bytes = canonical_evidence_compilation_bytes(&expected_compilation)
+        .map_err(|error| {
+            GeoPopulationError::new(
+                GeoPopulationErrorCode::Composition,
+                "Geo evidence compilation could not be serialized",
+                [("case_id", case.id.clone()), ("error", error.to_string())],
+            )
+        })?;
+    let compilation_digest = blake3::hash(&expected_compilation_bytes)
+        .to_hex()
+        .to_string();
+    let case_workspace = workspace_root.join(case_workspace_stem(&case.id));
+    let level = selected_case_control_level(&case.evidence.profile.selection_level)?;
+    let plan = case_geo_run_plan(&case.id, level, &case.evidence)?;
+    let bindings = case_geo_run_bindings(&case.id, level, &case.evidence)?;
+    let mut policy = ProjectRunPolicy::new(&case_workspace, "work");
+    policy.failure_policy = ProjectRunFailurePolicy::FailFast;
+
+    let run = run_geo_plan(GeoRunRequest::new(plan, policy, bindings))
+        .map_err(|error| map_geo_run_error(&case.id, error))?;
+    if run.status != GeoRunStatus::Completed {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo population evaluate run path did not complete",
+            [
+                ("case_id", case.id.clone()),
+                ("status", format!("{:?}", run.status)),
+            ],
+        ));
+    }
+
+    let run_prefix = level_run_prefix(level);
+    let materialized_bytes = read_run_artifact_bytes(
+        &case_workspace,
+        &format!("geo/{run_prefix}/materialize_evidence.json"),
+        &case.id,
+        "materialize_evidence",
+    )?;
+    if materialized_bytes
+        != canonical_materialized_evidence_request_bytes(&case.evidence).map_err(|error| {
+            GeoPopulationError::new(
+                GeoPopulationErrorCode::Composition,
+                "Geo materialized evidence request could not be serialized",
+                [("case_id", case.id.clone()), ("error", error.to_string())],
+            )
+        })?
+    {
+        return Err(GeoPopulationError::invalid_input(
+            "Geo evaluate run path materialized evidence changed the case request",
+            [("case_id", case.id.as_str())],
+        ));
+    }
+
+    let compilation_bytes = read_run_artifact_bytes(
+        &case_workspace,
+        &format!("geo/{run_prefix}/compile_evidence.json"),
+        &case.id,
+        "compile_evidence",
+    )?;
+    if compilation_bytes != expected_compilation_bytes {
+        return Err(GeoPopulationError::invalid_input(
+            "Geo evaluate run path compiled evidence does not match the direct evidence compiler",
+            [("case_id", case.id.as_str())],
+        ));
+    }
+    let compilation = parse_run_artifact::<GeoEvidenceCompilationArtifact>(
+        &compilation_bytes,
+        &case.id,
+        "compile_evidence",
+    )?;
+
+    let propagation_bytes = read_run_artifact_bytes(
+        &case_workspace,
+        &format!("geo/{run_prefix}/propagation.json"),
+        &case.id,
+        "propagation",
+    )?;
+    let propagation =
+        parse_run_artifact::<GeoPropagationArtifact>(&propagation_bytes, &case.id, "propagation")?;
+    validate_propagation_artifact(&propagation).map_err(|error| {
+        GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo evaluate run path emitted an invalid propagation artifact",
+            [("case_id", case.id.clone()), ("error", error.to_string())],
+        )
+    })?;
+    let propagation_digest = blake3::hash(&propagation_bytes).to_hex().to_string();
+
+    let solve_bytes = read_run_artifact_bytes(
+        &case_workspace,
+        &format!("geo/{run_prefix}/solve.json"),
+        &case.id,
+        "solve",
+    )?;
+    let solve = parse_run_artifact::<GeoCompositionArtifact>(&solve_bytes, &case.id, "solve")?;
+    let solver_digest = blake3::hash(&solve_bytes).to_hex().to_string();
+
+    Ok(GeoPopulationCaseExecution {
+        evidence: compilation,
+        propagation: Some(propagation),
+        solve: GeoPopulationCaseSolveOutcome::Solved(solve),
+        compilation_digest,
+        propagation_digest: Some(propagation_digest),
+        solver_digest: Some(solver_digest),
+    })
+}
+
+fn digest_evidence_compilation(
+    artifact: &GeoEvidenceCompilationArtifact,
+) -> Result<String, GeoPopulationError> {
+    Ok(blake3::hash(
+        &canonical_evidence_compilation_bytes(artifact).map_err(|error| {
+            GeoPopulationError::new(
+                GeoPopulationErrorCode::Composition,
+                "Geo evidence compilation could not be serialized",
+                [("error", error.to_string())],
+            )
+        })?,
+    )
+    .to_hex()
+    .to_string())
+}
+
+fn digest_composition(artifact: &GeoCompositionArtifact) -> Result<String, GeoPopulationError> {
+    Ok(
+        blake3::hash(&canonical_composition_bytes(artifact).map_err(|error| {
+            GeoPopulationError::new(
+                GeoPopulationErrorCode::Composition,
+                "Geo composition artifact could not be serialized",
+                [("error", error.to_string())],
+            )
+        })?)
+        .to_hex()
+        .to_string(),
+    )
+}
+
+fn case_workspace_stem(case_id: &str) -> String {
+    format!("case-{}", blake3::hash(case_id.as_bytes()).to_hex())
+}
+
+fn selected_case_control_level(
+    selection_level: &GeoEntityLevel,
+) -> Result<GeoControlEntityLevel, GeoPopulationError> {
+    match selection_level {
+        GeoEntityLevel::Parcel => Ok(GeoControlEntityLevel::Parcel),
+        GeoEntityLevel::Building => Ok(GeoControlEntityLevel::Building),
+        other => Err(GeoPopulationError::invalid_input(
+            "Geo evaluate run path supports only parcel or building selected grains",
+            [("selection_level", format!("{other:?}"))],
+        )),
+    }
+}
+
+fn level_run_prefix(level: GeoControlEntityLevel) -> &'static str {
+    match level {
+        GeoControlEntityLevel::Parcel => "parcel",
+        GeoControlEntityLevel::Building => "building",
+        GeoControlEntityLevel::Address
+        | GeoControlEntityLevel::Poi
+        | GeoControlEntityLevel::Property
+        | GeoControlEntityLevel::Site
+        | GeoControlEntityLevel::Unit => "unsupported",
+    }
+}
+
+fn case_geo_run_bindings(
+    case_id: &str,
+    level: GeoControlEntityLevel,
+    evidence: &GeoEvidenceCompilationRequest,
+) -> Result<Vec<GeoRunArtifactBinding>, GeoPopulationError> {
+    let prefix = format!("geo.{}", level_run_prefix(level));
+    let source = evaluation_section_source(case_id, level, evidence)?;
+    let selected_ids = selected_feature_ids(level, evidence);
+    if selected_ids.is_empty() {
+        return Err(GeoPopulationError::invalid_input(
+            "Geo evaluate run path requires a nonempty candidate universe",
+            [("case_id", case_id.to_string())],
+        ));
+    }
+    let home_rows = GeoHomeCellRowsRequest {
+        version: CANON_GEO_HOME_CELL_ROWS_VERSION.to_string(),
+        coordinate_crs: "EPSG:4326".to_string(),
+        coordinate_decimal_places: 9,
+        h3_resolution: 9,
+        stability_radius_fixed: 1_000,
+        rows: selected_ids
+            .iter()
+            .map(|feature_id| GeoHomeCellRow {
+                source: source.clone(),
+                feature_id: feature_id.clone(),
+                source_record_id: format!(
+                    "eval-section-row:{}",
+                    blake3::hash(format!("{case_id}\0{feature_id}").as_bytes()).to_hex()
+                ),
+                geometry_sha256: "5ed87d37d872789086452c35f658f5628ba870ca36072c495bb88519592403ed"
+                    .to_string(),
+                representative_point_method: "declared_candidate_universe_mirror".to_string(),
+                longitude: "-73.977264000".to_string(),
+                latitude: "40.753429000".to_string(),
+                transform_execution_id: Some("canon-geo-evaluate-run-section-mirror".to_string()),
+                transform_definition_id: Some(
+                    "canon-geo-evaluate-run-section-mirror.v0".to_string(),
+                ),
+                claimed_home_cell: Some("892a100d62bffff".to_string()),
+            })
+            .collect(),
+        max_rows: selected_ids.len() as u64,
+    };
+    let features = selected_ids
+        .iter()
+        .map(|feature_id| GeoTileFeatureRef {
+            source: source.clone(),
+            feature_id: feature_id.clone(),
+            home_cell: "892a100d62bffff".to_string(),
+        })
+        .collect::<Vec<_>>();
+    let tile_request = GeoTileWorkRequest {
+        version: CANON_GEO_TILE_WORK_REQUEST_VERSION.to_string(),
+        center_cell: "892a100d62bffff".to_string(),
+        halo_k: 0,
+        features,
+        candidate_reach_reference: None,
+        max_features: selected_ids.len() as u64,
+        max_work_cells: 1,
+    };
+    let warehouse_rows = warehouse_rows_from_evidence(evidence);
+    Ok(vec![
+        json_binding(
+            &format!("{prefix}.home_cells"),
+            GEO_ROWS_BINDING_ID,
+            CANON_GEO_HOME_CELL_ROWS_VERSION,
+            &home_rows,
+        )?,
+        json_binding(
+            &format!("{prefix}.section"),
+            GEO_REQUEST_BINDING_ID,
+            CANON_GEO_TILE_WORK_REQUEST_VERSION,
+            &tile_request,
+        )?,
+        json_binding(
+            &format!("{prefix}.materialize_evidence"),
+            GEO_ROWS_BINDING_ID,
+            CANON_GEO_WAREHOUSE_ROWS_VERSION,
+            &warehouse_rows,
+        )?,
+    ])
+}
+
+fn json_binding<T: Serialize>(
+    node_id: &str,
+    binding_id: &str,
+    contract_version: &str,
+    value: &T,
+) -> Result<GeoRunArtifactBinding, GeoPopulationError> {
+    GeoRunArtifactBinding::from_json(node_id, binding_id, contract_version, value).map_err(
+        |error| {
+            GeoPopulationError::new(
+                GeoPopulationErrorCode::Composition,
+                "Geo evaluate run input binding could not be serialized",
+                [
+                    ("node_id", node_id.to_string()),
+                    ("binding_id", binding_id.to_string()),
+                    ("error", error.to_string()),
+                ],
+            )
+        },
+    )
+}
+
+fn selected_feature_ids(
+    level: GeoControlEntityLevel,
+    evidence: &GeoEvidenceCompilationRequest,
+) -> Vec<String> {
+    let mut ids = match level {
+        GeoControlEntityLevel::Parcel => evidence.universe.parcels.clone(),
+        GeoControlEntityLevel::Building => evidence
+            .universe
+            .buildings
+            .iter()
+            .map(|building| building.id.clone())
+            .collect(),
+        GeoControlEntityLevel::Address
+        | GeoControlEntityLevel::Poi
+        | GeoControlEntityLevel::Property
+        | GeoControlEntityLevel::Site
+        | GeoControlEntityLevel::Unit => Vec::new(),
+    };
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+fn warehouse_rows_from_evidence(
+    evidence: &GeoEvidenceCompilationRequest,
+) -> GeoWarehouseRowsRequest {
+    let parcel_rows = evidence
+        .universe
+        .parcels
+        .iter()
+        .map(|parcel_id| GeoWarehouseParcelRow {
+            parcel_id: parcel_id.clone(),
+        })
+        .collect();
+    let mut building_parcel_rows = Vec::new();
+    for building in &evidence.universe.buildings {
+        if building.parcel_ids.is_empty() {
+            building_parcel_rows.push(GeoWarehouseBuildingParcelRow {
+                building_id: building.id.clone(),
+                parcel_id: None,
+            });
+        } else {
+            for parcel_id in &building.parcel_ids {
+                building_parcel_rows.push(GeoWarehouseBuildingParcelRow {
+                    building_id: building.id.clone(),
+                    parcel_id: Some(parcel_id.clone()),
+                });
+            }
+        }
+    }
+    let evidence_rows = evidence
+        .observations
+        .iter()
+        .flat_map(|observation| {
+            observation
+                .source_records
+                .iter()
+                .map(move |source_record| GeoWarehouseEvidenceRow {
+                    observation_id: observation.id.clone(),
+                    contract_id: observation.contract_id.clone(),
+                    source_record: source_record.clone(),
+                    valid_time: observation.valid_time,
+                    observation: observation.observation.clone(),
+                })
+        })
+        .collect();
+    GeoWarehouseRowsRequest {
+        version: CANON_GEO_WAREHOUSE_ROWS_VERSION.to_string(),
+        profile: evidence.profile.clone(),
+        parcel_rows,
+        building_parcel_rows,
+        contracts: evidence.contracts.clone(),
+        evidence_rows,
+        max_assignments: evidence.max_assignments,
+        max_materialized_models: evidence.max_materialized_models,
+    }
+}
+
+fn evaluation_section_source(
+    case_id: &str,
+    level: GeoControlEntityLevel,
+    evidence: &GeoEvidenceCompilationRequest,
+) -> Result<GeoTileSourceBinding, GeoPopulationError> {
+    let universe_bytes = serde_json::to_vec(&evidence.universe).map_err(|error| {
+        GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo evaluate run section source could not serialize the declared universe",
+            [
+                ("case_id", case_id.to_string()),
+                ("error", error.to_string()),
+            ],
+        )
+    })?;
+    let release_digest = digest_bytes(&universe_bytes);
+    Ok(GeoTileSourceBinding {
+        source_instance_id: format!(
+            "canon.geo.evaluate.declared_{}_universe",
+            level_run_prefix(level)
+        ),
+        release: GeoSourceRelease {
+            release_id: "declared-candidate-universe".to_string(),
+            release_digest: release_digest.clone(),
+        },
+        native_scope: GeoNativeEntityScope::NativeEntity {
+            entity_level: level,
+            identity_participation: GeoIdentityParticipation::EvidenceOnly,
+        },
+        inventory_ref: GeoPlanInventoryRef {
+            inventory_id: "canon.geo.evaluate.declared_candidate_universe".to_string(),
+            semantic_hash: digest_bytes(format!("semantic\0{case_id}").as_bytes()),
+            planning_hash: release_digest,
+        },
+    })
+}
+
+fn case_geo_run_plan(
+    case_id: &str,
+    level: GeoControlEntityLevel,
+    evidence: &GeoEvidenceCompilationRequest,
+) -> Result<GeoPlan, GeoPopulationError> {
+    let prefix = format!("geo.{}", level_run_prefix(level));
+    let manifest_digest = digest_bytes(format!("geo-evaluate-manifest\0{case_id}").as_bytes());
+    let lock_digest = digest_bytes(format!("geo-evaluate-lock\0{case_id}").as_bytes());
+    let bounds = case_deterministic_bounds(evidence);
+    let limits = bounds
+        .iter()
+        .map(|bound| (bound.semantic_id.clone(), bound.value))
+        .collect::<BTreeMap<_, _>>();
+    let project_nodes = vec![
+        extension_node(
+            &format!("{prefix}.home_cells"),
+            ProjectPlanNodeKind::Normalize,
+            GEO_MATERIALIZE_HOME_CELLS_COMMAND,
+            Vec::new(),
+            "home_cells",
+            &format!("geo/{}/home_cells.json", level_run_prefix(level)),
+            vec![ProjectPlanHashRef {
+                ref_id: "geo.evaluate.case".to_string(),
+                content_hash: digest_bytes(case_id.as_bytes()),
+            }],
+            &limits,
+        ),
+        extension_node(
+            &format!("{prefix}.section"),
+            ProjectPlanNodeKind::Block,
+            GEO_TILE_WORK_COMMAND,
+            vec![format!("{prefix}.home_cells")],
+            "section",
+            &format!("geo/{}/section.json", level_run_prefix(level)),
+            Vec::new(),
+            &limits,
+        ),
+        extension_node(
+            &format!("{prefix}.materialize_evidence"),
+            ProjectPlanNodeKind::Evidence,
+            GEO_MATERIALIZE_EVIDENCE_COMMAND,
+            vec![format!("{prefix}.section")],
+            "materialize_evidence",
+            &format!("geo/{}/materialize_evidence.json", level_run_prefix(level)),
+            Vec::new(),
+            &limits,
+        ),
+        extension_node(
+            &format!("{prefix}.compile_evidence"),
+            ProjectPlanNodeKind::Evidence,
+            GEO_COMPILE_EVIDENCE_COMMAND,
+            vec![format!("{prefix}.materialize_evidence")],
+            "compile_evidence",
+            &format!("geo/{}/compile_evidence.json", level_run_prefix(level)),
+            Vec::new(),
+            &limits,
+        ),
+        extension_node(
+            &format!("{prefix}.propagate"),
+            ProjectPlanNodeKind::Solve,
+            GEO_PROPAGATE_STAGE_COMMAND,
+            vec![format!("{prefix}.compile_evidence")],
+            GEO_PROPAGATE_OUTPUT_ID,
+            &format!("geo/{}/propagation.json", level_run_prefix(level)),
+            Vec::new(),
+            &limits,
+        ),
+        extension_node(
+            &format!("{prefix}.solve"),
+            ProjectPlanNodeKind::Solve,
+            GEO_SOLVE_COMMAND,
+            vec![
+                format!("{prefix}.compile_evidence"),
+                format!("{prefix}.propagate"),
+                format!("{prefix}.section"),
+            ],
+            "solve",
+            &format!("geo/{}/solve.json", level_run_prefix(level)),
+            Vec::new(),
+            &limits,
+        ),
+    ];
+    let project_plan =
+        compile_extension_project_plan(ProjectExtensionDagRequest::offline_read_only(
+            format!("geo-evaluate-{}", blake3::hash(case_id.as_bytes()).to_hex()),
+            manifest_digest,
+            lock_digest,
+            project_nodes,
+        ))
+        .map_err(|error| {
+            GeoPopulationError::new(
+                GeoPopulationErrorCode::Composition,
+                "Geo evaluate run path could not compile its project DAG",
+                [
+                    ("case_id", case_id.to_string()),
+                    ("project_error", format!("{:?}", error.code)),
+                    ("message", error.message),
+                ],
+            )
+        })?;
+    let node_ids = [
+        "home_cells",
+        "section",
+        "materialize_evidence",
+        "compile_evidence",
+        "propagate",
+        "solve",
+    ]
+    .iter()
+    .map(|suffix| format!("{prefix}.{suffix}"))
+    .collect::<Vec<_>>();
+    let overlays = vec![
+        overlay_node(
+            &node_ids[0],
+            GeoPlanStage::MaterializeHomeCells,
+            level,
+            CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
+            false,
+            false,
+            None,
+            bounds.clone(),
+        ),
+        overlay_node(
+            &node_ids[1],
+            GeoPlanStage::BuildBoundedSection,
+            level,
+            CANON_GEO_TILE_WORK_UNIT_VERSION,
+            false,
+            false,
+            None,
+            bounds.clone(),
+        ),
+        overlay_node(
+            &node_ids[2],
+            GeoPlanStage::MaterializeEvidence,
+            level,
+            CANON_GEO_EVIDENCE_REQUEST_VERSION,
+            false,
+            false,
+            None,
+            bounds.clone(),
+        ),
+        overlay_node(
+            &node_ids[3],
+            GeoPlanStage::CompileEvidence,
+            level,
+            CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+            false,
+            false,
+            None,
+            bounds.clone(),
+        ),
+        overlay_node(
+            &node_ids[4],
+            GeoPlanStage::PropagateConstraints,
+            level,
+            CANON_GEO_PROPAGATION_VERSION,
+            false,
+            false,
+            None,
+            bounds.clone(),
+        ),
+        overlay_node(
+            &node_ids[5],
+            GeoPlanStage::FactorAndSolveExactResidual,
+            level,
+            CANON_GEO_COMPOSITION_VERSION,
+            true,
+            true,
+            Some(GeoPlanExactSolveScope {
+                bounded_section: GeoPlanProducedArtifactRef {
+                    producer_node_id: node_ids[1].clone(),
+                    output_id: "section".to_string(),
+                    output_contract: CANON_GEO_TILE_WORK_UNIT_VERSION.to_string(),
+                },
+                evidence_compilation: GeoPlanProducedArtifactRef {
+                    producer_node_id: node_ids[3].clone(),
+                    output_id: "compile_evidence".to_string(),
+                    output_contract: CANON_GEO_EVIDENCE_COMPILATION_VERSION.to_string(),
+                },
+                component_scope:
+                    GeoPlanComponentScope::ActualConnectedComponentsOfCompiledConstraintIncidence,
+                component_key_field: "canon_geo_composition.v0.factorization[].key".to_string(),
+            }),
+            bounds.clone(),
+        ),
+    ];
+    let profile_hash = digest_bytes(&serde_json::to_vec(&evidence.profile).map_err(|error| {
+        GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo evaluate run path could not serialize the composition profile",
+            [
+                ("case_id", case_id.to_string()),
+                ("error", error.to_string()),
+            ],
+        )
+    })?);
+    let mut plan = GeoPlan {
+        version: CANON_GEO_PLAN_VERSION.to_string(),
+        plan_id: String::new(),
+        semantic_hash: String::new(),
+        status: GeoPlanStatus::Planned,
+        question_ref: GeoPlanArtifactRef {
+            artifact_id: format!("geo-evaluate-question:{case_id}"),
+            semantic_hash: digest_bytes(format!("question\0{case_id}").as_bytes()),
+        },
+        capabilities_ref: GeoPlanArtifactRef {
+            artifact_id: "canon-geo-evaluate-run-internal".to_string(),
+            semantic_hash: digest_bytes(b"canon-geo-evaluate-run-internal-capabilities"),
+        },
+        inventory_ref: GeoPlanInventoryRef {
+            inventory_id: "canon.geo.evaluate.declared_candidate_universe".to_string(),
+            semantic_hash: digest_bytes(format!("inventory\0{case_id}").as_bytes()),
+            planning_hash: digest_bytes(format!("inventory-planning\0{case_id}").as_bytes()),
+        },
+        profile_ref: GeoPlanProfileRef {
+            version: evidence.profile.version.clone(),
+            selection_level: evidence.profile.selection_level,
+            semantic_hash: profile_hash,
+        },
+        budget_ref: GeoPlanBudgetRef {
+            budget_id: "geo-evaluate-run-internal-budget".to_string(),
+            semantic_hash: digest_bytes(format!("budget\0{case_id}").as_bytes()),
+            planning_hash: digest_bytes(format!("budget-planning\0{case_id}").as_bytes()),
+        },
+        project_plan,
+        geo_nodes: overlays,
+        grain_outcomes: vec![GeoPlanGrainOutcome {
+            entity_level: level,
+            status: GeoPlanGrainStatus::PlannedRelativeToDeclaredUniverse,
+            missing_evidence_classes: Vec::new(),
+            project_node_ids: node_ids,
+            claim_limitation: "evaluation run consumes the case's declared candidate universe; candidate reach remains the population artifact's independent truth-plane metric".to_string(),
+            next_action: "read the emitted evidence, propagation, and solve artifacts".to_string(),
+        }],
+        external_requests: Vec::new(),
+        diagnostics: vec![
+            "geo evaluate internal run uses a declared-candidate-universe section mirror; it does not create new source reach evidence".to_string(),
+        ],
+    };
+    let semantic_hash = geo_plan_semantic_hash(&plan).map_err(|error| {
+        GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo evaluate run plan could not compute its semantic hash",
+            [
+                ("case_id", case_id.to_string()),
+                ("plan_error", format!("{:?}", error.code)),
+                ("message", error.message),
+            ],
+        )
+    })?;
+    plan.plan_id = format!(
+        "{CANON_GEO_PLAN_VERSION}:{}",
+        semantic_hash.trim_start_matches("blake3:")
+    );
+    plan.semantic_hash = semantic_hash;
+    Ok(plan)
+}
+
+fn extension_node(
+    node_id: &str,
+    kind: ProjectPlanNodeKind,
+    command: &str,
+    dependencies: Vec<String>,
+    output_id: &str,
+    path: &str,
+    content_hash_inputs: Vec<ProjectPlanHashRef>,
+    limits: &BTreeMap<String, u64>,
+) -> ProjectExtensionDagNode {
+    ProjectExtensionDagNode {
+        node_id: node_id.to_string(),
+        kind,
+        class: ProjectPlanNodeClass::Computation,
+        command: command.to_string(),
+        dependencies,
+        content_hash_inputs,
+        outputs: vec![ProjectExtensionDagOutput {
+            output_id: output_id.to_string(),
+            path: path.to_string(),
+            materialization: ProjectPlanOutputMaterialization::PlannedArtifact,
+        }],
+        limits: limits.clone(),
+        cache_eligible: true,
+        side_effects: vec![
+            crate::project::ProjectPlanSideEffect {
+                kind: ProjectPlanSideEffectKind::ReadsInput,
+                description: "reads validated local Geo evaluation artifacts".to_string(),
+            },
+            crate::project::ProjectPlanSideEffect {
+                kind: ProjectPlanSideEffectKind::WritesArtifact,
+                description: "writes deterministic Geo evaluation run artifacts".to_string(),
+            },
+        ],
+        refusal_conditions: Vec::new(),
+    }
+}
+
+fn overlay_node(
+    project_node_id: &str,
+    stage: GeoPlanStage,
+    level: GeoControlEntityLevel,
+    expected_output_contract: &str,
+    bounded_section_required: bool,
+    incidence_factorization_required: bool,
+    exact_solve_scope: Option<GeoPlanExactSolveScope>,
+    deterministic_bounds: Vec<GeoNumericBound>,
+) -> GeoPlanNodeOverlay {
+    GeoPlanNodeOverlay {
+        project_node_id: project_node_id.to_string(),
+        stage,
+        entity_level: Some(level),
+        evidence_classes: vec![GeoEvidenceClass::ParcelGeometry],
+        claim_classes: vec![GeoClaimClass::CollateralComposition],
+        expected_output_contract: expected_output_contract.to_string(),
+        preconditions: stage_preconditions(stage),
+        claim_effect: GeoPlanClaimEffect::CanChangeRequestedClaim,
+        bounded_section_required,
+        incidence_factorization_required,
+        exact_solve_scope,
+        cost_estimate_ranges: deterministic_bounds
+            .iter()
+            .map(|bound| GeoPlanCostEstimateRange {
+                semantic_id: format!("estimate.{}", bound.semantic_id),
+                counter: bound.counter,
+                lower_bound: 0,
+                upper_bound: bound.value,
+                unit: bound.unit.clone(),
+                basis: "bounded by the evaluation case's declared deterministic counters"
+                    .to_string(),
+                semantic_effect: GeoTelemetrySemanticEffect::None,
+            })
+            .collect(),
+        deterministic_bounds,
+        transitions: GeoPlanTransitionSet {
+            success: "validate output and unlock declared dependents".to_string(),
+            abstention: "preserve completed artifacts and report the typed residual".to_string(),
+            contradiction: "preserve the empty residual and diagnose admitted evidence".to_string(),
+            budget_fallback:
+                "preserve completed components and report deterministic budget fallback".to_string(),
+        },
+    }
+}
+
+fn stage_preconditions(stage: GeoPlanStage) -> Vec<GeoPlanPrecondition> {
+    match stage {
+        GeoPlanStage::MaterializeHomeCells => vec![precondition(
+            GeoPlanGatePlane::Availability,
+            GeoPlanGateStatus::SatisfiedByDeclaredInput,
+            "evaluation supplies local typed candidate rows",
+        )],
+        GeoPlanStage::BuildBoundedSection => vec![precondition(
+            GeoPlanGatePlane::Coverage,
+            GeoPlanGateStatus::StructurallyCompleteRelativeToInputs,
+            "bounded section mirrors the already-declared evaluation candidate universe",
+        )],
+        GeoPlanStage::MaterializeEvidence | GeoPlanStage::CompileEvidence => vec![precondition(
+            GeoPlanGatePlane::Admission,
+            GeoPlanGateStatus::PendingArtifact,
+            "restricting observations keep their versioned rho admissions",
+        )],
+        GeoPlanStage::PropagateConstraints => vec![precondition(
+            GeoPlanGatePlane::ConstraintEffect,
+            GeoPlanGateStatus::PendingArtifact,
+            "sound typed propagators prune only values entailed by admitted hard constraints",
+        )],
+        GeoPlanStage::FactorAndSolveExactResidual => vec![
+            precondition(
+                GeoPlanGatePlane::Coverage,
+                GeoPlanGateStatus::StructurallyCompleteRelativeToInputs,
+                "solve consumes the declared bounded section and compiled evidence artifacts",
+            ),
+            precondition(
+                GeoPlanGatePlane::SolverCorrectness,
+                GeoPlanGateStatus::PendingArtifact,
+                "exact backend consumes the propagation artifact as a declared dependency",
+            ),
+        ],
+    }
+}
+
+fn precondition(
+    plane: GeoPlanGatePlane,
+    status: GeoPlanGateStatus,
+    detail: &str,
+) -> GeoPlanPrecondition {
+    GeoPlanPrecondition {
+        plane,
+        status,
+        detail: detail.to_string(),
+    }
+}
+
+fn case_deterministic_bounds(evidence: &GeoEvidenceCompilationRequest) -> Vec<GeoNumericBound> {
+    let rows = evidence
+        .universe
+        .parcels
+        .len()
+        .saturating_add(evidence.universe.buildings.len())
+        .saturating_add(
+            evidence
+                .observations
+                .iter()
+                .map(|observation| observation.source_records.len())
+                .sum::<usize>(),
+        )
+        .max(1) as u64;
+    let candidates = selected_feature_ids(
+        selected_case_control_level(&evidence.profile.selection_level)
+            .unwrap_or(GeoControlEntityLevel::Parcel),
+        evidence,
+    )
+    .len()
+    .max(1) as u64;
+    vec![
+        numeric_bound("budget.rows", GeoResourceCounter::Rows, rows, "rows"),
+        numeric_bound(
+            "budget.candidates",
+            GeoResourceCounter::Candidates,
+            candidates,
+            "members",
+        ),
+        numeric_bound(
+            "budget.states",
+            GeoResourceCounter::States,
+            evidence.max_assignments.max(1),
+            "assignments",
+        ),
+        numeric_bound(
+            "budget.models",
+            GeoResourceCounter::Models,
+            evidence.max_materialized_models.max(1),
+            "models",
+        ),
+    ]
+}
+
+fn numeric_bound(
+    semantic_id: &str,
+    counter: GeoResourceCounter,
+    value: u64,
+    unit: &str,
+) -> GeoNumericBound {
+    GeoNumericBound {
+        semantic_id: semantic_id.to_string(),
+        counter,
+        value,
+        unit: unit.to_string(),
+        origin: GeoValueOrigin::CallerDeclared,
+        action: GeoBudgetAction::ReportBudgetFallback,
+    }
+}
+
+fn read_run_artifact_bytes(
+    workspace_root: &Path,
+    relative_path: &str,
+    case_id: &str,
+    artifact_kind: &str,
+) -> Result<Vec<u8>, GeoPopulationError> {
+    let path = workspace_root.join(relative_path);
+    fs::read(&path).map_err(|error| {
+        GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo evaluate run path could not read an emitted artifact",
+            [
+                ("case_id", case_id.to_string()),
+                ("artifact_kind", artifact_kind.to_string()),
+                ("path", path.display().to_string()),
+                ("error", error.to_string()),
+            ],
+        )
+    })
+}
+
+fn parse_run_artifact<T: DeserializeOwned>(
+    bytes: &[u8],
+    case_id: &str,
+    artifact_kind: &str,
+) -> Result<T, GeoPopulationError> {
+    serde_json::from_slice(bytes).map_err(|error| {
+        GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo evaluate run path emitted an unreadable JSON artifact",
+            [
+                ("case_id", case_id.to_string()),
+                ("artifact_kind", artifact_kind.to_string()),
+                ("error", error.to_string()),
+            ],
+        )
+    })
+}
+
+fn map_geo_run_error(case_id: &str, error: super::run::GeoRunError) -> GeoPopulationError {
+    let detail = error
+        .detail
+        .iter()
+        .map(|(key, value)| format!("{key}={value}"))
+        .collect::<Vec<_>>()
+        .join("; ");
+    GeoPopulationError::new(
+        GeoPopulationErrorCode::Composition,
+        "Geo population evaluate run path failed",
+        [
+            ("case_id", case_id.to_string()),
+            ("geo_run_code", format!("{:?}", error.code)),
+            ("geo_run_message", error.message),
+            ("geo_run_detail", detail),
+        ],
+    )
 }
 
 pub fn evaluate_candidate_truth_handoff(
