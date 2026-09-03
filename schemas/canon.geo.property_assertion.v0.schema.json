@@ -1,0 +1,670 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.property_assertion.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.property_assertion.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_property_assertion.v0",
+      "type": "string"
+    },
+    "request_version": {
+      "const": "canon_geo_property_assertion_request.v0",
+      "type": "string"
+    },
+    "request_blake3": {
+      "$ref": "#/$defs/blake3_uri"
+    },
+    "proof_class": {
+      "$ref": "#/$defs/proof_class"
+    },
+    "blocking_strategy": {
+      "$ref": "#/$defs/blocking_strategy"
+    },
+    "relation_graph_product": {
+      "$ref": "#/$defs/relation_graph_product"
+    },
+    "source_corpus": {
+      "$ref": "#/$defs/source_corpus"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "registry_proposal": {
+      "$ref": "#/$defs/registry_proposal"
+    },
+    "property_assertions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/property_assertion"
+      }
+    },
+    "collateral_memberships": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/collateral_membership"
+      }
+    },
+    "member_relations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/member_relation"
+      }
+    },
+    "membership_abstentions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/membership_abstention"
+      }
+    },
+    "assertion_comparisons": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/assertion_comparison"
+      }
+    }
+  },
+  "required": [
+    "version",
+    "request_version",
+    "request_blake3",
+    "proof_class",
+    "blocking_strategy",
+    "relation_graph_product",
+    "source_corpus",
+    "summary",
+    "registry_proposal",
+    "property_assertions",
+    "collateral_memberships",
+    "member_relations",
+    "membership_abstentions",
+    "assertion_comparisons"
+  ],
+  "$defs": {
+    "proof_class": {
+      "type": "string",
+      "enum": [
+        "fixture",
+        "retained_artifact",
+        "observed_warehouse_snapshot"
+      ]
+    },
+    "blocking_strategy": {
+      "type": "string",
+      "enum": [
+        "document_first_then_geography",
+        "tile_local_only"
+      ]
+    },
+    "relation_graph_product": {
+      "type": "string",
+      "enum": [
+        "published_derived_projection",
+        "workbench_internal_only"
+      ]
+    },
+    "membership_status": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial_membership_abstained"
+      ]
+    },
+    "abstention_reason": {
+      "type": "string",
+      "enum": [
+        "membership_unresolved",
+        "ambiguous_membership",
+        "various_address_requires_annex_a_parse"
+      ]
+    },
+    "relation": {
+      "type": "string",
+      "enum": [
+        "same_as",
+        "contains",
+        "part_of",
+        "within",
+        "on",
+        "fronts",
+        "intersects"
+      ]
+    },
+    "entity_level": {
+      "type": "string",
+      "enum": [
+        "poi_unit",
+        "building",
+        "parcel",
+        "property"
+      ]
+    },
+    "property_set_relation": {
+      "type": "string",
+      "enum": [
+        "same_collateral",
+        "left_superset",
+        "left_subset",
+        "intersects",
+        "disjoint"
+      ]
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1
+    },
+    "blake3_uri": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "uint64": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "source_corpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "corpus_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "corpus_version": {
+          "$ref": "#/$defs/identifier"
+        },
+        "temporal_scope": {
+          "$ref": "#/$defs/identifier"
+        },
+        "native_key_fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
+      },
+      "required": [
+        "corpus_id",
+        "corpus_version",
+        "temporal_scope",
+        "native_key_fields"
+      ]
+    },
+    "source_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_record_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "source_vintage": {
+          "$ref": "#/$defs/identifier"
+        },
+        "record_blake3": {
+          "$ref": "#/$defs/blake3_uri"
+        }
+      },
+      "required": [
+        "source_record_id",
+        "source_vintage",
+        "record_blake3"
+      ]
+    },
+    "entity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "$ref": "#/$defs/entity_level"
+        },
+        "id": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "required": [
+        "level",
+        "id"
+      ]
+    },
+    "document_key": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "accession": {
+          "$ref": "#/$defs/identifier"
+        },
+        "deal_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "loan_id": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "required": [
+        "document_id",
+        "accession",
+        "deal_id",
+        "loan_id"
+      ]
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "document_assertions": {
+          "$ref": "#/$defs/uint64"
+        },
+        "property_entities": {
+          "$ref": "#/$defs/uint64"
+        },
+        "collateral_memberships": {
+          "$ref": "#/$defs/uint64"
+        },
+        "membership_edges": {
+          "$ref": "#/$defs/uint64"
+        },
+        "membership_abstentions": {
+          "$ref": "#/$defs/uint64"
+        },
+        "tile_spanning_properties": {
+          "$ref": "#/$defs/uint64"
+        },
+        "pairwise_comparisons": {
+          "$ref": "#/$defs/uint64"
+        },
+        "overlapping_unequal_assertions": {
+          "$ref": "#/$defs/uint64"
+        },
+        "registry_entries": {
+          "$ref": "#/$defs/uint64"
+        }
+      },
+      "required": [
+        "document_assertions",
+        "property_entities",
+        "collateral_memberships",
+        "membership_edges",
+        "membership_abstentions",
+        "tile_spanning_properties",
+        "pairwise_comparisons",
+        "overlapping_unequal_assertions",
+        "registry_entries"
+      ]
+    },
+    "registry_proposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": "canon_geo_registry_proposal.v0",
+          "type": "string"
+        },
+        "source_ledger_blake3": {
+          "$ref": "#/$defs/blake3_uri"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/registry_entry"
+          }
+        },
+        "property_assertions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/registry_property_assertion"
+          }
+        },
+        "summary": {
+          "$ref": "#/$defs/registry_summary"
+        }
+      },
+      "required": [
+        "version",
+        "source_ledger_blake3",
+        "entries",
+        "property_assertions",
+        "summary"
+      ]
+    },
+    "registry_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "alias": {
+          "$ref": "#/$defs/identifier"
+        },
+        "canonical_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "canonical_type": {
+          "$ref": "#/$defs/identifier"
+        },
+        "rule_id": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "required": [
+        "alias",
+        "canonical_id",
+        "canonical_type",
+        "rule_id"
+      ]
+    },
+    "registry_property_assertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "property_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "document_alias": {
+          "$ref": "#/$defs/identifier"
+        },
+        "accession": {
+          "$ref": "#/$defs/identifier"
+        },
+        "loan_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "parcel_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "building_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
+      },
+      "required": [
+        "property_id",
+        "document_alias",
+        "accession",
+        "loan_id",
+        "parcel_ids",
+        "building_ids"
+      ]
+    },
+    "registry_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ledger_rows": {
+          "$ref": "#/$defs/uint64"
+        },
+        "skipped_reach_none_rows": {
+          "$ref": "#/$defs/uint64"
+        },
+        "unique_parcel_aliases": {
+          "$ref": "#/$defs/uint64"
+        },
+        "unique_building_aliases": {
+          "$ref": "#/$defs/uint64"
+        },
+        "property_assertions": {
+          "$ref": "#/$defs/uint64"
+        },
+        "entries": {
+          "$ref": "#/$defs/uint64"
+        }
+      },
+      "required": [
+        "ledger_rows",
+        "skipped_reach_none_rows",
+        "unique_parcel_aliases",
+        "unique_building_aliases",
+        "property_assertions",
+        "entries"
+      ]
+    },
+    "property_assertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "property_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "document_alias": {
+          "$ref": "#/$defs/identifier"
+        },
+        "document_key": {
+          "$ref": "#/$defs/document_key"
+        },
+        "collateral_set_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "source_record": {
+          "$ref": "#/$defs/source_record"
+        },
+        "parcel_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "building_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "tile_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "tile_spanning": {
+          "type": "boolean"
+        },
+        "membership_status": {
+          "$ref": "#/$defs/membership_status"
+        }
+      },
+      "required": [
+        "property_id",
+        "document_alias",
+        "document_key",
+        "collateral_set_id",
+        "source_record",
+        "parcel_ids",
+        "building_ids",
+        "tile_ids",
+        "tile_spanning",
+        "membership_status"
+      ]
+    },
+    "collateral_membership": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "collateral_set_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "property": {
+          "$ref": "#/$defs/entity_ref"
+        },
+        "document_key": {
+          "$ref": "#/$defs/document_key"
+        },
+        "source_record": {
+          "$ref": "#/$defs/source_record"
+        }
+      },
+      "required": [
+        "collateral_set_id",
+        "property",
+        "document_key",
+        "source_record"
+      ]
+    },
+    "member_relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "relation_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "property": {
+          "$ref": "#/$defs/entity_ref"
+        },
+        "relation": {
+          "$ref": "#/$defs/relation"
+        },
+        "member": {
+          "$ref": "#/$defs/entity_ref"
+        },
+        "collateral_set_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "tile_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "source_record": {
+          "$ref": "#/$defs/source_record"
+        }
+      },
+      "required": [
+        "relation_id",
+        "property",
+        "relation",
+        "member",
+        "collateral_set_id",
+        "tile_id",
+        "source_record"
+      ]
+    },
+    "membership_abstention": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "abstention_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "property_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "collateral_set_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "candidate_member": {
+          "$ref": "#/$defs/entity_ref"
+        },
+        "tile_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "reason": {
+          "$ref": "#/$defs/abstention_reason"
+        },
+        "source_record": {
+          "$ref": "#/$defs/source_record"
+        }
+      },
+      "required": [
+        "abstention_id",
+        "property_id",
+        "collateral_set_id",
+        "candidate_member",
+        "tile_id",
+        "reason",
+        "source_record"
+      ]
+    },
+    "property_set_comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "left_property_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "right_property_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "relation": {
+          "$ref": "#/$defs/property_set_relation"
+        },
+        "shared_parcel_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "shared_building_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "left_only_parcel_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "left_only_building_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "right_only_parcel_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "right_only_building_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
+      },
+      "required": [
+        "left_property_id",
+        "right_property_id",
+        "relation",
+        "shared_parcel_ids",
+        "shared_building_ids",
+        "left_only_parcel_ids",
+        "left_only_building_ids",
+        "right_only_parcel_ids",
+        "right_only_building_ids"
+      ]
+    },
+    "assertion_comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "comparison_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "comparison": {
+          "$ref": "#/$defs/property_set_comparison"
+        },
+        "overlapping_unequal": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "comparison_id",
+        "comparison",
+        "overlapping_unequal"
+      ]
+    }
+  },
+  "x-canon-contract": {
+    "runtime_only_invariants": [
+      "registry_proposal is a review-gated proposal and does not mutate exact lookup",
+      "property_assertions mint one cmdrvl:property:* per document assertion",
+      "member_relations are a published derived relation projection using contains",
+      "membership_abstentions are retained separately and never serialized as member_relations",
+      "assertion_comparisons are exact set algebra and carry no score, confidence, or probability field"
+    ]
+  }
+}

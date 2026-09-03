@@ -1505,6 +1505,22 @@
       "source_path": "schemas/canon.geo.assessment_roll_owner.v0.schema.json"
     },
     {
+      "id": "canon_geo_property_assertion_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo::property",
+      "source_path": "schemas/canon.geo.property_assertion_request.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_property_assertion.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo::property",
+      "source_path": "schemas/canon.geo.property_assertion.v0.schema.json"
+    },
+    {
       "id": "canon_geo_condo_bridge_request.v0",
       "family": "geo",
       "action": "preserve",

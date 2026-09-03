@@ -30,6 +30,13 @@ use canon::geo::footprint_roll::{
     GeoFootprintRollLoanFields, GeoFootprintRollSourceConfig,
     canonical_footprint_roll_evidence_request_bytes,
 };
+use canon::geo::property::{
+    CANON_GEO_PROPERTY_ASSERTION_REQUEST_VERSION, CANON_GEO_PROPERTY_ASSERTION_VERSION,
+    GeoPropertyAssertionProofClass, GeoPropertyAssertionRequest, GeoPropertyBlockingStrategy,
+    GeoPropertyDocumentAssertionRequest, GeoPropertyMemberAssertion, GeoPropertyMembershipStatus,
+    GeoPropertyRelationGraphProduct, GeoPropertySourceCorpus, GeoPropertySourceRecordRef,
+    canonical_property_assertion_bytes, materialize_property_assertions,
+};
 use canon::geo::{
     CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
     CANON_GEO_DISCOVERY_REQUEST_VERSION, CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION,
@@ -155,6 +162,10 @@ const ASSESSMENT_ROLL_OWNER_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.assessment_roll_owner_request.v0.schema.json");
 const ASSESSMENT_ROLL_OWNER_SCHEMA: &str =
     include_str!("../schemas/canon.geo.assessment_roll_owner.v0.schema.json");
+const PROPERTY_ASSERTION_REQUEST_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.property_assertion_request.v0.schema.json");
+const PROPERTY_ASSERTION_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.property_assertion.v0.schema.json");
 const CONDO_BRIDGE_SCHEMA: &str = include_str!("../schemas/canon.geo.condo_bridge.v0.schema.json");
 const FOOTPRINT_ROLL_EVIDENCE_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.footprint_roll_evidence_request.v0.schema.json");
@@ -2336,6 +2347,88 @@ fn assessment_roll_owner_schema_matches_a_real_instance() {
         ASSESSMENT_ROLL_OWNER_SCHEMA,
         "canon.geo.assessment_roll_owner.v0",
         CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION,
+        &instance,
+    );
+}
+
+fn property_source_record(id: &str, seed: &str) -> GeoPropertySourceRecordRef {
+    GeoPropertySourceRecordRef {
+        source_record_id: id.to_string(),
+        source_vintage: "fixture-2026-09-03".to_string(),
+        record_blake3: format!("blake3:{}", blake3::hash(seed.as_bytes()).to_hex()),
+    }
+}
+
+fn property_member(id: &str, tile_id: &str, seed: &str) -> GeoPropertyMemberAssertion {
+    GeoPropertyMemberAssertion {
+        member: GeoEntityRef::new(GeoEntityLevel::Parcel, id),
+        tile_id: tile_id.to_string(),
+        status: GeoPropertyMembershipStatus::AssertedMember,
+        abstention_reason: None,
+        source_record: property_source_record(&format!("fixture.property.member:{seed}"), seed),
+    }
+}
+
+fn property_assertion_request() -> GeoPropertyAssertionRequest {
+    GeoPropertyAssertionRequest {
+        version: CANON_GEO_PROPERTY_ASSERTION_REQUEST_VERSION.to_string(),
+        proof_class: GeoPropertyAssertionProofClass::Fixture,
+        blocking_strategy: GeoPropertyBlockingStrategy::DocumentFirstThenGeography,
+        relation_graph_product: GeoPropertyRelationGraphProduct::PublishedDerivedProjection,
+        source_corpus: GeoPropertySourceCorpus {
+            corpus_id: "fixture.cmbs.annex_a".to_string(),
+            corpus_version: "2026-09-03".to_string(),
+            temporal_scope: "document_valid_time".to_string(),
+            native_key_fields: vec![
+                "accession".to_string(),
+                "deal_id".to_string(),
+                "loan_id".to_string(),
+            ],
+        },
+        assertions: vec![GeoPropertyDocumentAssertionRequest {
+            assertion_id: "assertion-property-schema-span".to_string(),
+            document_id: "document-property-schema-span".to_string(),
+            accession: "0000000000-26-000201".to_string(),
+            deal_id: "schema-deal".to_string(),
+            loan_id: "loan-201".to_string(),
+            collateral_set_id: "collateral:0000000000-26-000201:loan-201".to_string(),
+            source_record: property_source_record("fixture.property.document:schema-span", "doc"),
+            members: vec![
+                property_member("cmdrvl:parcel:01J7X0000000000000S1", "h3:r8:alpha", "s1"),
+                property_member("cmdrvl:parcel:01J7X0000000000000S2", "h3:r8:alpha", "s2"),
+                property_member("cmdrvl:parcel:01J7X0000000000000S3", "h3:r8:beta", "s3"),
+            ],
+        }],
+        max_assertions: 4,
+        max_members_per_assertion: 8,
+        max_pairwise_comparisons: 6,
+    }
+}
+
+#[test]
+fn property_assertion_request_schema_matches_a_real_instance() {
+    let request = property_assertion_request();
+    let instance = serde_json::to_value(&request).expect("property assertion request serializes");
+    assert_drift_free(
+        PROPERTY_ASSERTION_REQUEST_SCHEMA,
+        "canon.geo.property_assertion_request.v0",
+        CANON_GEO_PROPERTY_ASSERTION_REQUEST_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn property_assertion_schema_matches_a_real_instance() {
+    let artifact = materialize_property_assertions(&property_assertion_request())
+        .expect("property assertion artifact builds");
+    let canonical_bytes =
+        canonical_property_assertion_bytes(&artifact).expect("property artifact canonicalizes");
+    let instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("canonical property JSON parses");
+    assert_drift_free(
+        PROPERTY_ASSERTION_SCHEMA,
+        "canon.geo.property_assertion.v0",
+        CANON_GEO_PROPERTY_ASSERTION_VERSION,
         &instance,
     );
 }
