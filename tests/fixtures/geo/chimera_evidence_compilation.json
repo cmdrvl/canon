@@ -1,0 +1,246 @@
+{
+  "version": "canon_geo_evidence_compilation.v0",
+  "request_version": "canon_geo_evidence_request.v0",
+  "composition_request": {
+    "version": "canon_geo_composition_request.v0",
+    "profile": {
+      "version": "canon_geo_composition_profile.v0",
+      "selection_level": "parcel"
+    },
+    "universe": {
+      "parcels": [
+        "1004540041",
+        "1004540042",
+        "1004540043",
+        "1004540044",
+        "1004540045",
+        "1004540046",
+        "1004540047"
+      ],
+      "buildings": [
+        {
+          "id": "1006494",
+          "parcel_ids": [
+            "1004540041"
+          ]
+        },
+        {
+          "id": "1006495",
+          "parcel_ids": [
+            "1004540042"
+          ]
+        },
+        {
+          "id": "1006496",
+          "parcel_ids": [
+            "1004540043"
+          ]
+        },
+        {
+          "id": "1006497",
+          "parcel_ids": [
+            "1004540044"
+          ]
+        },
+        {
+          "id": "1006498",
+          "parcel_ids": [
+            "1004540045"
+          ]
+        },
+        {
+          "id": "1006499",
+          "parcel_ids": [
+            "1004540046"
+          ]
+        },
+        {
+          "id": "1006500",
+          "parcel_ids": [
+            "1004540047"
+          ]
+        }
+      ]
+    },
+    "hard_constraints": [
+      {
+        "id": "asserted_address_core",
+        "constraint": {
+          "kind": "allowed_sets",
+          "level": "parcel",
+          "sets": [
+            [
+              "1004540041",
+              "1004540042",
+              "1004540043",
+              "1004540044",
+              "1004540045",
+              "1004540046"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "area_majority_buildings",
+        "constraint": {
+          "kind": "allowed_sets",
+          "level": "building",
+          "sets": [
+            [
+              "1006494",
+              "1006495",
+              "1006496",
+              "1006497",
+              "1006498",
+              "1006499"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "chimera_wrongly_admitted",
+        "constraint": {
+          "kind": "allowed_sets",
+          "level": "parcel",
+          "sets": [
+            [
+              "1004540047"
+            ]
+          ]
+        }
+      }
+    ],
+    "soft_preferences": [],
+    "max_assignments": 20000,
+    "max_materialized_models": 16
+  },
+  "admissions": [
+    {
+      "observation_id": "obs.area_majority_buildings",
+      "contract": {
+        "id": "area_majority_buildings",
+        "version": "v1",
+        "source_dataset": "fixture.demo0.building_footprints",
+        "source_release": "2026-08-09",
+        "source_lineage_ids": [
+          "fixture.lineage.building_footprints"
+        ],
+        "method_id": "fixture.majority_footprint_overlap",
+        "method_version": "v1",
+        "claim_role": "stable_identity_anchor",
+        "basis": {
+          "kind": "logical_relaxation",
+          "invariant_id": "fixture.majority_buildings_are_candidate_superset"
+        }
+      },
+      "source_records": [
+        {
+          "source_record_id": "case4.nyc_footprints.majority_2026_08_09",
+          "source_vintage": "2026-08-09",
+          "record_blake3": "6ee7136102b255723487ec7a5d9f0a8ac0efc6fdf1972830c25eda91072ee151"
+        }
+      ],
+      "observation": {
+        "kind": "exact_sets",
+        "level": "building",
+        "sets": [
+          [
+            "1006494",
+            "1006495",
+            "1006496",
+            "1006497",
+            "1006498",
+            "1006499"
+          ]
+        ]
+      },
+      "disposition": "hard_constraint",
+      "generated_ids": [
+        "area_majority_buildings"
+      ]
+    },
+    {
+      "observation_id": "obs.asserted_address_core",
+      "contract": {
+        "id": "asserted_address_core",
+        "version": "v1",
+        "source_dataset": "fixture.demo0.address_members",
+        "source_release": "26v1/2026-05-01",
+        "source_lineage_ids": [
+          "fixture.lineage.address_members"
+        ],
+        "method_id": "fixture.asserted_member_address_probe",
+        "method_version": "v1",
+        "claim_role": "stable_identity_anchor",
+        "basis": {
+          "kind": "logical_relaxation",
+          "invariant_id": "fixture.asserted_members_are_candidate_superset"
+        }
+      },
+      "source_records": [
+        {
+          "source_record_id": "case4.asserted_members.mappluto_26v1",
+          "source_vintage": "26v1/2026-05-01",
+          "record_blake3": "8c7db293f7195e1a3c4d397c2bcf2f59a4fd289f9a302b295669bcccb938d333"
+        }
+      ],
+      "observation": {
+        "kind": "exact_sets",
+        "level": "parcel",
+        "sets": [
+          [
+            "1004540041",
+            "1004540042",
+            "1004540043",
+            "1004540044",
+            "1004540045",
+            "1004540046"
+          ]
+        ]
+      },
+      "disposition": "hard_constraint",
+      "generated_ids": [
+        "asserted_address_core"
+      ]
+    },
+    {
+      "observation_id": "obs.chimera_wrongly_admitted",
+      "contract": {
+        "id": "chimera_wrongly_admitted",
+        "version": "v1",
+        "source_dataset": "fixture.demo0.address_probe",
+        "source_release": "26v1/2026-05-01",
+        "source_lineage_ids": [
+          "fixture.lineage.address_probe"
+        ],
+        "method_id": "fixture.unsound_single_member_probe",
+        "method_version": "v1",
+        "claim_role": "stable_identity_anchor",
+        "basis": {
+          "kind": "logical_relaxation",
+          "invariant_id": "fixture.single_member_probe_claim"
+        }
+      },
+      "source_records": [
+        {
+          "source_record_id": "case4.fixture_address_probe.single_parcel",
+          "source_vintage": "26v1/2026-05-01",
+          "record_blake3": "d1fa3b0796f33e6f56099e7844bb598f3b97e8330701340178ff55d8686bb0c7"
+        }
+      ],
+      "observation": {
+        "kind": "exact_sets",
+        "level": "parcel",
+        "sets": [
+          [
+            "1004540047"
+          ]
+        ]
+      },
+      "disposition": "hard_constraint",
+      "generated_ids": [
+        "chimera_wrongly_admitted"
+      ]
+    }
+  ]
+}
