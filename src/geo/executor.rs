@@ -23,6 +23,12 @@ use crate::{
         GeoPlanExactSolveScope, GeoPlanProducedArtifactRef, GeoPropagationArtifact,
         GeoPropagationBudget, GeoTileCandidateReachStatus, GeoTileWorkRequest,
         GeoTileWorkUnitArtifact, GeoWarehouseRowsRequest, apply_prunings,
+        assessment_roll::{
+            CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION,
+            CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION, GeoAssessmentRollOwnerArtifact,
+            GeoAssessmentRollOwnerRequest, canonical_assessment_roll_owner_bytes,
+            produce_assessment_roll_owner_evidence, validate_assessment_roll_owner_artifact,
+        },
         canonical_composition_bytes, canonical_evidence_compilation_bytes,
         canonical_explanation_bytes, canonical_geometry_tile_bytes,
         canonical_home_cell_assignment_bytes, canonical_materialized_evidence_request_bytes,
@@ -60,6 +66,9 @@ pub const GEO_PROPAGATE_STAGE_COMMAND: &str = "canon.geo.stage.propagate.v0";
 pub const GEO_PROPAGATE_OUTPUT_ID: &str = "propagation";
 pub const GEO_EXPLAIN_STAGE_COMMAND: &str = "canon.geo.stage.explain.v0";
 pub const GEO_EXPLAIN_OUTPUT_ID: &str = "explanation";
+pub const GEO_ASSESSMENT_ROLL_OWNER_STAGE_COMMAND: &str =
+    "canon.geo.stage.assessment_roll_owner.v0";
+pub const GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID: &str = "assessment_roll_owner";
 pub const GEO_SOLVE_COMMAND: &str = "canon geo solve --request <REQUEST.json>";
 pub const GEO_CLIENT_TILE_INGEST_STAGE_COMMAND: &str = "canon.geo.stage.client_tile_ingest.v0";
 pub const CANON_GEO_CLIENT_TILE_SOURCE_VERSION: &str = "canon_geo_client_tile_source.v0";
@@ -266,6 +275,7 @@ impl GeoProjectNodeExecutor {
             GeoExecutorCommand::ClientTileIngest => self.execute_client_tile_ingest(node)?,
             GeoExecutorCommand::MaterializeEvidence => self.execute_materialize_evidence(node)?,
             GeoExecutorCommand::CompileEvidence => self.execute_compile_evidence(node)?,
+            GeoExecutorCommand::AssessmentRollOwner => self.execute_assessment_roll_owner(node)?,
             GeoExecutorCommand::Propagate => self.execute_propagate(node)?,
             GeoExecutorCommand::Explain => self.execute_explain(node)?,
             GeoExecutorCommand::Solve => self.execute_solve(node)?,
@@ -545,6 +555,52 @@ impl GeoProjectNodeExecutor {
         Ok(GeoLeafExecution {
             output_id: "compile_evidence",
             output_contract: CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+            output_bytes: bytes,
+            deterministic_usage: usage,
+        })
+    }
+
+    fn execute_assessment_roll_owner(
+        &self,
+        node: &ProjectPlanNode,
+    ) -> ProjectRunResult<GeoLeafExecution> {
+        let request: GeoAssessmentRollOwnerRequest = self.required_binding_json(
+            node,
+            GEO_REQUEST_BINDING_ID,
+            &[CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION],
+        )?;
+        let artifact = produce_assessment_roll_owner_evidence(&request)
+            .map_err(|error| leaf_error(node, "assessment-roll-owner", error))?;
+        let bytes = canonical_assessment_roll_owner_bytes(&artifact)
+            .map_err(|error| leaf_error(node, "assessment-roll-owner serialization", error))?;
+        let mut usage = BTreeMap::new();
+        usage.insert(
+            "assessment_roll_owner_cases".to_string(),
+            artifact.summary.cases,
+        );
+        usage.insert(
+            "assessment_roll_owner_roll_rows".to_string(),
+            artifact.summary.roll_rows,
+        );
+        usage.insert(
+            "assessment_roll_owner_party_rows".to_string(),
+            artifact.summary.party_rows,
+        );
+        usage.insert(
+            "assessment_roll_owner_added_roll_lots".to_string(),
+            artifact.summary.added_roll_lots,
+        );
+        usage.insert(
+            "assessment_roll_owner_exact_hard_observations".to_string(),
+            artifact.summary.exact_hard_observations,
+        );
+        usage.insert(
+            "assessment_roll_owner_affiliate_soft_observations".to_string(),
+            artifact.summary.affiliate_soft_observations,
+        );
+        Ok(GeoLeafExecution {
+            output_id: GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID,
+            output_contract: CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION,
             output_bytes: bytes,
             deterministic_usage: usage,
         })
@@ -1452,18 +1508,20 @@ enum GeoExecutorCommand {
     ClientTileIngest,
     MaterializeEvidence,
     CompileEvidence,
+    AssessmentRollOwner,
     Propagate,
     Explain,
     Solve,
 }
 
 impl GeoExecutorCommand {
-    const SUPPORTED: [Self; 8] = [
+    const SUPPORTED: [Self; 9] = [
         Self::MaterializeHomeCells,
         Self::TileWork,
         Self::ClientTileIngest,
         Self::MaterializeEvidence,
         Self::CompileEvidence,
+        Self::AssessmentRollOwner,
         Self::Propagate,
         Self::Explain,
         Self::Solve,
@@ -1476,6 +1534,7 @@ impl GeoExecutorCommand {
             GEO_CLIENT_TILE_INGEST_STAGE_COMMAND => Ok(Self::ClientTileIngest),
             GEO_MATERIALIZE_EVIDENCE_COMMAND => Ok(Self::MaterializeEvidence),
             GEO_COMPILE_EVIDENCE_COMMAND => Ok(Self::CompileEvidence),
+            GEO_ASSESSMENT_ROLL_OWNER_STAGE_COMMAND => Ok(Self::AssessmentRollOwner),
             GEO_PROPAGATE_STAGE_COMMAND => Ok(Self::Propagate),
             GEO_EXPLAIN_STAGE_COMMAND => Ok(Self::Explain),
             GEO_SOLVE_COMMAND => Ok(Self::Solve),
@@ -1492,7 +1551,9 @@ impl GeoExecutorCommand {
             Self::MaterializeHomeCells => ProjectPlanNodeKind::Normalize,
             Self::TileWork => ProjectPlanNodeKind::Block,
             Self::ClientTileIngest => ProjectPlanNodeKind::Index,
-            Self::MaterializeEvidence | Self::CompileEvidence => ProjectPlanNodeKind::Evidence,
+            Self::MaterializeEvidence | Self::CompileEvidence | Self::AssessmentRollOwner => {
+                ProjectPlanNodeKind::Evidence
+            }
             Self::Propagate | Self::Explain | Self::Solve => ProjectPlanNodeKind::Solve,
         }
     }
@@ -1504,6 +1565,7 @@ impl GeoExecutorCommand {
             Self::ClientTileIngest => "client_tile",
             Self::MaterializeEvidence => "materialize_evidence",
             Self::CompileEvidence => "compile_evidence",
+            Self::AssessmentRollOwner => GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID,
             Self::Propagate => GEO_PROPAGATE_OUTPUT_ID,
             Self::Explain => GEO_EXPLAIN_OUTPUT_ID,
             Self::Solve => "solve",
@@ -1519,6 +1581,7 @@ impl GeoExecutorCommand {
             Self::CompileEvidence => {
                 &[("materialize_evidence", CANON_GEO_EVIDENCE_REQUEST_VERSION)]
             }
+            Self::AssessmentRollOwner => &[],
             Self::Propagate => &[("compile_evidence", CANON_GEO_EVIDENCE_COMPILATION_VERSION)],
             Self::Explain => &[
                 ("compile_evidence", CANON_GEO_EVIDENCE_COMPILATION_VERSION),
@@ -1539,6 +1602,7 @@ impl GeoExecutorCommand {
             Self::ClientTileIngest => "client-tile-ingest",
             Self::MaterializeEvidence => "materialize-evidence",
             Self::CompileEvidence => "compile-evidence",
+            Self::AssessmentRollOwner => "assessment-roll-owner",
             Self::Propagate => "propagate",
             Self::Explain => "explain",
             Self::Solve => "solve",
@@ -1740,6 +1804,7 @@ fn contract_for_output_id(output_id: &str) -> Option<&'static str> {
         "client_tile" => Some(CANON_GEO_GEOMETRY_TILE_VERSION),
         "materialize_evidence" => Some(CANON_GEO_EVIDENCE_REQUEST_VERSION),
         "compile_evidence" => Some(CANON_GEO_EVIDENCE_COMPILATION_VERSION),
+        GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID => Some(CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION),
         GEO_PROPAGATE_OUTPUT_ID => Some(CANON_GEO_PROPAGATION_VERSION),
         GEO_EXPLAIN_OUTPUT_ID => Some(CANON_GEO_EXPLANATION_VERSION),
         "solve" => Some(CANON_GEO_COMPOSITION_VERSION),
@@ -1932,6 +1997,19 @@ fn ensure_canonical_artifact_bytes(
                 contract,
                 bytes,
                 canonical_propagation_bytes(&artifact),
+            )
+        }
+        CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION => {
+            let artifact: GeoAssessmentRollOwnerArtifact =
+                parse_json_target(&node, bytes, CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION)?;
+            validate_assessment_roll_owner_artifact(&artifact).map_err(|error| {
+                leaf_error_target(&node, "assessment-roll-owner validation", error)
+            })?;
+            require_exact_bytes(
+                &node,
+                contract,
+                bytes,
+                canonical_assessment_roll_owner_bytes(&artifact),
             )
         }
         CANON_GEO_EXPLANATION_VERSION => {

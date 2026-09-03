@@ -14,6 +14,9 @@ use super::{
         CANON_GEO_ADDRESS_PARSE_REQUEST_VERSION, CANON_GEO_ADDRESS_QUERY_GRAMMAR_VERSION,
         CANON_GEO_PAD_ADDRESS_SET_VERSION, CANON_GEO_PAD_MEMBERSHIP_VERSION,
     },
+    assessment_roll::{
+        CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION, CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION,
+    },
     composition::{
         CANON_GEO_COMPOSITION_PROFILE_VERSION, CANON_GEO_COMPOSITION_REQUEST_VERSION,
         CANON_GEO_COMPOSITION_VERSION, CANON_GEO_ENTITY_PROJECTION_VERSION,
@@ -1188,6 +1191,16 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "exact residual composition artifact contract",
         ),
         contract(
+            CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION,
+            "schemas/canon.geo.assessment_roll_owner_request.v0.schema.json",
+            "assessment-roll owner evidence request contract",
+        ),
+        contract(
+            CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION,
+            "schemas/canon.geo.assessment_roll_owner.v0.schema.json",
+            "assessment-roll owner universe widening and evidence overlay artifact contract",
+        ),
+        contract(
             CANON_GEO_ENTITY_PROJECTION_VERSION,
             "schemas/canon.geo.composition.v0.schema.json#/$defs/entity_projection",
             "entity-level projection over a bounded composition residual",
@@ -1416,6 +1429,13 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
             "canon.geo.stage.explain.v0",
             GeoCommandSurface::Leaf,
             CANON_GEO_EXPLANATION_VERSION,
+            true,
+            false,
+        ),
+        command(
+            "canon.geo.stage.assessment_roll_owner.v0",
+            GeoCommandSurface::Leaf,
+            CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION,
             true,
             false,
         ),

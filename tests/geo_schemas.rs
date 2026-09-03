@@ -12,6 +12,13 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use canon::entity::run::link::multisource::EntitySourceRole;
 use canon::geo::CANON_GEO_EXPLANATION_VERSION;
+use canon::geo::assessment_roll::{
+    CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION, CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION,
+    GeoAssessmentRollCaseDocument, GeoAssessmentRollLotRow, GeoAssessmentRollOwnerCalibration,
+    GeoAssessmentRollOwnerContractSource, GeoAssessmentRollOwnerProofClass,
+    GeoAssessmentRollOwnerRequest, GeoAssessmentRollPartyRow,
+    canonical_assessment_roll_owner_bytes, produce_assessment_roll_owner_evidence,
+};
 use canon::geo::{
     CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
     CANON_GEO_DISCOVERY_REQUEST_VERSION, CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION,
@@ -133,6 +140,10 @@ const TEMPORAL_CONTAINMENT_SCHEMA: &str =
     include_str!("../schemas/canon.geo.temporal_containment.v0.schema.json");
 const PROPAGATION_SCHEMA: &str = include_str!("../schemas/canon.geo.propagation.v0.schema.json");
 const EXPLANATION_SCHEMA: &str = include_str!("../schemas/canon.geo.explanation.v0.schema.json");
+const ASSESSMENT_ROLL_OWNER_REQUEST_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.assessment_roll_owner_request.v0.schema.json");
+const ASSESSMENT_ROLL_OWNER_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.assessment_roll_owner.v0.schema.json");
 const SEPARATION_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.separation_request.v0.schema.json");
 const SEPARATION_SCHEMA: &str = include_str!("../schemas/canon.geo.separation.v0.schema.json");
@@ -2192,6 +2203,125 @@ fn explanation_schema_matches_a_real_instance() {
         EXPLANATION_SCHEMA,
         "canon.geo.explanation.v0",
         CANON_GEO_EXPLANATION_VERSION,
+        &instance,
+    );
+}
+
+fn assessment_roll_owner_request() -> GeoAssessmentRollOwnerRequest {
+    GeoAssessmentRollOwnerRequest {
+        version: CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION.to_string(),
+        proof_class: GeoAssessmentRollOwnerProofClass::Fixture,
+        population: GeoPopulationEvaluationRequest {
+            version: CANON_GEO_POPULATION_REQUEST_VERSION.to_string(),
+            cases: vec![GeoLabeledCompositionCase {
+                id: "case-assessment-roll-owner".to_string(),
+                evidence: GeoEvidenceCompilationRequest {
+                    version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+                    profile: GeoCompositionProfile::parcel(),
+                    universe: GeoCompositionUniverse {
+                        parcels: vec!["1000010001".to_string()],
+                        buildings: Vec::new(),
+                    },
+                    contracts: Vec::new(),
+                    observations: Vec::new(),
+                    max_assignments: 16,
+                    max_materialized_models: 16,
+                },
+                truth_plane: GeoTruthPlane::HumanAdjudication,
+                truth: GeoCompositionModel {
+                    parcels: vec!["1000010001".to_string()],
+                    buildings: Vec::new(),
+                },
+            }],
+            max_cases: 1,
+        },
+        case_documents: vec![GeoAssessmentRollCaseDocument {
+            case_id: "case-assessment-roll-owner".to_string(),
+            document_id: "doc-assessment-roll-owner".to_string(),
+        }],
+        contract_source: GeoAssessmentRollOwnerContractSource {
+            source_dataset: "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.PROPERTY_VALUATION_FY2026P3_x_ACRIS_PARTIES"
+                .to_string(),
+            source_release: "FY2026P3_acris-latest".to_string(),
+            source_lineage_ids: vec![
+                "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES:latest".to_string(),
+                "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.WRGL_NYC_OPENDATA_PROPERTY_VALUATION_AND_ASSESSMENT_DATA_TAX_CLASSES_1_2_3_4__STRUCTURED:FY2026P3"
+                    .to_string(),
+            ],
+        },
+        calibration: GeoAssessmentRollOwnerCalibration {
+            population_id: "h7-d1-residuals-2026-09-03-roll".to_string(),
+            calibration_blake3: blake3::hash(b"assessment-roll-owner-schema-calibration")
+                .to_hex()
+                .to_string(),
+            exact_falsification_rule_id: "truth-lot-owner-not-exact".to_string(),
+            affiliate_falsification_rule_id: "truth-lot-owner-mismatch".to_string(),
+        },
+        roll_rows: vec![
+            GeoAssessmentRollLotRow {
+                bbl: "1000010001".to_string(),
+                owner: "ACME BORROWER LLC".to_string(),
+                gross_sqft: "1000".to_string(),
+                units: "1".to_string(),
+                condo_number: String::new(),
+                source_record_id:
+                    "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.PROPERTY_VALUATION:FY2026P3:1000010001"
+                        .to_string(),
+                source_vintage: "FY2026P3".to_string(),
+            },
+            GeoAssessmentRollLotRow {
+                bbl: "1000010002".to_string(),
+                owner: "OTHER OWNER LLC".to_string(),
+                gross_sqft: "1500".to_string(),
+                units: "1".to_string(),
+                condo_number: String::new(),
+                source_record_id:
+                    "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.PROPERTY_VALUATION:FY2026P3:1000010002"
+                        .to_string(),
+                source_vintage: "FY2026P3".to_string(),
+            },
+        ],
+        party_rows: vec![GeoAssessmentRollPartyRow {
+            document_id: "doc-assessment-roll-owner".to_string(),
+            party_type: "1".to_string(),
+            party_name_norm: "ACME BORROWER LLC".to_string(),
+            source_record_id:
+                "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES:doc-assessment-roll-owner:ACME_BORROWER_LLC"
+                    .to_string(),
+            source_vintage: "latest".to_string(),
+        }],
+        max_cases: 1,
+        max_roll_rows: 2,
+        max_party_rows: 1,
+        max_overlay_observations: 4,
+    }
+}
+
+#[test]
+fn assessment_roll_owner_request_schema_matches_a_real_instance() {
+    let request = assessment_roll_owner_request();
+    let instance =
+        serde_json::to_value(&request).expect("assessment-roll owner request serializes");
+    assert_drift_free(
+        ASSESSMENT_ROLL_OWNER_REQUEST_SCHEMA,
+        "canon.geo.assessment_roll_owner_request.v0",
+        CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn assessment_roll_owner_schema_matches_a_real_instance() {
+    let artifact = produce_assessment_roll_owner_evidence(&assessment_roll_owner_request())
+        .expect("assessment-roll owner artifact builds");
+    let canonical_bytes = canonical_assessment_roll_owner_bytes(&artifact)
+        .expect("assessment-roll owner artifact canonicalizes");
+    let instance: Value = serde_json::from_slice(&canonical_bytes)
+        .expect("canonical assessment-roll owner JSON parses");
+    assert_drift_free(
+        ASSESSMENT_ROLL_OWNER_SCHEMA,
+        "canon.geo.assessment_roll_owner.v0",
+        CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION,
         &instance,
     );
 }

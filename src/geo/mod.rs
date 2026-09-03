@@ -6,6 +6,7 @@
 //! exact registry replay path.
 
 pub mod address;
+pub mod assessment_roll;
 pub mod cli;
 pub mod composition;
 pub mod condo;

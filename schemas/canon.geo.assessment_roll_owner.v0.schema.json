@@ -1,0 +1,169 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.assessment_roll_owner.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.assessment_roll_owner.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_assessment_roll_owner.v0",
+      "type": "string"
+    },
+    "request_version": {
+      "const": "canon_geo_assessment_roll_owner_request.v0",
+      "type": "string"
+    },
+    "request_blake3": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "proof_class": {
+      "$ref": "#/$defs/proof_class"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/case_summary"
+      }
+    },
+    "widened_population": {
+      "$ref": "canon.geo.population_request.v0.schema.json"
+    },
+    "overlay": {
+      "$ref": "canon.geo.population_evidence_stack_request.v0.schema.json"
+    }
+  },
+  "required": [
+    "version",
+    "request_version",
+    "request_blake3",
+    "proof_class",
+    "summary",
+    "cases",
+    "widened_population",
+    "overlay"
+  ],
+  "$defs": {
+    "proof_class": {
+      "type": "string",
+      "enum": [
+        "fixture",
+        "observed_warehouse_snapshot"
+      ]
+    },
+    "uint64": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cases": {
+          "$ref": "#/$defs/uint64"
+        },
+        "roll_rows": {
+          "$ref": "#/$defs/uint64"
+        },
+        "party_rows": {
+          "$ref": "#/$defs/uint64"
+        },
+        "widened_cases": {
+          "$ref": "#/$defs/uint64"
+        },
+        "added_roll_lots": {
+          "$ref": "#/$defs/uint64"
+        },
+        "owner_overlay_cases": {
+          "$ref": "#/$defs/uint64"
+        },
+        "exact_hard_observations": {
+          "$ref": "#/$defs/uint64"
+        },
+        "exact_match_lots": {
+          "$ref": "#/$defs/uint64"
+        },
+        "affiliate_soft_observations": {
+          "$ref": "#/$defs/uint64"
+        },
+        "affiliate_preference_lots": {
+          "$ref": "#/$defs/uint64"
+        }
+      },
+      "required": [
+        "cases",
+        "roll_rows",
+        "party_rows",
+        "widened_cases",
+        "added_roll_lots",
+        "owner_overlay_cases",
+        "exact_hard_observations",
+        "exact_match_lots",
+        "affiliate_soft_observations",
+        "affiliate_preference_lots"
+      ]
+    },
+    "case_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "document_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input_universe_parcels": {
+          "$ref": "#/$defs/uint64"
+        },
+        "widened_universe_parcels": {
+          "$ref": "#/$defs/uint64"
+        },
+        "added_roll_lots": {
+          "$ref": "#/$defs/uint64"
+        },
+        "party_rows": {
+          "$ref": "#/$defs/uint64"
+        },
+        "exact_match_lots": {
+          "$ref": "#/$defs/uint64"
+        },
+        "affiliate_preference_lots": {
+          "$ref": "#/$defs/uint64"
+        },
+        "hard_observation_emitted": {
+          "type": "boolean"
+        },
+        "soft_observations_emitted": {
+          "$ref": "#/$defs/uint64"
+        }
+      },
+      "required": [
+        "case_id",
+        "document_id",
+        "input_universe_parcels",
+        "widened_universe_parcels",
+        "added_roll_lots",
+        "party_rows",
+        "exact_match_lots",
+        "affiliate_preference_lots",
+        "hard_observation_emitted",
+        "soft_observations_emitted"
+      ]
+    }
+  },
+  "x-canon-contract": {
+    "runtime_only_invariants": [
+      "request_blake3 is recomputed from canonical canon_geo_assessment_roll_owner_request.v0 input",
+      "widened_population preserves case truth and widens only evidence.universe.parcels",
+      "rho.owner.assessment_roll_exact_match observations are IntegerSumBand over assessment_roll.owner_not_exact with min 0 and max 0",
+      "rho.owner.assessment_roll_affiliate_preference observations are PreferMember only and never become hard exclusions",
+      "source_records include row-payload BLAKE3 digests for roll and ACRIS party rows"
+    ]
+  }
+}

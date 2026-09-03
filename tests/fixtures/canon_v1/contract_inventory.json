@@ -1473,6 +1473,22 @@
       "source_path": "schemas/canon.geo.explanation.v0.schema.json"
     },
     {
+      "id": "canon_geo_assessment_roll_owner_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo::assessment_roll",
+      "source_path": "schemas/canon.geo.assessment_roll_owner_request.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_assessment_roll_owner.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo::assessment_roll",
+      "source_path": "schemas/canon.geo.assessment_roll_owner.v0.schema.json"
+    },
+    {
       "id": "canon_geo_separation_request.v0",
       "family": "geo",
       "action": "preserve",
@@ -1497,6 +1513,13 @@
     },
     {
       "id": "canon.geo.stage.explain.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/geo/executor.rs"
+    },
+    {
+      "id": "canon.geo.stage.assessment_roll_owner.v0",
       "family": "geo",
       "action": "preserve",
       "access_boundary": "internal_source_only",
