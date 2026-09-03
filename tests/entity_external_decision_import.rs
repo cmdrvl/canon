@@ -9,10 +9,7 @@ use canon::entity::{
         CANON_ENTITY_NATIVE_REVIEW_DECISION_ENVELOPE_VERSION, NativeReviewExportRequest,
         build_native_review_artifact,
     },
-    review_import::{
-        NativeReviewDecision, NativeReviewDecisionAction, NativeReviewDecisionContext,
-        NativeReviewDecisionMode,
-    },
+    review_import::{NativeReviewDecision, NativeReviewDecisionAction, NativeReviewDecisionMode},
     score::ScoreUnits,
     solve::{SolveEvidenceCut, SolveReconciliationState},
 };

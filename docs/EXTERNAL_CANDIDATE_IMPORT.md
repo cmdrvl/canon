@@ -70,10 +70,9 @@ Canon review, calibration, and promotion.
      --emit json > native-import-receipt.json
    ```
 
-   The native import path emits a patch receipt only. It does not read or mutate
-   the registry, and it does not consume `--next-version` beyond the existing CLI
-   compatibility requirement. Audit, promote, and exact replay proceed through
-   the normal Canon gates.
+   The native import path emits a patch receipt only. It does not read or mutate the registry,
+   and it does not consume `--next-version` beyond the existing CLI compatibility requirement.
+   Audit, promote, and exact replay proceed through the normal Canon gates.
 
 ## Provenance Bundle
 
