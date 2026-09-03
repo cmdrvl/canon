@@ -1428,6 +1428,14 @@
       "source_path": "schemas/canon.geo.plan.v0.schema.json"
     },
     {
+      "id": "canon_geo_propagation.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.propagation.v0.schema.json"
+    },
+    {
       "id": "canon_geo_run.v0",
       "family": "geo",
       "action": "preserve",
