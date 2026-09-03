@@ -19,6 +19,17 @@ use canon::geo::assessment_roll::{
     GeoAssessmentRollOwnerRequest, GeoAssessmentRollPartyRow,
     canonical_assessment_roll_owner_bytes, produce_assessment_roll_owner_evidence,
 };
+use canon::geo::condo::{
+    CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION, CANON_GEO_CONDO_BRIDGE_VERSION,
+    GeoCondoBridgeCaseRequest, GeoCondoBridgeRequest, GeoPadBblRow, build_condo_bridge,
+    canonical_condo_bridge_bytes,
+};
+use canon::geo::footprint_roll::{
+    CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION, GeoAssessmentRollGrossSqftRow,
+    GeoBuildingFootprintRow, GeoFootprintRollCalibration, GeoFootprintRollEvidenceRequest,
+    GeoFootprintRollLoanFields, GeoFootprintRollSourceConfig,
+    canonical_footprint_roll_evidence_request_bytes,
+};
 use canon::geo::{
     CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
     CANON_GEO_DISCOVERY_REQUEST_VERSION, CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION,
@@ -144,6 +155,7 @@ const ASSESSMENT_ROLL_OWNER_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.assessment_roll_owner_request.v0.schema.json");
 const ASSESSMENT_ROLL_OWNER_SCHEMA: &str =
     include_str!("../schemas/canon.geo.assessment_roll_owner.v0.schema.json");
+const CONDO_BRIDGE_SCHEMA: &str = include_str!("../schemas/canon.geo.condo_bridge.v0.schema.json");
 const SEPARATION_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.separation_request.v0.schema.json");
 const SEPARATION_SCHEMA: &str = include_str!("../schemas/canon.geo.separation.v0.schema.json");
@@ -2322,6 +2334,64 @@ fn assessment_roll_owner_schema_matches_a_real_instance() {
         ASSESSMENT_ROLL_OWNER_SCHEMA,
         "canon.geo.assessment_roll_owner.v0",
         CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION,
+        &instance,
+    );
+}
+
+fn condo_bridge_request() -> GeoCondoBridgeRequest {
+    GeoCondoBridgeRequest {
+        version: CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION.to_string(),
+        source_dataset: "fixture.schema.pad_bbl".to_string(),
+        source_release: "26B_2026-05-01".to_string(),
+        source_lineage_ids: vec!["EDGAR_DB.SOURCE.NYC_DCP_PAD_BBL_HOT:26B".to_string()],
+        pad_rows: vec![
+            GeoPadBblRow {
+                bbl_key: "1000011001".to_string(),
+                low_bbl_key: "1000011001".to_string(),
+                high_bbl_key: "1000011001".to_string(),
+                billing_bbl_key: Some("1000017501".to_string()),
+                condo_number: Some(7),
+                condo_flag: Some("C".to_string()),
+            },
+            GeoPadBblRow {
+                bbl_key: "1000012001".to_string(),
+                low_bbl_key: "1000012001".to_string(),
+                high_bbl_key: "1000012001".to_string(),
+                billing_bbl_key: Some("1000017502".to_string()),
+                condo_number: Some(8),
+                condo_flag: Some("C".to_string()),
+            },
+            GeoPadBblRow {
+                bbl_key: "1000012001".to_string(),
+                low_bbl_key: "1000012001".to_string(),
+                high_bbl_key: "1000012001".to_string(),
+                billing_bbl_key: Some("1000017503".to_string()),
+                condo_number: Some(8),
+                condo_flag: Some("C".to_string()),
+            },
+        ],
+        cases: vec![GeoCondoBridgeCaseRequest {
+            case_id: "case-condo-bridge-schema".to_string(),
+            loan_key: Some("schema-loan".to_string()),
+            truth_parcels: vec!["1000011001".to_string(), "1000012001".to_string()],
+            universe_parcels: vec!["1000017501".to_string(), "1000017502".to_string()],
+        }],
+        max_pad_rows: 8,
+        max_cases: 1,
+    }
+}
+
+#[test]
+fn condo_bridge_schema_matches_a_real_instance() {
+    let artifact = build_condo_bridge(&condo_bridge_request()).expect("condo bridge builds");
+    let canonical_bytes =
+        canonical_condo_bridge_bytes(&artifact).expect("condo bridge artifact canonicalizes");
+    let instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("canonical condo bridge JSON parses");
+    assert_drift_free(
+        CONDO_BRIDGE_SCHEMA,
+        "canon.geo.condo_bridge.v0",
+        CANON_GEO_CONDO_BRIDGE_VERSION,
         &instance,
     );
 }

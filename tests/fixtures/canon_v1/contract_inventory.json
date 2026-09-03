@@ -1489,6 +1489,30 @@
       "source_path": "schemas/canon.geo.assessment_roll_owner.v0.schema.json"
     },
     {
+      "id": "canon_geo_condo_bridge_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo::condo",
+      "source_path": "schemas/canon.geo.condo_bridge.v0.schema.json#/$defs/request"
+    },
+    {
+      "id": "canon_geo_condo_bridge.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo::condo",
+      "source_path": "schemas/canon.geo.condo_bridge.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_footprint_roll_evidence_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo::footprint_roll",
+      "source_path": "schemas/canon.geo.footprint_roll_evidence_request.v0.schema.json"
+    },
+    {
       "id": "canon_geo_separation_request.v0",
       "family": "geo",
       "action": "preserve",
@@ -1520,6 +1544,20 @@
     },
     {
       "id": "canon.geo.stage.assessment_roll_owner.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/geo/executor.rs"
+    },
+    {
+      "id": "canon.geo.stage.condo_bridge.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/geo/executor.rs"
+    },
+    {
+      "id": "canon.geo.stage.footprint_roll_evidence.v0",
       "family": "geo",
       "action": "preserve",
       "access_boundary": "internal_source_only",

@@ -23,6 +23,7 @@ use super::{
         GEO_CLIENT_SIX_FIELD_PROFILE_TEMPLATE_ID, GeoCompositionProfile,
         validate_composition_profile,
     },
+    condo::{CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION, CANON_GEO_CONDO_BRIDGE_VERSION},
     discovery::{
         CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
         CANON_GEO_DISCOVERY_REQUEST_VERSION,
@@ -30,6 +31,7 @@ use super::{
     evaluation::{CANON_GEO_POPULATION_EVALUATION_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION},
     evidence::{CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION},
     explain::CANON_GEO_EXPLANATION_VERSION,
+    footprint_roll::CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION,
     geometry_value::{
         CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
         CANON_GEO_GEOMETRY_VALUE_VERSION, CANON_GEO_LOCAL_FRAME_VERSION,
@@ -1201,6 +1203,21 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "assessment-roll owner universe widening and evidence overlay artifact contract",
         ),
         contract(
+            CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION,
+            "schemas/canon.geo.condo_bridge.v0.schema.json#/$defs/request",
+            "PAD condo bridge request contract",
+        ),
+        contract(
+            CANON_GEO_CONDO_BRIDGE_VERSION,
+            "schemas/canon.geo.condo_bridge.v0.schema.json",
+            "PAD condo unit-lot to billing-lot bridge artifact contract",
+        ),
+        contract(
+            CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION,
+            "schemas/canon.geo.footprint_roll_evidence_request.v0.schema.json",
+            "assessment-roll gross-square-foot and footprint active-BIN evidence request contract",
+        ),
+        contract(
             CANON_GEO_ENTITY_PROJECTION_VERSION,
             "schemas/canon.geo.composition.v0.schema.json#/$defs/entity_projection",
             "entity-level projection over a bounded composition residual",
@@ -1436,6 +1453,20 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
             "canon.geo.stage.assessment_roll_owner.v0",
             GeoCommandSurface::Leaf,
             CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION,
+            true,
+            false,
+        ),
+        command(
+            "canon.geo.stage.condo_bridge.v0",
+            GeoCommandSurface::Leaf,
+            CANON_GEO_CONDO_BRIDGE_VERSION,
+            true,
+            false,
+        ),
+        command(
+            "canon.geo.stage.footprint_roll_evidence.v0",
+            GeoCommandSurface::Leaf,
+            CANON_GEO_EVIDENCE_REQUEST_VERSION,
             true,
             false,
         ),

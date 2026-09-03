@@ -33,10 +33,20 @@ use crate::{
         canonical_explanation_bytes, canonical_geometry_tile_bytes,
         canonical_home_cell_assignment_bytes, canonical_materialized_evidence_request_bytes,
         canonical_propagation_bytes, canonical_tile_work_unit_bytes, compile_evidence,
-        correction_sets, ingest_client_geometry_tile, materialize_home_cells,
-        materialize_tile_work_unit, materialize_warehouse_rows, minimal_core, propagate,
-        reliability_order_from_evidence, solve_composition, validate_evidence_compilation_artifact,
-        validate_explanation_artifact, validate_propagation_artifact,
+        condo::{
+            CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION, CANON_GEO_CONDO_BRIDGE_VERSION,
+            GeoCondoBridgeArtifact, GeoCondoBridgeRequest, build_condo_bridge,
+            canonical_condo_bridge_bytes, validate_condo_bridge_artifact,
+        },
+        correction_sets,
+        footprint_roll::{
+            CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION, GeoFootprintRollEvidenceRequest,
+            materialize_footprint_roll_evidence,
+        },
+        ingest_client_geometry_tile, materialize_home_cells, materialize_tile_work_unit,
+        materialize_warehouse_rows, minimal_core, propagate, reliability_order_from_evidence,
+        solve_composition, validate_evidence_compilation_artifact, validate_explanation_artifact,
+        validate_propagation_artifact,
     },
     project::{
         ProjectDependencyOutput, ProjectNodeExecutionContext, ProjectNodeExecutionResult,
@@ -69,6 +79,11 @@ pub const GEO_EXPLAIN_OUTPUT_ID: &str = "explanation";
 pub const GEO_ASSESSMENT_ROLL_OWNER_STAGE_COMMAND: &str =
     "canon.geo.stage.assessment_roll_owner.v0";
 pub const GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID: &str = "assessment_roll_owner";
+pub const GEO_CONDO_BRIDGE_STAGE_COMMAND: &str = "canon.geo.stage.condo_bridge.v0";
+pub const GEO_CONDO_BRIDGE_OUTPUT_ID: &str = "condo_bridge";
+pub const GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND: &str =
+    "canon.geo.stage.footprint_roll_evidence.v0";
+pub const GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID: &str = "footprint_roll_evidence";
 pub const GEO_SOLVE_COMMAND: &str = "canon geo solve --request <REQUEST.json>";
 pub const GEO_CLIENT_TILE_INGEST_STAGE_COMMAND: &str = "canon.geo.stage.client_tile_ingest.v0";
 pub const CANON_GEO_CLIENT_TILE_SOURCE_VERSION: &str = "canon_geo_client_tile_source.v0";
@@ -276,6 +291,10 @@ impl GeoProjectNodeExecutor {
             GeoExecutorCommand::MaterializeEvidence => self.execute_materialize_evidence(node)?,
             GeoExecutorCommand::CompileEvidence => self.execute_compile_evidence(node)?,
             GeoExecutorCommand::AssessmentRollOwner => self.execute_assessment_roll_owner(node)?,
+            GeoExecutorCommand::CondoBridge => self.execute_condo_bridge(node)?,
+            GeoExecutorCommand::FootprintRollEvidence => {
+                self.execute_footprint_roll_evidence(node)?
+            }
             GeoExecutorCommand::Propagate => self.execute_propagate(node)?,
             GeoExecutorCommand::Explain => self.execute_explain(node)?,
             GeoExecutorCommand::Solve => self.execute_solve(node)?,
@@ -601,6 +620,82 @@ impl GeoProjectNodeExecutor {
         Ok(GeoLeafExecution {
             output_id: GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID,
             output_contract: CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION,
+            output_bytes: bytes,
+            deterministic_usage: usage,
+        })
+    }
+
+    fn execute_condo_bridge(&self, node: &ProjectPlanNode) -> ProjectRunResult<GeoLeafExecution> {
+        let request: GeoCondoBridgeRequest = self.required_binding_json(
+            node,
+            GEO_REQUEST_BINDING_ID,
+            &[CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION],
+        )?;
+        let artifact = build_condo_bridge(&request)
+            .map_err(|error| leaf_error(node, "condo-bridge", error))?;
+        let bytes = canonical_condo_bridge_bytes(&artifact)
+            .map_err(|error| leaf_error(node, "condo-bridge serialization", error))?;
+        let mut usage = BTreeMap::new();
+        usage.insert("condo_bridge_cases".to_string(), artifact.stats.cases);
+        usage.insert(
+            "condo_bridge_fully_reached".to_string(),
+            artifact.stats.fully_reached,
+        );
+        usage.insert("condo_bridge_partial".to_string(), artifact.stats.partial);
+        usage.insert(
+            "condo_bridge_unreached".to_string(),
+            artifact.stats.unreached,
+        );
+        usage.insert(
+            "condo_bridge_truth_unit_lots".to_string(),
+            artifact.stats.truth_unit_lots,
+        );
+        usage.insert(
+            "condo_bridge_truth_unit_lots_unmapped".to_string(),
+            artifact.stats.truth_unit_lots_unmapped,
+        );
+        Ok(GeoLeafExecution {
+            output_id: GEO_CONDO_BRIDGE_OUTPUT_ID,
+            output_contract: CANON_GEO_CONDO_BRIDGE_VERSION,
+            output_bytes: bytes,
+            deterministic_usage: usage,
+        })
+    }
+
+    fn execute_footprint_roll_evidence(
+        &self,
+        node: &ProjectPlanNode,
+    ) -> ProjectRunResult<GeoLeafExecution> {
+        let request: GeoFootprintRollEvidenceRequest = self.required_binding_json(
+            node,
+            GEO_REQUEST_BINDING_ID,
+            &[CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION],
+        )?;
+        let evidence = materialize_footprint_roll_evidence(&request)
+            .map_err(|error| leaf_error(node, "footprint-roll-evidence", error))?;
+        let bytes = canonical_materialized_evidence_request_bytes(&evidence).map_err(|error| {
+            serialization_error(node, CANON_GEO_EVIDENCE_REQUEST_VERSION, error)
+        })?;
+        let mut usage = BTreeMap::new();
+        usage.insert(
+            "footprint_roll_assessment_rows".to_string(),
+            request.assessment_roll_rows.len() as u64,
+        );
+        usage.insert(
+            "footprint_roll_footprint_rows".to_string(),
+            request.footprint_rows.len() as u64,
+        );
+        usage.insert(
+            "footprint_roll_contracts".to_string(),
+            evidence.contracts.len() as u64,
+        );
+        usage.insert(
+            "footprint_roll_observations".to_string(),
+            evidence.observations.len() as u64,
+        );
+        Ok(GeoLeafExecution {
+            output_id: GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID,
+            output_contract: CANON_GEO_EVIDENCE_REQUEST_VERSION,
             output_bytes: bytes,
             deterministic_usage: usage,
         })
@@ -1509,19 +1604,23 @@ enum GeoExecutorCommand {
     MaterializeEvidence,
     CompileEvidence,
     AssessmentRollOwner,
+    CondoBridge,
+    FootprintRollEvidence,
     Propagate,
     Explain,
     Solve,
 }
 
 impl GeoExecutorCommand {
-    const SUPPORTED: [Self; 9] = [
+    const SUPPORTED: [Self; 11] = [
         Self::MaterializeHomeCells,
         Self::TileWork,
         Self::ClientTileIngest,
         Self::MaterializeEvidence,
         Self::CompileEvidence,
         Self::AssessmentRollOwner,
+        Self::CondoBridge,
+        Self::FootprintRollEvidence,
         Self::Propagate,
         Self::Explain,
         Self::Solve,
@@ -1535,6 +1634,8 @@ impl GeoExecutorCommand {
             GEO_MATERIALIZE_EVIDENCE_COMMAND => Ok(Self::MaterializeEvidence),
             GEO_COMPILE_EVIDENCE_COMMAND => Ok(Self::CompileEvidence),
             GEO_ASSESSMENT_ROLL_OWNER_STAGE_COMMAND => Ok(Self::AssessmentRollOwner),
+            GEO_CONDO_BRIDGE_STAGE_COMMAND => Ok(Self::CondoBridge),
+            GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND => Ok(Self::FootprintRollEvidence),
             GEO_PROPAGATE_STAGE_COMMAND => Ok(Self::Propagate),
             GEO_EXPLAIN_STAGE_COMMAND => Ok(Self::Explain),
             GEO_SOLVE_COMMAND => Ok(Self::Solve),
@@ -1551,9 +1652,11 @@ impl GeoExecutorCommand {
             Self::MaterializeHomeCells => ProjectPlanNodeKind::Normalize,
             Self::TileWork => ProjectPlanNodeKind::Block,
             Self::ClientTileIngest => ProjectPlanNodeKind::Index,
-            Self::MaterializeEvidence | Self::CompileEvidence | Self::AssessmentRollOwner => {
-                ProjectPlanNodeKind::Evidence
-            }
+            Self::MaterializeEvidence
+            | Self::CompileEvidence
+            | Self::AssessmentRollOwner
+            | Self::CondoBridge
+            | Self::FootprintRollEvidence => ProjectPlanNodeKind::Evidence,
             Self::Propagate | Self::Explain | Self::Solve => ProjectPlanNodeKind::Solve,
         }
     }
@@ -1566,6 +1669,8 @@ impl GeoExecutorCommand {
             Self::MaterializeEvidence => "materialize_evidence",
             Self::CompileEvidence => "compile_evidence",
             Self::AssessmentRollOwner => GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID,
+            Self::CondoBridge => GEO_CONDO_BRIDGE_OUTPUT_ID,
+            Self::FootprintRollEvidence => GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID,
             Self::Propagate => GEO_PROPAGATE_OUTPUT_ID,
             Self::Explain => GEO_EXPLAIN_OUTPUT_ID,
             Self::Solve => "solve",
@@ -1582,6 +1687,8 @@ impl GeoExecutorCommand {
                 &[("materialize_evidence", CANON_GEO_EVIDENCE_REQUEST_VERSION)]
             }
             Self::AssessmentRollOwner => &[],
+            Self::CondoBridge => &[],
+            Self::FootprintRollEvidence => &[],
             Self::Propagate => &[("compile_evidence", CANON_GEO_EVIDENCE_COMPILATION_VERSION)],
             Self::Explain => &[
                 ("compile_evidence", CANON_GEO_EVIDENCE_COMPILATION_VERSION),
@@ -1603,6 +1710,8 @@ impl GeoExecutorCommand {
             Self::MaterializeEvidence => "materialize-evidence",
             Self::CompileEvidence => "compile-evidence",
             Self::AssessmentRollOwner => "assessment-roll-owner",
+            Self::CondoBridge => "condo-bridge",
+            Self::FootprintRollEvidence => "footprint-roll-evidence",
             Self::Propagate => "propagate",
             Self::Explain => "explain",
             Self::Solve => "solve",
@@ -1805,6 +1914,8 @@ fn contract_for_output_id(output_id: &str) -> Option<&'static str> {
         "materialize_evidence" => Some(CANON_GEO_EVIDENCE_REQUEST_VERSION),
         "compile_evidence" => Some(CANON_GEO_EVIDENCE_COMPILATION_VERSION),
         GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID => Some(CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION),
+        GEO_CONDO_BRIDGE_OUTPUT_ID => Some(CANON_GEO_CONDO_BRIDGE_VERSION),
+        GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID => Some(CANON_GEO_EVIDENCE_REQUEST_VERSION),
         GEO_PROPAGATE_OUTPUT_ID => Some(CANON_GEO_PROPAGATION_VERSION),
         GEO_EXPLAIN_OUTPUT_ID => Some(CANON_GEO_EXPLANATION_VERSION),
         "solve" => Some(CANON_GEO_COMPOSITION_VERSION),
@@ -2010,6 +2121,18 @@ fn ensure_canonical_artifact_bytes(
                 contract,
                 bytes,
                 canonical_assessment_roll_owner_bytes(&artifact),
+            )
+        }
+        CANON_GEO_CONDO_BRIDGE_VERSION => {
+            let artifact: GeoCondoBridgeArtifact =
+                parse_json_target(&node, bytes, CANON_GEO_CONDO_BRIDGE_VERSION)?;
+            validate_condo_bridge_artifact(&artifact)
+                .map_err(|error| leaf_error_target(&node, "condo-bridge validation", error))?;
+            require_exact_bytes(
+                &node,
+                contract,
+                bytes,
+                canonical_condo_bridge_bytes(&artifact),
             )
         }
         CANON_GEO_EXPLANATION_VERSION => {

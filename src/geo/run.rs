@@ -28,14 +28,19 @@ use crate::{
             CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION,
             CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION,
         },
+        condo::{CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION, CANON_GEO_CONDO_BRIDGE_VERSION},
         executor::CANON_GEO_CLIENT_TILE_SOURCE_VERSION,
         executor::GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID,
         executor::GEO_ASSESSMENT_ROLL_OWNER_STAGE_COMMAND,
         executor::GEO_CLIENT_TILE_INGEST_STAGE_COMMAND,
         executor::GEO_CLIENT_TILE_SOURCE_BINDING_ID,
         executor::GEO_COMPILE_EVIDENCE_COMMAND,
+        executor::GEO_CONDO_BRIDGE_OUTPUT_ID,
+        executor::GEO_CONDO_BRIDGE_STAGE_COMMAND,
         executor::GEO_EXPLAIN_OUTPUT_ID,
         executor::GEO_EXPLAIN_STAGE_COMMAND,
+        executor::GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID,
+        executor::GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND,
         executor::GEO_MATERIALIZE_EVIDENCE_COMMAND,
         executor::GEO_MATERIALIZE_HOME_CELLS_COMMAND,
         executor::GEO_PROPAGATE_OUTPUT_ID,
@@ -48,6 +53,7 @@ use crate::{
         executor::GeoExecutorInputBinding,
         executor::GeoProjectNodeExecutor,
         executor::validate_canonical_geo_artifact_bytes,
+        footprint_roll::CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION,
         validate_geo_plan,
     },
     project::{
@@ -2250,6 +2256,8 @@ fn output_contract_for_command(command: &str) -> Option<&'static str> {
         GEO_PROPAGATE_STAGE_COMMAND => Some(CANON_GEO_PROPAGATION_VERSION),
         GEO_EXPLAIN_STAGE_COMMAND => Some(CANON_GEO_EXPLANATION_VERSION),
         GEO_ASSESSMENT_ROLL_OWNER_STAGE_COMMAND => Some(CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION),
+        GEO_CONDO_BRIDGE_STAGE_COMMAND => Some(CANON_GEO_CONDO_BRIDGE_VERSION),
+        GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND => Some(CANON_GEO_EVIDENCE_REQUEST_VERSION),
         GEO_SOLVE_COMMAND => Some(CANON_GEO_COMPOSITION_VERSION),
         _ => None,
     }
@@ -2265,6 +2273,8 @@ fn output_id_for_command(command: &str) -> Option<&'static str> {
         GEO_PROPAGATE_STAGE_COMMAND => Some(GEO_PROPAGATE_OUTPUT_ID),
         GEO_EXPLAIN_STAGE_COMMAND => Some(GEO_EXPLAIN_OUTPUT_ID),
         GEO_ASSESSMENT_ROLL_OWNER_STAGE_COMMAND => Some(GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID),
+        GEO_CONDO_BRIDGE_STAGE_COMMAND => Some(GEO_CONDO_BRIDGE_OUTPUT_ID),
+        GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND => Some(GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID),
         GEO_SOLVE_COMMAND => Some("solve"),
         _ => None,
     }
@@ -2280,6 +2290,8 @@ fn output_contract_for_output_id(output_id: &str) -> Option<&'static str> {
         GEO_PROPAGATE_OUTPUT_ID => Some(CANON_GEO_PROPAGATION_VERSION),
         GEO_EXPLAIN_OUTPUT_ID => Some(CANON_GEO_EXPLANATION_VERSION),
         GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID => Some(CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION),
+        GEO_CONDO_BRIDGE_OUTPUT_ID => Some(CANON_GEO_CONDO_BRIDGE_VERSION),
+        GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID => Some(CANON_GEO_EVIDENCE_REQUEST_VERSION),
         "solve" => Some(CANON_GEO_COMPOSITION_VERSION),
         _ => None,
     }
@@ -2324,6 +2336,18 @@ fn input_specs_for_command(command: &str) -> Option<Vec<GeoInputSpec>> {
             required: true,
             accepted_contracts: &[CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION],
             reason: "assessment-roll owner requires a local typed roll/party evidence request",
+        }]),
+        GEO_CONDO_BRIDGE_STAGE_COMMAND => Some(vec![GeoInputSpec {
+            binding_id: GEO_REQUEST_BINDING_ID,
+            required: true,
+            accepted_contracts: &[CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION],
+            reason: "condo bridge requires local typed PAD BBL rows and case lots",
+        }]),
+        GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND => Some(vec![GeoInputSpec {
+            binding_id: GEO_REQUEST_BINDING_ID,
+            required: true,
+            accepted_contracts: &[CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION],
+            reason: "footprint/roll evidence requires a local typed assessment-roll and footprint request",
         }]),
         GEO_COMPILE_EVIDENCE_COMMAND
         | GEO_PROPAGATE_STAGE_COMMAND

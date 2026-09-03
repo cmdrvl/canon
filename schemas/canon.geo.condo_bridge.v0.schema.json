@@ -38,6 +38,96 @@
     "rows"
   ],
   "$defs": {
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": "canon_geo_condo_bridge_request.v0",
+          "type": "string"
+        },
+        "source_dataset": { "type": "string" },
+        "source_release": { "type": "string" },
+        "source_lineage_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        },
+        "pad_rows": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pad_row" }
+        },
+        "cases": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/case_request" }
+        },
+        "max_pad_rows": { "type": "integer", "minimum": 1 },
+        "max_cases": { "type": "integer", "minimum": 1 }
+      },
+      "required": [
+        "version",
+        "source_dataset",
+        "source_release",
+        "source_lineage_ids",
+        "pad_rows",
+        "cases",
+        "max_pad_rows",
+        "max_cases"
+      ]
+    },
+    "pad_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "BBL_KEY": { "$ref": "#/$defs/bbl" },
+        "LOW_BBL_KEY": { "$ref": "#/$defs/bbl" },
+        "HIGH_BBL_KEY": { "$ref": "#/$defs/bbl" },
+        "BILLING_BBL_KEY": {
+          "oneOf": [
+            { "$ref": "#/$defs/bbl" },
+            { "type": "null" }
+          ]
+        },
+        "CONDO_NUMBER": {
+          "oneOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "null" }
+          ]
+        },
+        "CONDO_FLAG": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "required": [
+        "BBL_KEY",
+        "LOW_BBL_KEY",
+        "HIGH_BBL_KEY"
+      ]
+    },
+    "case_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "case_id": { "type": "string" },
+        "loan_key": { "type": "string" },
+        "truth_parcels": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/bbl" }
+        },
+        "universe_parcels": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/bbl" }
+        }
+      },
+      "required": [
+        "case_id",
+        "truth_parcels",
+        "universe_parcels"
+      ]
+    },
     "bbl": {
       "type": "string",
       "pattern": "^[0-9]{10}$"
