@@ -1002,11 +1002,11 @@ pub struct GeneralizationLeakSourceCompletenessEntry {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LoadedGeneralizationArtifact {
-    CandidateRecall(EntityCandidateRecallReport),
+    CandidateRecall(Box<EntityCandidateRecallReport>),
     Link(Box<EntityLinkArtifact>),
     LinkObservationSurfaceBindings(Vec<EntityLinkObservationSurfaceBinding>),
     Run(Box<EntityRunArtifact>),
-    Solve(SolveArtifact),
+    Solve(Box<SolveArtifact>),
     LeakScanSources(Value),
 }
 
@@ -2158,7 +2158,9 @@ pub fn load_generalization_artifact_ref(
         GeneralizationArtifactKind::CandidateRecall => {
             let value: Value = serde_json::from_slice(&bytes).map_err(artifact_error)?;
             validate_json_version(field, &value, &reference.version)?;
-            LoadedGeneralizationArtifact::CandidateRecall(parse_candidate_recall_artifact(&bytes)?)
+            LoadedGeneralizationArtifact::CandidateRecall(Box::new(
+                parse_candidate_recall_artifact(&bytes)?,
+            ))
         }
         GeneralizationArtifactKind::Link => {
             let value: Value = serde_json::from_slice(&bytes).map_err(artifact_error)?;
@@ -2178,7 +2180,7 @@ pub fn load_generalization_artifact_ref(
         GeneralizationArtifactKind::Solve => {
             let value: Value = serde_json::from_slice(&bytes).map_err(artifact_error)?;
             validate_json_version(field, &value, &reference.version)?;
-            LoadedGeneralizationArtifact::Solve(parse_solve_artifact(&bytes)?)
+            LoadedGeneralizationArtifact::Solve(Box::new(parse_solve_artifact(&bytes)?))
         }
         GeneralizationArtifactKind::LeakScanSources => {
             let value: Value = serde_json::from_slice(&bytes).map_err(artifact_error)?;
@@ -5660,7 +5662,7 @@ fn maybe_loaded_candidate_recall_artifact(
     artifacts
         .iter()
         .find_map(|artifact| match &artifact.artifact {
-            LoadedGeneralizationArtifact::CandidateRecall(report) => Some(report),
+            LoadedGeneralizationArtifact::CandidateRecall(report) => Some(report.as_ref()),
             _ => None,
         })
 }
@@ -5720,7 +5722,7 @@ fn loaded_solve_artifact(
     artifacts
         .iter()
         .find_map(|artifact| match &artifact.artifact {
-            LoadedGeneralizationArtifact::Solve(solve) => Some(solve),
+            LoadedGeneralizationArtifact::Solve(solve) => Some(solve.as_ref()),
             _ => None,
         })
         .ok_or_else(|| {

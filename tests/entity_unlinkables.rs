@@ -103,10 +103,10 @@ fn unlinkables_report_lists_sparse_surface_and_preserves_full_ceiling_parity() {
             .map(|cost| (cost.field_id.as_str(), cost.cost_units))
             .collect::<Vec<_>>(),
         vec![
+            ("name_anchor", 3_000),
             ("amount", 3_000),
             ("category", 3_000),
             ("effective_date", 3_000),
-            ("name_anchor", 3_000),
         ]
     );
     assert_eq!(report.unlinkable_surfaces.len(), 1);
