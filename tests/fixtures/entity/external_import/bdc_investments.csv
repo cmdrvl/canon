@@ -1,0 +1,5 @@
+row_id,surface_id,issuer,coupon_basis_points,maturity_date,instrument_type
+row-001,surface:bdc-alpha-a,Alpha Growth LLC,725,2028-06-30,senior_secured_loan
+row-002,surface:bdc-alpha-b,Alpha Growth L.L.C.,725,2028-06-30,senior_secured_loan
+row-003,surface:bdc-acme-term,Acme Manufacturing Inc,900,2029-03-15,first_lien_term_loan
+row-004,surface:bdc-acme-convertible,Acme Manufacturing Incorporated,900,2031-09-01,convertible_note
