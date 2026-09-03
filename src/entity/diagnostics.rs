@@ -17,8 +17,10 @@ use crate::{
         edge::EdgeEvidenceHit,
         error::EntityRefusalKind,
         evidence::{
-            ExactViewSupportRequest, StringSimilaritySupportRequest, exact_view_support_hit,
-            string_similarity_support_hit,
+            DateTransposedDigitSupportRequest, ExactViewSupportRequest,
+            StringSimilaritySupportRequest, StructuredSupportError, TwoTokenReversalSupportRequest,
+            date_transposed_digit_support_hit, exact_view_support_hit,
+            string_similarity_support_hit, two_token_reversal_support_hit,
         },
         prepare::PreparedSurfaceRecord,
         profile::{EntityOperatorSpec, EntityProfileDocument},
@@ -596,6 +598,20 @@ fn score_profile_support_ceiling(
             hits,
             missing_field_costs,
         ),
+        "date_transposed_digits" => score_date_transposed_digits_ceiling(
+            spec,
+            surface,
+            support_namespace,
+            hits,
+            missing_field_costs,
+        ),
+        "two_token_reversal" => score_two_token_reversal_ceiling(
+            spec,
+            surface,
+            support_namespace,
+            hits,
+            missing_field_costs,
+        ),
         "tfidf_cosine" => {
             score_tfidf_ceiling(spec, surface, support_namespace, hits, missing_field_costs)
         }
@@ -675,6 +691,85 @@ fn score_string_similarity_ceiling(
         right_value: value,
         score_cutoff: Some(score_cutoff),
         score_hint,
+    }) {
+        hits.push(hit);
+    }
+    Ok(())
+}
+
+fn score_date_transposed_digits_ceiling(
+    spec: &EntityOperatorSpec,
+    surface: &PreparedSurfaceRecord,
+    support_namespace: &str,
+    hits: &mut Vec<EdgeEvidenceHit>,
+    missing_field_costs: &mut Vec<EntityUnlinkablesMissingFieldCost>,
+) -> Result<(), Refusal> {
+    let score_units =
+        optional_score_units_param(spec, "score_units", "score")?.unwrap_or(ScoreUnits::MAX);
+    if score_units == ScoreUnits::ZERO {
+        return Ok(());
+    }
+    let view_name = required_support_view_name(spec, "date_transposed_digits")?;
+    let operator_id = support_operator_id(spec);
+    let Some(value) = populated_support_view_value(surface, view_name) else {
+        missing_field_costs.push(profile_missing_cost(view_name, &operator_id, score_units));
+        return Ok(());
+    };
+    let Some(counterpart) = first_valid_date_transposition_counterpart(
+        value,
+        support_namespace,
+        &operator_id,
+        view_name,
+        score_units,
+    )?
+    else {
+        return Ok(());
+    };
+    if let Some(hit) = date_transposed_digit_support_hit(DateTransposedDigitSupportRequest {
+        namespace: support_namespace,
+        operator_id: &operator_id,
+        reason_code: "transposed_digit_date_support",
+        view_name,
+        left_value: value,
+        right_value: &counterpart,
+        score_units,
+    })
+    .map_err(|error| structured_support_diagnostics_refusal("date_transposed_digits", error))?
+    {
+        hits.push(hit);
+    }
+    Ok(())
+}
+
+fn score_two_token_reversal_ceiling(
+    spec: &EntityOperatorSpec,
+    surface: &PreparedSurfaceRecord,
+    support_namespace: &str,
+    hits: &mut Vec<EdgeEvidenceHit>,
+    missing_field_costs: &mut Vec<EntityUnlinkablesMissingFieldCost>,
+) -> Result<(), Refusal> {
+    let score_units =
+        optional_score_units_param(spec, "score_units", "score")?.unwrap_or(ScoreUnits::MAX);
+    if score_units == ScoreUnits::ZERO {
+        return Ok(());
+    }
+    let view_name = required_support_view_name(spec, "two_token_reversal")?;
+    let operator_id = support_operator_id(spec);
+    let Some(value) = populated_support_view_value(surface, view_name) else {
+        missing_field_costs.push(profile_missing_cost(view_name, &operator_id, score_units));
+        return Ok(());
+    };
+    let Some(counterpart) = two_token_reversal_counterpart(value) else {
+        return Ok(());
+    };
+    if let Some(hit) = two_token_reversal_support_hit(TwoTokenReversalSupportRequest {
+        namespace: support_namespace,
+        operator_id: &operator_id,
+        reason_code: "two_token_reversal_support",
+        view_name,
+        left_value: value,
+        right_value: &counterpart,
+        score_units,
     }) {
         hits.push(hit);
     }
@@ -804,6 +899,81 @@ fn populated_support_view_value<'a>(
         .get(view_name)
         .map(|view| view.value.trim())
         .filter(|value| !value.is_empty())
+}
+
+fn first_valid_date_transposition_counterpart(
+    value: &str,
+    support_namespace: &str,
+    operator_id: &str,
+    view_name: &str,
+    score_units: ScoreUnits,
+) -> Result<Option<String>, Refusal> {
+    date_transposed_digit_support_hit(DateTransposedDigitSupportRequest {
+        namespace: support_namespace,
+        operator_id,
+        reason_code: "transposed_digit_date_support",
+        view_name,
+        left_value: value,
+        right_value: value,
+        score_units,
+    })
+    .map_err(|error| structured_support_diagnostics_refusal("date_transposed_digits", error))?;
+
+    for counterpart in adjacent_digit_swaps(value) {
+        match date_transposed_digit_support_hit(DateTransposedDigitSupportRequest {
+            namespace: support_namespace,
+            operator_id,
+            reason_code: "transposed_digit_date_support",
+            view_name,
+            left_value: value,
+            right_value: &counterpart,
+            score_units,
+        }) {
+            Ok(Some(_)) => return Ok(Some(counterpart)),
+            Ok(None) => {}
+            Err(error) if error.field() == "right_value" => {}
+            Err(error) => {
+                return Err(structured_support_diagnostics_refusal(
+                    "date_transposed_digits",
+                    error,
+                ));
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn adjacent_digit_swaps(value: &str) -> Vec<String> {
+    let bytes = value.as_bytes();
+    if bytes.len() < 2 {
+        return Vec::new();
+    }
+
+    let mut swaps = Vec::new();
+    for index in 0..(bytes.len() - 1) {
+        if !bytes[index].is_ascii_digit()
+            || !bytes[index + 1].is_ascii_digit()
+            || bytes[index] == bytes[index + 1]
+        {
+            continue;
+        }
+        let mut candidate = bytes.to_vec();
+        candidate.swap(index, index + 1);
+        if let Ok(candidate) = String::from_utf8(candidate) {
+            swaps.push(candidate);
+        }
+    }
+    swaps
+}
+
+fn two_token_reversal_counterpart(value: &str) -> Option<String> {
+    let mut tokens = value.split_whitespace();
+    let first = tokens.next()?;
+    let second = tokens.next()?;
+    if tokens.next().is_some() || first == second {
+        return None;
+    }
+    Some(format!("{second} {first}"))
 }
 
 fn profile_missing_cost(
@@ -1163,6 +1333,7 @@ fn required_similarity_metric(spec: &EntityOperatorSpec) -> Result<SimilarityMet
     })?;
     match metric.trim() {
         "levenshtein_normalized" => Ok(SimilarityMetric::LevenshteinNormalized),
+        "damerau_levenshtein_normalized" => Ok(SimilarityMetric::DamerauLevenshteinNormalized),
         "jaro_winkler" => Ok(SimilarityMetric::JaroWinkler),
         "dice_sorensen" => Ok(SimilarityMetric::DiceSorensen),
         "token_sort_ratio" => Ok(SimilarityMetric::TokenSortRatio),
@@ -1185,6 +1356,22 @@ fn support_operator_id(spec: &EntityOperatorSpec) -> String {
         .as_deref()
         .map(|view_name| format!("{}:{view_name}", spec.op))
         .unwrap_or_else(|| spec.op.clone())
+}
+
+fn structured_support_diagnostics_refusal(
+    operator: &'static str,
+    error: StructuredSupportError,
+) -> Refusal {
+    entity_unlinkables_refusal(
+        "Profile-declared structured support evidence failed for unlinkables diagnostics",
+        json!({
+            "stage": "link",
+            "operator": operator,
+            "field": format!("unlinkables.profile_support.{}", error.field()),
+            "reason": error.reason(),
+            "writes_performed": false
+        }),
+    )
 }
 
 fn sorted_deduped(mut values: Vec<String>) -> Vec<String> {
