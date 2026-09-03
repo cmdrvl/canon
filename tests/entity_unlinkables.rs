@@ -304,7 +304,7 @@ fn full_feature_values() -> BTreeMap<String, RecordLinkFeatureValue> {
             "amount".to_string(),
             RecordLinkFeatureValue::Numeric {
                 units: "usd".to_string(),
-                scaled_value: 100_00,
+                scaled_value: 10_000,
                 scale: 2,
             },
         ),
