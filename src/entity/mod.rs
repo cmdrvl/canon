@@ -14,6 +14,7 @@ pub mod block_preflight;
 pub mod budget;
 pub mod cache;
 pub mod calibrate;
+pub mod calibrate_em;
 pub mod candidates;
 pub mod contracts;
 pub mod diagnostics;
