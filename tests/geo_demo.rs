@@ -66,7 +66,7 @@ fn geo_capabilities_report_exact_surface_tier_counts() {
     assert_eq!(
         geo_capability_surface_counts(&capabilities),
         BTreeMap::from([
-            ("leaf".to_string(), 12),
+            ("leaf".to_string(), 16),
             ("measurement".to_string(), 3),
             ("primary".to_string(), 7)
         ])
