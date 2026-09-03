@@ -1,27 +1,27 @@
 #![forbid(unsafe_code)]
 
 use canon::geo::assessment_roll::{
-    CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION, GeoAssessmentRollCaseDocument,
-    GeoAssessmentRollLotRow, GeoAssessmentRollOwnerCalibration,
-    GeoAssessmentRollOwnerContractSource, GeoAssessmentRollOwnerProofClass,
-    GeoAssessmentRollOwnerRequest, GeoAssessmentRollPartyRow,
-    produce_assessment_roll_owner_evidence,
+    produce_assessment_roll_owner_evidence, GeoAssessmentRollCaseDocument, GeoAssessmentRollLotRow,
+    GeoAssessmentRollOwnerCalibration, GeoAssessmentRollOwnerContractSource,
+    GeoAssessmentRollOwnerProofClass, GeoAssessmentRollOwnerRequest, GeoAssessmentRollPartyRow,
+    CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION,
 };
 use canon::geo::footprint_roll::GeoAssessmentRollGrossSqftRow;
 use canon::geo::{
-    CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION, CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION,
-    CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
-    CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
-    DEFAULT_MAX_MATERIALIZED_MODELS, GEO_ASSESSMENT_ROLL_GROSS_SQFT_BAND_CONTRACT_ID,
-    GEO_FOOTPRINT_BUILDING_COUNT_FLOOR_CONTRACT_ID, GeoBuildingFootprintRow,
-    GeoCompositionBackbone, GeoCompositionProfile, GeoCompositionUniverse,
-    GeoCondoBridgeCaseRequest, GeoCondoBridgeRequest, GeoEntityLevel, GeoFootprintRollCalibration,
+    build_condo_bridge, canonical_population_evaluation_bytes,
+    evaluate_population_with_run_artifacts, materialize_footprint_roll_evidence,
+    stack_population_evidence, GeoBuildingFootprintRow, GeoCompositionBackbone,
+    GeoCompositionProfile, GeoCompositionUniverse, GeoCondoBridgeCaseRequest,
+    GeoCondoBridgeRequest, GeoEntityLevel, GeoFootprintRollCalibration,
     GeoFootprintRollEvidenceRequest, GeoFootprintRollLoanFields, GeoFootprintRollSourceConfig,
     GeoPopulationCaseEvaluation, GeoPopulationCaseStatus, GeoPopulationEvaluationArtifact,
     GeoPopulationEvaluationRequest, GeoPopulationEvidenceStackRequest, GeoRhoContract,
-    GeoRhoObservation, GeoRhoObservationKind, build_condo_bridge,
-    canonical_population_evaluation_bytes, evaluate_population_with_run_artifacts,
-    materialize_footprint_roll_evidence, stack_population_evidence,
+    GeoRhoObservation, GeoRhoObservationKind, CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION,
+    CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION,
+    CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
+    CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
+    DEFAULT_MAX_MATERIALIZED_MODELS, GEO_ASSESSMENT_ROLL_GROSS_SQFT_BAND_CONTRACT_ID,
+    GEO_FOOTPRINT_BUILDING_COUNT_FLOOR_CONTRACT_ID,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -397,17 +397,17 @@ fn build_measurement() -> MeasurementBundle {
             "rho.address.geocode.parcel_containment",
         ]),
     );
-    let footprint_roll_overlay = footprint_roll_overlay_for_e4_cases(
-        &widened_population,
-        &binding_by_case,
-        &subject_by_case,
-        &roll_gsf_by_subject,
-        &footprint_count_by_subject,
-        &retained_roll_overlay,
-        &retained_footprint_overlay,
-        &roll_rows_by_bbl,
-        &footprints_by_bbl,
-    );
+    let footprint_roll_overlay = footprint_roll_overlay_for_e4_cases(FootprintRollOverlayInputs {
+        population: &widened_population,
+        binding_by_case: &binding_by_case,
+        subject_by_case: &subject_by_case,
+        roll_gsf_by_subject: &roll_gsf_by_subject,
+        footprint_count_by_subject: &footprint_count_by_subject,
+        retained_roll_overlay: &retained_roll_overlay,
+        retained_footprint_overlay: &retained_footprint_overlay,
+        roll_rows_by_bbl: &roll_rows_by_bbl,
+        footprints_by_bbl: &footprints_by_bbl,
+    });
     let stacked_overlay = merge_overlay_requests(
         15,
         vec![
@@ -463,7 +463,7 @@ fn build_measurement() -> MeasurementBundle {
     }
 }
 
-fn bindings_by_case<'a>(bindings: &'a E4Bindings) -> BTreeMap<&'a str, &'a E4Binding> {
+fn bindings_by_case(bindings: &E4Bindings) -> BTreeMap<&str, &E4Binding> {
     let mut by_case = BTreeMap::new();
     for binding in &bindings.cases {
         assert!(
@@ -697,17 +697,33 @@ fn translate_retained_observation(
     })
 }
 
+struct FootprintRollOverlayInputs<'a> {
+    population: &'a GeoPopulationEvaluationRequest,
+    binding_by_case: &'a BTreeMap<&'a str, &'a E4Binding>,
+    subject_by_case: &'a BTreeMap<String, String>,
+    roll_gsf_by_subject: &'a BTreeMap<String, u64>,
+    footprint_count_by_subject: &'a BTreeMap<String, u64>,
+    retained_roll_overlay: &'a GeoPopulationEvidenceStackRequest,
+    retained_footprint_overlay: &'a GeoPopulationEvidenceStackRequest,
+    roll_rows_by_bbl: &'a BTreeMap<String, RollFixtureRow>,
+    footprints_by_bbl: &'a BTreeMap<String, FootprintSummaryRow>,
+}
+
 fn footprint_roll_overlay_for_e4_cases(
-    population: &GeoPopulationEvaluationRequest,
-    binding_by_case: &BTreeMap<&str, &E4Binding>,
-    subject_by_case: &BTreeMap<String, String>,
-    roll_gsf_by_subject: &BTreeMap<String, u64>,
-    footprint_count_by_subject: &BTreeMap<String, u64>,
-    retained_roll_overlay: &GeoPopulationEvidenceStackRequest,
-    retained_footprint_overlay: &GeoPopulationEvidenceStackRequest,
-    roll_rows_by_bbl: &BTreeMap<String, RollFixtureRow>,
-    footprints_by_bbl: &BTreeMap<String, FootprintSummaryRow>,
+    inputs: FootprintRollOverlayInputs<'_>,
 ) -> GeoPopulationEvidenceStackRequest {
+    let FootprintRollOverlayInputs {
+        population,
+        binding_by_case,
+        subject_by_case,
+        roll_gsf_by_subject,
+        footprint_count_by_subject,
+        retained_roll_overlay,
+        retained_footprint_overlay,
+        roll_rows_by_bbl,
+        footprints_by_bbl,
+    } = inputs;
+
     let mut case_overlays = Vec::new();
     for case in &population.cases {
         let binding = binding_by_case.get(case.id.as_str()).expect("E4 binding");
