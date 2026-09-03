@@ -1188,6 +1188,13 @@
       "source_path": "src/entity/publication.rs"
     },
     { "id": "canon_entity_topk.v0", "family": "entity", "action": "preserve" },
+    {
+      "id": "canon_entity_value_frequency.v0",
+      "family": "entity",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::entity::evidence::value_frequency"
+    },
     { "id": "canon_namekit.v0", "family": "namekit", "action": "preserve" },
     { "id": "canon_namekit_cmbs_tenant.v0", "family": "namekit", "action": "preserve" },
     { "id": "canon_namekit_explain.v0", "family": "namekit", "action": "preserve" },
