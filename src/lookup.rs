@@ -122,6 +122,23 @@ pub fn resolve_values_with_context(
     })
 }
 
+/// Return true when the registry index contains any scoped mapping entry.
+pub fn registry_has_scoped_entries(registry: &Registry) -> Result<bool, LookupError> {
+    let conn = Connection::open_with_flags(
+        &registry.db_path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| LookupError::Database(format!("Cannot open registry database: {}", e)))?;
+
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM entries WHERE scope IS NOT NULL LIMIT 1)",
+        [],
+        |row| row.get::<_, i64>(0),
+    )
+    .map(|count| count != 0)
+    .map_err(|e| LookupError::Database(format!("Cannot inspect registry scope metadata: {}", e)))
+}
+
 fn first_qualified_candidate(
     stmt: &mut rusqlite::Statement<'_>,
     input_value: &str,
@@ -490,6 +507,21 @@ mod tests {
         assert_eq!(mapping.input, "AAPL");
         assert_eq!(mapping.canonical_id, "037833100"); // Not "DIFFERENT"
         assert_eq!(mapping.rule_id, "TICKER_TO_CUSIP"); // Not "OTHER_RULE"
+    }
+
+    #[test]
+    fn registry_scope_detection_reports_any_scoped_entry() {
+        let (registry, _temp_db) = create_test_registry_db();
+        assert!(!registry_has_scoped_entries(&registry).unwrap());
+
+        let conn = Connection::open(&registry.db_path).unwrap();
+        conn.execute(
+            "UPDATE entries SET scope = ?1 WHERE input = 'AAPL'",
+            params![r#"{"dimensions":[]}"#],
+        )
+        .unwrap();
+
+        assert!(registry_has_scoped_entries(&registry).unwrap());
     }
 
     #[test]
