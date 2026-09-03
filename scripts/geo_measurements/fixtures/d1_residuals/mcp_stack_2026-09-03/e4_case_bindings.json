@@ -1,0 +1,329 @@
+{
+ "note": "E4 gate_v2 case -> D1 subject by deed truth-set match -> loan_key -> ACRIS document -> party_type 1 borrower names (PARTY_NAME_NORM); built 2026-09-03 from the D1 receipts; fixture class",
+ "cases": [
+  {
+   "case_id": "096dd0bb45f6388c",
+   "truth_parcels": [
+    "4007910022",
+    "4007910023",
+    "4007910122",
+    "4007910123"
+   ],
+   "candidate_parcels": 49,
+   "property_keys": 1,
+   "loan_keys": [
+    "76f1aad84ddf56ddf5bc81c94063ca70"
+   ],
+   "document_ids": [
+    "2021040100867001"
+   ],
+   "borrower_names_norm": [
+    "18 31 42ND STREET ASTORIA LLC"
+   ],
+   "binding": "exact_truth_set"
+  },
+  {
+   "case_id": "0b6d06c62cc8a31e",
+   "truth_parcels": [
+    "4066310001",
+    "4066320001",
+    "4066330001"
+   ],
+   "candidate_parcels": 41,
+   "property_keys": 4,
+   "loan_keys": [
+    "6bfe47de21ff7d7e24bf6464871dea9f"
+   ],
+   "document_ids": [
+    "2019050100411003"
+   ],
+   "borrower_names_norm": [
+    "REGENCY GARDENS APARTMENT CORP"
+   ],
+   "binding": "exact_truth_set"
+  },
+  {
+   "case_id": "338e7d4c248865da",
+   "truth_parcels": [
+    "1021530067",
+    "1021530068",
+    "1021540024"
+   ],
+   "candidate_parcels": 19,
+   "property_keys": 1,
+   "loan_keys": [
+    "0b296a95d154bb0b07a9ddf6733250b1"
+   ],
+   "document_ids": [
+    "2024112600661007"
+   ],
+   "borrower_names_norm": [
+    "CG WEST 181ST STREET LLC"
+   ],
+   "binding": "exact_truth_set"
+  },
+  {
+   "case_id": "3cf11e9a58e3b710",
+   "truth_parcels": [
+    "1004060014",
+    "1004060015",
+    "1004510044",
+    "1004510045",
+    "1004510046",
+    "1004510047"
+   ],
+   "candidate_parcels": 92,
+   "property_keys": 2,
+   "loan_keys": [
+    "073ad3a0862827c75501ac66570eb783"
+   ],
+   "document_ids": [
+    "2020021800990006"
+   ],
+   "borrower_names_norm": [
+    "KUSHNER VILLAGE 329 EAST 9TH LLC",
+    "VILLAGE KF 516 EAST 13TH LLC"
+   ],
+   "binding": "exact_truth_set"
+  },
+  {
+   "case_id": "41858dad7a1286af",
+   "truth_parcels": [
+    "2027870057",
+    "2032500151",
+    "3035390015"
+   ],
+   "candidate_parcels": 92,
+   "property_keys": 3,
+   "loan_keys": [
+    "f46f9ea45311d9e17972ae06637393de"
+   ],
+   "document_ids": [
+    "2024090400016018"
+   ],
+   "borrower_names_norm": [
+    "1503 TELLER BX LLC",
+    "171 HERZL STREET LLC",
+    "2822 UNIVERSE LLC"
+   ],
+   "binding": "exact_truth_set"
+  },
+  {
+   "case_id": "4493d4ab4cb35283",
+   "truth_parcels": [
+    "4159100057",
+    "4159100064",
+    "4159100066"
+   ],
+   "candidate_parcels": 11,
+   "property_keys": 1,
+   "loan_keys": [
+    "a89343223f12351e8cc666345560b9a8"
+   ],
+   "document_ids": [
+    "2018032200347012"
+   ],
+   "borrower_names_norm": [
+    "BEACH 65TH ST HOLDINGS LLC"
+   ],
+   "binding": "exact_truth_set"
+  },
+  {
+   "case_id": "5ef8cda2d818cdb0",
+   "truth_parcels": [
+    "2023300030",
+    "2023300057"
+   ],
+   "candidate_parcels": 28,
+   "property_keys": 1,
+   "loan_keys": [
+    "11306d29410b4f52d24de5c1c25bfb43"
+   ],
+   "document_ids": [
+    "2020122901080003"
+   ],
+   "borrower_names_norm": [
+    "149 PARTNERS LLC"
+   ],
+   "binding": "exact_truth_set"
+  },
+  {
+   "case_id": "873c99f8121c08eb",
+   "truth_parcels": [
+    "3060450024",
+    "3060450025"
+   ],
+   "candidate_parcels": 43,
+   "property_keys": 1,
+   "loan_keys": [
+    "6668e47c143195a41650c2c8eeee9ef1"
+   ],
+   "document_ids": [
+    "2017102501712003"
+   ],
+   "borrower_names_norm": [
+    "444 86 BLUE LLC"
+   ],
+   "binding": "exact_truth_set"
+  },
+  {
+   "case_id": "9922164563c925c5",
+   "truth_parcels": [
+    "4053010017",
+    "4053010050",
+    "4053020083",
+    "4053020097",
+    "4053020117",
+    "4053030144"
+   ],
+   "candidate_parcels": 27,
+   "property_keys": 3,
+   "loan_keys": [
+    "6adf5e5094f33076147d7fb3e876974e"
+   ],
+   "document_ids": [
+    "2021050301019001"
+   ],
+   "borrower_names_norm": [
+    "CROCHERON TENANTS CORP"
+   ],
+   "binding": "exact_truth_set"
+  },
+  {
+   "case_id": "a001bb36b4af9488",
+   "truth_parcels": [
+    "2057930450",
+    "2057930480",
+    "2057930481"
+   ],
+   "candidate_parcels": 7,
+   "property_keys": 1,
+   "loan_keys": [
+    "645469abb0305bb496b4fc1b29c5b853"
+   ],
+   "document_ids": [
+    "2021081601369002"
+   ],
+   "borrower_names_norm": [
+    "FEIL RIVERDALE LLC"
+   ],
+   "binding": "exact_truth_set"
+  },
+  {
+   "case_id": "ced7ad9f0d74abf7",
+   "truth_parcels": [
+    "1004060014",
+    "1004060015",
+    "1004510044",
+    "1004510045",
+    "1004510046",
+    "1004510047"
+   ],
+   "candidate_parcels": 40,
+   "property_keys": 1,
+   "loan_keys": [
+    "073ad3a0862827c75501ac66570eb783"
+   ],
+   "document_ids": [
+    "2020021800990006"
+   ],
+   "borrower_names_norm": [
+    "KUSHNER VILLAGE 329 EAST 9TH LLC",
+    "VILLAGE KF 516 EAST 13TH LLC"
+   ],
+   "binding": "exact_truth_set"
+  },
+  {
+   "case_id": "d37aed509107bbbf",
+   "truth_parcels": [
+    "3029070021",
+    "3029070022",
+    "3029070023"
+   ],
+   "candidate_parcels": 58,
+   "property_keys": 1,
+   "loan_keys": [
+    "8d71ae8d52b901af4a5b657af0b1021c"
+   ],
+   "document_ids": [
+    "2022020300255003"
+   ],
+   "borrower_names_norm": [
+    "64 TRYLINE LLC"
+   ],
+   "binding": "exact_truth_set"
+  },
+  {
+   "case_id": "da11f90bd6d69f44",
+   "truth_parcels": [
+    "1011170051",
+    "1011170052"
+   ],
+   "candidate_parcels": 19,
+   "property_keys": 2,
+   "loan_keys": [
+    "7402ec7245fbb952845811f2985dc6ad"
+   ],
+   "document_ids": [
+    "2018031200288001"
+   ],
+   "borrower_names_norm": [
+    "44 46 WEST 65TH APARTMENT CORP"
+   ],
+   "binding": "exact_truth_set"
+  },
+  {
+   "case_id": "e43aa7e8cfe9cc00",
+   "truth_parcels": [
+    "4073410012",
+    "4073420028",
+    "4073490001"
+   ],
+   "candidate_parcels": 31,
+   "property_keys": 4,
+   "loan_keys": [
+    "6134edf46aa6085ebbe33371eec7cb0c"
+   ],
+   "document_ids": [
+    "2018071101247005"
+   ],
+   "borrower_names_norm": [
+    "JEFFREY GARDENS APARTMENT CORP"
+   ],
+   "binding": "exact_truth_set"
+  },
+  {
+   "case_id": "eccfde711e69d8fa",
+   "truth_parcels": [
+    "1010370062",
+    "1010430004",
+    "1010430061",
+    "1010430062",
+    "1010720029",
+    "1012420031",
+    "1020310029",
+    "1020310031",
+    "1020590032",
+    "1020590061"
+   ],
+   "candidate_parcels": 61,
+   "property_keys": 4,
+   "loan_keys": [
+    "e7b0bdb8eeb55cb44e166d9da0314030"
+   ],
+   "document_ids": [
+    "2025081200826016"
+   ],
+   "borrower_names_norm": [
+    "1697 AMSTERDAM OWNER LLC",
+    "2500 SEVENTH OWNER LLC",
+    "593 TENTH OWNER LLC",
+    "676 NINTH OWNER LLC",
+    "706 AMSTERDAM OWNER LLC",
+    "790 NINTH OWNER LLC",
+    "796 NINTH OWNER LLC"
+   ],
+   "binding": "exact_truth_set"
+  }
+ ]
+}
