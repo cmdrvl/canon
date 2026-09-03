@@ -406,10 +406,10 @@ fn assert_block_next_command(command: &str) {
     let EntitySubcommand::Block(block) = entity_subcommand_for(command) else {
         panic!("expected entity block command, got {command}");
     };
-    assert_eq!(block.rows, PathBuf::from("<ROWS>"));
+    assert_eq!(block.rows, Some(PathBuf::from("<ROWS>")));
     assert_eq!(block.profile.as_deref(), Some("<PROFILE>"));
-    assert_eq!(block.strategy, PathBuf::from("<STRATEGY.yaml>"));
-    assert_eq!(block.registry, PathBuf::from("<REGISTRY_DIR>"));
+    assert_eq!(block.strategy, Some(PathBuf::from("<STRATEGY.yaml>")));
+    assert_eq!(block.registry, Some(PathBuf::from("<REGISTRY_DIR>")));
     assert_eq!(block.work_dir.as_deref(), Some(Path::new("<DIR>")));
 }
 
