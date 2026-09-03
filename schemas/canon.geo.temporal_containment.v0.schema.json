@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.temporal_containment.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "mart_id",
+    "clusters",
+    "edges",
+    "summary"
+  ],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "canon_geo_temporal_containment.v0"
+    },
+    "mart_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "clusters": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/cluster"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    }
+  },
+  "$defs": {
+    "cluster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cluster_id",
+        "entity_level"
+      ],
+      "properties": {
+        "cluster_id": {
+          "type": "string",
+          "pattern": "^cmdrvl:(parcel|building|property):"
+        },
+        "entity_level": {
+          "$ref": "#/$defs/entity_level"
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "edge_id",
+        "parent_cluster_id",
+        "parent_level",
+        "child_cluster_id",
+        "child_level",
+        "relation",
+        "valid_interval",
+        "source_receipt"
+      ],
+      "properties": {
+        "edge_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parent_cluster_id": {
+          "type": "string",
+          "pattern": "^cmdrvl:parcel:"
+        },
+        "parent_level": {
+          "const": "parcel"
+        },
+        "child_cluster_id": {
+          "type": "string",
+          "pattern": "^cmdrvl:building:"
+        },
+        "child_level": {
+          "const": "building"
+        },
+        "relation": {
+          "$ref": "#/$defs/relation"
+        },
+        "valid_interval": {
+          "$ref": "#/$defs/valid_interval"
+        },
+        "source_receipt": {
+          "$ref": "#/$defs/source_receipt"
+        }
+      }
+    },
+    "valid_interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start_utc_day",
+        "end_utc_day"
+      ],
+      "properties": {
+        "start_utc_day": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "end_utc_day": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      }
+    },
+    "source_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receipt_id",
+        "source_dataset",
+        "source_record_id",
+        "source_record_blake3",
+        "proof_class",
+        "rule_id"
+      ],
+      "properties": {
+        "receipt_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_dataset": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_record_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_record_blake3": {
+          "type": "string",
+          "pattern": "^blake3:[0-9A-Fa-f]{64}$"
+        },
+        "proof_class": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rule_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "clusters",
+        "edges"
+      ],
+      "properties": {
+        "clusters": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "edges": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "entity_level": {
+      "type": "string",
+      "enum": [
+        "poi_unit",
+        "building",
+        "parcel",
+        "property"
+      ]
+    },
+    "relation": {
+      "type": "string",
+      "enum": [
+        "part_of"
+      ]
+    }
+  }
+}

@@ -50,7 +50,8 @@ use canon::geo::{
     CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
     DEFAULT_MAX_MATERIALIZED_MODELS, GeoAbstentionDisposition, GeoAbstentionPolicy,
     GeoAddressHouseNumber, GeoAddressJurisdiction, GeoAddressParity, GeoAddressParseRequest,
-    GeoAddressRangeOperator, GeoAddressStreet, GeoAffineProjectionMm, GeoAsOf, GeoBoundedGeography,
+    GeoAddressRangeOperator, GeoAddressStreet, GeoAffineProjectionMm,
+    GeoArtifactFieldClassification, GeoArtifactFieldLicenseClass, GeoAsOf, GeoBoundedGeography,
     GeoBudgetAction, GeoBuildingCandidate, GeoClaimClass, GeoClientTileCoverageExtent,
     GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest, GeoClientTileSourceFormat,
     GeoClientTileVendorIdentifier, GeoCompositionModel, GeoCompositionProfile,
@@ -96,6 +97,13 @@ use canon::geo::{
     stack_population_evidence, validate_point_population_artifact,
     validate_pre_resolution_artifact,
 };
+use canon::geo::{
+    CANON_GEO_TEMPORAL_CONTAINMENT_VERSION, GeoTemporalContainmentArtifact,
+    GeoTemporalContainmentCluster, GeoTemporalContainmentEdge, GeoTemporalContainmentInterval,
+    GeoTemporalContainmentRelation, GeoTemporalContainmentSourceReceipt,
+    GeoTemporalContainmentSummary, canonical_temporal_containment_bytes,
+    validate_temporal_containment_artifact,
+};
 use h3o::{LatLng, Resolution};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
@@ -116,6 +124,8 @@ const POINT_POPULATION_SCHEMA: &str =
     include_str!("../schemas/canon.geo.point_population.v0.schema.json");
 const PRE_RESOLUTION_SCHEMA: &str =
     include_str!("../schemas/canon.geo.pre_resolution.v0.schema.json");
+const TEMPORAL_CONTAINMENT_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.temporal_containment.v0.schema.json");
 const PROPAGATION_SCHEMA: &str = include_str!("../schemas/canon.geo.propagation.v0.schema.json");
 const POPULATION_EVIDENCE_STACK_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.population_evidence_stack_request.v0.schema.json");
@@ -2866,6 +2876,78 @@ fn pre_resolution_schema_matches_a_real_instance() {
                     .iter()
                     .any(|value| value.as_str() == Some("reit_schedule_iii_name_only")))
     );
+}
+
+#[test]
+fn temporal_containment_schema_matches_a_real_instance() {
+    let artifact = temporal_containment_artifact();
+    validate_temporal_containment_artifact(&artifact)
+        .expect("temporal containment fixture validates");
+    let canonical = canonical_temporal_containment_bytes(&artifact)
+        .expect("temporal containment canonical bytes");
+    let instance: Value =
+        serde_json::from_slice(&canonical).expect("temporal containment canonical JSON parses");
+    assert_drift_free(
+        TEMPORAL_CONTAINMENT_SCHEMA,
+        "canon.geo.temporal_containment.v0",
+        CANON_GEO_TEMPORAL_CONTAINMENT_VERSION,
+        &instance,
+    );
+
+    let schema = parsed(TEMPORAL_CONTAINMENT_SCHEMA);
+    assert_eq!(
+        schema
+            .pointer("/$defs/edge/properties/parent_level/const")
+            .and_then(Value::as_str),
+        Some("parcel")
+    );
+    assert_eq!(
+        schema
+            .pointer("/$defs/edge/properties/child_level/const")
+            .and_then(Value::as_str),
+        Some("building")
+    );
+}
+
+fn temporal_containment_artifact() -> GeoTemporalContainmentArtifact {
+    GeoTemporalContainmentArtifact {
+        version: CANON_GEO_TEMPORAL_CONTAINMENT_VERSION.to_string(),
+        mart_id: "fixture.nyc.lifecycle.schema".to_string(),
+        clusters: vec![
+            GeoTemporalContainmentCluster {
+                cluster_id: "cmdrvl:building:nyc:bin:fixture-schema-001".to_string(),
+                entity_level: GeoEntityLevel::Building,
+            },
+            GeoTemporalContainmentCluster {
+                cluster_id: "cmdrvl:parcel:nyc:bbl:fixture-schema-001".to_string(),
+                entity_level: GeoEntityLevel::Parcel,
+            },
+        ],
+        edges: vec![GeoTemporalContainmentEdge {
+            edge_id: "edge-fixture-schema-001".to_string(),
+            parent_cluster_id: "cmdrvl:parcel:nyc:bbl:fixture-schema-001".to_string(),
+            parent_level: GeoEntityLevel::Parcel,
+            child_cluster_id: "cmdrvl:building:nyc:bin:fixture-schema-001".to_string(),
+            child_level: GeoEntityLevel::Building,
+            relation: GeoTemporalContainmentRelation::PartOf,
+            valid_interval: GeoTemporalContainmentInterval {
+                start_utc_day: "2020-01-01".to_string(),
+                end_utc_day: "2020-12-31".to_string(),
+            },
+            source_receipt: GeoTemporalContainmentSourceReceipt {
+                receipt_id: "receipt-fixture-schema-001".to_string(),
+                source_dataset: "fixture.nyc.lifecycle".to_string(),
+                source_record_id: "dob-job:fixture-schema-001".to_string(),
+                source_record_blake3: pre_resolution_blake3("dob-job:fixture-schema-001"),
+                proof_class: "fixture".to_string(),
+                rule_id: "geo_temporal_containment_fixture.v1".to_string(),
+            },
+        }],
+        summary: GeoTemporalContainmentSummary {
+            clusters: 2,
+            edges: 1,
+        },
+    }
 }
 
 fn pre_resolution_artifact() -> GeoPreResolutionArtifact {
