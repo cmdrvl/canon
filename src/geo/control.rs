@@ -26,6 +26,7 @@ use super::{
     },
     evaluation::{CANON_GEO_POPULATION_EVALUATION_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION},
     evidence::{CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION},
+    explain::CANON_GEO_EXPLANATION_VERSION,
     geometry_value::{
         CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
         CANON_GEO_GEOMETRY_VALUE_VERSION, CANON_GEO_LOCAL_FRAME_VERSION,
@@ -1408,6 +1409,13 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
             "canon.geo.stage.propagate.v0",
             GeoCommandSurface::Leaf,
             CANON_GEO_PROPAGATION_VERSION,
+            true,
+            false,
+        ),
+        command(
+            "canon.geo.stage.explain.v0",
+            GeoCommandSurface::Leaf,
+            CANON_GEO_EXPLANATION_VERSION,
             true,
             false,
         ),

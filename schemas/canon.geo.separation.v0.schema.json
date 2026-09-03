@@ -1,0 +1,115 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.separation.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.separation.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_separation.v0",
+      "type": "string"
+    },
+    "subject_ref": {
+      "$ref": "#/$defs/subject_ref"
+    },
+    "request_blake3": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "baseline_model_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "per_observation": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/observation_separation"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "version",
+    "request_blake3",
+    "baseline_model_count",
+    "per_observation"
+  ],
+  "$defs": {
+    "subject_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accession": {
+          "type": "string"
+        },
+        "loan_id": {
+          "type": "string"
+        },
+        "subject_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "accession",
+        "loan_id",
+        "subject_id"
+      ]
+    },
+    "observation_separation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "observation_id": {
+          "type": "string"
+        },
+        "per_outcome": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/outcome_separation"
+          },
+          "minItems": 1
+        },
+        "worst_case_remaining": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "redundant": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "observation_id",
+        "per_outcome",
+        "worst_case_remaining",
+        "redundant"
+      ]
+    },
+    "outcome_separation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "outcome_id": {
+          "type": "string"
+        },
+        "residual_model_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "count_exact": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "outcome_id",
+        "residual_model_count",
+        "count_exact"
+      ]
+    }
+  },
+  "x-canon-contract": {
+    "runtime_only_invariants": [
+      "count_exact is false when the baseline or outcome solve is incomplete, saturated, or a budget fallback",
+      "redundant is false whenever any outcome count is inexact"
+    ]
+  }
+}

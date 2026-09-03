@@ -1,0 +1,108 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.separation_request.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.separation_request.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_separation_request.v0",
+      "type": "string"
+    },
+    "subject_ref": {
+      "$ref": "#/$defs/subject_ref"
+    },
+    "request": {
+      "$ref": "canon.geo.composition_request.v0.schema.json"
+    },
+    "prospective": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/prospective_observation"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "version",
+    "request",
+    "prospective"
+  ],
+  "$defs": {
+    "subject_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accession": {
+          "type": "string"
+        },
+        "loan_id": {
+          "type": "string"
+        },
+        "subject_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "accession",
+        "loan_id",
+        "subject_id"
+      ]
+    },
+    "prospective_observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "contract_id": {
+          "type": "string"
+        },
+        "cost_units": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outcomes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/prospective_outcome"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "id",
+        "contract_id",
+        "cost_units",
+        "outcomes"
+      ]
+    },
+    "prospective_outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "outcome_id": {
+          "type": "string"
+        },
+        "induced": {
+          "type": "array",
+          "items": {
+            "$ref": "canon.geo.composition_request.v0.schema.json#/$defs/hard_constraint_kind"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "outcome_id",
+        "induced"
+      ]
+    }
+  },
+  "x-canon-contract": {
+    "runtime_only_invariants": [
+      "the prospective observation outcome domain is supplied by the caller and treated as exhaustive",
+      "each outcome appends only declared hard constraints before the exact solver is called"
+    ]
+  }
+}

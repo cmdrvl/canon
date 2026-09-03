@@ -1465,7 +1465,38 @@
       "source_path": "schemas/canon.geo.propagation.v0.schema.json"
     },
     {
+      "id": "canon_geo_explanation.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.explanation.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_separation_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.separation_request.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_separation.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.separation.v0.schema.json"
+    },
+    {
       "id": "canon.geo.stage.propagate.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/geo/executor.rs"
+    },
+    {
+      "id": "canon.geo.stage.explain.v0",
       "family": "geo",
       "action": "preserve",
       "access_boundary": "internal_source_only",

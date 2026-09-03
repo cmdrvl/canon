@@ -1,0 +1,244 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.explanation.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.explanation.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_explanation.v0",
+      "type": "string"
+    },
+    "subject_ref": {
+      "$ref": "#/$defs/subject_ref"
+    },
+    "request_blake3": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "evidence_blake3": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "cores": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/minimal_core"
+      },
+      "minItems": 1
+    },
+    "cores_complete": {
+      "type": "boolean"
+    },
+    "correction_sets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/correction_set"
+      }
+    },
+    "explanation_complete": {
+      "type": "boolean"
+    },
+    "counters": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  },
+  "required": [
+    "version",
+    "request_blake3",
+    "evidence_blake3",
+    "cores",
+    "cores_complete",
+    "correction_sets",
+    "explanation_complete",
+    "counters"
+  ],
+  "$defs": {
+    "subject_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accession": {
+          "type": "string"
+        },
+        "loan_id": {
+          "type": "string"
+        },
+        "subject_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "accession",
+        "loan_id",
+        "subject_id"
+      ]
+    },
+    "evidence_record_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_record_id": {
+          "type": "string"
+        },
+        "source_vintage": {
+          "type": "string"
+        },
+        "record_blake3": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "source_record_id",
+        "source_vintage",
+        "record_blake3"
+      ]
+    },
+    "composition_status": {
+      "type": "string",
+      "enum": [
+        "resolved",
+        "ambiguous",
+        "conflict",
+        "budget_fallback"
+      ]
+    },
+    "deletion_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "constraint_id": {
+          "type": "string"
+        },
+        "status_after_deletion": {
+          "$ref": "#/$defs/composition_status"
+        }
+      },
+      "required": [
+        "constraint_id",
+        "status_after_deletion"
+      ]
+    },
+    "minimal_core": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "constraint_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "observation_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "source_record_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "rho_contract_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "source_record_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence_record_ref"
+          }
+        },
+        "admitted_values": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "deletion_checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/deletion_check"
+          }
+        },
+        "minimal": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "constraint_ids",
+        "observation_ids",
+        "source_record_ids",
+        "rho_contract_ids",
+        "minimal"
+      ]
+    },
+    "correction_set": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "observation_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "source_record_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "rho_contract_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_record_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence_record_ref"
+          }
+        },
+        "admitted_values": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "minimal": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "observation_ids",
+        "source_record_ids",
+        "minimal"
+      ]
+    }
+  },
+  "x-canon-contract": {
+    "runtime_only_invariants": [
+      "request_blake3 is computed from the canonical composition request",
+      "evidence_blake3 is computed from the supplied evidence compilation artifact bytes",
+      "minimal cores name declared constraint ids plus source records and rho contracts",
+      "when a core enumeration ceiling is reached, no minimality flag is true"
+    ]
+  }
+}
