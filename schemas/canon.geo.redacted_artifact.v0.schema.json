@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.geo.redacted_artifact.v0.schema.json",
+  "title": "canon.geo.redacted_artifact.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "source_artifact_version",
+    "original_artifact_blake3",
+    "redacted_artifact_blake3",
+    "redacted",
+    "egress_policy",
+    "field_classifications",
+    "stripped_fields",
+    "artifact"
+  ],
+  "properties": {
+    "version": { "const": "canon_geo_redacted_artifact.v0" },
+    "source_artifact_version": { "type": "string", "minLength": 1 },
+    "original_artifact_blake3": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "redacted_artifact_blake3": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "redacted": { "type": "boolean" },
+    "egress_policy": { "$ref": "#/$defs/egress_policy" },
+    "field_classifications": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/field_classification" }
+    },
+    "stripped_fields": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/stripped_field" }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/json_value" }
+    }
+  },
+  "$defs": {
+    "default_action": {
+      "type": "string",
+      "enum": ["share_full_artifact", "share_redacted_projection"]
+    },
+    "egress_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "default_action",
+        "full_artifact_requires_explicit_operator_action"
+      ],
+      "properties": {
+        "default_action": { "$ref": "#/$defs/default_action" },
+        "full_artifact_requires_explicit_operator_action": {
+          "type": "boolean"
+        },
+        "attribution_requirements": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "client_restricted_source_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 256 }
+        }
+      }
+    },
+    "field_license_class": {
+      "type": "string",
+      "enum": ["licensed-geometry", "derived-measure", "identifier", "public"]
+    },
+    "field_classification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field_path",
+        "license_class",
+        "reconstructive",
+        "rationale"
+      ],
+      "properties": {
+        "field_path": { "type": "string", "minLength": 1 },
+        "license_class": { "$ref": "#/$defs/field_license_class" },
+        "source_instance_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "reconstructive": { "type": "boolean" },
+        "rationale": { "type": "string", "minLength": 1 }
+      }
+    },
+    "stripped_field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field_path", "license_class", "replacement"],
+      "properties": {
+        "field_path": { "type": "string", "minLength": 1 },
+        "license_class": { "$ref": "#/$defs/field_license_class" },
+        "replacement": { "const": "[REDACTED]" }
+      }
+    },
+    "json_value": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "number" },
+        { "type": "string" },
+        {
+          "type": "array",
+          "items": { "$ref": "#/$defs/json_value" }
+        },
+        {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/json_value" }
+        }
+      ]
+    }
+  },
+  "x-canon-contract": {
+    "runtime_only_invariants": [
+      "redacted_artifact_blake3 is recomputed over the redacted projection excluding the hash field itself",
+      "original_artifact_blake3 links the projection to the full artifact bytes",
+      "geometry-bearing source fields must carry a field classification before redaction",
+      "licensed-geometry and reconstructive derived-measure fields are replaced with [REDACTED]",
+      "attribution_requirements survive redaction and are not themselves redactable"
+    ]
+  }
+}

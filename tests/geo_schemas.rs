@@ -45,12 +45,12 @@ use canon::geo::{
     CANON_GEO_POINT_POPULATION_VERSION, CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
     CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
     CANON_GEO_PRE_RESOLUTION_VERSION, CANON_GEO_PROPAGATION_VERSION, CANON_GEO_QUESTION_VERSION,
-    CANON_GEO_REGIONAL_INVENTORY_VERSION, CANON_GEO_RESOURCE_BUDGET_VERSION,
-    CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
-    CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
-    DEFAULT_MAX_MATERIALIZED_MODELS, GeoAbstentionDisposition, GeoAbstentionPolicy,
-    GeoAddressHouseNumber, GeoAddressJurisdiction, GeoAddressParity, GeoAddressParseRequest,
-    GeoAddressRangeOperator, GeoAddressStreet, GeoAffineProjectionMm,
+    CANON_GEO_REDACTED_ARTIFACT_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
+    CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
+    CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION,
+    CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoAbstentionDisposition,
+    GeoAbstentionPolicy, GeoAddressHouseNumber, GeoAddressJurisdiction, GeoAddressParity,
+    GeoAddressParseRequest, GeoAddressRangeOperator, GeoAddressStreet, GeoAffineProjectionMm,
     GeoArtifactFieldClassification, GeoArtifactFieldLicenseClass, GeoAsOf, GeoBoundedGeography,
     GeoBudgetAction, GeoBuildingCandidate, GeoClaimClass, GeoClientTileCoverageExtent,
     GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest, GeoClientTileSourceFormat,
@@ -88,14 +88,14 @@ use canon::geo::{
     GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoTruthPlane, GeoValueOrigin,
     GeoWarehouseEvidenceRow, GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest,
     GeoWarehouseParcelRow, GeoWarehouseRowsRequest, canonical_error_population_bytes,
-    canonical_pre_resolution_bytes, canonical_propagation_bytes, compile_evidence,
-    default_geo_capabilities, evaluate_pad_membership, evaluate_population,
+    canonical_pre_resolution_bytes, canonical_propagation_bytes, canonical_redacted_artifact_bytes,
+    compile_evidence, default_geo_capabilities, evaluate_pad_membership, evaluate_population,
     ingest_client_geometry_tile, materialize_geo_multisource, materialize_geometry_tile,
     materialize_h7_population_rows, materialize_home_cells, materialize_pre_resolution,
     materialize_tile_work_unit, materialize_warehouse_geometry, parse_address_forest, propagate,
-    reconcile_tile_decisions, regional_inventory_semantic_hash, solve_composition,
-    stack_population_evidence, validate_point_population_artifact,
-    validate_pre_resolution_artifact,
+    reconcile_tile_decisions, redact_geo_artifact, regional_inventory_semantic_hash,
+    solve_composition, stack_population_evidence, validate_point_population_artifact,
+    validate_pre_resolution_artifact, validate_redacted_artifact,
 };
 use canon::geo::{
     CANON_GEO_TEMPORAL_CONTAINMENT_VERSION, GeoTemporalContainmentArtifact,
@@ -139,6 +139,8 @@ const CLIENT_TILE_INGEST_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.client_tile_ingest_request.v0.schema.json");
 const GEOMETRY_TILE_SCHEMA: &str =
     include_str!("../schemas/canon.geo.geometry_tile.v0.schema.json");
+const REDACTED_ARTIFACT_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.redacted_artifact.v0.schema.json");
 const WAREHOUSE_GEOMETRY_ROWS_SCHEMA: &str =
     include_str!("../schemas/canon.geo.warehouse_geometry_rows.v0.schema.json");
 const WAREHOUSE_GEOMETRY_SCHEMA: &str =
@@ -2091,6 +2093,82 @@ fn geometry_tile_schema_matches_a_real_instance() {
         "canon_geo_geometry_tile.v0",
         &instance,
     );
+}
+
+#[test]
+fn redacted_artifact_schema_matches_a_real_instance() {
+    let source = serde_json::json!({
+        "version": "canon_geo_geometry_tile.v0",
+        "tile_id": "892a100d26bffff",
+        "geometry": [123456789, 987654321],
+        "decision": "accepted",
+        "candidate_count": 2
+    });
+    let redacted = redact_geo_artifact(
+        "canon_geo_geometry_tile.v0",
+        &source,
+        &[
+            GeoArtifactFieldClassification {
+                field_path: "$.tile_id".to_string(),
+                license_class: GeoArtifactFieldLicenseClass::Identifier,
+                source_instance_id: None,
+                reconstructive: false,
+                rationale: "tile identifier".to_string(),
+            },
+            GeoArtifactFieldClassification {
+                field_path: "$.geometry".to_string(),
+                license_class: GeoArtifactFieldLicenseClass::LicensedGeometry,
+                source_instance_id: Some("source.client.parcels".to_string()),
+                reconstructive: true,
+                rationale: "client parcel geometry is licensed".to_string(),
+            },
+            GeoArtifactFieldClassification {
+                field_path: "$.decision".to_string(),
+                license_class: GeoArtifactFieldLicenseClass::Public,
+                source_instance_id: None,
+                reconstructive: false,
+                rationale: "decision state".to_string(),
+            },
+            GeoArtifactFieldClassification {
+                field_path: "$.candidate_count".to_string(),
+                license_class: GeoArtifactFieldLicenseClass::DerivedMeasure,
+                source_instance_id: None,
+                reconstructive: false,
+                rationale: "candidate denominator".to_string(),
+            },
+        ],
+    )
+    .expect("redacted fixture builds");
+    validate_redacted_artifact(&redacted).expect("redacted fixture validates");
+    let canonical =
+        canonical_redacted_artifact_bytes(&redacted).expect("redacted fixture canonical bytes");
+    let instance: Value =
+        serde_json::from_slice(&canonical).expect("redacted fixture canonical JSON parses");
+    assert_drift_free(
+        REDACTED_ARTIFACT_SCHEMA,
+        "canon.geo.redacted_artifact.v0",
+        CANON_GEO_REDACTED_ARTIFACT_VERSION,
+        &instance,
+    );
+
+    let schema = parsed(REDACTED_ARTIFACT_SCHEMA);
+    let license_classes = schema
+        .pointer("/$defs/field_license_class/enum")
+        .and_then(Value::as_array)
+        .expect("field license class enum");
+    for expected in [
+        "licensed-geometry",
+        "derived-measure",
+        "identifier",
+        "public",
+    ] {
+        assert!(
+            license_classes
+                .iter()
+                .any(|actual| actual.as_str() == Some(expected)),
+            "missing field license class {expected}"
+        );
+    }
 }
 
 #[test]

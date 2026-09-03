@@ -30,6 +30,7 @@ use std::{
 pub const CANON_GEO_GEOMETRY_REQUEST_VERSION: &str = "canon_geo_geometry_request.v0";
 pub const CANON_GEO_GEOMETRY_VALUE_VERSION: &str = "canon_geo_geometry_value.v0";
 pub const CANON_GEO_GEOMETRY_TILE_VERSION: &str = "canon_geo_geometry_tile.v0";
+pub const CANON_GEO_REDACTED_ARTIFACT_VERSION: &str = "canon_geo_redacted_artifact.v0";
 pub const CANON_GEO_LOCAL_FRAME_VERSION: &str = "canon_geo_local_frame.v0";
 pub const CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION: &str =
     "canon_geo_client_tile_ingest_request.v0";
@@ -43,6 +44,7 @@ const CANON_GEO_PLANAR_FRAME_METHOD_VERSION: &str = "v0";
 const CANON_GEO_CLIENT_TILE_TRANSFORM_METHOD_ID: &str = "canon:client-geojson-wgs84-frame-declared";
 const CANON_GEO_CLIENT_TILE_TRANSFORM_METHOD_VERSION: &str = "v0";
 const ISO_WKB_2D_BASE64_ENCODING: &str = "iso-wkb-2d-base64";
+const GEO_REDACTED_VALUE: &str = "[REDACTED]";
 
 const MAX_SOURCE_DECIMAL_PLACES: u32 = 9;
 const MAX_IDENTIFIER_BYTES: usize = 256;
@@ -367,6 +369,73 @@ pub enum GeoProviderTileRedactionClass {
     Shareable,
     ShareableAttributionRequired,
     LocalOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum GeoArtifactFieldLicenseClass {
+    LicensedGeometry,
+    DerivedMeasure,
+    Identifier,
+    Public,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeoArtifactFieldClassification {
+    pub field_path: String,
+    pub license_class: GeoArtifactFieldLicenseClass,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_instance_id: Option<String>,
+    pub reconstructive: bool,
+    pub rationale: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoRedactionDefaultAction {
+    ShareFullArtifact,
+    ShareRedactedProjection,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoRedactionEgressPolicy {
+    pub default_action: GeoRedactionDefaultAction,
+    pub full_artifact_requires_explicit_operator_action: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attribution_requirements: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub client_restricted_source_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeoRedactedField {
+    pub field_path: String,
+    pub license_class: GeoArtifactFieldLicenseClass,
+    pub replacement: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GeoRedactedArtifact {
+    pub version: String,
+    pub source_artifact_version: String,
+    pub original_artifact_blake3: String,
+    pub redacted_artifact_blake3: String,
+    pub redacted: bool,
+    pub egress_policy: GeoRedactionEgressPolicy,
+    pub field_classifications: Vec<GeoArtifactFieldClassification>,
+    pub stripped_fields: Vec<GeoRedactedField>,
+    pub artifact: JsonValue,
+}
+
+impl GeoRedactionEgressPolicy {
+    fn shareable() -> Self {
+        Self {
+            default_action: GeoRedactionDefaultAction::ShareFullArtifact,
+            full_artifact_requires_explicit_operator_action: false,
+            attribution_requirements: Vec::new(),
+            client_restricted_source_ids: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -2675,6 +2744,816 @@ fn provider_geometry_tile_content_blake3(
         )
     })?;
     Ok(blake3::hash(&bytes).to_hex().to_string())
+}
+
+pub fn classify_geometry_tile_artifact_fields(
+    artifact: &GeoGeometryTileArtifact,
+) -> Result<Vec<GeoArtifactFieldClassification>, GeoGeometryError> {
+    if artifact.version != CANON_GEO_GEOMETRY_TILE_VERSION {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::UnsupportedVersion,
+            "Unsupported Geo geometry tile artifact version",
+            [
+                ("actual", artifact.version.as_str()),
+                ("expected", CANON_GEO_GEOMETRY_TILE_VERSION),
+            ],
+        ));
+    }
+
+    let provider_features = artifact
+        .provider_tile
+        .as_ref()
+        .map(|provider_tile| {
+            provider_tile
+                .features
+                .iter()
+                .map(|contract| (contract.feature_id.as_str(), contract))
+                .collect::<BTreeMap<_, _>>()
+        })
+        .unwrap_or_default();
+    let client_restricted_source_ids = artifact
+        .provider_tile
+        .as_ref()
+        .map(|provider_tile| {
+            provider_tile
+                .license_posture
+                .client_restricted_source_ids
+                .iter()
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>()
+        })
+        .unwrap_or_default();
+    let has_restricted_geometry = provider_features.values().any(|contract| {
+        contract.redaction_class == GeoProviderTileRedactionClass::LocalOnly
+            || client_restricted_source_ids.contains(contract.source_instance_id.as_str())
+    });
+
+    let mut classifications = vec![
+        geo_artifact_field_classification(
+            "$.version",
+            GeoArtifactFieldLicenseClass::Public,
+            None,
+            false,
+            "artifact contract identifier",
+        ),
+        geo_artifact_field_classification(
+            "$.frame.frame_id",
+            GeoArtifactFieldLicenseClass::Identifier,
+            None,
+            false,
+            "Canon frame identifier",
+        ),
+        geo_artifact_field_classification(
+            "$.frame.tile_id",
+            GeoArtifactFieldLicenseClass::Identifier,
+            None,
+            false,
+            "tile identifier",
+        ),
+        geo_artifact_field_classification(
+            "$.frame.source_crs",
+            GeoArtifactFieldLicenseClass::DerivedMeasure,
+            None,
+            false,
+            "coordinate reference declaration needed to interpret shareable geometry",
+        ),
+        geo_artifact_field_classification(
+            "$.frame.source_origin",
+            if has_restricted_geometry {
+                GeoArtifactFieldLicenseClass::LicensedGeometry
+            } else {
+                GeoArtifactFieldLicenseClass::Public
+            },
+            None,
+            has_restricted_geometry,
+            "source-frame origin can reveal source coordinate placement",
+        ),
+        geo_artifact_field_classification(
+            "$.frame.affine",
+            GeoArtifactFieldLicenseClass::DerivedMeasure,
+            None,
+            has_restricted_geometry,
+            "affine frame can help reconstruct source coordinates when licensed geometry is present",
+        ),
+        geo_artifact_field_classification(
+            "$.total_canonical_vertices",
+            GeoArtifactFieldLicenseClass::DerivedMeasure,
+            None,
+            false,
+            "aggregate denominator, not enough to reconstruct geometry by itself",
+        ),
+        geo_artifact_field_classification(
+            "$.geometry_bytes",
+            GeoArtifactFieldLicenseClass::DerivedMeasure,
+            None,
+            false,
+            "aggregate byte denominator, not enough to reconstruct geometry by itself",
+        ),
+        geo_artifact_field_classification(
+            "$.max_vertices_per_geometry",
+            GeoArtifactFieldLicenseClass::Public,
+            None,
+            false,
+            "operator budget",
+        ),
+        geo_artifact_field_classification(
+            "$.max_geometry_bytes_per_tile",
+            GeoArtifactFieldLicenseClass::Public,
+            None,
+            false,
+            "operator budget",
+        ),
+    ];
+
+    for (feature_index, feature) in artifact.features.iter().enumerate() {
+        let feature_path = format!("$.features[{feature_index}]");
+        classifications.push(geo_artifact_field_classification(
+            format!("{feature_path}.feature_id"),
+            GeoArtifactFieldLicenseClass::Identifier,
+            None,
+            false,
+            "Canon feature identifier",
+        ));
+        let (license_class, source_instance_id, reconstructive, rationale) =
+            match provider_features.get(feature.feature_id.as_str()) {
+                Some(contract)
+                    if contract.redaction_class == GeoProviderTileRedactionClass::LocalOnly
+                        || client_restricted_source_ids
+                            .contains(contract.source_instance_id.as_str()) =>
+                {
+                    (
+                        GeoArtifactFieldLicenseClass::LicensedGeometry,
+                        Some(contract.source_instance_id.clone()),
+                        true,
+                        "decision-fidelity geometry from a local-only or client-restricted source",
+                    )
+                }
+                Some(contract) => (
+                    GeoArtifactFieldLicenseClass::Public,
+                    Some(contract.source_instance_id.clone()),
+                    false,
+                    "decision-fidelity geometry from a shareable source",
+                ),
+                None => (
+                    GeoArtifactFieldLicenseClass::Public,
+                    None,
+                    false,
+                    "geometry tile without provider license contract",
+                ),
+            };
+        classifications.push(geo_artifact_field_classification(
+            format!("{feature_path}.value"),
+            license_class,
+            source_instance_id,
+            reconstructive,
+            rationale,
+        ));
+    }
+
+    if let Some(provider_tile) = &artifact.provider_tile {
+        classifications.extend(provider_tile_field_classifications(provider_tile));
+    }
+
+    canonicalize_field_classifications(&classifications)
+}
+
+pub fn redact_geometry_tile_artifact(
+    artifact: &GeoGeometryTileArtifact,
+) -> Result<GeoRedactedArtifact, GeoGeometryError> {
+    let classifications = classify_geometry_tile_artifact_fields(artifact)?;
+    let artifact_value = serde_json::to_value(artifact).map_err(|error| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::Serialization,
+            "Geo geometry tile artifact serialization failed before redaction",
+            [("error", error.to_string())],
+        )
+    })?;
+    let mut egress_policy = GeoRedactionEgressPolicy::shareable();
+    if let Some(provider_tile) = &artifact.provider_tile {
+        egress_policy.attribution_requirements = provider_tile
+            .license_posture
+            .attribution_requirements
+            .clone();
+        egress_policy.client_restricted_source_ids = provider_tile
+            .license_posture
+            .client_restricted_source_ids
+            .clone();
+        egress_policy.full_artifact_requires_explicit_operator_action =
+            !egress_policy.client_restricted_source_ids.is_empty()
+                || provider_tile.features.iter().any(|contract| {
+                    contract.redaction_class == GeoProviderTileRedactionClass::LocalOnly
+                });
+    }
+    redact_geo_artifact_with_policy(
+        &artifact.version,
+        &artifact_value,
+        &classifications,
+        egress_policy,
+    )
+}
+
+pub fn redact_geo_artifact(
+    source_artifact_version: &str,
+    artifact: &JsonValue,
+    field_classifications: &[GeoArtifactFieldClassification],
+) -> Result<GeoRedactedArtifact, GeoGeometryError> {
+    redact_geo_artifact_with_policy(
+        source_artifact_version,
+        artifact,
+        field_classifications,
+        GeoRedactionEgressPolicy::shareable(),
+    )
+}
+
+pub fn redact_geo_artifact_with_policy(
+    source_artifact_version: &str,
+    artifact: &JsonValue,
+    field_classifications: &[GeoArtifactFieldClassification],
+    mut egress_policy: GeoRedactionEgressPolicy,
+) -> Result<GeoRedactedArtifact, GeoGeometryError> {
+    validate_provider_text("source_artifact_version", source_artifact_version)?;
+    canonicalize_redaction_egress_policy(&mut egress_policy)?;
+    let classifications = canonicalize_field_classifications(field_classifications)?;
+    validate_artifact_field_classifications(artifact, &classifications)?;
+
+    let original_bytes = serde_json::to_vec(artifact).map_err(|error| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::Serialization,
+            "Geo artifact serialization failed before redaction",
+            [("error", error.to_string())],
+        )
+    })?;
+    let mut redacted_value = artifact.clone();
+    let mut stripped_fields = Vec::new();
+    for classification in &classifications {
+        if !field_classification_requires_redaction(classification) {
+            continue;
+        }
+        let steps = parse_geo_field_path(&classification.field_path)?;
+        if redact_json_path(&mut redacted_value, &steps)? {
+            stripped_fields.push(GeoRedactedField {
+                field_path: classification.field_path.clone(),
+                license_class: classification.license_class,
+                replacement: GEO_REDACTED_VALUE.to_string(),
+            });
+        }
+    }
+    stripped_fields.sort();
+
+    let redacted = !stripped_fields.is_empty();
+    egress_policy.full_artifact_requires_explicit_operator_action =
+        egress_policy.full_artifact_requires_explicit_operator_action || redacted;
+    egress_policy.default_action = if egress_policy.full_artifact_requires_explicit_operator_action
+    {
+        GeoRedactionDefaultAction::ShareRedactedProjection
+    } else {
+        GeoRedactionDefaultAction::ShareFullArtifact
+    };
+
+    let mut redacted_artifact = GeoRedactedArtifact {
+        version: CANON_GEO_REDACTED_ARTIFACT_VERSION.to_string(),
+        source_artifact_version: source_artifact_version.to_string(),
+        original_artifact_blake3: prefixed_blake3(&original_bytes),
+        redacted_artifact_blake3: String::new(),
+        redacted,
+        egress_policy,
+        field_classifications: classifications,
+        stripped_fields,
+        artifact: redacted_value,
+    };
+    redacted_artifact.redacted_artifact_blake3 =
+        geo_redacted_artifact_content_blake3(&redacted_artifact)?;
+    validate_redacted_artifact(&redacted_artifact)?;
+    Ok(redacted_artifact)
+}
+
+pub fn validate_redacted_artifact(artifact: &GeoRedactedArtifact) -> Result<(), GeoGeometryError> {
+    if artifact.version != CANON_GEO_REDACTED_ARTIFACT_VERSION {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::UnsupportedVersion,
+            "Unsupported Geo redacted artifact version",
+            [
+                ("actual", artifact.version.as_str()),
+                ("expected", CANON_GEO_REDACTED_ARTIFACT_VERSION),
+            ],
+        ));
+    }
+    validate_provider_text("source_artifact_version", &artifact.source_artifact_version)?;
+    validate_prefixed_blake3(
+        "original_artifact_blake3",
+        &artifact.original_artifact_blake3,
+    )?;
+    validate_prefixed_blake3(
+        "redacted_artifact_blake3",
+        &artifact.redacted_artifact_blake3,
+    )?;
+    let expected_hash = geo_redacted_artifact_content_blake3(artifact)?;
+    if expected_hash != artifact.redacted_artifact_blake3 {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Geo redacted artifact content hash does not match its projection",
+            [
+                ("expected", expected_hash.as_str()),
+                ("actual", artifact.redacted_artifact_blake3.as_str()),
+            ],
+        ));
+    }
+    canonicalize_field_classifications(&artifact.field_classifications)?;
+    validate_artifact_field_classifications(&artifact.artifact, &artifact.field_classifications)?;
+    validate_redacted_stripped_fields(artifact)?;
+    Ok(())
+}
+
+pub fn canonical_redacted_artifact_bytes(
+    artifact: &GeoRedactedArtifact,
+) -> Result<Vec<u8>, GeoGeometryError> {
+    validate_redacted_artifact(artifact)?;
+    serde_json::to_vec(artifact).map_err(|error| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::Serialization,
+            "Geo redacted artifact serialization failed",
+            [("error", error.to_string())],
+        )
+    })
+}
+
+pub fn geo_redacted_artifact_content_blake3(
+    artifact: &GeoRedactedArtifact,
+) -> Result<String, GeoGeometryError> {
+    #[derive(Serialize)]
+    struct RedactedDigestProjection<'a> {
+        version: &'a str,
+        source_artifact_version: &'a str,
+        original_artifact_blake3: &'a str,
+        redacted: bool,
+        egress_policy: &'a GeoRedactionEgressPolicy,
+        field_classifications: &'a [GeoArtifactFieldClassification],
+        stripped_fields: &'a [GeoRedactedField],
+        artifact: &'a JsonValue,
+    }
+
+    let projection = RedactedDigestProjection {
+        version: &artifact.version,
+        source_artifact_version: &artifact.source_artifact_version,
+        original_artifact_blake3: &artifact.original_artifact_blake3,
+        redacted: artifact.redacted,
+        egress_policy: &artifact.egress_policy,
+        field_classifications: &artifact.field_classifications,
+        stripped_fields: &artifact.stripped_fields,
+        artifact: &artifact.artifact,
+    };
+    let bytes = serde_json::to_vec(&projection).map_err(|error| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::Serialization,
+            "Geo redacted artifact digest serialization failed",
+            [("error", error.to_string())],
+        )
+    })?;
+    Ok(prefixed_blake3(&bytes))
+}
+
+fn provider_tile_field_classifications(
+    provider_tile: &GeoProviderTileContract,
+) -> Vec<GeoArtifactFieldClassification> {
+    let mut classifications = vec![
+        geo_artifact_field_classification(
+            "$.provider_tile.version",
+            GeoArtifactFieldLicenseClass::Public,
+            None,
+            false,
+            "provider tile contract identifier",
+        ),
+        geo_artifact_field_classification(
+            "$.provider_tile.tile_id",
+            GeoArtifactFieldLicenseClass::Identifier,
+            None,
+            false,
+            "provider tile identifier",
+        ),
+        geo_artifact_field_classification(
+            "$.provider_tile.subset",
+            GeoArtifactFieldLicenseClass::Public,
+            None,
+            false,
+            "bounded work-cell predicate and coverage states",
+        ),
+        geo_artifact_field_classification(
+            "$.provider_tile.sources",
+            GeoArtifactFieldLicenseClass::Public,
+            None,
+            false,
+            "source license and attribution declarations",
+        ),
+        geo_artifact_field_classification(
+            "$.provider_tile.license_posture",
+            GeoArtifactFieldLicenseClass::Public,
+            None,
+            false,
+            "composed output license posture",
+        ),
+        geo_artifact_field_classification(
+            "$.provider_tile.tile_content_blake3",
+            GeoArtifactFieldLicenseClass::Identifier,
+            None,
+            false,
+            "full tile content digest",
+        ),
+    ];
+
+    for (index, contract) in provider_tile.features.iter().enumerate() {
+        let contract_path = format!("$.provider_tile.features[{index}]");
+        classifications.push(geo_artifact_field_classification(
+            format!("{contract_path}.feature_id"),
+            GeoArtifactFieldLicenseClass::Identifier,
+            Some(contract.source_instance_id.clone()),
+            false,
+            "Canon feature identifier",
+        ));
+        classifications.push(geo_artifact_field_classification(
+            format!("{contract_path}.source_instance_id"),
+            GeoArtifactFieldLicenseClass::Identifier,
+            Some(contract.source_instance_id.clone()),
+            false,
+            "source identifier",
+        ));
+        classifications.push(geo_artifact_field_classification(
+            format!("{contract_path}.source_feature_id"),
+            GeoArtifactFieldLicenseClass::Identifier,
+            Some(contract.source_instance_id.clone()),
+            false,
+            "source feature identifier retained for client-side replay",
+        ));
+        classifications.push(geo_artifact_field_classification(
+            format!("{contract_path}.license_class"),
+            GeoArtifactFieldLicenseClass::Public,
+            Some(contract.source_instance_id.clone()),
+            false,
+            "feature license class",
+        ));
+        classifications.push(geo_artifact_field_classification(
+            format!("{contract_path}.redaction_class"),
+            GeoArtifactFieldLicenseClass::Public,
+            Some(contract.source_instance_id.clone()),
+            false,
+            "feature redaction class",
+        ));
+        classifications.push(geo_artifact_field_classification(
+            format!("{contract_path}.provenance"),
+            GeoArtifactFieldLicenseClass::Public,
+            Some(contract.source_instance_id.clone()),
+            false,
+            "feature source receipt and attribution boundary",
+        ));
+    }
+    if provider_tile.client_ingest.is_some() {
+        classifications.push(geo_artifact_field_classification(
+            "$.provider_tile.client_ingest",
+            GeoArtifactFieldLicenseClass::DerivedMeasure,
+            None,
+            false,
+            "client ingest counts, aliases, and H3 memberships used for replay telemetry",
+        ));
+    }
+    classifications
+}
+
+fn geo_artifact_field_classification(
+    field_path: impl Into<String>,
+    license_class: GeoArtifactFieldLicenseClass,
+    source_instance_id: Option<String>,
+    reconstructive: bool,
+    rationale: impl Into<String>,
+) -> GeoArtifactFieldClassification {
+    GeoArtifactFieldClassification {
+        field_path: field_path.into(),
+        license_class,
+        source_instance_id,
+        reconstructive,
+        rationale: rationale.into(),
+    }
+}
+
+fn field_classification_requires_redaction(
+    classification: &GeoArtifactFieldClassification,
+) -> bool {
+    classification.license_class == GeoArtifactFieldLicenseClass::LicensedGeometry
+        || (classification.license_class == GeoArtifactFieldLicenseClass::DerivedMeasure
+            && classification.reconstructive)
+}
+
+fn canonicalize_field_classifications(
+    field_classifications: &[GeoArtifactFieldClassification],
+) -> Result<Vec<GeoArtifactFieldClassification>, GeoGeometryError> {
+    if field_classifications.is_empty() {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidLicensePosture,
+            "Geo artifact redaction requires field classifications",
+            std::iter::empty::<(&str, &str)>(),
+        ));
+    }
+    let mut canonical = field_classifications.to_vec();
+    canonical.sort_by(|left, right| {
+        left.field_path
+            .cmp(&right.field_path)
+            .then_with(|| left.source_instance_id.cmp(&right.source_instance_id))
+            .then_with(|| left.license_class.cmp(&right.license_class))
+    });
+
+    let mut seen_paths = BTreeSet::new();
+    for classification in &canonical {
+        validate_provider_text(
+            "field_classifications[].field_path",
+            &classification.field_path,
+        )?;
+        parse_geo_field_path(&classification.field_path)?;
+        validate_provider_text(
+            "field_classifications[].rationale",
+            &classification.rationale,
+        )?;
+        if let Some(source_instance_id) = &classification.source_instance_id {
+            validate_provider_contract_identifier(
+                "field_classifications[].source_instance_id",
+                source_instance_id,
+            )?;
+        }
+        if !seen_paths.insert(classification.field_path.clone()) {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidLicensePosture,
+                "Geo artifact field classifications must name each field path once",
+                [("field_path", classification.field_path.as_str())],
+            ));
+        }
+    }
+    Ok(canonical)
+}
+
+fn validate_artifact_field_classifications(
+    artifact: &JsonValue,
+    classifications: &[GeoArtifactFieldClassification],
+) -> Result<(), GeoGeometryError> {
+    let mut geometry_paths = Vec::new();
+    collect_geometry_bearing_paths(artifact, "$", &mut geometry_paths);
+    geometry_paths.sort();
+    geometry_paths.dedup();
+    for path in geometry_paths {
+        if !classifications
+            .iter()
+            .any(|classification| classification_covers_path(&classification.field_path, &path))
+        {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidLicensePosture,
+                "Geo artifact geometry-bearing fields must carry license classifications",
+                [("field_path", path.as_str())],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_redacted_stripped_fields(
+    artifact: &GeoRedactedArtifact,
+) -> Result<(), GeoGeometryError> {
+    let classification_by_path = artifact
+        .field_classifications
+        .iter()
+        .map(|classification| (classification.field_path.as_str(), classification))
+        .collect::<BTreeMap<_, _>>();
+    let mut stripped_paths = BTreeSet::new();
+    for stripped in &artifact.stripped_fields {
+        validate_provider_text("stripped_fields[].field_path", &stripped.field_path)?;
+        parse_geo_field_path(&stripped.field_path)?;
+        validate_provider_text("stripped_fields[].replacement", &stripped.replacement)?;
+        if stripped.replacement != GEO_REDACTED_VALUE {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidLicensePosture,
+                "Geo redacted artifacts must use the Canon redaction marker",
+                [("field_path", stripped.field_path.as_str())],
+            ));
+        }
+        let Some(classification) = classification_by_path.get(stripped.field_path.as_str()) else {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidLicensePosture,
+                "Geo redacted artifacts cannot strip unclassified fields",
+                [("field_path", stripped.field_path.as_str())],
+            ));
+        };
+        if !field_classification_requires_redaction(classification) {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidLicensePosture,
+                "Geo redacted artifacts may strip only licensed or reconstructive fields",
+                [("field_path", stripped.field_path.as_str())],
+            ));
+        }
+        if stripped.license_class != classification.license_class {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidLicensePosture,
+                "Geo redacted field class must match the field classification",
+                [("field_path", stripped.field_path.as_str())],
+            ));
+        }
+        if !stripped_paths.insert(stripped.field_path.clone()) {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidLicensePosture,
+                "Geo redacted artifacts cannot repeat stripped fields",
+                [("field_path", stripped.field_path.as_str())],
+            ));
+        }
+    }
+    if artifact.redacted != !artifact.stripped_fields.is_empty() {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidLicensePosture,
+            "Geo redacted artifact redacted flag must match stripped fields",
+            [
+                ("redacted", artifact.redacted.to_string()),
+                (
+                    "stripped_fields",
+                    artifact.stripped_fields.len().to_string(),
+                ),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn canonicalize_redaction_egress_policy(
+    policy: &mut GeoRedactionEgressPolicy,
+) -> Result<(), GeoGeometryError> {
+    sort_and_reject_duplicate_strings(
+        "redaction_policy.attribution_requirements",
+        &mut policy.attribution_requirements,
+    )?;
+    sort_and_reject_duplicate_strings(
+        "redaction_policy.client_restricted_source_ids",
+        &mut policy.client_restricted_source_ids,
+    )?;
+    Ok(())
+}
+
+fn collect_geometry_bearing_paths(value: &JsonValue, path: &str, out: &mut Vec<String>) {
+    match value {
+        JsonValue::Array(values) => {
+            for (index, child) in values.iter().enumerate() {
+                let child_path = format!("{path}[{index}]");
+                collect_geometry_bearing_paths(child, &child_path, out);
+            }
+        }
+        JsonValue::Object(map) => {
+            for (key, child) in map {
+                let child_path = if path == "$" {
+                    format!("$.{key}")
+                } else {
+                    format!("{path}.{key}")
+                };
+                if geo_field_key_can_carry_geometry(key) {
+                    out.push(child_path.clone());
+                }
+                collect_geometry_bearing_paths(child, &child_path, out);
+            }
+        }
+        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) | JsonValue::String(_) => {}
+    }
+}
+
+fn geo_field_key_can_carry_geometry(key: &str) -> bool {
+    matches!(
+        key,
+        "affine"
+            | "bbox"
+            | "coordinate"
+            | "coordinates"
+            | "exterior"
+            | "geometry"
+            | "geometry_blake3"
+            | "geometry_bytes"
+            | "geometry_sha256"
+            | "holes"
+            | "licensed_geometry"
+            | "polygon"
+            | "polygons"
+            | "source_geom_wkb_base64"
+            | "source_geom_wkb_sha256"
+            | "source_origin"
+            | "vertices"
+    )
+}
+
+fn classification_covers_path(classification_path: &str, path: &str) -> bool {
+    classification_path == "$"
+        || classification_path == path
+        || path
+            .strip_prefix(classification_path)
+            .is_some_and(|suffix| suffix.starts_with('.') || suffix.starts_with('['))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum GeoFieldPathStep {
+    Key(String),
+    Index(usize),
+}
+
+fn parse_geo_field_path(path: &str) -> Result<Vec<GeoFieldPathStep>, GeoGeometryError> {
+    let Some(mut rest) = path.strip_prefix('$') else {
+        return Err(invalid_geo_field_path(path));
+    };
+    let mut steps = Vec::new();
+    while !rest.is_empty() {
+        if let Some(after_dot) = rest.strip_prefix('.') {
+            let end = after_dot.find(['.', '[']).unwrap_or(after_dot.len());
+            if end == 0 {
+                return Err(invalid_geo_field_path(path));
+            }
+            steps.push(GeoFieldPathStep::Key(after_dot[..end].to_string()));
+            rest = &after_dot[end..];
+        } else if let Some(after_bracket) = rest.strip_prefix('[') {
+            let Some(end) = after_bracket.find(']') else {
+                return Err(invalid_geo_field_path(path));
+            };
+            let index_text = &after_bracket[..end];
+            if index_text.is_empty() || !index_text.bytes().all(|byte| byte.is_ascii_digit()) {
+                return Err(invalid_geo_field_path(path));
+            }
+            let index = index_text
+                .parse::<usize>()
+                .map_err(|_| invalid_geo_field_path(path))?;
+            steps.push(GeoFieldPathStep::Index(index));
+            rest = &after_bracket[end + 1..];
+        } else {
+            return Err(invalid_geo_field_path(path));
+        }
+    }
+    Ok(steps)
+}
+
+fn invalid_geo_field_path(path: &str) -> GeoGeometryError {
+    GeoGeometryError::new(
+        GeoGeometryErrorCode::InvalidLicensePosture,
+        "Geo artifact field paths must use simple JSONPath syntax rooted at $",
+        [("field_path", path)],
+    )
+}
+
+fn redact_json_path(
+    value: &mut JsonValue,
+    steps: &[GeoFieldPathStep],
+) -> Result<bool, GeoGeometryError> {
+    if steps.is_empty() {
+        *value = JsonValue::String(GEO_REDACTED_VALUE.to_string());
+        return Ok(true);
+    }
+
+    let mut cursor = value;
+    for step in &steps[..steps.len() - 1] {
+        match (step, cursor) {
+            (GeoFieldPathStep::Key(key), JsonValue::Object(map)) => {
+                let Some(next) = map.get_mut(key) else {
+                    return Ok(false);
+                };
+                cursor = next;
+            }
+            (GeoFieldPathStep::Index(index), JsonValue::Array(values)) => {
+                let Some(next) = values.get_mut(*index) else {
+                    return Ok(false);
+                };
+                cursor = next;
+            }
+            _ => return Ok(false),
+        }
+    }
+
+    match (steps.last(), cursor) {
+        (Some(GeoFieldPathStep::Key(key)), JsonValue::Object(map)) => {
+            if let Some(slot) = map.get_mut(key) {
+                *slot = JsonValue::String(GEO_REDACTED_VALUE.to_string());
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        }
+        (Some(GeoFieldPathStep::Index(index)), JsonValue::Array(values)) => {
+            if let Some(slot) = values.get_mut(*index) {
+                *slot = JsonValue::String(GEO_REDACTED_VALUE.to_string());
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        }
+        _ => Ok(false),
+    }
+}
+
+fn prefixed_blake3(bytes: &[u8]) -> String {
+    format!("blake3:{}", blake3::hash(bytes).to_hex())
+}
+
+fn validate_prefixed_blake3(field: &str, value: &str) -> Result<(), GeoGeometryError> {
+    let Some(hex) = value.strip_prefix("blake3:") else {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidSourceDigest,
+            "Geo redacted artifact digests must carry a blake3: prefix",
+            [("field", field), ("value", value)],
+        ));
+    };
+    validate_provider_blake3(field, hex)
 }
 
 fn sort_and_reject_duplicate_strings(

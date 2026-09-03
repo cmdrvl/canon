@@ -2018,6 +2018,14 @@
       "source_path": "schemas/canon.geo.pre_resolution.v0.schema.json"
     },
     {
+      "id": "canon_geo_redacted_artifact.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.redacted_artifact.v0.schema.json"
+    },
+    {
       "id": "canon_geo_temporal_containment.v0",
       "family": "geo",
       "action": "preserve",
