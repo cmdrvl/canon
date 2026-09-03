@@ -6,7 +6,7 @@
 
 use super::{NAMEKIT_SCORE_SCALE, SimilarityScore};
 use rapidfuzz::{
-    distance::{jaro_winkler, levenshtein},
+    distance::{damerau_levenshtein, jaro_winkler, levenshtein},
     fuzz,
 };
 use serde::{Deserialize, Serialize};
@@ -20,6 +20,7 @@ pub const RAPIDFUZZ_VERSION: &str = "0.5.0";
 #[serde(rename_all = "snake_case")]
 pub enum SimilarityMetric {
     LevenshteinNormalized,
+    DamerauLevenshteinNormalized,
     JaroWinkler,
     DiceSorensen,
     TokenSortRatio,
@@ -77,6 +78,12 @@ pub fn normalized_similarity(
         (SimilarityMetric::LevenshteinNormalized, SimilarityPath::UnicodeChars) => {
             levenshtein_unicode(left, right, options)
         }
+        (SimilarityMetric::DamerauLevenshteinNormalized, SimilarityPath::AsciiBytes) => {
+            damerau_levenshtein_ascii(left, right, options)
+        }
+        (SimilarityMetric::DamerauLevenshteinNormalized, SimilarityPath::UnicodeChars) => {
+            damerau_levenshtein_unicode(left, right, options)
+        }
         (SimilarityMetric::JaroWinkler, SimilarityPath::AsciiBytes) => {
             jaro_winkler_ascii(left, right, options)
         }
@@ -109,6 +116,12 @@ pub fn batch_normalized_similarity(
         }
         (SimilarityMetric::LevenshteinNormalized, SimilarityPath::UnicodeChars) => {
             batch_levenshtein_unicode(left, rights, options)
+        }
+        (SimilarityMetric::DamerauLevenshteinNormalized, SimilarityPath::AsciiBytes) => {
+            batch_damerau_levenshtein_ascii(left, rights, options)
+        }
+        (SimilarityMetric::DamerauLevenshteinNormalized, SimilarityPath::UnicodeChars) => {
+            batch_damerau_levenshtein_unicode(left, rights, options)
         }
         (SimilarityMetric::JaroWinkler, SimilarityPath::AsciiBytes) => {
             batch_jaro_winkler_ascii(left, rights, options)
@@ -211,6 +224,36 @@ fn levenshtein_unicode(left: &str, right: &str, options: SimilarityOptions) -> O
     }
 }
 
+fn damerau_levenshtein_ascii(left: &str, right: &str, options: SimilarityOptions) -> Option<f64> {
+    match options.score_cutoff {
+        Some(cutoff) => damerau_levenshtein::normalized_similarity_with_args(
+            left.bytes(),
+            right.bytes(),
+            &damerau_levenshtein_args_with_cutoff(cutoff, options.score_hint),
+        ),
+        None => Some(damerau_levenshtein::normalized_similarity_with_args(
+            left.bytes(),
+            right.bytes(),
+            &damerau_levenshtein_args(options.score_hint),
+        )),
+    }
+}
+
+fn damerau_levenshtein_unicode(left: &str, right: &str, options: SimilarityOptions) -> Option<f64> {
+    match options.score_cutoff {
+        Some(cutoff) => damerau_levenshtein::normalized_similarity_with_args(
+            left.chars(),
+            right.chars(),
+            &damerau_levenshtein_args_with_cutoff(cutoff, options.score_hint),
+        ),
+        None => Some(damerau_levenshtein::normalized_similarity_with_args(
+            left.chars(),
+            right.chars(),
+            &damerau_levenshtein_args(options.score_hint),
+        )),
+    }
+}
+
 fn jaro_winkler_ascii(left: &str, right: &str, options: SimilarityOptions) -> Option<f64> {
     match options.score_cutoff {
         Some(cutoff) => jaro_winkler::normalized_similarity_with_args(
@@ -281,6 +324,54 @@ fn batch_levenshtein_unicode(
         }
         None => {
             let args = levenshtein_args(options.score_hint);
+            rights
+                .iter()
+                .map(|right| Some(scorer.normalized_similarity_with_args(right.chars(), &args)))
+                .collect()
+        }
+    }
+}
+
+fn batch_damerau_levenshtein_ascii(
+    left: &str,
+    rights: &[&str],
+    options: SimilarityOptions,
+) -> Vec<Option<f64>> {
+    let scorer = damerau_levenshtein::BatchComparator::new(left.bytes());
+    match options.score_cutoff {
+        Some(cutoff) => {
+            let args = damerau_levenshtein_args_with_cutoff(cutoff, options.score_hint);
+            rights
+                .iter()
+                .map(|right| scorer.normalized_similarity_with_args(right.bytes(), &args))
+                .collect()
+        }
+        None => {
+            let args = damerau_levenshtein_args(options.score_hint);
+            rights
+                .iter()
+                .map(|right| Some(scorer.normalized_similarity_with_args(right.bytes(), &args)))
+                .collect()
+        }
+    }
+}
+
+fn batch_damerau_levenshtein_unicode(
+    left: &str,
+    rights: &[&str],
+    options: SimilarityOptions,
+) -> Vec<Option<f64>> {
+    let scorer = damerau_levenshtein::BatchComparator::new(left.chars());
+    match options.score_cutoff {
+        Some(cutoff) => {
+            let args = damerau_levenshtein_args_with_cutoff(cutoff, options.score_hint);
+            rights
+                .iter()
+                .map(|right| scorer.normalized_similarity_with_args(right.chars(), &args))
+                .collect()
+        }
+        None => {
+            let args = damerau_levenshtein_args(options.score_hint);
             rights
                 .iter()
                 .map(|right| Some(scorer.normalized_similarity_with_args(right.chars(), &args)))
@@ -542,6 +633,23 @@ fn levenshtein_args_with_cutoff(
     hint: Option<SimilarityScore>,
 ) -> levenshtein::Args<f64, rapidfuzz::common::WithScoreCutoff<f64>> {
     levenshtein_args(hint).score_cutoff(score_units_to_ratio(cutoff))
+}
+
+fn damerau_levenshtein_args(
+    hint: Option<SimilarityScore>,
+) -> damerau_levenshtein::Args<f64, rapidfuzz::common::NoScoreCutoff> {
+    let mut args = damerau_levenshtein::Args::default();
+    if let Some(hint) = hint {
+        args = args.score_hint(score_units_to_ratio(hint));
+    }
+    args
+}
+
+fn damerau_levenshtein_args_with_cutoff(
+    cutoff: SimilarityScore,
+    hint: Option<SimilarityScore>,
+) -> damerau_levenshtein::Args<f64, rapidfuzz::common::WithScoreCutoff<f64>> {
+    damerau_levenshtein_args(hint).score_cutoff(score_units_to_ratio(cutoff))
 }
 
 fn jaro_winkler_args(

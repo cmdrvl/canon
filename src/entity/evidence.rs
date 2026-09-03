@@ -438,6 +438,7 @@ fn score_units_to_namekit(score_units: ScoreUnits) -> SimilarityScore {
 fn metric_id(metric: SimilarityMetric) -> &'static str {
     match metric {
         SimilarityMetric::LevenshteinNormalized => "levenshtein_normalized",
+        SimilarityMetric::DamerauLevenshteinNormalized => "damerau_levenshtein_normalized",
         SimilarityMetric::JaroWinkler => "jaro_winkler",
         SimilarityMetric::DiceSorensen => "dice_sorensen",
         SimilarityMetric::TokenSortRatio => "token_sort_ratio",

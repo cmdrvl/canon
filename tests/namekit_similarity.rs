@@ -167,6 +167,53 @@ fn metric_ascii_unicode_parity() {
 }
 
 #[test]
+fn damerau_counts_adjacent_transposition_as_one_edit_only() {
+    let transposed_digits = normalized_similarity(
+        SimilarityMetric::DamerauLevenshteinNormalized,
+        "2031-01-12",
+        "2031-01-21",
+        SimilarityOptions::default(),
+    );
+    assert_eq!(transposed_digits.path, SimilarityPath::AsciiBytes);
+    assert_eq!(
+        transposed_digits.score.map(SimilarityScore::as_scaled),
+        Some(9000)
+    );
+    assert!(transposed_digits.evidence_only);
+
+    let plain_levenshtein = normalized_similarity(
+        SimilarityMetric::LevenshteinNormalized,
+        "2031-01-12",
+        "2031-01-21",
+        SimilarityOptions::default(),
+    );
+    assert_eq!(
+        plain_levenshtein.score.map(SimilarityScore::as_scaled),
+        Some(8000)
+    );
+
+    let two_edit_substitution = normalized_similarity(
+        SimilarityMetric::DamerauLevenshteinNormalized,
+        "abcd",
+        "abxy",
+        SimilarityOptions::default(),
+    );
+    assert_eq!(
+        two_edit_substitution.score.map(SimilarityScore::as_scaled),
+        Some(5000)
+    );
+
+    let cutoff_rejects_two_edit_substitution = normalized_similarity(
+        SimilarityMetric::DamerauLevenshteinNormalized,
+        "abcd",
+        "abxy",
+        SimilarityOptions::new(Some(score(7_500)), Some(score(5_000))),
+    );
+    assert_eq!(cutoff_rejects_two_edit_substitution.score, None);
+    assert!(!cutoff_rejects_two_edit_substitution.passed_cutoff);
+}
+
+#[test]
 fn local_metric_variants_are_deterministic_evidence_only() {
     let dice = normalized_similarity(
         SimilarityMetric::DiceSorensen,
@@ -282,6 +329,45 @@ fn batch_comparator_reuse_matches_pairwise_scores() {
         assert_eq!(batch_result.passed_cutoff, pairwise_result.passed_cutoff);
         assert!(batch_result.evidence_only);
     }
+
+    let damerau_rights = ["2031-01-21", "2031-02-12"];
+    let damerau_options = SimilarityOptions::new(Some(score(8_500)), Some(score(9_000)));
+    let damerau_batch = batch_normalized_similarity(
+        SimilarityMetric::DamerauLevenshteinNormalized,
+        "2031-01-12",
+        &damerau_rights,
+        damerau_options,
+    );
+    let damerau_pairwise = damerau_rights
+        .iter()
+        .map(|right| {
+            normalized_similarity(
+                SimilarityMetric::DamerauLevenshteinNormalized,
+                "2031-01-12",
+                right,
+                damerau_options,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(damerau_batch.len(), damerau_pairwise.len());
+    assert_eq!(
+        damerau_batch[0].score.map(SimilarityScore::as_scaled),
+        Some(9000)
+    );
+    assert_eq!(
+        damerau_batch[1].score.map(SimilarityScore::as_scaled),
+        Some(9000)
+    );
+    for (batch_result, pairwise_result) in damerau_batch.iter().zip(damerau_pairwise.iter()) {
+        assert!(batch_result.batch_reused);
+        assert_eq!(
+            batch_result.score.map(SimilarityScore::as_scaled),
+            pairwise_result.score.map(SimilarityScore::as_scaled)
+        );
+        assert_eq!(batch_result.passed_cutoff, pairwise_result.passed_cutoff);
+        assert!(batch_result.evidence_only);
+    }
 }
 
 #[test]
@@ -333,6 +419,7 @@ impl RapidFuzzFixture {
     fn metric(&self) -> SimilarityMetric {
         match self.metric.as_str() {
             "levenshtein_normalized" => SimilarityMetric::LevenshteinNormalized,
+            "damerau_levenshtein_normalized" => SimilarityMetric::DamerauLevenshteinNormalized,
             "jaro_winkler" => SimilarityMetric::JaroWinkler,
             "dice_sorensen" => SimilarityMetric::DiceSorensen,
             "token_sort_ratio" => SimilarityMetric::TokenSortRatio,
