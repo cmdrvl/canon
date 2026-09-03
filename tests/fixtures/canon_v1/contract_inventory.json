@@ -1444,6 +1444,13 @@
       "source_path": "schemas/canon.geo.propagation.v0.schema.json"
     },
     {
+      "id": "canon.geo.stage.propagate.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/geo/executor.rs"
+    },
+    {
       "id": "canon_geo_run.v0",
       "family": "geo",
       "action": "preserve",
