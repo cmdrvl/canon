@@ -752,6 +752,14 @@
       "action": "preserve"
     },
     {
+      "id": "canon entity calibrate em",
+      "family": "entity",
+      "clap_path": "entity calibrate em",
+      "operator_name": "entity calibrate em",
+      "primary_contracts": ["canon.entity.calibrate_em.v0"],
+      "action": "preserve"
+    },
+    {
       "id": "canon entity audit",
       "family": "entity",
       "clap_path": "entity audit",
@@ -1321,6 +1329,13 @@
       "action": "preserve",
       "access_boundary": "public_schema",
       "source_path": "schemas/canon.entity.calibrate_sweep.v0.schema.json"
+    },
+    {
+      "id": "canon.entity.calibrate_em.v0",
+      "family": "entity",
+      "action": "preserve",
+      "access_boundary": "public_schema",
+      "source_path": "schemas/canon.entity.calibrate_em.v0.schema.json"
     },
     { "id": "canon.evaluation.alias_withholding.v1", "family": "evaluation", "action": "preserve" },
     { "id": "canon.evaluation.alias_withholding.assignment_firewall.v0", "family": "evaluation", "action": "preserve" },

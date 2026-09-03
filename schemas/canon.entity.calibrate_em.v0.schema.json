@@ -1,0 +1,325 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.entity.calibrate_em.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "probability_units": {
+      "maximum": 1000000,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "score_units": {
+      "maximum": 10000,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "warning": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "detail": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "message": {
+          "type": "string"
+        },
+        "operator_id": {
+          "type": "string"
+        }
+      },
+      "required": ["code", "message"],
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "aggregate": {
+      "additionalProperties": false,
+      "properties": {
+        "pair_count": {
+          "$ref": "#/$defs/count"
+        },
+        "pattern_count": {
+          "$ref": "#/$defs/count"
+        },
+        "patterns": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "count": {
+                "$ref": "#/$defs/count"
+              },
+              "operators": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "agreed": {
+                      "type": "boolean"
+                    },
+                    "operator_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["operator_id", "agreed"],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": ["count", "operators"],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "source": {
+          "const": "distinct_agreement_pattern_counts"
+        }
+      },
+      "required": ["source", "pair_count", "pattern_count", "patterns"],
+      "type": "object"
+    },
+    "config": {
+      "additionalProperties": false,
+      "properties": {
+        "convergence_epsilon_units": {
+          "$ref": "#/$defs/probability_units"
+        },
+        "log_odds_units": {
+          "const": "log2_milli"
+        },
+        "max_iterations": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "probability_scale": {
+          "const": 1000000
+        },
+        "score_units_scale": {
+          "const": 10000
+        },
+        "u_estimation": {
+          "const": "full_evidence_artifact_no_sampling"
+        }
+      },
+      "required": [
+        "probability_scale",
+        "score_units_scale",
+        "log_odds_units",
+        "max_iterations",
+        "convergence_epsilon_units",
+        "u_estimation"
+      ],
+      "type": "object"
+    },
+    "convergence": {
+      "additionalProperties": false,
+      "properties": {
+        "convergence_epsilon_units": {
+          "$ref": "#/$defs/probability_units"
+        },
+        "iterations": {
+          "$ref": "#/$defs/count"
+        },
+        "match_prior_probability_units": {
+          "$ref": "#/$defs/probability_units"
+        },
+        "max_delta_units": {
+          "$ref": "#/$defs/probability_units"
+        },
+        "max_iterations": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "status": {
+          "enum": ["converged", "not_converged"],
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "iterations",
+        "max_iterations",
+        "max_delta_units",
+        "convergence_epsilon_units",
+        "match_prior_probability_units"
+      ],
+      "type": "object"
+    },
+    "inputs": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_path": {
+          "type": "string"
+        },
+        "evidence_set_hash": {
+          "pattern": "^blake3:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "pair_count": {
+          "$ref": "#/$defs/count"
+        },
+        "pattern_count": {
+          "$ref": "#/$defs/count"
+        },
+        "strategy_hash": {
+          "pattern": "^blake3:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "strategy_id": {
+          "type": "string"
+        },
+        "strategy_path": {
+          "type": "string"
+        },
+        "strategy_version": {
+          "type": "string"
+        },
+        "support_operator_count": {
+          "$ref": "#/$defs/count"
+        }
+      },
+      "required": [
+        "evidence_path",
+        "evidence_set_hash",
+        "strategy_path",
+        "strategy_hash",
+        "strategy_id",
+        "strategy_version",
+        "pair_count",
+        "support_operator_count",
+        "pattern_count"
+      ],
+      "type": "object"
+    },
+    "metric_units": {
+      "const": "integer_fixed_point"
+    },
+    "operators": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "agreement_count": {
+            "$ref": "#/$defs/count"
+          },
+          "disagreement_count": {
+            "$ref": "#/$defs/count"
+          },
+          "log_odds_weight_units": {
+            "type": "integer"
+          },
+          "m_probability_units": {
+            "$ref": "#/$defs/probability_units"
+          },
+          "operator_id": {
+            "type": "string"
+          },
+          "proposal_status": {
+            "enum": ["proposed", "suppressed"],
+            "type": "string"
+          },
+          "proposed_support_score_units": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/score_units"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "u_probability_units": {
+            "$ref": "#/$defs/probability_units"
+          },
+          "warning_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "operator_id",
+          "agreement_count",
+          "disagreement_count",
+          "m_probability_units",
+          "u_probability_units",
+          "log_odds_weight_units",
+          "proposed_support_score_units",
+          "proposal_status",
+          "warning_codes"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "read_only": {
+      "const": true
+    },
+    "recommendation": {
+      "additionalProperties": false,
+      "properties": {
+        "proposed_operator_count": {
+          "$ref": "#/$defs/count"
+        },
+        "proposed_strategy_yaml_fragment": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "status": {
+          "enum": ["recommended", "blocked"],
+          "type": "string"
+        }
+      },
+      "required": ["status", "reason", "proposed_operator_count"],
+      "type": "object"
+    },
+    "version": {
+      "const": "canon.entity.calibrate_em.v0"
+    },
+    "warnings": {
+      "items": {
+        "$ref": "#/$defs/warning"
+      },
+      "type": "array"
+    },
+    "writes_performed": {
+      "const": false
+    }
+  },
+  "required": [
+    "version",
+    "read_only",
+    "writes_performed",
+    "metric_units",
+    "inputs",
+    "config",
+    "aggregate",
+    "convergence",
+    "operators",
+    "recommendation",
+    "warnings"
+  ],
+  "title": "canon.entity.calibrate_em.v0",
+  "type": "object",
+  "x-canon-contract": {
+    "contract_id": "canon.entity.calibrate_em.v0",
+    "artifact_authority": "proposed_strategy_fragment_only",
+    "strategy_mutation": false,
+    "registry_mutation": false,
+    "arithmetic": "fixed_point_integer",
+    "sampling": "full_evidence_artifact_no_sampling"
+  }
+}

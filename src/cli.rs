@@ -1351,6 +1351,8 @@ pub enum EntityIndexSubcommand {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum EntityCalibrateSubcommand {
+    /// Estimate support evidence weights from aggregated agreement patterns
+    Em(EntityCalibrateEmCli),
     /// Sweep deterministic integer threshold tuples against gold labels
     Sweep(EntityCalibrateSweepCli),
 }
@@ -2060,6 +2062,20 @@ pub struct EntityCalibrateSweepCli {
     pub gold: PathBuf,
 
     /// Strategy YAML file used as the read-only source of current thresholds
+    #[arg(long)]
+    pub strategy: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntityCalibrateEmCli {
+    /// Entity evidence JSON or JSONL artifact to aggregate before EM
+    pub evidence: PathBuf,
+
+    /// Strategy YAML file used as the read-only source of support operator IDs
     #[arg(long)]
     pub strategy: PathBuf,
 
@@ -3341,7 +3357,9 @@ mod tests {
         let subcommand = command.command;
         assert!(matches!(&subcommand, EntitySubcommand::Calibrate(_)));
         if let EntitySubcommand::Calibrate(calibrate) = subcommand {
-            let EntityCalibrateSubcommand::Sweep(sweep) = calibrate.command;
+            let EntityCalibrateSubcommand::Sweep(sweep) = calibrate.command else {
+                panic!("expected calibrate sweep subcommand");
+            };
             assert_eq!(sweep.result, PathBuf::from("result.jsonl"));
             assert_eq!(sweep.gold, PathBuf::from("gold.jsonl"));
             assert_eq!(sweep.strategy, PathBuf::from("strategy.yaml"));
@@ -3360,6 +3378,42 @@ mod tests {
             "--strategy",
             "strategy.yaml",
         ];
+        assert!(Cli::try_parse_from(args).is_err());
+    }
+
+    #[test]
+    fn test_cli_entity_calibrate_em_parsing() {
+        let args = [
+            "canon",
+            "entity",
+            "calibrate",
+            "em",
+            "evidence.jsonl",
+            "--strategy",
+            "strategy.yaml",
+            "--emit",
+            "summary",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        let Some(command) = entity_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, EntitySubcommand::Calibrate(_)));
+        if let EntitySubcommand::Calibrate(calibrate) = subcommand {
+            let EntityCalibrateSubcommand::Em(em) = calibrate.command else {
+                panic!("expected calibrate em subcommand");
+            };
+            assert_eq!(em.evidence, PathBuf::from("evidence.jsonl"));
+            assert_eq!(em.strategy, PathBuf::from("strategy.yaml"));
+            assert!(matches!(em.emit, EntityEmitMode::Summary));
+        }
+    }
+
+    #[test]
+    fn test_cli_entity_calibrate_em_requires_strategy() {
+        let args = ["canon", "entity", "calibrate", "em", "evidence.jsonl"];
         assert!(Cli::try_parse_from(args).is_err());
     }
 

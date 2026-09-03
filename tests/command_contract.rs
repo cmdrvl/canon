@@ -607,6 +607,7 @@ fn assert_runtime_corpus_coverage(manifest: &OperatorManifest, cases: &[RuntimeC
         "inbox list",
         "inbox export-review",
         "entity calibrate sweep",
+        "entity calibrate em",
         "entity block preflight",
         "entity profile list",
         "entity profile init",
@@ -879,6 +880,8 @@ impl RuntimeHarness {
         let calibrate_result = self.work.join("calibrate-result.jsonl");
         let calibrate_gold = self.work.join("calibrate-gold.jsonl");
         let calibrate_strategy = self.work.join("calibrate-strategy.yaml");
+        let calibrate_em_evidence = self.work.join("calibrate-em-evidence.jsonl");
+        let calibrate_em_strategy = self.work.join("calibrate-em-strategy.yaml");
         let block_preflight_rows = self.work.join("block-preflight-rows.csv");
         let block_preflight_strategy = self.work.join("block-preflight-strategy.yaml");
         fs::write(
@@ -904,6 +907,12 @@ impl RuntimeHarness {
             "strategy_id: contract-corpus\nsolver:\n  backbone_score_min: 32\n  attach_score_min: 28\n",
         )
         .expect("calibrate strategy fixture");
+        write_calibrate_em_fixture(&calibrate_em_evidence);
+        fs::write(
+            &calibrate_em_strategy,
+            "strategy_id: contract-em\nstrategy_version: 1\nsupport_scores:\n  'legal_name': 1000\n  'jurisdiction': 1000\n",
+        )
+        .expect("calibrate EM strategy fixture");
         fs::write(
             &block_preflight_rows,
             concat!(
@@ -1442,6 +1451,55 @@ impl RuntimeHarness {
                 )),
             },
             RuntimeCase {
+                id: "entity_calibrate_em_json_is_read_only",
+                command_name: "entity calibrate em",
+                args: vec![
+                    "entity".to_string(),
+                    "calibrate".to_string(),
+                    "em".to_string(),
+                    path_arg(&calibrate_em_evidence),
+                    "--strategy".to_string(),
+                    path_arg(&calibrate_em_strategy),
+                    "--emit".to_string(),
+                    "json".to_string(),
+                ],
+                expected: RuntimeExpectation::json(
+                    0,
+                    "canon.entity.calibrate_em.v0",
+                    SchemaField::Version,
+                )
+                .assert_eq("read_only", json!(true))
+                .assert_eq("writes_performed", json!(false))
+                .assert_eq("metric_units", json!("integer_fixed_point"))
+                .assert_eq("config.probability_scale", json!(1_000_000))
+                .assert_eq("config.score_units_scale", json!(10_000))
+                .assert_eq("inputs.pair_count", json!(1000))
+                .assert_eq("inputs.support_operator_count", json!(2))
+                .assert_eq("inputs.pattern_count", json!(4))
+                .assert_eq(
+                    "aggregate.source",
+                    json!("distinct_agreement_pattern_counts"),
+                )
+                .assert_eq("aggregate.pattern_count", json!(4))
+                .assert_eq("convergence.status", json!("converged"))
+                .assert_eq("recommendation.status", json!("recommended"))
+                .assert_eq("recommendation.proposed_operator_count", json!(2))
+                .assert_eq("operators.0.operator_id", json!("jurisdiction"))
+                .assert_eq("operators.0.proposal_status", json!("proposed"))
+                .assert_eq("operators.1.operator_id", json!("legal_name"))
+                .assert_eq("operators.1.proposal_status", json!("proposed"))
+                .assert_array_len("warnings", 0)
+                .with_stderr(StderrExpectation::Empty)
+                .with_mutation(MutationExpectation::Unchanged(
+                    calibrate_em_evidence.clone(),
+                    fs::read(&calibrate_em_evidence).expect("calibrate EM evidence bytes"),
+                ))
+                .with_mutation(MutationExpectation::Unchanged(
+                    calibrate_em_strategy.clone(),
+                    fs::read(&calibrate_em_strategy).expect("calibrate EM strategy bytes"),
+                )),
+            },
+            RuntimeCase {
                 id: "entity_block_preflight_json_is_read_only",
                 command_name: "entity block preflight",
                 args: vec![
@@ -1884,6 +1942,37 @@ fn sample_inbox_item(
         "occurrences": occurrences,
         "privacy_class": "internal"
     })
+}
+
+fn write_calibrate_em_fixture(path: &Path) {
+    let mut content = String::new();
+    push_calibrate_em_pattern(&mut content, 0, 410, &["legal_name", "jurisdiction"]);
+    push_calibrate_em_pattern(&mut content, 410, 90, &["legal_name"]);
+    push_calibrate_em_pattern(&mut content, 500, 90, &["jurisdiction"]);
+    push_calibrate_em_pattern(&mut content, 590, 410, &[]);
+    fs::write(path, content).expect("calibrate EM evidence fixture");
+}
+
+fn push_calibrate_em_pattern(content: &mut String, start: usize, count: usize, operators: &[&str]) {
+    for index in start..start + count {
+        let record = json!({
+            "left_surface_id": format!("left-{index:04}"),
+            "right_surface_id": format!("right-{index:04}"),
+            "hits": operators
+                .iter()
+                .map(|operator| {
+                    json!({
+                        "lane": "support",
+                        "namespace": "entity",
+                        "operator_id": operator,
+                        "score_units": 1000
+                    })
+                })
+                .collect::<Vec<_>>()
+        });
+        content.push_str(&serde_json::to_string(&record).expect("EM record serializes"));
+        content.push('\n');
+    }
 }
 
 fn args<const N: usize>(items: [&str; N]) -> Vec<String> {

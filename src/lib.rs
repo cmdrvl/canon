@@ -1161,7 +1161,31 @@ fn run_entity_generalization_command(
 
 fn run_entity_calibrate_command(calibrate: &EntityCalibrateCommand) -> Result<u8, Box<dyn Error>> {
     match &calibrate.command {
+        EntityCalibrateSubcommand::Em(em) => run_entity_calibrate_em_command(em),
         EntityCalibrateSubcommand::Sweep(sweep) => run_entity_calibrate_sweep_command(sweep),
+    }
+}
+
+fn run_entity_calibrate_em_command(
+    em: &crate::cli::EntityCalibrateEmCli,
+) -> Result<u8, Box<dyn Error>> {
+    let summary_mode = matches!(em.emit, EntityEmitMode::Summary);
+    match entity::calibrate_em::run_calibrate_em(entity::calibrate_em::CalibrateEmRequest {
+        evidence: &em.evidence,
+        strategy: &em.strategy,
+        options: entity::calibrate_em::CalibrateEmOptions::default(),
+    }) {
+        Ok(report) => {
+            let output = match em.emit {
+                EntityEmitMode::Json => serde_json::to_string(&report)?,
+                EntityEmitMode::Summary => {
+                    entity::calibrate_em::render_calibrate_em_summary(&report)
+                }
+            };
+            emit_entity_output(&output, summary_mode);
+            Ok(0)
+        }
+        Err(refusal) => emit_entity_refusal(refusal.to_canon_output(), true, summary_mode),
     }
 }
 

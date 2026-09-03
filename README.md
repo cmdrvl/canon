@@ -108,6 +108,7 @@ yet know enough.
 | `canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json>` | Compile artifact-backed withheld-alias trials into a JSON or summary report. | Strict execution envelope only; outcomes are derived from referenced artifacts, not self-declared. |
 | `canon entity generalization --manifest <STRICT_ENVELOPE.json>` | Compile artifact-backed entity-disjoint and time-forward trials into a JSON or summary report. | Strict execution envelope only; one public/private command, redacted identifiers and paths, outcomes and leakage checks derived from referenced artifacts rather than self-attested fields. Strict solve derivation binds typed edge artifacts, edge records, prepared surfaces, and `canon.evaluation.generalization.solve_policy.v0`. |
 | `canon entity calibrate sweep <RESULT> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml>` | Sweep integer threshold tuples against gold labels and emit a truth-space recommendation report. | Read-only workbench report; no registry writes, no strategy mutation, frozen `canon.entity.quality.v1` gates. |
+| `canon entity calibrate em <EVIDENCE.jsonl> --strategy <STRATEGY.yaml>` | Estimate support-evidence weights from aggregated agreement patterns and emit proposed support-score YAML. | Read-only calibration assist; fixed-point EM over existing evidence only, no registry writes, no strategy mutation, no automatic authority. |
 | `canon registry export --format dbt-seed|search-index` | Project exact registry knowledge into transform or serving artifacts. | Deterministic downstream snapshots; no new matching semantics. |
 | Package, project, and temporal workflows | Move registries and strategies through reproducible deployment, project locks, and snapshot comparison. | They package and check knowledge; they do not change exact lookup. |
 | Extensions and adapters | Add profiles, source mappings, provider materializers, and domain policies out of tree. | Domain expertise stays outside Canon core defaults unless explicitly packaged and audited. |
@@ -475,6 +476,7 @@ canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> -
 canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]
 canon entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json|summary]
 canon entity calibrate sweep <RESULT|EVIDENCE> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml> [--emit json|summary]
+canon entity calibrate em <EVIDENCE.jsonl> --strategy <STRATEGY.yaml> [--emit json|summary]
 canon entity prepare <ROWS> --profile <PROFILE> --registry <DIR> --work-dir <DIR>
 canon entity index build <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--emit json|summary]
 canon entity block <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--emit jsonl|summary]
@@ -761,6 +763,7 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json\|summary]` | Compile a strict execution envelope into an alias-withholding report. The envelope references clean registry, candidate, link, run/solve, review, audit, leak-scan, assignment-firewall, and optional promotion/replay artifacts; Canon derives outcomes from those artifacts and refuses self-declared results. |
 | `entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json\|summary]` | Compile a strict artifact-backed entity-disjoint/time-forward envelope into a redacted report. The same command is used for public fixtures and operator-owned private corpora; identifiers, paths, and cutoffs are hashed at the CLI boundary, and outcomes/leakage checks are derived from referenced artifacts rather than self-attested fields. |
 | `entity calibrate sweep <RESULT\|EVIDENCE> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml> [--emit json\|summary]` | Sweep deterministic integer threshold tuples against gold labels and emit `canon.entity.calibrate_sweep.v0`. The report maximizes auto-accept subject to frozen `canon.entity.quality.v1` gates, emits a YAML threshold fragment for manual application, and never writes registry or strategy files. |
+| `entity calibrate em <EVIDENCE.jsonl> --strategy <STRATEGY.yaml> [--emit json\|summary]` | Estimate m/u probabilities from aggregated support-evidence agreement patterns and emit `canon.entity.calibrate_em.v0`. The report uses integer fixed-point EM, suppresses weights for constant, zero-cell, or non-converged operators, emits a proposed `support_scores` YAML fragment for manual review, and never writes registry or strategy files. |
 | `entity prepare <ROWS> --profile <PROFILE> --registry <DIR> --work-dir <DIR>` | Validate and project profile-mapped observations for artifact-backed entity preparation. |
 | `entity index build <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--emit json\|summary]` | Build deterministic index artifacts for a work directory. |
 | `entity block <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--emit jsonl\|summary]` | Generate candidate neighborhoods via blocking operators. |
@@ -806,6 +809,12 @@ refuse validation. It does not use exit `1` for benchmark outcomes.
 or summary report, including `recommendation.status: blocked` when no threshold
 tuple satisfies `canon.entity.quality.v1`. It exits `2` for malformed
 result/gold/strategy inputs or gold pairs absent from the scored artifact.
+
+`canon entity calibrate em` exits `0` when it emits a structurally valid JSON or
+summary report, including `recommendation.status: blocked` when no operator has
+safe proposed support-score weights. It exits `2` for malformed evidence,
+strategy, or sealed acceptance/holdout inputs. The command is read-only and
+does not mutate strategies, registries, work directories, or witness ledgers.
 
 `canon doctor health`, bare `canon doctor`, and `canon doctor --robot-triage`
 exit `0` when compiled contract parity is healthy and `1` when the report is
@@ -1289,6 +1298,14 @@ recall `>= 9800` bps, and critical false merges `== 0`. If no tuple passes,
 report includes a proposed YAML threshold fragment for manual application only;
 the command never writes registry files, work directories, witness ledgers, or
 the strategy file.
+
+`canon entity calibrate em <EVIDENCE.jsonl> --strategy <STRATEGY.yaml>` is a
+read-only support-weight suggestion report compiler for entity evidence
+artifacts. It collapses per-pair support-lane hits into distinct agreement
+patterns before fixed-point EM, reports m/u probabilities and log-odds-derived
+score units, and emits a proposed `support_scores` YAML fragment for manual
+review only. Constant fields, zero-count cells, and non-converged runs produce
+typed warnings and no proposed weight for the affected operator.
 
 The native entity workbench cache contract records `canon_entity_index_cache_receipt.v0`
 stage artifacts. Public `canon entity run` and `canon entity link` expose

@@ -151,6 +151,7 @@ canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> -
 canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]
 canon entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json|summary]
 canon entity calibrate sweep <RESULT|EVIDENCE> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml> [--emit json|summary]
+canon entity calibrate em <EVIDENCE.jsonl> --strategy <STRATEGY.yaml> [--emit json|summary]
 canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY> --work-dir <DIR>
 canon entity index build <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--emit json|summary]
 canon entity block <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--emit jsonl|summary]
@@ -527,6 +528,21 @@ lookup path and it does not change `canon.v0` exact-match semantics.
   `2` for malformed strategy/gold/result inputs or gold pairs absent from the
   scored result artifact
 
+`canon entity calibrate em <EVIDENCE.jsonl> --strategy <STRATEGY.yaml> [--emit json|summary]`
+- compiles a read-only unsupervised support-weight suggestion report from
+  already-materialized entity evidence; it emits `canon.entity.calibrate_em.v0`
+- collapses per-pair support-lane evidence into deterministic agreement-pattern
+  counts before iteration, then runs fixed-cap Fellegi-Sunter EM using
+  integer-scaled probabilities and deterministic operator ordering
+- reports per-operator m/u probabilities, log-odds-derived integer support
+  scores on the entity/namekit 10,000-unit scale, convergence diagnostics, and
+  typed warnings; constant, zero-cell, or non-converged operators receive no
+  proposed weight
+- emits a proposed `support_scores` YAML fragment for operator review only; it
+  never mutates strategy files, registries, work directories, or witness ledgers
+- exits `0` for a valid report, including a blocked recommendation, and exits
+  `2` for malformed evidence/strategy inputs or sealed acceptance/holdout paths
+
 `canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY> --work-dir <DIR>`
 - validates the profile, registry snapshot, and source rows
 - writes prepared surfaces and profile firewall artifacts under the work
@@ -670,11 +686,11 @@ Streams
 No other outcomes.
 
 Workbench evaluation commands such as `canon entity alias-withholding`,
-`canon entity generalization`, and `canon entity calibrate sweep` are report
-compilers rather than core lookup runs: a valid report exits `0` even when its
-internal release claim or recommendation is blocked, and a bad execution
-envelope, referenced artifact, or gold/result calibration contract exits `2`
-with a structured refusal.
+`canon entity generalization`, `canon entity calibrate sweep`, and `canon entity
+calibrate em` are report compilers rather than core lookup runs: a valid report
+exits `0` even when its internal release claim or recommendation is blocked, and
+a bad execution envelope, referenced artifact, evidence, strategy, or
+gold/result calibration contract exits `2` with a structured refusal.
 
 ---
 

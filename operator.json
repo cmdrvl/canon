@@ -57,6 +57,7 @@
       "canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]",
       "canon entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json|summary]",
       "canon entity calibrate sweep <RESULT.json|EVIDENCE.jsonl> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml> [--emit json|summary]",
+      "canon entity calibrate em <EVIDENCE.jsonl> --strategy <STRATEGY.yaml> [--emit json|summary]",
       "canon entity audit <RESULT.json> --suite <SUITE_DIR> [--emit json|summary]",
       "canon entity promote <RESULT.json> --audit <AUDIT.json> --registry <REGISTRY_DIR> --next-version <VERSION> [--emit json|summary]",
       "canon entity apply <RESULT.json> --rows <ROWS> --registry <REGISTRY_DIR> [--column <COL>] [--out <PATH>|--output <PATH>] [--work-dir <DIR>] [--require-full-resolution|--allow-partial-output] [--emit json|summary]",
@@ -6874,6 +6875,81 @@
       "next_command": "canon entity run <ROWS> --strategy <UPDATED_STRATEGY.yaml> --registry <REGISTRY_DIR> --work-dir <DIR>",
       "recovery": {
         "next_command": "canon entity calibrate sweep <RESULT.json|EVIDENCE.jsonl> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml> --emit json",
+        "refusal_exit_code": 2
+      }
+    },
+    {
+      "name": "entity calibrate em",
+      "usage": "canon entity calibrate em <EVIDENCE.jsonl> --strategy <STRATEGY.yaml> [--emit json|summary]",
+      "description": "Estimate support-evidence m/u probabilities from aggregated agreement patterns, emit deterministic diagnostics, and propose read-only support-score YAML for operator review",
+      "output_mode": "mixed",
+      "output_schema": "canon.entity.calibrate_em.v0",
+      "status": "implemented",
+      "read_only": true,
+      "exit_codes": {
+        "0": {
+          "meaning": "calibrate EM report emitted; inspect recommendation.status for proposed or blocked support scores",
+          "domain": "report"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI or evidence contract error",
+          "domain": "error"
+        }
+      },
+      "options": [
+        {
+          "name": "evidence",
+          "type": "file_path",
+          "required": true,
+          "position": 0,
+          "description": "Entity evidence JSON or JSONL artifact containing support-lane operator hits per pair"
+        },
+        {
+          "name": "strategy",
+          "flag": "--strategy",
+          "type": "file_path",
+          "required": true,
+          "description": "Strategy YAML file read for support operator IDs and provenance only; the command never mutates it"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json (canon.entity.calibrate_em.v0) or summary"
+        }
+      ],
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "read-only EM calibration assist over already-materialized evidence; emits proposed support scores only, with no registry or strategy mutation authority",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "entity read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": true,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "next_command": "canon entity run <ROWS> --strategy <REVIEWED_STRATEGY.yaml> --registry <REGISTRY_DIR> --work-dir <DIR>",
+      "recovery": {
+        "next_command": "canon entity calibrate em <EVIDENCE.jsonl> --strategy <STRATEGY.yaml> --emit json",
         "refusal_exit_code": 2
       }
     },
