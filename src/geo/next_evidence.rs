@@ -21,20 +21,15 @@ use std::{
 pub const CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION: &str = "canon_geo_next_evidence_request.v0";
 pub const CANON_GEO_NEXT_EVIDENCE_VERSION: &str = "canon_geo_next_evidence.v0";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GeoNextActionClass {
     RepairReach,
     DiagnoseConflict,
+    #[default]
     SeparateResidual,
     RaiseClaimClass,
     Stop,
-}
-
-impl Default for GeoNextActionClass {
-    fn default() -> Self {
-        Self::SeparateResidual
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
