@@ -304,6 +304,8 @@ fn run_operator_journey(label: &str) -> JourneyRun {
     assert_bound_stage_artifact(&run.value, &stage_work.join("solve/solve.json"), "solve");
     assert_next_commands_are_public_and_local(&run.value["next_commands"]);
 
+    exercise_preflight_and_calibration_leaves(&fixture, &stage_work, &mut command_log);
+
     let link_work = fixture.root.join("link-work");
     let link = canon_json(
         &[
@@ -1309,6 +1311,79 @@ fn exercise_artifact_backed_benchmark_leaves(
     ));
 }
 
+/// Exercise the three planning and calibration leaves the run stages do not
+/// reach: `entity block preflight`, `entity calibrate em` and `entity
+/// calibrate sweep`. Preflight and EM run for real against the journey's own
+/// rows and evidence. The journey carries no gold labels, so sweep is driven
+/// through its typed refusal, matching how the benchmark leaves above are
+/// exercised.
+fn exercise_preflight_and_calibration_leaves(
+    fixture: &JourneyFixture,
+    stage_work: &Path,
+    command_log: &mut Vec<CommandRecord>,
+) {
+    // Preflight estimates cardinality without running the stage, so it is
+    // driven read-only here: passing --work-dir would require the directory to
+    // already exist and would make this a writing command.
+    let preflight = canon_json(
+        &[
+            "entity",
+            "block",
+            "preflight",
+            path_str(&fixture.observations),
+            "--profile",
+            path_str(&fixture.profile),
+            "--strategy",
+            path_str(&fixture.strategy),
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    assert_eq!(
+        preflight.value["version"],
+        "canon_entity_block_preflight.v1"
+    );
+    command_log.push(preflight.record);
+
+    let evidence_jsonl = stage_work.join("evidence/evidence.jsonl");
+    let calibrate_em = canon_json(
+        &[
+            "entity",
+            "calibrate",
+            "em",
+            path_str(&evidence_jsonl),
+            "--strategy",
+            path_str(&fixture.strategy),
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    assert_eq!(
+        calibrate_em.value["version"],
+        "canon.entity.calibrate_em.v0"
+    );
+    command_log.push(calibrate_em.record);
+
+    let missing_gold = fixture.root.join("missing-gold.jsonl");
+    command_log.push(canon_raw(
+        &[
+            "entity",
+            "calibrate",
+            "sweep",
+            path_str(&stage_work.join("solve/solve.json")),
+            "--gold",
+            path_str(&missing_gold),
+            "--strategy",
+            path_str(&fixture.strategy),
+            "--emit",
+            "json",
+        ],
+        2,
+    ));
+}
+
 fn operator_entity_leaf_names() -> BTreeSet<String> {
     let operator: Value = serde_json::from_str(include_str!("../../operator.json")).unwrap();
     let mut leaves = BTreeSet::new();
@@ -1319,18 +1394,13 @@ fn operator_entity_leaf_names() -> BTreeSet<String> {
 fn collect_operator_entity_leaves(value: &Value, leaves: &mut BTreeSet<String>) {
     match value {
         Value::Object(object) => {
-            if object
-                .get("aggregate")
-                .and_then(Value::as_bool)
-                .unwrap_or(false)
-            {
-                for child in object.values() {
-                    collect_operator_entity_leaves(child, leaves);
-                }
-                return;
-            }
+            // A node is an advertised operator surface when it carries its own
+            // `usage` string. `aggregate` only means "has children": `entity
+            // block` is aggregate and still directly invocable, so keying off
+            // `aggregate` alone hid it from the advertised set.
             if let Some(name) = object.get("name").and_then(Value::as_str)
                 && name.starts_with("entity ")
+                && object.get("usage").and_then(Value::as_str).is_some()
             {
                 leaves.insert(name.to_string());
             }
@@ -1361,6 +1431,9 @@ fn classify_entity_leaf(args: &[&str]) -> Option<String> {
         ["entity", "profile", "init", ..] => Some("entity profile init".to_string()),
         ["entity", "review", "export", ..] => Some("entity review export".to_string()),
         ["entity", "review", "import", ..] => Some("entity review import".to_string()),
+        ["entity", "block", "preflight", ..] => Some("entity block preflight".to_string()),
+        ["entity", "calibrate", "em", ..] => Some("entity calibrate em".to_string()),
+        ["entity", "calibrate", "sweep", ..] => Some("entity calibrate sweep".to_string()),
         ["entity", leaf, ..] => Some(format!("entity {leaf}")),
         _ => None,
     }
