@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 #[allow(dead_code)]
+pub mod evidence_policy;
 pub mod identifier;
 #[allow(dead_code)]
 pub mod normalization;

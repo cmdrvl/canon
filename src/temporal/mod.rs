@@ -6,8 +6,13 @@
 //! truth. They preserve validity time, knowledge time, and correction links
 //! without changing exact runtime lookup semantics.
 
+pub mod alias;
+pub mod assignment;
+pub mod compile;
+pub mod conflict;
 pub mod diff;
 pub mod explain;
+pub mod relation;
 
 mod fact;
 

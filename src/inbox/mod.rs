@@ -10,6 +10,7 @@ pub mod capture;
 pub mod cli;
 pub mod context;
 pub mod group;
+pub mod metrics;
 pub mod rank;
 mod types;
 

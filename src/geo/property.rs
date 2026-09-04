@@ -756,7 +756,7 @@ fn canonical_property_ledger_bytes(
         rows: &'a [GeoLedgerIdentifierRow],
     }
     serde_json::to_vec(&LedgerSeed {
-        version: "canon_geo_collateral_ledger.v0",
+        version: "canon_geo_collateral_ledger_seed.v0",
         rows,
     })
     .map_err(|error| {

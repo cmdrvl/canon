@@ -397,7 +397,7 @@ fn t57_property_set_algebra_is_exact_and_scoreless() {
 #[test]
 fn t58_registry_proposal_from_ledger_rows_preserves_denominator_and_skips_reach_none() {
     let ledger_json = br#"{
-      "version": "canon_geo_collateral_ledger.v0",
+      "version": "canon_geo_collateral_ledger_seed.v0",
       "rows": [
         {
           "accession": "0000000000-26-000001",
@@ -541,7 +541,7 @@ fn t58_registry_proposal_from_ledger_rows_preserves_denominator_and_skips_reach_
 #[test]
 fn t59_promoted_identifier_proposal_exports_to_dbt_seed_and_search_index() {
     let ledger_json = br#"{
-      "version": "canon_geo_collateral_ledger.v0",
+      "version": "canon_geo_collateral_ledger_seed.v0",
       "rows": [
         {
           "accession": "0000000000-26-000001",

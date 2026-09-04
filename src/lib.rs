@@ -25,6 +25,10 @@ pub mod operator;
 pub mod output;
 pub mod paths;
 pub mod project;
+pub mod provider_sdk;
+pub mod providers {
+    pub mod reconcile;
+}
 pub mod refusal;
 pub mod registry;
 pub mod registry_lint;
@@ -33,12 +37,17 @@ pub mod resolve;
 pub mod sdk;
 pub mod temporal;
 pub mod strategy {
+    pub mod explain;
+    pub mod package;
+    pub mod promotion;
+    pub mod registry;
     pub mod tournament;
     pub mod types;
 }
 pub mod strategy_audit;
 pub mod strategy_profile;
 pub mod strategy_registry;
+pub mod telemetry;
 pub mod witness;
 
 use crate::cli::{

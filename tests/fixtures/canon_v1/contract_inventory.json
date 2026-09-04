@@ -2214,6 +2214,14 @@
       "id": "canon_geo_collateral_ledger.v0",
       "family": "geo",
       "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "src/geo/ledger.rs"
+    },
+    {
+      "id": "canon_geo_collateral_ledger_seed.v0",
+      "family": "geo",
+      "action": "preserve",
       "access_boundary": "internal_source_only",
       "source_path": "src/geo/pre_resolve.rs"
     },

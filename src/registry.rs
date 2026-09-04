@@ -24,7 +24,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 mod add_entry;
 mod build;
+pub mod domain_compile;
 mod export;
+pub mod export_projection;
 mod id_scheme;
 mod mint;
 mod next_id;

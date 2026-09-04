@@ -116,9 +116,7 @@ pub fn finalize_conflict_policy(mut policy: ConflictPolicy) -> TemporalResult<Co
         }
         normalize_resolution(&mut clause.resolution)?;
     }
-    policy
-        .clauses
-        .sort_by_key(|clause| clause.conflict_class);
+    policy.clauses.sort_by_key(|clause| clause.conflict_class);
     Ok(policy)
 }
 

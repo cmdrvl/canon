@@ -20,6 +20,7 @@ pub mod footprint_roll;
 pub mod geometry;
 pub mod geometry_value;
 pub mod identifiers;
+pub mod ledger;
 pub mod lifecycle;
 pub mod materialize;
 pub mod multisource;
