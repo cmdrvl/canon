@@ -1,27 +1,27 @@
 #![forbid(unsafe_code)]
 
 use canon::geo::assessment_roll::{
-    produce_assessment_roll_owner_evidence, GeoAssessmentRollCaseDocument, GeoAssessmentRollLotRow,
-    GeoAssessmentRollOwnerCalibration, GeoAssessmentRollOwnerContractSource,
-    GeoAssessmentRollOwnerProofClass, GeoAssessmentRollOwnerRequest, GeoAssessmentRollPartyRow,
-    CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION,
+    CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION, GeoAssessmentRollCaseDocument,
+    GeoAssessmentRollLotRow, GeoAssessmentRollOwnerCalibration,
+    GeoAssessmentRollOwnerContractSource, GeoAssessmentRollOwnerProofClass,
+    GeoAssessmentRollOwnerRequest, GeoAssessmentRollPartyRow,
+    produce_assessment_roll_owner_evidence,
 };
 use canon::geo::footprint_roll::GeoAssessmentRollGrossSqftRow;
 use canon::geo::{
-    build_condo_bridge, canonical_population_evaluation_bytes,
-    evaluate_population_with_run_artifacts, materialize_footprint_roll_evidence,
-    stack_population_evidence, GeoBuildingFootprintRow, GeoCompositionBackbone,
-    GeoCompositionProfile, GeoCompositionUniverse, GeoCondoBridgeCaseRequest,
-    GeoCondoBridgeRequest, GeoEntityLevel, GeoFootprintRollCalibration,
-    GeoFootprintRollEvidenceRequest, GeoFootprintRollLoanFields, GeoFootprintRollSourceConfig,
-    GeoPopulationCaseEvaluation, GeoPopulationCaseStatus, GeoPopulationEvaluationArtifact,
-    GeoPopulationEvaluationRequest, GeoPopulationEvidenceStackRequest, GeoRhoContract,
-    GeoRhoObservation, GeoRhoObservationKind, CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION,
-    CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION,
+    CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION, CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION,
     CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
     CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
     DEFAULT_MAX_MATERIALIZED_MODELS, GEO_ASSESSMENT_ROLL_GROSS_SQFT_BAND_CONTRACT_ID,
-    GEO_FOOTPRINT_BUILDING_COUNT_FLOOR_CONTRACT_ID,
+    GEO_FOOTPRINT_BUILDING_COUNT_FLOOR_CONTRACT_ID, GeoBuildingFootprintRow,
+    GeoCompositionBackbone, GeoCompositionProfile, GeoCompositionUniverse,
+    GeoCondoBridgeCaseRequest, GeoCondoBridgeRequest, GeoEntityLevel, GeoFootprintRollCalibration,
+    GeoFootprintRollEvidenceRequest, GeoFootprintRollLoanFields, GeoFootprintRollSourceConfig,
+    GeoPopulationCaseEvaluation, GeoPopulationCaseStatus, GeoPopulationEvaluationArtifact,
+    GeoPopulationEvaluationRequest, GeoPopulationEvidenceStackRequest, GeoRhoContract,
+    GeoRhoObservation, GeoRhoObservationKind, build_condo_bridge,
+    canonical_population_evaluation_bytes, evaluate_population_with_run_artifacts,
+    materialize_footprint_roll_evidence, stack_population_evidence,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

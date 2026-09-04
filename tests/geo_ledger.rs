@@ -9,19 +9,20 @@ mod geo {
 mod ledger;
 
 use canon::geo::{
-    compile_evidence, GeoCandidateReachStatus, GeoCompositionArtifact, GeoCompositionBackbone,
-    GeoCompositionFallback, GeoCompositionModel, GeoCompositionProfile, GeoCompositionStatus,
-    GeoCompositionSummary, GeoEvidenceCompilationRequest, GeoLabeledCompositionCase,
-    GeoModelCountScope, GeoPopulationEvaluationRequest, GeoTruthPlane,
-    CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION,
+    CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION, GeoCandidateReachStatus,
+    GeoCompositionArtifact, GeoCompositionBackbone, GeoCompositionFallback, GeoCompositionModel,
+    GeoCompositionProfile, GeoCompositionStatus, GeoCompositionSummary,
+    GeoEvidenceCompilationRequest, GeoLabeledCompositionCase, GeoModelCountScope,
+    GeoPopulationEvaluationRequest, GeoTruthPlane, compile_evidence,
 };
 use ledger::{
+    CANON_GEO_COLLATERAL_LEDGER_VERSION, GeoCollateralLedger, GeoCollateralLedgerProofClass,
+    GeoLedgerErrorCode, GeoLedgerLoanRef, GeoLedgerRow, GeoSourceReleasePin,
     build_collateral_ledger, build_ledger_row, canonical_collateral_ledger_bytes, roll_up_deal,
-    validate_ledger, GeoCollateralLedger, GeoCollateralLedgerProofClass, GeoLedgerErrorCode,
-    GeoLedgerLoanRef, GeoLedgerRow, GeoSourceReleasePin, CANON_GEO_COLLATERAL_LEDGER_VERSION,
+    validate_ledger,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
 const E4_RESTACK_EVALUATION: &str =
@@ -250,9 +251,11 @@ fn collateral_ledger_schema_matches_a_real_instance() {
     let instance = serde_json::to_value(&ledger).expect("ledger JSON");
     assert_eq!(instance["version"], CANON_GEO_COLLATERAL_LEDGER_VERSION);
     assert!(instance["rows"].as_array().expect("rows").len() == 15);
-    assert!(canonical_collateral_ledger_bytes(&ledger)
-        .expect("canonical ledger bytes")
-        .starts_with(b"{\"version\":\"canon_geo_collateral_ledger.v0\""));
+    assert!(
+        canonical_collateral_ledger_bytes(&ledger)
+            .expect("canonical ledger bytes")
+            .starts_with(b"{\"version\":\"canon_geo_collateral_ledger.v0\"")
+    );
 }
 
 fn fixture_ledger() -> GeoCollateralLedger {

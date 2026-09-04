@@ -2218,6 +2218,14 @@
       "source_path": "src/geo/pre_resolve.rs"
     },
     {
+      "id": "canon_geo_retry_loop.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "src/geo/retry.rs"
+    },
+    {
       "id": "canon_geo_registry_proposal.v0",
       "family": "geo",
       "action": "preserve",

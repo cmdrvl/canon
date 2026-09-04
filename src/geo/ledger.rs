@@ -6,9 +6,9 @@
 //! evidence artifacts. They do not solve, rescore, or infer missing collateral.
 
 use crate::geo::{
-    canonical_composition_bytes, canonical_evidence_compilation_bytes, GeoCandidateReachStatus,
-    GeoClaimClass, GeoCompositionArtifact, GeoCompositionModel, GeoCompositionStatus,
-    GeoEvidenceCompilationArtifact, GeoTruthPlane, GeoValidTimeInterval,
+    GeoCandidateReachStatus, GeoClaimClass, GeoCompositionArtifact, GeoCompositionModel,
+    GeoCompositionStatus, GeoEvidenceCompilationArtifact, GeoTruthPlane, GeoValidTimeInterval,
+    canonical_composition_bytes, canonical_evidence_compilation_bytes,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -518,10 +518,7 @@ fn validate_ledger_row(
                 return Err(GeoLedgerError::new(
                     GeoLedgerErrorCode::LedgerReachNone,
                     "Geo collateral ledger row with no candidate reach cannot carry fabricated sets",
-                    [
-                        ("field", "parcel_set"),
-                        ("loan_id", row.loan_id.as_str()),
-                    ],
+                    [("field", "parcel_set"), ("loan_id", row.loan_id.as_str())],
                 ));
             }
         }
@@ -573,16 +570,16 @@ fn validate_property_refs(refs: &[GeoLedgerPropertyRef]) -> Result<(), GeoLedger
         validate_text("property_refs[].property_id", &property_ref.property_id)?;
         validate_sorted_unique("property_refs[].parcel_ids", &property_ref.parcel_ids)?;
         validate_sorted_unique("property_refs[].building_ids", &property_ref.building_ids)?;
-        if let Some(previous) = previous {
-            if previous >= property_ref {
-                return Err(GeoLedgerError::invalid(
-                    "Geo collateral ledger property refs must be strictly sorted and unique",
-                    [
-                        ("field", "property_refs"),
-                        ("property_id", property_ref.property_id.as_str()),
-                    ],
-                ));
-            }
+        if let Some(previous) = previous
+            && previous >= property_ref
+        {
+            return Err(GeoLedgerError::invalid(
+                "Geo collateral ledger property refs must be strictly sorted and unique",
+                [
+                    ("field", "property_refs"),
+                    ("property_id", property_ref.property_id.as_str()),
+                ],
+            ));
         }
         previous = Some(property_ref);
     }
