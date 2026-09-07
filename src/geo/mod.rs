@@ -50,6 +50,7 @@ pub use footprint_roll::*;
 pub use geometry::*;
 pub use geometry_value::*;
 pub use identifiers::*;
+pub use ledger::*;
 pub use lifecycle::*;
 pub use materialize::*;
 pub use multisource::*;

@@ -331,6 +331,25 @@ fn t07_geo_ledger_validate_cli_emits_canonical_ledger() {
 }
 
 #[test]
+fn t07_geo_ledger_cli_requires_a_subcommand() {
+    let assert = canon_command().arg("geo").arg("ledger").assert().failure();
+    assert!(assert.get_output().stderr.is_empty());
+    let output: Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("refusal JSON parses");
+    assert_eq!(output["outcome"], "REFUSAL");
+    assert_eq!(output["refusal"]["code"], "E_PARSE");
+    assert_eq!(output["refusal"]["detail"]["command"], "canon geo ledger");
+    assert_eq!(
+        output["refusal"]["detail"]["subcommands"],
+        json!(["validate"])
+    );
+    assert_eq!(
+        output["refusal"]["next_command"],
+        GEO_LEDGER_VALIDATE_NEXT_COMMAND
+    );
+}
+
+#[test]
 fn t23_geo_ledger_validate_cli_refuses_invalid_ledger_artifact() {
     let temp = tempdir().expect("tempdir");
     let mut ledger = fixture_ledger();
@@ -423,6 +442,19 @@ fn collateral_ledger_schema_matches_a_real_instance() {
         CANON_GEO_COLLATERAL_LEDGER_VERSION
     );
     assert_eq!(schema["additionalProperties"], false);
+    assert_eq!(schema["$defs"]["ledger_row"]["additionalProperties"], true);
+    assert_eq!(
+        schema["$defs"]["ledger_row"]["properties"]["last_observed_present"]["$ref"],
+        "#/$defs/valid_time_interval"
+    );
+    assert_eq!(
+        schema["$defs"]["valid_time_interval"]["required"],
+        json!(["start_day", "end_day"])
+    );
+    assert_eq!(
+        schema["$defs"]["deal_rollup"]["properties"]["truth_planes"]["additionalProperties"]["$ref"],
+        "#/$defs/plane_counts"
+    );
 
     let ledger = fixture_ledger();
     let instance = serde_json::to_value(&ledger).expect("ledger JSON");

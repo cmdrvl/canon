@@ -170,6 +170,7 @@ fn run_unavailable_primary(command: &str) -> Result<u8, Box<dyn Error>> {
                 GEO_PLAN_NEXT_COMMAND,
                 "canon geo run --plan <PLAN.json> --work-dir <DIR> --input <NODE_ID:BINDING_ID=PATH>",
                 GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND,
+                GEO_LEDGER_VALIDATE_NEXT_COMMAND,
                 "canon geo evaluate --population <POPULATION.json>"
             ]
         }),
@@ -470,7 +471,16 @@ fn run_replan_from_acquisition(args: &GeoReplanFromAcquisitionCli) -> Result<u8,
 fn run_ledger(args: &GeoLedgerCli) -> Result<u8, Box<dyn Error>> {
     match &args.command {
         Some(GeoLedgerSubcommand::Validate(args)) => run_ledger_validate(args),
-        None => run_unavailable_primary("geo ledger"),
+        None => emit_refusal(
+            RefusalCode::EParse,
+            "Geo ledger requires a subcommand",
+            json!({
+                "command": "canon geo ledger",
+                "subcommands": ["validate"],
+                "writes_performed": false,
+            }),
+            Some(GEO_LEDGER_VALIDATE_NEXT_COMMAND.to_string()),
+        ),
     }
 }
 

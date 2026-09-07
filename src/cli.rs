@@ -281,7 +281,7 @@ pub enum GeoSubcommand {
     ReplanFromAcquisition(GeoReplanFromAcquisitionCli),
     /// Inspect a Geo run's sections, receipts, and residual state
     Inspect,
-    /// Build and inspect Geo adjudication ledgers
+    /// Validate Geo physical collateral ledger artifacts
     Ledger(GeoLedgerCli),
     /// Evaluate labeled composition cases without exposing labels to composition logic
     Evaluate(GeoEvaluateCli),
