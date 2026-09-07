@@ -18,6 +18,10 @@ use std::{
 };
 use tempfile::tempdir;
 
+const GEO_PLAN_SCHEMA: &str = include_str!("../schemas/canon.geo.plan.v0.schema.json");
+const GEO_RUN_SCHEMA: &str = include_str!("../schemas/canon.geo.run.v0.schema.json");
+const CANON_V1_CONTRACT_INVENTORY: &str = include_str!("fixtures/canon_v1/contract_inventory.json");
+
 fn canon_command() -> Command {
     Command::new(env!("CARGO_BIN_EXE_canon"))
 }
@@ -30,6 +34,74 @@ fn write_json(dir: &std::path::Path, name: &str, value: &Value) -> PathBuf {
     )
     .expect("write request file");
     path
+}
+
+fn json_string_set(value: &Value, description: &str) -> BTreeSet<String> {
+    value
+        .as_array()
+        .unwrap_or_else(|| panic!("{description} must be an array"))
+        .iter()
+        .map(|item| {
+            item.as_str()
+                .unwrap_or_else(|| panic!("{description} items must be strings"))
+                .to_string()
+        })
+        .collect()
+}
+
+fn capability_contract<'a>(capabilities: &'a Value, contract_version: &str) -> &'a Value {
+    for bucket in ["implemented", "diagnostic_only", "unavailable"] {
+        if let Some(row) = capabilities["contracts"][bucket]
+            .as_array()
+            .unwrap_or_else(|| panic!("capabilities contracts.{bucket} must be an array"))
+            .iter()
+            .find(|row| row["contract_version"] == contract_version)
+        {
+            return row;
+        }
+    }
+    panic!("capabilities must list contract {contract_version}");
+}
+
+fn capability_command<'a>(capabilities: &'a Value, command: &str) -> &'a Value {
+    for bucket in ["implemented", "diagnostic_only", "unavailable"] {
+        if let Some(row) = capabilities["commands"][bucket]
+            .as_array()
+            .unwrap_or_else(|| panic!("capabilities commands.{bucket} must be an array"))
+            .iter()
+            .find(|row| row["command"] == command)
+        {
+            return row;
+        }
+    }
+    panic!("capabilities must list command {command}");
+}
+
+fn inventory_contract<'a>(inventory: &'a Value, contract_id: &str) -> &'a Value {
+    inventory["contract_rows"]
+        .as_array()
+        .expect("contract inventory rows")
+        .iter()
+        .find(|row| row["id"] == contract_id)
+        .unwrap_or_else(|| panic!("contract inventory must list {contract_id}"))
+}
+
+fn project_plan_node<'a>(plan: &'a Value, node_id: &str) -> &'a Value {
+    plan["project_plan"]["nodes"]
+        .as_array()
+        .expect("project plan nodes")
+        .iter()
+        .find(|node| node["node_id"] == node_id)
+        .unwrap_or_else(|| panic!("project plan must include node {node_id}"))
+}
+
+fn geo_plan_overlay<'a>(plan: &'a Value, project_node_id: &str) -> &'a Value {
+    plan["geo_nodes"]
+        .as_array()
+        .expect("Geo plan overlay nodes")
+        .iter()
+        .find(|node| node["project_node_id"] == project_node_id)
+        .unwrap_or_else(|| panic!("Geo plan overlay must include node {project_node_id}"))
 }
 
 /// Three parcels, no buildings, one AnyOf over two of the parcels.
@@ -1390,6 +1462,205 @@ fn geo_plan_emits_canonical_partial_plan_and_binds_capabilities() {
         );
     }
     assert!(!node_ids.contains("geo.unit.solve"));
+}
+
+#[test]
+fn geo_capabilities_plan_run_schemas_and_inventory_agree_on_generated_run_path() {
+    let temp = tempdir().expect("tempdir");
+    let paths = write_geo_plan_inputs(temp.path(), false, "canon_geo_composition_profile.v0");
+    let plan_output = geo_plan_command(&paths).assert().success();
+    let plan: Value = serde_json::from_slice(&plan_output.get_output().stdout)
+        .expect("public geo plan output parses");
+    let capabilities: Value =
+        serde_json::from_slice(&fs::read(&paths.capabilities).expect("read capabilities"))
+            .expect("capabilities JSON parses");
+    let plan_schema: Value = serde_json::from_str(GEO_PLAN_SCHEMA).expect("plan schema parses");
+    let run_schema: Value = serde_json::from_str(GEO_RUN_SCHEMA).expect("run schema parses");
+    let inventory: Value =
+        serde_json::from_str(CANON_V1_CONTRACT_INVENTORY).expect("contract inventory parses");
+
+    assert_eq!(
+        plan_schema["x-canon-contract"]["canonical_contract"],
+        "canon_geo_plan.v0"
+    );
+    assert_eq!(
+        plan_schema["properties"]["project_plan"]["$ref"],
+        "canon.project.plan.v1.schema.json"
+    );
+    let plan_stages = json_string_set(
+        plan_schema
+            .pointer("/$defs/plan_stage/enum")
+            .expect("plan stage enum"),
+        "plan stage enum",
+    );
+    for stage in [
+        "explain_residual",
+        "separate_residual",
+        "select_next_evidence",
+    ] {
+        assert!(
+            plan_stages.contains(stage),
+            "Geo plan schema must admit generated {stage} stage"
+        );
+    }
+
+    assert_eq!(
+        run_schema["x-canon-contract"]["canonical_contract"],
+        "canon_geo_run.v0"
+    );
+    assert_eq!(
+        run_schema["x-canon-contract"]["project_run_contract"],
+        "canon.project.run.v2"
+    );
+    assert_eq!(
+        run_schema["x-canon-contract"]["typed_geo_view_over_project_receipts"],
+        true
+    );
+    let run_semantic_fields = json_string_set(
+        &run_schema["x-canon-contract"]["semantic_identity_includes"],
+        "Geo run semantic identity field list",
+    );
+    for field in [
+        "artifact_inputs",
+        "artifact_inputs.node_id",
+        "artifact_inputs.binding_id",
+        "output_refs",
+        "output_refs.resolved_claim",
+        "project_run_report.schema_version",
+        "project_run_report.receipt.node_receipts[].outputs[].content_digest",
+    ] {
+        assert!(
+            run_semantic_fields.contains(field),
+            "Geo run schema must bind {field} into the semantic projection"
+        );
+    }
+
+    for (contract_version, schema_path) in [
+        ("canon_geo_plan.v0", "schemas/canon.geo.plan.v0.schema.json"),
+        ("canon_geo_run.v0", "schemas/canon.geo.run.v0.schema.json"),
+        (
+            "canon_geo_explanation.v0",
+            "schemas/canon.geo.explanation.v0.schema.json",
+        ),
+        (
+            "canon_geo_separation_inputs.v0",
+            "schemas/canon.geo.separation_inputs.v0.schema.json",
+        ),
+        (
+            "canon_geo_separation.v0",
+            "schemas/canon.geo.separation.v0.schema.json",
+        ),
+        (
+            "canon_geo_next_evidence_inputs.v0",
+            "schemas/canon.geo.next_evidence_inputs.v0.schema.json",
+        ),
+        (
+            "canon_geo_next_evidence.v0",
+            "schemas/canon.geo.next_evidence.v0.schema.json",
+        ),
+    ] {
+        let capability = capability_contract(&capabilities, contract_version);
+        assert_eq!(capability["status"], "implemented");
+        assert_eq!(capability["schema_path"], schema_path);
+        let inventory_row = inventory_contract(&inventory, contract_version);
+        assert_eq!(inventory_row["family"], "geo");
+        assert_eq!(inventory_row["action"], "preserve");
+        assert_eq!(inventory_row["source_path"], schema_path);
+    }
+
+    for (command, surface, output_contract, read_only) in [
+        (
+            "canon geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]",
+            "primary",
+            "canon_geo_run.v0",
+            false,
+        ),
+        (
+            "canon.geo.stage.explain.v0",
+            "leaf",
+            "canon_geo_explanation.v0",
+            true,
+        ),
+        (
+            "canon.geo.stage.separation.v0",
+            "leaf",
+            "canon_geo_separation.v0",
+            true,
+        ),
+        (
+            "canon.geo.stage.next_evidence.v0",
+            "leaf",
+            "canon_geo_next_evidence.v0",
+            true,
+        ),
+    ] {
+        let row = capability_command(&capabilities, command);
+        assert_eq!(row["surface"], surface);
+        assert_eq!(row["output_contract"], output_contract);
+        assert_eq!(row["read_only"], read_only);
+        assert_eq!(row["uses_network"], false);
+    }
+
+    for (node_id, command, stage, output_id, output_contract, output_path, dependencies) in [
+        (
+            "geo.building.explain",
+            "canon.geo.stage.explain.v0",
+            "explain_residual",
+            "explanation",
+            "canon_geo_explanation.v0",
+            "geo/building/explanation.json",
+            vec![
+                "geo.building.compile_evidence",
+                "geo.building.propagate",
+                "geo.building.solve",
+            ],
+        ),
+        (
+            "geo.building.separation",
+            "canon.geo.stage.separation.v0",
+            "separate_residual",
+            "separation",
+            "canon_geo_separation.v0",
+            "geo/building/separation.json",
+            vec![
+                "geo.building.compile_evidence",
+                "geo.building.propagate",
+                "geo.building.solve",
+            ],
+        ),
+        (
+            "geo.building.next_evidence",
+            "canon.geo.stage.next_evidence.v0",
+            "select_next_evidence",
+            "next_evidence",
+            "canon_geo_next_evidence.v0",
+            "geo/building/next_evidence.json",
+            vec!["geo.building.separation", "geo.building.solve"],
+        ),
+    ] {
+        let node = project_plan_node(&plan, node_id);
+        assert_eq!(node["command"], command);
+        let actual_dependencies = json_string_set(&node["dependencies"], "node dependencies");
+        let expected_dependencies = dependencies
+            .into_iter()
+            .map(|dependency| dependency.to_string())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            actual_dependencies, expected_dependencies,
+            "{node_id} must consume only its generated dependency outputs"
+        );
+        let output = node["outputs"]
+            .as_array()
+            .expect("node outputs")
+            .first()
+            .expect("node output");
+        assert_eq!(output["output_id"], output_id);
+        assert_eq!(output["path"], output_path);
+
+        let overlay = geo_plan_overlay(&plan, node_id);
+        assert_eq!(overlay["stage"], stage);
+        assert_eq!(overlay["expected_output_contract"], output_contract);
+    }
 }
 
 #[test]
