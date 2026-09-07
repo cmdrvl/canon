@@ -2218,6 +2218,13 @@
       "crate_module": "canon::geo"
     },
     {
+      "id": "canon_geo_e4_gate_assessment.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
       "id": "canon_geo_deed_index_rows.v0",
       "family": "geo",
       "action": "preserve",
