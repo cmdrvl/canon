@@ -12,8 +12,9 @@ use canon::geo::{
     CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION, GeoCandidateReachStatus,
     GeoCompositionArtifact, GeoCompositionBackbone, GeoCompositionFallback, GeoCompositionModel,
     GeoCompositionProfile, GeoCompositionStatus, GeoCompositionSummary,
-    GeoEvidenceCompilationRequest, GeoLabeledCompositionCase, GeoModelCountScope,
-    GeoPopulationEvaluationRequest, GeoTruthPlane, compile_evidence,
+    GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference, GeoEvidenceCompilationRequest,
+    GeoLabeledCompositionCase, GeoModelCountScope, GeoPopulationEvaluationRequest, GeoTruthPlane,
+    canonical_evidence_compilation_bytes, compile_evidence,
 };
 use ledger::{
     CANON_GEO_COLLATERAL_LEDGER_VERSION, GeoCollateralLedger, GeoCollateralLedgerProofClass,
@@ -190,6 +191,82 @@ fn t23_build_ledger_row_refuses_fabricated_sets_without_artifacts() {
 }
 
 #[test]
+fn t23_build_ledger_row_requires_matching_evidence_digest_chain() {
+    let loan = fixture_loan("loan-chain");
+    let pins = vec![fixture_pin()];
+    let primary_evidence =
+        compile_evidence(&load_population_request().cases[0].evidence).expect("primary evidence");
+    let other_evidence =
+        compile_evidence(&load_population_request().cases[1].evidence).expect("other evidence");
+    let composition = with_evidence_reference(
+        sample_composition(GeoCompositionStatus::Resolved, vec!["p1"], 1),
+        &primary_evidence,
+    );
+    assert_ne!(
+        evidence_blake3(&primary_evidence),
+        evidence_blake3(&other_evidence),
+        "fixture evidence artifacts must differ for the mismatch regression"
+    );
+
+    let row = build_ledger_row(
+        &loan,
+        GeoCandidateReachStatus::Full,
+        None,
+        Some(&composition),
+        Some(&primary_evidence),
+        Some(GeoTruthPlane::GateV2Historical),
+        &pins,
+    )
+    .expect("matching composition/evidence chain builds");
+    assert_eq!(row.evidence_blake3, evidence_blake3(&primary_evidence));
+    assert_eq!(row.parcel_set, Some(vec!["p1".to_string()]));
+
+    let mismatched = build_ledger_row(
+        &loan,
+        GeoCandidateReachStatus::Full,
+        None,
+        Some(&composition),
+        Some(&other_evidence),
+        Some(GeoTruthPlane::GateV2Historical),
+        &pins,
+    )
+    .expect_err("valid but unrelated evidence must refuse before sets are emitted");
+    assert_eq!(mismatched.code, GeoLedgerErrorCode::InvalidInput);
+    assert_eq!(
+        mismatched.detail["field"],
+        "composition.evidence_compilation.blake3"
+    );
+    assert_eq!(mismatched.detail["loan_id"], "loan-chain");
+    assert_eq!(
+        mismatched.detail["composition_evidence_blake3"],
+        evidence_blake3(&primary_evidence)
+    );
+    assert_eq!(
+        mismatched.detail["evidence_blake3"],
+        evidence_blake3(&other_evidence)
+    );
+
+    let absent_reference = sample_composition(GeoCompositionStatus::Resolved, vec!["p1"], 1);
+    let absent = build_ledger_row(
+        &loan,
+        GeoCandidateReachStatus::Full,
+        None,
+        Some(&absent_reference),
+        Some(&primary_evidence),
+        Some(GeoTruthPlane::GateV2Historical),
+        &pins,
+    )
+    .expect_err("composition without an evidence reference cannot support claimed sets");
+    assert_eq!(absent.code, GeoLedgerErrorCode::InvalidInput);
+    assert_eq!(absent.detail["field"], "composition.evidence_compilation");
+    assert_eq!(absent.detail["loan_id"], "loan-chain");
+    assert_eq!(
+        absent.detail["evidence_blake3"],
+        evidence_blake3(&primary_evidence)
+    );
+}
+
+#[test]
 fn t26_fixture_pins_cannot_be_relabelled_as_live() {
     let ledger = fixture_ledger();
     validate_ledger(&ledger).expect("fixture ledger validates with fixture pins");
@@ -292,9 +369,12 @@ fn fixture_ledger() -> GeoCollateralLedger {
         };
         let reach_none_reason =
             (reach == GeoCandidateReachStatus::None).then(|| FORCED_REACH_NONE_REASON.to_string());
-        let composition = composition_from_restack_case(case, population_case);
         let evidence =
             compile_evidence(&population_case.evidence).expect("compile fixture evidence");
+        let composition = with_evidence_reference(
+            composition_from_restack_case(case, population_case),
+            &evidence,
+        );
         rows.push(
             build_ledger_row(
                 &loan,
@@ -481,6 +561,24 @@ fn sample_composition(
         budget_fallback: None,
         entity_projection: None,
     }
+}
+
+fn with_evidence_reference(
+    mut composition: GeoCompositionArtifact,
+    evidence: &GeoEvidenceCompilationArtifact,
+) -> GeoCompositionArtifact {
+    let canonical = canonical_evidence_compilation_bytes(evidence).expect("evidence canonicalizes");
+    composition.evidence_compilation = Some(GeoEvidenceCompilationReference {
+        version: evidence.version.clone(),
+        request_version: evidence.request_version.clone(),
+        blake3: blake3::hash(&canonical).to_hex().to_string(),
+    });
+    composition
+}
+
+fn evidence_blake3(evidence: &GeoEvidenceCompilationArtifact) -> String {
+    let canonical = canonical_evidence_compilation_bytes(evidence).expect("evidence canonicalizes");
+    format!("blake3:{}", blake3::hash(&canonical).to_hex())
 }
 
 fn fixture_loan(loan_id: &str) -> GeoLedgerLoanRef {

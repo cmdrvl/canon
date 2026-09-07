@@ -297,6 +297,8 @@ pub fn build_ledger_row(
 
     let (composition_status, residual_model_count, count_exact, backbone_complete) =
         composition_summary_fields(composition);
+    let evidence_blake3 =
+        validate_composition_evidence_chain(&loan.loan_id, composition, evidence)?;
     let parcel_set = sorted_unique(composition.hard_forced.parcels.clone());
     let building_set = sorted_unique(composition.hard_forced.buildings.clone());
     let (ambiguous_parcel_set, ambiguous_building_set) = ambiguous_members(composition);
@@ -319,7 +321,7 @@ pub fn build_ledger_row(
         last_observed_present: None,
         source_release_pins: sorted_unique(pins.to_vec()),
         composition_blake3: composition_digest(composition)?,
-        evidence_blake3: evidence_digest(evidence)?,
+        evidence_blake3,
         ambiguous_parcel_set,
         ambiguous_building_set,
         property_refs: Vec::new(),
@@ -762,13 +764,89 @@ fn composition_digest(composition: &GeoCompositionArtifact) -> Result<String, Ge
 }
 
 fn evidence_digest(evidence: &GeoEvidenceCompilationArtifact) -> Result<String, GeoLedgerError> {
+    Ok(format!("blake3:{}", evidence_digest_hex(evidence)?))
+}
+
+fn evidence_digest_hex(
+    evidence: &GeoEvidenceCompilationArtifact,
+) -> Result<String, GeoLedgerError> {
     let bytes = canonical_evidence_compilation_bytes(evidence).map_err(|error| {
         GeoLedgerError::invalid(
             "Geo evidence artifact could not be serialized for ledger digest",
             [("error", error.to_string())],
         )
     })?;
-    Ok(format!("blake3:{}", blake3::hash(&bytes).to_hex()))
+    Ok(blake3::hash(&bytes).to_hex().to_string())
+}
+
+fn validate_composition_evidence_chain(
+    loan_id: &str,
+    composition: &GeoCompositionArtifact,
+    evidence: &GeoEvidenceCompilationArtifact,
+) -> Result<String, GeoLedgerError> {
+    let evidence_hex = evidence_digest_hex(evidence)?;
+    let evidence_blake3 = format!("blake3:{evidence_hex}");
+    let reference = composition.evidence_compilation.as_ref().ok_or_else(|| {
+        GeoLedgerError::invalid(
+            "Geo collateral ledger composition artifact does not bind an evidence compilation",
+            [
+                (
+                    "field".to_string(),
+                    "composition.evidence_compilation".to_string(),
+                ),
+                ("loan_id".to_string(), loan_id.to_string()),
+                ("evidence_blake3".to_string(), evidence_blake3.clone()),
+            ],
+        )
+    })?;
+    if reference.version != evidence.version {
+        return Err(GeoLedgerError::invalid(
+            "Geo collateral ledger composition/evidence version chain mismatch",
+            [
+                (
+                    "field".to_string(),
+                    "composition.evidence_compilation.version".to_string(),
+                ),
+                ("loan_id".to_string(), loan_id.to_string()),
+                ("expected".to_string(), evidence.version.clone()),
+                ("actual".to_string(), reference.version.clone()),
+                ("evidence_blake3".to_string(), evidence_blake3),
+            ],
+        ));
+    }
+    if reference.request_version != evidence.request_version {
+        return Err(GeoLedgerError::invalid(
+            "Geo collateral ledger composition/evidence request-version chain mismatch",
+            [
+                (
+                    "field".to_string(),
+                    "composition.evidence_compilation.request_version".to_string(),
+                ),
+                ("loan_id".to_string(), loan_id.to_string()),
+                ("expected".to_string(), evidence.request_version.clone()),
+                ("actual".to_string(), reference.request_version.clone()),
+                ("evidence_blake3".to_string(), evidence_blake3),
+            ],
+        ));
+    }
+    if reference.blake3 != evidence_hex {
+        return Err(GeoLedgerError::invalid(
+            "Geo collateral ledger composition/evidence digest chain mismatch",
+            [
+                (
+                    "field".to_string(),
+                    "composition.evidence_compilation.blake3".to_string(),
+                ),
+                ("loan_id".to_string(), loan_id.to_string()),
+                (
+                    "composition_evidence_blake3".to_string(),
+                    format!("blake3:{}", reference.blake3),
+                ),
+                ("evidence_blake3".to_string(), evidence_blake3),
+            ],
+        ));
+    }
+    Ok(evidence_blake3)
 }
 
 fn validate_text(field: &str, value: &str) -> Result<(), GeoLedgerError> {
