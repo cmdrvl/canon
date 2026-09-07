@@ -1585,6 +1585,17 @@ fn e4_gate_assessment_validator_rejects_status_or_claim_forgery() {
         validate_e4_gate_assessment(&assessment).expect_err("missing blocker must be rejected");
     assert_eq!(error.code, canon::geo::GeoPopulationErrorCode::InvalidInput);
     assert!(error.to_string().contains("blockers"));
+
+    let mut assessment = assess_e4_gate(&artifact, GeoE4GateProofClass::RetainedComplete)
+        .expect("retained E4 assessment scores");
+    assessment.truth_planes[0]
+        .planes
+        .truth_quality
+        .false_merge_cases += 1;
+    let error = validate_e4_gate_assessment(&assessment)
+        .expect_err("truth-plane counter tamper must be rejected");
+    assert_eq!(error.code, canon::geo::GeoPopulationErrorCode::InvalidInput);
+    assert!(error.to_string().contains("truth planes"));
 }
 
 const D0_ADJUDICATION_LABELS_JSON: &str =

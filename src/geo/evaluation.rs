@@ -2489,6 +2489,15 @@ pub fn validate_e4_gate_assessment(
             truth_plane_cases,
         ));
     }
+    let truth_plane_score_sum =
+        e4_sum_plane_scores(assessment.truth_planes.iter().map(|plane| &plane.planes))?;
+    if truth_plane_score_sum != assessment.planes {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo E4 gate assessment truth planes do not sum to the global plane scores",
+            [("field", "truth_planes")],
+        ));
+    }
     Ok(())
 }
 
@@ -4583,6 +4592,269 @@ fn e4_gate_blockers(
     );
     blockers.sort();
     Ok(blockers)
+}
+
+fn e4_sum_plane_scores<'a>(
+    planes: impl IntoIterator<Item = &'a GeoE4GatePlaneScores>,
+) -> Result<GeoE4GatePlaneScores, GeoPopulationError> {
+    let mut total = GeoE4GatePlaneScores::default();
+    for plane in planes {
+        checked_add(
+            &mut total.coverage.cases,
+            plane.coverage.cases,
+            "e4.truth_planes.coverage.cases",
+        )?;
+        checked_add(
+            &mut total.coverage.population_eligible_cases,
+            plane.coverage.population_eligible_cases,
+            "e4.truth_planes.coverage.population_eligible_cases",
+        )?;
+        checked_add(
+            &mut total.coverage.evidence_no_observation_cases,
+            plane.coverage.evidence_no_observation_cases,
+            "e4.truth_planes.coverage.evidence_no_observation_cases",
+        )?;
+        checked_add(
+            &mut total.coverage.evidence_diagnostic_only_cases,
+            plane.coverage.evidence_diagnostic_only_cases,
+            "e4.truth_planes.coverage.evidence_diagnostic_only_cases",
+        )?;
+        checked_add(
+            &mut total.coverage.evidence_soft_preference_only_cases,
+            plane.coverage.evidence_soft_preference_only_cases,
+            "e4.truth_planes.coverage.evidence_soft_preference_only_cases",
+        )?;
+        checked_add(
+            &mut total.coverage.evidence_soft_and_diagnostic_only_cases,
+            plane.coverage.evidence_soft_and_diagnostic_only_cases,
+            "e4.truth_planes.coverage.evidence_soft_and_diagnostic_only_cases",
+        )?;
+        checked_add(
+            &mut total.coverage.evidence_hard_constraint_cases,
+            plane.coverage.evidence_hard_constraint_cases,
+            "e4.truth_planes.coverage.evidence_hard_constraint_cases",
+        )?;
+        checked_add(
+            &mut total.candidate_reach.evaluated_cases,
+            plane.candidate_reach.evaluated_cases,
+            "e4.truth_planes.candidate_reach.evaluated_cases",
+        )?;
+        checked_add(
+            &mut total.candidate_reach.full_cases,
+            plane.candidate_reach.full_cases,
+            "e4.truth_planes.candidate_reach.full_cases",
+        )?;
+        checked_add(
+            &mut total.candidate_reach.partial_cases,
+            plane.candidate_reach.partial_cases,
+            "e4.truth_planes.candidate_reach.partial_cases",
+        )?;
+        checked_add(
+            &mut total.candidate_reach.none_cases,
+            plane.candidate_reach.none_cases,
+            "e4.truth_planes.candidate_reach.none_cases",
+        )?;
+        checked_add(
+            &mut total.candidate_reach.recall_failure_cases,
+            plane.candidate_reach.recall_failure_cases,
+            "e4.truth_planes.candidate_reach.recall_failure_cases",
+        )?;
+        checked_add(
+            &mut total.admission.hard_constraint_cases,
+            plane.admission.hard_constraint_cases,
+            "e4.truth_planes.admission.hard_constraint_cases",
+        )?;
+        checked_add(
+            &mut total.admission.soft_preference_only_cases,
+            plane.admission.soft_preference_only_cases,
+            "e4.truth_planes.admission.soft_preference_only_cases",
+        )?;
+        checked_add(
+            &mut total.admission.diagnostic_only_cases,
+            plane.admission.diagnostic_only_cases,
+            "e4.truth_planes.admission.diagnostic_only_cases",
+        )?;
+        checked_add(
+            &mut total.admission.soft_and_diagnostic_only_cases,
+            plane.admission.soft_and_diagnostic_only_cases,
+            "e4.truth_planes.admission.soft_and_diagnostic_only_cases",
+        )?;
+        checked_add(
+            &mut total.admission.rho_falsification_cases,
+            plane.admission.rho_falsification_cases,
+            "e4.truth_planes.admission.rho_falsification_cases",
+        )?;
+        checked_add(
+            &mut total.solver_exactness.solver_artifact_cases,
+            plane.solver_exactness.solver_artifact_cases,
+            "e4.truth_planes.solver_exactness.solver_artifact_cases",
+        )?;
+        checked_add(
+            &mut total.solver_exactness.residual_count_complete_cases,
+            plane.solver_exactness.residual_count_complete_cases,
+            "e4.truth_planes.solver_exactness.residual_count_complete_cases",
+        )?;
+        checked_add(
+            &mut total.solver_exactness.residual_count_exact_cases,
+            plane.solver_exactness.residual_count_exact_cases,
+            "e4.truth_planes.solver_exactness.residual_count_exact_cases",
+        )?;
+        checked_add(
+            &mut total.solver_exactness.residual_count_saturated_cases,
+            plane.solver_exactness.residual_count_saturated_cases,
+            "e4.truth_planes.solver_exactness.residual_count_saturated_cases",
+        )?;
+        checked_add(
+            &mut total.solver_exactness.residual_count_unavailable_cases,
+            plane.solver_exactness.residual_count_unavailable_cases,
+            "e4.truth_planes.solver_exactness.residual_count_unavailable_cases",
+        )?;
+        checked_add(
+            &mut total.solver_exactness.assignment_budget_exceeded_cases,
+            plane.solver_exactness.assignment_budget_exceeded_cases,
+            "e4.truth_planes.solver_exactness.assignment_budget_exceeded_cases",
+        )?;
+        checked_add(
+            &mut total.solver_exactness.component_budget_fallback_cases,
+            plane.solver_exactness.component_budget_fallback_cases,
+            "e4.truth_planes.solver_exactness.component_budget_fallback_cases",
+        )?;
+        checked_add(
+            &mut total.reconciliation.resolved_cases,
+            plane.reconciliation.resolved_cases,
+            "e4.truth_planes.reconciliation.resolved_cases",
+        )?;
+        checked_add(
+            &mut total.reconciliation.evidentially_supported_resolved_cases,
+            plane.reconciliation.evidentially_supported_resolved_cases,
+            "e4.truth_planes.reconciliation.evidentially_supported_resolved_cases",
+        )?;
+        checked_add(
+            &mut total.reconciliation.structurally_forced_resolved_cases,
+            plane.reconciliation.structurally_forced_resolved_cases,
+            "e4.truth_planes.reconciliation.structurally_forced_resolved_cases",
+        )?;
+        checked_add(
+            &mut total.reconciliation.resolved_with_reach_not_full_cases,
+            plane.reconciliation.resolved_with_reach_not_full_cases,
+            "e4.truth_planes.reconciliation.resolved_with_reach_not_full_cases",
+        )?;
+        checked_add(
+            &mut total.reconciliation.ambiguous_cases,
+            plane.reconciliation.ambiguous_cases,
+            "e4.truth_planes.reconciliation.ambiguous_cases",
+        )?;
+        checked_add(
+            &mut total.reconciliation.conflict_cases,
+            plane.reconciliation.conflict_cases,
+            "e4.truth_planes.reconciliation.conflict_cases",
+        )?;
+        checked_add(
+            &mut total.reconciliation.abstention_cases,
+            plane.reconciliation.abstention_cases,
+            "e4.truth_planes.reconciliation.abstention_cases",
+        )?;
+        checked_add(
+            &mut total.truth_quality.full_truth_recall_cases,
+            plane.truth_quality.full_truth_recall_cases,
+            "e4.truth_planes.truth_quality.full_truth_recall_cases",
+        )?;
+        checked_add(
+            &mut total.truth_quality.solver_truth_scored_cases,
+            plane.truth_quality.solver_truth_scored_cases,
+            "e4.truth_planes.truth_quality.solver_truth_scored_cases",
+        )?;
+        checked_add(
+            &mut total.truth_quality.solver_truth_retained_cases,
+            plane.truth_quality.solver_truth_retained_cases,
+            "e4.truth_planes.truth_quality.solver_truth_retained_cases",
+        )?;
+        checked_add(
+            &mut total.truth_quality.solver_truth_exclusion_cases,
+            plane.truth_quality.solver_truth_exclusion_cases,
+            "e4.truth_planes.truth_quality.solver_truth_exclusion_cases",
+        )?;
+        checked_add(
+            &mut total.truth_quality.false_merge_cases,
+            plane.truth_quality.false_merge_cases,
+            "e4.truth_planes.truth_quality.false_merge_cases",
+        )?;
+        checked_add(
+            &mut total.truth_quality.backbone_complete_cases,
+            plane.truth_quality.backbone_complete_cases,
+            "e4.truth_planes.truth_quality.backbone_complete_cases",
+        )?;
+        checked_add(
+            &mut total.truth_quality.truth_members,
+            plane.truth_quality.truth_members,
+            "e4.truth_planes.truth_quality.truth_members",
+        )?;
+        checked_add(
+            &mut total.truth_quality.truth_members_in_universe,
+            plane.truth_quality.truth_members_in_universe,
+            "e4.truth_planes.truth_quality.truth_members_in_universe",
+        )?;
+        checked_add(
+            &mut total.truth_quality.backbone_true_positive_members,
+            plane.truth_quality.backbone_true_positive_members,
+            "e4.truth_planes.truth_quality.backbone_true_positive_members",
+        )?;
+        checked_add(
+            &mut total.truth_quality.backbone_false_positive_members,
+            plane.truth_quality.backbone_false_positive_members,
+            "e4.truth_planes.truth_quality.backbone_false_positive_members",
+        )?;
+        checked_add(
+            &mut total.cost.candidate_members,
+            plane.cost.candidate_members,
+            "e4.truth_planes.cost.candidate_members",
+        )?;
+        total.cost.max_candidate_members = total
+            .cost
+            .max_candidate_members
+            .max(plane.cost.max_candidate_members);
+        checked_add(
+            &mut total.cost.solver_artifact_cases,
+            plane.cost.solver_artifact_cases,
+            "e4.truth_planes.cost.solver_artifact_cases",
+        )?;
+        checked_add(
+            &mut total.cost.residual_count_complete_cases,
+            plane.cost.residual_count_complete_cases,
+            "e4.truth_planes.cost.residual_count_complete_cases",
+        )?;
+        checked_add(
+            &mut total.cost.residual_count_saturated_cases,
+            plane.cost.residual_count_saturated_cases,
+            "e4.truth_planes.cost.residual_count_saturated_cases",
+        )?;
+        checked_add(
+            &mut total.cost.residual_count_unavailable_cases,
+            plane.cost.residual_count_unavailable_cases,
+            "e4.truth_planes.cost.residual_count_unavailable_cases",
+        )?;
+        total.cost.max_residual_model_count = match (
+            total.cost.max_residual_model_count,
+            plane.cost.max_residual_model_count,
+        ) {
+            (Some(left), Some(right)) => Some(left.max(right)),
+            (Some(left), None) => Some(left),
+            (None, Some(right)) => Some(right),
+            (None, None) => None,
+        };
+        checked_add(
+            &mut total.cost.assignment_budget_exceeded_cases,
+            plane.cost.assignment_budget_exceeded_cases,
+            "e4.truth_planes.cost.assignment_budget_exceeded_cases",
+        )?;
+        checked_add(
+            &mut total.cost.component_budget_fallback_cases,
+            plane.cost.component_budget_fallback_cases,
+            "e4.truth_planes.cost.component_budget_fallback_cases",
+        )?;
+    }
+    validate_e4_plane_scores("e4.truth_plane_score_sum", &total)?;
+    Ok(total)
 }
 
 fn e4_proof_class_name(proof_class: GeoE4GateProofClass) -> &'static str {
