@@ -24,7 +24,7 @@
 //! not a tolerated failure.
 
 use canon::geo::{
-    CANON_GEO_COMPOSITION_REQUEST_VERSION,
+    CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_E4_GATE_ASSESSMENT_VERSION,
     CANON_GEO_FROZEN_E4_H7_CANDIDATE_TRUTH_HANDOFF_REQUEST_VERSION, CANON_GEO_FROZEN_E4_H7_GATE_ID,
     CANON_GEO_FROZEN_E4_H7_RELEASE_26V1, CANON_GEO_FROZEN_E4_H7_RELEASE_26V2,
     CANON_GEO_FROZEN_E4_H7_REQUIRED_SUBJECTS, DEFAULT_MAX_MATERIALIZED_MODELS,
@@ -32,9 +32,12 @@ use canon::geo::{
     GeoCandidateTruthEvaluationRequest, GeoCandidateTruthGate, GeoCandidateTruthGateKind,
     GeoCandidateTruthHandoffRow, GeoCandidateTruthLogicalSubjectBinding,
     GeoCandidateTruthRowStatus, GeoCompositionModel, GeoCompositionRequest, GeoCompositionStatus,
-    GeoCompositionUniverse, GeoEntityLevel, GeoEntityRef, GeoHardConstraint, GeoHardConstraintKind,
-    GeoTruthPlane, canonical_candidate_truth_evaluation_bytes, evaluate_candidate_truth_handoff,
-    model_satisfies_request, solve_composition, validate_candidate_truth_evaluation_artifact,
+    GeoCompositionUniverse, GeoE4GateBlockerCode, GeoE4GatePlane, GeoE4GateProofClass,
+    GeoE4GateStatus, GeoEntityLevel, GeoEntityRef, GeoHardConstraint, GeoHardConstraintKind,
+    GeoPopulationEvaluationArtifact, GeoTruthPlane, assess_e4_gate,
+    canonical_candidate_truth_evaluation_bytes, canonical_e4_gate_assessment_bytes,
+    evaluate_candidate_truth_handoff, model_satisfies_request, solve_composition,
+    validate_candidate_truth_evaluation_artifact, validate_e4_gate_assessment,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -1343,6 +1346,236 @@ fn e4_acceptance_gate_requires_the_full_population_to_be_reachable() {
         representable,
         rows.len(),
     );
+}
+
+fn retained_roll_e4_evaluation() -> GeoPopulationEvaluationArtifact {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(
+        "scripts/geo_measurements/fixtures/d1_residuals/mcp_stack_2026-09-03/evaluation_roll_exact_owner_gsf_band.json",
+    );
+    let bytes = std::fs::read(&path)
+        .unwrap_or_else(|error| panic!("retained E4 evaluation must be readable: {error}"));
+    serde_json::from_slice(&bytes)
+        .unwrap_or_else(|error| panic!("retained E4 evaluation must parse: {error}"))
+}
+
+#[test]
+fn e4_gate_assessment_scores_retained_roll_population_without_live_claim() {
+    let artifact = retained_roll_e4_evaluation();
+    let assessment = assess_e4_gate(&artifact, GeoE4GateProofClass::RetainedComplete)
+        .expect("retained E4 assessment scores");
+    validate_e4_gate_assessment(&assessment).expect("assessment validates");
+
+    assert_eq!(assessment.version, CANON_GEO_E4_GATE_ASSESSMENT_VERSION);
+    assert_eq!(assessment.gate_id, CANON_GEO_FROZEN_E4_H7_GATE_ID);
+    assert_eq!(
+        assessment.proof_class,
+        GeoE4GateProofClass::RetainedComplete
+    );
+    assert_eq!(assessment.status, GeoE4GateStatus::Open);
+    assert!(!assessment.release_claim_allowed);
+    assert_eq!(assessment.required_subjects, 79);
+    assert_eq!(assessment.evaluated_cases, 70);
+    assert_eq!(assessment.subject_deficit, 9);
+
+    assert_eq!(assessment.planes.coverage.cases, 70);
+    assert_eq!(assessment.planes.coverage.evidence_no_observation_cases, 0);
+    assert_eq!(
+        assessment.planes.coverage.evidence_hard_constraint_cases,
+        67
+    );
+    assert_eq!(
+        assessment
+            .planes
+            .coverage
+            .evidence_soft_preference_only_cases,
+        3
+    );
+    assert_eq!(assessment.planes.candidate_reach.full_cases, 47);
+    assert_eq!(assessment.planes.candidate_reach.partial_cases, 15);
+    assert_eq!(assessment.planes.candidate_reach.none_cases, 8);
+    assert_eq!(assessment.planes.admission.rho_falsification_cases, 15);
+    assert_eq!(assessment.planes.solver_exactness.solver_artifact_cases, 70);
+    assert_eq!(
+        assessment
+            .planes
+            .solver_exactness
+            .residual_count_exact_cases,
+        50
+    );
+    assert_eq!(
+        assessment
+            .planes
+            .solver_exactness
+            .residual_count_saturated_cases,
+        14
+    );
+    assert_eq!(
+        assessment
+            .planes
+            .solver_exactness
+            .residual_count_unavailable_cases,
+        6
+    );
+    assert_eq!(
+        assessment
+            .planes
+            .solver_exactness
+            .component_budget_fallback_cases,
+        6
+    );
+    assert_eq!(assessment.planes.reconciliation.resolved_cases, 16);
+    assert_eq!(assessment.planes.reconciliation.ambiguous_cases, 44);
+    assert_eq!(assessment.planes.reconciliation.conflict_cases, 4);
+    assert_eq!(
+        assessment
+            .planes
+            .reconciliation
+            .resolved_with_reach_not_full_cases,
+        5
+    );
+    assert_eq!(assessment.planes.truth_quality.false_merge_cases, 5);
+    assert_eq!(
+        assessment.planes.truth_quality.solver_truth_exclusion_cases,
+        15
+    );
+    assert_eq!(assessment.planes.cost.max_candidate_members, 831);
+
+    let blocker_codes = assessment
+        .blockers
+        .iter()
+        .map(|blocker| (blocker.plane, blocker.code))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        blocker_codes,
+        vec![
+            (
+                GeoE4GatePlane::Proof,
+                GeoE4GateBlockerCode::ProofClassNotLiveComplete,
+            ),
+            (
+                GeoE4GatePlane::Coverage,
+                GeoE4GateBlockerCode::PopulationDenominatorMismatch,
+            ),
+            (
+                GeoE4GatePlane::CandidateReach,
+                GeoE4GateBlockerCode::CandidateReachIncomplete,
+            ),
+            (
+                GeoE4GatePlane::Admission,
+                GeoE4GateBlockerCode::RhoFalsification,
+            ),
+            (
+                GeoE4GatePlane::SolverExactness,
+                GeoE4GateBlockerCode::ResidualCountInexact,
+            ),
+            (
+                GeoE4GatePlane::TruthQuality,
+                GeoE4GateBlockerCode::FalseMerge,
+            ),
+            (
+                GeoE4GatePlane::Cost,
+                GeoE4GateBlockerCode::ComponentBudgetFallback,
+            ),
+        ]
+    );
+    assert!(
+        !assessment
+            .blockers
+            .iter()
+            .any(|blocker| blocker.code == GeoE4GateBlockerCode::EvidenceNoObservation)
+    );
+
+    let by_plane = assessment
+        .truth_planes
+        .iter()
+        .map(|plane| (plane.truth_plane, &plane.planes))
+        .collect::<BTreeMap<_, _>>();
+    let non_round = by_plane
+        .get(&GeoTruthPlane::NonRoundAmountDateLegalBorough)
+        .expect("non-round truth plane present");
+    assert_eq!(non_round.coverage.cases, 34);
+    assert_eq!(non_round.candidate_reach.full_cases, 21);
+    assert_eq!(non_round.admission.rho_falsification_cases, 6);
+    assert_eq!(non_round.truth_quality.false_merge_cases, 2);
+    assert_eq!(
+        non_round.solver_exactness.component_budget_fallback_cases,
+        4
+    );
+    let round = by_plane
+        .get(&GeoTruthPlane::RoundExactLenderParty)
+        .expect("round truth plane present");
+    assert_eq!(round.coverage.cases, 36);
+    assert_eq!(round.candidate_reach.full_cases, 26);
+    assert_eq!(round.admission.rho_falsification_cases, 9);
+    assert_eq!(round.truth_quality.false_merge_cases, 3);
+    assert_eq!(round.solver_exactness.component_budget_fallback_cases, 2);
+
+    let assessment_again = assess_e4_gate(&artifact, GeoE4GateProofClass::RetainedComplete)
+        .expect("retained E4 assessment re-scores");
+    assert_eq!(
+        canonical_e4_gate_assessment_bytes(&assessment).expect("assessment serializes"),
+        canonical_e4_gate_assessment_bytes(&assessment_again).expect("assessment serializes again")
+    );
+}
+
+#[test]
+fn e4_gate_assessment_does_not_pass_when_retained_artifact_is_called_live() {
+    let artifact = retained_roll_e4_evaluation();
+    let assessment = assess_e4_gate(&artifact, GeoE4GateProofClass::LiveComplete)
+        .expect("live-class assertion still scores retained artifact");
+
+    assert_eq!(assessment.status, GeoE4GateStatus::Open);
+    assert!(!assessment.release_claim_allowed);
+    assert!(
+        !assessment
+            .blockers
+            .iter()
+            .any(|blocker| blocker.code == GeoE4GateBlockerCode::ProofClassNotLiveComplete)
+    );
+    assert!(
+        assessment
+            .blockers
+            .iter()
+            .any(|blocker| blocker.code == GeoE4GateBlockerCode::PopulationDenominatorMismatch)
+    );
+    assert!(
+        assessment
+            .blockers
+            .iter()
+            .any(|blocker| blocker.code == GeoE4GateBlockerCode::CandidateReachIncomplete)
+    );
+    assert!(
+        assessment
+            .blockers
+            .iter()
+            .any(|blocker| blocker.code == GeoE4GateBlockerCode::RhoFalsification)
+    );
+    assert!(
+        assessment
+            .blockers
+            .iter()
+            .any(|blocker| blocker.code == GeoE4GateBlockerCode::FalseMerge)
+    );
+}
+
+#[test]
+fn e4_gate_assessment_validator_rejects_status_or_claim_forgery() {
+    let artifact = retained_roll_e4_evaluation();
+    let mut assessment = assess_e4_gate(&artifact, GeoE4GateProofClass::RetainedComplete)
+        .expect("retained E4 assessment scores");
+
+    assessment.status = GeoE4GateStatus::Passed;
+    let error =
+        validate_e4_gate_assessment(&assessment).expect_err("forged status must be rejected");
+    assert_eq!(error.code, canon::geo::GeoPopulationErrorCode::InvalidInput);
+    assert!(error.to_string().contains("status"));
+
+    assessment.status = GeoE4GateStatus::Open;
+    assessment.release_claim_allowed = true;
+    let error = validate_e4_gate_assessment(&assessment)
+        .expect_err("forged release claim must be rejected");
+    assert_eq!(error.code, canon::geo::GeoPopulationErrorCode::InvalidInput);
+    assert!(error.to_string().contains("release-claim"));
 }
 
 const D0_ADJUDICATION_LABELS_JSON: &str =
