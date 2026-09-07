@@ -2293,92 +2293,7 @@ pub fn assess_e4_gate(
     let required_subjects = CANON_GEO_FROZEN_E4_H7_REQUIRED_SUBJECTS;
     let evaluated_cases = planes.coverage.cases;
     let subject_deficit = required_subjects.saturating_sub(evaluated_cases);
-    let mut blockers = Vec::new();
-    if proof_class != GeoE4GateProofClass::LiveComplete {
-        blockers.push(GeoE4GateBlocker {
-            plane: GeoE4GatePlane::Proof,
-            code: GeoE4GateBlockerCode::ProofClassNotLiveComplete,
-            observed: e4_proof_class_name(proof_class).to_string(),
-            required: "live_complete".to_string(),
-        });
-    }
-    e4_add_count_blocker(
-        &mut blockers,
-        GeoE4GatePlane::Coverage,
-        GeoE4GateBlockerCode::PopulationDenominatorMismatch,
-        evaluated_cases,
-        required_subjects,
-        evaluated_cases != required_subjects,
-    );
-    e4_add_count_blocker(
-        &mut blockers,
-        GeoE4GatePlane::Coverage,
-        GeoE4GateBlockerCode::EvidenceNoObservation,
-        planes.coverage.evidence_no_observation_cases,
-        0,
-        planes.coverage.evidence_no_observation_cases != 0,
-    );
-    e4_add_count_blocker(
-        &mut blockers,
-        GeoE4GatePlane::CandidateReach,
-        GeoE4GateBlockerCode::CandidateReachIncomplete,
-        planes.candidate_reach.full_cases,
-        evaluated_cases,
-        planes.candidate_reach.full_cases != evaluated_cases,
-    );
-    e4_add_count_blocker(
-        &mut blockers,
-        GeoE4GatePlane::SolverExactness,
-        GeoE4GateBlockerCode::SolverArtifactMissing,
-        planes.solver_exactness.solver_artifact_cases,
-        evaluated_cases,
-        planes.solver_exactness.solver_artifact_cases != evaluated_cases,
-    );
-    e4_add_count_blocker(
-        &mut blockers,
-        GeoE4GatePlane::SolverExactness,
-        GeoE4GateBlockerCode::ResidualCountInexact,
-        planes
-            .solver_exactness
-            .residual_count_saturated_cases
-            .saturating_add(planes.solver_exactness.residual_count_unavailable_cases),
-        0,
-        planes.solver_exactness.residual_count_saturated_cases != 0
-            || planes.solver_exactness.residual_count_unavailable_cases != 0,
-    );
-    e4_add_count_blocker(
-        &mut blockers,
-        GeoE4GatePlane::Admission,
-        GeoE4GateBlockerCode::RhoFalsification,
-        planes.admission.rho_falsification_cases,
-        0,
-        planes.admission.rho_falsification_cases != 0,
-    );
-    e4_add_count_blocker(
-        &mut blockers,
-        GeoE4GatePlane::TruthQuality,
-        GeoE4GateBlockerCode::FalseMerge,
-        planes.truth_quality.false_merge_cases,
-        0,
-        planes.truth_quality.false_merge_cases != 0,
-    );
-    e4_add_count_blocker(
-        &mut blockers,
-        GeoE4GatePlane::Cost,
-        GeoE4GateBlockerCode::AssignmentBudgetExceeded,
-        planes.solver_exactness.assignment_budget_exceeded_cases,
-        0,
-        planes.solver_exactness.assignment_budget_exceeded_cases != 0,
-    );
-    e4_add_count_blocker(
-        &mut blockers,
-        GeoE4GatePlane::Cost,
-        GeoE4GateBlockerCode::ComponentBudgetFallback,
-        planes.solver_exactness.component_budget_fallback_cases,
-        0,
-        planes.solver_exactness.component_budget_fallback_cases != 0,
-    );
-    blockers.sort();
+    let blockers = e4_gate_blockers(proof_class, required_subjects, evaluated_cases, &planes)?;
     let status = if blockers.is_empty() {
         GeoE4GateStatus::Passed
     } else {
@@ -2510,6 +2425,41 @@ pub fn validate_e4_gate_assessment(
                 ],
             ));
         }
+    }
+    let expected_blockers = e4_gate_blockers(
+        assessment.proof_class,
+        assessment.required_subjects,
+        assessment.evaluated_cases,
+        &assessment.planes,
+    )?;
+    if assessment.blockers != expected_blockers {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo E4 gate assessment blockers do not match the scored gate planes",
+            [
+                (
+                    "actual",
+                    format!(
+                        "{:?}",
+                        assessment
+                            .blockers
+                            .iter()
+                            .map(|blocker| blocker.code)
+                            .collect::<Vec<_>>()
+                    ),
+                ),
+                (
+                    "expected",
+                    format!(
+                        "{:?}",
+                        expected_blockers
+                            .iter()
+                            .map(|blocker| blocker.code)
+                            .collect::<Vec<_>>()
+                    ),
+                ),
+            ],
+        ));
     }
     let mut previous_truth_plane = None;
     let mut truth_plane_cases = 0_u64;
@@ -4535,6 +4485,104 @@ fn e4_add_count_blocker(
             required: required.to_string(),
         });
     }
+}
+
+fn e4_gate_blockers(
+    proof_class: GeoE4GateProofClass,
+    required_subjects: u64,
+    evaluated_cases: u64,
+    planes: &GeoE4GatePlaneScores,
+) -> Result<Vec<GeoE4GateBlocker>, GeoPopulationError> {
+    let mut blockers = Vec::new();
+    if proof_class != GeoE4GateProofClass::LiveComplete {
+        blockers.push(GeoE4GateBlocker {
+            plane: GeoE4GatePlane::Proof,
+            code: GeoE4GateBlockerCode::ProofClassNotLiveComplete,
+            observed: e4_proof_class_name(proof_class).to_string(),
+            required: "live_complete".to_string(),
+        });
+    }
+    e4_add_count_blocker(
+        &mut blockers,
+        GeoE4GatePlane::Coverage,
+        GeoE4GateBlockerCode::PopulationDenominatorMismatch,
+        evaluated_cases,
+        required_subjects,
+        evaluated_cases != required_subjects,
+    );
+    e4_add_count_blocker(
+        &mut blockers,
+        GeoE4GatePlane::Coverage,
+        GeoE4GateBlockerCode::EvidenceNoObservation,
+        planes.coverage.evidence_no_observation_cases,
+        0,
+        planes.coverage.evidence_no_observation_cases != 0,
+    );
+    e4_add_count_blocker(
+        &mut blockers,
+        GeoE4GatePlane::CandidateReach,
+        GeoE4GateBlockerCode::CandidateReachIncomplete,
+        planes.candidate_reach.full_cases,
+        evaluated_cases,
+        planes.candidate_reach.full_cases != evaluated_cases,
+    );
+    e4_add_count_blocker(
+        &mut blockers,
+        GeoE4GatePlane::SolverExactness,
+        GeoE4GateBlockerCode::SolverArtifactMissing,
+        planes.solver_exactness.solver_artifact_cases,
+        evaluated_cases,
+        planes.solver_exactness.solver_artifact_cases != evaluated_cases,
+    );
+    e4_add_count_blocker(
+        &mut blockers,
+        GeoE4GatePlane::SolverExactness,
+        GeoE4GateBlockerCode::ResidualCountInexact,
+        sum_u64(
+            [
+                planes.solver_exactness.residual_count_saturated_cases,
+                planes.solver_exactness.residual_count_unavailable_cases,
+            ],
+            "e4.solver_exactness.residual_count_inexact_cases",
+        )?,
+        0,
+        planes.solver_exactness.residual_count_saturated_cases != 0
+            || planes.solver_exactness.residual_count_unavailable_cases != 0,
+    );
+    e4_add_count_blocker(
+        &mut blockers,
+        GeoE4GatePlane::Admission,
+        GeoE4GateBlockerCode::RhoFalsification,
+        planes.admission.rho_falsification_cases,
+        0,
+        planes.admission.rho_falsification_cases != 0,
+    );
+    e4_add_count_blocker(
+        &mut blockers,
+        GeoE4GatePlane::TruthQuality,
+        GeoE4GateBlockerCode::FalseMerge,
+        planes.truth_quality.false_merge_cases,
+        0,
+        planes.truth_quality.false_merge_cases != 0,
+    );
+    e4_add_count_blocker(
+        &mut blockers,
+        GeoE4GatePlane::Cost,
+        GeoE4GateBlockerCode::AssignmentBudgetExceeded,
+        planes.solver_exactness.assignment_budget_exceeded_cases,
+        0,
+        planes.solver_exactness.assignment_budget_exceeded_cases != 0,
+    );
+    e4_add_count_blocker(
+        &mut blockers,
+        GeoE4GatePlane::Cost,
+        GeoE4GateBlockerCode::ComponentBudgetFallback,
+        planes.solver_exactness.component_budget_fallback_cases,
+        0,
+        planes.solver_exactness.component_budget_fallback_cases != 0,
+    );
+    blockers.sort();
+    Ok(blockers)
 }
 
 fn e4_proof_class_name(proof_class: GeoE4GateProofClass) -> &'static str {

@@ -1576,6 +1576,15 @@ fn e4_gate_assessment_validator_rejects_status_or_claim_forgery() {
         .expect_err("forged release claim must be rejected");
     assert_eq!(error.code, canon::geo::GeoPopulationErrorCode::InvalidInput);
     assert!(error.to_string().contains("release-claim"));
+
+    assessment.release_claim_allowed = false;
+    assessment
+        .blockers
+        .retain(|blocker| blocker.code != GeoE4GateBlockerCode::FalseMerge);
+    let error =
+        validate_e4_gate_assessment(&assessment).expect_err("missing blocker must be rejected");
+    assert_eq!(error.code, canon::geo::GeoPopulationErrorCode::InvalidInput);
+    assert!(error.to_string().contains("blockers"));
 }
 
 const D0_ADJUDICATION_LABELS_JSON: &str =
