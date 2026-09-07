@@ -2397,17 +2397,17 @@
     },
     {
       "name": "geo evaluate",
-      "usage": "canon geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>]",
-      "description": "Evaluate a labeled population request or replay-validated evidence-stack artifact without letting labels reach the compiler or solver and emit the canonical evaluation artifact on stdout",
+      "usage": "canon geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>] [--e4-proof-class <CLASS>]",
+      "description": "Evaluate a labeled population request or replay-validated evidence-stack artifact without letting labels reach the compiler or solver, emit the canonical evaluation artifact on stdout, and optionally publish an E4 gate assessment sidecar",
       "surface": "primary",
       "output_mode": "json",
       "output_schema": "canon_geo_population_evaluation.v0",
       "status": "implemented",
-      "read_only": true,
+      "read_only": false,
       "safety": {
         "owned_temp_fixtures_only": true,
-        "notes": "geo requests are answered on stdout; no registry, cache, or work-dir writes",
-        "mutation_class": "ReadOnly",
+        "notes": "geo requests are answered on stdout; optional --artifact-dir and --e4-assessment-out publish create-or-identical owned output files; no registry, cache, work-dir, or network writes",
+        "mutation_class": "OwnedOutput",
         "network_class": "Offline",
         "concurrency_class": "StatelessRead",
         "platform_classes": [
@@ -2429,7 +2429,7 @@
         "writes_mapping_sidecars": false,
         "writes_work_dir": false,
         "writes_project_files": false,
-        "writes_output_files": false,
+        "writes_output_files": true,
         "uses_network": false
       },
       "exit_codes": {
@@ -2461,6 +2461,27 @@
           "type": "directory_path",
           "required": false,
           "description": "Optional directory for per-case evidence and solve artifacts"
+        },
+        {
+          "name": "e4-assessment-out",
+          "flag": "--e4-assessment-out",
+          "type": "file_path",
+          "required": false,
+          "description": "Optional create-or-identical output path for canon_geo_e4_gate_assessment.v0"
+        },
+        {
+          "name": "e4-proof-class",
+          "flag": "--e4-proof-class",
+          "type": "enum",
+          "values": [
+            "fixture-subset",
+            "observed-snapshot",
+            "retained-complete",
+            "live-complete"
+          ],
+          "default": "fixture-subset",
+          "required": false,
+          "description": "Proof class asserted for the optional E4 gate assessment sidecar: fixture-subset, observed-snapshot, retained-complete, or live-complete"
         }
       ]
     },

@@ -32,12 +32,13 @@ use canon::geo::{
     GeoCandidateTruthEvaluationRequest, GeoCandidateTruthGate, GeoCandidateTruthGateKind,
     GeoCandidateTruthHandoffRow, GeoCandidateTruthLogicalSubjectBinding,
     GeoCandidateTruthRowStatus, GeoCompositionModel, GeoCompositionRequest, GeoCompositionStatus,
-    GeoCompositionUniverse, GeoE4GateBlockerCode, GeoE4GatePlane, GeoE4GateProofClass,
-    GeoE4GateStatus, GeoEntityLevel, GeoEntityRef, GeoHardConstraint, GeoHardConstraintKind,
-    GeoPopulationEvaluationArtifact, GeoTruthPlane, assess_e4_gate,
+    GeoCompositionUniverse, GeoE4GateAssessment, GeoE4GateBlockerCode, GeoE4GatePlane,
+    GeoE4GateProofClass, GeoE4GateStatus, GeoEntityLevel, GeoEntityRef, GeoHardConstraint,
+    GeoHardConstraintKind, GeoPopulationEvaluationArtifact, GeoTruthPlane, assess_e4_gate,
     canonical_candidate_truth_evaluation_bytes, canonical_e4_gate_assessment_bytes,
-    evaluate_candidate_truth_handoff, model_satisfies_request, solve_composition,
-    validate_candidate_truth_evaluation_artifact, validate_e4_gate_assessment,
+    canonical_population_evaluation_bytes, evaluate_candidate_truth_handoff,
+    model_satisfies_request, solve_composition, validate_candidate_truth_evaluation_artifact,
+    validate_e4_gate_assessment,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -2160,5 +2161,89 @@ fn evaluate_artifact_dir_files_match_case_digests() {
     assert_eq!(
         refusal["refusal"]["detail"]["detail"]["case_id"],
         first_case_id
+    );
+}
+
+#[test]
+fn geo_evaluate_writes_e4_gate_assessment_sidecar_bound_to_stdout() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let assessment_path = temp.path().join("e4-assessment.json");
+    let population_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/geo/e4_gate_v2_population_request.json");
+
+    let stdout = assert_cmd::Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(["geo", "evaluate", "--population"])
+        .arg(&population_path)
+        .arg("--e4-assessment-out")
+        .arg(&assessment_path)
+        .arg("--e4-proof-class")
+        .arg("retained-complete")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let evaluation: GeoPopulationEvaluationArtifact =
+        serde_json::from_slice(&stdout).expect("evaluation JSON parses");
+    let evaluation_bytes =
+        canonical_population_evaluation_bytes(&evaluation).expect("evaluation serializes");
+    let assessment_bytes = std::fs::read(&assessment_path).expect("assessment sidecar exists");
+    let assessment: GeoE4GateAssessment =
+        serde_json::from_slice(&assessment_bytes).expect("assessment JSON parses");
+    validate_e4_gate_assessment(&assessment).expect("assessment validates");
+
+    assert_eq!(
+        assessment.proof_class,
+        GeoE4GateProofClass::RetainedComplete
+    );
+    assert_eq!(assessment.status, GeoE4GateStatus::Open);
+    assert!(!assessment.release_claim_allowed);
+    assert_eq!(assessment.required_subjects, 79);
+    assert_eq!(assessment.evaluated_cases, evaluation.summary.cases);
+    assert_eq!(assessment.subject_deficit, 64);
+    assert_eq!(
+        assessment.source_evaluation_blake3,
+        blake3::hash(&evaluation_bytes).to_hex().to_string()
+    );
+
+    let original_assessment_bytes = assessment_bytes.clone();
+    assert_cmd::Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(["geo", "evaluate", "--population"])
+        .arg(&population_path)
+        .arg("--e4-assessment-out")
+        .arg(&assessment_path)
+        .arg("--e4-proof-class")
+        .arg("retained-complete")
+        .assert()
+        .success();
+    assert_eq!(
+        std::fs::read(&assessment_path).expect("assessment sidecar rereads"),
+        original_assessment_bytes
+    );
+
+    std::fs::write(&assessment_path, br#"{"tampered":true}"#).expect("tamper assessment");
+    let refusal_stdout = assert_cmd::Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(["geo", "evaluate", "--population"])
+        .arg(&population_path)
+        .arg("--e4-assessment-out")
+        .arg(&assessment_path)
+        .arg("--e4-proof-class")
+        .arg("retained-complete")
+        .assert()
+        .failure()
+        .get_output()
+        .stdout
+        .clone();
+    let refusal: serde_json::Value =
+        serde_json::from_slice(&refusal_stdout).expect("refusal JSON parses");
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(refusal["refusal"]["code"], "E_IO");
+    assert_eq!(
+        refusal["refusal"]["detail"]["e4_assessment_out"],
+        assessment_path.to_string_lossy().as_ref()
+    );
+    assert_eq!(
+        std::fs::read(&assessment_path).expect("tampered assessment persists"),
+        br#"{"tampered":true}"#
     );
 }

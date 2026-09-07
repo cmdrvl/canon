@@ -10,14 +10,14 @@
 use crate::{
     CanonOutput, Refusal, RefusalCode,
     cli::{
-        GeoCapabilitiesCli, GeoCapabilitiesEmitMode, GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli,
-        GeoLedgerCli, GeoLedgerSubcommand, GeoLedgerValidateCli, GeoLinkSourcesCli,
-        GeoMaterializeAddressEvidenceCli, GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli,
-        GeoMaterializeH7PipBlockBatchCli, GeoMaterializeH7PopulationCli,
-        GeoMaterializeH7StagingBatchCli, GeoMaterializeHomeCellsCli,
-        GeoMaterializeWarehouseGeometryCli, GeoPlanCli, GeoReconcileTilesCli,
-        GeoReplanFromAcquisitionCli, GeoRunCli, GeoSolveCli, GeoStackEvidenceCli, GeoSubcommand,
-        GeoTileWorkCli,
+        GeoCapabilitiesCli, GeoCapabilitiesEmitMode, GeoCli, GeoCompileEvidenceCli,
+        GeoE4AssessmentProofClassCli, GeoEvaluateCli, GeoLedgerCli, GeoLedgerSubcommand,
+        GeoLedgerValidateCli, GeoLinkSourcesCli, GeoMaterializeAddressEvidenceCli,
+        GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli, GeoMaterializeH7PipBlockBatchCli,
+        GeoMaterializeH7PopulationCli, GeoMaterializeH7StagingBatchCli,
+        GeoMaterializeHomeCellsCli, GeoMaterializeWarehouseGeometryCli, GeoPlanCli,
+        GeoReconcileTilesCli, GeoReplanFromAcquisitionCli, GeoRunCli, GeoSolveCli,
+        GeoStackEvidenceCli, GeoSubcommand, GeoTileWorkCli,
     },
     project::ProjectRunPolicy,
     refusal,
@@ -51,9 +51,11 @@ use super::{
     },
     discovery::{CANON_GEO_ACQUISITION_RECEIPT_VERSION, GeoAcquisitionReceipt, GeoDigestAlgorithm},
     evaluation::{
-        CANON_GEO_POPULATION_REQUEST_VERSION, GeoPopulationCaseArtifacts, GeoPopulationError,
-        GeoPopulationEvaluationRequest, canonical_population_evaluation_bytes,
-        evaluate_population_with_artifacts, evaluate_population_with_run_artifacts,
+        CANON_GEO_E4_GATE_ASSESSMENT_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
+        GeoE4GateProofClass, GeoPopulationCaseArtifacts, GeoPopulationError,
+        GeoPopulationEvaluationRequest, assess_e4_gate, canonical_e4_gate_assessment_bytes,
+        canonical_population_evaluation_bytes, evaluate_population_with_artifacts,
+        evaluate_population_with_run_artifacts,
     },
     evidence::{
         CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
@@ -451,9 +453,7 @@ fn run_replan_from_acquisition(args: &GeoReplanFromAcquisitionCli) -> Result<u8,
         Ok(bytes) => bytes,
         Err(error) => return emit_replan_plan_error(error),
     };
-    if let Err(error) =
-        publish_replan_advancement_sidecar(&args.advancement_out, &advancement_bytes)
-    {
+    if let Err(error) = publish_geo_sidecar(&args.advancement_out, &advancement_bytes) {
         return emit_refusal(
             RefusalCode::EIo,
             "Geo replan could not publish the inventory advancement sidecar",
@@ -829,9 +829,48 @@ fn run_evaluate(args: &GeoEvaluateCli) -> Result<u8, Box<dyn Error>> {
             Err(error) => return emit_population_error(error),
         }
     };
+    if let Some(assessment_out) = &args.e4_assessment_out {
+        let assessment = match assess_e4_gate(
+            &evaluated.evaluation,
+            geo_e4_assessment_proof_class(args.e4_proof_class),
+        ) {
+            Ok(assessment) => assessment,
+            Err(error) => return emit_population_error(error),
+        };
+        let assessment_bytes = match canonical_e4_gate_assessment_bytes(&assessment) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                return emit_serialization_refusal(CANON_GEO_E4_GATE_ASSESSMENT_VERSION, &error);
+            }
+        };
+        if let Err(error) = publish_geo_sidecar(assessment_out, &assessment_bytes) {
+            return emit_refusal(
+                RefusalCode::EIo,
+                "Geo evaluate could not publish the E4 gate assessment sidecar",
+                json!({
+                    "e4_assessment_out": error.target,
+                    "temp_path": error.temp_path,
+                    "error": error.message,
+                }),
+                Some(
+                    "choose a writable --e4-assessment-out path and rerun canon geo evaluate"
+                        .to_string(),
+                ),
+            );
+        }
+    }
     match canonical_population_evaluation_bytes(&evaluated.evaluation) {
         Ok(bytes) => write_canonical(&bytes),
         Err(error) => emit_serialization_refusal("canon_geo_population_evaluation.v0", &error),
+    }
+}
+
+fn geo_e4_assessment_proof_class(proof_class: GeoE4AssessmentProofClassCli) -> GeoE4GateProofClass {
+    match proof_class {
+        GeoE4AssessmentProofClassCli::FixtureSubset => GeoE4GateProofClass::FixtureSubset,
+        GeoE4AssessmentProofClassCli::ObservedSnapshot => GeoE4GateProofClass::ObservedSnapshot,
+        GeoE4AssessmentProofClassCli::RetainedComplete => GeoE4GateProofClass::RetainedComplete,
+        GeoE4AssessmentProofClassCli::LiveComplete => GeoE4GateProofClass::LiveComplete,
     }
 }
 
@@ -1422,11 +1461,8 @@ struct GeoSidecarPublishError {
     message: String,
 }
 
-fn publish_replan_advancement_sidecar(
-    path: &Path,
-    bytes: &[u8],
-) -> Result<(), GeoSidecarPublishError> {
-    match existing_replan_sidecar_matches(path, bytes)? {
+fn publish_geo_sidecar(path: &Path, bytes: &[u8]) -> Result<(), GeoSidecarPublishError> {
+    match existing_geo_sidecar_matches(path, bytes)? {
         Some(true) => return Ok(()),
         Some(false) => {
             return Err(GeoSidecarPublishError {
@@ -1456,7 +1492,7 @@ fn publish_replan_advancement_sidecar(
         .ok_or_else(|| GeoSidecarPublishError {
             target: path_string(path),
             temp_path: None,
-            message: "advancement output path must name a file".to_string(),
+            message: "sidecar output path must name a file".to_string(),
         })?;
     let digest = blake3::hash(bytes).to_hex().to_string();
     for attempt in 0_u8..64 {
@@ -1492,7 +1528,7 @@ fn publish_replan_advancement_sidecar(
                 return Ok(());
             }
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-                let existing = existing_replan_sidecar_matches(path, bytes);
+                let existing = existing_geo_sidecar_matches(path, bytes);
                 let _ = fs::remove_file(&temp_path);
                 match existing? {
                     Some(true) => return Ok(()),
@@ -1524,11 +1560,11 @@ fn publish_replan_advancement_sidecar(
     })
 }
 
-fn existing_replan_sidecar_matches(
+fn existing_geo_sidecar_matches(
     path: &Path,
     bytes: &[u8],
 ) -> Result<Option<bool>, GeoSidecarPublishError> {
-    let mut file = match open_replan_sidecar_no_follow(path) {
+    let mut file = match open_geo_sidecar_no_follow(path) {
         Ok(file) => file,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(error) => {
@@ -1562,7 +1598,7 @@ fn existing_replan_sidecar_matches(
 }
 
 #[cfg(unix)]
-fn open_replan_sidecar_no_follow(path: &Path) -> io::Result<fs::File> {
+fn open_geo_sidecar_no_follow(path: &Path) -> io::Result<fs::File> {
     use std::os::unix::fs::OpenOptionsExt;
 
     fs::OpenOptions::new()
@@ -1572,7 +1608,7 @@ fn open_replan_sidecar_no_follow(path: &Path) -> io::Result<fs::File> {
 }
 
 #[cfg(windows)]
-fn open_replan_sidecar_no_follow(path: &Path) -> io::Result<fs::File> {
+fn open_geo_sidecar_no_follow(path: &Path) -> io::Result<fs::File> {
     use std::os::windows::fs::OpenOptionsExt;
 
     // FILE_FLAG_OPEN_REPARSE_POINT makes the handle refer to the link entry
@@ -1585,7 +1621,7 @@ fn open_replan_sidecar_no_follow(path: &Path) -> io::Result<fs::File> {
 }
 
 #[cfg(not(any(unix, windows)))]
-fn open_replan_sidecar_no_follow(path: &Path) -> io::Result<fs::File> {
+fn open_geo_sidecar_no_follow(path: &Path) -> io::Result<fs::File> {
     match fs::symlink_metadata(path) {
         Err(error) if error.kind() == io::ErrorKind::NotFound => Err(error),
         Err(error) => Err(error),
