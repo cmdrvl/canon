@@ -27,9 +27,10 @@ use manifest::{
     ProjectManifest, ProjectPackageKind, load_project_manifest_toml, project_manifest_digest,
 };
 use plan::{
-    ProjectPlan, ProjectPlanErrorCode, ProjectPlanHashRef, ProjectPlanNode, ProjectPlanNodeClass,
-    ProjectPlanRefusalCondition, ProjectPlanRequest, ProjectPlanSideEffect,
-    ProjectPlanSideEffectKind, compile_project_plan, project_plan_node_cache_key,
+    ProjectPlan, ProjectPlanCacheDecision, ProjectPlanErrorCode, ProjectPlanHashRef,
+    ProjectPlanNode, ProjectPlanNodeClass, ProjectPlanNodeKind, ProjectPlanRefusalCondition,
+    ProjectPlanRequest, ProjectPlanSideEffect, ProjectPlanSideEffectKind, compile_project_plan,
+    project_plan_node_cache_key,
 };
 use receipt::{
     ProjectReceiptErrorCode, ProjectRunNodeOutcome, canonical_node_receipt_bytes,
@@ -99,6 +100,25 @@ fn schema_declares_content_validated_resume_contract() {
     );
     assert!(schema["properties"]["invalidation_reasons"].is_object());
     assert!(schema["properties"]["resource_reuse"].is_object());
+    let classes = schema["x-canon-contract"]["geo_accretion_input_change_classes"]
+        .as_array()
+        .expect("geo accretion class list")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect::<BTreeSet<_>>();
+    for class in [
+        "new_rows",
+        "new_source_instance",
+        "release_replacement",
+        "rho_contract_change",
+        "observer_characterization_or_pin_manifest_change",
+        "query_as_of_change",
+        "entity_level_or_profile_change",
+        "backend_order_or_vtree_policy_change",
+        "content_hash_input_changed",
+    ] {
+        assert!(classes.contains(class), "schema must name {class}");
+    }
     let invalidation_required = schema["$defs"]["invalidation_reason"]["required"]
         .as_array()
         .expect("invalidation reason required array")
@@ -1100,6 +1120,46 @@ fn t67_report_validation_rejects_forged_downstream_invalidation_edge() {
 }
 
 #[test]
+fn t67_report_validation_rejects_forged_invalidation_class() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut plan = independent_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor = DeterministicExecutor::default();
+    run_project_plan(&plan, &policy, &mut executor).expect("initial independent run");
+
+    let alpha = plan
+        .nodes
+        .iter_mut()
+        .find(|node| node.node_id == "alpha")
+        .expect("alpha node");
+    alpha.content_hash_inputs[0].ref_id = "geo.source_release.mappluto.component_a".to_string();
+    alpha.content_hash_inputs[0].content_hash = digest_bytes(b"mappluto-26v2-stable-record-id");
+    refresh_node_cache_key(alpha);
+
+    let mut resume_executor = DeterministicExecutor::default();
+    let mut resumed = run_project_plan(&plan, &policy, &mut resume_executor)
+        .expect("source-release invalidation reports");
+    let alpha_reason = resumed
+        .invalidation_reasons
+        .iter_mut()
+        .find(|reason| reason.node_id == "alpha")
+        .expect("alpha invalidation reason");
+    alpha_reason.detail.insert(
+        "invalidation_class".to_string(),
+        "new_rows".to_string(),
+    );
+
+    let error = project_run_manifest_revision_for_report(&plan, &resumed, None)
+        .expect_err("forged invalidation class refuses before manifest revision");
+
+    assert_eq!(error.code, ProjectRunErrorCode::ArtifactContract);
+    assert!(
+        error.message.contains("invalidation_class"),
+        "validator must bind D8 invalidation class to the changed semantic ref_id"
+    );
+}
+
+#[test]
 fn t67_report_validation_rejects_forged_resource_reuse_accounting() {
     let temp = tempfile::tempdir().expect("tempdir");
     let plan = independent_plan();
@@ -1121,6 +1181,115 @@ fn t67_report_validation_rejects_forged_resource_reuse_accounting() {
     assert!(
         error.message.contains("resource_reuse"),
         "validator must bind saved-work counters to resumed receipts"
+    );
+}
+
+#[test]
+fn t67_new_rows_invalidates_only_touched_component() {
+    assert_t67_accretion_input_class("geo.new_rows.component_a", "new_rows", "new rows");
+}
+
+#[test]
+fn t67_new_source_instance_invalidates_only_touched_component() {
+    assert_t67_accretion_input_class(
+        "geo.source_instance.component_a",
+        "new_source_instance",
+        "new source instance",
+    );
+}
+
+#[test]
+fn t67_release_replacement_with_stable_ids_invalidates_geometry_and_downstream() {
+    assert_t67_accretion_input_class(
+        "geo.source_release.mappluto.component_a",
+        "release_replacement",
+        "source release replacement",
+    );
+}
+
+#[test]
+fn t67_rho_contract_change_invalidates_old_admissions() {
+    assert_t67_accretion_input_class(
+        "geo.rho_contract.component_a",
+        "rho_contract_change",
+        "rho contract",
+    );
+}
+
+#[test]
+fn t67_observer_characterization_or_pin_change_invalidates_old_admissions() {
+    assert_t67_accretion_input_class(
+        "geo.observer_characterization.component_a",
+        "observer_characterization_or_pin_manifest_change",
+        "observer characterization",
+    );
+}
+
+#[test]
+fn t67_query_as_of_change_invalidates_time_bound_section() {
+    assert_t67_accretion_input_class(
+        "geo.query_as_of.component_a",
+        "query_as_of_change",
+        "query as of",
+    );
+}
+
+#[test]
+fn t67_entity_level_or_profile_change_invalidates_profile_branch() {
+    assert_t67_accretion_input_class(
+        "geo.entity_level.profile.component_a",
+        "entity_level_or_profile_change",
+        "entity level profile",
+    );
+}
+
+#[test]
+fn t67_backend_order_or_vtree_policy_change_invalidates_solve_branch() {
+    assert_t67_accretion_input_class(
+        "geo.backend_order_vtree_policy.component_a",
+        "backend_order_or_vtree_policy_change",
+        "backend order vtree policy",
+    );
+}
+
+#[test]
+fn t67_boundary_feature_change_invalidates_home_and_controlled_halo_sections() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut plan = boundary_halo_accretion_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor = DeterministicExecutor::default();
+    run_project_plan(&plan, &policy, &mut executor).expect("initial boundary run");
+
+    let feature = plan
+        .nodes
+        .iter_mut()
+        .find(|node| node.node_id == "feature.release")
+        .expect("feature release node");
+    feature.content_hash_inputs[0].content_hash = digest_bytes(b"feature-crosses-halo-v2");
+    refresh_node_cache_key(feature);
+    plan.graph_hash = digest_bytes(b"boundary-halo-accretion-v2");
+
+    let mut resume_executor = DeterministicExecutor::default();
+    let resumed = run_project_plan(&plan, &policy, &mut resume_executor)
+        .expect("boundary feature invalidates dependent halo sections");
+
+    assert_eq!(
+        string_set(&resumed.invalidated_nodes),
+        string_set_from(["feature.release", "section.home", "section.halo"]),
+        "T67 boundary invalidation must cover every section that declared the changed feature, not only its home section"
+    );
+    assert_eq!(
+        string_set(&resumed.resumed_nodes),
+        string_set_from(["section.unrelated"])
+    );
+    assert_eq!(resumed.resource_reuse.saved_nodes, 1);
+    assert!(
+        resumed.invalidation_reasons.iter().any(|reason| {
+            reason.node_id == "section.halo"
+                && reason.reason == ProjectRunInvalidationReason::DownstreamDependencyInvalidated
+                && reason.detail.get("dependency_id").map(String::as_str) == Some("feature.release")
+        }),
+        "T67 boundary invalidation must name the feature-to-halo dependency edge"
     );
 }
 
@@ -1403,7 +1572,7 @@ fn executor_context_carries_dependency_semantics_and_validated_output_bytes() {
 }
 
 #[test]
-fn plan_graph_hash_change_alone_reuses_project_scoped_node_receipts() {
+fn t67_presentation_only_change_reuses_exact_residual_backbone() {
     let temp = tempfile::tempdir().expect("tempdir");
     let mut plan = independent_plan();
     let policy = approving_policy(temp.path());
@@ -3424,6 +3593,351 @@ fn without_run_manifest(tree: BTreeMap<String, Vec<u8>>) -> BTreeMap<String, Vec
     tree.into_iter()
         .filter(|(path, _)| !path.starts_with("work/run-manifest/"))
         .collect()
+}
+
+const ACCRETION_COMPONENT_STAGES: [(&str, ProjectPlanNodeKind); 8] = [
+    (
+        "source_adapter",
+        ProjectPlanNodeKind::ExternalMaterialization,
+    ),
+    ("home_cells_halo", ProjectPlanNodeKind::Block),
+    ("candidates", ProjectPlanNodeKind::Index),
+    ("admissions", ProjectPlanNodeKind::Evidence),
+    ("incidence_component", ProjectPlanNodeKind::Evidence),
+    ("solve", ProjectPlanNodeKind::Solve),
+    ("reconciliation", ProjectPlanNodeKind::Link),
+    ("evaluation", ProjectPlanNodeKind::Evaluate),
+];
+
+fn assert_t67_accretion_input_class(ref_id: &str, expected_class: &str, label: &str) {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut plan = two_component_accretion_plan(ref_id);
+    let policy = approving_policy(temp.path());
+    let mut executor = DeterministicExecutor::default();
+    run_project_plan(&plan, &policy, &mut executor)
+        .unwrap_or_else(|error| panic!("initial {label} run should succeed: {error}"));
+    let first_revision = read_project_run_manifest_head(&policy)
+        .expect("read first manifest head")
+        .expect("first manifest head");
+
+    change_accretion_component_input(&mut plan, "component.a.source_adapter", label);
+
+    let mut resume_executor = DeterministicExecutor::default();
+    let resumed = run_project_plan(&plan, &policy, &mut resume_executor)
+        .unwrap_or_else(|error| panic!("resumed {label} run should succeed: {error}"));
+    let second_revision = read_project_run_manifest_head(&policy)
+        .expect("read second manifest head")
+        .expect("second manifest head");
+
+    let affected = accretion_component_node_ids("a");
+    let unaffected = accretion_component_node_ids("b");
+    assert_eq!(
+        resume_executor.calls, affected,
+        "T67 {label}: only the touched component should execute"
+    );
+    assert_eq!(
+        string_set(&resumed.executed_nodes),
+        string_set(&affected),
+        "T67 {label}: report must name exactly the recomputed component"
+    );
+    assert_eq!(
+        string_set(&resumed.invalidated_nodes),
+        string_set(&affected),
+        "T67 {label}: stale set must stay component-local"
+    );
+    assert_eq!(
+        string_set(&resumed.resumed_nodes),
+        string_set(&unaffected),
+        "T67 {label}: unaffected component receipts must be reused"
+    );
+    assert_eq!(resumed.invalidation_reasons.len(), affected.len());
+
+    let root_reason = resumed
+        .invalidation_reasons
+        .iter()
+        .find(|reason| reason.node_id == "component.a.source_adapter")
+        .unwrap_or_else(|| panic!("T67 {label}: missing source invalidation reason"));
+    assert_eq!(
+        root_reason.reason,
+        ProjectRunInvalidationReason::ContentHashInputChanged
+    );
+    assert_eq!(
+        root_reason.detail.get("ref_id").map(String::as_str),
+        Some(ref_id)
+    );
+    assert_eq!(
+        root_reason
+            .detail
+            .get("invalidation_class")
+            .map(String::as_str),
+        Some(expected_class),
+        "T67 {label}: invalidation report must name the D8 change class"
+    );
+    assert_ne!(
+        root_reason.detail.get("previous_content_hash"),
+        root_reason.detail.get("current_content_hash"),
+        "T67 {label}: stable node ids may not hide changed source bytes"
+    );
+    for node_id in affected.iter().skip(1) {
+        let reason = resumed
+            .invalidation_reasons
+            .iter()
+            .find(|reason| reason.node_id == *node_id)
+            .unwrap_or_else(|| panic!("T67 {label}: missing downstream reason for {node_id}"));
+        assert_eq!(
+            reason.reason,
+            ProjectRunInvalidationReason::DownstreamDependencyInvalidated
+        );
+        assert!(
+            reason.detail.contains_key("dependency_id"),
+            "T67 {label}: downstream stale nodes must name the dependency edge"
+        );
+    }
+
+    assert_eq!(resumed.resource_reuse.saved_nodes, unaffected.len() as u64);
+    assert_eq!(
+        resumed
+            .resource_reuse
+            .saved_deterministic_usage
+            .get("output_count"),
+        Some(&(unaffected.len() as u64))
+    );
+    assert_eq!(
+        resumed
+            .resource_reuse
+            .saved_deterministic_usage_by_node_kind
+            .get("solve")
+            .and_then(|usage| usage.get("output_count")),
+        Some(&1),
+        "T67 {label}: saved solve work must be separated from other counters"
+    );
+    assert!(
+        resumed
+            .resource_reuse
+            .estimated_national_extrapolation
+            .is_none(),
+        "T67 {label}: fixture reuse cannot claim national extrapolation"
+    );
+
+    assert_eq!(
+        second_revision.previous_revision_hash.as_deref(),
+        Some(first_revision.revision_hash.as_str()),
+        "T67 {label}: added evidence creates a new immutable run revision"
+    );
+    assert!(
+        project_run_manifest_revision_path(&policy, &first_revision.revision_hash)
+            .expect("first revision path")
+            .exists(),
+        "T67 {label}: prior revision remains available as its own snapshot"
+    );
+
+    let fresh = tempfile::tempdir().expect("fresh tempdir");
+    let mut fresh_executor = DeterministicExecutor::default();
+    run_project_plan(&plan, &approving_policy(fresh.path()), &mut fresh_executor)
+        .unwrap_or_else(|error| panic!("fresh serial {label} run should succeed: {error}"));
+    assert_plan_outputs_and_semantic_hashes_match(temp.path(), fresh.path(), &plan, label);
+}
+
+fn change_accretion_component_input(plan: &mut ProjectPlan, node_id: &str, label: &str) {
+    let node = plan
+        .nodes
+        .iter_mut()
+        .find(|node| node.node_id == node_id)
+        .unwrap_or_else(|| panic!("node {node_id} exists"));
+    node.content_hash_inputs[0].content_hash =
+        digest_bytes(format!("{label}:component-a:v2").as_bytes());
+    refresh_node_cache_key(node);
+    plan.graph_hash = digest_bytes(format!("two-component-accretion:{label}:v2").as_bytes());
+}
+
+fn assert_plan_outputs_and_semantic_hashes_match(
+    resumed_root: &Path,
+    fresh_root: &Path,
+    plan: &ProjectPlan,
+    label: &str,
+) {
+    for node in &plan.nodes {
+        assert_eq!(
+            fs::read(artifact_path(resumed_root, plan, &node.node_id))
+                .unwrap_or_else(|error| panic!("T67 {label}: resumed artifact: {error}")),
+            fs::read(artifact_path(fresh_root, plan, &node.node_id))
+                .unwrap_or_else(|error| panic!("T67 {label}: fresh artifact: {error}")),
+            "T67 {label}: resume and fresh serial run must publish equal bytes for {}",
+            node.node_id
+        );
+        let resumed_receipt = read_node_receipt(&receipt_path(resumed_root, &node.node_id))
+            .unwrap_or_else(|error| panic!("T67 {label}: resumed receipt: {error}"));
+        let fresh_receipt = read_node_receipt(&receipt_path(fresh_root, &node.node_id))
+            .unwrap_or_else(|error| panic!("T67 {label}: fresh receipt: {error}"));
+        assert_eq!(
+            resumed_receipt.semantic_hash, fresh_receipt.semantic_hash,
+            "T67 {label}: resume and fresh serial run must preserve semantic hash for {}",
+            node.node_id
+        );
+    }
+}
+
+fn two_component_accretion_plan(changed_ref_id: &str) -> ProjectPlan {
+    let mut plan = minimal_plan();
+    let template = plan.nodes[0].clone();
+    let mut nodes = Vec::new();
+    for component in ["a", "b"] {
+        let mut previous = None;
+        for (stage, kind) in ACCRETION_COMPONENT_STAGES {
+            let node_id = format!("component.{component}.{stage}");
+            let ref_id = (stage == "source_adapter").then(|| {
+                if component == "a" {
+                    changed_ref_id.to_string()
+                } else {
+                    "geo.source_rows.component_b".to_string()
+                }
+            });
+            let dependencies = previous.into_iter().collect::<Vec<_>>();
+            let node = accretion_test_node(&template, &node_id, kind, dependencies, ref_id);
+            previous = Some(node_id);
+            nodes.push(node);
+        }
+    }
+    plan.nodes = nodes;
+    plan.graph_hash =
+        digest_bytes(format!("two-component-accretion:{changed_ref_id}:v1").as_bytes());
+    update_test_plan_summary(&mut plan);
+    plan
+}
+
+fn boundary_halo_accretion_plan() -> ProjectPlan {
+    let mut plan = minimal_plan();
+    let template = plan.nodes[0].clone();
+    plan.nodes = vec![
+        accretion_test_node(
+            &template,
+            "feature.release",
+            ProjectPlanNodeKind::ExternalMaterialization,
+            Vec::new(),
+            Some("geo.source_release.boundary_feature".to_string()),
+        ),
+        accretion_test_node(
+            &template,
+            "section.home",
+            ProjectPlanNodeKind::Block,
+            vec!["feature.release".to_string()],
+            None,
+        ),
+        accretion_test_node(
+            &template,
+            "section.halo",
+            ProjectPlanNodeKind::Block,
+            vec!["feature.release".to_string()],
+            None,
+        ),
+        accretion_test_node(
+            &template,
+            "section.unrelated",
+            ProjectPlanNodeKind::Block,
+            Vec::new(),
+            Some("geo.source_release.unrelated_feature".to_string()),
+        ),
+    ];
+    plan.graph_hash = digest_bytes(b"boundary-halo-accretion-v1");
+    update_test_plan_summary(&mut plan);
+    plan
+}
+
+fn accretion_test_node(
+    template: &ProjectPlanNode,
+    node_id: &str,
+    kind: ProjectPlanNodeKind,
+    dependencies: Vec<String>,
+    content_ref_id: Option<String>,
+) -> ProjectPlanNode {
+    let mut node = template.clone();
+    node.node_id = node_id.to_string();
+    node.kind = kind;
+    node.class = ProjectPlanNodeClass::Computation;
+    node.command = test_node_command(&node.node_id);
+    node.dependencies = dependencies.clone();
+    node.content_hash_inputs = content_ref_id
+        .map(|ref_id| {
+            vec![ProjectPlanHashRef {
+                ref_id,
+                content_hash: digest_bytes(format!("{node_id}:v1").as_bytes()),
+            }]
+        })
+        .unwrap_or_default();
+    node.outputs[0].output_id = format!("{node_id}.output");
+    node.outputs[0].path = format!("work/{node_id}.json");
+    node.outputs[0].content_hash = digest_bytes(format!("{node_id}:declared-output").as_bytes());
+    node.limits.clear();
+    node.cache.eligible = true;
+    node.cache.decision = ProjectPlanCacheDecision::Miss;
+    node.cache.reason = "t67 accretion fixture cache miss".to_string();
+    node.side_effects.clear();
+    node.refusal_conditions.clear();
+    node.runnable = dependencies.is_empty();
+    node.blocked_by = dependencies;
+    refresh_node_cache_key(&mut node);
+    node
+}
+
+fn update_test_plan_summary(plan: &mut ProjectPlan) {
+    plan.summary.total_nodes = plan.nodes.len();
+    plan.summary.edge_count = plan.nodes.iter().map(|node| node.dependencies.len()).sum();
+    plan.summary.computation_nodes = plan
+        .nodes
+        .iter()
+        .filter(|node| node.class == ProjectPlanNodeClass::Computation)
+        .count();
+    plan.summary.external_materialization_nodes = plan
+        .nodes
+        .iter()
+        .filter(|node| node.class == ProjectPlanNodeClass::ExternalMaterialization)
+        .count();
+    plan.summary.review_pause_nodes = plan
+        .nodes
+        .iter()
+        .filter(|node| node.class == ProjectPlanNodeClass::ReviewPause)
+        .count();
+    plan.summary.mutation_gate_nodes = plan
+        .nodes
+        .iter()
+        .filter(|node| node.class == ProjectPlanNodeClass::MutationGate)
+        .count();
+    plan.summary.export_nodes = plan
+        .nodes
+        .iter()
+        .filter(|node| node.class == ProjectPlanNodeClass::Export)
+        .count();
+    plan.summary.cache_hits = plan
+        .nodes
+        .iter()
+        .filter(|node| node.cache.decision == ProjectPlanCacheDecision::Hit)
+        .count();
+    plan.summary.cache_misses = plan
+        .nodes
+        .iter()
+        .filter(|node| node.cache.decision == ProjectPlanCacheDecision::Miss)
+        .count();
+    plan.summary.runnable_nodes = plan.nodes.iter().filter(|node| node.runnable).count();
+    plan.summary.blocked_nodes = plan
+        .nodes
+        .iter()
+        .filter(|node| !node.blocked_by.is_empty())
+        .count();
+}
+
+fn accretion_component_node_ids(component: &str) -> Vec<String> {
+    ACCRETION_COMPONENT_STAGES
+        .iter()
+        .map(|(stage, _)| format!("component.{component}.{stage}"))
+        .collect()
+}
+
+fn string_set(values: &[String]) -> BTreeSet<String> {
+    values.iter().cloned().collect()
+}
+
+fn string_set_from<const N: usize>(values: [&str; N]) -> BTreeSet<String> {
+    values.into_iter().map(str::to_string).collect()
 }
 
 fn independent_plan() -> ProjectPlan {

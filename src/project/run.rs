@@ -1352,6 +1352,36 @@ fn validate_report_invalidation_reasons(
                 ));
             }
         }
+        if invalidation.reason == ProjectRunInvalidationReason::ContentHashInputChanged {
+            let ref_id = invalidation.detail.get("ref_id").ok_or_else(|| {
+                ProjectRunError::new(
+                    ProjectRunErrorCode::ArtifactContract,
+                    Some(invalidation.node_id.clone()),
+                    "content-hash invalidation reason must name ref_id",
+                )
+            })?;
+            let invalidation_class =
+                invalidation
+                    .detail
+                    .get("invalidation_class")
+                    .ok_or_else(|| {
+                        ProjectRunError::new(
+                            ProjectRunErrorCode::ArtifactContract,
+                            Some(invalidation.node_id.clone()),
+                            "content-hash invalidation reason must name invalidation_class",
+                        )
+                    })?;
+            let expected_class = content_hash_input_invalidation_class(ref_id);
+            if invalidation_class != expected_class {
+                return Err(ProjectRunError::new(
+                    ProjectRunErrorCode::ArtifactContract,
+                    Some(invalidation.node_id.clone()),
+                    format!(
+                        "content-hash invalidation_class must match ref_id {ref_id}: expected {expected_class}, got {invalidation_class}"
+                    ),
+                ));
+            }
+        }
         reason_nodes.insert(invalidation.node_id.clone());
     }
     if !report.invalidation_reasons.is_empty() {
@@ -2868,29 +2898,63 @@ fn content_hash_input_invalidation(
         .collect::<BTreeSet<_>>()
         .into_iter()
         .find(|ref_id| previous.get(ref_id) != current.get(ref_id))?;
+    let mut detail = BTreeMap::from([
+        ("ref_id".to_string(), changed_ref.to_string()),
+        (
+            "previous_content_hash".to_string(),
+            previous
+                .get(changed_ref)
+                .copied()
+                .unwrap_or("missing")
+                .to_string(),
+        ),
+        (
+            "current_content_hash".to_string(),
+            current
+                .get(changed_ref)
+                .copied()
+                .unwrap_or("missing")
+                .to_string(),
+        ),
+    ]);
+    detail.insert(
+        "invalidation_class".to_string(),
+        content_hash_input_invalidation_class(changed_ref).to_string(),
+    );
     Some(ProjectRunInvalidation {
         node_id: node.node_id.clone(),
         reason: ProjectRunInvalidationReason::ContentHashInputChanged,
-        detail: BTreeMap::from([
-            ("ref_id".to_string(), changed_ref.to_string()),
-            (
-                "previous_content_hash".to_string(),
-                previous
-                    .get(changed_ref)
-                    .copied()
-                    .unwrap_or("missing")
-                    .to_string(),
-            ),
-            (
-                "current_content_hash".to_string(),
-                current
-                    .get(changed_ref)
-                    .copied()
-                    .unwrap_or("missing")
-                    .to_string(),
-            ),
-        ]),
+        detail,
     })
+}
+
+fn content_hash_input_invalidation_class(ref_id: &str) -> &'static str {
+    if ref_id.contains("new_rows") || ref_id.contains("source_rows") {
+        "new_rows"
+    } else if ref_id.contains("source_instance") {
+        "new_source_instance"
+    } else if ref_id.contains("source_release") || ref_id.contains("release_pin") {
+        "release_replacement"
+    } else if ref_id.contains("rho_contract") {
+        "rho_contract_change"
+    } else if ref_id.contains("observer_characterization")
+        || ref_id.contains("observer_pin")
+        || ref_id.contains("tile_pin_manifest")
+    {
+        "observer_characterization_or_pin_manifest_change"
+    } else if ref_id.contains("query_as_of") {
+        "query_as_of_change"
+    } else if ref_id.contains("entity_level") || ref_id.contains("profile") {
+        "entity_level_or_profile_change"
+    } else if ref_id.contains("backend_policy")
+        || ref_id.contains("order_policy")
+        || ref_id.contains("vtree_policy")
+        || ref_id.contains("backend_order_vtree_policy")
+    {
+        "backend_order_or_vtree_policy_change"
+    } else {
+        "content_hash_input_changed"
+    }
 }
 
 fn dependency_binding_invalidation(

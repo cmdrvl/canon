@@ -85,6 +85,17 @@
     "telemetry_integrity_separated": true,
     "deterministic_usage_hash_bound": true,
     "invalidation_reasons_are_edge_explainable": true,
+    "geo_accretion_input_change_classes": [
+      "new_rows",
+      "new_source_instance",
+      "release_replacement",
+      "rho_contract_change",
+      "observer_characterization_or_pin_manifest_change",
+      "query_as_of_change",
+      "entity_level_or_profile_change",
+      "backend_order_or_vtree_policy_change",
+      "content_hash_input_changed"
+    ],
     "resource_reuse_uses_deterministic_counters_only": true,
     "runtime_telemetry_not_dependency_identity": true,
     "v1_receipts_refused_for_execution_reuse": true,
