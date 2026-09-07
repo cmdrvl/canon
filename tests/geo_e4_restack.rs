@@ -17,8 +17,8 @@ use canon::geo::{
     GeoCompositionBackbone, GeoCompositionProfile, GeoCompositionUniverse,
     GeoCondoBridgeCaseRequest, GeoCondoBridgeRequest, GeoCondoSourcePin, GeoEntityLevel,
     GeoFootprintRollCalibration, GeoFootprintRollEvidenceRequest, GeoFootprintRollLoanFields,
-    GeoFootprintRollSourceConfig, GeoPopulationCaseEvaluation, GeoPopulationCaseStatus,
-    GeoPopulationEvaluationArtifact, GeoPopulationEvaluationRequest,
+    GeoFootprintRollSourceConfig, GeoPadBblRow, GeoPopulationCaseEvaluation,
+    GeoPopulationCaseStatus, GeoPopulationEvaluationArtifact, GeoPopulationEvaluationRequest,
     GeoPopulationEvidenceStackRequest, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind,
     build_condo_bridge, canonical_population_evaluation_bytes,
     evaluate_population_with_run_artifacts, materialize_footprint_roll_evidence,
@@ -357,26 +357,27 @@ fn build_measurement() -> MeasurementBundle {
     let footprints_by_bbl: BTreeMap<String, FootprintSummaryRow> =
         read_json(rooted(&format!("{MCP_STACK_DIR}/footprints.json")));
 
+    let condo_cases: Vec<GeoCondoBridgeCaseRequest> = widened_population
+        .cases
+        .iter()
+        .map(|case| {
+            let binding = binding_by_case.get(case.id.as_str()).expect("case binding");
+            GeoCondoBridgeCaseRequest {
+                case_id: case.id.clone(),
+                loan_key: Some(only(&binding.loan_keys, "loan_keys").clone()),
+                truth_parcels: case.truth.parcels.clone(),
+                universe_parcels: case.evidence.universe.parcels.clone(),
+            }
+        })
+        .collect();
     let condo_artifact = build_condo_bridge(&GeoCondoBridgeRequest {
         version: CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION.to_string(),
         source_dataset: "EDGAR_DB.SOURCE.NYC_DCP_PAD_BBL_HOT".to_string(),
         source_release: "26B/2026-05-01".to_string(),
         source_lineage_ids: vec!["EDGAR_DB.SOURCE.NYC_DCP_PAD_BBL_HOT:26B".to_string()],
         source_pins: vec![condo_source_pin()],
-        pad_rows: read_json_gz(rooted(&format!("{MCP_STACK_DIR}/pad_bbl.json.gz"))),
-        cases: widened_population
-            .cases
-            .iter()
-            .map(|case| {
-                let binding = binding_by_case.get(case.id.as_str()).expect("case binding");
-                GeoCondoBridgeCaseRequest {
-                    case_id: case.id.clone(),
-                    loan_key: Some(only(&binding.loan_keys, "loan_keys").clone()),
-                    truth_parcels: case.truth.parcels.clone(),
-                    universe_parcels: case.evidence.universe.parcels.clone(),
-                }
-            })
-            .collect(),
+        pad_rows: retained_pad_rows_for_condo_cases(&condo_cases),
+        cases: condo_cases,
         max_pad_rows: 1_000,
         max_cases: 15,
     })
@@ -1231,6 +1232,194 @@ fn condo_source_pin() -> GeoCondoSourcePin {
         license_terms: "Public NYC Department of City Planning Bytes of the Big Apple release for informational purposes only; DCP disclaims completeness, accuracy, content, and fitness warranties.".to_string(),
         attribution_text: "NYC Department of City Planning (DCP)".to_string(),
     }
+}
+
+fn retained_pad_rows_for_condo_cases(cases: &[GeoCondoBridgeCaseRequest]) -> Vec<GeoPadBblRow> {
+    let mut rows: Vec<GeoPadBblRow> =
+        read_json_gz(rooted(&format!("{MCP_STACK_DIR}/pad_bbl.json.gz")));
+    let lots = cases
+        .iter()
+        .flat_map(|case| {
+            case.truth_parcels
+                .iter()
+                .chain(case.universe_parcels.iter())
+        })
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    rows.retain(|row| {
+        lots.iter().any(|lot| {
+            row.bbl_key.as_str() == lot.as_str()
+                || (row.low_bbl_key.as_str() <= lot.as_str()
+                    && lot.as_str() <= row.high_bbl_key.as_str())
+        })
+    });
+    let source_row_numbers = retained_pad_source_row_numbers();
+    for row in &mut rows {
+        row.source_row_number = Some(
+            *source_row_numbers
+                .get(&pad_row_key(row))
+                .expect("retained E4 PAD row has a live SOURCE_ROW_NUMBER pin"),
+        );
+    }
+    rows
+}
+
+fn retained_pad_source_row_numbers() -> BTreeMap<String, u64> {
+    BTreeMap::from([
+        (
+            "1004061001|1004061001|1004061025|1004067501|852".to_string(),
+            4321,
+        ),
+        (
+            "1004061101|1004061101|1004061106|1004067502|1915".to_string(),
+            4322,
+        ),
+        (
+            "1004061201|1004061201|1004061211|1004067503|2671".to_string(),
+            4323,
+        ),
+        (
+            "1004061301|1004061301|1004061327|1004067504|3072".to_string(),
+            4324,
+        ),
+        (
+            "1004511001|1004511001|1004511004|1004517501|906".to_string(),
+            5606,
+        ),
+        (
+            "1004511101|1004510030|1004510030|1004517502|1231".to_string(),
+            5607,
+        ),
+        (
+            "1004511101|1004511101|1004511136|1004517502|1231".to_string(),
+            5608,
+        ),
+        (
+            "1008601001|1008601001|1008601046|1008607501|1472".to_string(),
+            14356,
+        ),
+        (
+            "1008601101|1008601101|1008601107|1008607502|1591".to_string(),
+            14357,
+        ),
+        (
+            "1008601201|1008601201|1008601210|1008607503|1867".to_string(),
+            14358,
+        ),
+        (
+            "1008601301|1008601301|1008601347|1008607504|3008".to_string(),
+            14359,
+        ),
+        (
+            "1008601401|1008601401|1008601601|1008607505|3047".to_string(),
+            14360,
+        ),
+        (
+            "1010721201|1010721201|1010721323|1010727501|2856".to_string(),
+            18272,
+        ),
+        (
+            "1011171001|1011171001|1011171012|1011177501|107".to_string(),
+            18725,
+        ),
+        (
+            "1011171101|1011171101|1011171168|1011177502|1303".to_string(),
+            18726,
+        ),
+        (
+            "1011391001|1011391001|1011391079|1011397501|351".to_string(),
+            19247,
+        ),
+        (
+            "1011391101|1011391101|1011391102|1011397502|456".to_string(),
+            19248,
+        ),
+        (
+            "1011391201|1011391201|1011391228|1011397503|893".to_string(),
+            19249,
+        ),
+        (
+            "1011391201|1011391231|1011391274|1011397503|893".to_string(),
+            19250,
+        ),
+        (
+            "1011391201|1011391279|1011391301|1011397503|893".to_string(),
+            19251,
+        ),
+        (
+            "1011391201|1011391303|1011391351|1011397503|893".to_string(),
+            19252,
+        ),
+        (
+            "1011391201|1011391353|1011391375|1011397503|893".to_string(),
+            19253,
+        ),
+        (
+            "1011391201|1011391377|1011391411|1011397503|893".to_string(),
+            19254,
+        ),
+        (
+            "1011391201|1011391413|1011391484|1011397503|893".to_string(),
+            19255,
+        ),
+        (
+            "1011391201|1011391487|1011391488|1011397503|893".to_string(),
+            19256,
+        ),
+        (
+            "1011391201|1011391501|1011391503|1011397503|893".to_string(),
+            19257,
+        ),
+        (
+            "1012421001|1012421001|1012421050|1012427501|3007".to_string(),
+            21970,
+        ),
+        (
+            "1012421001|1012421101|1012421102|1012427501|3007".to_string(),
+            21971,
+        ),
+        (
+            "3029071001|3029071001|3029071003|3029077502|3181".to_string(),
+            215141,
+        ),
+        (
+            "3029071101|3029071101|3029071228|3029077501|2218".to_string(),
+            215142,
+        ),
+        (
+            "3029071301|3029071301|3029071380|3029077503|3700".to_string(),
+            215143,
+        ),
+        (
+            "3029071401|3029071401|3029071409|3029077504|4271".to_string(),
+            215144,
+        ),
+        (
+            "3029071501|3029071501|3029071509|3029077505|4609".to_string(),
+            215145,
+        ),
+        (
+            "3029071601|3029071601|3029071607|3029077506|4922".to_string(),
+            215146,
+        ),
+        (
+            "4053011001|4053011001|4053011024|4053017501|54".to_string(),
+            539586,
+        ),
+    ])
+}
+
+fn pad_row_key(row: &GeoPadBblRow) -> String {
+    format!(
+        "{}|{}|{}|{}|{}",
+        row.bbl_key,
+        row.low_bbl_key,
+        row.high_bbl_key,
+        row.billing_bbl_key.as_deref().unwrap_or(""),
+        row.condo_number
+            .map(|condo_number| condo_number.to_string())
+            .unwrap_or_default()
+    )
 }
 
 fn d1_subject_id(case_id: &str, subject_by_case: &BTreeMap<String, String>) -> String {
