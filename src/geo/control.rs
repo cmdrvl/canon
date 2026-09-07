@@ -33,7 +33,10 @@ use super::{
     },
     evaluation::{CANON_GEO_POPULATION_EVALUATION_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION},
     evidence::{CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION},
-    explain::CANON_GEO_EXPLANATION_VERSION,
+    explain::{
+        CANON_GEO_EXPLANATION_VERSION, CANON_GEO_SEPARATION_INPUTS_VERSION,
+        CANON_GEO_SEPARATION_REQUEST_VERSION, CANON_GEO_SEPARATION_VERSION,
+    },
     footprint_roll::CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION,
     geometry_value::{
         CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
@@ -51,7 +54,10 @@ use super::{
         CANON_GEO_WAREHOUSE_ROWS_VERSION,
     },
     multisource::CANON_GEO_MULTISOURCE_REQUEST_VERSION,
-    next_evidence::{CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION},
+    next_evidence::{
+        CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION, CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION,
+        CANON_GEO_NEXT_EVIDENCE_VERSION,
+    },
     plan::CANON_GEO_PLAN_VERSION,
     propagate::CANON_GEO_PROPAGATION_VERSION,
     residual_benchmark::{CANON_GEO_RESIDUAL_BENCHMARK_VERSION, CANON_GEO_RESIDUAL_OBDD_VERSION},
@@ -1207,6 +1213,26 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "minimal conflict explanation and correction-set artifact contract",
         ),
         contract(
+            CANON_GEO_SEPARATION_INPUTS_VERSION,
+            "schemas/canon.geo.separation_inputs.v0.schema.json",
+            "run-stage prospective observation input contract",
+        ),
+        contract(
+            CANON_GEO_SEPARATION_REQUEST_VERSION,
+            "schemas/canon.geo.separation_request.v0.schema.json",
+            "counterfactual separation kernel request contract",
+        ),
+        contract(
+            CANON_GEO_SEPARATION_VERSION,
+            "schemas/canon.geo.separation.v0.schema.json",
+            "counterfactual residual separation artifact contract",
+        ),
+        contract(
+            CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION,
+            "schemas/canon.geo.next_evidence_inputs.v0.schema.json",
+            "run-stage next-evidence candidate and policy input contract",
+        ),
+        contract(
             CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION,
             "schemas/canon.geo.next_evidence_request.v0.schema.json",
             "next-evidence controller request contract",
@@ -1495,6 +1521,13 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
             "canon.geo.stage.explain.v0",
             GeoCommandSurface::Leaf,
             CANON_GEO_EXPLANATION_VERSION,
+            true,
+            false,
+        ),
+        command(
+            "canon.geo.stage.separation.v0",
+            GeoCommandSurface::Leaf,
+            CANON_GEO_SEPARATION_VERSION,
             true,
             false,
         ),

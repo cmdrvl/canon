@@ -285,7 +285,10 @@
         "materialize_evidence",
         "compile_evidence",
         "propagate_constraints",
-        "factor_and_solve_exact_residual"
+        "factor_and_solve_exact_residual",
+        "explain_residual",
+        "separate_residual",
+        "select_next_evidence"
       ]
     },
     "gate_plane": {

@@ -14,21 +14,24 @@ use crate::{
         CANON_GEO_COMPOSITION_VERSION, CANON_GEO_EVIDENCE_COMPILATION_VERSION,
         CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_EXPLANATION_VERSION,
         CANON_GEO_GEOMETRY_TILE_VERSION, CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
-        CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION,
-        CANON_GEO_NEXT_EVIDENCE_VERSION, CANON_GEO_PROPAGATION_VERSION,
-        CANON_GEO_SEPARATION_VERSION, CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
+        CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION,
+        CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION,
+        CANON_GEO_PROPAGATION_VERSION, CANON_GEO_SEPARATION_INPUTS_VERSION,
+        CANON_GEO_SEPARATION_REQUEST_VERSION, CANON_GEO_SEPARATION_VERSION,
+        CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
         CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
         CANON_GEO_TILE_WORK_UNIT_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
         GeoAsOfResolutionArtifact, GeoAsOfResolutionRequest, GeoClientTileIngestRequest,
-        GeoCompositionArtifact, GeoCompositionStatus, GeoControlEntityLevel, GeoEntityLevel,
-        GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
+        GeoCompositionArtifact, GeoCompositionRequest, GeoCompositionStatus, GeoControlEntityLevel,
+        GeoEntityLevel, GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
         GeoEvidenceCompilationRequest, GeoExplanationArtifact, GeoExplanationBudget,
         GeoGeometryTileArtifact, GeoHomeCellAssignmentArtifact, GeoHomeCellRowsRequest,
-        GeoNextEvidenceArtifact, GeoNextEvidenceRequest, GeoPlan, GeoPlanComponentScope,
-        GeoPlanExactSolveScope, GeoPlanProducedArtifactRef, GeoPropagationArtifact,
-        GeoPropagationBudget, GeoSeparationArtifact, GeoTileCandidateReachStatus,
-        GeoTileIdentifierStabilityArtifact, GeoTileIdentifierStabilityRequest, GeoTileWorkRequest,
-        GeoTileWorkUnitArtifact, GeoWarehouseRowsRequest, apply_prunings,
+        GeoNextEvidenceArtifact, GeoNextEvidenceInputs, GeoNextEvidenceRequest, GeoPlan,
+        GeoPlanComponentScope, GeoPlanExactSolveScope, GeoPlanProducedArtifactRef,
+        GeoPropagationArtifact, GeoPropagationBudget, GeoSeparationArtifact, GeoSeparationInputs,
+        GeoSeparationRequest, GeoTileCandidateReachStatus, GeoTileIdentifierStabilityArtifact,
+        GeoTileIdentifierStabilityRequest, GeoTileWorkRequest, GeoTileWorkUnitArtifact,
+        GeoWarehouseRowsRequest, apply_prunings,
         assessment_roll::{
             CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION,
             CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION, GeoAssessmentRollOwnerArtifact,
@@ -39,9 +42,10 @@ use crate::{
         canonical_evidence_compilation_bytes, canonical_explanation_bytes,
         canonical_geometry_tile_bytes, canonical_home_cell_assignment_bytes,
         canonical_materialized_evidence_request_bytes, canonical_next_evidence_bytes,
-        canonical_next_evidence_request_bytes, canonical_propagation_bytes,
-        canonical_separation_bytes, canonical_tile_identifier_stability_bytes,
-        canonical_tile_work_unit_bytes, check_tile_identifier_stability, compile_evidence,
+        canonical_next_evidence_inputs_bytes, canonical_next_evidence_request_bytes,
+        canonical_propagation_bytes, canonical_separation_bytes, canonical_separation_inputs_bytes,
+        canonical_tile_identifier_stability_bytes, canonical_tile_work_unit_bytes,
+        check_tile_identifier_stability, compile_evidence,
         condo::{
             CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION, CANON_GEO_CONDO_BRIDGE_VERSION,
             GeoCondoBridgeArtifact, GeoCondoBridgeRequest, build_condo_bridge,
@@ -53,12 +57,14 @@ use crate::{
             materialize_footprint_roll_evidence,
         },
         ingest_client_geometry_tile, materialize_home_cells, materialize_tile_work_unit,
-        materialize_warehouse_rows, minimal_core, propagate, recommend_from_request,
-        reliability_order_from_evidence, resolve_geo_as_of, solve_composition,
-        validate_as_of_resolution_artifact, validate_evidence_compilation_artifact,
-        validate_explanation_artifact, validate_next_evidence_artifact,
+        materialize_warehouse_rows, minimal_core, non_conflict_explanation, propagate,
+        recommend_from_inputs, reliability_order_from_evidence, resolve_geo_as_of, separate,
+        solve_composition, validate_as_of_resolution_artifact,
+        validate_evidence_compilation_artifact, validate_explanation_artifact,
+        validate_next_evidence_artifact, validate_next_evidence_inputs,
         validate_next_evidence_request, validate_propagation_artifact,
-        validate_separation_artifact, validate_tile_identifier_stability_artifact,
+        validate_separation_artifact, validate_separation_inputs,
+        validate_tile_identifier_stability_artifact,
     },
     project::{
         ProjectDependencyOutput, ProjectNodeExecutionContext, ProjectNodeExecutionResult,
@@ -88,6 +94,7 @@ pub const GEO_PROPAGATE_STAGE_COMMAND: &str = "canon.geo.stage.propagate.v0";
 pub const GEO_PROPAGATE_OUTPUT_ID: &str = "propagation";
 pub const GEO_EXPLAIN_STAGE_COMMAND: &str = "canon.geo.stage.explain.v0";
 pub const GEO_EXPLAIN_OUTPUT_ID: &str = "explanation";
+pub const GEO_SEPARATION_STAGE_COMMAND: &str = "canon.geo.stage.separation.v0";
 pub const GEO_SEPARATION_OUTPUT_ID: &str = "separation";
 pub const GEO_NEXT_EVIDENCE_STAGE_COMMAND: &str = "canon.geo.stage.next_evidence.v0";
 pub const GEO_NEXT_EVIDENCE_OUTPUT_ID: &str = "next_evidence";
@@ -321,6 +328,7 @@ impl GeoProjectNodeExecutor {
             }
             GeoExecutorCommand::Propagate => self.execute_propagate(node)?,
             GeoExecutorCommand::Explain => self.execute_explain(node)?,
+            GeoExecutorCommand::Separation => self.execute_separation(node)?,
             GeoExecutorCommand::NextEvidence => self.execute_next_evidence(node)?,
             GeoExecutorCommand::Solve => self.execute_solve(node)?,
         };
@@ -864,64 +872,40 @@ impl GeoProjectNodeExecutor {
             parse_json(node, &input.bytes, CANON_GEO_EVIDENCE_COMPILATION_VERSION)?;
         validate_evidence_compilation_artifact(&compilation)
             .map_err(|error| leaf_error(node, "explain.evidence_compilation", error))?;
+        let current_request = self.current_residual_request(node, &compilation)?;
         let solved = self.required_unique_declared_dependency_artifact(
             node,
             "solve",
             CANON_GEO_COMPOSITION_VERSION,
         )?;
-        let composition: GeoCompositionArtifact =
-            parse_json(node, &solved.bytes, CANON_GEO_COMPOSITION_VERSION)?;
-        if composition.status != GeoCompositionStatus::Conflict {
-            return Err(error(
-                node,
-                ProjectRunErrorCode::ArtifactContract,
-                format!(
-                    "Geo explain requires a conflict solve artifact, got {:?}",
-                    composition.status
-                ),
-            ));
-        }
-        let expected_evidence =
-            canonical_evidence_compilation_bytes(&compilation).map_err(|error| {
-                serialization_error(node, CANON_GEO_EVIDENCE_COMPILATION_VERSION, error)
-            })?;
-        let expected_evidence_hash = blake3::hash(&expected_evidence).to_hex().to_string();
-        let actual_evidence_hash = composition
-            .evidence_compilation
-            .as_ref()
-            .map(|reference| reference.blake3.as_str())
-            .ok_or_else(|| {
-                error(
-                    node,
-                    ProjectRunErrorCode::ArtifactContract,
-                    "Geo explain requires a solve artifact chained to an evidence compilation",
-                )
-            })?;
-        if actual_evidence_hash != expected_evidence_hash {
-            return Err(error(
-                node,
-                ProjectRunErrorCode::ArtifactContract,
-                format!(
-                    "Geo explain evidence digest mismatch: expected {expected_evidence_hash}, got {actual_evidence_hash}"
-                ),
-            ));
-        }
+        let composition = self.validate_solve_dependency_matches_request(
+            node,
+            &compilation,
+            &current_request,
+            solved,
+        )?;
         let budget = explanation_budget_from_node(node)?;
         let order = reliability_order_from_evidence(&compilation);
-        let mut artifact = minimal_core(
-            &compilation.composition_request,
-            &compilation,
-            &order,
-            &budget,
-        )
-        .map_err(|error| leaf_error(node, "explain.minimal_core", error))?;
-        correction_sets(
-            &mut artifact,
-            &compilation.composition_request,
-            &compilation,
-            &budget,
-        )
-        .map_err(|error| leaf_error(node, "explain.correction_sets", error))?;
+        let artifact = if composition.status == GeoCompositionStatus::Conflict {
+            let mut artifact = minimal_core(
+                &compilation.composition_request,
+                &compilation,
+                &order,
+                &budget,
+            )
+            .map_err(|error| leaf_error(node, "explain.minimal_core", error))?;
+            correction_sets(
+                &mut artifact,
+                &compilation.composition_request,
+                &compilation,
+                &budget,
+            )
+            .map_err(|error| leaf_error(node, "explain.correction_sets", error))?;
+            artifact
+        } else {
+            non_conflict_explanation(&current_request, &compilation, composition.status)
+                .map_err(|error| leaf_error(node, "explain.non_conflict", error))?
+        };
         let bytes = canonical_explanation_bytes(&artifact)
             .map_err(|error| leaf_error(node, "explain serialization", error))?;
         let mut usage = BTreeMap::new();
@@ -945,14 +929,103 @@ impl GeoProjectNodeExecutor {
         })
     }
 
-    fn execute_next_evidence(&self, node: &ProjectPlanNode) -> ProjectRunResult<GeoLeafExecution> {
-        let request: GeoNextEvidenceRequest = self.required_binding_json(
+    fn execute_separation(&self, node: &ProjectPlanNode) -> ProjectRunResult<GeoLeafExecution> {
+        let inputs: GeoSeparationInputs = self.required_binding_json(
             node,
             GEO_REQUEST_BINDING_ID,
-            &[CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION],
+            &[CANON_GEO_SEPARATION_INPUTS_VERSION],
         )?;
-        validate_next_evidence_request(&request)
-            .map_err(|error| leaf_error(node, "next-evidence request validation", error))?;
+        validate_separation_inputs(&inputs)
+            .map_err(|error| leaf_error(node, "separation inputs validation", error))?;
+        let input = self.required_unique_declared_dependency_artifact(
+            node,
+            "compile_evidence",
+            CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+        )?;
+        let compilation: GeoEvidenceCompilationArtifact =
+            parse_json(node, &input.bytes, CANON_GEO_EVIDENCE_COMPILATION_VERSION)?;
+        validate_evidence_compilation_artifact(&compilation)
+            .map_err(|error| leaf_error(node, "separation.evidence_compilation", error))?;
+        let current_request = self.current_residual_request(node, &compilation)?;
+        let solved = self.required_unique_declared_dependency_artifact(
+            node,
+            "solve",
+            CANON_GEO_COMPOSITION_VERSION,
+        )?;
+        let composition = self.validate_solve_dependency_matches_request(
+            node,
+            &compilation,
+            &current_request,
+            solved,
+        )?;
+        let request = GeoSeparationRequest {
+            version: CANON_GEO_SEPARATION_REQUEST_VERSION.to_string(),
+            subject_ref: inputs.subject_ref,
+            request: current_request,
+            prospective: inputs.prospective,
+        };
+        let budget = explanation_budget_from_node(node)?;
+        let artifact =
+            separate(&request, &budget).map_err(|error| leaf_error(node, "separation", error))?;
+        if artifact.baseline_model_count != composition.summary.residual_model_count {
+            return Err(error(
+                node,
+                ProjectRunErrorCode::ArtifactContract,
+                "Geo separation baseline does not match the solved residual model count",
+            ));
+        }
+        let bytes = canonical_separation_bytes(&artifact)
+            .map_err(|error| leaf_error(node, "separation serialization", error))?;
+        let mut usage = BTreeMap::new();
+        usage.insert(
+            "separation_observations".to_string(),
+            artifact.per_observation.len() as u64,
+        );
+        usage.insert(
+            "separation_outcomes".to_string(),
+            artifact
+                .per_observation
+                .iter()
+                .map(|observation| observation.per_outcome.len() as u64)
+                .sum(),
+        );
+        usage.insert(
+            "separation_exact_observations".to_string(),
+            artifact
+                .per_observation
+                .iter()
+                .filter(|observation| {
+                    observation
+                        .per_outcome
+                        .iter()
+                        .all(|outcome| outcome.count_exact)
+                })
+                .count() as u64,
+        );
+        usage.insert(
+            "separation_redundant_observations".to_string(),
+            artifact
+                .per_observation
+                .iter()
+                .filter(|observation| observation.redundant)
+                .count() as u64,
+        );
+        Ok(GeoLeafExecution {
+            output_id: GEO_SEPARATION_OUTPUT_ID,
+            output_contract: CANON_GEO_SEPARATION_VERSION,
+            output_bytes: bytes,
+            deterministic_usage: usage,
+        })
+    }
+
+    fn execute_next_evidence(&self, node: &ProjectPlanNode) -> ProjectRunResult<GeoLeafExecution> {
+        let inputs: GeoNextEvidenceInputs = self.required_binding_json(
+            node,
+            GEO_REQUEST_BINDING_ID,
+            &[CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION],
+        )?;
+        validate_next_evidence_inputs(&inputs)
+            .map_err(|error| leaf_error(node, "next-evidence inputs validation", error))?;
         let solved = self.required_unique_declared_dependency_artifact(
             node,
             "solve",
@@ -969,7 +1042,7 @@ impl GeoProjectNodeExecutor {
             parse_json(node, &separated.bytes, CANON_GEO_SEPARATION_VERSION)?;
         validate_separation_artifact(&separation)
             .map_err(|error| leaf_error(node, "next-evidence separation validation", error))?;
-        let artifact = recommend_from_request(&composition, &separation, &request)
+        let artifact = recommend_from_inputs(&composition, &separation, &inputs)
             .map_err(|error| leaf_error(node, "next-evidence", error))?;
         validate_next_evidence_artifact(&artifact)
             .map_err(|error| leaf_error(node, "next-evidence artifact validation", error))?;
@@ -1056,6 +1129,64 @@ impl GeoProjectNodeExecutor {
         })
     }
 
+    fn current_residual_request(
+        &self,
+        node: &ProjectPlanNode,
+        compilation: &GeoEvidenceCompilationArtifact,
+    ) -> ProjectRunResult<GeoCompositionRequest> {
+        let propagation = self.required_unique_declared_dependency_artifact(
+            node,
+            GEO_PROPAGATE_OUTPUT_ID,
+            CANON_GEO_PROPAGATION_VERSION,
+        )?;
+        let propagation_artifact: GeoPropagationArtifact =
+            parse_json(node, &propagation.bytes, CANON_GEO_PROPAGATION_VERSION)?;
+        validate_propagation_artifact(&propagation_artifact)
+            .map_err(|error| leaf_error(node, "residual.propagation", error))?;
+        apply_prunings(&compilation.composition_request, &propagation_artifact)
+            .map_err(|error| leaf_error(node, "residual.propagation", error))
+    }
+
+    fn validate_solve_dependency_matches_request(
+        &self,
+        node: &ProjectPlanNode,
+        compilation: &GeoEvidenceCompilationArtifact,
+        request: &GeoCompositionRequest,
+        solved: &VerifiedGeoArtifact,
+    ) -> ProjectRunResult<GeoCompositionArtifact> {
+        let composition: GeoCompositionArtifact =
+            parse_json(node, &solved.bytes, CANON_GEO_COMPOSITION_VERSION)?;
+        let compilation_bytes =
+            canonical_evidence_compilation_bytes(compilation).map_err(|error| {
+                serialization_error(node, CANON_GEO_EVIDENCE_COMPILATION_VERSION, error)
+            })?;
+        let evidence_reference = GeoEvidenceCompilationReference {
+            version: compilation.version.clone(),
+            request_version: compilation.request_version.clone(),
+            blake3: blake3::hash(&compilation_bytes).to_hex().to_string(),
+        };
+        if composition.evidence_compilation.as_ref() != Some(&evidence_reference) {
+            return Err(error(
+                node,
+                ProjectRunErrorCode::ArtifactContract,
+                "Geo solved dependency does not reference the same evidence compilation as the separation node",
+            ));
+        }
+        let mut expected = solve_composition(request)
+            .map_err(|error| leaf_error(node, "residual.solve", error))?;
+        expected.evidence_compilation = Some(evidence_reference);
+        let expected_bytes = canonical_composition_bytes(&expected)
+            .map_err(|error| serialization_error(node, CANON_GEO_COMPOSITION_VERSION, error))?;
+        if expected_bytes != solved.bytes {
+            return Err(error(
+                node,
+                ProjectRunErrorCode::ArtifactContract,
+                "Geo solved dependency does not match the residual request derived from declared compilation and propagation artifacts",
+            ));
+        }
+        Ok(composition)
+    }
+
     fn required_binding_json<T: DeserializeOwned>(
         &self,
         node: &ProjectPlanNode,
@@ -1110,20 +1241,19 @@ impl GeoProjectNodeExecutor {
         node: &ProjectPlanNode,
         command: GeoExecutorCommand,
     ) -> ProjectRunResult<()> {
-        if !matches!(
-            command,
-            GeoExecutorCommand::CompileEvidence | GeoExecutorCommand::Solve
-        ) {
-            return Ok(());
-        }
-
+        let allowed = command.allowed_input_bindings();
         let binding_ids = self
             .input_bindings
             .keys()
             .filter(|(node_id, _)| node_id == &node.node_id)
             .map(|(_, binding_id)| binding_id.as_str())
             .collect::<Vec<_>>();
-        if binding_ids.is_empty() {
+        let forbidden = binding_ids
+            .iter()
+            .copied()
+            .filter(|binding_id| !allowed.contains(binding_id))
+            .collect::<Vec<_>>();
+        if forbidden.is_empty() {
             return Ok(());
         }
 
@@ -1131,9 +1261,9 @@ impl GeoProjectNodeExecutor {
             node,
             ProjectRunErrorCode::ArtifactContract,
             format!(
-                "Geo {} consumes declared dependency outputs only; direct input bindings are forbidden: {}",
+                "Geo {} received undeclared direct input bindings: {}",
                 command.name(),
-                binding_ids.join(",")
+                forbidden.join(",")
             ),
         ))
     }
@@ -1763,12 +1893,13 @@ enum GeoExecutorCommand {
     FootprintRollEvidence,
     Propagate,
     Explain,
+    Separation,
     NextEvidence,
     Solve,
 }
 
 impl GeoExecutorCommand {
-    const SUPPORTED: [Self; 14] = [
+    const SUPPORTED: [Self; 15] = [
         Self::MaterializeHomeCells,
         Self::TileWork,
         Self::ClientTileIngest,
@@ -1781,6 +1912,7 @@ impl GeoExecutorCommand {
         Self::FootprintRollEvidence,
         Self::Propagate,
         Self::Explain,
+        Self::Separation,
         Self::NextEvidence,
         Self::Solve,
     ];
@@ -1799,6 +1931,7 @@ impl GeoExecutorCommand {
             GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND => Ok(Self::FootprintRollEvidence),
             GEO_PROPAGATE_STAGE_COMMAND => Ok(Self::Propagate),
             GEO_EXPLAIN_STAGE_COMMAND => Ok(Self::Explain),
+            GEO_SEPARATION_STAGE_COMMAND => Ok(Self::Separation),
             GEO_NEXT_EVIDENCE_STAGE_COMMAND => Ok(Self::NextEvidence),
             GEO_SOLVE_COMMAND => Ok(Self::Solve),
             actual => Err(error(
@@ -1821,9 +1954,11 @@ impl GeoExecutorCommand {
             | Self::AsOfResolution
             | Self::TileIdentifierStability
             | Self::FootprintRollEvidence => ProjectPlanNodeKind::Evidence,
-            Self::Propagate | Self::Explain | Self::NextEvidence | Self::Solve => {
-                ProjectPlanNodeKind::Solve
-            }
+            Self::Propagate
+            | Self::Explain
+            | Self::Separation
+            | Self::NextEvidence
+            | Self::Solve => ProjectPlanNodeKind::Solve,
         }
     }
 
@@ -1841,6 +1976,7 @@ impl GeoExecutorCommand {
             Self::FootprintRollEvidence => GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID,
             Self::Propagate => GEO_PROPAGATE_OUTPUT_ID,
             Self::Explain => GEO_EXPLAIN_OUTPUT_ID,
+            Self::Separation => GEO_SEPARATION_OUTPUT_ID,
             Self::NextEvidence => GEO_NEXT_EVIDENCE_OUTPUT_ID,
             Self::Solve => "solve",
         }
@@ -1865,6 +2001,11 @@ impl GeoExecutorCommand {
                 ("compile_evidence", CANON_GEO_EVIDENCE_COMPILATION_VERSION),
                 ("solve", CANON_GEO_COMPOSITION_VERSION),
             ],
+            Self::Separation => &[
+                ("compile_evidence", CANON_GEO_EVIDENCE_COMPILATION_VERSION),
+                (GEO_PROPAGATE_OUTPUT_ID, CANON_GEO_PROPAGATION_VERSION),
+                ("solve", CANON_GEO_COMPOSITION_VERSION),
+            ],
             Self::NextEvidence => &[
                 ("solve", CANON_GEO_COMPOSITION_VERSION),
                 (GEO_SEPARATION_OUTPUT_ID, CANON_GEO_SEPARATION_VERSION),
@@ -1874,7 +2015,34 @@ impl GeoExecutorCommand {
     }
 
     fn requires_exact_dependency_count(self) -> bool {
-        !matches!(self, Self::Solve)
+        !matches!(self, Self::Explain | Self::Solve)
+    }
+
+    fn optional_dependencies(self) -> &'static [(&'static str, &'static str)] {
+        match self {
+            Self::Explain => &[(GEO_PROPAGATE_OUTPUT_ID, CANON_GEO_PROPAGATION_VERSION)],
+            Self::Solve => &[
+                ("section", CANON_GEO_TILE_WORK_UNIT_VERSION),
+                (GEO_PROPAGATE_OUTPUT_ID, CANON_GEO_PROPAGATION_VERSION),
+            ],
+            _ => &[],
+        }
+    }
+
+    fn allowed_input_bindings(self) -> &'static [&'static str] {
+        match self {
+            Self::MaterializeHomeCells | Self::MaterializeEvidence => &[GEO_ROWS_BINDING_ID],
+            Self::TileWork
+            | Self::AssessmentRollOwner
+            | Self::CondoBridge
+            | Self::AsOfResolution
+            | Self::TileIdentifierStability
+            | Self::FootprintRollEvidence
+            | Self::Separation
+            | Self::NextEvidence => &[GEO_REQUEST_BINDING_ID],
+            Self::ClientTileIngest => &[GEO_REQUEST_BINDING_ID, GEO_CLIENT_TILE_SOURCE_BINDING_ID],
+            Self::CompileEvidence | Self::Propagate | Self::Explain | Self::Solve => &[],
+        }
     }
 
     fn name(self) -> &'static str {
@@ -1891,6 +2059,7 @@ impl GeoExecutorCommand {
             Self::FootprintRollEvidence => "footprint-roll-evidence",
             Self::Propagate => "propagate",
             Self::Explain => "explain",
+            Self::Separation => "separation",
             Self::NextEvidence => "next-evidence",
             Self::Solve => "solve",
         }
@@ -2137,6 +2306,33 @@ fn validate_expected_dependency(
             ),
         ));
     }
+    let allowed_outputs = expected
+        .iter()
+        .chain(command.optional_dependencies().iter())
+        .copied()
+        .collect::<BTreeSet<_>>();
+    for producer in &node.dependencies {
+        let producer_outputs = outputs
+            .iter()
+            .filter(|((producer_node_id, _), _)| producer_node_id == producer)
+            .map(|((_, output_id), artifact)| (output_id.as_str(), artifact.contract.as_str()))
+            .collect::<Vec<_>>();
+        if producer_outputs.is_empty() {
+            continue;
+        }
+        for (output_id, contract) in producer_outputs {
+            if !allowed_outputs.contains(&(output_id, contract)) {
+                return Err(error(
+                    node,
+                    ProjectRunErrorCode::ArtifactContract,
+                    format!(
+                        "Geo command {} received unrelated dependency output {producer}:{output_id} with contract {contract}",
+                        node.command
+                    ),
+                ));
+            }
+        }
+    }
     for (output_id, contract) in expected {
         let matching = node
             .dependencies
@@ -2368,6 +2564,18 @@ fn ensure_canonical_artifact_bytes(
                 canonical_separation_bytes(&artifact),
             )
         }
+        CANON_GEO_SEPARATION_INPUTS_VERSION => {
+            let inputs: GeoSeparationInputs =
+                parse_json_target(&node, bytes, CANON_GEO_SEPARATION_INPUTS_VERSION)?;
+            validate_separation_inputs(&inputs)
+                .map_err(|error| leaf_error_target(&node, "separation inputs validation", error))?;
+            require_exact_bytes(
+                &node,
+                contract,
+                bytes,
+                canonical_separation_inputs_bytes(&inputs),
+            )
+        }
         CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION => {
             let request: GeoNextEvidenceRequest =
                 parse_json_target(&node, bytes, CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION)?;
@@ -2379,6 +2587,19 @@ fn ensure_canonical_artifact_bytes(
                 contract,
                 bytes,
                 canonical_next_evidence_request_bytes(&request),
+            )
+        }
+        CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION => {
+            let inputs: GeoNextEvidenceInputs =
+                parse_json_target(&node, bytes, CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION)?;
+            validate_next_evidence_inputs(&inputs).map_err(|error| {
+                leaf_error_target(&node, "next-evidence inputs validation", error)
+            })?;
+            require_exact_bytes(
+                &node,
+                contract,
+                bytes,
+                canonical_next_evidence_inputs_bytes(&inputs),
             )
         }
         CANON_GEO_NEXT_EVIDENCE_VERSION => {

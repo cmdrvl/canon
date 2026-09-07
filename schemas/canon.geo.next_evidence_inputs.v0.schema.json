@@ -1,0 +1,87 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.next_evidence_inputs.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.next_evidence_inputs.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_next_evidence_inputs.v0",
+      "type": "string"
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/candidate_input"
+      }
+    },
+    "policy": {
+      "$ref": "canon.geo.next_evidence_request.v0.schema.json#/$defs/next_evidence_policy"
+    },
+    "budget": {
+      "$ref": "canon.geo.resource_budget.v0.schema.json"
+    },
+    "budget_spent": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  },
+  "required": [
+    "version",
+    "candidates",
+    "budget"
+  ],
+  "$defs": {
+    "candidate_input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "type": "string"
+        },
+        "class": {
+          "$ref": "canon.geo.next_evidence_request.v0.schema.json#/$defs/next_action_class"
+        },
+        "kind": {
+          "$ref": "canon.geo.next_evidence_request.v0.schema.json#/$defs/next_action_kind"
+        },
+        "observation_id": {
+          "type": "string"
+        },
+        "cost_units": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "redundant": {
+          "type": "boolean"
+        },
+        "lineage_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "stop_reason": {
+          "$ref": "canon.geo.next_evidence_request.v0.schema.json#/$defs/stop_reason"
+        }
+      },
+      "required": [
+        "action_id",
+        "class",
+        "kind",
+        "cost_units"
+      ]
+    }
+  },
+  "x-canon-contract": {
+    "runtime_only_invariants": [
+      "candidate action ids are strictly sorted",
+      "non-stop candidates are hydrated from the generated separation artifact",
+      "total ordering is not part of the input; it is emitted only when policy.loss_model is present"
+    ]
+  }
+}

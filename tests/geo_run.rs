@@ -28,32 +28,37 @@ use canon::{
     geo::{
         CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_SATISFACTION_VERSION,
         CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION,
-        CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
-        CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_LOCAL_FRAME_VERSION,
-        CANON_GEO_QUESTION_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
-        CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
-        CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS,
-        GeoAbstentionDisposition, GeoAbstentionPolicy, GeoAcquisitionDenominator,
-        GeoAcquisitionProofClass, GeoAcquisitionTerminalState, GeoAffineProjectionMm, GeoAsOf,
-        GeoBoundedGeography, GeoBudgetAction, GeoClaimClass, GeoClientTileCoverageExtent,
-        GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest, GeoClientTileSourceFormat,
-        GeoClientTileVendorIdentifier, GeoCompositionProfile, GeoControlEntityLevel,
-        GeoCoveragePredicate, GeoDateInterval, GeoDenominatorSource, GeoDigest, GeoDigestAlgorithm,
-        GeoEgressClass, GeoEvidenceClaimRole, GeoEvidenceClass, GeoEvidenceRecordRef,
-        GeoGeometryTransformContract, GeoIdentityParticipation, GeoLicenseClass,
-        GeoLocalAcquisitionState, GeoLocalArtifactRef, GeoLocalFrameContract, GeoNativeEntityScope,
-        GeoNumericBound, GeoNumericMeasure, GeoPlan, GeoPlanInventoryRef, GeoPlanRequest,
-        GeoPlanStage, GeoPlanStatus, GeoProjectionProvenance, GeoRegionalInventory,
-        GeoRegionalSourceInstance, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter,
-        GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind, GeoSatisfactionExecutionRef,
-        GeoSatisfactionFileAudit, GeoSatisfactionFinding, GeoSatisfactionFindingCode,
-        GeoSatisfactionLocalInputBinding, GeoSatisfactionRunInputRef, GeoSatisfactionStatus,
-        GeoSourceAvailability, GeoSourceAxisDomain, GeoSourcePointFixed, GeoSourceRelease,
-        GeoSubjectBinding, GeoSubjectBindingClass, GeoTelemetryDeclaration, GeoTelemetryMetric,
-        GeoTelemetrySemanticEffect, GeoTemporalScope, GeoTileFeatureRef, GeoTileSourceBinding,
-        GeoTileWorkRequest, GeoValueOrigin, GeoWarehouseBuildingParcelRow, GeoWarehouseEvidenceRow,
-        GeoWarehouseRowsRequest, compile_geo_plan, default_geo_capabilities,
-        geo_plan_semantic_hash, materialize_warehouse_rows,
+        CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_EXPLANATION_VERSION,
+        CANON_GEO_GEOMETRY_TILE_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
+        CANON_GEO_LOCAL_FRAME_VERSION, CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION,
+        CANON_GEO_NEXT_EVIDENCE_VERSION, CANON_GEO_QUESTION_VERSION,
+        CANON_GEO_REGIONAL_INVENTORY_VERSION, CANON_GEO_RESOURCE_BUDGET_VERSION,
+        CANON_GEO_SEPARATION_INPUTS_VERSION, CANON_GEO_SEPARATION_VERSION,
+        CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
+        DEFAULT_MAX_MATERIALIZED_MODELS, GeoAbstentionDisposition, GeoAbstentionPolicy,
+        GeoAcquisitionDenominator, GeoAcquisitionProofClass, GeoAcquisitionTerminalState,
+        GeoAffineProjectionMm, GeoAsOf, GeoBoundedGeography, GeoBudgetAction, GeoClaimClass,
+        GeoClientTileCoverageExtent, GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest,
+        GeoClientTileSourceFormat, GeoClientTileVendorIdentifier, GeoCompositionProfile,
+        GeoControlEntityLevel, GeoCoveragePredicate, GeoDateInterval, GeoDenominatorSource,
+        GeoDigest, GeoDigestAlgorithm, GeoEgressClass, GeoEntityLevel, GeoEntityRef,
+        GeoEvidenceClaimRole, GeoEvidenceClass, GeoEvidenceRecordRef, GeoGeometryTransformContract,
+        GeoHardConstraintKind, GeoIdentityParticipation, GeoLicenseClass, GeoLocalAcquisitionState,
+        GeoLocalArtifactRef, GeoLocalFrameContract, GeoNativeEntityScope, GeoNextActionClass,
+        GeoNextActionKind, GeoNextEvidenceCandidateInput, GeoNextEvidenceInputs, GeoNumericBound,
+        GeoNumericMeasure, GeoPlan, GeoPlanInventoryRef, GeoPlanRequest, GeoPlanStage,
+        GeoPlanStatus, GeoProjectionProvenance, GeoProspectiveObservation, GeoProspectiveOutcome,
+        GeoRegionalInventory, GeoRegionalSourceInstance, GeoRequestedGrain, GeoResourceBudget,
+        GeoResourceCounter, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
+        GeoSatisfactionExecutionRef, GeoSatisfactionFileAudit, GeoSatisfactionFinding,
+        GeoSatisfactionFindingCode, GeoSatisfactionLocalInputBinding, GeoSatisfactionRunInputRef,
+        GeoSatisfactionStatus, GeoSeparationInputs, GeoSourceAvailability, GeoSourceAxisDomain,
+        GeoSourcePointFixed, GeoSourceRelease, GeoSubjectBinding, GeoSubjectBindingClass,
+        GeoTelemetryDeclaration, GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
+        GeoTileFeatureRef, GeoTileSourceBinding, GeoTileWorkRequest, GeoValueOrigin,
+        GeoWarehouseBuildingParcelRow, GeoWarehouseEvidenceRow, GeoWarehouseRowsRequest,
+        compile_geo_plan, default_geo_capabilities, geo_plan_semantic_hash,
+        materialize_warehouse_rows,
     },
     project::{
         ProjectExtensionDagNode, ProjectExtensionDagOutput, ProjectExtensionDagRequest,
@@ -120,19 +125,30 @@ fn geo_run_executes_real_kernels_and_folds_input_hashes() {
             .expect("project report")
             .executed_nodes
             .len(),
-        6
+        9
     );
     assert_ne!(
         run.plan_ref.project_graph_hash,
         plan.project_plan.graph_hash
     );
-    assert_eq!(run.artifact_inputs.len(), 3);
-    assert_eq!(run.output_refs.len(), 6);
+    assert_eq!(run.artifact_inputs.len(), 5);
+    assert_eq!(run.output_refs.len(), 9);
 
     let solve = solve_output(temp.path());
     assert_eq!(solve["version"], CANON_GEO_COMPOSITION_VERSION);
     assert_eq!(solve["status"], "resolved");
     assert_eq!(solve["summary"]["component_count"], 1);
+    let explanation = explanation_output(temp.path());
+    assert_eq!(explanation["version"], CANON_GEO_EXPLANATION_VERSION);
+    assert_eq!(explanation["counters"]["not_conflict"], 1);
+    assert!(explanation["cores"].as_array().unwrap().is_empty());
+    let separation = separation_output(temp.path());
+    assert_eq!(separation["version"], CANON_GEO_SEPARATION_VERSION);
+    assert_eq!(separation["baseline_model_count"], 1);
+    let next_evidence = next_evidence_output(temp.path());
+    assert_eq!(next_evidence["version"], CANON_GEO_NEXT_EVIDENCE_VERSION);
+    assert_eq!(next_evidence["stop"], "claim_forced");
+    assert!(next_evidence["frontier"].as_array().unwrap().is_empty());
 
     let receipt = read_node_receipt(&receipt_path(temp.path(), "geo.building.home_cells"))
         .expect("home cell receipt");
@@ -356,10 +372,15 @@ fn fresh_geo_run_resume_preloads_bounded_section_for_solve() {
     .expect("fresh executor resumes solve");
     let report = resumed.project_run_report.as_ref().expect("project report");
     assert_eq!(resumed.status, GeoRunStatus::Completed);
-    assert_eq!(
-        report.executed_nodes,
-        vec!["geo.building.solve".to_string()]
-    );
+    assert_eq!(report.executed_nodes.len(), 4);
+    for node_id in [
+        "geo.building.solve",
+        "geo.building.explain",
+        "geo.building.separation",
+        "geo.building.next_evidence",
+    ] {
+        assert!(report.executed_nodes.contains(&node_id.to_string()));
+    }
     assert_eq!(report.resumed_nodes.len(), 5);
     for node_id in [
         "geo.building.home_cells",
@@ -421,15 +442,15 @@ fn opt_in_progress_is_deterministic_and_non_semantic() {
         GeoRunProgressEventKind::RunFinished
     );
     assert_eq!(events.last().unwrap().status, Some(GeoRunStatus::Completed));
-    assert_eq!(events.last().unwrap().counters.completed_nodes, 6);
-    assert_eq!(events.last().unwrap().counters.executed_nodes, 6);
+    assert_eq!(events.last().unwrap().counters.completed_nodes, 9);
+    assert_eq!(events.last().unwrap().counters.executed_nodes, 9);
     assert_eq!(events.last().unwrap().counters.resumed_nodes, 0);
     assert_eq!(
         events
             .iter()
             .filter(|event| event.kind == GeoRunProgressEventKind::StageStarted)
             .count(),
-        6
+        9
     );
     for (sequence, event) in events.iter().enumerate() {
         assert_eq!(event.version, CANON_GEO_RUN_PROGRESS_VERSION);
@@ -482,7 +503,7 @@ fn progress_writer_failure_is_operational_and_leaves_semantic_work_resumable() {
     assert_eq!(resumed.status, GeoRunStatus::Completed);
     let report = resumed.project_run_report.expect("project report");
     assert!(report.executed_nodes.is_empty());
-    assert_eq!(report.resumed_nodes.len(), 6);
+    assert_eq!(report.resumed_nodes.len(), 9);
 }
 
 #[test]
@@ -558,7 +579,12 @@ fn progress_cancellation_names_last_commit_and_resume_reports_reuse() {
             .filter(|event| event.kind == GeoRunProgressEventKind::StageStarted)
             .map(|event| event.project_node_id.as_deref())
             .collect::<Vec<_>>(),
-        vec![Some("geo.building.solve")]
+        vec![
+            Some("geo.building.solve"),
+            Some("geo.building.explain"),
+            Some("geo.building.separation"),
+            Some("geo.building.next_evidence")
+        ]
     );
     let solve_start_index = resumed_events
         .iter()
@@ -589,8 +615,8 @@ fn progress_cancellation_names_last_commit_and_resume_reports_reuse() {
     let terminal = resumed_events.last().expect("resume terminal event");
     assert_eq!(terminal.kind, GeoRunProgressEventKind::RunFinished);
     assert_eq!(terminal.status, Some(GeoRunStatus::Completed));
-    assert_eq!(terminal.counters.completed_nodes, 6);
-    assert_eq!(terminal.counters.executed_nodes, 1);
+    assert_eq!(terminal.counters.completed_nodes, 9);
+    assert_eq!(terminal.counters.executed_nodes, 4);
     assert_eq!(terminal.counters.resumed_nodes, 5);
 }
 
@@ -796,6 +822,16 @@ fn typed_composition_status_projects_to_geo_run_status() {
         solve_output(fallback_temp.path())["status"],
         "budget_fallback"
     );
+    let fallback_separation = separation_output(fallback_temp.path());
+    assert!(
+        fallback_separation["per_observation"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|observation| observation["per_outcome"].as_array().unwrap())
+            .all(|outcome| outcome["count_exact"] == false),
+        "budget fallback separation must report bounded, not exact, outcome counts"
+    );
 
     let ambiguous_temp = tempfile::tempdir().expect("ambiguous tempdir");
     let mut ambiguous_rows = warehouse_rows();
@@ -809,6 +845,121 @@ fn typed_composition_status_projects_to_geo_run_status() {
     .expect("ambiguous run");
     assert_eq!(ambiguous.status, GeoRunStatus::Abstained);
     assert_eq!(solve_output(ambiguous_temp.path())["status"], "ambiguous");
+    let separation = separation_output(ambiguous_temp.path());
+    assert_eq!(separation["baseline_model_count"], 3);
+    let observations = separation["per_observation"].as_array().unwrap();
+    let binary = observations
+        .iter()
+        .find(|observation| observation["observation_id"] == "obs.prospective.binary-a")
+        .expect("binary observation separation");
+    assert_eq!(
+        binary["per_outcome"],
+        json!([
+            {
+                "outcome_id": "outcome.forbid-a",
+                "residual_model_count": 1,
+                "count_exact": true
+            },
+            {
+                "outcome_id": "outcome.require-a",
+                "residual_model_count": 2,
+                "count_exact": true
+            }
+        ])
+    );
+    let full_choice = observations
+        .iter()
+        .find(|observation| observation["observation_id"] == "obs.prospective.full-choice")
+        .expect("full choice separation");
+    assert_eq!(full_choice["worst_case_remaining"], 1);
+    let next = next_evidence_output(ambiguous_temp.path());
+    assert_eq!(next["stop"], Value::Null);
+    assert_eq!(
+        next["frontier"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|action| action["action_id"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["action.binary-a", "action.full-choice"]
+    );
+    assert_eq!(
+        next["dominated"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|action| action["action_id"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["action.redundant-binary-a"]
+    );
+    assert_eq!(next["total_ranking"], Value::Null);
+    assert_eq!(
+        next["ranking_abstention"]["code"],
+        "next_evidence_no_loss_model"
+    );
+}
+
+#[test]
+fn geo_run_explains_conflict_and_recommends_diagnosis_from_generated_separation() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+
+    let run = run_geo_plan(GeoRunRequest::new(
+        plan,
+        policy(temp.path()),
+        run_bindings_with_next_inputs(
+            conflicting_warehouse_rows(),
+            diagnose_conflict_next_evidence_inputs(),
+        ),
+    ))
+    .expect("conflict run completes as contradicted");
+
+    assert_eq!(run.status, GeoRunStatus::Contradicted);
+    assert_eq!(solve_output(temp.path())["status"], "conflict");
+    let explanation = explanation_output(temp.path());
+    assert_eq!(explanation["version"], CANON_GEO_EXPLANATION_VERSION);
+    let core = explanation["cores"]
+        .as_array()
+        .unwrap()
+        .first()
+        .expect("conflict explanation core");
+    assert!(
+        core["source_record_ids"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("row-conflict-a"))
+    );
+    assert!(
+        core["source_record_ids"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("row-conflict-b"))
+    );
+    assert!(
+        core["rho_contract_ids"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("rho.building-set-a"))
+    );
+    assert!(
+        core["rho_contract_ids"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("rho.building-set-b"))
+    );
+
+    let separation = separation_output(temp.path());
+    assert_eq!(separation["baseline_model_count"], 0);
+    let next = next_evidence_output(temp.path());
+    assert_eq!(
+        next["frontier"][0]["class"], "diagnose_conflict",
+        "conflict status must switch next-evidence to diagnostic actions"
+    );
+    assert_eq!(next["frontier"][0]["action_id"], "action.diagnose-conflict");
 }
 
 #[test]
@@ -953,9 +1104,62 @@ fn changed_warehouse_rows_reuse_only_the_unaffected_bounded_section_prefix() {
         "geo.building.compile_evidence",
         "geo.building.propagate",
         "geo.building.solve",
+        "geo.building.explain",
+        "geo.building.separation",
+        "geo.building.next_evidence",
     ] {
         assert!(report.executed_nodes.contains(&node_id.to_string()));
     }
+}
+
+#[test]
+fn changed_prospective_inputs_reuse_solve_and_recompute_explanation_successors() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    run_geo_plan(GeoRunRequest::new(
+        plan.clone(),
+        policy(temp.path()),
+        run_bindings(warehouse_rows()),
+    ))
+    .expect("first prospective-input run");
+
+    let changed = run_geo_plan(GeoRunRequest::new(
+        plan,
+        policy(temp.path()),
+        run_bindings_with_separation_and_next_inputs(
+            warehouse_rows(),
+            binary_only_separation_inputs(),
+            binary_only_next_evidence_inputs(),
+        ),
+    ))
+    .expect("changed prospective-input run");
+    let report = changed.project_run_report.as_ref().expect("project report");
+    for node_id in [
+        "geo.building.home_cells",
+        "geo.building.section",
+        "geo.building.materialize_evidence",
+        "geo.building.compile_evidence",
+        "geo.building.propagate",
+        "geo.building.solve",
+        "geo.building.explain",
+    ] {
+        assert!(report.resumed_nodes.contains(&node_id.to_string()));
+    }
+    assert_eq!(report.executed_nodes.len(), 2);
+    assert!(
+        report
+            .executed_nodes
+            .contains(&"geo.building.separation".to_string())
+    );
+    assert!(
+        report
+            .executed_nodes
+            .contains(&"geo.building.next_evidence".to_string())
+    );
 }
 
 #[test]
@@ -1181,6 +1385,26 @@ fn wrong_solve_output_id_refuses_before_publication() {
 }
 
 #[test]
+fn unrelated_separation_dependency_refuses_before_publication() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = geo_plan_with_unrelated_separation_dependency();
+
+    let error = run_geo_plan(GeoRunRequest::new(
+        plan,
+        policy(temp.path()),
+        run_bindings(warehouse_rows()),
+    ))
+    .expect_err("unrelated dependency refuses");
+
+    assert_eq!(error.code, GeoRunErrorCode::ArtifactContract);
+    assert!(error.message.contains("unexpected dependency output"));
+    assert!(
+        !temp.path().join("geo/building/separation.json").exists(),
+        "bad dependency must refuse before publishing generated separation"
+    );
+}
+
+#[test]
 fn compile_and_solve_request_bindings_are_not_public_run_inputs() {
     let temp = tempfile::tempdir().expect("tempdir");
     let plan = building_plan(
@@ -1190,6 +1414,7 @@ fn compile_and_solve_request_bindings_are_not_public_run_inputs() {
     );
     let evidence_request =
         materialize_warehouse_rows(&warehouse_rows()).expect("materialized evidence request");
+    let override_temp = tempfile::tempdir().expect("override tempdir");
     let mut bindings = run_bindings(warehouse_rows());
     bindings.push(
         GeoRunArtifactBinding::from_json(
@@ -1231,6 +1456,29 @@ fn compile_and_solve_request_bindings_are_not_public_run_inputs() {
     assert_eq!(error.code, GeoRunErrorCode::ArtifactContract);
     assert!(error.message.contains("not declared"));
     assert!(!temp.path().join("geo/building/solve.json").exists());
+
+    let mut bindings = run_bindings(warehouse_rows());
+    bindings.push(
+        GeoRunArtifactBinding::from_json(
+            "geo.building.next_evidence",
+            "separation",
+            CANON_GEO_SEPARATION_VERSION,
+            &json!({ "version": CANON_GEO_SEPARATION_VERSION }),
+        )
+        .expect("separation override binding"),
+    );
+    let error = run_geo_plan(GeoRunRequest::new(
+        building_plan(
+            "release.fixture.one",
+            GeoSourceAvailability::Available,
+            None,
+        ),
+        policy(override_temp.path()),
+        bindings,
+    ))
+    .expect_err("caller separation override refuses");
+    assert_eq!(error.code, GeoRunErrorCode::ArtifactContract);
+    assert!(error.message.contains("not declared"));
 }
 
 #[cfg(unix)]
@@ -1344,6 +1592,21 @@ impl ProjectNodeExecutor for FailingProjectExecutor {
 }
 
 fn run_bindings(rows: GeoWarehouseRowsRequest) -> Vec<GeoRunArtifactBinding> {
+    run_bindings_with_next_inputs(rows, default_next_evidence_inputs())
+}
+
+fn run_bindings_with_next_inputs(
+    rows: GeoWarehouseRowsRequest,
+    next_inputs: GeoNextEvidenceInputs,
+) -> Vec<GeoRunArtifactBinding> {
+    run_bindings_with_separation_and_next_inputs(rows, default_separation_inputs(), next_inputs)
+}
+
+fn run_bindings_with_separation_and_next_inputs(
+    rows: GeoWarehouseRowsRequest,
+    separation_inputs: GeoSeparationInputs,
+    next_inputs: GeoNextEvidenceInputs,
+) -> Vec<GeoRunArtifactBinding> {
     vec![
         GeoRunArtifactBinding::from_json(
             "geo.building.home_cells",
@@ -1366,7 +1629,189 @@ fn run_bindings(rows: GeoWarehouseRowsRequest) -> Vec<GeoRunArtifactBinding> {
             &rows,
         )
         .expect("warehouse rows binding"),
+        GeoRunArtifactBinding::from_json(
+            "geo.building.separation",
+            GEO_REQUEST_BINDING_ID,
+            CANON_GEO_SEPARATION_INPUTS_VERSION,
+            &separation_inputs,
+        )
+        .expect("separation inputs binding"),
+        GeoRunArtifactBinding::from_json(
+            "geo.building.next_evidence",
+            GEO_REQUEST_BINDING_ID,
+            CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION,
+            &next_inputs,
+        )
+        .expect("next-evidence inputs binding"),
     ]
+}
+
+fn default_separation_inputs() -> GeoSeparationInputs {
+    GeoSeparationInputs {
+        version: CANON_GEO_SEPARATION_INPUTS_VERSION.to_string(),
+        subject_ref: None,
+        prospective: vec![
+            GeoProspectiveObservation {
+                id: "obs.prospective.binary-a".to_string(),
+                contract_id: "rho.prospective.binary-a".to_string(),
+                cost_units: 1,
+                outcomes: vec![
+                    GeoProspectiveOutcome {
+                        outcome_id: "outcome.forbid-a".to_string(),
+                        induced: vec![GeoHardConstraintKind::Forbid {
+                            member: building_member("building-a"),
+                        }],
+                    },
+                    GeoProspectiveOutcome {
+                        outcome_id: "outcome.require-a".to_string(),
+                        induced: vec![GeoHardConstraintKind::Require {
+                            member: building_member("building-a"),
+                        }],
+                    },
+                ],
+            },
+            GeoProspectiveObservation {
+                id: "obs.prospective.full-choice".to_string(),
+                contract_id: "rho.prospective.full-choice".to_string(),
+                cost_units: 3,
+                outcomes: vec![
+                    GeoProspectiveOutcome {
+                        outcome_id: "outcome.only-a".to_string(),
+                        induced: vec![GeoHardConstraintKind::AllowedSets {
+                            level: GeoEntityLevel::Building,
+                            sets: vec![vec!["building-a".to_string()]],
+                        }],
+                    },
+                    GeoProspectiveOutcome {
+                        outcome_id: "outcome.only-ab".to_string(),
+                        induced: vec![GeoHardConstraintKind::AllowedSets {
+                            level: GeoEntityLevel::Building,
+                            sets: vec![vec!["building-a".to_string(), "building-b".to_string()]],
+                        }],
+                    },
+                    GeoProspectiveOutcome {
+                        outcome_id: "outcome.only-b".to_string(),
+                        induced: vec![GeoHardConstraintKind::AllowedSets {
+                            level: GeoEntityLevel::Building,
+                            sets: vec![vec!["building-b".to_string()]],
+                        }],
+                    },
+                ],
+            },
+            GeoProspectiveObservation {
+                id: "obs.prospective.redundant-binary-a".to_string(),
+                contract_id: "rho.prospective.redundant-binary-a".to_string(),
+                cost_units: 5,
+                outcomes: vec![
+                    GeoProspectiveOutcome {
+                        outcome_id: "outcome.forbid-a".to_string(),
+                        induced: vec![GeoHardConstraintKind::Forbid {
+                            member: building_member("building-a"),
+                        }],
+                    },
+                    GeoProspectiveOutcome {
+                        outcome_id: "outcome.require-a".to_string(),
+                        induced: vec![GeoHardConstraintKind::Require {
+                            member: building_member("building-a"),
+                        }],
+                    },
+                ],
+            },
+        ],
+    }
+}
+
+fn default_next_evidence_inputs() -> GeoNextEvidenceInputs {
+    GeoNextEvidenceInputs {
+        version: CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION.to_string(),
+        candidates: vec![
+            next_candidate(
+                "action.binary-a",
+                GeoNextActionClass::SeparateResidual,
+                "obs.prospective.binary-a",
+                1,
+                false,
+            ),
+            next_candidate(
+                "action.full-choice",
+                GeoNextActionClass::SeparateResidual,
+                "obs.prospective.full-choice",
+                3,
+                false,
+            ),
+            next_candidate(
+                "action.redundant-binary-a",
+                GeoNextActionClass::SeparateResidual,
+                "obs.prospective.redundant-binary-a",
+                5,
+                true,
+            ),
+        ],
+        policy: None,
+        budget: budget(),
+        budget_spent: BTreeMap::new(),
+    }
+}
+
+fn binary_only_separation_inputs() -> GeoSeparationInputs {
+    let mut inputs = default_separation_inputs();
+    inputs.prospective.truncate(1);
+    inputs
+}
+
+fn binary_only_next_evidence_inputs() -> GeoNextEvidenceInputs {
+    GeoNextEvidenceInputs {
+        version: CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION.to_string(),
+        candidates: vec![next_candidate(
+            "action.binary-a",
+            GeoNextActionClass::SeparateResidual,
+            "obs.prospective.binary-a",
+            1,
+            false,
+        )],
+        policy: None,
+        budget: budget(),
+        budget_spent: BTreeMap::new(),
+    }
+}
+
+fn diagnose_conflict_next_evidence_inputs() -> GeoNextEvidenceInputs {
+    GeoNextEvidenceInputs {
+        version: CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION.to_string(),
+        candidates: vec![next_candidate(
+            "action.diagnose-conflict",
+            GeoNextActionClass::DiagnoseConflict,
+            "obs.prospective.binary-a",
+            1,
+            false,
+        )],
+        policy: None,
+        budget: budget(),
+        budget_spent: BTreeMap::new(),
+    }
+}
+
+fn next_candidate(
+    action_id: &str,
+    class: GeoNextActionClass,
+    observation_id: &str,
+    cost_units: u64,
+    redundant: bool,
+) -> GeoNextEvidenceCandidateInput {
+    GeoNextEvidenceCandidateInput {
+        action_id: action_id.to_string(),
+        class,
+        kind: GeoNextActionKind::Observe(observation_id.to_string()),
+        observation_id: Some(observation_id.to_string()),
+        cost_units,
+        redundant,
+        lineage_ids: Vec::new(),
+        stop_reason: None,
+    }
+}
+
+fn building_member(id: &str) -> GeoEntityRef {
+    GeoEntityRef::new(GeoEntityLevel::Building, id)
 }
 
 fn client_tile_run_bindings(
@@ -1550,6 +1995,27 @@ fn solve_output(workspace: &Path) -> Value {
         .expect("solve json")
 }
 
+fn explanation_output(workspace: &Path) -> Value {
+    serde_json::from_slice(
+        &fs::read(workspace.join("geo/building/explanation.json")).expect("explanation"),
+    )
+    .expect("explanation json")
+}
+
+fn separation_output(workspace: &Path) -> Value {
+    serde_json::from_slice(
+        &fs::read(workspace.join("geo/building/separation.json")).expect("separation"),
+    )
+    .expect("separation json")
+}
+
+fn next_evidence_output(workspace: &Path) -> Value {
+    serde_json::from_slice(
+        &fs::read(workspace.join("geo/building/next_evidence.json")).expect("next evidence"),
+    )
+    .expect("next evidence json")
+}
+
 fn section_output(workspace: &Path) -> Value {
     serde_json::from_slice(&fs::read(workspace.join("geo/building/section.json")).expect("section"))
         .expect("section json")
@@ -1647,6 +2113,29 @@ fn geo_plan_with_wrong_solve_output_id() -> GeoPlan {
         "geo.building.solve",
         None,
         Some("not_solve"),
+    );
+    plan.semantic_hash = geo_plan_semantic_hash(&plan).expect("plan hash");
+    plan.plan_id = format!(
+        "canon_geo_plan.v0:{}",
+        plan.semantic_hash.trim_start_matches("blake3:")
+    );
+    plan
+}
+
+fn geo_plan_with_unrelated_separation_dependency() -> GeoPlan {
+    let mut plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    plan.project_plan = project_plan_with_node_dependencies(
+        &plan.project_plan,
+        "geo.building.separation",
+        vec![
+            "geo.building.compile_evidence".to_string(),
+            "geo.building.section".to_string(),
+            "geo.building.solve".to_string(),
+        ],
     );
     plan.semantic_hash = geo_plan_semantic_hash(&plan).expect("plan hash");
     plan.plan_id = format!(
@@ -1829,6 +2318,72 @@ fn project_plan_with_node_override(
         nodes,
     ))
     .expect("unknown command extension plan compiles")
+}
+
+fn project_plan_with_node_dependencies(
+    project_plan: &ProjectPlan,
+    node_id: &str,
+    dependencies: Vec<String>,
+) -> ProjectPlan {
+    let nodes = project_plan
+        .nodes
+        .iter()
+        .map(|node| {
+            let dependency_refs = node
+                .dependencies
+                .iter()
+                .flat_map(|dependency_id| {
+                    project_plan
+                        .nodes
+                        .iter()
+                        .find(|candidate| candidate.node_id == *dependency_id)
+                        .into_iter()
+                        .flat_map(move |dependency| {
+                            dependency.outputs.iter().map(move |output| {
+                                format!("node.{dependency_id}.{}", output.output_id)
+                            })
+                        })
+                })
+                .collect::<std::collections::BTreeSet<_>>();
+            ProjectExtensionDagNode {
+                node_id: node.node_id.clone(),
+                kind: node.kind,
+                class: node.class,
+                command: node.command.clone(),
+                dependencies: if node.node_id == node_id {
+                    dependencies.clone()
+                } else {
+                    node.dependencies.clone()
+                },
+                content_hash_inputs: node
+                    .content_hash_inputs
+                    .iter()
+                    .filter(|input| !dependency_refs.contains(&input.ref_id))
+                    .cloned()
+                    .collect(),
+                outputs: node
+                    .outputs
+                    .iter()
+                    .map(|output| ProjectExtensionDagOutput {
+                        output_id: output.output_id.clone(),
+                        path: output.path.clone(),
+                        materialization: output.materialization,
+                    })
+                    .collect(),
+                limits: node.limits.clone(),
+                cache_eligible: node.cache.eligible,
+                side_effects: node.side_effects.clone(),
+                refusal_conditions: node.refusal_conditions.clone(),
+            }
+        })
+        .collect();
+    compile_extension_project_plan(ProjectExtensionDagRequest::offline_read_only(
+        project_plan.project_id.clone(),
+        project_plan.manifest_digest.clone(),
+        project_plan.lock_digest.clone(),
+        nodes,
+    ))
+    .expect("dependency override extension plan compiles")
 }
 
 fn digest(label: &str) -> String {
@@ -2250,14 +2805,64 @@ fn warehouse_rows() -> GeoWarehouseRowsRequest {
     }
 }
 
+fn conflicting_warehouse_rows() -> GeoWarehouseRowsRequest {
+    GeoWarehouseRowsRequest {
+        version: CANON_GEO_WAREHOUSE_ROWS_VERSION.to_string(),
+        profile: GeoCompositionProfile::building(),
+        parcel_rows: Vec::new(),
+        building_parcel_rows: vec![
+            GeoWarehouseBuildingParcelRow {
+                building_id: "building-b".to_string(),
+                parcel_id: None,
+            },
+            GeoWarehouseBuildingParcelRow {
+                building_id: "building-a".to_string(),
+                parcel_id: None,
+            },
+        ],
+        contracts: vec![
+            rho_contract_with_id("rho.building-set-a"),
+            rho_contract_with_id("rho.building-set-b"),
+        ],
+        evidence_rows: vec![
+            GeoWarehouseEvidenceRow {
+                observation_id: "obs.building-set-a".to_string(),
+                contract_id: "rho.building-set-a".to_string(),
+                source_record: record("row-conflict-a"),
+                valid_time: None,
+                observation: GeoRhoObservationKind::ExactSets {
+                    level: GeoEntityLevel::Building,
+                    sets: vec![vec!["building-a".to_string()]],
+                },
+            },
+            GeoWarehouseEvidenceRow {
+                observation_id: "obs.building-set-b".to_string(),
+                contract_id: "rho.building-set-b".to_string(),
+                source_record: record("row-conflict-b"),
+                valid_time: None,
+                observation: GeoRhoObservationKind::ExactSets {
+                    level: GeoEntityLevel::Building,
+                    sets: vec![vec!["building-b".to_string()]],
+                },
+            },
+        ],
+        max_assignments: 128,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    }
+}
+
 fn rho_contract() -> GeoRhoContract {
+    rho_contract_with_id("rho.building-set")
+}
+
+fn rho_contract_with_id(id: &str) -> GeoRhoContract {
     GeoRhoContract {
-        id: "rho.building-set".to_string(),
+        id: id.to_string(),
         version: "1.0.0".to_string(),
         source_dataset: "fixture.buildings".to_string(),
         source_release: "2026-08-31".to_string(),
-        source_lineage_ids: vec!["fixture.buildings.release".to_string()],
-        method_id: "fixture-building-candidate-set".to_string(),
+        source_lineage_ids: vec![format!("fixture.buildings.release.{id}")],
+        method_id: format!("fixture-building-candidate-set.{id}"),
         method_version: "1.0.0".to_string(),
         claim_role: GeoEvidenceClaimRole::StableIdentityAnchor,
         basis: GeoRhoBasis::LogicalRelaxation {

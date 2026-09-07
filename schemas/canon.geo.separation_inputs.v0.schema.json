@@ -1,0 +1,33 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.separation_inputs.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.separation_inputs.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_separation_inputs.v0",
+      "type": "string"
+    },
+    "subject_ref": {
+      "$ref": "canon.geo.separation_request.v0.schema.json#/$defs/subject_ref"
+    },
+    "prospective": {
+      "type": "array",
+      "items": {
+        "$ref": "canon.geo.separation_request.v0.schema.json#/$defs/prospective_observation"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "version",
+    "prospective"
+  ],
+  "x-canon-contract": {
+    "runtime_only_invariants": [
+      "the solved residual request is derived from declared compile and propagation dependencies",
+      "the prospective observation outcome domain is supplied by the caller and treated as exhaustive"
+    ]
+  }
+}

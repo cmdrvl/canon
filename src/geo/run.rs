@@ -15,9 +15,9 @@ use crate::{
         CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
         CANON_GEO_EXPLANATION_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
         CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
-        CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION,
-        CANON_GEO_PLAN_VERSION, CANON_GEO_PROPAGATION_VERSION, CANON_GEO_SEPARATION_VERSION,
-        CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
+        CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION,
+        CANON_GEO_PLAN_VERSION, CANON_GEO_PROPAGATION_VERSION, CANON_GEO_SEPARATION_INPUTS_VERSION,
+        CANON_GEO_SEPARATION_VERSION, CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
         CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
         CANON_GEO_TILE_WORK_UNIT_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
         GeoAcquisitionDenominator, GeoAcquisitionProofClass, GeoAcquisitionSatisfaction,
@@ -55,6 +55,7 @@ use crate::{
         executor::GEO_REQUEST_BINDING_ID,
         executor::GEO_ROWS_BINDING_ID,
         executor::GEO_SEPARATION_OUTPUT_ID,
+        executor::GEO_SEPARATION_STAGE_COMMAND,
         executor::GEO_SOLVE_COMMAND,
         executor::GEO_TILE_IDENTIFIER_STABILITY_OUTPUT_ID,
         executor::GEO_TILE_IDENTIFIER_STABILITY_STAGE_COMMAND,
@@ -2268,6 +2269,7 @@ fn output_contract_for_command(command: &str) -> Option<&'static str> {
         GEO_COMPILE_EVIDENCE_COMMAND => Some(CANON_GEO_EVIDENCE_COMPILATION_VERSION),
         GEO_PROPAGATE_STAGE_COMMAND => Some(CANON_GEO_PROPAGATION_VERSION),
         GEO_EXPLAIN_STAGE_COMMAND => Some(CANON_GEO_EXPLANATION_VERSION),
+        GEO_SEPARATION_STAGE_COMMAND => Some(CANON_GEO_SEPARATION_VERSION),
         GEO_NEXT_EVIDENCE_STAGE_COMMAND => Some(CANON_GEO_NEXT_EVIDENCE_VERSION),
         GEO_AS_OF_RESOLUTION_STAGE_COMMAND => Some(CANON_GEO_AS_OF_RESOLUTION_VERSION),
         GEO_TILE_IDENTIFIER_STABILITY_STAGE_COMMAND => {
@@ -2290,6 +2292,7 @@ fn output_id_for_command(command: &str) -> Option<&'static str> {
         GEO_COMPILE_EVIDENCE_COMMAND => Some("compile_evidence"),
         GEO_PROPAGATE_STAGE_COMMAND => Some(GEO_PROPAGATE_OUTPUT_ID),
         GEO_EXPLAIN_STAGE_COMMAND => Some(GEO_EXPLAIN_OUTPUT_ID),
+        GEO_SEPARATION_STAGE_COMMAND => Some(GEO_SEPARATION_OUTPUT_ID),
         GEO_NEXT_EVIDENCE_STAGE_COMMAND => Some(GEO_NEXT_EVIDENCE_OUTPUT_ID),
         GEO_AS_OF_RESOLUTION_STAGE_COMMAND => Some(GEO_AS_OF_RESOLUTION_OUTPUT_ID),
         GEO_TILE_IDENTIFIER_STABILITY_STAGE_COMMAND => {
@@ -2372,11 +2375,17 @@ fn input_specs_for_command(command: &str) -> Option<Vec<GeoInputSpec>> {
             accepted_contracts: &[CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION],
             reason: "condo bridge requires local typed PAD BBL rows and case lots",
         }]),
+        GEO_SEPARATION_STAGE_COMMAND => Some(vec![GeoInputSpec {
+            binding_id: GEO_REQUEST_BINDING_ID,
+            required: true,
+            accepted_contracts: &[CANON_GEO_SEPARATION_INPUTS_VERSION],
+            reason: "separation requires local typed prospective observations with exhaustive outcome domains",
+        }]),
         GEO_NEXT_EVIDENCE_STAGE_COMMAND => Some(vec![GeoInputSpec {
             binding_id: GEO_REQUEST_BINDING_ID,
             required: true,
-            accepted_contracts: &[CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION],
-            reason: "next-evidence requires a local typed recommendation request",
+            accepted_contracts: &[CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION],
+            reason: "next-evidence requires local typed candidate actions, policy, and deterministic budget inputs",
         }]),
         GEO_AS_OF_RESOLUTION_STAGE_COMMAND => Some(vec![GeoInputSpec {
             binding_id: GEO_REQUEST_BINDING_ID,
@@ -3647,7 +3656,10 @@ fn phase_for_stage(stage: GeoPlanStage) -> GeoRunPhase {
         GeoPlanStage::BuildBoundedSection => GeoRunPhase::ReachChecked,
         GeoPlanStage::CompileEvidence => GeoRunPhase::Compiled,
         GeoPlanStage::PropagateConstraints => GeoRunPhase::Factorized,
-        GeoPlanStage::FactorAndSolveExactResidual => GeoRunPhase::Solved,
+        GeoPlanStage::FactorAndSolveExactResidual
+        | GeoPlanStage::ExplainResidual
+        | GeoPlanStage::SeparateResidual
+        | GeoPlanStage::SelectNextEvidence => GeoRunPhase::Solved,
     }
 }
 

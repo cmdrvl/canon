@@ -19,6 +19,7 @@ use std::{
 };
 
 pub const CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION: &str = "canon_geo_next_evidence_request.v0";
+pub const CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION: &str = "canon_geo_next_evidence_inputs.v0";
 pub const CANON_GEO_NEXT_EVIDENCE_VERSION: &str = "canon_geo_next_evidence.v0";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -103,6 +104,36 @@ pub struct GeoNextEvidenceRequest {
     pub composition_blake3: String,
     pub separation_blake3: String,
     pub candidates: Vec<GeoNextAction>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy: Option<GeoNextEvidencePolicy>,
+    pub budget: GeoResourceBudget,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub budget_spent: BTreeMap<String, u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoNextEvidenceCandidateInput {
+    pub action_id: String,
+    #[serde(default)]
+    pub class: GeoNextActionClass,
+    pub kind: GeoNextActionKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observation_id: Option<String>,
+    pub cost_units: u64,
+    #[serde(default)]
+    pub redundant: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lineage_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_reason: Option<GeoStopReason>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoNextEvidenceInputs {
+    pub version: String,
+    pub candidates: Vec<GeoNextEvidenceCandidateInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub policy: Option<GeoNextEvidencePolicy>,
     pub budget: GeoResourceBudget,
@@ -357,6 +388,23 @@ pub fn recommend_from_request(
     )
 }
 
+pub fn recommend_from_inputs(
+    composition: &GeoCompositionArtifact,
+    separation: &GeoSeparationArtifact,
+    inputs: &GeoNextEvidenceInputs,
+) -> Result<GeoNextEvidenceArtifact, GeoNextEvidenceError> {
+    validate_next_evidence_inputs(inputs)?;
+    let candidates = hydrate_candidate_inputs(separation, &inputs.candidates)?;
+    recommend(
+        composition,
+        separation,
+        &candidates,
+        inputs.policy.as_ref(),
+        &inputs.budget,
+        &inputs.budget_spent,
+    )
+}
+
 pub fn validate_next_evidence_request(
     request: &GeoNextEvidenceRequest,
 ) -> Result<(), GeoNextEvidenceError> {
@@ -373,6 +421,38 @@ pub fn validate_next_evidence_request(
     validate_candidate_order(&request.candidates)
 }
 
+pub fn validate_next_evidence_inputs(
+    inputs: &GeoNextEvidenceInputs,
+) -> Result<(), GeoNextEvidenceError> {
+    if inputs.version != CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION {
+        return Err(GeoNextEvidenceError::unsupported_version(
+            CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION,
+            &inputs.version,
+            "Geo next-evidence inputs",
+        ));
+    }
+    validate_budget(&inputs.budget, &inputs.budget_spent)?;
+    validate_candidate_input_order(&inputs.candidates)?;
+    for candidate in &inputs.candidates {
+        if candidate.action_id.is_empty() {
+            return Err(GeoNextEvidenceError::invalid(
+                "Geo next-evidence candidate action_id must be nonempty",
+                [("field", "action_id")],
+            ));
+        }
+        let mut lineage = candidate.lineage_ids.clone();
+        lineage.sort();
+        lineage.dedup();
+        if lineage.len() != candidate.lineage_ids.len() {
+            return Err(GeoNextEvidenceError::invalid(
+                "Geo next-evidence lineage_ids must be unique",
+                [("action_id", candidate.action_id.clone())],
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub fn canonical_next_evidence_request_bytes(
     request: &GeoNextEvidenceRequest,
 ) -> Result<Vec<u8>, GeoNextEvidenceError> {
@@ -380,6 +460,18 @@ pub fn canonical_next_evidence_request_bytes(
     serde_json::to_vec(request).map_err(|error| {
         GeoNextEvidenceError::invalid(
             "Geo next-evidence request could not be serialized",
+            [("serde_error", error.to_string())],
+        )
+    })
+}
+
+pub fn canonical_next_evidence_inputs_bytes(
+    inputs: &GeoNextEvidenceInputs,
+) -> Result<Vec<u8>, GeoNextEvidenceError> {
+    validate_next_evidence_inputs(inputs)?;
+    serde_json::to_vec(inputs).map_err(|error| {
+        GeoNextEvidenceError::invalid(
+            "Geo next-evidence inputs could not be serialized",
             [("serde_error", error.to_string())],
         )
     })
@@ -582,7 +674,9 @@ fn normalize_candidates(
                     ],
                 ));
             }
-            next.redundant |= observation.redundant;
+            if next.class == GeoNextActionClass::SeparateResidual {
+                next.redundant |= observation.redundant;
+            }
         }
         if !next.lineage_ids.is_empty() {
             let mut lineage = next.lineage_ids.clone();
@@ -605,6 +699,73 @@ fn normalize_candidates(
         normalized.push(next);
     }
     Ok(normalized)
+}
+
+fn hydrate_candidate_inputs(
+    separation: &GeoSeparationArtifact,
+    candidates: &[GeoNextEvidenceCandidateInput],
+) -> Result<Vec<GeoNextAction>, GeoNextEvidenceError> {
+    let observations = separation
+        .per_observation
+        .iter()
+        .map(|observation| (observation.observation_id.as_str(), observation))
+        .collect::<BTreeMap<_, _>>();
+    candidates
+        .iter()
+        .map(|candidate| {
+            let observation_id = candidate_input_observation_id(candidate);
+            let (separation_rows, worst_case_remaining, redundant) =
+                if candidate.class == GeoNextActionClass::Stop {
+                    (Vec::new(), 0, candidate.redundant)
+                } else {
+                    let Some(observation_id) = observation_id else {
+                        return Err(GeoNextEvidenceError::invalid(
+                            "Geo next-evidence candidate input must bind a prospective observation",
+                            [("action_id", candidate.action_id.clone())],
+                        ));
+                    };
+                    let observation = observations.get(observation_id).ok_or_else(|| {
+                        GeoNextEvidenceError::invalid(
+                            "Geo next-evidence candidate input does not match any separation observation",
+                            [
+                                ("action_id", candidate.action_id.clone()),
+                                ("observation_id", observation_id.to_string()),
+                            ],
+                        )
+                    })?;
+                    (
+                        observation.per_outcome.clone(),
+                        observation.worst_case_remaining,
+                        candidate.redundant
+                            || (candidate.class == GeoNextActionClass::SeparateResidual
+                                && observation.redundant),
+                    )
+                };
+            Ok(GeoNextAction {
+                action_id: candidate.action_id.clone(),
+                class: candidate.class,
+                kind: candidate.kind.clone(),
+                observation_id: candidate.observation_id.clone(),
+                cost_units: candidate.cost_units,
+                separation: separation_rows,
+                worst_case_remaining,
+                redundant,
+                lineage_ids: candidate.lineage_ids.clone(),
+                dominated_by: Vec::new(),
+                stop_reason: candidate.stop_reason,
+            })
+        })
+        .collect()
+}
+
+fn candidate_input_observation_id(candidate: &GeoNextEvidenceCandidateInput) -> Option<&str> {
+    candidate
+        .observation_id
+        .as_deref()
+        .or(match &candidate.kind {
+            GeoNextActionKind::Observe(observation_id) => Some(observation_id.as_str()),
+            _ => Some(candidate.action_id.as_str()),
+        })
 }
 
 fn validate_action_separation(candidate: &GeoNextAction) -> Result<(), GeoNextEvidenceError> {
@@ -932,6 +1093,22 @@ fn validate_candidate_order(candidates: &[GeoNextAction]) -> Result<(), GeoNextE
         if previous.is_some_and(|prior| prior >= candidate.action_id.as_str()) {
             return Err(GeoNextEvidenceError::invalid(
                 "Geo next-evidence candidates must be strictly sorted by action_id",
+                [("action_id", candidate.action_id.clone())],
+            ));
+        }
+        previous = Some(&candidate.action_id);
+    }
+    Ok(())
+}
+
+fn validate_candidate_input_order(
+    candidates: &[GeoNextEvidenceCandidateInput],
+) -> Result<(), GeoNextEvidenceError> {
+    let mut previous: Option<&str> = None;
+    for candidate in candidates {
+        if previous.is_some_and(|prior| prior >= candidate.action_id.as_str()) {
+            return Err(GeoNextEvidenceError::invalid(
+                "Geo next-evidence candidate inputs must be strictly sorted by action_id",
                 [("action_id", candidate.action_id.clone())],
             ));
         }

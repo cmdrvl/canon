@@ -231,7 +231,7 @@ fn plans_one_bounded_factorized_building_chain_over_the_shared_project_dag() {
 
     assert_eq!(plan.version, CANON_GEO_PLAN_VERSION);
     assert_eq!(plan.status, GeoPlanStatus::Planned);
-    assert_eq!(plan.project_plan.nodes.len(), 6);
+    assert_eq!(plan.project_plan.nodes.len(), 9);
     assert_eq!(plan.project_plan.nodes.len(), plan.geo_nodes.len());
     assert!(plan.external_requests.is_empty());
     assert_eq!(
@@ -279,6 +279,68 @@ fn plans_one_bounded_factorized_building_chain_over_the_shared_project_dag() {
                 && !node.bounded_section_required
                 && !node.incidence_factorization_required),
         "planning must insert a propagation stage before exact solving"
+    );
+    assert!(
+        plan.geo_nodes.iter().any(|node| {
+            node.stage == GeoPlanStage::ExplainResidual
+                && node.expected_output_contract == "canon_geo_explanation.v0"
+        }),
+        "planning must emit the explanation stage after solving"
+    );
+    let explain_project_node = plan
+        .project_plan
+        .nodes
+        .iter()
+        .find(|node| node.node_id == "geo.building.explain")
+        .expect("explain project node");
+    assert_eq!(
+        explain_project_node.dependencies,
+        vec![
+            "geo.building.compile_evidence".to_string(),
+            "geo.building.propagate".to_string(),
+            "geo.building.solve".to_string()
+        ]
+    );
+    let separation_project_node = plan
+        .project_plan
+        .nodes
+        .iter()
+        .find(|node| node.node_id == "geo.building.separation")
+        .expect("separation project node");
+    assert_eq!(
+        separation_project_node.dependencies,
+        vec![
+            "geo.building.compile_evidence".to_string(),
+            "geo.building.propagate".to_string(),
+            "geo.building.solve".to_string()
+        ]
+    );
+    assert!(
+        plan.geo_nodes.iter().any(|node| {
+            node.stage == GeoPlanStage::SeparateResidual
+                && node.expected_output_contract == "canon_geo_separation.v0"
+        }),
+        "planning must emit a generated separation stage instead of accepting caller separation"
+    );
+    let next_evidence_project_node = plan
+        .project_plan
+        .nodes
+        .iter()
+        .find(|node| node.node_id == "geo.building.next_evidence")
+        .expect("next-evidence project node");
+    assert_eq!(
+        next_evidence_project_node.dependencies,
+        vec![
+            "geo.building.separation".to_string(),
+            "geo.building.solve".to_string()
+        ]
+    );
+    assert!(
+        plan.geo_nodes.iter().any(|node| {
+            node.stage == GeoPlanStage::SelectNextEvidence
+                && node.expected_output_contract == "canon_geo_next_evidence.v0"
+        }),
+        "planning must emit the residual-aware next-evidence stage"
     );
     assert_eq!(
         scope.component_key_field,
@@ -541,9 +603,16 @@ fn replans_from_validated_advanced_inventory_into_new_bounded_plan() {
     assert_ne!(replanned.semantic_hash, base_plan.semantic_hash);
     assert_eq!(replanned.status, GeoPlanStatus::Planned);
     assert_eq!(replanned.external_requests, Vec::new());
-    assert_eq!(replanned.project_plan.nodes.len(), 6);
+    assert_eq!(replanned.project_plan.nodes.len(), 9);
     assert!(replanned.project_plan.nodes.iter().all(|node| {
-        (node.command.starts_with("canon geo ") || node.command == "canon.geo.stage.propagate.v0")
+        (node.command.starts_with("canon geo ")
+            || matches!(
+                node.command.as_str(),
+                "canon.geo.stage.propagate.v0"
+                    | "canon.geo.stage.explain.v0"
+                    | "canon.geo.stage.separation.v0"
+                    | "canon.geo.stage.next_evidence.v0"
+            ))
             && !node.command.contains("link-sources")
             && !node.command.contains("reconcile-tiles")
             && !node.command.contains("materialize-geometry")
@@ -640,7 +709,7 @@ fn replan_identity_is_source_instance_and_telemetry_independent() {
     );
     assert_eq!(replanned_a.semantic_hash, replanned_b.semantic_hash);
     assert_eq!(replanned_a.plan_id, replanned_b.plan_id);
-    assert_eq!(replanned_a.project_plan.nodes.len(), 6);
+    assert_eq!(replanned_a.project_plan.nodes.len(), 9);
     validate_geo_plan(&replanned_a).expect("first replanned artifact validates");
     validate_geo_plan(&replanned_b).expect("renamed replanned artifact validates");
 }
@@ -905,7 +974,7 @@ fn replan_accepts_nonsemantic_bounded_subset_order_from_validated_receipt() {
     .expect("nonsemantic subset order must remain admissible");
 
     assert_eq!(replanned.status, GeoPlanStatus::Planned);
-    assert_eq!(replanned.project_plan.nodes.len(), 6);
+    assert_eq!(replanned.project_plan.nodes.len(), 9);
 }
 
 #[test]

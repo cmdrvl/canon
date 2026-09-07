@@ -7,7 +7,11 @@
 //! catalog.  Missing local evidence becomes a typed external request or an
 //! explicit discovery gap.
 
-use super::executor::{GEO_PROPAGATE_OUTPUT_ID, GEO_PROPAGATE_STAGE_COMMAND};
+use super::executor::{
+    GEO_EXPLAIN_OUTPUT_ID, GEO_EXPLAIN_STAGE_COMMAND, GEO_NEXT_EVIDENCE_OUTPUT_ID,
+    GEO_NEXT_EVIDENCE_STAGE_COMMAND, GEO_PROPAGATE_OUTPUT_ID, GEO_PROPAGATE_STAGE_COMMAND,
+    GEO_SEPARATION_OUTPUT_ID, GEO_SEPARATION_STAGE_COMMAND,
+};
 use super::satisfy::{
     CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION, GeoInventoryAdvancementEffect,
     GeoRegionalInventoryAdvancement, GeoRegionalInventorySourceAdvancement, GeoSatisfyError,
@@ -17,10 +21,11 @@ use super::{
     CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
     CANON_GEO_CAPABILITIES_VERSION, CANON_GEO_COMPOSITION_VERSION,
     CANON_GEO_DISCOVERY_REQUEST_VERSION, CANON_GEO_EVIDENCE_COMPILATION_VERSION,
-    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
-    CANON_GEO_PROPAGATION_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION, GeoAcquisitionRequest,
-    GeoBoundedSubset, GeoCapabilities, GeoColumnReadabilityProbe, GeoCompositionProfile,
-    GeoControlEntityLevel, GeoDigest, GeoDigestAlgorithm, GeoDiscoveryGap,
+    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_EXPLANATION_VERSION,
+    CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION,
+    CANON_GEO_PROPAGATION_VERSION, CANON_GEO_SEPARATION_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
+    GeoAcquisitionRequest, GeoBoundedSubset, GeoCapabilities, GeoColumnReadabilityProbe,
+    GeoCompositionProfile, GeoControlEntityLevel, GeoDigest, GeoDigestAlgorithm, GeoDiscoveryGap,
     GeoDiscoveryReleaseSelectionPolicy, GeoDiscoveryRequest, GeoDiscoveryStep, GeoEntityLevel,
     GeoEvidenceClass, GeoFieldRole, GeoInventorySupportStatus, GeoNativeEntityScope,
     GeoNumericBound, GeoOrderDirection, GeoOrderingTerm, GeoPaginationRequest,
@@ -58,6 +63,9 @@ const MATERIALIZE_EVIDENCE_COMMAND: &str = "canon geo materialize-evidence --row
 const COMPILE_EVIDENCE_COMMAND: &str = "canon geo compile-evidence --request <REQUEST.json>";
 const PROPAGATE_COMMAND: &str = GEO_PROPAGATE_STAGE_COMMAND;
 const SOLVE_COMMAND: &str = "canon geo solve --request <REQUEST.json>";
+const EXPLAIN_COMMAND: &str = GEO_EXPLAIN_STAGE_COMMAND;
+const SEPARATION_COMMAND: &str = GEO_SEPARATION_STAGE_COMMAND;
+const NEXT_EVIDENCE_COMMAND: &str = GEO_NEXT_EVIDENCE_STAGE_COMMAND;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GeoPlanRequest {
@@ -106,6 +114,9 @@ pub enum GeoPlanStage {
     CompileEvidence,
     PropagateConstraints,
     FactorAndSolveExactResidual,
+    ExplainResidual,
+    SeparateResidual,
+    SelectNextEvidence,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -594,6 +605,9 @@ pub fn compile_geo_plan(request: GeoPlanRequest) -> Result<GeoPlan, GeoPlanError
             ),
             (PROPAGATE_COMMAND, CANON_GEO_PROPAGATION_VERSION),
             (SOLVE_COMMAND, CANON_GEO_COMPOSITION_VERSION),
+            (EXPLAIN_COMMAND, CANON_GEO_EXPLANATION_VERSION),
+            (SEPARATION_COMMAND, CANON_GEO_SEPARATION_VERSION),
+            (NEXT_EVIDENCE_COMMAND, CANON_GEO_NEXT_EVIDENCE_VERSION),
         ];
         let missing_commands = required_commands
             .iter()
@@ -2054,29 +2068,66 @@ fn grain_project_stages(
             "canon_geo_composition.v0",
             GeoPlanStage::FactorAndSolveExactResidual,
         ),
+        (
+            "explain",
+            ProjectPlanNodeKind::Solve,
+            EXPLAIN_COMMAND,
+            CANON_GEO_EXPLANATION_VERSION,
+            GeoPlanStage::ExplainResidual,
+        ),
+        (
+            "separation",
+            ProjectPlanNodeKind::Solve,
+            SEPARATION_COMMAND,
+            CANON_GEO_SEPARATION_VERSION,
+            GeoPlanStage::SeparateResidual,
+        ),
+        (
+            "next_evidence",
+            ProjectPlanNodeKind::Solve,
+            NEXT_EVIDENCE_COMMAND,
+            CANON_GEO_NEXT_EVIDENCE_VERSION,
+            GeoPlanStage::SelectNextEvidence,
+        ),
     ];
     let mut result = Vec::new();
     let mut dependency = None;
     for (suffix, kind, command, contract, stage) in stages {
         let node_id = format!("{prefix}.{suffix}");
-        let dependencies = if matches!(stage, GeoPlanStage::FactorAndSolveExactResidual) {
-            vec![
+        let dependencies = match stage {
+            GeoPlanStage::FactorAndSolveExactResidual => vec![
                 format!("{prefix}.compile_evidence"),
                 format!("{prefix}.propagate"),
                 format!("{prefix}.section"),
-            ]
-        } else {
-            dependency.iter().cloned().collect()
+            ],
+            GeoPlanStage::ExplainResidual => {
+                vec![
+                    format!("{prefix}.compile_evidence"),
+                    format!("{prefix}.propagate"),
+                    format!("{prefix}.solve"),
+                ]
+            }
+            GeoPlanStage::SeparateResidual => vec![
+                format!("{prefix}.compile_evidence"),
+                format!("{prefix}.propagate"),
+                format!("{prefix}.solve"),
+            ],
+            GeoPlanStage::SelectNextEvidence => {
+                vec![format!("{prefix}.separation"), format!("{prefix}.solve")]
+            }
+            _ => dependency.iter().cloned().collect(),
         };
         let content_hash_inputs = if dependency.is_none() {
             input_refs.clone()
         } else {
             Vec::new()
         };
-        let output_id = if matches!(stage, GeoPlanStage::PropagateConstraints) {
-            GEO_PROPAGATE_OUTPUT_ID
-        } else {
-            suffix
+        let output_id = match stage {
+            GeoPlanStage::PropagateConstraints => GEO_PROPAGATE_OUTPUT_ID,
+            GeoPlanStage::ExplainResidual => GEO_EXPLAIN_OUTPUT_ID,
+            GeoPlanStage::SeparateResidual => GEO_SEPARATION_OUTPUT_ID,
+            GeoPlanStage::SelectNextEvidence => GEO_NEXT_EVIDENCE_OUTPUT_ID,
+            _ => suffix,
         };
         let node = project_node(
             &node_id,
@@ -2150,6 +2201,42 @@ fn grain_project_stages(
                     GeoPlanGatePlane::Cost,
                     GeoPlanGateStatus::SatisfiedByDeclaredInput,
                     "only deterministic row/byte/candidate/variable/state/model/operation/proof counters may control fallback",
+                ),
+            ],
+            GeoPlanStage::ExplainResidual => vec![
+                precondition(
+                    GeoPlanGatePlane::Admission,
+                    GeoPlanGateStatus::StructurallyCompleteRelativeToInputs,
+                    "explanation consumes the solved residual and compiled rho admissions; conflicts emit source-record and rho-bound cores",
+                ),
+                precondition(
+                    GeoPlanGatePlane::SolverCorrectness,
+                    GeoPlanGateStatus::PendingArtifact,
+                    "non-conflict residuals emit a typed no-conflict explanation without changing the solve status",
+                ),
+            ],
+            GeoPlanStage::SeparateResidual => vec![
+                precondition(
+                    GeoPlanGatePlane::SolverCorrectness,
+                    GeoPlanGateStatus::PendingArtifact,
+                    "counterfactual separation recomputes partitions from the exact solved residual and declared exhaustive prospective outcomes",
+                ),
+                precondition(
+                    GeoPlanGatePlane::Cost,
+                    GeoPlanGateStatus::SatisfiedByDeclaredInput,
+                    "inexact or saturated residual counts remain marked inexact and cannot become exact separation",
+                ),
+            ],
+            GeoPlanStage::SelectNextEvidence => vec![
+                precondition(
+                    GeoPlanGatePlane::SolverCorrectness,
+                    GeoPlanGateStatus::PendingArtifact,
+                    "next-evidence consumes the solved residual plus generated separation artifact; no caller-supplied separation is admitted",
+                ),
+                precondition(
+                    GeoPlanGatePlane::Cost,
+                    GeoPlanGateStatus::SatisfiedByDeclaredInput,
+                    "recommendations expose the nondominated frontier; total ranking requires a declared loss model",
                 ),
             ],
         };

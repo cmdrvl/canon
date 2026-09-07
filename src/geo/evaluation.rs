@@ -1670,6 +1670,13 @@ fn stage_preconditions(stage: GeoPlanStage) -> Vec<GeoPlanPrecondition> {
                 "exact backend consumes the propagation artifact as a declared dependency",
             ),
         ],
+        GeoPlanStage::ExplainResidual
+        | GeoPlanStage::SeparateResidual
+        | GeoPlanStage::SelectNextEvidence => vec![precondition(
+            GeoPlanGatePlane::SolverCorrectness,
+            GeoPlanGateStatus::PendingArtifact,
+            "post-solve artifacts are produced only from completed declared-universe residuals",
+        )],
     }
 }
 

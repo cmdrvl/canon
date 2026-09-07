@@ -427,6 +427,95 @@ fn synthetic_building_warehouse_rows() -> Value {
     })
 }
 
+fn synthetic_building_separation_inputs() -> Value {
+    json!({
+        "version": "canon_geo_separation_inputs.v0",
+        "prospective": [
+            {
+                "id": "obs.synthetic-not-live.prospective.binary-a",
+                "contract_id": "rho.synthetic-not-live.prospective.binary-a",
+                "cost_units": 1,
+                "outcomes": [
+                    {
+                        "outcome_id": "outcome.forbid-a",
+                        "induced": [{
+                            "kind": "forbid",
+                            "member": { "level": "building", "id": "building-a" }
+                        }]
+                    },
+                    {
+                        "outcome_id": "outcome.require-a",
+                        "induced": [{
+                            "kind": "require",
+                            "member": { "level": "building", "id": "building-a" }
+                        }]
+                    }
+                ]
+            },
+            {
+                "id": "obs.synthetic-not-live.prospective.full-choice",
+                "contract_id": "rho.synthetic-not-live.prospective.full-choice",
+                "cost_units": 3,
+                "outcomes": [
+                    {
+                        "outcome_id": "outcome.only-a",
+                        "induced": [{
+                            "kind": "allowed_sets",
+                            "level": "building",
+                            "sets": [["building-a"]]
+                        }]
+                    },
+                    {
+                        "outcome_id": "outcome.only-ab",
+                        "induced": [{
+                            "kind": "allowed_sets",
+                            "level": "building",
+                            "sets": [["building-a", "building-b"]]
+                        }]
+                    },
+                    {
+                        "outcome_id": "outcome.only-b",
+                        "induced": [{
+                            "kind": "allowed_sets",
+                            "level": "building",
+                            "sets": [["building-b"]]
+                        }]
+                    }
+                ]
+            }
+        ]
+    })
+}
+
+fn synthetic_building_next_evidence_inputs() -> Value {
+    json!({
+        "version": "canon_geo_next_evidence_inputs.v0",
+        "candidates": [
+            {
+                "action_id": "action.synthetic-not-live.binary-a",
+                "class": "separate_residual",
+                "kind": {
+                    "kind": "observe",
+                    "payload": "obs.synthetic-not-live.prospective.binary-a"
+                },
+                "observation_id": "obs.synthetic-not-live.prospective.binary-a",
+                "cost_units": 1
+            },
+            {
+                "action_id": "action.synthetic-not-live.full-choice",
+                "class": "separate_residual",
+                "kind": {
+                    "kind": "observe",
+                    "payload": "obs.synthetic-not-live.prospective.full-choice"
+                },
+                "observation_id": "obs.synthetic-not-live.prospective.full-choice",
+                "cost_units": 3
+            }
+        ],
+        "budget": geo_plan_budget(false)
+    })
+}
+
 fn geo_run_building_question() -> Value {
     json!({
         "version": "canon_geo_question.v0",
@@ -490,15 +579,17 @@ fn write_geo_run_building_plan(dir: &std::path::Path) -> PathBuf {
     assert_eq!(plan["status"], "planned");
     assert_eq!(
         plan["project_plan"]["nodes"].as_array().unwrap().len(),
-        6,
-        "synthetic building demo must exercise the six Geo leaf commands"
+        9,
+        "synthetic building demo must exercise the generated Geo run chain"
     );
     let path = dir.join("synthetic-not-live-building-plan.json");
     fs::write(&path, &assert.get_output().stdout).expect("write synthetic Geo plan");
     path
 }
 
-fn write_geo_run_synthetic_input_set(dir: &std::path::Path) -> (PathBuf, PathBuf, PathBuf) {
+fn write_geo_run_synthetic_input_set(
+    dir: &std::path::Path,
+) -> (PathBuf, PathBuf, PathBuf, PathBuf, PathBuf) {
     (
         write_json(
             dir,
@@ -514,6 +605,16 @@ fn write_geo_run_synthetic_input_set(dir: &std::path::Path) -> (PathBuf, PathBuf
             dir,
             "synthetic-not-live-warehouse-rows.json",
             &synthetic_building_warehouse_rows(),
+        ),
+        write_json(
+            dir,
+            "synthetic-not-live-separation-inputs.json",
+            &synthetic_building_separation_inputs(),
+        ),
+        write_json(
+            dir,
+            "synthetic-not-live-next-evidence-inputs.json",
+            &synthetic_building_next_evidence_inputs(),
         ),
     )
 }
@@ -1207,6 +1308,9 @@ fn geo_plan_emits_canonical_partial_plan_and_binds_capabilities() {
         "geo.building.compile_evidence",
         "geo.building.propagate",
         "geo.building.solve",
+        "geo.building.explain",
+        "geo.building.separation",
+        "geo.building.next_evidence",
     ] {
         assert!(
             node_ids.contains(expected),
@@ -1230,12 +1334,13 @@ fn geo_plan_is_byte_identical_for_reordered_inputs() {
 }
 
 #[test]
-fn geo_run_cli_executes_synthetic_not_live_six_leaf_building_chain() {
+fn geo_run_cli_executes_synthetic_not_live_generated_building_chain() {
     let temp = tempdir().expect("tempdir");
     let input_dir = temp.path().join("synthetic-not-live-inputs");
     fs::create_dir(&input_dir).expect("create synthetic input dir");
     let plan = write_geo_run_building_plan(&input_dir);
-    let (home_cells, tile_work, warehouse_rows) = write_geo_run_synthetic_input_set(&input_dir);
+    let (home_cells, tile_work, warehouse_rows, separation_inputs, next_evidence_inputs) =
+        write_geo_run_synthetic_input_set(&input_dir);
     let work_dir = temp.path().join("synthetic-not-live-work");
     fs::create_dir(&work_dir).expect("create synthetic run work dir");
     let home_binding = format!("geo.building.home_cells:rows={}", home_cells.display());
@@ -1243,6 +1348,14 @@ fn geo_run_cli_executes_synthetic_not_live_six_leaf_building_chain() {
     let warehouse_binding = format!(
         "geo.building.materialize_evidence:rows={}",
         warehouse_rows.display()
+    );
+    let separation_binding = format!(
+        "geo.building.separation:request={}",
+        separation_inputs.display()
+    );
+    let next_evidence_binding = format!(
+        "geo.building.next_evidence:request={}",
+        next_evidence_inputs.display()
     );
 
     let assert = canon_command()
@@ -1258,6 +1371,10 @@ fn geo_run_cli_executes_synthetic_not_live_six_leaf_building_chain() {
         .arg(&tile_binding)
         .arg("--input")
         .arg(&warehouse_binding)
+        .arg("--input")
+        .arg(&separation_binding)
+        .arg("--input")
+        .arg(&next_evidence_binding)
         .assert()
         .success();
     assert!(assert.get_output().stderr.is_empty());
@@ -1281,15 +1398,18 @@ fn geo_run_cli_executes_synthetic_not_live_six_leaf_building_chain() {
         run["project_run_report"]["executed_nodes"],
         json!([
             "geo.building.compile_evidence",
+            "geo.building.explain",
             "geo.building.home_cells",
             "geo.building.materialize_evidence",
+            "geo.building.next_evidence",
             "geo.building.propagate",
             "geo.building.section",
+            "geo.building.separation",
             "geo.building.solve"
         ])
     );
-    assert_eq!(run["artifact_inputs"].as_array().unwrap().len(), 3);
-    assert_eq!(run["output_refs"].as_array().unwrap().len(), 6);
+    assert_eq!(run["artifact_inputs"].as_array().unwrap().len(), 5);
+    assert_eq!(run["output_refs"].as_array().unwrap().len(), 9);
     assert!(
         run["output_refs"].as_array().unwrap().iter().any(|output| {
             output["artifact_id"] == "geo.building.solve/solve"
@@ -1297,6 +1417,28 @@ fn geo_run_cli_executes_synthetic_not_live_six_leaf_building_chain() {
         }),
         "run JSON must expose the typed solve output ref"
     );
+    for (artifact_id, contract_version) in [
+        (
+            "geo.building.explain/explanation",
+            "canon_geo_explanation.v0",
+        ),
+        (
+            "geo.building.separation/separation",
+            "canon_geo_separation.v0",
+        ),
+        (
+            "geo.building.next_evidence/next_evidence",
+            "canon_geo_next_evidence.v0",
+        ),
+    ] {
+        assert!(
+            run["output_refs"].as_array().unwrap().iter().any(|output| {
+                output["artifact_id"] == artifact_id
+                    && output["contract_version"] == contract_version
+            }),
+            "run JSON must expose {artifact_id}"
+        );
+    }
 
     let solve_path = work_dir.join("geo/building/solve.json");
     let solve_bytes = fs::read(&solve_path).expect("solve artifact is published");
@@ -1310,6 +1452,27 @@ fn geo_run_cli_executes_synthetic_not_live_six_leaf_building_chain() {
         solve["evidence_compilation"]["version"],
         "canon_geo_evidence_compilation.v0"
     );
+    let explanation: Value = serde_json::from_slice(
+        &fs::read(work_dir.join("geo/building/explanation.json"))
+            .expect("explanation artifact is published"),
+    )
+    .expect("explanation artifact parses");
+    assert_eq!(explanation["version"], "canon_geo_explanation.v0");
+    assert_eq!(explanation["counters"]["not_conflict"], 1);
+    let separation: Value = serde_json::from_slice(
+        &fs::read(work_dir.join("geo/building/separation.json"))
+            .expect("separation artifact is published"),
+    )
+    .expect("separation artifact parses");
+    assert_eq!(separation["version"], "canon_geo_separation.v0");
+    assert_eq!(separation["baseline_model_count"], 1);
+    let next_evidence: Value = serde_json::from_slice(
+        &fs::read(work_dir.join("geo/building/next_evidence.json"))
+            .expect("next-evidence artifact is published"),
+    )
+    .expect("next-evidence artifact parses");
+    assert_eq!(next_evidence["version"], "canon_geo_next_evidence.v0");
+    assert_eq!(next_evidence["stop"], "claim_forced");
 }
 
 #[test]
@@ -1318,7 +1481,7 @@ fn geo_run_cli_refuses_synthetic_not_live_wrong_explicit_binding_contract() {
     let input_dir = temp.path().join("synthetic-not-live-inputs");
     fs::create_dir(&input_dir).expect("create synthetic input dir");
     let plan = write_geo_run_building_plan(&input_dir);
-    let (home_cells, _, warehouse_rows) = write_geo_run_synthetic_input_set(&input_dir);
+    let (home_cells, _, warehouse_rows, _, _) = write_geo_run_synthetic_input_set(&input_dir);
     let work_dir = temp.path().join("synthetic-not-live-work");
     fs::create_dir(&work_dir).expect("create synthetic run work dir");
     let home_binding = format!("geo.building.home_cells:rows={}", home_cells.display());
@@ -1509,7 +1672,7 @@ fn geo_replan_from_acquisition_advances_inventory_and_emits_new_plan() {
     assert_eq!(replanned["external_requests"].as_array().unwrap().len(), 0);
     assert_eq!(
         replanned["project_plan"]["nodes"].as_array().unwrap().len(),
-        6
+        9
     );
     assert_ne!(replanned["plan_id"], base_plan_before["plan_id"]);
 

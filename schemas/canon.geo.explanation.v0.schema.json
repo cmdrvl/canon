@@ -24,8 +24,7 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/minimal_core"
-      },
-      "minItems": 1
+      }
     },
     "cores_complete": {
       "type": "boolean"

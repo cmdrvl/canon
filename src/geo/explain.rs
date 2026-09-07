@@ -19,6 +19,7 @@ use std::{
 };
 
 pub const CANON_GEO_EXPLANATION_VERSION: &str = "canon_geo_explanation.v0";
+pub const CANON_GEO_SEPARATION_INPUTS_VERSION: &str = "canon_geo_separation_inputs.v0";
 pub const CANON_GEO_SEPARATION_REQUEST_VERSION: &str = "canon_geo_separation_request.v0";
 pub const CANON_GEO_SEPARATION_VERSION: &str = "canon_geo_separation.v0";
 
@@ -124,6 +125,15 @@ pub struct GeoProspectiveObservation {
     pub contract_id: String,
     pub cost_units: u64,
     pub outcomes: Vec<GeoProspectiveOutcome>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoSeparationInputs {
+    pub version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_ref: Option<GeoExplanationSubjectRef>,
+    pub prospective: Vec<GeoProspectiveObservation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -261,7 +271,7 @@ pub fn minimal_core(
     budget: &GeoExplanationBudget,
 ) -> Result<GeoExplanationArtifact, GeoExplanationError> {
     validate_budget(budget)?;
-    let request = canonical_request_matching_evidence(request, evidence)?;
+    let request = canonicalize_composition_request(request)?;
     let evidence_index = EvidenceIndex::from_evidence(evidence)?;
     let order_rank = validate_reliability_order(order, &evidence_index)?;
     let mut counter = SolveCounter::new(budget.max_core_solves);
@@ -391,6 +401,48 @@ pub fn correction_sets(
     validate_explanation_artifact(artifact)
 }
 
+pub fn non_conflict_explanation(
+    request: &GeoCompositionRequest,
+    evidence: &GeoEvidenceCompilationArtifact,
+    status: GeoCompositionStatus,
+) -> Result<GeoExplanationArtifact, GeoExplanationError> {
+    if status == GeoCompositionStatus::Conflict {
+        return Err(GeoExplanationError::invalid(
+            "Geo non-conflict explanation cannot be emitted for a conflict residual",
+            [("status", status_name(status))],
+        ));
+    }
+    let request = canonicalize_composition_request(request)?;
+    let evidence_index = EvidenceIndex::from_evidence(evidence)?;
+    let mut counters = BTreeMap::new();
+    counters.insert("core_solves".to_string(), 0);
+    counters.insert("cores_enumerated".to_string(), 0);
+    counters.insert("hitting_sets".to_string(), 0);
+    counters.insert("not_conflict".to_string(), 1);
+    counters.insert(format!("not_conflict_status.{}", status_name(status)), 1);
+    counters.insert(
+        "hard_constraint_count".to_string(),
+        request.hard_constraints.len() as u64,
+    );
+    counters.insert(
+        "source_record_count".to_string(),
+        evidence_index.source_record_count()?,
+    );
+    let artifact = GeoExplanationArtifact {
+        version: CANON_GEO_EXPLANATION_VERSION.to_string(),
+        subject_ref: None,
+        request_blake3: request_blake3(&request)?,
+        evidence_blake3: evidence_blake3(evidence)?,
+        cores: Vec::new(),
+        cores_complete: true,
+        correction_sets: Vec::new(),
+        explanation_complete: true,
+        counters,
+    };
+    validate_explanation_artifact(&artifact)?;
+    Ok(artifact)
+}
+
 pub fn separate(
     request: &GeoSeparationRequest,
     budget: &GeoExplanationBudget,
@@ -479,8 +531,15 @@ pub fn validate_explanation_artifact(
         validate_subject_ref(subject)?;
     }
     if artifact.cores.is_empty() {
+        if artifact.counters.get("not_conflict") == Some(&1)
+            && artifact.cores_complete
+            && artifact.explanation_complete
+            && artifact.correction_sets.is_empty()
+        {
+            return validate_counters(&artifact.counters);
+        }
         return Err(GeoExplanationError::invalid(
-            "Geo explanation artifacts require at least one core",
+            "Geo conflict explanation artifacts require at least one core",
             [("field", "cores")],
         ));
     }
@@ -582,14 +641,37 @@ pub fn validate_separation_request(
         validate_subject_ref(subject)?;
     }
     canonicalize_composition_request(&request.request)?;
-    if request.prospective.is_empty() {
+    validate_prospective_observations(&request.prospective)
+}
+
+pub fn validate_separation_inputs(inputs: &GeoSeparationInputs) -> Result<(), GeoExplanationError> {
+    if inputs.version != CANON_GEO_SEPARATION_INPUTS_VERSION {
+        return Err(GeoExplanationError::new(
+            GeoExplanationErrorCode::UnsupportedVersion,
+            "Unsupported Geo separation inputs version",
+            [
+                ("actual", inputs.version.as_str()),
+                ("expected", CANON_GEO_SEPARATION_INPUTS_VERSION),
+            ],
+        ));
+    }
+    if let Some(subject) = &inputs.subject_ref {
+        validate_subject_ref(subject)?;
+    }
+    validate_prospective_observations(&inputs.prospective)
+}
+
+fn validate_prospective_observations(
+    prospective: &[GeoProspectiveObservation],
+) -> Result<(), GeoExplanationError> {
+    if prospective.is_empty() {
         return Err(GeoExplanationError::invalid(
             "Geo separation requests require at least one prospective observation",
             [("field", "prospective")],
         ));
     }
     let mut previous_observation: Option<&str> = None;
-    for observation in &request.prospective {
+    for observation in prospective {
         validate_identifier("prospective[].id", &observation.id)?;
         validate_identifier("prospective[].contract_id", &observation.contract_id)?;
         if previous_observation.is_some_and(|previous| previous >= observation.id.as_str()) {
@@ -624,6 +706,18 @@ pub fn validate_separation_request(
         }
     }
     Ok(())
+}
+
+pub fn canonical_separation_inputs_bytes(
+    inputs: &GeoSeparationInputs,
+) -> Result<Vec<u8>, GeoExplanationError> {
+    validate_separation_inputs(inputs)?;
+    serde_json::to_vec(inputs).map_err(|error| {
+        GeoExplanationError::invalid(
+            "Geo separation inputs could not be serialized",
+            [("serde_error", error.to_string())],
+        )
+    })
 }
 
 pub fn canonical_separation_request_bytes(
