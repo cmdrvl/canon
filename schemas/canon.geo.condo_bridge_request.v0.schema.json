@@ -1,0 +1,77 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.condo_bridge_request.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.condo_bridge_request.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_condo_bridge_request.v0",
+      "type": "string"
+    },
+    "unit_bbl": { "type": "string" },
+    "billing_bbl_candidates": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "bin_candidates": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "block": { "type": "string" },
+    "frame_id": { "type": "string" },
+    "parcel_rings": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/polygon_mm" }
+    },
+    "footprint_rings": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/polygon_mm" }
+    }
+  },
+  "required": [
+    "version",
+    "unit_bbl",
+    "billing_bbl_candidates",
+    "bin_candidates",
+    "block",
+    "frame_id",
+    "parcel_rings",
+    "footprint_rings"
+  ],
+  "$defs": {
+    "point_mm": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "integer" },
+        "y": { "type": "integer" }
+      },
+      "required": ["x", "y"]
+    },
+    "ring_mm": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "vertices": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "$ref": "#/$defs/point_mm" }
+        }
+      },
+      "required": ["vertices"]
+    },
+    "polygon_mm": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "exterior": { "$ref": "#/$defs/ring_mm" },
+        "holes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ring_mm" }
+        }
+      },
+      "required": ["exterior"]
+    }
+  }
+}

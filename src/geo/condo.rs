@@ -2,6 +2,14 @@
 
 //! PAD condo unit-to-billing-lot bridge for fixture and offline Geo runs.
 
+use super::{
+    composition::{GeoEntityLevel, GeoEntityRef, GeoIdentityRelation, validate_identity_relation},
+    geometry::{
+        GeoAreaMajorityError, GeoLinearRingMm, GeoPointMm, GeoPredicateError,
+        footprint_majority_area_inside_parcel,
+    },
+    geometry_value::GeoCanonicalPolygonMm,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -11,10 +19,9 @@ use std::{
 
 pub const CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION: &str = "canon_geo_condo_bridge_request.v0";
 pub const CANON_GEO_CONDO_BRIDGE_VERSION: &str = "canon_geo_condo_bridge.v0";
+pub const CANON_GEO_LEDGER_BRIDGE_VERSION: &str = "canon_geo_ledger_bridge.v0";
+pub const GEO_CONDO_CONFIRMATION_INSUFFICIENT: &str = "condo_confirmation_insufficient";
 pub const CANON_GEO_CONDO_BRIDGE_PAD_METHOD: &str = "PAD BBL current release: unit lot -> BILLING_BBL_KEY via exact row or LOW/HIGH range; truth plane re-expressed at billing-lot grain";
-
-const MIN_CONDO_UNIT_LOT: u16 = 1001;
-const MAX_CONDO_UNIT_LOT: u16 = 7499;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -27,6 +34,43 @@ pub struct GeoCondoBridgeRequest {
     pub cases: Vec<GeoCondoBridgeCaseRequest>,
     pub max_pad_rows: usize,
     pub max_cases: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoCondoUnitBridgeRequest {
+    pub version: String,
+    pub unit_bbl: String,
+    pub billing_bbl_candidates: Vec<String>,
+    pub bin_candidates: Vec<String>,
+    pub block: String,
+    pub frame_id: String,
+    pub parcel_rings: BTreeMap<String, GeoCanonicalPolygonMm>,
+    pub footprint_rings: BTreeMap<String, GeoCanonicalPolygonMm>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoCondoConfirmation {
+    BlockAndGeometry,
+    BlockOnly,
+    KeyOnly,
+}
+
+pub type GeoLedgerBridgeRelation = (GeoEntityRef, GeoIdentityRelation, GeoEntityRef);
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoLedgerBridge {
+    pub version: String,
+    pub unit_bbl: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub billing_bbl: Option<String>,
+    pub bins: Vec<String>,
+    pub confirmation: GeoCondoConfirmation,
+    pub relations: Vec<GeoLedgerBridgeRelation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub abstained_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -170,6 +214,7 @@ pub enum GeoCondoErrorCode {
     InvalidInput,
     BudgetExceeded,
     ArithmeticOverflow,
+    CondoConfirmationInsufficient,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -229,6 +274,209 @@ struct PadIndex {
 struct LotResolution {
     mapping: GeoCondoLotMapping,
     unmapped: Option<GeoCondoUnmappedLot>,
+}
+
+pub fn bridge_condo_unit(
+    request: &GeoCondoUnitBridgeRequest,
+) -> Result<GeoLedgerBridge, GeoCondoError> {
+    let request = canonicalize_condo_unit_bridge_request(request)?;
+    let block_candidates = request
+        .billing_bbl_candidates
+        .iter()
+        .filter(|candidate| candidate_matches_declared_block(candidate, &request.block))
+        .collect::<Vec<_>>();
+    if block_candidates.is_empty() {
+        return abstained_ledger_bridge(&request, GeoCondoConfirmation::KeyOnly, "block_mismatch");
+    }
+
+    let mut confirmed = Vec::<(String, Vec<String>)>::new();
+    for billing_bbl in block_candidates {
+        let Some(parcel_polygon) = request.parcel_rings.get(billing_bbl) else {
+            continue;
+        };
+        let parcel_ring = predicate_ring_from_polygon(
+            &request.frame_id,
+            "parcel_rings",
+            billing_bbl,
+            parcel_polygon,
+        )?;
+        let mut bins = Vec::new();
+        for bin in &request.bin_candidates {
+            let Some(footprint_polygon) = request.footprint_rings.get(bin) else {
+                continue;
+            };
+            let footprint_ring = predicate_ring_from_polygon(
+                &request.frame_id,
+                "footprint_rings",
+                bin,
+                footprint_polygon,
+            )?;
+            if footprint_majority_area_inside_parcel(&footprint_ring, &parcel_ring)
+                .map_err(|error| condo_area_error(billing_bbl, bin, error))?
+            {
+                bins.push(bin.clone());
+            }
+        }
+        if !bins.is_empty() {
+            confirmed.push((billing_bbl.clone(), bins));
+        }
+    }
+
+    match confirmed.as_slice() {
+        [(billing_bbl, bins)] => confirmed_ledger_bridge(&request, billing_bbl, bins),
+        [] => abstained_ledger_bridge(
+            &request,
+            GeoCondoConfirmation::BlockOnly,
+            "missing_geometry_confirmation",
+        ),
+        _ => abstained_ledger_bridge(
+            &request,
+            GeoCondoConfirmation::BlockOnly,
+            "ambiguous_billing_bbl",
+        ),
+    }
+}
+
+pub fn validate_condo_bridge_request_artifact(
+    request: &GeoCondoUnitBridgeRequest,
+) -> Result<(), GeoCondoError> {
+    canonicalize_condo_unit_bridge_request(request).map(|_| ())
+}
+
+pub fn canonical_condo_unit_bridge_request_bytes(
+    request: &GeoCondoUnitBridgeRequest,
+) -> Result<Vec<u8>, GeoCondoError> {
+    let canonical = canonicalize_condo_unit_bridge_request(request)?;
+    serde_json::to_vec(&canonical).map_err(|error| {
+        GeoCondoError::invalid(
+            "Geo condo unit bridge request could not be serialized",
+            [("serde_error", error.to_string())],
+        )
+    })
+}
+
+pub fn canonical_ledger_bridge_bytes(bridge: &GeoLedgerBridge) -> Result<Vec<u8>, GeoCondoError> {
+    validate_ledger_bridge_artifact(bridge)?;
+    serde_json::to_vec(bridge).map_err(|error| {
+        GeoCondoError::invalid(
+            "Geo ledger bridge artifact could not be serialized",
+            [("serde_error", error.to_string())],
+        )
+    })
+}
+
+pub fn validate_ledger_bridge_artifact(bridge: &GeoLedgerBridge) -> Result<(), GeoCondoError> {
+    if bridge.version != CANON_GEO_LEDGER_BRIDGE_VERSION {
+        return Err(GeoCondoError::new(
+            GeoCondoErrorCode::UnsupportedVersion,
+            "Unsupported Geo ledger bridge version",
+            [
+                ("actual", bridge.version.as_str()),
+                ("expected", CANON_GEO_LEDGER_BRIDGE_VERSION),
+            ],
+        ));
+    }
+    validate_string("unit_bbl", &bridge.unit_bbl)?;
+    validate_sorted_strings_readonly("bins", &bridge.bins)?;
+    for (left, relation, right) in &bridge.relations {
+        validate_identity_relation(left, right, *relation).map_err(|error| {
+            GeoCondoError::invalid(
+                "Geo ledger bridge relation violates the identity relation contract",
+                [
+                    ("left", format!("{}:{:?}", left.id, left.level)),
+                    ("right", format!("{}:{:?}", right.id, right.level)),
+                    ("relation", format!("{relation:?}")),
+                    ("source_code", format!("{:?}", error.code)),
+                    ("source_message", error.message),
+                ],
+            )
+        })?;
+    }
+
+    match bridge.confirmation {
+        GeoCondoConfirmation::BlockAndGeometry => {
+            let Some(billing_bbl) = &bridge.billing_bbl else {
+                return Err(GeoCondoError::invalid(
+                    "Geo ledger bridge confirmation requires a billing BBL",
+                    [("field", "billing_bbl")],
+                ));
+            };
+            validate_string("billing_bbl", billing_bbl)?;
+            if bridge.bins.is_empty() {
+                return Err(GeoCondoError::invalid(
+                    "Geo ledger bridge confirmation requires at least one BIN",
+                    [("field", "bins")],
+                ));
+            }
+            if bridge.abstained_reason.is_some() {
+                return Err(GeoCondoError::invalid(
+                    "Geo ledger bridge confirmation cannot carry an abstention reason",
+                    [("field", "abstained_reason")],
+                ));
+            }
+            if bridge.relations.len() != bridge.bins.len() + 1 {
+                return Err(GeoCondoError::invalid(
+                    "Geo ledger bridge relations must bind the unit and every confirmed BIN",
+                    [
+                        ("field", "relations".to_string()),
+                        ("relations", bridge.relations.len().to_string()),
+                        ("bins", bridge.bins.len().to_string()),
+                    ],
+                ));
+            }
+            let parcel = GeoEntityRef::new(GeoEntityLevel::Parcel, billing_bbl.clone());
+            let mut expected_relations = Vec::with_capacity(bridge.bins.len() + 1);
+            expected_relations.push((
+                GeoEntityRef::new(GeoEntityLevel::PoiUnit, bridge.unit_bbl.clone()),
+                GeoIdentityRelation::PartOf,
+                parcel.clone(),
+            ));
+            for bin in &bridge.bins {
+                expected_relations.push((
+                    GeoEntityRef::new(GeoEntityLevel::Building, bin.clone()),
+                    GeoIdentityRelation::On,
+                    parcel.clone(),
+                ));
+            }
+            if bridge.relations != expected_relations {
+                return Err(GeoCondoError::invalid(
+                    "Geo ledger bridge relations must match the emitted unit, billing BBL, and BINs",
+                    [("field", "relations")],
+                ));
+            }
+        }
+        GeoCondoConfirmation::BlockOnly | GeoCondoConfirmation::KeyOnly => {
+            if bridge.billing_bbl.is_some()
+                || !bridge.bins.is_empty()
+                || !bridge.relations.is_empty()
+            {
+                return Err(GeoCondoError::invalid(
+                    "Geo ledger bridge abstentions must not emit billing, BIN, or relation sets",
+                    [("field", "confirmation")],
+                ));
+            }
+            let Some(reason) = &bridge.abstained_reason else {
+                return Err(GeoCondoError::new(
+                    GeoCondoErrorCode::CondoConfirmationInsufficient,
+                    "Geo ledger bridge abstention must carry a typed reason",
+                    [("field", "abstained_reason")],
+                ));
+            };
+            validate_string("abstained_reason", reason)?;
+            if !reason.starts_with(GEO_CONDO_CONFIRMATION_INSUFFICIENT) {
+                return Err(GeoCondoError::new(
+                    GeoCondoErrorCode::CondoConfirmationInsufficient,
+                    "Geo ledger bridge abstention reason must preserve the condo confirmation code",
+                    [
+                        ("field", "abstained_reason"),
+                        ("expected", GEO_CONDO_CONFIRMATION_INSUFFICIENT),
+                        ("actual", reason.as_str()),
+                    ],
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 pub fn build_condo_bridge(
@@ -466,8 +714,8 @@ fn reexpress_lots(
 ) -> Result<Vec<String>, GeoCondoError> {
     let mut output = BTreeSet::new();
     for lot in lots {
-        if is_condo_unit_lot(lot)? {
-            let resolution = resolve_unit_lot(lot, index)?;
+        let resolution = resolve_unit_lot(lot, index)?;
+        if resolution.mapping.match_kind.is_some() {
             if record_mappings {
                 mappings.push(resolution.mapping.clone());
                 if let Some(unmapped_lot) = resolution.unmapped.clone() {
@@ -639,6 +887,199 @@ fn reach_count(truth: &[String], universe: &[String]) -> Result<GeoCondoReachCou
     })
 }
 
+fn canonicalize_condo_unit_bridge_request(
+    request: &GeoCondoUnitBridgeRequest,
+) -> Result<GeoCondoUnitBridgeRequest, GeoCondoError> {
+    if request.version != CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION {
+        return Err(GeoCondoError::new(
+            GeoCondoErrorCode::UnsupportedVersion,
+            "Unsupported Geo condo bridge request version",
+            [
+                ("actual", request.version.as_str()),
+                ("expected", CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION),
+            ],
+        ));
+    }
+    validate_string("unit_bbl", &request.unit_bbl)?;
+    validate_string("block", &request.block)?;
+    validate_string("frame_id", &request.frame_id)?;
+
+    let mut canonical = request.clone();
+    sort_dedup_strings(
+        "billing_bbl_candidates",
+        &mut canonical.billing_bbl_candidates,
+    )?;
+    sort_dedup_strings("bin_candidates", &mut canonical.bin_candidates)?;
+    validate_polygon_map("parcel_rings", &canonical.parcel_rings)?;
+    validate_polygon_map("footprint_rings", &canonical.footprint_rings)?;
+    Ok(canonical)
+}
+
+fn confirmed_ledger_bridge(
+    request: &GeoCondoUnitBridgeRequest,
+    billing_bbl: &str,
+    bins: &[String],
+) -> Result<GeoLedgerBridge, GeoCondoError> {
+    let unit = GeoEntityRef::new(GeoEntityLevel::PoiUnit, request.unit_bbl.clone());
+    let parcel = GeoEntityRef::new(GeoEntityLevel::Parcel, billing_bbl.to_string());
+    let mut relations = Vec::with_capacity(bins.len() + 1);
+    relations.push((unit, GeoIdentityRelation::PartOf, parcel.clone()));
+    for bin in bins {
+        relations.push((
+            GeoEntityRef::new(GeoEntityLevel::Building, bin.clone()),
+            GeoIdentityRelation::On,
+            parcel.clone(),
+        ));
+    }
+    let bridge = GeoLedgerBridge {
+        version: CANON_GEO_LEDGER_BRIDGE_VERSION.to_string(),
+        unit_bbl: request.unit_bbl.clone(),
+        billing_bbl: Some(billing_bbl.to_string()),
+        bins: bins.to_vec(),
+        confirmation: GeoCondoConfirmation::BlockAndGeometry,
+        relations,
+        abstained_reason: None,
+    };
+    validate_ledger_bridge_artifact(&bridge)?;
+    Ok(bridge)
+}
+
+fn abstained_ledger_bridge(
+    request: &GeoCondoUnitBridgeRequest,
+    confirmation: GeoCondoConfirmation,
+    reason: &str,
+) -> Result<GeoLedgerBridge, GeoCondoError> {
+    let bridge = GeoLedgerBridge {
+        version: CANON_GEO_LEDGER_BRIDGE_VERSION.to_string(),
+        unit_bbl: request.unit_bbl.clone(),
+        billing_bbl: None,
+        bins: Vec::new(),
+        confirmation,
+        relations: Vec::new(),
+        abstained_reason: Some(format!("{GEO_CONDO_CONFIRMATION_INSUFFICIENT}:{reason}")),
+    };
+    validate_ledger_bridge_artifact(&bridge)?;
+    Ok(bridge)
+}
+
+fn candidate_matches_declared_block(candidate: &str, block: &str) -> bool {
+    if candidate == block || candidate.starts_with(block) {
+        return true;
+    }
+    if candidate.len() == 10
+        && candidate.bytes().all(|byte| byte.is_ascii_digit())
+        && block.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        let candidate_block = candidate[1..6].trim_start_matches('0');
+        let declared_block = block.trim_start_matches('0');
+        return !candidate_block.is_empty() && candidate_block == declared_block;
+    }
+    false
+}
+
+fn predicate_ring_from_polygon(
+    frame_id: &str,
+    field: &'static str,
+    geometry_id: &str,
+    polygon: &GeoCanonicalPolygonMm,
+) -> Result<GeoLinearRingMm, GeoCondoError> {
+    if !polygon.holes.is_empty() {
+        return Err(GeoCondoError::invalid(
+            "Geo condo bridge geometry confirmation consumes exterior rings only",
+            [
+                ("field", field.to_string()),
+                ("geometry_id", geometry_id.to_string()),
+                ("holes", polygon.holes.len().to_string()),
+            ],
+        ));
+    }
+    let mut closed = polygon.exterior.vertices.clone();
+    if closed.is_empty() {
+        return Err(GeoCondoError::invalid(
+            "Geo condo bridge polygon exterior must contain vertices",
+            [("field", field), ("geometry_id", geometry_id)],
+        ));
+    }
+    closed.push(closed[0]);
+    GeoLinearRingMm::new(frame_id.to_string(), closed)
+        .map_err(|error| condo_predicate_error(field, geometry_id, error))
+}
+
+fn validate_polygon_map(
+    field: &'static str,
+    values: &BTreeMap<String, GeoCanonicalPolygonMm>,
+) -> Result<(), GeoCondoError> {
+    for (key, polygon) in values {
+        validate_string(field, key)?;
+        if polygon.exterior.vertices.is_empty() {
+            return Err(GeoCondoError::invalid(
+                "Geo condo bridge polygon exterior must contain vertices",
+                [("field", field), ("geometry_id", key.as_str())],
+            ));
+        }
+        for point in &polygon.exterior.vertices {
+            validate_point_mm(field, key, *point)?;
+        }
+        for hole in &polygon.holes {
+            if hole.vertices.is_empty() {
+                return Err(GeoCondoError::invalid(
+                    "Geo condo bridge polygon holes must contain vertices when present",
+                    [("field", field), ("geometry_id", key.as_str())],
+                ));
+            }
+            for point in &hole.vertices {
+                validate_point_mm(field, key, *point)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_point_mm(
+    field: &'static str,
+    geometry_id: &str,
+    point: GeoPointMm,
+) -> Result<(), GeoCondoError> {
+    if point.x == i64::MIN || point.y == i64::MIN {
+        return Err(GeoCondoError::invalid(
+            "Geo condo bridge geometry points must stay inside the checked arithmetic domain",
+            [
+                ("field", field.to_string()),
+                ("geometry_id", geometry_id.to_string()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn condo_area_error(billing_bbl: &str, bin: &str, error: GeoAreaMajorityError) -> GeoCondoError {
+    let mut detail = error.detail;
+    detail.insert("billing_bbl".to_string(), billing_bbl.to_string());
+    detail.insert("bin".to_string(), bin.to_string());
+    detail.insert("source_code".to_string(), format!("{:?}", error.code));
+    detail.insert("source_message".to_string(), error.message);
+    GeoCondoError::invalid(
+        "Geo condo bridge geometry confirmation failed during area-majority evaluation",
+        detail,
+    )
+}
+
+fn condo_predicate_error(
+    field: &'static str,
+    geometry_id: &str,
+    error: GeoPredicateError,
+) -> GeoCondoError {
+    let mut detail = error.detail;
+    detail.insert("field".to_string(), field.to_string());
+    detail.insert("geometry_id".to_string(), geometry_id.to_string());
+    detail.insert("source_code".to_string(), format!("{:?}", error.code));
+    detail.insert("source_message".to_string(), error.message);
+    GeoCondoError::invalid(
+        "Geo condo bridge geometry confirmation failed while validating a ring",
+        detail,
+    )
+}
+
 fn validate_pad_row(row: &GeoPadBblRow) -> Result<(), GeoCondoError> {
     validate_bbl("pad_rows[].BBL_KEY", &row.bbl_key)?;
     validate_bbl("pad_rows[].LOW_BBL_KEY", &row.low_bbl_key)?;
@@ -751,12 +1192,6 @@ fn validate_mappings(mappings: &[GeoCondoLotMapping]) -> Result<(), GeoCondoErro
     let mut previous: Option<&str> = None;
     for mapping in mappings {
         validate_bbl("lot_mappings[].unit_lot", &mapping.unit_lot)?;
-        if !is_condo_unit_lot(&mapping.unit_lot)? {
-            return Err(GeoCondoError::invalid(
-                "Geo condo bridge lot mappings must reference condo unit lots",
-                [("unit_lot", mapping.unit_lot.as_str())],
-            ));
-        }
         if previous.is_some_and(|previous| previous >= mapping.unit_lot.as_str()) {
             return Err(GeoCondoError::invalid(
                 "Geo condo bridge lot mappings must be sorted and unique",
@@ -898,24 +1333,30 @@ fn validate_sorted_strings(
     Ok(())
 }
 
-fn is_condo_unit_lot(bbl: &str) -> Result<bool, GeoCondoError> {
-    let lot = lot_number(bbl)?;
-    Ok((MIN_CONDO_UNIT_LOT..=MAX_CONDO_UNIT_LOT).contains(&lot))
+fn sort_dedup_strings(field: &str, values: &mut Vec<String>) -> Result<(), GeoCondoError> {
+    values.sort();
+    values.dedup();
+    validate_sorted_strings_readonly(field, values)
+}
+
+fn validate_sorted_strings_readonly(field: &str, values: &[String]) -> Result<(), GeoCondoError> {
+    let mut previous: Option<&str> = None;
+    for value in values {
+        validate_string(field, value)?;
+        if previous.is_some_and(|previous| previous >= value.as_str()) {
+            return Err(GeoCondoError::invalid(
+                "Geo condo bridge string lists must be sorted and distinct",
+                [("field", field), ("value", value.as_str())],
+            ));
+        }
+        previous = Some(value.as_str());
+    }
+    Ok(())
 }
 
 fn block_key(bbl: &str) -> Result<&str, GeoCondoError> {
     validate_bbl("bbl", bbl)?;
     Ok(&bbl[..6])
-}
-
-fn lot_number(bbl: &str) -> Result<u16, GeoCondoError> {
-    validate_bbl("bbl", bbl)?;
-    bbl[6..].parse::<u16>().map_err(|error| {
-        GeoCondoError::invalid(
-            "Geo condo bridge BBL lot component must parse as u16",
-            [("bbl", bbl.to_string()), ("error", error.to_string())],
-        )
-    })
 }
 
 fn validate_bbl(field: &str, value: &str) -> Result<(), GeoCondoError> {

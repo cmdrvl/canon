@@ -1,0 +1,64 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.ledger_bridge.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.ledger_bridge.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_ledger_bridge.v0",
+      "type": "string"
+    },
+    "unit_bbl": { "type": "string" },
+    "billing_bbl": { "type": "string" },
+    "bins": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "confirmation": {
+      "type": "string",
+      "enum": ["block_and_geometry", "block_only", "key_only"]
+    },
+    "relations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/relation_tuple" }
+    },
+    "abstained_reason": { "type": "string" }
+  },
+  "required": [
+    "version",
+    "unit_bbl",
+    "bins",
+    "confirmation",
+    "relations"
+  ],
+  "$defs": {
+    "entity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["poi_unit", "building", "parcel", "property"]
+        },
+        "id": { "type": "string" }
+      },
+      "required": ["level", "id"]
+    },
+    "identity_relation": {
+      "type": "string",
+      "enum": ["same_as", "contains", "part_of", "within", "on"]
+    },
+    "relation_tuple": {
+      "type": "array",
+      "prefixItems": [
+        { "$ref": "#/$defs/entity_ref" },
+        { "$ref": "#/$defs/identity_relation" },
+        { "$ref": "#/$defs/entity_ref" }
+      ],
+      "items": false,
+      "minItems": 3,
+      "maxItems": 3
+    }
+  }
+}
