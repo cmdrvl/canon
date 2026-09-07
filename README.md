@@ -423,7 +423,8 @@ canon geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=P
 canon geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVENTORY.json> --question <QUESTION.json> --capabilities <CAPABILITIES.json> --profile <PROFILE.json> --budget <BUDGET.json> --satisfy <REQUEST_ID=RECEIPT.json> --local-artifact <LOCAL_ARTIFACT_ID=PATH>... [--result <DIGEST_ID=PATH>...] --advancement-out <ADVANCEMENT.json>
 canon geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>]
 canon geo inspect                                    # planned, not implemented
-canon geo ledger build|validate|exposure|collision|card   # planned, not implemented
+canon geo ledger validate --ledger <LEDGER.json>
+canon geo ledger build|exposure|collision|card       # planned, not implemented
 
 # Geo — stage leaves (driven by `geo run` and Demo 0; independently callable, hidden from top-level help)
 canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>
@@ -501,15 +502,15 @@ every row:
 
 | Tier | Commands | Who runs it |
 |------|----------|-------------|
-| **primary** | `geo capabilities`, `geo plan`, `geo run`, `geo replan-from-acquisition`, `geo evaluate`, plus `geo inspect` and `geo ledger` once they ship | Agents and operators in the course of business. Listed first in `--help`, here, and in `canon --describe`. |
+| **primary** | `geo capabilities`, `geo plan`, `geo run`, `geo replan-from-acquisition`, `geo evaluate`, and `geo ledger validate` today, plus `geo inspect` and the remaining ledger verbs once they ship | Agents and operators in the course of business. Listed first in `--help`, here, and in `canon --describe`. |
 | **leaf** | `link-sources`, `materialize-home-cells`, `tile-work`, `reconcile-tiles`, `materialize-geometry`, `materialize-warehouse-geometry`, `materialize-evidence`, `materialize-address-evidence`, `compile-evidence`, `stack-evidence`, `solve` | The stages `geo run` executes. Kept independently callable for Demo 0, single-stage debugging, and tests; hidden from top-level `--help` and still machine-described. |
 | **measurement** | `materialize-h7-population`, `materialize-h7-staging-batch`, `materialize-h7-pip-block-batch` | Bounded profile adapters for the measurement harness. They move under `scripts/geo_measurements/` and the `canon_geo_measurements` binary; they are not a regional engine. |
 
-`geo inspect` and `geo ledger` are on the primary surface in
-[`docs/PLAN_CANON_GEO.md`](docs/PLAN_CANON_GEO.md) §19.3 but are **not implemented yet** —
-they carry `planned_not_implemented` status and are documented here so the intended surface
-is legible, not because they are callable. No shipped command was removed or renamed to
-reach this shape: the tiers change ordering and visibility, not availability.
+`geo inspect` and the `geo ledger` family are on the primary surface in
+[`docs/PLAN_CANON_GEO.md`](docs/PLAN_CANON_GEO.md) §19.3. `geo ledger validate`
+ships today as a positive local artifact validation command; `geo inspect` plus ledger
+`build`, `exposure`, `collision`, and `card` remain planned. No shipped command was removed
+or renamed to reach this shape: the tiers change ordering and visibility, not availability.
 
 ##### Primary
 
@@ -670,7 +671,9 @@ acquisition satisfies the stricter query-receipt contract.
 Open Geo limits remain: acquisition stays outside Canon's deterministic offline run,
 exactness is representation-relative to admitted candidates and contracts, candidate reach
 is an upstream proof obligation, immutable cross-release reuse in the same work directory is
-not guaranteed, E5/live scale proof is not shipped, and the primary-surface `geo inspect` and `geo ledger` verbs remain unimplemented.
+not guaranteed, E5/live scale proof is not shipped, `geo inspect` remains unimplemented,
+and `geo ledger` currently ships only the `validate` verb while `build`, `exposure`,
+`collision`, and `card` remain planned.
 
 ### Arguments
 
@@ -1638,15 +1641,17 @@ parcel/building only; candidate reach remains independently unverified unless th
 name a reference that proves it.
 
 Drive Geo from the primary surface: `geo capabilities`, `geo plan`, `geo run`,
-`geo replan-from-acquisition`, and `geo evaluate` today, plus `geo inspect` and
-`geo ledger` once they ship. The eleven stage leaves and three measurement adapters remain
+`geo replan-from-acquisition`, `geo evaluate`, and `geo ledger validate` today, plus
+`geo inspect` and ledger `build`, `exposure`, `collision`, and `card` once they ship. The eleven stage leaves and three measurement adapters remain
 independently callable and machine-described via `canon --describe`, but they are stage and
 harness surfaces — reach for them for Demo 0, single-stage debugging, and tests, not as the
 normal way to ask Geo a question. See [Geo command surface](#geo-command-surface).
 
 Geo run is not live acquisition or live proof: acquisition remains external, exactness is
 representation-relative, candidate reach is upstream, immutable cross-release same-workdir
-reuse is not guaranteed, E5/live scale proof is not shipped, and the primary-surface `geo inspect` and `geo ledger` verbs remain unimplemented.
+reuse is not guaranteed, E5/live scale proof is not shipped, `geo inspect` remains
+unimplemented, and `geo ledger` currently ships only the `validate` verb while `build`,
+`exposure`, `collision`, and `card` remain planned.
 
 ---
 
