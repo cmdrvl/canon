@@ -61,11 +61,11 @@ use canon::geo::{
     CANON_GEO_CAPABILITIES_VERSION, CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION,
     CANON_GEO_COLLATERAL_LEDGER_VERSION, CANON_GEO_COMPOSITION_REQUEST_VERSION,
     CANON_GEO_DEED_INDEX_ROWS_VERSION, CANON_GEO_DEED_TRUTH_VERSION,
-    CANON_GEO_ERROR_POPULATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
-    CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_H7_ACRIS_RELEASE_DT,
-    CANON_GEO_H7_AMOUNT_CENTS_QUANTIZATION, CANON_GEO_H7_BRIDGE_BUILD_ID,
-    CANON_GEO_H7_COLLATERAL_SCOPE, CANON_GEO_H7_LENDER_MATCH_TRANSFORM,
-    CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION,
+    CANON_GEO_E4_GATE_ASSESSMENT_VERSION, CANON_GEO_ERROR_POPULATION_VERSION,
+    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_GEOMETRY_REQUEST_VERSION,
+    CANON_GEO_H7_ACRIS_RELEASE_DT, CANON_GEO_H7_AMOUNT_CENTS_QUANTIZATION,
+    CANON_GEO_H7_BRIDGE_BUILD_ID, CANON_GEO_H7_COLLATERAL_SCOPE,
+    CANON_GEO_H7_LENDER_MATCH_TRANSFORM, CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION,
     CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
     CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_PRIMARY_MAPPLUTO_RELEASE,
     CANON_GEO_H7_ROUND_AMOUNT_LATTICE_CENTS,
@@ -91,15 +91,16 @@ use canon::geo::{
     GeoClientTileSourceFormat, GeoClientTileVendorIdentifier, GeoCollateralLedger,
     GeoCollateralLedgerProofClass, GeoCompositionModel, GeoCompositionProfile,
     GeoCompositionRequest, GeoCompositionStatus, GeoCompositionUniverse, GeoControlEntityLevel,
-    GeoCoveragePredicate, GeoDeedIndexRowsRequest, GeoDeedTruthLoanRef, GeoEgressClass,
-    GeoEntityLevel, GeoEntityRef, GeoErrorPopulationArtifact, GeoErrorPopulationSubject,
-    GeoEvidenceClaimRole, GeoEvidenceClass, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef,
-    GeoExactSourceUnitMm, GeoExplanationBudget, GeoGeometryFeatureInput, GeoGeometryTileRequest,
-    GeoH7AssociationPlane, GeoH7BoroughEdge, GeoH7CandidateReachStatus, GeoH7FiledCountyMapping,
-    GeoH7MapplutoReleasePin, GeoH7PlaneDenominator, GeoH7PopulationProvenance,
-    GeoH7PopulationRowsRequest, GeoH7PopulationScope, GeoH7PopulationWarehouseRow,
-    GeoH7QueryDisposition, GeoH7QueryReceipt, GeoH7ResultMode, GeoH7SourceEvidenceRecord,
-    GeoH7SourceRecordRole, GeoH7StagingEvidenceRecordRef, GeoH7StagingSourceEvidenceRecord,
+    GeoCoveragePredicate, GeoDeedIndexRowsRequest, GeoDeedTruthLoanRef, GeoE4GateProofClass,
+    GeoEgressClass, GeoEntityLevel, GeoEntityRef, GeoErrorPopulationArtifact,
+    GeoErrorPopulationSubject, GeoEvidenceClaimRole, GeoEvidenceClass,
+    GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoExactSourceUnitMm,
+    GeoExplanationBudget, GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoH7AssociationPlane,
+    GeoH7BoroughEdge, GeoH7CandidateReachStatus, GeoH7FiledCountyMapping, GeoH7MapplutoReleasePin,
+    GeoH7PlaneDenominator, GeoH7PopulationProvenance, GeoH7PopulationRowsRequest,
+    GeoH7PopulationScope, GeoH7PopulationWarehouseRow, GeoH7QueryDisposition, GeoH7QueryReceipt,
+    GeoH7ResultMode, GeoH7SourceEvidenceRecord, GeoH7SourceRecordRole,
+    GeoH7StagingEvidenceRecordRef, GeoH7StagingSourceEvidenceRecord,
     GeoH7StagingSourceRecordBytesBatchRequest, GeoH7StagingSourceRecordBytesRow, GeoHardConstraint,
     GeoHardConstraintKind, GeoHomeCellAssignmentArtifact, GeoHomeCellRow, GeoHomeCellRowsRequest,
     GeoIdentityParticipation, GeoIntegerMeasure, GeoIntegerMemberValue, GeoIntegerValueOrigin,
@@ -125,9 +126,10 @@ use canon::geo::{
     GeoTileReconciliationArtifact, GeoTileReconciliationRequest, GeoTileSourceBinding,
     GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoTruthPlane, GeoValueOrigin,
     GeoWarehouseEvidenceRow, GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest,
-    GeoWarehouseParcelRow, GeoWarehouseRowsRequest, build_collateral_ledger,
+    GeoWarehouseParcelRow, GeoWarehouseRowsRequest, assess_e4_gate, build_collateral_ledger,
     canonical_collateral_ledger_bytes, canonical_composition_bytes,
-    canonical_deed_index_rows_bytes, canonical_deed_truth_bytes, canonical_error_population_bytes,
+    canonical_deed_index_rows_bytes, canonical_deed_truth_bytes,
+    canonical_e4_gate_assessment_bytes, canonical_error_population_bytes,
     canonical_explanation_bytes, canonical_next_evidence_bytes,
     canonical_next_evidence_inputs_bytes, canonical_next_evidence_request_bytes,
     canonical_pre_resolution_bytes, canonical_propagation_bytes, canonical_redacted_artifact_bytes,
@@ -140,8 +142,8 @@ use canon::geo::{
     minimal_core, parse_address_forest, propagate, recommend, reconcile_tile_decisions,
     redact_geo_artifact, regional_inventory_semantic_hash, separate, solve_composition,
     stack_population_evidence, validate_deed_index_rows_request, validate_deed_truth_artifact,
-    validate_point_population_artifact, validate_pre_resolution_artifact,
-    validate_redacted_artifact,
+    validate_e4_gate_assessment, validate_point_population_artifact,
+    validate_pre_resolution_artifact, validate_redacted_artifact,
 };
 use canon::geo::{
     CANON_GEO_TEMPORAL_CONTAINMENT_VERSION, GeoTemporalContainmentArtifact,
@@ -166,6 +168,8 @@ const POPULATION_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.population_request.v0.schema.json");
 const POPULATION_EVALUATION_SCHEMA: &str =
     include_str!("../schemas/canon.geo.population_evaluation.v0.schema.json");
+const E4_GATE_ASSESSMENT_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.e4_gate_assessment.v0.schema.json");
 const DEED_INDEX_ROWS_SCHEMA: &str =
     include_str!("../schemas/canon.geo.deed_index_rows.v0.schema.json");
 const DEED_TRUTH_SCHEMA: &str = include_str!("../schemas/canon.geo.deed_truth.v0.schema.json");
@@ -4129,6 +4133,35 @@ fn deed_truth_schema_matches_a_real_instance() {
         DEED_TRUTH_SCHEMA,
         "canon.geo.deed_truth.v0",
         CANON_GEO_DEED_TRUTH_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn e4_gate_assessment_schema_matches_a_real_instance() {
+    let request = GeoPopulationEvaluationRequest {
+        version: CANON_GEO_POPULATION_REQUEST_VERSION.to_string(),
+        cases: vec![GeoLabeledCompositionCase {
+            id: "case-1".to_string(),
+            evidence: evidence_request(),
+            truth_plane: GeoTruthPlane::GateV2Historical,
+            truth: GeoCompositionModel {
+                parcels: vec!["parcel-a".to_string()],
+                buildings: Vec::new(),
+            },
+        }],
+        max_cases: 8,
+    };
+    let evaluation = evaluate_population(&request).expect("population must evaluate");
+    let assessment = assess_e4_gate(&evaluation, GeoE4GateProofClass::FixtureSubset)
+        .expect("E4 gate assessment must score");
+    validate_e4_gate_assessment(&assessment).expect("E4 gate assessment must validate");
+    let bytes = canonical_e4_gate_assessment_bytes(&assessment).expect("assessment must serialize");
+    let instance: Value = serde_json::from_slice(&bytes).expect("assessment JSON parses");
+    assert_drift_free(
+        E4_GATE_ASSESSMENT_SCHEMA,
+        "canon.geo.e4_gate_assessment.v0",
+        CANON_GEO_E4_GATE_ASSESSMENT_VERSION,
         &instance,
     );
 }

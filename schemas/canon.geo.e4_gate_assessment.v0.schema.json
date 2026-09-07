@@ -1,0 +1,348 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.e4_gate_assessment.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.e4_gate_assessment.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_e4_gate_assessment.v0",
+      "type": "string"
+    },
+    "gate_id": {
+      "type": "string"
+    },
+    "proof_class": {
+      "$ref": "#/$defs/proof_class"
+    },
+    "status": {
+      "$ref": "#/$defs/status"
+    },
+    "release_claim_allowed": {
+      "type": "boolean"
+    },
+    "required_subjects": {
+      "$ref": "#/$defs/count"
+    },
+    "evaluated_cases": {
+      "$ref": "#/$defs/count"
+    },
+    "subject_deficit": {
+      "$ref": "#/$defs/count"
+    },
+    "source_evaluation_blake3": {
+      "$ref": "#/$defs/blake3"
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/blocker"
+      }
+    },
+    "planes": {
+      "$ref": "#/$defs/plane_scores"
+    },
+    "truth_planes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/truth_plane_gate_assessment"
+      }
+    }
+  },
+  "required": [
+    "version",
+    "gate_id",
+    "proof_class",
+    "status",
+    "release_claim_allowed",
+    "required_subjects",
+    "evaluated_cases",
+    "subject_deficit",
+    "source_evaluation_blake3",
+    "blockers",
+    "planes",
+    "truth_planes"
+  ],
+  "$defs": {
+    "blake3": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "proof_class": {
+      "type": "string",
+      "enum": [
+        "fixture_subset",
+        "observed_snapshot",
+        "retained_complete",
+        "live_complete"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "passed"
+      ]
+    },
+    "gate_plane": {
+      "type": "string",
+      "enum": [
+        "proof",
+        "coverage",
+        "candidate_reach",
+        "admission",
+        "solver_exactness",
+        "reconciliation",
+        "truth_quality",
+        "cost"
+      ]
+    },
+    "blocker_code": {
+      "type": "string",
+      "enum": [
+        "proof_class_not_live_complete",
+        "population_denominator_mismatch",
+        "evidence_no_observation",
+        "candidate_reach_incomplete",
+        "solver_artifact_missing",
+        "residual_count_inexact",
+        "rho_falsification",
+        "false_merge",
+        "assignment_budget_exceeded",
+        "component_budget_fallback"
+      ]
+    },
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "plane": {
+          "$ref": "#/$defs/gate_plane"
+        },
+        "code": {
+          "$ref": "#/$defs/blocker_code"
+        },
+        "observed": {
+          "type": "string"
+        },
+        "required": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "plane",
+        "code",
+        "observed",
+        "required"
+      ]
+    },
+    "truth_plane": {
+      "type": "string",
+      "enum": [
+        "gate_v2_historical",
+        "non_round_amount_date_legal_borough",
+        "round_exact_lender_party",
+        "address_derived_control",
+        "deed_grain_instrument",
+        "human_adjudication"
+      ]
+    },
+    "coverage_plane_score": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cases": { "$ref": "#/$defs/count" },
+        "population_eligible_cases": { "$ref": "#/$defs/count" },
+        "evidence_no_observation_cases": { "$ref": "#/$defs/count" },
+        "evidence_diagnostic_only_cases": { "$ref": "#/$defs/count" },
+        "evidence_soft_preference_only_cases": { "$ref": "#/$defs/count" },
+        "evidence_soft_and_diagnostic_only_cases": { "$ref": "#/$defs/count" },
+        "evidence_hard_constraint_cases": { "$ref": "#/$defs/count" }
+      },
+      "required": [
+        "cases",
+        "population_eligible_cases",
+        "evidence_no_observation_cases",
+        "evidence_diagnostic_only_cases",
+        "evidence_soft_preference_only_cases",
+        "evidence_soft_and_diagnostic_only_cases",
+        "evidence_hard_constraint_cases"
+      ]
+    },
+    "candidate_reach_plane_score": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "evaluated_cases": { "$ref": "#/$defs/count" },
+        "full_cases": { "$ref": "#/$defs/count" },
+        "partial_cases": { "$ref": "#/$defs/count" },
+        "none_cases": { "$ref": "#/$defs/count" },
+        "recall_failure_cases": { "$ref": "#/$defs/count" }
+      },
+      "required": [
+        "evaluated_cases",
+        "full_cases",
+        "partial_cases",
+        "none_cases",
+        "recall_failure_cases"
+      ]
+    },
+    "admission_plane_score": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hard_constraint_cases": { "$ref": "#/$defs/count" },
+        "soft_preference_only_cases": { "$ref": "#/$defs/count" },
+        "diagnostic_only_cases": { "$ref": "#/$defs/count" },
+        "soft_and_diagnostic_only_cases": { "$ref": "#/$defs/count" },
+        "rho_falsification_cases": { "$ref": "#/$defs/count" }
+      },
+      "required": [
+        "hard_constraint_cases",
+        "soft_preference_only_cases",
+        "diagnostic_only_cases",
+        "soft_and_diagnostic_only_cases",
+        "rho_falsification_cases"
+      ]
+    },
+    "solver_exactness_plane_score": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "solver_artifact_cases": { "$ref": "#/$defs/count" },
+        "residual_count_complete_cases": { "$ref": "#/$defs/count" },
+        "residual_count_exact_cases": { "$ref": "#/$defs/count" },
+        "residual_count_saturated_cases": { "$ref": "#/$defs/count" },
+        "residual_count_unavailable_cases": { "$ref": "#/$defs/count" },
+        "assignment_budget_exceeded_cases": { "$ref": "#/$defs/count" },
+        "component_budget_fallback_cases": { "$ref": "#/$defs/count" }
+      },
+      "required": [
+        "solver_artifact_cases",
+        "residual_count_complete_cases",
+        "residual_count_exact_cases",
+        "residual_count_saturated_cases",
+        "residual_count_unavailable_cases",
+        "assignment_budget_exceeded_cases",
+        "component_budget_fallback_cases"
+      ]
+    },
+    "reconciliation_plane_score": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resolved_cases": { "$ref": "#/$defs/count" },
+        "evidentially_supported_resolved_cases": { "$ref": "#/$defs/count" },
+        "structurally_forced_resolved_cases": { "$ref": "#/$defs/count" },
+        "resolved_with_reach_not_full_cases": { "$ref": "#/$defs/count" },
+        "ambiguous_cases": { "$ref": "#/$defs/count" },
+        "conflict_cases": { "$ref": "#/$defs/count" },
+        "abstention_cases": { "$ref": "#/$defs/count" }
+      },
+      "required": [
+        "resolved_cases",
+        "evidentially_supported_resolved_cases",
+        "structurally_forced_resolved_cases",
+        "resolved_with_reach_not_full_cases",
+        "ambiguous_cases",
+        "conflict_cases",
+        "abstention_cases"
+      ]
+    },
+    "truth_quality_plane_score": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "full_truth_recall_cases": { "$ref": "#/$defs/count" },
+        "solver_truth_scored_cases": { "$ref": "#/$defs/count" },
+        "solver_truth_retained_cases": { "$ref": "#/$defs/count" },
+        "solver_truth_exclusion_cases": { "$ref": "#/$defs/count" },
+        "false_merge_cases": { "$ref": "#/$defs/count" },
+        "backbone_complete_cases": { "$ref": "#/$defs/count" },
+        "truth_members": { "$ref": "#/$defs/count" },
+        "truth_members_in_universe": { "$ref": "#/$defs/count" },
+        "backbone_true_positive_members": { "$ref": "#/$defs/count" },
+        "backbone_false_positive_members": { "$ref": "#/$defs/count" }
+      },
+      "required": [
+        "full_truth_recall_cases",
+        "solver_truth_scored_cases",
+        "solver_truth_retained_cases",
+        "solver_truth_exclusion_cases",
+        "false_merge_cases",
+        "backbone_complete_cases",
+        "truth_members",
+        "truth_members_in_universe",
+        "backbone_true_positive_members",
+        "backbone_false_positive_members"
+      ]
+    },
+    "cost_plane_score": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "candidate_members": { "$ref": "#/$defs/count" },
+        "max_candidate_members": { "$ref": "#/$defs/count" },
+        "solver_artifact_cases": { "$ref": "#/$defs/count" },
+        "residual_count_complete_cases": { "$ref": "#/$defs/count" },
+        "residual_count_saturated_cases": { "$ref": "#/$defs/count" },
+        "residual_count_unavailable_cases": { "$ref": "#/$defs/count" },
+        "max_residual_model_count": { "$ref": "#/$defs/count" },
+        "assignment_budget_exceeded_cases": { "$ref": "#/$defs/count" },
+        "component_budget_fallback_cases": { "$ref": "#/$defs/count" }
+      },
+      "required": [
+        "candidate_members",
+        "max_candidate_members",
+        "solver_artifact_cases",
+        "residual_count_complete_cases",
+        "residual_count_saturated_cases",
+        "residual_count_unavailable_cases",
+        "assignment_budget_exceeded_cases",
+        "component_budget_fallback_cases"
+      ]
+    },
+    "plane_scores": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "coverage": { "$ref": "#/$defs/coverage_plane_score" },
+        "candidate_reach": { "$ref": "#/$defs/candidate_reach_plane_score" },
+        "admission": { "$ref": "#/$defs/admission_plane_score" },
+        "solver_exactness": { "$ref": "#/$defs/solver_exactness_plane_score" },
+        "reconciliation": { "$ref": "#/$defs/reconciliation_plane_score" },
+        "truth_quality": { "$ref": "#/$defs/truth_quality_plane_score" },
+        "cost": { "$ref": "#/$defs/cost_plane_score" }
+      },
+      "required": [
+        "coverage",
+        "candidate_reach",
+        "admission",
+        "solver_exactness",
+        "reconciliation",
+        "truth_quality",
+        "cost"
+      ]
+    },
+    "truth_plane_gate_assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "truth_plane": {
+          "$ref": "#/$defs/truth_plane"
+        },
+        "planes": {
+          "$ref": "#/$defs/plane_scores"
+        }
+      },
+      "required": [
+        "truth_plane",
+        "planes"
+      ]
+    }
+  }
+}
