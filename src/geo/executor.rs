@@ -315,8 +315,8 @@ impl GeoProjectNodeExecutor {
         validate_node_contract(node, context, command)?;
         self.clear_dependency_outputs_for_declared_producers(node);
         self.ingest_context_dependency_outputs(node, context)?;
-        validate_expected_dependency(node, command, &self.dependency_outputs)?;
         self.validate_no_forbidden_direct_bindings(node, command)?;
+        validate_expected_dependency(node, command, &self.dependency_outputs)?;
 
         let leaf = match command {
             GeoExecutorCommand::MaterializeHomeCells => self.execute_home_cells(node)?,
@@ -1197,11 +1197,14 @@ impl GeoProjectNodeExecutor {
         node: &ProjectPlanNode,
         compilation: &GeoEvidenceCompilationArtifact,
     ) -> ProjectRunResult<GeoCompositionRequest> {
-        let propagation = self.required_unique_declared_dependency_artifact(
+        let Some(propagation) = self.optional_declared_dependency_artifact(
             node,
             GEO_PROPAGATE_OUTPUT_ID,
             CANON_GEO_PROPAGATION_VERSION,
-        )?;
+        )?
+        else {
+            return Ok(compilation.composition_request.clone());
+        };
         let propagation_artifact: GeoPropagationArtifact =
             parse_json(node, &propagation.bytes, CANON_GEO_PROPAGATION_VERSION)?;
         validate_propagation_artifact(&propagation_artifact)
@@ -1356,7 +1359,7 @@ impl GeoProjectNodeExecutor {
             node,
             ProjectRunErrorCode::ArtifactContract,
             format!(
-                "Geo {} received undeclared direct input bindings: {}",
+                "Geo {} direct input bindings are forbidden; invalid binding ids: {}",
                 command.name(),
                 forbidden.join(",")
             ),
