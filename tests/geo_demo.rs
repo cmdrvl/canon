@@ -66,7 +66,7 @@ fn geo_capabilities_report_exact_surface_tier_counts() {
     assert_eq!(
         geo_capability_surface_counts(&capabilities),
         BTreeMap::from([
-            ("leaf".to_string(), 19),
+            ("leaf".to_string(), 21),
             ("measurement".to_string(), 3),
             ("primary".to_string(), 7)
         ])
@@ -76,13 +76,6 @@ fn geo_capabilities_report_exact_surface_tier_counts() {
         json!([
             {
                 "command": "canon geo inspect",
-                "surface": "primary",
-                "output_contract": "planned_not_implemented",
-                "read_only": true,
-                "uses_network": false
-            },
-            {
-                "command": "canon geo ledger",
                 "surface": "primary",
                 "output_contract": "planned_not_implemented",
                 "read_only": true,
@@ -192,7 +185,7 @@ fn demo0_case4_public_cli_journey_is_byte_deterministic_and_honest() {
     );
     assert_eq!(
         summary["capabilities"]["unavailable_control_plane"],
-        json!(["canon geo inspect", "canon geo ledger"])
+        json!(["canon geo inspect"])
     );
     assert_eq!(
         summary["commands_exercised"],
