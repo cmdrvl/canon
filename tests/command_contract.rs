@@ -594,6 +594,7 @@ fn assert_runtime_corpus_coverage(manifest: &OperatorManifest, cases: &[RuntimeC
         "geo capabilities",
         "geo inspect",
         "geo ledger",
+        "geo ledger validate",
         "registry providers",
         "registry provider-schema",
         "registry export",
@@ -946,6 +947,60 @@ impl RuntimeHarness {
             "strategy_id: contract-block-preflight\nstrategy_version: 1\n",
         )
         .expect("block preflight strategy fixture");
+        let geo_ledger = self.work.join("geo-ledger.json");
+        let geo_ledger_digest = format!(
+            "blake3:{}",
+            blake3::hash(b"command-contract-geo-ledger").to_hex()
+        );
+        fs::write(
+            &geo_ledger,
+            serde_json::to_vec_pretty(&json!({
+                "version": "canon_geo_collateral_ledger.v0",
+                "proof_class": "fixture",
+                "rows": [{
+                    "version": "canon_geo_collateral_ledger.v0",
+                    "accession": "0000000000-26-000001",
+                    "deal_id": "fixture-command-contract-deal",
+                    "loan_id": "fixture-command-contract-loan",
+                    "reach": "full",
+                    "parcel_set": ["fixture-command-contract-parcel"],
+                    "building_set": [],
+                    "deed_ids": [],
+                    "truth_plane": "gate_v2_historical",
+                    "claim_class": "collateral_composition",
+                    "residual_model_count": 1,
+                    "count_exact": true,
+                    "backbone_complete": true,
+                    "source_release_pins": [{
+                        "source_dataset": "fixture.command_contract.geo_ledger",
+                        "source_release": "2026-09-07",
+                        "blake3": geo_ledger_digest.clone(),
+                    }],
+                    "composition_blake3": geo_ledger_digest.clone(),
+                    "evidence_blake3": geo_ledger_digest,
+                    "ambiguous_parcel_set": [],
+                    "ambiguous_building_set": [],
+                    "property_refs": [],
+                    "composition_status": "resolved"
+                }],
+                "rollups": [{
+                    "deal_id": "fixture-command-contract-deal",
+                    "accession": "0000000000-26-000001",
+                    "rows": 1,
+                    "truth_planes": {
+                        "gate_v2_historical": {
+                            "resolved": 1,
+                            "ambiguous": 0,
+                            "conflict": 0,
+                            "reach_none": 0,
+                            "budget_fallback": 0
+                        }
+                    }
+                }]
+            }))
+            .expect("geo ledger fixture serializes"),
+        )
+        .expect("geo ledger fixture");
 
         vec![
             RuntimeCase {
@@ -1131,20 +1186,38 @@ impl RuntimeHarness {
                     .with_stderr(StderrExpectation::Empty),
             },
             RuntimeCase {
-                id: "geo_ledger_planned_refusal",
+                id: "geo_ledger_requires_subcommand",
                 command_name: "geo ledger",
                 args: args(["geo", "ledger"]),
                 expected: RuntimeExpectation::json(2, "canon.v0", SchemaField::Version)
                     .assert_eq("outcome", json!("REFUSAL"))
-                    .assert_eq("refusal.code", json!("E_GEO_COMMAND_UNAVAILABLE"))
-                    .assert_ne("refusal.code", json!("E_ENTITY_ARTIFACT_CONTRACT"))
+                    .assert_eq("refusal.code", json!("E_PARSE"))
                     .assert_eq("refusal.detail.command", json!("canon geo ledger"))
-                    .assert_eq("refusal.detail.status", json!("planned_not_implemented"))
+                    .assert_eq("refusal.detail.subcommands", json!(["validate"]))
                     .assert_eq(
                         "refusal.next_command",
-                        json!("canon geo capabilities --emit json"),
+                        json!("canon geo ledger validate --ledger <LEDGER.json>"),
                     )
                     .with_stderr(StderrExpectation::Empty),
+            },
+            RuntimeCase {
+                id: "geo_ledger_validate_json",
+                command_name: "geo ledger validate",
+                args: vec![
+                    "geo".to_string(),
+                    "ledger".to_string(),
+                    "validate".to_string(),
+                    "--ledger".to_string(),
+                    path_arg(&geo_ledger),
+                ],
+                expected: RuntimeExpectation::json(
+                    0,
+                    "canon_geo_collateral_ledger.v0",
+                    SchemaField::Version,
+                )
+                .assert_eq("proof_class", json!("fixture"))
+                .assert_eq("rows.0.loan_id", json!("fixture-command-contract-loan"))
+                .with_stderr(StderrExpectation::Empty),
             },
             RuntimeCase {
                 id: "registry_providers_json",
