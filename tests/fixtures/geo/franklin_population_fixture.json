@@ -1,0 +1,116 @@
+{
+  "version": "canon_geo_population_request.v0",
+  "cases": [
+    {
+      "id": "loan-001",
+      "evidence": {
+        "version": "canon_geo_evidence_request.v0",
+        "profile": {
+          "version": "canon_geo_composition_profile.v0",
+          "selection_level": "parcel"
+        },
+        "universe": {
+          "parcels": [
+            "parcel-001-a",
+            "parcel-001-b"
+          ],
+          "buildings": []
+        },
+        "contracts": [],
+        "observations": [],
+        "max_assignments": 16,
+        "max_materialized_models": 16
+      },
+      "truth_plane": "deed_grain_instrument",
+      "truth": {
+        "parcels": [
+          "parcel-001-a",
+          "parcel-001-b"
+        ],
+        "buildings": []
+      }
+    },
+    {
+      "id": "loan-002",
+      "evidence": {
+        "version": "canon_geo_evidence_request.v0",
+        "profile": {
+          "version": "canon_geo_composition_profile.v0",
+          "selection_level": "parcel"
+        },
+        "universe": {
+          "parcels": [
+            "parcel-002-a"
+          ],
+          "buildings": []
+        },
+        "contracts": [],
+        "observations": [],
+        "max_assignments": 16,
+        "max_materialized_models": 16
+      },
+      "truth_plane": "deed_grain_instrument",
+      "truth": {
+        "parcels": [
+          "parcel-002-a"
+        ],
+        "buildings": []
+      }
+    },
+    {
+      "id": "loan-003",
+      "evidence": {
+        "version": "canon_geo_evidence_request.v0",
+        "profile": {
+          "version": "canon_geo_composition_profile.v0",
+          "selection_level": "parcel"
+        },
+        "universe": {
+          "parcels": [
+            "parcel-003-a"
+          ],
+          "buildings": []
+        },
+        "contracts": [],
+        "observations": [],
+        "max_assignments": 16,
+        "max_materialized_models": 16
+      },
+      "truth_plane": "deed_grain_instrument",
+      "truth": {
+        "parcels": [
+          "parcel-003-a"
+        ],
+        "buildings": []
+      }
+    },
+    {
+      "id": "loan-006",
+      "evidence": {
+        "version": "canon_geo_evidence_request.v0",
+        "profile": {
+          "version": "canon_geo_composition_profile.v0",
+          "selection_level": "parcel"
+        },
+        "universe": {
+          "parcels": [
+            "parcel-006-a"
+          ],
+          "buildings": []
+        },
+        "contracts": [],
+        "observations": [],
+        "max_assignments": 16,
+        "max_materialized_models": 16
+      },
+      "truth_plane": "deed_grain_instrument",
+      "truth": {
+        "parcels": [
+          "parcel-006-a"
+        ],
+        "buildings": []
+      }
+    }
+  ],
+  "max_cases": 4
+}

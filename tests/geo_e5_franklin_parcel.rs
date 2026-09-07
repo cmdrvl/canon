@@ -88,6 +88,9 @@ fn live_geometry_probe_is_seeded_source_byte_bound_and_cli_shaped() {
 #[test]
 fn franklin_instance_names_do_not_enter_the_generic_geo_engine() {
     for source in [
+        include_str!("../src/geo/evaluation.rs"),
+        include_str!("../src/geo/observer.rs"),
+        include_str!("../src/geo/ledger.rs"),
         include_str!("../src/geo/materialize.rs"),
         include_str!("../src/geo/geometry_value.rs"),
         include_str!("../src/geo/composition.rs"),
