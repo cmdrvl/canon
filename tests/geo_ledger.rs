@@ -14,7 +14,7 @@ use canon::geo::{
     GeoCompositionProfile, GeoCompositionStatus, GeoCompositionSummary,
     GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference, GeoEvidenceCompilationRequest,
     GeoLabeledCompositionCase, GeoModelCountScope, GeoPopulationEvaluationRequest, GeoTruthPlane,
-    canonical_evidence_compilation_bytes, compile_evidence,
+    GeoValidTimeInterval, canonical_evidence_compilation_bytes, compile_evidence,
 };
 use ledger::{
     CANON_GEO_COLLATERAL_LEDGER_VERSION, GeoCollateralLedger, GeoCollateralLedgerProofClass,
@@ -264,6 +264,40 @@ fn t23_build_ledger_row_requires_matching_evidence_digest_chain() {
         absent.detail["evidence_blake3"],
         evidence_blake3(&primary_evidence)
     );
+}
+
+#[test]
+fn t07_last_observed_present_interval_is_validated_and_serialized() {
+    let mut ledger = fixture_ledger();
+    let observed = GeoValidTimeInterval {
+        start_day: 19_723,
+        end_day: 19_754,
+    };
+    ledger.rows[0].last_observed_present = Some(observed);
+    ledger.rollups = vec![roll_up_deal(&ledger.rows).expect("dated rollup")];
+    validate_ledger(&ledger).expect("dated row validates");
+
+    let serialized = serde_json::to_value(&ledger.rows[0]).expect("dated row JSON");
+    assert_eq!(
+        serialized["last_observed_present"]["start_day"],
+        json!(observed.start_day)
+    );
+    assert_eq!(
+        serialized["last_observed_present"]["end_day"],
+        json!(observed.end_day)
+    );
+
+    let mut inverted = ledger;
+    inverted.rows[0].last_observed_present = Some(GeoValidTimeInterval {
+        start_day: observed.end_day,
+        end_day: observed.start_day,
+    });
+    let error = validate_ledger(&inverted).expect_err("inverted interval refuses");
+    assert_eq!(error.code, GeoLedgerErrorCode::InvalidInput);
+    assert_eq!(error.detail["field"], "last_observed_present");
+    assert_eq!(error.detail["loan_id"], inverted.rows[0].loan_id);
+    assert_eq!(error.detail["start_day"], observed.end_day.to_string());
+    assert_eq!(error.detail["end_day"], observed.start_day.to_string());
 }
 
 #[test]

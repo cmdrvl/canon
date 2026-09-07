@@ -510,7 +510,7 @@ fn validate_ledger_row(
     validate_sorted_unique("ambiguous_building_set", &row.ambiguous_building_set)?;
     validate_property_refs(&row.property_refs)?;
     if let Some(interval) = row.last_observed_present {
-        validate_interval("last_observed_present", interval)?;
+        validate_interval("last_observed_present", interval, &row.loan_id)?;
     }
 
     match row.reach {
@@ -873,7 +873,11 @@ fn normalize_required_reason(reason: Option<&str>) -> Result<String, GeoLedgerEr
     Ok(reason.to_string())
 }
 
-fn validate_interval(field: &str, interval: GeoValidTimeInterval) -> Result<(), GeoLedgerError> {
+fn validate_interval(
+    field: &str,
+    interval: GeoValidTimeInterval,
+    loan_id: &str,
+) -> Result<(), GeoLedgerError> {
     if interval.start_day > interval.end_day {
         let start_day = interval.start_day.to_string();
         let end_day = interval.end_day.to_string();
@@ -881,6 +885,7 @@ fn validate_interval(field: &str, interval: GeoValidTimeInterval) -> Result<(), 
             "Geo collateral ledger valid-time interval is inverted",
             [
                 ("field", field),
+                ("loan_id", loan_id),
                 ("start_day", start_day.as_str()),
                 ("end_day", end_day.as_str()),
             ],
