@@ -1389,7 +1389,7 @@
     {
       "name": "geo ledger",
       "usage": "canon geo ledger <SUBCOMMAND>",
-      "description": "Aggregate primary Geo ledger command for physical collateral ledger artifact operations; use validate to emit canonical canon_geo_collateral_ledger.v0 bytes",
+      "description": "Aggregate primary Geo ledger command for physical collateral ledger artifact operations; use build to construct a ledger from bound seed, solve, and evidence artifacts, or validate to replay canonical ledger bytes",
       "surface": "primary",
       "output_mode": "mixed",
       "output_schema": "canon_geo_collateral_ledger.v0",
@@ -1437,16 +1437,94 @@
           "domain": "error"
         }
       },
+      "next_command": "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>",
+      "recovery": {
+        "next_command": "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>",
+        "refusal_exit_code": 2
+      },
+      "aggregate": true,
+      "leaves": [
+        "geo ledger build",
+        "geo ledger validate"
+      ],
+      "options": []
+    },
+    {
+      "name": "geo ledger build",
+      "usage": "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>",
+      "description": "Build a physical collateral ledger from canon_geo_collateral_ledger_seed.v0 rows and explicitly bound canon_geo_composition.v0 plus canon_geo_evidence_compilation.v0 artifacts",
+      "output_mode": "json",
+      "output_schema": "canon_geo_collateral_ledger.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads only explicit --seed, --composition, and --evidence JSON files, validates every artifact binding before emitting canonical ledger bytes on stdout, and performs no catalog, project, registry, work-dir, or network reads",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "geo read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "canonical canon_geo_collateral_ledger.v0 artifact emitted",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / seed, composition, evidence, or artifact-chain contract error",
+          "domain": "error"
+        }
+      },
       "next_command": "canon geo ledger validate --ledger <LEDGER.json>",
       "recovery": {
         "next_command": "canon geo ledger validate --ledger <LEDGER.json>",
         "refusal_exit_code": 2
       },
-      "aggregate": true,
-      "leaves": [
-        "geo ledger validate"
-      ],
-      "options": []
+      "options": [
+        {
+          "name": "seed",
+          "flag": "--seed",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding a canon_geo_collateral_ledger_seed.v0 seed artifact"
+        },
+        {
+          "name": "composition",
+          "flag": "--composition",
+          "type": "assignment",
+          "required": false,
+          "repeatable": true,
+          "description": "Bound solve artifact as ARTIFACT_ID=COMPOSITION.json"
+        },
+        {
+          "name": "evidence",
+          "flag": "--evidence",
+          "type": "assignment",
+          "required": false,
+          "repeatable": true,
+          "description": "Bound evidence artifact as ARTIFACT_ID=EVIDENCE.json"
+        }
+      ]
     },
     {
       "name": "geo ledger validate",

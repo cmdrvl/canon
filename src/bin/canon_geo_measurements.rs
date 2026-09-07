@@ -1,12 +1,12 @@
 #![forbid(unsafe_code)]
 
 use canon::geo::{
-    CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
-    CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
+    canonical_h7_population_bytes, materialize_h7_pip_block_population_batch,
+    materialize_h7_population_rows, materialize_h7_staging_source_record_bytes_batch,
     GeoH7PipBlockPopulationBatchRequest, GeoH7PopulationRowsRequest,
-    GeoH7StagingSourceRecordBytesBatchRequest, canonical_h7_population_bytes,
-    materialize_h7_pip_block_population_batch, materialize_h7_population_rows,
-    materialize_h7_staging_source_record_bytes_batch,
+    GeoH7StagingSourceRecordBytesBatchRequest, CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION,
+    CANON_GEO_H7_POPULATION_ROWS_VERSION, CANON_GEO_H7_POPULATION_VERSION,
+    CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
 };
 use chrono::{DateTime, NaiveDate};
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum};
@@ -1723,6 +1723,12 @@ fn derive_denominators(
                     shared_u64(rows, field)?
                 };
                 denominators.insert(field.clone(), value);
+            }
+        }
+        "e5_franklin_deed_truth_export_v0" => {
+            let row = single_row(measurement, rows)?;
+            for field in &measurement.denominator_fields {
+                denominators.insert(field.clone(), required_u64(row, field)?);
             }
         }
         other => {

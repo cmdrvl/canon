@@ -183,6 +183,16 @@ applying the warehouse spatial predicate. The difference is candidate reach,
 upstream of predicate or solver truth. Snowflake GEOGRAPHY arithmetic is an
 empirical reference here, not Canon exact-local-integer truth.
 
+`e5_franklin_deed_truth_export.sql` is the D7 deed-grain truth-source guard and
+export input. It scans only warehouse metadata for a county recorder deed or
+mortgage index with the generic `canon_geo_deed_index_rows.v0` shape and emits
+one exact manifest row. On 2026-09-07 the guard is
+`recorder_source_not_landed`: no live Franklin deed-grain precision is claimed,
+and the artifact is fixture-class/not-scored until an external recorder landing
+supplies `SOURCE_SHA256`, `SOURCE_RELEASE`, `RELEASE_DT`, `PARSER_VERSION`,
+`LICENSE_TERMS`, and `ATTRIBUTION_TEXT`. This is bounded source availability,
+not E5 accuracy, not parcel reach, and not four independent votes.
+
 The original appendix labeled `882a100d8bfffff` as Manhattan. A fresh
 borough/coordinate control on 2026-08-29 proved it is Brooklyn: 2,343/2,343
 MapPLUTO rows have `BOROUGH='BK'`, 2,354/2,354 footprint BBLs have borough

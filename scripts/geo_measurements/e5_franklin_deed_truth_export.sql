@@ -104,67 +104,70 @@ missing_columns AS (
        OR NOT ARRAY_CONTAINS(rc.column_name::VARIANT, bt.present_required_columns)
 )
 SELECT
-    OBJECT_CONSTRUCT_KEEP_NULL(
-        'version', (SELECT output_contract FROM params),
-        'truth_plane', (SELECT truth_plane FROM params),
-        'proof_class',
-            CASE
-                WHEN bt.table_name IS NULL THEN (SELECT absent_proof_class FROM params)
-                WHEN bt.required_columns_present = (SELECT COUNT(*) FROM required_columns)
-                    THEN (SELECT present_proof_class FROM params)
-                ELSE (SELECT absent_proof_class FROM params)
-            END,
-        'recorder_source_status',
-            CASE
-                WHEN bt.table_name IS NULL THEN 'recorder_source_not_landed'
-                WHEN bt.required_columns_present = (SELECT COUNT(*) FROM required_columns)
-                    THEN 'recorder_source_shape_available'
-                ELSE 'recorder_source_shape_incomplete'
-            END,
-        'source_table',
-            CASE
-                WHEN bt.table_name IS NULL THEN NULL
-                ELSE bt.table_catalog || '.' || bt.table_schema || '.' || bt.table_name
-            END,
-        'natural_key', (SELECT required_natural_key FROM params),
-        'required_source_pin_fields',
-            ARRAY_CONSTRUCT(
-                'SOURCE_RELEASE',
-                'RELEASE_DT',
-                'SOURCE_SHA256',
-                'PARSER_VERSION',
-                'LICENSE_TERMS',
-                'ATTRIBUTION_TEXT'
-            ),
-        'missing_columns',
-            COALESCE(
-                ARRAY_AGG(mc.column_name) WITHIN GROUP (ORDER BY mc.column_name),
-                ARRAY_CONSTRUCT()
-            ),
-        'candidate_tables',
-            COALESCE(
-                (
-                    SELECT ARRAY_AGG(
-                        OBJECT_CONSTRUCT(
-                            'table_schema', table_schema,
-                            'table_name', table_name,
-                            'required_columns_present', required_columns_present
-                        )
-                    ) WITHIN GROUP (ORDER BY required_columns_present DESC, table_schema, table_name)
-                    FROM table_scores
-                ),
-                ARRAY_CONSTRUCT()
-            ),
-        'truth_scoring_role', 'truth_plane_only_not_candidate_evidence',
-        'denominator_policy', 'unique_plus_non_unique_discarded_plus_no_match_equals_loans',
-        'match_policy', 'mortgage_instrument_exact_amount_recording_window_unique_required'
-    ) AS deed_truth_source_guard
+    p.output_contract,
+    p.truth_plane,
+    CASE
+        WHEN bt.table_name IS NULL THEN p.absent_proof_class
+        WHEN bt.required_columns_present = (SELECT COUNT(*) FROM required_columns)
+            THEN p.present_proof_class
+        ELSE p.absent_proof_class
+    END AS proof_class,
+    CASE
+        WHEN bt.table_name IS NULL THEN 'recorder_source_not_landed'
+        WHEN bt.required_columns_present = (SELECT COUNT(*) FROM required_columns)
+            THEN 'recorder_source_shape_available'
+        ELSE 'recorder_source_shape_incomplete'
+    END AS recorder_source_status,
+    CASE
+        WHEN bt.table_name IS NULL THEN NULL
+        ELSE bt.table_catalog || '.' || bt.table_schema || '.' || bt.table_name
+    END AS source_table,
+    p.required_natural_key AS natural_key,
+    1::NUMBER AS measurement_guard_rows,
+    (SELECT COUNT(*) FROM required_columns)::NUMBER AS required_column_count,
+    COALESCE(bt.required_columns_present, 0)::NUMBER AS present_required_column_count,
+    (SELECT COUNT(*) FROM table_scores)::NUMBER AS candidate_table_count,
+    6::NUMBER AS source_pin_field_count,
+    ARRAY_CONSTRUCT(
+        'SOURCE_RELEASE',
+        'RELEASE_DT',
+        'SOURCE_SHA256',
+        'PARSER_VERSION',
+        'LICENSE_TERMS',
+        'ATTRIBUTION_TEXT'
+    ) AS required_source_pin_fields,
+    COALESCE(
+        ARRAY_AGG(mc.column_name) WITHIN GROUP (ORDER BY mc.column_name),
+        ARRAY_CONSTRUCT()
+    ) AS missing_columns,
+    COALESCE(
+        (
+            SELECT ARRAY_AGG(
+                OBJECT_CONSTRUCT(
+                    'table_schema', table_schema,
+                    'table_name', table_name,
+                    'required_columns_present', required_columns_present
+                )
+            ) WITHIN GROUP (ORDER BY required_columns_present DESC, table_schema, table_name)
+            FROM table_scores
+        ),
+        ARRAY_CONSTRUCT()
+    ) AS candidate_tables,
+    'truth_plane_only_not_candidate_evidence'::TEXT AS truth_scoring_role,
+    'unique_plus_non_unique_discarded_plus_no_match_equals_loans'::TEXT AS denominator_policy,
+    'mortgage_instrument_exact_amount_recording_window_unique_required'::TEXT AS match_policy
 FROM (SELECT 1 AS singleton) seed
+CROSS JOIN params p
 LEFT JOIN best_table bt
     ON TRUE
 LEFT JOIN missing_columns mc
     ON TRUE
 GROUP BY
+    p.output_contract,
+    p.truth_plane,
+    p.absent_proof_class,
+    p.present_proof_class,
+    p.required_natural_key,
     bt.table_catalog,
     bt.table_schema,
     bt.table_name,

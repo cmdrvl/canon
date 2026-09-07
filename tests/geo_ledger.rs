@@ -16,19 +16,23 @@ use canon::geo::{
     GeoCompositionProfile, GeoCompositionStatus, GeoCompositionSummary,
     GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference, GeoEvidenceCompilationRequest,
     GeoLabeledCompositionCase, GeoModelCountScope, GeoPopulationEvaluationRequest, GeoTruthPlane,
-    GeoValidTimeInterval, canonical_evidence_compilation_bytes, compile_evidence,
+    GeoValidTimeInterval, canonical_composition_bytes, canonical_evidence_compilation_bytes,
+    compile_evidence,
 };
 use ledger::{
-    CANON_GEO_COLLATERAL_LEDGER_VERSION, GeoCollateralLedger, GeoCollateralLedgerProofClass,
-    GeoLedgerErrorCode, GeoLedgerLoanRef, GeoLedgerRow, GeoSourceReleasePin,
-    build_collateral_ledger, build_ledger_row, canonical_collateral_ledger_bytes, roll_up_deal,
-    validate_ledger,
+    CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION, CANON_GEO_COLLATERAL_LEDGER_VERSION,
+    GeoCollateralLedger, GeoCollateralLedgerProofClass, GeoCollateralLedgerSeed,
+    GeoCollateralLedgerSeedRow, GeoLedgerErrorCode, GeoLedgerLoanRef, GeoLedgerPropertyRef,
+    GeoLedgerRow, GeoSourceReleasePin, build_collateral_ledger, build_collateral_ledger_from_seed,
+    build_ledger_row, canonical_collateral_ledger_bytes, canonical_collateral_ledger_seed_bytes,
+    roll_up_deal, validate_ledger,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
+    path::{Path, PathBuf},
 };
 use tempfile::tempdir;
 
@@ -274,6 +278,61 @@ fn t23_build_ledger_row_requires_matching_evidence_digest_chain() {
 }
 
 #[test]
+fn t23_build_collateral_ledger_from_seed_consumes_bound_artifacts_and_keeps_reach_none() {
+    let evidence = compile_evidence(&sample_evidence_request()).expect("seed evidence compiles");
+    let composition = with_evidence_reference(
+        sample_composition(GeoCompositionStatus::Resolved, vec!["parcel:seed:1"], 1),
+        &evidence,
+    );
+    let seed = fixture_build_seed();
+    let ledger = build_collateral_ledger_from_seed(
+        &seed,
+        &BTreeMap::from([("solve-a".to_string(), composition)]),
+        &BTreeMap::from([("evidence-a".to_string(), evidence)]),
+    )
+    .expect("seed plus matching artifacts builds ledger");
+
+    assert_eq!(ledger.version, CANON_GEO_COLLATERAL_LEDGER_VERSION);
+    assert_eq!(ledger.proof_class, GeoCollateralLedgerProofClass::Fixture);
+    assert_eq!(ledger.rows.len(), 2);
+    let solved = ledger
+        .rows
+        .iter()
+        .find(|row| row.loan_id == "loan-build-a")
+        .expect("solved row");
+    assert_eq!(solved.parcel_set, Some(vec!["parcel:seed:1".to_string()]));
+    assert_eq!(
+        solved.property_refs,
+        vec![GeoLedgerPropertyRef {
+            property_id: "property:loan-build-a".to_string(),
+            parcel_ids: vec!["parcel:seed:1".to_string()],
+            building_ids: Vec::new(),
+        }]
+    );
+    assert_eq!(
+        solved.last_observed_present,
+        Some(GeoValidTimeInterval {
+            start_day: 19_700,
+            end_day: 19_730,
+        })
+    );
+    let no_reach = ledger
+        .rows
+        .iter()
+        .find(|row| row.loan_id == "loan-no-reach")
+        .expect("reach-none row");
+    assert_eq!(no_reach.reach, GeoCandidateReachStatus::None);
+    assert_eq!(
+        no_reach.reach_none_reason.as_deref(),
+        Some(FORCED_REACH_NONE_REASON)
+    );
+    assert_eq!(no_reach.parcel_set, None);
+    assert_eq!(no_reach.building_set, None);
+    assert_eq!(ledger.rollups[0].rows, 2);
+    validate_ledger(&ledger).expect("built ledger validates");
+}
+
+#[test]
 fn t07_last_observed_present_interval_is_validated_and_serialized() {
     let mut ledger = fixture_ledger();
     let observed = GeoValidTimeInterval {
@@ -331,6 +390,117 @@ fn t07_geo_ledger_validate_cli_emits_canonical_ledger() {
 }
 
 #[test]
+fn t23_geo_ledger_build_cli_emits_canonical_ledger_and_validate_replays_it() {
+    let temp = tempdir().expect("tempdir");
+    let evidence = compile_evidence(&sample_evidence_request()).expect("seed evidence compiles");
+    let composition = with_evidence_reference(
+        sample_composition(GeoCompositionStatus::Resolved, vec!["parcel:seed:1"], 1),
+        &evidence,
+    );
+    let seed = fixture_build_seed();
+    let seed_path = write_seed_fixture(temp.path(), "seed.json", &seed);
+    let composition_path = write_composition_fixture(temp.path(), "solve.json", &composition);
+    let evidence_path = write_evidence_fixture(temp.path(), "evidence.json", &evidence);
+
+    let assert = canon_command()
+        .arg("geo")
+        .arg("ledger")
+        .arg("build")
+        .arg("--seed")
+        .arg(&seed_path)
+        .arg("--composition")
+        .arg(format!("solve-a={}", composition_path.display()))
+        .arg("--evidence")
+        .arg(format!("evidence-a={}", evidence_path.display()))
+        .assert()
+        .success();
+    assert!(assert.get_output().stderr.is_empty());
+
+    let mut ledger_bytes = assert.get_output().stdout.clone();
+    assert_eq!(ledger_bytes.pop(), Some(b'\n'));
+    let ledger: GeoCollateralLedger =
+        serde_json::from_slice(&ledger_bytes).expect("built ledger parses");
+    assert_eq!(ledger.rows.len(), 2);
+    assert_eq!(
+        ledger
+            .rows
+            .iter()
+            .find(|row| row.loan_id == "loan-no-reach")
+            .expect("reach-none row")
+            .reach_none_reason
+            .as_deref(),
+        Some(FORCED_REACH_NONE_REASON)
+    );
+    let ledger_path = temp.path().join("built-ledger.json");
+    fs::write(&ledger_path, &ledger_bytes).expect("write emitted ledger");
+
+    let replay = canon_command()
+        .arg("geo")
+        .arg("ledger")
+        .arg("validate")
+        .arg("--ledger")
+        .arg(&ledger_path)
+        .assert()
+        .success();
+    assert!(replay.get_output().stderr.is_empty());
+    let mut expected = ledger_bytes;
+    expected.push(b'\n');
+    assert_eq!(replay.get_output().stdout, expected);
+}
+
+#[test]
+fn t23_geo_ledger_build_cli_refuses_mismatched_valid_artifacts() {
+    let temp = tempdir().expect("tempdir");
+    let primary_evidence =
+        compile_evidence(&load_population_request().cases[0].evidence).expect("primary evidence");
+    let other_evidence =
+        compile_evidence(&load_population_request().cases[1].evidence).expect("other evidence");
+    let composition = with_evidence_reference(
+        sample_composition(GeoCompositionStatus::Resolved, vec!["parcel:seed:1"], 1),
+        &primary_evidence,
+    );
+    let mut seed = fixture_build_seed();
+    seed.rows.truncate(1);
+    let seed_path = write_seed_fixture(temp.path(), "seed.json", &seed);
+    let composition_path = write_composition_fixture(temp.path(), "solve.json", &composition);
+    let evidence_path = write_evidence_fixture(temp.path(), "other-evidence.json", &other_evidence);
+
+    let assert = canon_command()
+        .arg("geo")
+        .arg("ledger")
+        .arg("build")
+        .arg("--seed")
+        .arg(&seed_path)
+        .arg("--composition")
+        .arg(format!("solve-a={}", composition_path.display()))
+        .arg("--evidence")
+        .arg(format!("evidence-a={}", evidence_path.display()))
+        .assert()
+        .failure();
+    assert!(assert.get_output().stderr.is_empty());
+    let output: Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("refusal JSON parses");
+    assert_eq!(output["outcome"], "REFUSAL");
+    assert_eq!(output["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(
+        output["refusal"]["detail"]["geo_ledger_error_code"],
+        "invalid_input"
+    );
+    assert_eq!(
+        output["refusal"]["detail"]["detail"]["field"],
+        "composition.evidence_compilation.blake3"
+    );
+    assert_eq!(
+        output["refusal"]["detail"]["detail"]["loan_id"],
+        "loan-build-a"
+    );
+    assert_eq!(
+        output["refusal"]["next_command"],
+        "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>"
+    );
+}
+
+#[test]
 fn t07_geo_ledger_cli_requires_a_subcommand() {
     let assert = canon_command().arg("geo").arg("ledger").assert().failure();
     assert!(assert.get_output().stderr.is_empty());
@@ -341,11 +511,11 @@ fn t07_geo_ledger_cli_requires_a_subcommand() {
     assert_eq!(output["refusal"]["detail"]["command"], "canon geo ledger");
     assert_eq!(
         output["refusal"]["detail"]["subcommands"],
-        json!(["validate"])
+        json!(["build", "validate"])
     );
     assert_eq!(
         output["refusal"]["next_command"],
-        GEO_LEDGER_VALIDATE_NEXT_COMMAND
+        "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>"
     );
 }
 
@@ -724,6 +894,79 @@ fn fixture_loan(loan_id: &str) -> GeoLedgerLoanRef {
         loan_id: loan_id.to_string(),
         deed_ids: Vec::new(),
     }
+}
+
+fn fixture_build_seed() -> GeoCollateralLedgerSeed {
+    GeoCollateralLedgerSeed {
+        version: CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION.to_string(),
+        proof_class: GeoCollateralLedgerProofClass::Fixture,
+        rows: vec![
+            GeoCollateralLedgerSeedRow {
+                accession: SYNTHETIC_ACCESSION.to_string(),
+                deal_id: SYNTHETIC_DEAL.to_string(),
+                loan_id: "loan-build-a".to_string(),
+                reach: GeoCandidateReachStatus::Full,
+                reach_none_reason: None,
+                deed_ids: vec!["deed:fixture:1".to_string()],
+                truth_plane: Some(GeoTruthPlane::GateV2Historical),
+                source_release_pins: vec![fixture_pin()],
+                composition_artifact_ref: Some("solve-a".to_string()),
+                evidence_artifact_ref: Some("evidence-a".to_string()),
+                property_refs: vec![GeoLedgerPropertyRef {
+                    property_id: "property:loan-build-a".to_string(),
+                    parcel_ids: vec!["parcel:seed:1".to_string()],
+                    building_ids: Vec::new(),
+                }],
+                last_observed_present: Some(GeoValidTimeInterval {
+                    start_day: 19_700,
+                    end_day: 19_730,
+                }),
+            },
+            GeoCollateralLedgerSeedRow {
+                accession: SYNTHETIC_ACCESSION.to_string(),
+                deal_id: SYNTHETIC_DEAL.to_string(),
+                loan_id: "loan-no-reach".to_string(),
+                reach: GeoCandidateReachStatus::None,
+                reach_none_reason: Some(FORCED_REACH_NONE_REASON.to_string()),
+                deed_ids: Vec::new(),
+                truth_plane: Some(GeoTruthPlane::GateV2Historical),
+                source_release_pins: vec![fixture_pin()],
+                composition_artifact_ref: None,
+                evidence_artifact_ref: None,
+                property_refs: Vec::new(),
+                last_observed_present: None,
+            },
+        ],
+    }
+}
+
+fn write_seed_fixture(dir: &Path, name: &str, seed: &GeoCollateralLedgerSeed) -> PathBuf {
+    let path = dir.join(name);
+    let bytes = canonical_collateral_ledger_seed_bytes(seed).expect("seed canonicalizes");
+    fs::write(&path, bytes).expect("write seed fixture");
+    path
+}
+
+fn write_composition_fixture(
+    dir: &Path,
+    name: &str,
+    composition: &GeoCompositionArtifact,
+) -> PathBuf {
+    let path = dir.join(name);
+    let bytes = canonical_composition_bytes(composition).expect("composition canonicalizes");
+    fs::write(&path, bytes).expect("write composition fixture");
+    path
+}
+
+fn write_evidence_fixture(
+    dir: &Path,
+    name: &str,
+    evidence: &GeoEvidenceCompilationArtifact,
+) -> PathBuf {
+    let path = dir.join(name);
+    let bytes = canonical_evidence_compilation_bytes(evidence).expect("evidence canonicalizes");
+    fs::write(&path, bytes).expect("write evidence fixture");
+    path
 }
 
 fn fixture_pin() -> GeoSourceReleasePin {

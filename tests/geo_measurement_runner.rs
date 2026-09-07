@@ -2,7 +2,7 @@
 
 use assert_cmd::Command;
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest as _, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -10,7 +10,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Command as StdCommand, Output},
 };
-use tempfile::{TempDir, tempdir};
+use tempfile::{tempdir, TempDir};
 
 const MANIFEST: &str = include_str!("../scripts/geo_measurements/manifest.json");
 const RECEIPTS_VERSION: &str = "canon_geo_measurement_receipts.v0";
@@ -230,6 +230,7 @@ fn artifact_rows(measurement: &Value) -> Value {
         "appendix_d_stratified_halo" => stratified_halo_rows(),
         "appendix_f_overture_three_source" => overture_rows(),
         "e5_franklin_county_thin_tier_readiness_v0" => measurement["expected_result_rows"].clone(),
+        "e5_franklin_deed_truth_export_v0" => measurement["expected_result_rows"].clone(),
         other => panic!("unexpected measurement {other}"),
     }
 }
@@ -433,8 +434,29 @@ fn derive_denominators(measurement_id: &str, rows: &[Value]) -> Value {
             "overture_osm_lineage_observations": sum_rows_where(rows, "osm_lineage_observations", "source_name", &json!("overture_building"))
         }),
         "e5_franklin_county_thin_tier_readiness_v0" => e5_denominators(rows),
+        "e5_franklin_deed_truth_export_v0" => single_row_denominators(
+            rows,
+            &[
+                "measurement_guard_rows",
+                "required_column_count",
+                "source_pin_field_count",
+            ],
+        ),
         other => panic!("unexpected measurement {other}"),
     }
+}
+
+fn single_row_denominators(rows: &[Value], fields: &[&str]) -> Value {
+    let row = rows.first().expect("single measurement row");
+    assert_eq!(rows.len(), 1);
+    let mut denominators = serde_json::Map::new();
+    for field in fields {
+        denominators.insert(
+            (*field).to_string(),
+            json!(row[*field].as_u64().expect("u64 field")),
+        );
+    }
+    Value::Object(denominators)
 }
 
 fn e5_denominators(rows: &[Value]) -> Value {
@@ -470,10 +492,9 @@ fn e5_denominators(rows: &[Value]) -> Value {
 
 fn shared_u64(rows: &[Value], field: &str) -> u64 {
     let first = rows[0][field].as_u64().expect("shared u64 field");
-    assert!(
-        rows.iter()
-            .all(|row| row[field].as_u64().expect("shared u64 field") == first)
-    );
+    assert!(rows
+        .iter()
+        .all(|row| row[field].as_u64().expect("shared u64 field") == first));
     first
 }
 
@@ -760,18 +781,14 @@ fn plan_is_ordered_offline_and_excludes_h7() {
         plan["execution"],
         "operator_fed_cmdrvl_data_receipts_only_no_snowflake_execution"
     );
-    assert!(
-        plan["claim_boundary"]
-            .as_str()
-            .expect("claim boundary")
-            .contains("contract fixture")
-    );
-    assert!(
-        plan["claim_boundary"]
-            .as_str()
-            .expect("claim boundary")
-            .contains("unordered canonical result set")
-    );
+    assert!(plan["claim_boundary"]
+        .as_str()
+        .expect("claim boundary")
+        .contains("contract fixture"));
+    assert!(plan["claim_boundary"]
+        .as_str()
+        .expect("claim boundary")
+        .contains("unordered canonical result set"));
     let ids = plan["measurements"]
         .as_array()
         .expect("measurements")
@@ -788,7 +805,8 @@ fn plan_is_ordered_offline_and_excludes_h7() {
             "appendix_d_stratified_halo_centers",
             "appendix_d_stratified_halo",
             "appendix_f_overture_three_source",
-            "e5_franklin_county_thin_tier_readiness_v0"
+            "e5_franklin_county_thin_tier_readiness_v0",
+            "e5_franklin_deed_truth_export_v0"
         ]
     );
     assert!(!ids.iter().any(|id| id.to_ascii_lowercase().contains("h7")));
@@ -835,13 +853,11 @@ fn valid_receipts_verify_and_permutation_is_deterministic() {
         report["measurements"][0]["executed_query_text_path"],
         "queries/appendix_b_centroid_percolation.sql"
     );
-    assert!(
-        report["measurements"][0]["details"]
-            .as_array()
-            .expect("details")
-            .iter()
-            .any(|detail| detail == LIVENESS_NOT_ATTESTED)
-    );
+    assert!(report["measurements"][0]["details"]
+        .as_array()
+        .expect("details")
+        .iter()
+        .any(|detail| detail == LIVENESS_NOT_ATTESTED));
     assert_eq!(
         report["measurements"][0]["execution_transform"],
         EXECUTION_TRANSFORM
@@ -1141,13 +1157,11 @@ fn self_authored_fresh_live_bundle_is_not_live_attested() {
         report["measurements"][0]["proof_attestation"],
         "receipt_consistent"
     );
-    assert!(
-        report["measurements"][0]["details"]
-            .as_array()
-            .expect("details")
-            .iter()
-            .any(|detail| detail == LIVENESS_NOT_ATTESTED)
-    );
+    assert!(report["measurements"][0]["details"]
+        .as_array()
+        .expect("details")
+        .iter()
+        .any(|detail| detail == LIVENESS_NOT_ATTESTED));
 }
 
 #[test]
@@ -1209,11 +1223,9 @@ fn t58_manifest_integrity_checks_sha256_gate_fields_and_stale_digest_exit_4() {
         "stdout={}",
         String::from_utf8_lossy(&output.stdout)
     );
-    assert!(
-        fs::read_to_string(out.path().join("run.log"))
-            .expect("run log")
-            .contains("entry=appendix_b_centroid_percolation")
-    );
+    assert!(fs::read_to_string(out.path().join("run.log"))
+        .expect("run log")
+        .contains("entry=appendix_b_centroid_percolation"));
 
     let scratch = tempdir().expect("scratch dir");
     let manifest_path = scratch.path().join("manifest.json");
@@ -1264,11 +1276,10 @@ fn t59_runner_classifies_snapshot_moved_and_measurement_diverged_exit_codes() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(out.path().join("report.json").is_file());
-    assert!(
-        out.path()
-            .join("appendix_b_centroid_percolation.result.json")
-            .is_file()
-    );
+    assert!(out
+        .path()
+        .join("appendix_b_centroid_percolation.result.json")
+        .is_file());
 
     let mut moved = valid_fixture();
     moved.receipts["receipts"][0]["release_pins"]["mappluto.release"] = json!("26v9");
@@ -1629,7 +1640,7 @@ fn malformed_manifest_contract_is_rejected() {
             manifest["required_measurement_ids"]
                 .as_array_mut()
                 .expect("required ids")
-                .push(json!("e5_franklin_county_thin_tier_readiness_v0"));
+                .push(extension["id"].clone());
             manifest["measurements"]
                 .as_array_mut()
                 .expect("measurements")

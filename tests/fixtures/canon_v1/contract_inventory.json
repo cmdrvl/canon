@@ -230,6 +230,19 @@
       "action": "preserve"
     },
     {
+      "id": "canon geo ledger build",
+      "family": "geo",
+      "clap_path": "geo ledger build",
+      "operator_name": "geo ledger build",
+      "primary_contracts": [
+        "canon_geo_collateral_ledger_seed.v0",
+        "canon_geo_composition.v0",
+        "canon_geo_evidence_compilation.v0",
+        "canon_geo_collateral_ledger.v0"
+      ],
+      "action": "preserve"
+    },
+    {
       "id": "canon geo ledger validate",
       "family": "geo",
       "clap_path": "geo ledger validate",
@@ -2250,6 +2263,30 @@
       "source_path": "schemas/canon.geo.error_population.v0.schema.json"
     },
     {
+      "id": "canon_geo_image_tile_pin.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.image_tile_pin.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_observer.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.observer.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_observation_rows.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.observation_rows.v0.schema.json"
+    },
+    {
       "id": "canon_geo_point_population.v0",
       "family": "geo",
       "action": "preserve",
@@ -2292,8 +2329,9 @@
       "id": "canon_geo_collateral_ledger_seed.v0",
       "family": "geo",
       "action": "preserve",
-      "access_boundary": "internal_source_only",
-      "source_path": "src/geo/pre_resolve.rs"
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.collateral_ledger_seed.v0.schema.json"
     },
     {
       "id": "canon_geo_retry_loop.v0",

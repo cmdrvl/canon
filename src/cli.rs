@@ -417,8 +417,23 @@ pub struct GeoLedgerCli {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum GeoLedgerSubcommand {
+    /// Build a physical collateral ledger from seed rows and bound solve/evidence artifacts
+    Build(GeoLedgerBuildCli),
     /// Validate a physical collateral ledger artifact and emit canonical bytes
     Validate(GeoLedgerValidateCli),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoLedgerBuildCli {
+    /// JSON file holding a canon_geo_collateral_ledger_seed.v0 seed artifact
+    #[arg(long)]
+    pub seed: PathBuf,
+    /// Bound solve artifact as ARTIFACT_ID=COMPOSITION.json; repeatable
+    #[arg(long = "composition", value_name = "ARTIFACT_ID=COMPOSITION.json")]
+    pub composition: Vec<String>,
+    /// Bound evidence artifact as ARTIFACT_ID=EVIDENCE.json; repeatable
+    #[arg(long = "evidence", value_name = "ARTIFACT_ID=EVIDENCE.json")]
+    pub evidence: Vec<String>,
 }
 
 #[derive(Args, Debug, Clone)]

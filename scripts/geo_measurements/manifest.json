@@ -10,7 +10,8 @@
     "appendix_d_stratified_halo_centers",
     "appendix_d_stratified_halo",
     "appendix_f_overture_three_source",
-    "e5_franklin_county_thin_tier_readiness_v0"
+    "e5_franklin_county_thin_tier_readiness_v0",
+    "e5_franklin_deed_truth_export_v0"
   ],
   "measurements": [
     {
@@ -742,6 +743,117 @@
         "Bounded source availability only: not E5 accuracy, not parcel reach, and not four independent votes.",
         "The county parcel layer is absent, so the E5 gate remains open and no evidence-tier coverage or precision operating point is measured.",
         "This offline harness reports receipt_consistent with liveness not attested; query-history authenticity and source authenticity remain outside this fixture."
+      ]
+    },
+    {
+      "id": "e5_franklin_deed_truth_export_v0",
+      "section": "E5.D7",
+      "gate": "G7",
+      "geography": "franklin_county_oh",
+      "tier": "deed_truth_source_guard",
+      "declared_grain": "truth_plane",
+      "description": "Franklin County deed-grain recorder-source bounded source availability guard for canon_geo_deed_index_rows.v0 input.",
+      "sql_path": "scripts/geo_measurements/e5_franklin_deed_truth_export.sql",
+      "as_of": "2026-09-07",
+      "expected_row_count": 1,
+      "release_pins": {
+        "recorder_source_status": "recorder_source_not_landed",
+        "required_content_hash_field": "SOURCE_SHA256",
+        "required_license_fields": "LICENSE_TERMS,ATTRIBUTION_TEXT",
+        "required_natural_key": "release/instrument_id",
+        "required_parser_version_field": "PARSER_VERSION",
+        "required_release_fields": "SOURCE_RELEASE,RELEASE_DT",
+        "warehouse_catalog": "EDGAR_DB",
+        "warehouse_schemas": "SOURCE,DBT_STAGING_GEO,PROPERTY_MART"
+      },
+      "denominator_fields": [
+        "measurement_guard_rows",
+        "required_column_count",
+        "source_pin_field_count"
+      ],
+      "expected_denominators": {
+        "measurement_guard_rows": 1,
+        "required_column_count": 14,
+        "source_pin_field_count": 6
+      },
+      "expected_sanity": {
+        "artifact_row_count_matches_expected": true,
+        "candidate_table_count": 0,
+        "output_contract": "canon_geo_deed_index_rows.v0",
+        "present_required_column_count": 0,
+        "proof_class": "fixture_class_not_scored",
+        "recorder_source_status": "recorder_source_not_landed",
+        "truth_plane": "deed_grain_instrument"
+      },
+      "result_fields": [
+        "candidate_table_count",
+        "candidate_tables",
+        "denominator_policy",
+        "match_policy",
+        "measurement_guard_rows",
+        "missing_columns",
+        "natural_key",
+        "output_contract",
+        "present_required_column_count",
+        "proof_class",
+        "recorder_source_status",
+        "required_column_count",
+        "required_source_pin_fields",
+        "source_pin_field_count",
+        "source_table",
+        "truth_plane",
+        "truth_scoring_role"
+      ],
+      "expected_result_rows": [
+        {
+          "candidate_table_count": 0,
+          "candidate_tables": [],
+          "denominator_policy": "unique_plus_non_unique_discarded_plus_no_match_equals_loans",
+          "match_policy": "mortgage_instrument_exact_amount_recording_window_unique_required",
+          "measurement_guard_rows": 1,
+          "missing_columns": [
+            "AMOUNT_CENTS",
+            "ATTRIBUTION_TEXT",
+            "BORROWER_PARTY_BLAKE3",
+            "INSTRUMENT_ID",
+            "INSTRUMENT_TYPE",
+            "LENDER_PARTY_BLAKE3",
+            "LICENSE_TERMS",
+            "PARCEL_IDS",
+            "PARSER_VERSION",
+            "RECORDING_DATE",
+            "RELEASE_DT",
+            "ROW_BLAKE3",
+            "SOURCE_RELEASE",
+            "SOURCE_SHA256"
+          ],
+          "natural_key": "release/instrument_id",
+          "output_contract": "canon_geo_deed_index_rows.v0",
+          "present_required_column_count": 0,
+          "proof_class": "fixture_class_not_scored",
+          "recorder_source_status": "recorder_source_not_landed",
+          "required_column_count": 14,
+          "required_source_pin_fields": [
+            "SOURCE_RELEASE",
+            "RELEASE_DT",
+            "SOURCE_SHA256",
+            "PARSER_VERSION",
+            "LICENSE_TERMS",
+            "ATTRIBUTION_TEXT"
+          ],
+          "source_pin_field_count": 6,
+          "source_table": null,
+          "truth_plane": "deed_grain_instrument",
+          "truth_scoring_role": "truth_plane_only_not_candidate_evidence"
+        }
+      ],
+      "source_sql_sha256": "085e69d5f4c5c0d62589b79ec421e36fd99cf9f800fa4af47d78d495b272a9e5",
+      "execution_transform": "cmdrvl_data_sqlglot_normalized_plus_tool_row_limit",
+      "result_row_validation": "exact_manifest_rows",
+      "limitations": [
+        "Bounded source availability guard only: not E5 accuracy, not parcel reach, and not four independent votes.",
+        "The Franklin recorder deed/mortgage index is not present in EDGAR source/staging/property schemas at this measurement, so no live deed-grain precision is claimed.",
+        "Canon consumes only canon_geo_deed_index_rows.v0 after an external recorder landing supplies SOURCE_SHA256, SOURCE_RELEASE, RELEASE_DT, PARSER_VERSION, LICENSE_TERMS, and ATTRIBUTION_TEXT."
       ]
     }
   ]

@@ -12,6 +12,18 @@ use canon::{
         review_import::{NativeReviewDecisionAction, NativeReviewGroupDecision},
         solve::SolveReconciliationState,
     },
+    geo::{
+        CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
+        DEFAULT_MAX_MATERIALIZED_MODELS, GeoCandidateReachStatus, GeoCollateralLedgerProofClass,
+        GeoCollateralLedgerSeed, GeoCollateralLedgerSeedRow, GeoCompositionArtifact,
+        GeoCompositionProfile, GeoCompositionUniverse, GeoEntityLevel, GeoEvidenceClaimRole,
+        GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
+        GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoLedgerPropertyRef, GeoRhoBasis,
+        GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoSourceReleasePin,
+        GeoTruthPlane, GeoValidTimeInterval, canonical_collateral_ledger_seed_bytes,
+        canonical_composition_bytes, canonical_evidence_compilation_bytes, compile_evidence,
+        solve_composition,
+    },
     operator::{
         public_leaf_commands_from, public_leaf_long_flags_from, stable_manifest_digest,
         validate_operator_manifest_json,
@@ -594,6 +606,7 @@ fn assert_runtime_corpus_coverage(manifest: &OperatorManifest, cases: &[RuntimeC
         "geo capabilities",
         "geo inspect",
         "geo ledger",
+        "geo ledger build",
         "geo ledger validate",
         "registry providers",
         "registry provider-schema",
@@ -827,6 +840,125 @@ fn command_contract_entity_metadata() -> EntityArtifactMetadata {
     }
 }
 
+fn write_geo_ledger_build_fixtures(work: &Path) -> (PathBuf, PathBuf, PathBuf) {
+    let evidence_request = geo_ledger_build_evidence_request();
+    let evidence = compile_evidence(&evidence_request).expect("geo ledger build evidence compiles");
+    let mut composition =
+        solve_composition(&evidence.composition_request).expect("geo ledger composition solves");
+    bind_geo_composition_to_evidence(&mut composition, &evidence);
+    let seed = geo_ledger_build_seed();
+
+    let seed_path = work.join("geo-ledger-seed.json");
+    fs::write(
+        &seed_path,
+        canonical_collateral_ledger_seed_bytes(&seed).expect("geo ledger seed serializes"),
+    )
+    .expect("geo ledger seed fixture");
+    let composition_path = work.join("geo-ledger-composition.json");
+    fs::write(
+        &composition_path,
+        canonical_composition_bytes(&composition).expect("geo ledger composition serializes"),
+    )
+    .expect("geo ledger composition fixture");
+    let evidence_path = work.join("geo-ledger-evidence.json");
+    fs::write(
+        &evidence_path,
+        canonical_evidence_compilation_bytes(&evidence).expect("geo ledger evidence serializes"),
+    )
+    .expect("geo ledger evidence fixture");
+    (seed_path, composition_path, evidence_path)
+}
+
+fn geo_ledger_build_seed() -> GeoCollateralLedgerSeed {
+    GeoCollateralLedgerSeed {
+        version: CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION.to_string(),
+        proof_class: GeoCollateralLedgerProofClass::Fixture,
+        rows: vec![GeoCollateralLedgerSeedRow {
+            accession: "0000000000-26-000001".to_string(),
+            deal_id: "fixture-command-contract-deal".to_string(),
+            loan_id: "fixture-command-contract-loan".to_string(),
+            reach: GeoCandidateReachStatus::Full,
+            reach_none_reason: None,
+            deed_ids: Vec::new(),
+            truth_plane: Some(GeoTruthPlane::GateV2Historical),
+            source_release_pins: vec![GeoSourceReleasePin {
+                source_dataset: "fixture.command_contract.geo_ledger_build".to_string(),
+                source_release: "2026-09-07".to_string(),
+                blake3: format!(
+                    "blake3:{}",
+                    blake3::hash(b"command-contract-geo-ledger-build").to_hex()
+                ),
+            }],
+            composition_artifact_ref: Some("solve".to_string()),
+            evidence_artifact_ref: Some("evidence".to_string()),
+            property_refs: vec![GeoLedgerPropertyRef {
+                property_id: "fixture-command-contract-property".to_string(),
+                parcel_ids: vec!["fixture-command-contract-parcel".to_string()],
+                building_ids: Vec::new(),
+            }],
+            last_observed_present: Some(GeoValidTimeInterval {
+                start_day: 20_970,
+                end_day: 20_970,
+            }),
+        }],
+    }
+}
+
+fn geo_ledger_build_evidence_request() -> GeoEvidenceCompilationRequest {
+    GeoEvidenceCompilationRequest {
+        version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: GeoCompositionProfile::parcel(),
+        universe: GeoCompositionUniverse {
+            parcels: vec!["fixture-command-contract-parcel".to_string()],
+            buildings: Vec::new(),
+        },
+        contracts: vec![GeoRhoContract {
+            id: "contract-command-contract-ledger-build".to_string(),
+            version: "v1".to_string(),
+            source_dataset: "fixture.command_contract.geo_ledger_build".to_string(),
+            source_release: "2026-09-07".to_string(),
+            source_lineage_ids: vec!["fixture.command_contract.geo".to_string()],
+            method_id: "fixture.command_contract.exact_set".to_string(),
+            method_version: "v1".to_string(),
+            claim_role: GeoEvidenceClaimRole::StableIdentityAnchor,
+            basis: GeoRhoBasis::LogicalRelaxation {
+                invariant_id: "fixture.command_contract.exact_set".to_string(),
+            },
+        }],
+        observations: vec![GeoRhoObservation {
+            id: "obs-command-contract-ledger-build".to_string(),
+            contract_id: "contract-command-contract-ledger-build".to_string(),
+            source_records: vec![GeoEvidenceRecordRef {
+                source_record_id: "row-command-contract-ledger-build".to_string(),
+                source_vintage: "2026-09-07".to_string(),
+                record_blake3: blake3::hash(b"command-contract-geo-ledger-build-row")
+                    .to_hex()
+                    .to_string(),
+            }],
+            valid_time: None,
+            observation: GeoRhoObservationKind::ExactSets {
+                level: GeoEntityLevel::Parcel,
+                sets: vec![vec!["fixture-command-contract-parcel".to_string()]],
+            },
+        }],
+        max_assignments: 64,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    }
+}
+
+fn bind_geo_composition_to_evidence(
+    composition: &mut GeoCompositionArtifact,
+    evidence: &GeoEvidenceCompilationArtifact,
+) {
+    let evidence_bytes =
+        canonical_evidence_compilation_bytes(evidence).expect("geo ledger evidence canonicalizes");
+    composition.evidence_compilation = Some(GeoEvidenceCompilationReference {
+        version: evidence.version.clone(),
+        request_version: evidence.request_version.clone(),
+        blake3: blake3::hash(&evidence_bytes).to_hex().to_string(),
+    });
+}
+
 struct RuntimeHarness {
     _temp: TempDir,
     root: PathBuf,
@@ -947,6 +1079,8 @@ impl RuntimeHarness {
             "strategy_id: contract-block-preflight\nstrategy_version: 1\n",
         )
         .expect("block preflight strategy fixture");
+        let (geo_ledger_seed, geo_ledger_composition, geo_ledger_evidence) =
+            write_geo_ledger_build_fixtures(&self.work);
         let geo_ledger = self.work.join("geo-ledger.json");
         let geo_ledger_digest = format!(
             "blake3:{}",
@@ -1193,12 +1327,36 @@ impl RuntimeHarness {
                     .assert_eq("outcome", json!("REFUSAL"))
                     .assert_eq("refusal.code", json!("E_PARSE"))
                     .assert_eq("refusal.detail.command", json!("canon geo ledger"))
-                    .assert_eq("refusal.detail.subcommands", json!(["validate"]))
+                    .assert_eq("refusal.detail.subcommands", json!(["build", "validate"]))
                     .assert_eq(
                         "refusal.next_command",
-                        json!("canon geo ledger validate --ledger <LEDGER.json>"),
+                        json!("canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>"),
                     )
                     .with_stderr(StderrExpectation::Empty),
+            },
+            RuntimeCase {
+                id: "geo_ledger_build_json",
+                command_name: "geo ledger build",
+                args: vec![
+                    "geo".to_string(),
+                    "ledger".to_string(),
+                    "build".to_string(),
+                    "--seed".to_string(),
+                    path_arg(&geo_ledger_seed),
+                    "--composition".to_string(),
+                    format!("solve={}", path_arg(&geo_ledger_composition)),
+                    "--evidence".to_string(),
+                    format!("evidence={}", path_arg(&geo_ledger_evidence)),
+                ],
+                expected: RuntimeExpectation::json(
+                    0,
+                    "canon_geo_collateral_ledger.v0",
+                    SchemaField::Version,
+                )
+                .assert_eq("proof_class", json!("fixture"))
+                .assert_eq("rows.0.loan_id", json!("fixture-command-contract-loan"))
+                .assert_eq("rows.0.parcel_set.0", json!("fixture-command-contract-parcel"))
+                .with_stderr(StderrExpectation::Empty),
             },
             RuntimeCase {
                 id: "geo_ledger_validate_json",

@@ -47,7 +47,7 @@ use super::{
         CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
         CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION,
     },
-    ledger::CANON_GEO_COLLATERAL_LEDGER_VERSION,
+    ledger::{CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION, CANON_GEO_COLLATERAL_LEDGER_VERSION},
     lifecycle::{CANON_GEO_AS_OF_RESOLUTION_REQUEST_VERSION, CANON_GEO_AS_OF_RESOLUTION_VERSION},
     materialize::{
         CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
@@ -1295,6 +1295,11 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "condo unit to billing-BBL and BIN ledger bridge artifact contract",
         ),
         contract(
+            CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION,
+            "schemas/canon.geo.collateral_ledger_seed.v0.schema.json",
+            "physical collateral ledger build seed contract",
+        ),
+        contract(
             CANON_GEO_COLLATERAL_LEDGER_VERSION,
             "schemas/canon.geo.collateral_ledger.v0.schema.json",
             "physical collateral ledger artifact contract",
@@ -1485,6 +1490,13 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
             GeoCommandSurface::Primary,
             CANON_GEO_PLAN_VERSION,
             false,
+            false,
+        ),
+        command(
+            "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>",
+            GeoCommandSurface::Primary,
+            CANON_GEO_COLLATERAL_LEDGER_VERSION,
+            true,
             false,
         ),
         command(

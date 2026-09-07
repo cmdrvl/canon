@@ -18,6 +18,7 @@ use std::{
 };
 
 pub const CANON_GEO_COLLATERAL_LEDGER_VERSION: &str = "canon_geo_collateral_ledger.v0";
+pub const CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION: &str = "canon_geo_collateral_ledger_seed.v0";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -53,6 +54,39 @@ pub struct GeoLedgerPropertyRef {
     pub parcel_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub building_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoCollateralLedgerSeed {
+    pub version: String,
+    pub proof_class: GeoCollateralLedgerProofClass,
+    pub rows: Vec<GeoCollateralLedgerSeedRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoCollateralLedgerSeedRow {
+    pub accession: String,
+    pub deal_id: String,
+    pub loan_id: String,
+    pub reach: GeoCandidateReachStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reach_none_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deed_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub truth_plane: Option<GeoTruthPlane>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_release_pins: Vec<GeoSourceReleasePin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub composition_artifact_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_artifact_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub property_refs: Vec<GeoLedgerPropertyRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_observed_present: Option<GeoValidTimeInterval>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -346,6 +380,87 @@ pub fn build_collateral_ledger(
     Ok(ledger)
 }
 
+pub fn build_collateral_ledger_from_seed(
+    seed: &GeoCollateralLedgerSeed,
+    compositions: &BTreeMap<String, GeoCompositionArtifact>,
+    evidence: &BTreeMap<String, GeoEvidenceCompilationArtifact>,
+) -> Result<GeoCollateralLedger, GeoLedgerError> {
+    validate_collateral_ledger_seed_artifact(seed)?;
+    validate_artifact_map_keys("composition_artifacts", compositions.keys())?;
+    validate_artifact_map_keys("evidence_artifacts", evidence.keys())?;
+
+    let mut rows = Vec::with_capacity(seed.rows.len());
+    let mut used_compositions = BTreeSet::new();
+    let mut used_evidence = BTreeSet::new();
+    for seed_row in &seed.rows {
+        let loan = GeoLedgerLoanRef {
+            accession: seed_row.accession.clone(),
+            deal_id: seed_row.deal_id.clone(),
+            loan_id: seed_row.loan_id.clone(),
+            deed_ids: seed_row.deed_ids.clone(),
+        };
+        let (composition, evidence_artifact) = if seed_row.reach == GeoCandidateReachStatus::None {
+            if seed_row.composition_artifact_ref.is_some() {
+                return Err(GeoLedgerError::invalid(
+                    "Geo collateral ledger reach-none rows cannot bind a composition artifact",
+                    [
+                        ("field", "composition_artifact_ref"),
+                        ("loan_id", seed_row.loan_id.as_str()),
+                    ],
+                ));
+            }
+            if seed_row.evidence_artifact_ref.is_some() {
+                return Err(GeoLedgerError::invalid(
+                    "Geo collateral ledger reach-none rows cannot bind an evidence artifact",
+                    [
+                        ("field", "evidence_artifact_ref"),
+                        ("loan_id", seed_row.loan_id.as_str()),
+                    ],
+                ));
+            }
+            (None, None)
+        } else {
+            let (composition_ref, composition) = required_artifact(
+                compositions,
+                seed_row.composition_artifact_ref.as_deref(),
+                "composition_artifact_ref",
+                "composition",
+                &seed_row.loan_id,
+            )?;
+            let (evidence_ref, evidence_artifact) = required_artifact(
+                evidence,
+                seed_row.evidence_artifact_ref.as_deref(),
+                "evidence_artifact_ref",
+                "evidence",
+                &seed_row.loan_id,
+            )?;
+            used_compositions.insert(composition_ref.to_string());
+            used_evidence.insert(evidence_ref.to_string());
+            (Some(composition), Some(evidence_artifact))
+        };
+        let mut row = build_ledger_row(
+            &loan,
+            seed_row.reach,
+            seed_row.reach_none_reason.clone(),
+            composition,
+            evidence_artifact,
+            seed_row.truth_plane,
+            &seed_row.source_release_pins,
+        )?;
+        row.property_refs = seed_row.property_refs.clone();
+        row.last_observed_present = seed_row.last_observed_present;
+        validate_ledger_row(&row, seed.proof_class)?;
+        rows.push(row);
+    }
+    reject_unused_artifacts(
+        "composition_artifacts",
+        compositions.keys(),
+        &used_compositions,
+    )?;
+    reject_unused_artifacts("evidence_artifacts", evidence.keys(), &used_evidence)?;
+    build_collateral_ledger(rows, seed.proof_class)
+}
+
 pub fn roll_up_deal(rows: &[GeoLedgerRow]) -> Result<GeoDealRollup, GeoLedgerError> {
     let first = rows.first().ok_or_else(|| {
         GeoLedgerError::invalid(
@@ -443,6 +558,48 @@ pub fn validate_collateral_ledger_artifact(
     validate_ledger(ledger)
 }
 
+pub fn validate_collateral_ledger_seed_artifact(
+    seed: &GeoCollateralLedgerSeed,
+) -> Result<(), GeoLedgerError> {
+    if seed.version != CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION {
+        return Err(GeoLedgerError::new(
+            GeoLedgerErrorCode::UnsupportedVersion,
+            "Unsupported Geo collateral ledger seed version",
+            [
+                ("actual", seed.version.as_str()),
+                ("expected", CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION),
+            ],
+        ));
+    }
+    if seed.rows.is_empty() {
+        return Err(GeoLedgerError::invalid(
+            "Geo collateral ledger seed requires at least one row",
+            [("field", "rows")],
+        ));
+    }
+    let mut seen = BTreeSet::new();
+    for row in &seed.rows {
+        validate_seed_row(row, seed.proof_class)?;
+        let key = (
+            row.accession.as_str(),
+            row.deal_id.as_str(),
+            row.loan_id.as_str(),
+        );
+        if !seen.insert(key) {
+            return Err(GeoLedgerError::invalid(
+                "Geo collateral ledger seed contains duplicate loan rows",
+                [
+                    ("field", "rows"),
+                    ("accession", row.accession.as_str()),
+                    ("deal_id", row.deal_id.as_str()),
+                    ("loan_id", row.loan_id.as_str()),
+                ],
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub fn canonical_collateral_ledger_bytes(
     ledger: &GeoCollateralLedger,
 ) -> Result<Vec<u8>, GeoLedgerError> {
@@ -455,6 +612,18 @@ pub fn canonical_collateral_ledger_bytes(
     })
 }
 
+pub fn canonical_collateral_ledger_seed_bytes(
+    seed: &GeoCollateralLedgerSeed,
+) -> Result<Vec<u8>, GeoLedgerError> {
+    validate_collateral_ledger_seed_artifact(seed)?;
+    serde_json::to_vec(seed).map_err(|error| {
+        GeoLedgerError::invalid(
+            "Geo collateral ledger seed could not be serialized",
+            [("error", error.to_string())],
+        )
+    })
+}
+
 fn validate_loan_ref(loan: &GeoLedgerLoanRef) -> Result<(), GeoLedgerError> {
     validate_text("accession", &loan.accession)?;
     validate_text("deal_id", &loan.deal_id)?;
@@ -462,6 +631,68 @@ fn validate_loan_ref(loan: &GeoLedgerLoanRef) -> Result<(), GeoLedgerError> {
     validate_sorted_unique("deed_ids", &sorted_unique(loan.deed_ids.clone()))?;
     for deed_id in &loan.deed_ids {
         validate_text("deed_ids[]", deed_id)?;
+    }
+    Ok(())
+}
+
+fn validate_seed_row(
+    row: &GeoCollateralLedgerSeedRow,
+    proof_class: GeoCollateralLedgerProofClass,
+) -> Result<(), GeoLedgerError> {
+    validate_text("accession", &row.accession)?;
+    validate_text("deal_id", &row.deal_id)?;
+    validate_text("loan_id", &row.loan_id)?;
+    validate_sorted_unique("deed_ids", &row.deed_ids)?;
+    for deed_id in &row.deed_ids {
+        validate_text("deed_ids[]", deed_id)?;
+    }
+    validate_source_release_pins_for_proof_class(
+        &row.source_release_pins,
+        proof_class,
+        &row.loan_id,
+    )?;
+    validate_property_refs(&row.property_refs)?;
+    if let Some(interval) = row.last_observed_present {
+        validate_interval("last_observed_present", interval, &row.loan_id)?;
+    }
+    if row.truth_plane.is_none() {
+        return Err(GeoLedgerError::new(
+            GeoLedgerErrorCode::LedgerTruthPlanePooled,
+            "Geo collateral ledger seed row is missing its truth-plane label",
+            [("field", "truth_plane"), ("loan_id", row.loan_id.as_str())],
+        ));
+    }
+    match row.reach {
+        GeoCandidateReachStatus::None => {
+            normalize_required_reason(row.reach_none_reason.as_deref())?;
+        }
+        GeoCandidateReachStatus::Full | GeoCandidateReachStatus::Partial => {
+            if row
+                .reach_none_reason
+                .as_deref()
+                .is_some_and(|reason| !reason.trim().is_empty())
+            {
+                return Err(GeoLedgerError::invalid(
+                    "Geo collateral ledger seed reach_none_reason is only valid when candidate reach is none",
+                    [
+                        ("field", "reach_none_reason"),
+                        ("loan_id", row.loan_id.as_str()),
+                    ],
+                ));
+            }
+            required_artifact_ref(
+                row.composition_artifact_ref.as_deref(),
+                "composition_artifact_ref",
+                "composition",
+                &row.loan_id,
+            )?;
+            required_artifact_ref(
+                row.evidence_artifact_ref.as_deref(),
+                "evidence_artifact_ref",
+                "evidence",
+                &row.loan_id,
+            )?;
+        }
     }
     Ok(())
 }
@@ -562,6 +793,76 @@ fn validate_ledger_row(
             "Geo collateral ledger row is missing its truth-plane label",
             [("field", "truth_plane"), ("loan_id", row.loan_id.as_str())],
         ));
+    }
+    Ok(())
+}
+
+fn validate_artifact_map_keys<'a>(
+    field: &str,
+    artifact_refs: impl Iterator<Item = &'a String>,
+) -> Result<(), GeoLedgerError> {
+    for artifact_ref in artifact_refs {
+        validate_text(field, artifact_ref)?;
+    }
+    Ok(())
+}
+
+fn required_artifact_ref<'a>(
+    artifact_ref: Option<&'a str>,
+    field: &'static str,
+    artifact_kind: &'static str,
+    loan_id: &str,
+) -> Result<&'a str, GeoLedgerError> {
+    let Some(artifact_ref) = artifact_ref else {
+        return Err(GeoLedgerError::new(
+            GeoLedgerErrorCode::LedgerSetsWithoutArtifacts,
+            "Geo collateral ledger seed row with candidate reach requires an artifact reference",
+            [
+                ("field", field),
+                ("artifact_kind", artifact_kind),
+                ("loan_id", loan_id),
+            ],
+        ));
+    };
+    validate_text(field, artifact_ref)?;
+    Ok(artifact_ref)
+}
+
+fn required_artifact<'a, T>(
+    artifacts: &'a BTreeMap<String, T>,
+    artifact_ref: Option<&'a str>,
+    field: &'static str,
+    artifact_kind: &'static str,
+    loan_id: &str,
+) -> Result<(&'a str, &'a T), GeoLedgerError> {
+    let artifact_ref = required_artifact_ref(artifact_ref, field, artifact_kind, loan_id)?;
+    let artifact = artifacts.get(artifact_ref).ok_or_else(|| {
+        GeoLedgerError::new(
+            GeoLedgerErrorCode::LedgerSetsWithoutArtifacts,
+            "Geo collateral ledger seed row references an artifact that was not supplied",
+            [
+                ("field", field),
+                ("artifact_kind", artifact_kind),
+                ("artifact_ref", artifact_ref),
+                ("loan_id", loan_id),
+            ],
+        )
+    })?;
+    Ok((artifact_ref, artifact))
+}
+
+fn reject_unused_artifacts<'a>(
+    field: &'static str,
+    supplied: impl Iterator<Item = &'a String>,
+    used: &BTreeSet<String>,
+) -> Result<(), GeoLedgerError> {
+    for artifact_ref in supplied {
+        if !used.contains(artifact_ref) {
+            return Err(GeoLedgerError::invalid(
+                "Geo collateral ledger build received an artifact that no seed row references",
+                [("field", field), ("artifact_ref", artifact_ref.as_str())],
+            ));
+        }
     }
     Ok(())
 }

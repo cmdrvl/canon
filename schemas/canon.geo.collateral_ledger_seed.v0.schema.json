@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.collateral_ledger_seed.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "proof_class", "rows"],
+  "properties": {
+    "version": {
+      "const": "canon_geo_collateral_ledger_seed.v0"
+    },
+    "proof_class": {
+      "$ref": "#/$defs/proof_class"
+    },
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/seed_row"
+      }
+    }
+  },
+  "$defs": {
+    "proof_class": {
+      "type": "string",
+      "enum": ["fixture", "retained_artifact", "observed_warehouse_snapshot"]
+    },
+    "candidate_reach": {
+      "type": "string",
+      "enum": ["full", "partial", "none"]
+    },
+    "truth_plane": {
+      "type": "string",
+      "enum": [
+        "gate_v2_historical",
+        "non_round_amount_date_legal_borough",
+        "round_exact_lender_party",
+        "address_derived_control",
+        "deed_grain_instrument",
+        "human_adjudication"
+      ]
+    },
+    "blake3_uri": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "valid_time_interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start_day", "end_day"],
+      "properties": {
+        "start_day": {
+          "type": "integer"
+        },
+        "end_day": {
+          "type": "integer"
+        }
+      }
+    },
+    "source_release_pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_dataset", "source_release", "blake3"],
+      "properties": {
+        "source_dataset": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_release": {
+          "type": "string",
+          "minLength": 1
+        },
+        "blake3": {
+          "$ref": "#/$defs/blake3_uri"
+        }
+      }
+    },
+    "property_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["property_id", "parcel_ids", "building_ids"],
+      "properties": {
+        "property_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parcel_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "building_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "seed_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accession",
+        "deal_id",
+        "loan_id",
+        "reach",
+        "truth_plane",
+        "source_release_pins"
+      ],
+      "properties": {
+        "accession": {
+          "type": "string",
+          "minLength": 1
+        },
+        "deal_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "loan_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reach": {
+          "$ref": "#/$defs/candidate_reach"
+        },
+        "reach_none_reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "deed_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "truth_plane": {
+          "$ref": "#/$defs/truth_plane"
+        },
+        "source_release_pins": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/source_release_pin"
+          }
+        },
+        "composition_artifact_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_artifact_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "property_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/property_ref"
+          }
+        },
+        "last_observed_present": {
+          "$ref": "#/$defs/valid_time_interval"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "reach": {
+                "const": "none"
+              }
+            },
+            "required": ["reach"]
+          },
+          "then": {
+            "required": ["reach_none_reason"],
+            "not": {
+              "anyOf": [
+                {
+                  "required": ["composition_artifact_ref"]
+                },
+                {
+                  "required": ["evidence_artifact_ref"]
+                }
+              ]
+            }
+          },
+          "else": {
+            "required": ["composition_artifact_ref", "evidence_artifact_ref"]
+          }
+        }
+      ]
+    }
+  }
+}
