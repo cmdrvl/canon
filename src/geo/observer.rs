@@ -272,6 +272,7 @@ pub fn truth_plane_key(truth_plane: GeoTruthPlane) -> &'static str {
         GeoTruthPlane::RoundExactLenderParty => "round_exact_lender_party",
         GeoTruthPlane::GateV2Historical => "gate_v2_historical",
         GeoTruthPlane::AddressDerivedControl => "address_derived_control",
+        GeoTruthPlane::DeedGrainInstrument => "deed_grain_instrument",
         GeoTruthPlane::HumanAdjudication => "human_adjudication",
     }
 }

@@ -41,6 +41,7 @@
         "non_round_amount_date_legal_borough",
         "round_exact_lender_party",
         "address_derived_control",
+        "deed_grain_instrument",
         "human_adjudication"
       ]
     },

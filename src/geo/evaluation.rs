@@ -57,6 +57,7 @@ use crate::project::{
     ProjectPlanOutputMaterialization, ProjectPlanSideEffectKind, ProjectRunFailurePolicy,
     ProjectRunPolicy, compile_extension_project_plan, digest_bytes,
 };
+use chrono::NaiveDate;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -68,6 +69,7 @@ use std::{
 
 pub const CANON_GEO_POPULATION_REQUEST_VERSION: &str = "canon_geo_population_request.v0";
 pub const CANON_GEO_POPULATION_EVALUATION_VERSION: &str = "canon_geo_population_evaluation.v0";
+pub const CANON_GEO_E4_GATE_ASSESSMENT_VERSION: &str = "canon_geo_e4_gate_assessment.v0";
 pub const CANON_GEO_FROZEN_E4_H7_CANDIDATE_TRUTH_HANDOFF_REQUEST_VERSION: &str =
     "canon_geo_frozen_e4_h7_candidate_truth_handoff_request.v0";
 pub const CANON_GEO_FROZEN_E4_H7_CANDIDATE_TRUTH_EVALUATION_VERSION: &str =
@@ -77,6 +79,9 @@ pub const CANON_GEO_FROZEN_E4_H7_GATE_ID: &str =
 pub const CANON_GEO_FROZEN_E4_H7_REQUIRED_SUBJECTS: u64 = 79;
 pub const CANON_GEO_FROZEN_E4_H7_RELEASE_26V1: &str = "26v1";
 pub const CANON_GEO_FROZEN_E4_H7_RELEASE_26V2: &str = "26v2";
+pub const CANON_GEO_DEED_INDEX_ROWS_VERSION: &str = "canon_geo_deed_index_rows.v0";
+pub const CANON_GEO_DEED_TRUTH_VERSION: &str = "canon_geo_deed_truth.v0";
+pub const CANON_GEO_DEED_ROUND_AMOUNT_LATTICE_CENTS: i64 = 10_000_000;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeoLabeledCompositionCase {
@@ -247,6 +252,134 @@ pub struct GeoCandidateTruthEvaluationArtifact {
     pub rows: Vec<GeoCandidateTruthCaseEvaluation>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoDeedIndexRowsRequest {
+    pub version: String,
+    pub source_dataset: String,
+    pub source_release: String,
+    pub source_pins: Vec<GeoDeedSourcePin>,
+    pub rows: Vec<GeoDeedIndexRow>,
+    pub max_rows: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoDeedSourcePin {
+    pub source_table: String,
+    pub natural_key: String,
+    pub source_release: String,
+    pub source_release_field: String,
+    pub release_dt: String,
+    pub release_dt_field: String,
+    pub source_content_sha256: String,
+    pub source_content_sha256_field: String,
+    pub parser_version: String,
+    pub parser_version_field: String,
+    pub license_terms: String,
+    pub license_terms_field: String,
+    pub attribution_text: String,
+    pub attribution_text_field: String,
+    pub proof_class: GeoDeedTruthProofClass,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_file: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_file_field: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoDeedTruthProofClass {
+    Fixture,
+    RetainedEvidence,
+    ObservedWarehouseSnapshot,
+    LiveComplete,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoDeedInstrumentType {
+    Mortgage,
+    Deed,
+    Release,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoDeedIndexRow {
+    pub instrument_id: String,
+    pub instrument_type: GeoDeedInstrumentType,
+    pub parcel_ids: Vec<String>,
+    pub recording_date: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub amount_cents: Option<i64>,
+    pub lender_party_blake3: String,
+    pub borrower_party_blake3: String,
+    pub source_release: String,
+    pub row_blake3: String,
+    pub source_pins: Vec<GeoDeedSourcePin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asserted_address: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoDeedTruthLoanRef {
+    pub loan_id: String,
+    pub amount_cents: i64,
+    pub origination_date: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asserted_address: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoDeedTruthMatchKind {
+    Unique,
+    NonUniqueDiscarded,
+    NoMatch,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoDeedTruthLoanMatch {
+    pub loan_id: String,
+    pub matched_instrument_ids: Vec<String>,
+    pub parcel_ids: Vec<String>,
+    pub match_kind: GeoDeedTruthMatchKind,
+    pub amount_exact: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub date_delta_days: Option<u32>,
+    pub round_amount: bool,
+    pub source_pins: Vec<GeoDeedSourcePin>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoDeedTruthSummary {
+    pub loans: u64,
+    pub unique: u64,
+    pub non_unique_discarded: u64,
+    pub no_match: u64,
+    pub round_amount_loans: u64,
+    pub round_amount_unique: u64,
+    pub non_round_amount_loans: u64,
+    pub non_round_amount_unique: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoDeedTruthArtifact {
+    pub version: String,
+    pub deed_index_version: String,
+    pub truth_plane: GeoTruthPlane,
+    pub proof_class: GeoDeedTruthProofClass,
+    pub window_days: u32,
+    pub source_pins: Vec<GeoDeedSourcePin>,
+    pub summary: GeoDeedTruthSummary,
+    pub per_loan: Vec<GeoDeedTruthLoanMatch>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GeoPopulationCaseStatus {
@@ -266,6 +399,7 @@ pub enum GeoTruthPlane {
     NonRoundAmountDateLegalBorough,
     RoundExactLenderParty,
     AddressDerivedControl,
+    DeedGrainInstrument,
     HumanAdjudication,
 }
 
@@ -476,6 +610,170 @@ pub struct GeoPopulationEvaluationArtifact {
     pub cases: Vec<GeoPopulationCaseEvaluation>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoE4GateProofClass {
+    FixtureSubset,
+    ObservedSnapshot,
+    RetainedComplete,
+    LiveComplete,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoE4GateStatus {
+    Open,
+    Passed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoE4GatePlane {
+    Proof,
+    Coverage,
+    CandidateReach,
+    Admission,
+    SolverExactness,
+    Reconciliation,
+    TruthQuality,
+    Cost,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoE4GateBlockerCode {
+    ProofClassNotLiveComplete,
+    PopulationDenominatorMismatch,
+    EvidenceNoObservation,
+    CandidateReachIncomplete,
+    SolverArtifactMissing,
+    ResidualCountInexact,
+    RhoFalsification,
+    FalseMerge,
+    AssignmentBudgetExceeded,
+    ComponentBudgetFallback,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeoE4GateBlocker {
+    pub plane: GeoE4GatePlane,
+    pub code: GeoE4GateBlockerCode,
+    pub observed: String,
+    pub required: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoE4CoveragePlaneScore {
+    pub cases: u64,
+    pub population_eligible_cases: u64,
+    pub evidence_no_observation_cases: u64,
+    pub evidence_diagnostic_only_cases: u64,
+    pub evidence_soft_preference_only_cases: u64,
+    pub evidence_soft_and_diagnostic_only_cases: u64,
+    pub evidence_hard_constraint_cases: u64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoE4CandidateReachPlaneScore {
+    pub evaluated_cases: u64,
+    pub full_cases: u64,
+    pub partial_cases: u64,
+    pub none_cases: u64,
+    pub recall_failure_cases: u64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoE4AdmissionPlaneScore {
+    pub hard_constraint_cases: u64,
+    pub soft_preference_only_cases: u64,
+    pub diagnostic_only_cases: u64,
+    pub soft_and_diagnostic_only_cases: u64,
+    pub rho_falsification_cases: u64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoE4SolverExactnessPlaneScore {
+    pub solver_artifact_cases: u64,
+    pub residual_count_complete_cases: u64,
+    pub residual_count_exact_cases: u64,
+    pub residual_count_saturated_cases: u64,
+    pub residual_count_unavailable_cases: u64,
+    pub assignment_budget_exceeded_cases: u64,
+    pub component_budget_fallback_cases: u64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoE4ReconciliationPlaneScore {
+    pub resolved_cases: u64,
+    pub evidentially_supported_resolved_cases: u64,
+    pub structurally_forced_resolved_cases: u64,
+    pub resolved_with_reach_not_full_cases: u64,
+    pub ambiguous_cases: u64,
+    pub conflict_cases: u64,
+    pub abstention_cases: u64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoE4TruthQualityPlaneScore {
+    pub full_truth_recall_cases: u64,
+    pub solver_truth_scored_cases: u64,
+    pub solver_truth_retained_cases: u64,
+    pub solver_truth_exclusion_cases: u64,
+    pub false_merge_cases: u64,
+    pub backbone_complete_cases: u64,
+    pub truth_members: u64,
+    pub truth_members_in_universe: u64,
+    pub backbone_true_positive_members: u64,
+    pub backbone_false_positive_members: u64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoE4CostPlaneScore {
+    pub candidate_members: u64,
+    pub max_candidate_members: u64,
+    pub solver_artifact_cases: u64,
+    pub residual_count_complete_cases: u64,
+    pub residual_count_saturated_cases: u64,
+    pub residual_count_unavailable_cases: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_residual_model_count: Option<u64>,
+    pub assignment_budget_exceeded_cases: u64,
+    pub component_budget_fallback_cases: u64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoE4GatePlaneScores {
+    pub coverage: GeoE4CoveragePlaneScore,
+    pub candidate_reach: GeoE4CandidateReachPlaneScore,
+    pub admission: GeoE4AdmissionPlaneScore,
+    pub solver_exactness: GeoE4SolverExactnessPlaneScore,
+    pub reconciliation: GeoE4ReconciliationPlaneScore,
+    pub truth_quality: GeoE4TruthQualityPlaneScore,
+    pub cost: GeoE4CostPlaneScore,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoE4TruthPlaneGateAssessment {
+    pub truth_plane: GeoTruthPlane,
+    pub planes: GeoE4GatePlaneScores,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoE4GateAssessment {
+    pub version: String,
+    pub gate_id: String,
+    pub proof_class: GeoE4GateProofClass,
+    pub status: GeoE4GateStatus,
+    pub release_claim_allowed: bool,
+    pub required_subjects: u64,
+    pub evaluated_cases: u64,
+    pub subject_deficit: u64,
+    pub source_evaluation_blake3: String,
+    pub blockers: Vec<GeoE4GateBlocker>,
+    pub planes: GeoE4GatePlaneScores,
+    pub truth_planes: Vec<GeoE4TruthPlaneGateAssessment>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GeoPopulationCaseArtifacts {
     pub case_id: String,
@@ -503,6 +801,9 @@ pub enum GeoPopulationErrorCode {
     Evidence,
     Composition,
     ArithmeticOverflow,
+    DeedTruthNonUnique,
+    DeedTruthAddressJoinDetected,
+    DeedTruthPlanePooled,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -646,6 +947,7 @@ where
             ));
         }
     }
+    validate_deed_truth_plane_scope(cases.iter().map(|case| case.truth_plane))?;
     validate_truth_reach_overlay_case_ids(truth_reach_by_case, &cases)?;
 
     let mut evaluations = Vec::with_capacity(cases.len());
@@ -1956,6 +2258,302 @@ pub fn canonical_candidate_truth_evaluation_bytes(
     serde_json::to_vec(artifact)
 }
 
+pub fn assess_e4_gate(
+    artifact: &GeoPopulationEvaluationArtifact,
+    proof_class: GeoE4GateProofClass,
+) -> Result<GeoE4GateAssessment, GeoPopulationError> {
+    validate_population_evaluation_artifact(artifact)?;
+    let source_evaluation_blake3 = blake3::hash(
+        &canonical_population_evaluation_bytes(artifact).map_err(|error| {
+            GeoPopulationError::new(
+                GeoPopulationErrorCode::Composition,
+                "Geo E4 gate assessment could not serialize the source evaluation",
+                [("error", error.to_string())],
+            )
+        })?,
+    )
+    .to_hex()
+    .to_string();
+    let planes = e4_plane_scores(artifact.cases.iter())?;
+    let mut by_truth_plane = BTreeMap::<GeoTruthPlane, Vec<&GeoPopulationCaseEvaluation>>::new();
+    for case in &artifact.cases {
+        by_truth_plane
+            .entry(case.truth_plane)
+            .or_default()
+            .push(case);
+    }
+    let mut truth_planes = Vec::with_capacity(by_truth_plane.len());
+    for (truth_plane, cases) in by_truth_plane {
+        truth_planes.push(GeoE4TruthPlaneGateAssessment {
+            truth_plane,
+            planes: e4_plane_scores(cases)?,
+        });
+    }
+
+    let required_subjects = CANON_GEO_FROZEN_E4_H7_REQUIRED_SUBJECTS;
+    let evaluated_cases = planes.coverage.cases;
+    let subject_deficit = required_subjects.saturating_sub(evaluated_cases);
+    let mut blockers = Vec::new();
+    if proof_class != GeoE4GateProofClass::LiveComplete {
+        blockers.push(GeoE4GateBlocker {
+            plane: GeoE4GatePlane::Proof,
+            code: GeoE4GateBlockerCode::ProofClassNotLiveComplete,
+            observed: e4_proof_class_name(proof_class).to_string(),
+            required: "live_complete".to_string(),
+        });
+    }
+    e4_add_count_blocker(
+        &mut blockers,
+        GeoE4GatePlane::Coverage,
+        GeoE4GateBlockerCode::PopulationDenominatorMismatch,
+        evaluated_cases,
+        required_subjects,
+        evaluated_cases != required_subjects,
+    );
+    e4_add_count_blocker(
+        &mut blockers,
+        GeoE4GatePlane::Coverage,
+        GeoE4GateBlockerCode::EvidenceNoObservation,
+        planes.coverage.evidence_no_observation_cases,
+        0,
+        planes.coverage.evidence_no_observation_cases != 0,
+    );
+    e4_add_count_blocker(
+        &mut blockers,
+        GeoE4GatePlane::CandidateReach,
+        GeoE4GateBlockerCode::CandidateReachIncomplete,
+        planes.candidate_reach.full_cases,
+        evaluated_cases,
+        planes.candidate_reach.full_cases != evaluated_cases,
+    );
+    e4_add_count_blocker(
+        &mut blockers,
+        GeoE4GatePlane::SolverExactness,
+        GeoE4GateBlockerCode::SolverArtifactMissing,
+        planes.solver_exactness.solver_artifact_cases,
+        evaluated_cases,
+        planes.solver_exactness.solver_artifact_cases != evaluated_cases,
+    );
+    e4_add_count_blocker(
+        &mut blockers,
+        GeoE4GatePlane::SolverExactness,
+        GeoE4GateBlockerCode::ResidualCountInexact,
+        planes
+            .solver_exactness
+            .residual_count_saturated_cases
+            .saturating_add(planes.solver_exactness.residual_count_unavailable_cases),
+        0,
+        planes.solver_exactness.residual_count_saturated_cases != 0
+            || planes.solver_exactness.residual_count_unavailable_cases != 0,
+    );
+    e4_add_count_blocker(
+        &mut blockers,
+        GeoE4GatePlane::Admission,
+        GeoE4GateBlockerCode::RhoFalsification,
+        planes.admission.rho_falsification_cases,
+        0,
+        planes.admission.rho_falsification_cases != 0,
+    );
+    e4_add_count_blocker(
+        &mut blockers,
+        GeoE4GatePlane::TruthQuality,
+        GeoE4GateBlockerCode::FalseMerge,
+        planes.truth_quality.false_merge_cases,
+        0,
+        planes.truth_quality.false_merge_cases != 0,
+    );
+    e4_add_count_blocker(
+        &mut blockers,
+        GeoE4GatePlane::Cost,
+        GeoE4GateBlockerCode::AssignmentBudgetExceeded,
+        planes.solver_exactness.assignment_budget_exceeded_cases,
+        0,
+        planes.solver_exactness.assignment_budget_exceeded_cases != 0,
+    );
+    e4_add_count_blocker(
+        &mut blockers,
+        GeoE4GatePlane::Cost,
+        GeoE4GateBlockerCode::ComponentBudgetFallback,
+        planes.solver_exactness.component_budget_fallback_cases,
+        0,
+        planes.solver_exactness.component_budget_fallback_cases != 0,
+    );
+    blockers.sort();
+    let status = if blockers.is_empty() {
+        GeoE4GateStatus::Passed
+    } else {
+        GeoE4GateStatus::Open
+    };
+    let assessment = GeoE4GateAssessment {
+        version: CANON_GEO_E4_GATE_ASSESSMENT_VERSION.to_string(),
+        gate_id: CANON_GEO_FROZEN_E4_H7_GATE_ID.to_string(),
+        proof_class,
+        status,
+        release_claim_allowed: status == GeoE4GateStatus::Passed
+            && proof_class == GeoE4GateProofClass::LiveComplete,
+        required_subjects,
+        evaluated_cases,
+        subject_deficit,
+        source_evaluation_blake3,
+        blockers,
+        planes,
+        truth_planes,
+    };
+    validate_e4_gate_assessment(&assessment)?;
+    Ok(assessment)
+}
+
+pub fn canonical_e4_gate_assessment_bytes(
+    assessment: &GeoE4GateAssessment,
+) -> Result<Vec<u8>, serde_json::Error> {
+    serde_json::to_vec(assessment)
+}
+
+pub fn validate_e4_gate_assessment(
+    assessment: &GeoE4GateAssessment,
+) -> Result<(), GeoPopulationError> {
+    if assessment.version != CANON_GEO_E4_GATE_ASSESSMENT_VERSION {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::UnsupportedVersion,
+            "Unsupported Geo E4 gate assessment version",
+            [
+                ("actual", assessment.version.as_str()),
+                ("expected", CANON_GEO_E4_GATE_ASSESSMENT_VERSION),
+            ],
+        ));
+    }
+    if assessment.gate_id != CANON_GEO_FROZEN_E4_H7_GATE_ID {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo E4 gate assessment gate_id is not the frozen E4/H7 gate",
+            [
+                ("actual", assessment.gate_id.as_str()),
+                ("expected", CANON_GEO_FROZEN_E4_H7_GATE_ID),
+            ],
+        ));
+    }
+    if assessment.required_subjects != CANON_GEO_FROZEN_E4_H7_REQUIRED_SUBJECTS {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo E4 gate assessment required_subjects must equal the frozen E4/H7 count",
+            [
+                ("actual", assessment.required_subjects.to_string()),
+                (
+                    "expected",
+                    CANON_GEO_FROZEN_E4_H7_REQUIRED_SUBJECTS.to_string(),
+                ),
+            ],
+        ));
+    }
+    validate_lowercase_hex64(
+        "source_evaluation_blake3",
+        &assessment.source_evaluation_blake3,
+    )?;
+    validate_e4_plane_scores("assessment.planes", &assessment.planes)?;
+    if assessment.evaluated_cases != assessment.planes.coverage.cases {
+        return Err(summary_invariant_error(
+            "e4_gate_assessment",
+            "evaluated_cases",
+            assessment.planes.coverage.cases,
+            assessment.evaluated_cases,
+        ));
+    }
+    let expected_deficit = assessment
+        .required_subjects
+        .saturating_sub(assessment.evaluated_cases);
+    if assessment.subject_deficit != expected_deficit {
+        return Err(summary_invariant_error(
+            "e4_gate_assessment",
+            "subject_deficit",
+            expected_deficit,
+            assessment.subject_deficit,
+        ));
+    }
+    let expected_status = if assessment.blockers.is_empty() {
+        GeoE4GateStatus::Passed
+    } else {
+        GeoE4GateStatus::Open
+    };
+    if assessment.status != expected_status {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo E4 gate assessment status is inconsistent with blockers",
+            [
+                ("status", format!("{:?}", assessment.status)),
+                ("blockers", assessment.blockers.len().to_string()),
+            ],
+        ));
+    }
+    let expected_release_claim_allowed = assessment.status == GeoE4GateStatus::Passed
+        && assessment.proof_class == GeoE4GateProofClass::LiveComplete;
+    if assessment.release_claim_allowed != expected_release_claim_allowed {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo E4 gate assessment release-claim field is inconsistent",
+            [
+                (
+                    "release_claim_allowed",
+                    assessment.release_claim_allowed.to_string(),
+                ),
+                ("expected", expected_release_claim_allowed.to_string()),
+            ],
+        ));
+    }
+    for pair in assessment.blockers.windows(2) {
+        if pair[0] >= pair[1] {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo E4 gate assessment blockers must be sorted and unique",
+                [
+                    ("previous", format!("{:?}", pair[0].code)),
+                    ("current", format!("{:?}", pair[1].code)),
+                ],
+            ));
+        }
+    }
+    let mut previous_truth_plane = None;
+    let mut truth_plane_cases = 0_u64;
+    for plane in &assessment.truth_planes {
+        if let Some(previous) = previous_truth_plane
+            && previous >= plane.truth_plane
+        {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo E4 gate assessment truth planes must be sorted and unique",
+                [("truth_plane", format!("{:?}", plane.truth_plane))],
+            ));
+        }
+        previous_truth_plane = Some(plane.truth_plane);
+        validate_e4_plane_scores("assessment.truth_planes", &plane.planes)?;
+        checked_add(
+            &mut truth_plane_cases,
+            plane.planes.coverage.cases,
+            "truth_plane_cases",
+        )?;
+    }
+    if truth_plane_cases != assessment.evaluated_cases {
+        return Err(summary_invariant_error(
+            "e4_gate_assessment",
+            "truth_plane_cases",
+            assessment.evaluated_cases,
+            truth_plane_cases,
+        ));
+    }
+    Ok(())
+}
+
+pub fn canonical_deed_index_rows_bytes(
+    request: &GeoDeedIndexRowsRequest,
+) -> Result<Vec<u8>, serde_json::Error> {
+    serde_json::to_vec(request)
+}
+
+pub fn canonical_deed_truth_bytes(
+    artifact: &GeoDeedTruthArtifact,
+) -> Result<Vec<u8>, serde_json::Error> {
+    serde_json::to_vec(artifact)
+}
+
 pub fn validate_population_evaluation_artifact(
     artifact: &GeoPopulationEvaluationArtifact,
 ) -> Result<(), GeoPopulationError> {
@@ -1982,6 +2580,7 @@ pub fn validate_population_evaluation_artifact(
     for case in &artifact.cases {
         validate_case_evaluation(case)?;
     }
+    validate_deed_truth_plane_scope(artifact.cases.iter().map(|case| case.truth_plane))?;
     validate_summary(&artifact.summary)?;
     let expected_summary = summarize(&artifact.cases)?;
     if artifact.summary != expected_summary {
@@ -2048,6 +2647,802 @@ pub fn validate_candidate_truth_evaluation_artifact(
         ));
     }
     Ok(())
+}
+
+pub fn validate_deed_index_rows_request(
+    request: &GeoDeedIndexRowsRequest,
+) -> Result<(), GeoPopulationError> {
+    if request.version != CANON_GEO_DEED_INDEX_ROWS_VERSION {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::UnsupportedVersion,
+            "Unsupported Geo deed index rows version",
+            [
+                ("actual", request.version.as_str()),
+                ("expected", CANON_GEO_DEED_INDEX_ROWS_VERSION),
+            ],
+        ));
+    }
+    validate_nonempty_canonical("source_dataset", &request.source_dataset)?;
+    validate_nonempty_canonical("source_release", &request.source_release)?;
+    if request.max_rows == 0 || request.rows.len() > request.max_rows {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::PopulationBudgetExceeded,
+            "Geo deed index rows exceed the declared row budget",
+            [
+                ("rows", request.rows.len().to_string()),
+                ("max_rows", request.max_rows.to_string()),
+            ],
+        ));
+    }
+    validate_sorted_deed_source_pins("source_pins", &request.source_pins, true)?;
+    let pinned_releases = request
+        .source_pins
+        .iter()
+        .map(|pin| pin.source_release.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut previous: Option<&str> = None;
+    for row in &request.rows {
+        validate_deed_index_row(row, &pinned_releases)?;
+        if previous.is_some_and(|previous| previous >= row.instrument_id.as_str()) {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo deed index rows must be sorted by distinct instrument_id",
+                [
+                    ("field", "rows[].instrument_id"),
+                    ("instrument_id", row.instrument_id.as_str()),
+                ],
+            ));
+        }
+        previous = Some(row.instrument_id.as_str());
+    }
+    Ok(())
+}
+
+pub fn derive_deed_truth_from_index(
+    loans: &[GeoDeedTruthLoanRef],
+    deed_index: &GeoDeedIndexRowsRequest,
+    window_days: u32,
+) -> Result<GeoDeedTruthArtifact, GeoPopulationError> {
+    validate_deed_index_rows_request(deed_index)?;
+    derive_deed_truth_inner(
+        loans,
+        &deed_index.rows,
+        window_days,
+        deed_index.source_pins.clone(),
+        deed_index.version.clone(),
+    )
+}
+
+pub fn derive_deed_truth(
+    loans: &[GeoDeedTruthLoanRef],
+    deeds: &[GeoDeedIndexRow],
+    window_days: u32,
+) -> Result<GeoDeedTruthArtifact, GeoPopulationError> {
+    if deeds.is_empty() {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo deed truth derivation requires source-pinned deed rows",
+            [("field", "deeds")],
+        ));
+    }
+    let source_pins = collect_deed_source_pins(deeds)?;
+    derive_deed_truth_inner(
+        loans,
+        deeds,
+        window_days,
+        source_pins,
+        CANON_GEO_DEED_INDEX_ROWS_VERSION.to_string(),
+    )
+}
+
+pub fn validate_deed_truth_artifact(
+    artifact: &GeoDeedTruthArtifact,
+) -> Result<(), GeoPopulationError> {
+    if artifact.version != CANON_GEO_DEED_TRUTH_VERSION {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::UnsupportedVersion,
+            "Unsupported Geo deed truth artifact version",
+            [
+                ("actual", artifact.version.as_str()),
+                ("expected", CANON_GEO_DEED_TRUTH_VERSION),
+            ],
+        ));
+    }
+    if artifact.deed_index_version != CANON_GEO_DEED_INDEX_ROWS_VERSION {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::UnsupportedVersion,
+            "Unsupported Geo deed index version on truth artifact",
+            [
+                ("actual", artifact.deed_index_version.as_str()),
+                ("expected", CANON_GEO_DEED_INDEX_ROWS_VERSION),
+            ],
+        ));
+    }
+    if artifact.truth_plane != GeoTruthPlane::DeedGrainInstrument {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo deed truth artifact must declare the deed-grain truth plane",
+            [("field", "truth_plane")],
+        ));
+    }
+    validate_sorted_deed_source_pins("source_pins", &artifact.source_pins, true)?;
+    if artifact.proof_class != deed_truth_proof_class(&artifact.source_pins)? {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo deed truth artifact proof_class must be the minimum source-pin proof class",
+            [("field", "proof_class")],
+        ));
+    }
+    let mut previous: Option<&str> = None;
+    for row in &artifact.per_loan {
+        validate_deed_truth_loan_match(row)?;
+        if previous.is_some_and(|previous| previous >= row.loan_id.as_str()) {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo deed truth rows must be sorted by distinct loan_id",
+                [("loan_id", row.loan_id.as_str())],
+            ));
+        }
+        previous = Some(row.loan_id.as_str());
+    }
+    let expected_summary = summarize_deed_truth(&artifact.per_loan)?;
+    if artifact.summary != expected_summary {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo deed truth summary does not match per-loan rows",
+            [("field", "summary")],
+        ));
+    }
+    Ok(())
+}
+
+pub fn validate_deed_truth_plane_scope(
+    planes: impl IntoIterator<Item = GeoTruthPlane>,
+) -> Result<(), GeoPopulationError> {
+    let unique = planes.into_iter().collect::<BTreeSet<_>>();
+    if unique.contains(&GeoTruthPlane::DeedGrainInstrument) && unique.len() > 1 {
+        let truth_planes = unique
+            .iter()
+            .map(|plane| format!("{plane:?}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::DeedTruthPlanePooled,
+            "Geo deed truth plane cannot be pooled with another truth plane",
+            [("truth_planes", truth_planes)],
+        ));
+    }
+    Ok(())
+}
+
+fn derive_deed_truth_inner(
+    loans: &[GeoDeedTruthLoanRef],
+    deeds: &[GeoDeedIndexRow],
+    window_days: u32,
+    mut source_pins: Vec<GeoDeedSourcePin>,
+    deed_index_version: String,
+) -> Result<GeoDeedTruthArtifact, GeoPopulationError> {
+    if loans.is_empty() {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo deed truth derivation requires at least one loan",
+            [("field", "loans")],
+        ));
+    }
+    validate_sorted_deed_source_pins("source_pins", &source_pins, true)?;
+    source_pins.sort();
+    source_pins.dedup();
+    let pinned_releases = source_pins
+        .iter()
+        .map(|pin| pin.source_release.as_str())
+        .collect::<BTreeSet<_>>();
+
+    let mut canonical_deeds = deeds.to_vec();
+    canonical_deeds.sort_by(|left, right| left.instrument_id.cmp(&right.instrument_id));
+    let mut prior_instrument_id: Option<&str> = None;
+    for deed in &canonical_deeds {
+        validate_deed_index_row(deed, &pinned_releases)?;
+        if prior_instrument_id.is_some_and(|previous| previous == deed.instrument_id.as_str()) {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo deed index rows contain a duplicate instrument_id",
+                [("instrument_id", deed.instrument_id.as_str())],
+            ));
+        }
+        prior_instrument_id = Some(deed.instrument_id.as_str());
+    }
+
+    let mut canonical_loans = loans.to_vec();
+    canonical_loans.sort_by(|left, right| left.loan_id.cmp(&right.loan_id));
+    let mut prior_loan_id: Option<&str> = None;
+    let mut per_loan = Vec::with_capacity(canonical_loans.len());
+    for loan in &canonical_loans {
+        validate_deed_truth_loan_ref(loan)?;
+        if prior_loan_id.is_some_and(|previous| previous == loan.loan_id.as_str()) {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo deed truth loan refs contain a duplicate loan_id",
+                [("loan_id", loan.loan_id.as_str())],
+            ));
+        }
+        prior_loan_id = Some(loan.loan_id.as_str());
+        per_loan.push(match_deed_truth_loan(loan, &canonical_deeds, window_days)?);
+    }
+
+    let artifact = GeoDeedTruthArtifact {
+        version: CANON_GEO_DEED_TRUTH_VERSION.to_string(),
+        deed_index_version,
+        truth_plane: GeoTruthPlane::DeedGrainInstrument,
+        proof_class: deed_truth_proof_class(&source_pins)?,
+        window_days,
+        source_pins,
+        summary: summarize_deed_truth(&per_loan)?,
+        per_loan,
+    };
+    validate_deed_truth_artifact(&artifact)?;
+    Ok(artifact)
+}
+
+#[derive(Debug)]
+struct GeoDeedTruthCandidate {
+    instrument_id: String,
+    parcel_ids: Vec<String>,
+    date_delta_days: u32,
+    source_pins: Vec<GeoDeedSourcePin>,
+}
+
+fn match_deed_truth_loan(
+    loan: &GeoDeedTruthLoanRef,
+    deeds: &[GeoDeedIndexRow],
+    window_days: u32,
+) -> Result<GeoDeedTruthLoanMatch, GeoPopulationError> {
+    let origination_date = parse_deed_date("loans[].origination_date", &loan.origination_date)?;
+    let mut amount_date_delta_days = Vec::new();
+    let mut candidates = Vec::new();
+    for deed in deeds {
+        if deed.instrument_type != GeoDeedInstrumentType::Mortgage
+            || deed.amount_cents != Some(loan.amount_cents)
+        {
+            continue;
+        }
+        let recording_date = parse_deed_date("deeds[].recording_date", &deed.recording_date)?;
+        let delta_days = date_delta_days(origination_date, recording_date)?;
+        if delta_days > window_days {
+            continue;
+        }
+        amount_date_delta_days.push(delta_days);
+        if deed.parcel_ids.is_empty() {
+            continue;
+        }
+        candidates.push(GeoDeedTruthCandidate {
+            instrument_id: deed.instrument_id.clone(),
+            parcel_ids: deed.parcel_ids.clone(),
+            date_delta_days: delta_days,
+            source_pins: deed.source_pins.clone(),
+        });
+    }
+    let amount_exact = !amount_date_delta_days.is_empty();
+    let date_delta_days = amount_date_delta_days.into_iter().min();
+    let round_amount = is_deed_round_amount(loan.amount_cents);
+    let row = match candidates.len() {
+        0 => GeoDeedTruthLoanMatch {
+            loan_id: loan.loan_id.clone(),
+            matched_instrument_ids: Vec::new(),
+            parcel_ids: Vec::new(),
+            match_kind: GeoDeedTruthMatchKind::NoMatch,
+            amount_exact,
+            date_delta_days,
+            round_amount,
+            source_pins: Vec::new(),
+        },
+        1 => {
+            let candidate = candidates
+                .pop()
+                .expect("candidate length checked before pop");
+            GeoDeedTruthLoanMatch {
+                loan_id: loan.loan_id.clone(),
+                matched_instrument_ids: vec![candidate.instrument_id],
+                parcel_ids: sorted_unique_strings(candidate.parcel_ids),
+                match_kind: GeoDeedTruthMatchKind::Unique,
+                amount_exact,
+                date_delta_days: Some(candidate.date_delta_days),
+                round_amount,
+                source_pins: sorted_unique_deed_source_pins(candidate.source_pins),
+            }
+        }
+        _ => {
+            let mut matched_instrument_ids = Vec::with_capacity(candidates.len());
+            let mut candidate_source_pins = Vec::new();
+            for candidate in candidates {
+                matched_instrument_ids.push(candidate.instrument_id);
+                candidate_source_pins.extend(candidate.source_pins);
+            }
+            matched_instrument_ids.sort();
+            matched_instrument_ids.dedup();
+            GeoDeedTruthLoanMatch {
+                loan_id: loan.loan_id.clone(),
+                matched_instrument_ids,
+                parcel_ids: Vec::new(),
+                match_kind: GeoDeedTruthMatchKind::NonUniqueDiscarded,
+                amount_exact,
+                date_delta_days,
+                round_amount,
+                source_pins: sorted_unique_deed_source_pins(candidate_source_pins),
+            }
+        }
+    };
+    validate_deed_truth_loan_match(&row)?;
+    Ok(row)
+}
+
+fn collect_deed_source_pins(
+    deeds: &[GeoDeedIndexRow],
+) -> Result<Vec<GeoDeedSourcePin>, GeoPopulationError> {
+    let mut source_pins = Vec::new();
+    for deed in deeds {
+        source_pins.extend(deed.source_pins.clone());
+    }
+    let source_pins = sorted_unique_deed_source_pins(source_pins);
+    validate_sorted_deed_source_pins("source_pins", &source_pins, true)?;
+    Ok(source_pins)
+}
+
+fn validate_deed_index_row(
+    row: &GeoDeedIndexRow,
+    pinned_releases: &BTreeSet<&str>,
+) -> Result<(), GeoPopulationError> {
+    validate_nonempty_canonical("deeds[].instrument_id", &row.instrument_id)?;
+    validate_sorted_strings("deeds[].parcel_ids", &row.parcel_ids, false)?;
+    parse_deed_date("deeds[].recording_date", &row.recording_date)?;
+    if let Some(amount_cents) = row.amount_cents
+        && amount_cents <= 0
+    {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo deed index amount_cents must be positive when present",
+            [
+                ("field", "deeds[].amount_cents"),
+                ("instrument_id", row.instrument_id.as_str()),
+            ],
+        ));
+    }
+    validate_lower_hex_digest("deeds[].lender_party_blake3", &row.lender_party_blake3)?;
+    validate_lower_hex_digest("deeds[].borrower_party_blake3", &row.borrower_party_blake3)?;
+    validate_nonempty_canonical("deeds[].source_release", &row.source_release)?;
+    if !pinned_releases.contains(row.source_release.as_str()) {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo deed index row source_release is not pinned",
+            [
+                ("instrument_id", row.instrument_id.as_str()),
+                ("source_release", row.source_release.as_str()),
+            ],
+        ));
+    }
+    validate_lower_hex_digest("deeds[].row_blake3", &row.row_blake3)?;
+    validate_sorted_deed_source_pins("deeds[].source_pins", &row.source_pins, true)?;
+    for pin in &row.source_pins {
+        if !pinned_releases.contains(pin.source_release.as_str()) {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo deed index row source pin release is not declared at the request level",
+                [
+                    ("instrument_id", row.instrument_id.as_str()),
+                    ("source_release", pin.source_release.as_str()),
+                ],
+            ));
+        }
+    }
+    if let Some(address) = &row.asserted_address {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::DeedTruthAddressJoinDetected,
+            "Geo deed truth inputs must not carry clear address fields",
+            [
+                ("field", "deeds[].asserted_address"),
+                ("instrument_id", row.instrument_id.as_str()),
+                ("value", address.as_str()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_deed_truth_loan_ref(loan: &GeoDeedTruthLoanRef) -> Result<(), GeoPopulationError> {
+    validate_nonempty_canonical("loans[].loan_id", &loan.loan_id)?;
+    if loan.amount_cents <= 0 {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo deed truth loan amount_cents must be positive",
+            [
+                ("field", "loans[].amount_cents"),
+                ("loan_id", loan.loan_id.as_str()),
+            ],
+        ));
+    }
+    parse_deed_date("loans[].origination_date", &loan.origination_date)?;
+    if let Some(address) = &loan.asserted_address {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::DeedTruthAddressJoinDetected,
+            "Geo deed truth inputs must not carry clear address fields",
+            [
+                ("field", "loans[].asserted_address"),
+                ("loan_id", loan.loan_id.as_str()),
+                ("value", address.as_str()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_deed_truth_loan_match(row: &GeoDeedTruthLoanMatch) -> Result<(), GeoPopulationError> {
+    validate_nonempty_canonical("per_loan[].loan_id", &row.loan_id)?;
+    validate_sorted_strings(
+        "per_loan[].matched_instrument_ids",
+        &row.matched_instrument_ids,
+        false,
+    )?;
+    validate_sorted_strings("per_loan[].parcel_ids", &row.parcel_ids, false)?;
+    validate_sorted_deed_source_pins("per_loan[].source_pins", &row.source_pins, false)?;
+    match row.match_kind {
+        GeoDeedTruthMatchKind::Unique => {
+            if row.matched_instrument_ids.len() != 1 || row.parcel_ids.is_empty() {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::InvalidInput,
+                    "Geo deed truth unique rows require one instrument and at least one parcel",
+                    [("loan_id", row.loan_id.as_str())],
+                ));
+            }
+            if !row.amount_exact || row.date_delta_days.is_none() || row.source_pins.is_empty() {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::InvalidInput,
+                    "Geo deed truth unique rows must preserve amount/date/source evidence",
+                    [("loan_id", row.loan_id.as_str())],
+                ));
+            }
+        }
+        GeoDeedTruthMatchKind::NonUniqueDiscarded => {
+            if row.matched_instrument_ids.len() < 2 || !row.parcel_ids.is_empty() {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::DeedTruthNonUnique,
+                    "Geo deed truth non-unique rows must be discarded from truth",
+                    [("loan_id", row.loan_id.as_str())],
+                ));
+            }
+            if !row.amount_exact || row.date_delta_days.is_none() {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::InvalidInput,
+                    "Geo deed truth non-unique rows must preserve amount/date evidence",
+                    [("loan_id", row.loan_id.as_str())],
+                ));
+            }
+        }
+        GeoDeedTruthMatchKind::NoMatch => {
+            if !row.matched_instrument_ids.is_empty() || !row.parcel_ids.is_empty() {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::InvalidInput,
+                    "Geo deed truth no-match rows must not carry truth instruments or parcels",
+                    [("loan_id", row.loan_id.as_str())],
+                ));
+            }
+            if !row.amount_exact && row.date_delta_days.is_some() {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::InvalidInput,
+                    "Geo deed truth no-match date_delta_days requires an amount/date candidate",
+                    [("loan_id", row.loan_id.as_str())],
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn summarize_deed_truth(
+    per_loan: &[GeoDeedTruthLoanMatch],
+) -> Result<GeoDeedTruthSummary, GeoPopulationError> {
+    let mut summary = GeoDeedTruthSummary {
+        loans: checked_len(per_loan.len(), "deed_truth.loans")?,
+        unique: 0,
+        non_unique_discarded: 0,
+        no_match: 0,
+        round_amount_loans: 0,
+        round_amount_unique: 0,
+        non_round_amount_loans: 0,
+        non_round_amount_unique: 0,
+    };
+    for row in per_loan {
+        if row.round_amount {
+            checked_inc(
+                &mut summary.round_amount_loans,
+                "deed_truth.round_amount_loans",
+            )?;
+        } else {
+            checked_inc(
+                &mut summary.non_round_amount_loans,
+                "deed_truth.non_round_amount_loans",
+            )?;
+        }
+        match row.match_kind {
+            GeoDeedTruthMatchKind::Unique => {
+                checked_inc(&mut summary.unique, "deed_truth.unique")?;
+                if row.round_amount {
+                    checked_inc(
+                        &mut summary.round_amount_unique,
+                        "deed_truth.round_amount_unique",
+                    )?;
+                } else {
+                    checked_inc(
+                        &mut summary.non_round_amount_unique,
+                        "deed_truth.non_round_amount_unique",
+                    )?;
+                }
+            }
+            GeoDeedTruthMatchKind::NonUniqueDiscarded => checked_inc(
+                &mut summary.non_unique_discarded,
+                "deed_truth.non_unique_discarded",
+            )?,
+            GeoDeedTruthMatchKind::NoMatch => {
+                checked_inc(&mut summary.no_match, "deed_truth.no_match")?;
+            }
+        }
+    }
+    validate_deed_truth_summary(&summary)?;
+    Ok(summary)
+}
+
+fn validate_deed_truth_summary(summary: &GeoDeedTruthSummary) -> Result<(), GeoPopulationError> {
+    let outcomes = sum_u64(
+        [
+            summary.unique,
+            summary.non_unique_discarded,
+            summary.no_match,
+        ],
+        "deed_truth.outcomes",
+    )?;
+    if outcomes != summary.loans {
+        return Err(summary_invariant_error(
+            "deed_truth",
+            "unique_non_unique_no_match",
+            summary.loans,
+            outcomes,
+        ));
+    }
+    let strata = sum_u64(
+        [summary.round_amount_loans, summary.non_round_amount_loans],
+        "deed_truth.amount_strata",
+    )?;
+    if strata != summary.loans {
+        return Err(summary_invariant_error(
+            "deed_truth",
+            "round_amount_strata",
+            summary.loans,
+            strata,
+        ));
+    }
+    let unique_by_stratum = sum_u64(
+        [summary.round_amount_unique, summary.non_round_amount_unique],
+        "deed_truth.unique_by_stratum",
+    )?;
+    if unique_by_stratum != summary.unique {
+        return Err(summary_invariant_error(
+            "deed_truth",
+            "unique_by_stratum",
+            summary.unique,
+            unique_by_stratum,
+        ));
+    }
+    if summary.round_amount_unique > summary.round_amount_loans {
+        return Err(summary_invariant_error(
+            "deed_truth",
+            "round_amount_unique",
+            summary.round_amount_loans,
+            summary.round_amount_unique,
+        ));
+    }
+    if summary.non_round_amount_unique > summary.non_round_amount_loans {
+        return Err(summary_invariant_error(
+            "deed_truth",
+            "non_round_amount_unique",
+            summary.non_round_amount_loans,
+            summary.non_round_amount_unique,
+        ));
+    }
+    Ok(())
+}
+
+fn validate_sorted_deed_source_pins(
+    field: &str,
+    pins: &[GeoDeedSourcePin],
+    require_nonempty: bool,
+) -> Result<(), GeoPopulationError> {
+    if require_nonempty && pins.is_empty() {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo deed truth source pins must be non-empty",
+            [("field", field.to_string())],
+        ));
+    }
+    let mut previous: Option<&GeoDeedSourcePin> = None;
+    for pin in pins {
+        validate_deed_source_pin(field, pin)?;
+        if previous.is_some_and(|previous| previous >= pin) {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo deed truth source pins must be sorted and distinct",
+                [("field", field.to_string())],
+            ));
+        }
+        previous = Some(pin);
+    }
+    Ok(())
+}
+
+fn validate_deed_source_pin(field: &str, pin: &GeoDeedSourcePin) -> Result<(), GeoPopulationError> {
+    validate_nonempty_canonical_dynamic(&format!("{field}[].source_table"), &pin.source_table)?;
+    validate_nonempty_canonical_dynamic(&format!("{field}[].natural_key"), &pin.natural_key)?;
+    validate_nonempty_canonical_dynamic(&format!("{field}[].source_release"), &pin.source_release)?;
+    validate_nonempty_canonical_dynamic(
+        &format!("{field}[].source_release_field"),
+        &pin.source_release_field,
+    )?;
+    validate_nonempty_canonical_dynamic(&format!("{field}[].release_dt"), &pin.release_dt)?;
+    validate_nonempty_canonical_dynamic(
+        &format!("{field}[].release_dt_field"),
+        &pin.release_dt_field,
+    )?;
+    parse_deed_date(&format!("{field}[].release_dt"), &pin.release_dt)?;
+    validate_lower_hex_digest(
+        &format!("{field}[].source_content_sha256"),
+        &pin.source_content_sha256,
+    )?;
+    validate_nonempty_canonical_dynamic(
+        &format!("{field}[].source_content_sha256_field"),
+        &pin.source_content_sha256_field,
+    )?;
+    validate_nonempty_canonical_dynamic(&format!("{field}[].parser_version"), &pin.parser_version)?;
+    validate_nonempty_canonical_dynamic(
+        &format!("{field}[].parser_version_field"),
+        &pin.parser_version_field,
+    )?;
+    validate_nonempty_canonical_dynamic(&format!("{field}[].license_terms"), &pin.license_terms)?;
+    validate_nonempty_canonical_dynamic(
+        &format!("{field}[].license_terms_field"),
+        &pin.license_terms_field,
+    )?;
+    validate_nonempty_canonical_dynamic(
+        &format!("{field}[].attribution_text"),
+        &pin.attribution_text,
+    )?;
+    validate_nonempty_canonical_dynamic(
+        &format!("{field}[].attribution_text_field"),
+        &pin.attribution_text_field,
+    )?;
+    match (&pin.source_file, &pin.source_file_field) {
+        (Some(source_file), Some(source_file_field)) => {
+            validate_nonempty_canonical_dynamic(&format!("{field}[].source_file"), source_file)?;
+            validate_nonempty_canonical_dynamic(
+                &format!("{field}[].source_file_field"),
+                source_file_field,
+            )?;
+        }
+        (None, None) => {}
+        _ => {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo deed truth source file pins require value and field name together",
+                [("field", format!("{field}[].source_file"))],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn sorted_unique_deed_source_pins(mut pins: Vec<GeoDeedSourcePin>) -> Vec<GeoDeedSourcePin> {
+    pins.sort();
+    pins.dedup();
+    pins
+}
+
+fn deed_truth_proof_class(
+    source_pins: &[GeoDeedSourcePin],
+) -> Result<GeoDeedTruthProofClass, GeoPopulationError> {
+    source_pins
+        .iter()
+        .map(|pin| pin.proof_class)
+        .min()
+        .ok_or_else(|| {
+            GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo deed truth artifact requires at least one source pin",
+                [("field", "source_pins")],
+            )
+        })
+}
+
+fn sorted_unique_strings(mut values: Vec<String>) -> Vec<String> {
+    values.sort();
+    values.dedup();
+    values
+}
+
+fn validate_sorted_strings(
+    field: &str,
+    values: &[String],
+    require_nonempty: bool,
+) -> Result<(), GeoPopulationError> {
+    if require_nonempty && values.is_empty() {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo deed truth string list must be non-empty",
+            [("field", field.to_string())],
+        ));
+    }
+    let mut previous: Option<&str> = None;
+    for value in values {
+        validate_nonempty_canonical_dynamic(field, value)?;
+        if previous.is_some_and(|previous| previous >= value.as_str()) {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo deed truth string lists must be sorted and distinct",
+                [("field", field.to_string()), ("value", value.clone())],
+            ));
+        }
+        previous = Some(value.as_str());
+    }
+    Ok(())
+}
+
+fn validate_nonempty_canonical_dynamic(field: &str, value: &str) -> Result<(), GeoPopulationError> {
+    if value.is_empty() || value.trim() != value {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo deed truth strings must be non-empty and canonical",
+            [("field", field.to_string()), ("value", value.to_string())],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_lower_hex_digest(field: &str, value: &str) -> Result<(), GeoPopulationError> {
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo deed truth digests must be lowercase fixed-width hex",
+            [("field", field.to_string()), ("value", value.to_string())],
+        ));
+    }
+    Ok(())
+}
+
+fn parse_deed_date(field: &str, value: &str) -> Result<NaiveDate, GeoPopulationError> {
+    NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|error| {
+        GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo deed truth dates must use YYYY-MM-DD",
+            [
+                ("field", field.to_string()),
+                ("value", value.to_string()),
+                ("error", error.to_string()),
+            ],
+        )
+    })
+}
+
+fn date_delta_days(left: NaiveDate, right: NaiveDate) -> Result<u32, GeoPopulationError> {
+    u32::try_from((left - right).num_days().unsigned_abs()).map_err(|_| {
+        GeoPopulationError::new(
+            GeoPopulationErrorCode::ArithmeticOverflow,
+            "Geo deed truth date delta overflowed",
+            [("field", "date_delta_days")],
+        )
+    })
+}
+
+fn is_deed_round_amount(amount_cents: i64) -> bool {
+    amount_cents % CANON_GEO_DEED_ROUND_AMOUNT_LATTICE_CENTS == 0
 }
 
 fn validate_case(case: &mut GeoLabeledCompositionCase) -> Result<(), GeoPopulationError> {
@@ -2826,6 +4221,580 @@ fn resolved_claim_from_artifact(
 
 fn is_residual_count_exact_case(case: &GeoPopulationCaseEvaluation) -> bool {
     case.residual_count_complete && !case.residual_count_saturated
+}
+
+fn e4_plane_scores<'a>(
+    cases: impl IntoIterator<Item = &'a GeoPopulationCaseEvaluation>,
+) -> Result<GeoE4GatePlaneScores, GeoPopulationError> {
+    let mut scores = GeoE4GatePlaneScores::default();
+    for case in cases {
+        checked_inc(&mut scores.coverage.cases, "e4.coverage.cases")?;
+        checked_inc(
+            &mut scores.coverage.population_eligible_cases,
+            "e4.coverage.population_eligible_cases",
+        )?;
+        checked_inc(
+            &mut scores.candidate_reach.evaluated_cases,
+            "e4.candidate_reach.evaluated_cases",
+        )?;
+        checked_add(
+            &mut scores.cost.candidate_members,
+            case.candidate_members,
+            "e4.cost.candidate_members",
+        )?;
+        scores.cost.max_candidate_members = scores
+            .cost
+            .max_candidate_members
+            .max(case.candidate_members);
+        if let Some(count) = case.residual_model_count {
+            scores.cost.max_residual_model_count = Some(
+                scores
+                    .cost
+                    .max_residual_model_count
+                    .map_or(count, |current| current.max(count)),
+            );
+        }
+        match case.evidence_coverage {
+            GeoEvidenceCoverageStatus::NoObservations => checked_inc(
+                &mut scores.coverage.evidence_no_observation_cases,
+                "e4.coverage.evidence_no_observation_cases",
+            )?,
+            GeoEvidenceCoverageStatus::DiagnosticOnly => {
+                checked_inc(
+                    &mut scores.coverage.evidence_diagnostic_only_cases,
+                    "e4.coverage.evidence_diagnostic_only_cases",
+                )?;
+                checked_inc(
+                    &mut scores.admission.diagnostic_only_cases,
+                    "e4.admission.diagnostic_only_cases",
+                )?;
+            }
+            GeoEvidenceCoverageStatus::SoftPreferenceOnly => {
+                checked_inc(
+                    &mut scores.coverage.evidence_soft_preference_only_cases,
+                    "e4.coverage.evidence_soft_preference_only_cases",
+                )?;
+                checked_inc(
+                    &mut scores.admission.soft_preference_only_cases,
+                    "e4.admission.soft_preference_only_cases",
+                )?;
+            }
+            GeoEvidenceCoverageStatus::SoftAndDiagnosticOnly => {
+                checked_inc(
+                    &mut scores.coverage.evidence_soft_and_diagnostic_only_cases,
+                    "e4.coverage.evidence_soft_and_diagnostic_only_cases",
+                )?;
+                checked_inc(
+                    &mut scores.admission.soft_and_diagnostic_only_cases,
+                    "e4.admission.soft_and_diagnostic_only_cases",
+                )?;
+            }
+            GeoEvidenceCoverageStatus::HardConstraintPresent => {
+                checked_inc(
+                    &mut scores.coverage.evidence_hard_constraint_cases,
+                    "e4.coverage.evidence_hard_constraint_cases",
+                )?;
+                checked_inc(
+                    &mut scores.admission.hard_constraint_cases,
+                    "e4.admission.hard_constraint_cases",
+                )?;
+            }
+        }
+        match case.candidate_reach {
+            GeoCandidateReachStatus::Full => checked_inc(
+                &mut scores.candidate_reach.full_cases,
+                "e4.candidate_reach.full_cases",
+            )?,
+            GeoCandidateReachStatus::Partial => {
+                checked_inc(
+                    &mut scores.candidate_reach.partial_cases,
+                    "e4.candidate_reach.partial_cases",
+                )?;
+                checked_inc(
+                    &mut scores.candidate_reach.recall_failure_cases,
+                    "e4.candidate_reach.recall_failure_cases",
+                )?;
+            }
+            GeoCandidateReachStatus::None => {
+                checked_inc(
+                    &mut scores.candidate_reach.none_cases,
+                    "e4.candidate_reach.none_cases",
+                )?;
+                checked_inc(
+                    &mut scores.candidate_reach.recall_failure_cases,
+                    "e4.candidate_reach.recall_failure_cases",
+                )?;
+            }
+        }
+        if case.solver_digest.is_some() {
+            checked_inc(
+                &mut scores.solver_exactness.solver_artifact_cases,
+                "e4.solver_exactness.solver_artifact_cases",
+            )?;
+            checked_inc(
+                &mut scores.cost.solver_artifact_cases,
+                "e4.cost.solver_artifact_cases",
+            )?;
+        }
+        match case.status {
+            GeoPopulationCaseStatus::Resolved => {
+                checked_inc(
+                    &mut scores.reconciliation.resolved_cases,
+                    "e4.reconciliation.resolved_cases",
+                )?;
+                match case
+                    .resolved_claim
+                    .as_ref()
+                    .map(|claim| claim.claim_class)
+                    .ok_or_else(|| {
+                        case_invariant_error(
+                            case,
+                            "resolved_claim",
+                            "Geo E4 gate assessment found a resolved case without a claim class",
+                        )
+                    })? {
+                    GeoResolvedClaimClass::EvidentiallySupported => checked_inc(
+                        &mut scores.reconciliation.evidentially_supported_resolved_cases,
+                        "e4.reconciliation.evidentially_supported_resolved_cases",
+                    )?,
+                    GeoResolvedClaimClass::StructurallyForced => checked_inc(
+                        &mut scores.reconciliation.structurally_forced_resolved_cases,
+                        "e4.reconciliation.structurally_forced_resolved_cases",
+                    )?,
+                }
+                if case.candidate_reach != GeoCandidateReachStatus::Full {
+                    checked_inc(
+                        &mut scores.reconciliation.resolved_with_reach_not_full_cases,
+                        "e4.reconciliation.resolved_with_reach_not_full_cases",
+                    )?;
+                }
+            }
+            GeoPopulationCaseStatus::Ambiguous => {
+                checked_inc(
+                    &mut scores.reconciliation.ambiguous_cases,
+                    "e4.reconciliation.ambiguous_cases",
+                )?;
+                checked_inc(
+                    &mut scores.reconciliation.abstention_cases,
+                    "e4.reconciliation.abstention_cases",
+                )?;
+            }
+            GeoPopulationCaseStatus::Conflict => {
+                checked_inc(
+                    &mut scores.reconciliation.conflict_cases,
+                    "e4.reconciliation.conflict_cases",
+                )?;
+                checked_inc(
+                    &mut scores.reconciliation.abstention_cases,
+                    "e4.reconciliation.abstention_cases",
+                )?;
+            }
+            GeoPopulationCaseStatus::AssignmentBudgetExceeded => {
+                checked_inc(
+                    &mut scores.solver_exactness.assignment_budget_exceeded_cases,
+                    "e4.solver_exactness.assignment_budget_exceeded_cases",
+                )?;
+                checked_inc(
+                    &mut scores.cost.assignment_budget_exceeded_cases,
+                    "e4.cost.assignment_budget_exceeded_cases",
+                )?;
+                checked_inc(
+                    &mut scores.reconciliation.abstention_cases,
+                    "e4.reconciliation.abstention_cases",
+                )?;
+            }
+            GeoPopulationCaseStatus::ComponentBudgetFallback => {
+                checked_inc(
+                    &mut scores.solver_exactness.component_budget_fallback_cases,
+                    "e4.solver_exactness.component_budget_fallback_cases",
+                )?;
+                checked_inc(
+                    &mut scores.cost.component_budget_fallback_cases,
+                    "e4.cost.component_budget_fallback_cases",
+                )?;
+                checked_inc(
+                    &mut scores.reconciliation.abstention_cases,
+                    "e4.reconciliation.abstention_cases",
+                )?;
+            }
+        }
+        if case.residual_count_complete {
+            checked_inc(
+                &mut scores.solver_exactness.residual_count_complete_cases,
+                "e4.solver_exactness.residual_count_complete_cases",
+            )?;
+            checked_inc(
+                &mut scores.cost.residual_count_complete_cases,
+                "e4.cost.residual_count_complete_cases",
+            )?;
+            if is_residual_count_exact_case(case) {
+                checked_inc(
+                    &mut scores.solver_exactness.residual_count_exact_cases,
+                    "e4.solver_exactness.residual_count_exact_cases",
+                )?;
+            }
+        } else {
+            checked_inc(
+                &mut scores.solver_exactness.residual_count_unavailable_cases,
+                "e4.solver_exactness.residual_count_unavailable_cases",
+            )?;
+            checked_inc(
+                &mut scores.cost.residual_count_unavailable_cases,
+                "e4.cost.residual_count_unavailable_cases",
+            )?;
+        }
+        if case.residual_count_saturated {
+            checked_inc(
+                &mut scores.solver_exactness.residual_count_saturated_cases,
+                "e4.solver_exactness.residual_count_saturated_cases",
+            )?;
+            checked_inc(
+                &mut scores.cost.residual_count_saturated_cases,
+                "e4.cost.residual_count_saturated_cases",
+            )?;
+        }
+        if case.full_truth_recall {
+            checked_inc(
+                &mut scores.truth_quality.full_truth_recall_cases,
+                "e4.truth_quality.full_truth_recall_cases",
+            )?;
+        }
+        if case.solver_truth_scored {
+            checked_inc(
+                &mut scores.truth_quality.solver_truth_scored_cases,
+                "e4.truth_quality.solver_truth_scored_cases",
+            )?;
+        }
+        match case.truth_model_in_residual {
+            Some(true) => checked_inc(
+                &mut scores.truth_quality.solver_truth_retained_cases,
+                "e4.truth_quality.solver_truth_retained_cases",
+            )?,
+            Some(false) => {
+                checked_inc(
+                    &mut scores.truth_quality.solver_truth_exclusion_cases,
+                    "e4.truth_quality.solver_truth_exclusion_cases",
+                )?;
+                checked_inc(
+                    &mut scores.admission.rho_falsification_cases,
+                    "e4.admission.rho_falsification_cases",
+                )?;
+            }
+            None => {}
+        }
+        if case.false_merge {
+            checked_inc(
+                &mut scores.truth_quality.false_merge_cases,
+                "e4.truth_quality.false_merge_cases",
+            )?;
+        }
+        if case.backbone_complete {
+            checked_inc(
+                &mut scores.truth_quality.backbone_complete_cases,
+                "e4.truth_quality.backbone_complete_cases",
+            )?;
+        }
+        checked_add(
+            &mut scores.truth_quality.truth_members,
+            case.truth_members,
+            "e4.truth_quality.truth_members",
+        )?;
+        checked_add(
+            &mut scores.truth_quality.truth_members_in_universe,
+            case.truth_members_in_universe,
+            "e4.truth_quality.truth_members_in_universe",
+        )?;
+        checked_add(
+            &mut scores.truth_quality.backbone_true_positive_members,
+            case.backbone_true_positive_members,
+            "e4.truth_quality.backbone_true_positive_members",
+        )?;
+        checked_add(
+            &mut scores.truth_quality.backbone_false_positive_members,
+            case.backbone_false_positive_members,
+            "e4.truth_quality.backbone_false_positive_members",
+        )?;
+    }
+    validate_e4_plane_scores("e4_plane_scores", &scores)?;
+    Ok(scores)
+}
+
+fn e4_add_count_blocker(
+    blockers: &mut Vec<GeoE4GateBlocker>,
+    plane: GeoE4GatePlane,
+    code: GeoE4GateBlockerCode,
+    observed: u64,
+    required: u64,
+    blocked: bool,
+) {
+    if blocked {
+        blockers.push(GeoE4GateBlocker {
+            plane,
+            code,
+            observed: observed.to_string(),
+            required: required.to_string(),
+        });
+    }
+}
+
+fn e4_proof_class_name(proof_class: GeoE4GateProofClass) -> &'static str {
+    match proof_class {
+        GeoE4GateProofClass::FixtureSubset => "fixture_subset",
+        GeoE4GateProofClass::ObservedSnapshot => "observed_snapshot",
+        GeoE4GateProofClass::RetainedComplete => "retained_complete",
+        GeoE4GateProofClass::LiveComplete => "live_complete",
+    }
+}
+
+fn validate_lowercase_hex64(field: &'static str, value: &str) -> Result<(), GeoPopulationError> {
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo E4 gate assessment digest fields must be lowercase 64-character hex",
+            [(field, value)],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_e4_plane_scores(
+    scope: &'static str,
+    scores: &GeoE4GatePlaneScores,
+) -> Result<(), GeoPopulationError> {
+    if scores.coverage.population_eligible_cases != scores.coverage.cases {
+        return Err(summary_invariant_error(
+            scope,
+            "coverage.population_eligible_cases",
+            scores.coverage.cases,
+            scores.coverage.population_eligible_cases,
+        ));
+    }
+    let evidence_total = sum_u64(
+        [
+            scores.coverage.evidence_no_observation_cases,
+            scores.coverage.evidence_diagnostic_only_cases,
+            scores.coverage.evidence_soft_preference_only_cases,
+            scores.coverage.evidence_soft_and_diagnostic_only_cases,
+            scores.coverage.evidence_hard_constraint_cases,
+        ],
+        "e4.coverage.evidence_cases",
+    )?;
+    if evidence_total != scores.coverage.cases {
+        return Err(summary_invariant_error(
+            scope,
+            "coverage.evidence_cases",
+            scores.coverage.cases,
+            evidence_total,
+        ));
+    }
+    let reach_total = sum_u64(
+        [
+            scores.candidate_reach.full_cases,
+            scores.candidate_reach.partial_cases,
+            scores.candidate_reach.none_cases,
+        ],
+        "e4.candidate_reach.cases",
+    )?;
+    if reach_total != scores.candidate_reach.evaluated_cases {
+        return Err(summary_invariant_error(
+            scope,
+            "candidate_reach.cases",
+            scores.candidate_reach.evaluated_cases,
+            reach_total,
+        ));
+    }
+    if scores.candidate_reach.evaluated_cases != scores.coverage.cases {
+        return Err(summary_invariant_error(
+            scope,
+            "candidate_reach.evaluated_cases",
+            scores.coverage.cases,
+            scores.candidate_reach.evaluated_cases,
+        ));
+    }
+    let reach_failures = sum_u64(
+        [
+            scores.candidate_reach.partial_cases,
+            scores.candidate_reach.none_cases,
+        ],
+        "e4.candidate_reach.recall_failure_cases",
+    )?;
+    if scores.candidate_reach.recall_failure_cases != reach_failures {
+        return Err(summary_invariant_error(
+            scope,
+            "candidate_reach.recall_failure_cases",
+            reach_failures,
+            scores.candidate_reach.recall_failure_cases,
+        ));
+    }
+    let admission_total = sum_u64(
+        [
+            scores.admission.hard_constraint_cases,
+            scores.admission.soft_preference_only_cases,
+            scores.admission.diagnostic_only_cases,
+            scores.admission.soft_and_diagnostic_only_cases,
+            scores.coverage.evidence_no_observation_cases,
+        ],
+        "e4.admission.covered_cases",
+    )?;
+    if admission_total != scores.coverage.cases {
+        return Err(summary_invariant_error(
+            scope,
+            "admission.covered_cases",
+            scores.coverage.cases,
+            admission_total,
+        ));
+    }
+    let status_total = sum_u64(
+        [
+            scores.reconciliation.resolved_cases,
+            scores.reconciliation.ambiguous_cases,
+            scores.reconciliation.conflict_cases,
+            scores.solver_exactness.assignment_budget_exceeded_cases,
+            scores.solver_exactness.component_budget_fallback_cases,
+        ],
+        "e4.reconciliation.status_cases",
+    )?;
+    if status_total != scores.coverage.cases {
+        return Err(summary_invariant_error(
+            scope,
+            "reconciliation.status_cases",
+            scores.coverage.cases,
+            status_total,
+        ));
+    }
+    let resolved_classes = sum_u64(
+        [
+            scores.reconciliation.evidentially_supported_resolved_cases,
+            scores.reconciliation.structurally_forced_resolved_cases,
+        ],
+        "e4.reconciliation.resolved_class_cases",
+    )?;
+    if resolved_classes != scores.reconciliation.resolved_cases {
+        return Err(summary_invariant_error(
+            scope,
+            "reconciliation.resolved_class_cases",
+            scores.reconciliation.resolved_cases,
+            resolved_classes,
+        ));
+    }
+    let abstention_cases = sum_u64(
+        [
+            scores.reconciliation.ambiguous_cases,
+            scores.reconciliation.conflict_cases,
+            scores.solver_exactness.assignment_budget_exceeded_cases,
+            scores.solver_exactness.component_budget_fallback_cases,
+        ],
+        "e4.reconciliation.abstention_cases",
+    )?;
+    if abstention_cases != scores.reconciliation.abstention_cases {
+        return Err(summary_invariant_error(
+            scope,
+            "reconciliation.abstention_cases",
+            abstention_cases,
+            scores.reconciliation.abstention_cases,
+        ));
+    }
+    let residual_complete_or_unavailable = sum_u64(
+        [
+            scores.solver_exactness.residual_count_complete_cases,
+            scores.solver_exactness.residual_count_unavailable_cases,
+        ],
+        "e4.solver_exactness.residual_cases",
+    )?;
+    if residual_complete_or_unavailable != scores.coverage.cases {
+        return Err(summary_invariant_error(
+            scope,
+            "solver_exactness.residual_cases",
+            scores.coverage.cases,
+            residual_complete_or_unavailable,
+        ));
+    }
+    let exact_or_saturated = sum_u64(
+        [
+            scores.solver_exactness.residual_count_exact_cases,
+            scores.solver_exactness.residual_count_saturated_cases,
+        ],
+        "e4.solver_exactness.exact_or_saturated_cases",
+    )?;
+    if exact_or_saturated != scores.solver_exactness.residual_count_complete_cases {
+        return Err(summary_invariant_error(
+            scope,
+            "solver_exactness.exact_or_saturated_cases",
+            scores.solver_exactness.residual_count_complete_cases,
+            exact_or_saturated,
+        ));
+    }
+    if scores.cost.solver_artifact_cases != scores.solver_exactness.solver_artifact_cases
+        || scores.cost.residual_count_complete_cases
+            != scores.solver_exactness.residual_count_complete_cases
+        || scores.cost.residual_count_saturated_cases
+            != scores.solver_exactness.residual_count_saturated_cases
+        || scores.cost.residual_count_unavailable_cases
+            != scores.solver_exactness.residual_count_unavailable_cases
+        || scores.cost.assignment_budget_exceeded_cases
+            != scores.solver_exactness.assignment_budget_exceeded_cases
+        || scores.cost.component_budget_fallback_cases
+            != scores.solver_exactness.component_budget_fallback_cases
+    {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo E4 cost plane is inconsistent with solver exactness counters",
+            [("scope", scope.to_string())],
+        ));
+    }
+    if scores.truth_quality.full_truth_recall_cases != scores.candidate_reach.full_cases {
+        return Err(summary_invariant_error(
+            scope,
+            "truth_quality.full_truth_recall_cases",
+            scores.candidate_reach.full_cases,
+            scores.truth_quality.full_truth_recall_cases,
+        ));
+    }
+    let truth_scored = sum_u64(
+        [
+            scores.truth_quality.solver_truth_retained_cases,
+            scores.truth_quality.solver_truth_exclusion_cases,
+        ],
+        "e4.truth_quality.solver_truth_scored_cases",
+    )?;
+    if truth_scored != scores.truth_quality.solver_truth_scored_cases {
+        return Err(summary_invariant_error(
+            scope,
+            "truth_quality.solver_truth_scored_cases",
+            scores.truth_quality.solver_truth_scored_cases,
+            truth_scored,
+        ));
+    }
+    if scores.admission.rho_falsification_cases != scores.truth_quality.solver_truth_exclusion_cases
+    {
+        return Err(summary_invariant_error(
+            scope,
+            "admission.rho_falsification_cases",
+            scores.truth_quality.solver_truth_exclusion_cases,
+            scores.admission.rho_falsification_cases,
+        ));
+    }
+    if scores.truth_quality.solver_truth_scored_cases > scores.candidate_reach.full_cases {
+        return Err(summary_invariant_error(
+            scope,
+            "truth_quality.solver_truth_scored_cases",
+            scores.candidate_reach.full_cases,
+            scores.truth_quality.solver_truth_scored_cases,
+        ));
+    }
+    if scores.truth_quality.false_merge_cases > scores.reconciliation.resolved_cases {
+        return Err(summary_invariant_error(
+            scope,
+            "truth_quality.false_merge_cases",
+            scores.reconciliation.resolved_cases,
+            scores.truth_quality.false_merge_cases,
+        ));
+    }
+    Ok(())
 }
 
 fn scored_false_merge(

@@ -1,0 +1,200 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.deed_index_rows.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.deed_index_rows.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_deed_index_rows.v0",
+      "type": "string"
+    },
+    "source_dataset": {
+      "type": "string"
+    },
+    "source_release": {
+      "type": "string"
+    },
+    "source_pins": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/source_pin"
+      }
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/deed_index_row"
+      }
+    },
+    "max_rows": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "required": [
+    "version",
+    "source_dataset",
+    "source_release",
+    "source_pins",
+    "rows",
+    "max_rows"
+  ],
+  "$defs": {
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "hex64": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "proof_class": {
+      "type": "string",
+      "enum": [
+        "fixture",
+        "retained_evidence",
+        "observed_warehouse_snapshot",
+        "live_complete"
+      ]
+    },
+    "instrument_type": {
+      "type": "string",
+      "enum": [
+        "mortgage",
+        "deed",
+        "release"
+      ]
+    },
+    "source_pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_table": {
+          "type": "string"
+        },
+        "natural_key": {
+          "type": "string"
+        },
+        "source_release": {
+          "type": "string"
+        },
+        "source_release_field": {
+          "type": "string"
+        },
+        "release_dt": {
+          "$ref": "#/$defs/date"
+        },
+        "release_dt_field": {
+          "type": "string"
+        },
+        "source_content_sha256": {
+          "$ref": "#/$defs/hex64"
+        },
+        "source_content_sha256_field": {
+          "type": "string"
+        },
+        "parser_version": {
+          "type": "string"
+        },
+        "parser_version_field": {
+          "type": "string"
+        },
+        "license_terms": {
+          "type": "string"
+        },
+        "license_terms_field": {
+          "type": "string"
+        },
+        "attribution_text": {
+          "type": "string"
+        },
+        "attribution_text_field": {
+          "type": "string"
+        },
+        "proof_class": {
+          "$ref": "#/$defs/proof_class"
+        },
+        "source_file": {
+          "type": "string"
+        },
+        "source_file_field": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_table",
+        "natural_key",
+        "source_release",
+        "source_release_field",
+        "release_dt",
+        "release_dt_field",
+        "source_content_sha256",
+        "source_content_sha256_field",
+        "parser_version",
+        "parser_version_field",
+        "license_terms",
+        "license_terms_field",
+        "attribution_text",
+        "attribution_text_field",
+        "proof_class"
+      ]
+    },
+    "deed_index_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "instrument_id": {
+          "type": "string"
+        },
+        "instrument_type": {
+          "$ref": "#/$defs/instrument_type"
+        },
+        "parcel_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recording_date": {
+          "$ref": "#/$defs/date"
+        },
+        "amount_cents": {
+          "type": "integer"
+        },
+        "lender_party_blake3": {
+          "$ref": "#/$defs/hex64"
+        },
+        "borrower_party_blake3": {
+          "$ref": "#/$defs/hex64"
+        },
+        "source_release": {
+          "type": "string"
+        },
+        "row_blake3": {
+          "$ref": "#/$defs/hex64"
+        },
+        "source_pins": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_pin"
+          }
+        },
+        "asserted_address": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "instrument_id",
+        "instrument_type",
+        "parcel_ids",
+        "recording_date",
+        "lender_party_blake3",
+        "borrower_party_blake3",
+        "source_release",
+        "row_blake3",
+        "source_pins"
+      ]
+    }
+  }
+}

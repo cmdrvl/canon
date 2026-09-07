@@ -1,0 +1,251 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.deed_truth.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.deed_truth.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_deed_truth.v0",
+      "type": "string"
+    },
+    "deed_index_version": {
+      "const": "canon_geo_deed_index_rows.v0",
+      "type": "string"
+    },
+    "truth_plane": {
+      "const": "deed_grain_instrument",
+      "type": "string"
+    },
+    "proof_class": {
+      "$ref": "#/$defs/proof_class"
+    },
+    "window_days": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "source_pins": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/source_pin"
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/deed_truth_summary"
+    },
+    "per_loan": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/deed_truth_loan_match"
+      }
+    }
+  },
+  "required": [
+    "version",
+    "deed_index_version",
+    "truth_plane",
+    "proof_class",
+    "window_days",
+    "source_pins",
+    "summary",
+    "per_loan"
+  ],
+  "$defs": {
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "hex64": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "proof_class": {
+      "type": "string",
+      "enum": [
+        "fixture",
+        "retained_evidence",
+        "observed_warehouse_snapshot",
+        "live_complete"
+      ]
+    },
+    "match_kind": {
+      "type": "string",
+      "enum": [
+        "unique",
+        "non_unique_discarded",
+        "no_match"
+      ]
+    },
+    "source_pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_table": {
+          "type": "string"
+        },
+        "natural_key": {
+          "type": "string"
+        },
+        "source_release": {
+          "type": "string"
+        },
+        "source_release_field": {
+          "type": "string"
+        },
+        "release_dt": {
+          "$ref": "#/$defs/date"
+        },
+        "release_dt_field": {
+          "type": "string"
+        },
+        "source_content_sha256": {
+          "$ref": "#/$defs/hex64"
+        },
+        "source_content_sha256_field": {
+          "type": "string"
+        },
+        "parser_version": {
+          "type": "string"
+        },
+        "parser_version_field": {
+          "type": "string"
+        },
+        "license_terms": {
+          "type": "string"
+        },
+        "license_terms_field": {
+          "type": "string"
+        },
+        "attribution_text": {
+          "type": "string"
+        },
+        "attribution_text_field": {
+          "type": "string"
+        },
+        "proof_class": {
+          "$ref": "#/$defs/proof_class"
+        },
+        "source_file": {
+          "type": "string"
+        },
+        "source_file_field": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_table",
+        "natural_key",
+        "source_release",
+        "source_release_field",
+        "release_dt",
+        "release_dt_field",
+        "source_content_sha256",
+        "source_content_sha256_field",
+        "parser_version",
+        "parser_version_field",
+        "license_terms",
+        "license_terms_field",
+        "attribution_text",
+        "attribution_text_field",
+        "proof_class"
+      ]
+    },
+    "deed_truth_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "loans": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unique": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "non_unique_discarded": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "no_match": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "round_amount_loans": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "round_amount_unique": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "non_round_amount_loans": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "non_round_amount_unique": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "loans",
+        "unique",
+        "non_unique_discarded",
+        "no_match",
+        "round_amount_loans",
+        "round_amount_unique",
+        "non_round_amount_loans",
+        "non_round_amount_unique"
+      ]
+    },
+    "deed_truth_loan_match": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "loan_id": {
+          "type": "string"
+        },
+        "matched_instrument_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "parcel_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "match_kind": {
+          "$ref": "#/$defs/match_kind"
+        },
+        "amount_exact": {
+          "type": "boolean"
+        },
+        "date_delta_days": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "round_amount": {
+          "type": "boolean"
+        },
+        "source_pins": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_pin"
+          }
+        }
+      },
+      "required": [
+        "loan_id",
+        "matched_instrument_ids",
+        "parcel_ids",
+        "match_kind",
+        "amount_exact",
+        "round_amount",
+        "source_pins"
+      ]
+    }
+  }
+}
