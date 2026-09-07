@@ -843,7 +843,24 @@ fn typed_composition_status_projects_to_geo_run_status() {
         run_bindings(ambiguous_rows),
     ))
     .expect("ambiguous run");
-    assert_eq!(ambiguous.status, GeoRunStatus::Abstained);
+    assert_eq!(
+        ambiguous.status,
+        GeoRunStatus::Abstained,
+        "ambiguous run should finish as a typed abstention; failed_nodes={:?}; node_failures={:?}; blockers={:?}",
+        ambiguous
+            .project_run_report
+            .as_ref()
+            .map(|report| &report.failed_nodes),
+        ambiguous.project_run_report.as_ref().map(|report| {
+            report
+                .node_reports
+                .iter()
+                .filter(|node| node.outcome == canon::project::ProjectRunNodeOutcome::Failed)
+                .map(|node| (&node.node_id, &node.reason))
+                .collect::<Vec<_>>()
+        }),
+        ambiguous.blockers
+    );
     assert_eq!(solve_output(ambiguous_temp.path())["status"], "ambiguous");
     let separation = separation_output(ambiguous_temp.path());
     assert_eq!(separation["baseline_model_count"], 3);
@@ -1389,18 +1406,60 @@ fn unrelated_separation_dependency_refuses_before_publication() {
     let temp = tempfile::tempdir().expect("tempdir");
     let plan = geo_plan_with_unrelated_separation_dependency();
 
-    let error = run_geo_plan(GeoRunRequest::new(
+    let run = run_geo_plan(GeoRunRequest::new(
         plan,
         policy(temp.path()),
         run_bindings(warehouse_rows()),
     ))
-    .expect_err("unrelated dependency refuses");
+    .expect("unrelated dependency produces a typed failed run");
 
-    assert_eq!(error.code, GeoRunErrorCode::ArtifactContract);
-    assert!(error.message.contains("unexpected dependency output"));
+    assert_eq!(run.status, GeoRunStatus::Failed);
+    assert_eq!(
+        run.project_run_report
+            .as_ref()
+            .expect("project report")
+            .failed_nodes,
+        vec!["geo.building.separation".to_string()]
+    );
+    assert!(
+        run.blockers
+            .iter()
+            .any(|blocker| blocker.reason.contains("unrelated dependency output"))
+    );
     assert!(
         !temp.path().join("geo/building/separation.json").exists(),
         "bad dependency must refuse before publishing generated separation"
+    );
+}
+
+#[test]
+fn unrelated_next_evidence_dependency_refuses_before_publication() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = geo_plan_with_unrelated_next_evidence_dependency();
+
+    let run = run_geo_plan(GeoRunRequest::new(
+        plan,
+        policy(temp.path()),
+        run_bindings(warehouse_rows()),
+    ))
+    .expect("unrelated next-evidence dependency produces a typed failed run");
+
+    assert_eq!(run.status, GeoRunStatus::Failed);
+    assert_eq!(
+        run.project_run_report
+            .as_ref()
+            .expect("project report")
+            .failed_nodes,
+        vec!["geo.building.next_evidence".to_string()]
+    );
+    assert!(
+        run.blockers
+            .iter()
+            .any(|blocker| blocker.reason.contains("unrelated dependency output"))
+    );
+    assert!(
+        !temp.path().join("geo/building/next_evidence.json").exists(),
+        "bad dependency must refuse before publishing generated next evidence"
     );
 }
 
@@ -2134,6 +2193,28 @@ fn geo_plan_with_unrelated_separation_dependency() -> GeoPlan {
         vec![
             "geo.building.compile_evidence".to_string(),
             "geo.building.section".to_string(),
+            "geo.building.solve".to_string(),
+        ],
+    );
+    plan.semantic_hash = geo_plan_semantic_hash(&plan).expect("plan hash");
+    plan.plan_id = format!(
+        "canon_geo_plan.v0:{}",
+        plan.semantic_hash.trim_start_matches("blake3:")
+    );
+    plan
+}
+
+fn geo_plan_with_unrelated_next_evidence_dependency() -> GeoPlan {
+    let mut plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    plan.project_plan = project_plan_with_node_dependencies(
+        &plan.project_plan,
+        "geo.building.next_evidence",
+        vec![
+            "geo.building.explain".to_string(),
             "geo.building.solve".to_string(),
         ],
     );

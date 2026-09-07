@@ -413,7 +413,7 @@ pub fn non_conflict_explanation(
         ));
     }
     let request = canonicalize_composition_request(request)?;
-    let evidence_index = EvidenceIndex::from_evidence(evidence)?;
+    let source_record_count = evidence_source_record_count(evidence)?;
     let mut counters = BTreeMap::new();
     counters.insert("core_solves".to_string(), 0);
     counters.insert("cores_enumerated".to_string(), 0);
@@ -424,10 +424,7 @@ pub fn non_conflict_explanation(
         "hard_constraint_count".to_string(),
         request.hard_constraints.len() as u64,
     );
-    counters.insert(
-        "source_record_count".to_string(),
-        evidence_index.source_record_count()?,
-    );
+    counters.insert("source_record_count".to_string(), source_record_count);
     let artifact = GeoExplanationArtifact {
         version: CANON_GEO_EXPLANATION_VERSION.to_string(),
         subject_ref: None,
@@ -1493,6 +1490,23 @@ fn evidence_blake3(
         )
     })?;
     Ok(format!("blake3:{}", blake3::hash(&bytes).to_hex()))
+}
+
+fn evidence_source_record_count(
+    evidence: &GeoEvidenceCompilationArtifact,
+) -> Result<u64, GeoExplanationError> {
+    let count = evidence
+        .admissions
+        .iter()
+        .flat_map(|admission| {
+            admission
+                .source_records
+                .iter()
+                .map(|record| record.source_record_id.as_str())
+        })
+        .collect::<BTreeSet<_>>()
+        .len();
+    u64::try_from(count).map_err(|_| GeoExplanationError::overflow("source record count"))
 }
 
 fn not_conflict_error(status: GeoCompositionStatus) -> GeoExplanationError {

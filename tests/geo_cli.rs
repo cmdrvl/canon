@@ -549,7 +549,7 @@ fn geo_run_building_question() -> Value {
     })
 }
 
-fn write_geo_run_building_plan(dir: &std::path::Path) -> PathBuf {
+fn write_geo_run_building_plan_via_public_geo_plan(dir: &std::path::Path) -> PathBuf {
     let paths = GeoPlanInputPaths {
         question: write_json(
             dir,
@@ -617,6 +617,78 @@ fn write_geo_run_synthetic_input_set(
             &synthetic_building_next_evidence_inputs(),
         ),
     )
+}
+
+fn geo_run_output_ref<'a>(run: &'a Value, artifact_id: &str, contract_version: &str) -> &'a Value {
+    run["output_refs"]
+        .as_array()
+        .expect("run output_refs is an array")
+        .iter()
+        .find(|output| {
+            output["artifact_id"] == artifact_id && output["contract_version"] == contract_version
+        })
+        .unwrap_or_else(|| panic!("run JSON must expose {artifact_id} as {contract_version}"))
+}
+
+fn read_geo_run_output_ref_artifact(
+    run: &Value,
+    work_dir: &Path,
+    artifact_id: &str,
+    contract_version: &str,
+) -> Value {
+    let output_ref = geo_run_output_ref(run, artifact_id, contract_version);
+    let project_node_id = output_ref["project_node_id"]
+        .as_str()
+        .expect("output ref project_node_id");
+    let output_id = output_ref["output_id"]
+        .as_str()
+        .expect("output ref output_id");
+    let node_receipt = run["project_run_report"]["receipt"]["node_receipts"]
+        .as_array()
+        .expect("node receipts array")
+        .iter()
+        .find(|receipt| receipt["node_id"] == project_node_id)
+        .unwrap_or_else(|| panic!("receipt for {project_node_id} must exist"));
+    let output_receipt = node_receipt["outputs"]
+        .as_array()
+        .expect("receipt outputs array")
+        .iter()
+        .find(|output| output["output_id"] == output_id)
+        .unwrap_or_else(|| panic!("receipt output {project_node_id}:{output_id} must exist"));
+    assert_eq!(
+        output_receipt["content_digest"], output_ref["content_digest"],
+        "output_refs must bind the same digest as the project receipt"
+    );
+    assert_eq!(
+        output_receipt["byte_count"], output_ref["byte_count"],
+        "output_refs must bind the same byte count as the project receipt"
+    );
+    let relative_path = output_receipt["path"].as_str().expect("output path");
+    assert!(
+        Path::new(relative_path).is_relative(),
+        "project receipts must expose workspace-relative artifact paths"
+    );
+    let bytes = fs::read(work_dir.join(relative_path))
+        .unwrap_or_else(|error| panic!("read published artifact {artifact_id}: {error}"));
+    let actual_digest = format!("blake3:{}", blake3::hash(&bytes).to_hex());
+    assert_eq!(
+        output_ref["content_digest"]
+            .as_str()
+            .expect("output ref digest"),
+        actual_digest,
+        "published artifact digest must match output ref"
+    );
+    assert_eq!(
+        output_ref["byte_count"]
+            .as_u64()
+            .expect("output byte count"),
+        bytes.len() as u64,
+        "published artifact byte count must match output ref"
+    );
+    let artifact: Value =
+        serde_json::from_slice(&bytes).expect("published output ref artifact parses as JSON");
+    assert_eq!(artifact["version"], contract_version);
+    artifact
 }
 
 fn geo_run_acquisition_inventory() -> Value {
@@ -1334,11 +1406,16 @@ fn geo_plan_is_byte_identical_for_reordered_inputs() {
 }
 
 #[test]
-fn geo_run_cli_executes_synthetic_not_live_generated_building_chain() {
+fn geo_run_cli_plans_then_runs_synthetic_not_live_generated_building_chain() {
     let temp = tempdir().expect("tempdir");
     let input_dir = temp.path().join("synthetic-not-live-inputs");
     fs::create_dir(&input_dir).expect("create synthetic input dir");
-    let plan = write_geo_run_building_plan(&input_dir);
+    let plan = write_geo_run_building_plan_via_public_geo_plan(&input_dir);
+    let planned: Value =
+        serde_json::from_slice(&fs::read(&plan).expect("planned Geo JSON is written"))
+            .expect("public geo plan output parses");
+    assert_eq!(planned["status"], "planned");
+    assert_eq!(planned["external_requests"], json!([]));
     let (home_cells, tile_work, warehouse_rows, separation_inputs, next_evidence_inputs) =
         write_geo_run_synthetic_input_set(&input_dir);
     let work_dir = temp.path().join("synthetic-not-live-work");
@@ -1409,41 +1486,32 @@ fn geo_run_cli_executes_synthetic_not_live_generated_building_chain() {
         ])
     );
     assert_eq!(run["artifact_inputs"].as_array().unwrap().len(), 5);
-    assert_eq!(run["output_refs"].as_array().unwrap().len(), 9);
+    let input_contracts = run["artifact_inputs"]
+        .as_array()
+        .expect("artifact_inputs array")
+        .iter()
+        .filter_map(|input| input["contract_version"].as_str())
+        .collect::<BTreeSet<_>>();
+    assert!(input_contracts.contains("canon_geo_home_cell_rows.v1"));
+    assert!(input_contracts.contains("canon_geo_tile_work_request.v1"));
+    assert!(input_contracts.contains("canon_geo_warehouse_rows.v0"));
+    assert!(input_contracts.contains("canon_geo_separation_inputs.v0"));
+    assert!(input_contracts.contains("canon_geo_next_evidence_inputs.v0"));
     assert!(
-        run["output_refs"].as_array().unwrap().iter().any(|output| {
-            output["artifact_id"] == "geo.building.solve/solve"
-                && output["contract_version"] == "canon_geo_composition.v0"
-        }),
-        "run JSON must expose the typed solve output ref"
+        !input_contracts.contains("canon_geo_separation.v0"),
+        "run inputs must not include a precomputed separation artifact"
     );
-    for (artifact_id, contract_version) in [
-        (
-            "geo.building.explain/explanation",
-            "canon_geo_explanation.v0",
-        ),
-        (
-            "geo.building.separation/separation",
-            "canon_geo_separation.v0",
-        ),
-        (
-            "geo.building.next_evidence/next_evidence",
-            "canon_geo_next_evidence.v0",
-        ),
-    ] {
-        assert!(
-            run["output_refs"].as_array().unwrap().iter().any(|output| {
-                output["artifact_id"] == artifact_id
-                    && output["contract_version"] == contract_version
-            }),
-            "run JSON must expose {artifact_id}"
-        );
-    }
-
-    let solve_path = work_dir.join("geo/building/solve.json");
-    let solve_bytes = fs::read(&solve_path).expect("solve artifact is published");
-    let solve: Value = serde_json::from_slice(&solve_bytes).expect("solve artifact parses");
-    assert_eq!(solve["version"], "canon_geo_composition.v0");
+    assert!(
+        !input_contracts.contains("canon_geo_next_evidence.v0"),
+        "run inputs must not include a precomputed next-evidence artifact"
+    );
+    assert_eq!(run["output_refs"].as_array().unwrap().len(), 9);
+    let solve = read_geo_run_output_ref_artifact(
+        &run,
+        &work_dir,
+        "geo.building.solve/solve",
+        "canon_geo_composition.v0",
+    );
     assert_eq!(solve["status"], "resolved");
     assert_eq!(solve["summary"]["residual_model_count"], 1);
     assert_eq!(solve["summary"]["component_count"], 1);
@@ -1452,26 +1520,26 @@ fn geo_run_cli_executes_synthetic_not_live_generated_building_chain() {
         solve["evidence_compilation"]["version"],
         "canon_geo_evidence_compilation.v0"
     );
-    let explanation: Value = serde_json::from_slice(
-        &fs::read(work_dir.join("geo/building/explanation.json"))
-            .expect("explanation artifact is published"),
-    )
-    .expect("explanation artifact parses");
-    assert_eq!(explanation["version"], "canon_geo_explanation.v0");
+    let explanation = read_geo_run_output_ref_artifact(
+        &run,
+        &work_dir,
+        "geo.building.explain/explanation",
+        "canon_geo_explanation.v0",
+    );
     assert_eq!(explanation["counters"]["not_conflict"], 1);
-    let separation: Value = serde_json::from_slice(
-        &fs::read(work_dir.join("geo/building/separation.json"))
-            .expect("separation artifact is published"),
-    )
-    .expect("separation artifact parses");
-    assert_eq!(separation["version"], "canon_geo_separation.v0");
+    let separation = read_geo_run_output_ref_artifact(
+        &run,
+        &work_dir,
+        "geo.building.separation/separation",
+        "canon_geo_separation.v0",
+    );
     assert_eq!(separation["baseline_model_count"], 1);
-    let next_evidence: Value = serde_json::from_slice(
-        &fs::read(work_dir.join("geo/building/next_evidence.json"))
-            .expect("next-evidence artifact is published"),
-    )
-    .expect("next-evidence artifact parses");
-    assert_eq!(next_evidence["version"], "canon_geo_next_evidence.v0");
+    let next_evidence = read_geo_run_output_ref_artifact(
+        &run,
+        &work_dir,
+        "geo.building.next_evidence/next_evidence",
+        "canon_geo_next_evidence.v0",
+    );
     assert_eq!(next_evidence["stop"], "claim_forced");
 }
 
@@ -1480,7 +1548,7 @@ fn geo_run_cli_refuses_synthetic_not_live_wrong_explicit_binding_contract() {
     let temp = tempdir().expect("tempdir");
     let input_dir = temp.path().join("synthetic-not-live-inputs");
     fs::create_dir(&input_dir).expect("create synthetic input dir");
-    let plan = write_geo_run_building_plan(&input_dir);
+    let plan = write_geo_run_building_plan_via_public_geo_plan(&input_dir);
     let (home_cells, _, warehouse_rows, _, _) = write_geo_run_synthetic_input_set(&input_dir);
     let work_dir = temp.path().join("synthetic-not-live-work");
     fs::create_dir(&work_dir).expect("create synthetic run work dir");
@@ -1524,6 +1592,82 @@ fn geo_run_cli_refuses_synthetic_not_live_wrong_explicit_binding_contract() {
     assert!(
         !work_dir.join("geo/building/solve.json").exists(),
         "wrong explicit binding must refuse before publishing a solve artifact"
+    );
+}
+
+#[test]
+fn geo_run_cli_refuses_caller_supplied_internal_separation_artifact() {
+    let temp = tempdir().expect("tempdir");
+    let input_dir = temp.path().join("synthetic-not-live-inputs");
+    fs::create_dir(&input_dir).expect("create synthetic input dir");
+    let plan = write_geo_run_building_plan_via_public_geo_plan(&input_dir);
+    let (home_cells, tile_work, warehouse_rows, separation_inputs, next_evidence_inputs) =
+        write_geo_run_synthetic_input_set(&input_dir);
+    let caller_separation = write_json(
+        &input_dir,
+        "caller-supplied-derived-separation.json",
+        &json!({ "version": "canon_geo_separation.v0" }),
+    );
+    let work_dir = temp.path().join("synthetic-not-live-work");
+    fs::create_dir(&work_dir).expect("create synthetic run work dir");
+    let home_binding = format!("geo.building.home_cells:rows={}", home_cells.display());
+    let tile_binding = format!("geo.building.section:request={}", tile_work.display());
+    let warehouse_binding = format!(
+        "geo.building.materialize_evidence:rows={}",
+        warehouse_rows.display()
+    );
+    let separation_binding = format!(
+        "geo.building.separation:request={}",
+        separation_inputs.display()
+    );
+    let next_evidence_binding = format!(
+        "geo.building.next_evidence:request={}",
+        next_evidence_inputs.display()
+    );
+    let caller_separation_binding = format!(
+        "geo.building.next_evidence:separation={}",
+        caller_separation.display()
+    );
+
+    let refusal = canon_command()
+        .arg("geo")
+        .arg("run")
+        .arg("--plan")
+        .arg(&plan)
+        .arg("--work-dir")
+        .arg(&work_dir)
+        .arg("--input")
+        .arg(&home_binding)
+        .arg("--input")
+        .arg(&tile_binding)
+        .arg("--input")
+        .arg(&warehouse_binding)
+        .arg("--input")
+        .arg(&separation_binding)
+        .arg("--input")
+        .arg(&next_evidence_binding)
+        .arg("--input")
+        .arg(&caller_separation_binding)
+        .assert()
+        .code(2);
+
+    let refusal: Value = serde_json::from_slice(&refusal.get_output().stdout)
+        .expect("caller separation override refusal parses");
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(refusal["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(
+        refusal["refusal"]["detail"]["geo_run_error_code"],
+        "ARTIFACT_CONTRACT"
+    );
+    assert!(
+        refusal["refusal"]["detail"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("input binding id is not declared")
+    );
+    assert!(
+        !work_dir.join("geo/building/next_evidence.json").exists(),
+        "caller-supplied derived separation must refuse before publishing next evidence"
     );
 }
 
