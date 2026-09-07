@@ -224,9 +224,17 @@
     {
       "id": "canon geo ledger",
       "family": "geo",
-      "clap_path": "geo ledger",
+      "clap_path": null,
       "operator_name": "geo ledger",
-      "primary_contracts": ["canon.v0"],
+      "primary_contracts": ["canon_geo_collateral_ledger.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon geo ledger validate",
+      "family": "geo",
+      "clap_path": "geo ledger validate",
+      "operator_name": "geo ledger validate",
+      "primary_contracts": ["canon_geo_collateral_ledger.v0"],
       "action": "preserve"
     },
     {
@@ -1673,6 +1681,13 @@
       "source_path": "src/geo/executor.rs"
     },
     {
+      "id": "canon.geo.stage.retry_pass.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/geo/executor.rs"
+    },
+    {
       "id": "canon.geo.stage.footprint_roll_evidence.v0",
       "family": "geo",
       "action": "preserve",
@@ -2247,7 +2262,7 @@
       "action": "preserve",
       "access_boundary": "public_crate_api",
       "crate_module": "canon::geo",
-      "source_path": "src/geo/ledger.rs"
+      "source_path": "schemas/canon.geo.collateral_ledger.v0.schema.json"
     },
     {
       "id": "canon_geo_collateral_ledger_seed.v0",

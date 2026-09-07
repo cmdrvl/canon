@@ -9,18 +9,19 @@
 
 use crate::{
     geo::{
-        CANON_GEO_AS_OF_RESOLUTION_REQUEST_VERSION, CANON_GEO_AS_OF_RESOLUTION_VERSION,
-        CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION, CANON_GEO_COMPOSITION_REQUEST_VERSION,
-        CANON_GEO_COMPOSITION_VERSION, CANON_GEO_EVIDENCE_COMPILATION_VERSION,
-        CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_EXPLANATION_VERSION,
-        CANON_GEO_GEOMETRY_TILE_VERSION, CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
-        CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION,
-        CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION,
-        CANON_GEO_PROPAGATION_VERSION, CANON_GEO_SEPARATION_INPUTS_VERSION,
+        CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_AS_OF_RESOLUTION_REQUEST_VERSION,
+        CANON_GEO_AS_OF_RESOLUTION_VERSION, CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION,
+        CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION,
+        CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
+        CANON_GEO_EXPLANATION_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
+        CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
+        CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION, CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION,
+        CANON_GEO_NEXT_EVIDENCE_VERSION, CANON_GEO_PROPAGATION_VERSION,
+        CANON_GEO_RETRY_LOOP_VERSION, CANON_GEO_RUN_VERSION, CANON_GEO_SEPARATION_INPUTS_VERSION,
         CANON_GEO_SEPARATION_REQUEST_VERSION, CANON_GEO_SEPARATION_VERSION,
         CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
         CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
-        CANON_GEO_TILE_WORK_UNIT_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
+        CANON_GEO_TILE_WORK_UNIT_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoAcquisitionReceipt,
         GeoAsOfResolutionArtifact, GeoAsOfResolutionRequest, GeoClientTileIngestRequest,
         GeoCompositionArtifact, GeoCompositionRequest, GeoCompositionStatus, GeoControlEntityLevel,
         GeoEntityLevel, GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
@@ -28,8 +29,9 @@ use crate::{
         GeoGeometryTileArtifact, GeoHomeCellAssignmentArtifact, GeoHomeCellRowsRequest,
         GeoNextEvidenceArtifact, GeoNextEvidenceInputs, GeoNextEvidenceRequest, GeoPlan,
         GeoPlanComponentScope, GeoPlanExactSolveScope, GeoPlanProducedArtifactRef,
-        GeoPropagationArtifact, GeoPropagationBudget, GeoSeparationArtifact, GeoSeparationInputs,
-        GeoSeparationRequest, GeoTileCandidateReachStatus, GeoTileIdentifierStabilityArtifact,
+        GeoPropagationArtifact, GeoPropagationBudget, GeoRetryLoopArtifact, GeoRun,
+        GeoSeparationArtifact, GeoSeparationInputs, GeoSeparationRequest,
+        GeoTileCandidateReachStatus, GeoTileIdentifierStabilityArtifact,
         GeoTileIdentifierStabilityRequest, GeoTileWorkRequest, GeoTileWorkUnitArtifact,
         GeoWarehouseRowsRequest, apply_prunings,
         assessment_roll::{
@@ -43,9 +45,9 @@ use crate::{
         canonical_geometry_tile_bytes, canonical_home_cell_assignment_bytes,
         canonical_materialized_evidence_request_bytes, canonical_next_evidence_bytes,
         canonical_next_evidence_inputs_bytes, canonical_next_evidence_request_bytes,
-        canonical_propagation_bytes, canonical_separation_bytes, canonical_separation_inputs_bytes,
-        canonical_tile_identifier_stability_bytes, canonical_tile_work_unit_bytes,
-        check_tile_identifier_stability, compile_evidence,
+        canonical_propagation_bytes, canonical_retry_loop_bytes, canonical_separation_bytes,
+        canonical_separation_inputs_bytes, canonical_tile_identifier_stability_bytes,
+        canonical_tile_work_unit_bytes, check_tile_identifier_stability, compile_evidence,
         condo::{
             CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION, CANON_GEO_CONDO_BRIDGE_VERSION,
             GeoCondoBridgeArtifact, GeoCondoBridgeRequest, build_condo_bridge,
@@ -57,13 +59,13 @@ use crate::{
             materialize_footprint_roll_evidence,
         },
         ingest_client_geometry_tile, materialize_home_cells, materialize_tile_work_unit,
-        materialize_warehouse_rows, minimal_core, non_conflict_explanation, propagate,
-        recommend_from_inputs, reliability_order_from_evidence, resolve_geo_as_of, separate,
-        solve_composition, validate_as_of_resolution_artifact,
+        materialize_warehouse_rows, minimal_core, next_retry_pass, non_conflict_explanation,
+        propagate, recommend_from_inputs, record_pass, reliability_order_from_evidence,
+        resolve_geo_as_of, separate, solve_composition, validate_as_of_resolution_artifact,
         validate_evidence_compilation_artifact, validate_explanation_artifact,
         validate_next_evidence_artifact, validate_next_evidence_inputs,
         validate_next_evidence_request, validate_propagation_artifact,
-        validate_separation_artifact, validate_separation_inputs,
+        validate_retry_loop_artifact, validate_separation_artifact, validate_separation_inputs,
         validate_tile_identifier_stability_artifact,
     },
     project::{
@@ -108,6 +110,8 @@ pub const GEO_ASSESSMENT_ROLL_OWNER_STAGE_COMMAND: &str =
 pub const GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID: &str = "assessment_roll_owner";
 pub const GEO_CONDO_BRIDGE_STAGE_COMMAND: &str = "canon.geo.stage.condo_bridge.v0";
 pub const GEO_CONDO_BRIDGE_OUTPUT_ID: &str = "condo_bridge";
+pub const GEO_RETRY_PASS_STAGE_COMMAND: &str = "canon.geo.stage.retry_pass.v0";
+pub const GEO_RETRY_LOOP_OUTPUT_ID: &str = "retry_loop";
 pub const GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND: &str =
     "canon.geo.stage.footprint_roll_evidence.v0";
 pub const GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID: &str = "footprint_roll_evidence";
@@ -118,6 +122,9 @@ pub const CANON_GEO_CLIENT_TILE_SOURCE_VERSION: &str = "canon_geo_client_tile_so
 pub const GEO_ROWS_BINDING_ID: &str = "rows";
 pub const GEO_REQUEST_BINDING_ID: &str = "request";
 pub const GEO_CLIENT_TILE_SOURCE_BINDING_ID: &str = "source";
+pub const GEO_RETRY_LOOP_BINDING_ID: &str = "retry_loop";
+pub const GEO_RETRY_RUN_BINDING_ID: &str = "latest_run";
+pub const GEO_RETRY_RECEIPT_BINDING_ID: &str = "receipt";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GeoExecutorInputBinding {
@@ -319,6 +326,7 @@ impl GeoProjectNodeExecutor {
             GeoExecutorCommand::CompileEvidence => self.execute_compile_evidence(node)?,
             GeoExecutorCommand::AssessmentRollOwner => self.execute_assessment_roll_owner(node)?,
             GeoExecutorCommand::CondoBridge => self.execute_condo_bridge(node)?,
+            GeoExecutorCommand::RetryPass => self.execute_retry_pass(node)?,
             GeoExecutorCommand::AsOfResolution => self.execute_as_of_resolution(node)?,
             GeoExecutorCommand::TileIdentifierStability => {
                 self.execute_tile_identifier_stability(node)?
@@ -690,6 +698,61 @@ impl GeoProjectNodeExecutor {
         Ok(GeoLeafExecution {
             output_id: GEO_CONDO_BRIDGE_OUTPUT_ID,
             output_contract: CANON_GEO_CONDO_BRIDGE_VERSION,
+            output_bytes: bytes,
+            deterministic_usage: usage,
+        })
+    }
+
+    fn execute_retry_pass(&self, node: &ProjectPlanNode) -> ProjectRunResult<GeoLeafExecution> {
+        let mut artifact: GeoRetryLoopArtifact = self.required_binding_json(
+            node,
+            GEO_RETRY_LOOP_BINDING_ID,
+            &[CANON_GEO_RETRY_LOOP_VERSION],
+        )?;
+        validate_retry_loop_artifact(&artifact)
+            .map_err(|error| leaf_error(node, "retry-pass loop validation", error))?;
+        let latest_run: GeoRun =
+            self.required_binding_json(node, GEO_RETRY_RUN_BINDING_ID, &[CANON_GEO_RUN_VERSION])?;
+        let receipt: Option<GeoAcquisitionReceipt> = self.optional_binding_json(
+            node,
+            GEO_RETRY_RECEIPT_BINDING_ID,
+            &[CANON_GEO_ACQUISITION_RECEIPT_VERSION],
+        )?;
+        let next_request = next_retry_pass(&artifact, &latest_run)
+            .map_err(|error| leaf_error(node, "retry-pass next request", error))?;
+        let previous_pass_count = artifact.passes.len() as u64;
+        record_pass(&mut artifact, &latest_run, receipt.as_ref())
+            .map_err(|error| leaf_error(node, "retry-pass record", error))?;
+        let bytes = canonical_retry_loop_bytes(&artifact)
+            .map_err(|error| leaf_error(node, "retry-pass serialization", error))?;
+        let mut usage = BTreeMap::new();
+        usage.insert(
+            "retry_loop_previous_passes".to_string(),
+            previous_pass_count,
+        );
+        usage.insert(
+            "retry_loop_passes".to_string(),
+            artifact.passes.len() as u64,
+        );
+        usage.insert(
+            "retry_loop_recorded_passes".to_string(),
+            artifact.passes.len() as u64 - previous_pass_count,
+        );
+        usage.insert(
+            "retry_loop_next_request_emitted".to_string(),
+            u64::from(next_request.is_some()),
+        );
+        usage.insert(
+            "retry_loop_receipt_bound".to_string(),
+            u64::from(receipt.is_some()),
+        );
+        usage.insert(
+            "retry_loop_terminal".to_string(),
+            u64::from(artifact.terminal.is_some()),
+        );
+        Ok(GeoLeafExecution {
+            output_id: GEO_RETRY_LOOP_OUTPUT_ID,
+            output_contract: CANON_GEO_RETRY_LOOP_VERSION,
             output_bytes: bytes,
             deterministic_usage: usage,
         })
@@ -1195,6 +1258,38 @@ impl GeoProjectNodeExecutor {
     ) -> ProjectRunResult<T> {
         let binding = self.required_binding(node, binding_id, accepted_contracts)?;
         parse_json(node, &binding.bytes, &binding.contract)
+    }
+
+    fn optional_binding_json<T: DeserializeOwned>(
+        &self,
+        node: &ProjectPlanNode,
+        binding_id: &str,
+        accepted_contracts: &[&str],
+    ) -> ProjectRunResult<Option<T>> {
+        let Some(binding) = self
+            .input_bindings
+            .get(&(node.node_id.clone(), binding_id.to_string()))
+        else {
+            return Ok(None);
+        };
+        verify_digest(
+            &binding.content_hash,
+            &binding.bytes,
+            node,
+            format!("input binding {binding_id}"),
+        )?;
+        if !accepted_contracts.contains(&binding.contract.as_str()) {
+            return Err(error(
+                node,
+                ProjectRunErrorCode::ArtifactContract,
+                format!(
+                    "Geo executor binding {binding_id} contract mismatch: expected one of [{}], got {}",
+                    accepted_contracts.join(", "),
+                    binding.contract
+                ),
+            ));
+        }
+        parse_json(node, &binding.bytes, &binding.contract).map(Some)
     }
 
     fn required_binding(
@@ -1888,6 +1983,7 @@ enum GeoExecutorCommand {
     CompileEvidence,
     AssessmentRollOwner,
     CondoBridge,
+    RetryPass,
     AsOfResolution,
     TileIdentifierStability,
     FootprintRollEvidence,
@@ -1899,7 +1995,7 @@ enum GeoExecutorCommand {
 }
 
 impl GeoExecutorCommand {
-    const SUPPORTED: [Self; 15] = [
+    const SUPPORTED: [Self; 16] = [
         Self::MaterializeHomeCells,
         Self::TileWork,
         Self::ClientTileIngest,
@@ -1907,6 +2003,7 @@ impl GeoExecutorCommand {
         Self::CompileEvidence,
         Self::AssessmentRollOwner,
         Self::CondoBridge,
+        Self::RetryPass,
         Self::AsOfResolution,
         Self::TileIdentifierStability,
         Self::FootprintRollEvidence,
@@ -1926,6 +2023,7 @@ impl GeoExecutorCommand {
             GEO_COMPILE_EVIDENCE_COMMAND => Ok(Self::CompileEvidence),
             GEO_ASSESSMENT_ROLL_OWNER_STAGE_COMMAND => Ok(Self::AssessmentRollOwner),
             GEO_CONDO_BRIDGE_STAGE_COMMAND => Ok(Self::CondoBridge),
+            GEO_RETRY_PASS_STAGE_COMMAND => Ok(Self::RetryPass),
             GEO_AS_OF_RESOLUTION_STAGE_COMMAND => Ok(Self::AsOfResolution),
             GEO_TILE_IDENTIFIER_STABILITY_STAGE_COMMAND => Ok(Self::TileIdentifierStability),
             GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND => Ok(Self::FootprintRollEvidence),
@@ -1951,6 +2049,7 @@ impl GeoExecutorCommand {
             | Self::CompileEvidence
             | Self::AssessmentRollOwner
             | Self::CondoBridge
+            | Self::RetryPass
             | Self::AsOfResolution
             | Self::TileIdentifierStability
             | Self::FootprintRollEvidence => ProjectPlanNodeKind::Evidence,
@@ -1971,6 +2070,7 @@ impl GeoExecutorCommand {
             Self::CompileEvidence => "compile_evidence",
             Self::AssessmentRollOwner => GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID,
             Self::CondoBridge => GEO_CONDO_BRIDGE_OUTPUT_ID,
+            Self::RetryPass => GEO_RETRY_LOOP_OUTPUT_ID,
             Self::AsOfResolution => GEO_AS_OF_RESOLUTION_OUTPUT_ID,
             Self::TileIdentifierStability => GEO_TILE_IDENTIFIER_STABILITY_OUTPUT_ID,
             Self::FootprintRollEvidence => GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID,
@@ -1993,6 +2093,7 @@ impl GeoExecutorCommand {
             }
             Self::AssessmentRollOwner => &[],
             Self::CondoBridge => &[],
+            Self::RetryPass => &[],
             Self::AsOfResolution => &[],
             Self::TileIdentifierStability => &[],
             Self::FootprintRollEvidence => &[],
@@ -2040,6 +2141,11 @@ impl GeoExecutorCommand {
             | Self::FootprintRollEvidence
             | Self::Separation
             | Self::NextEvidence => &[GEO_REQUEST_BINDING_ID],
+            Self::RetryPass => &[
+                GEO_RETRY_LOOP_BINDING_ID,
+                GEO_RETRY_RUN_BINDING_ID,
+                GEO_RETRY_RECEIPT_BINDING_ID,
+            ],
             Self::ClientTileIngest => &[GEO_REQUEST_BINDING_ID, GEO_CLIENT_TILE_SOURCE_BINDING_ID],
             Self::CompileEvidence | Self::Propagate | Self::Explain | Self::Solve => &[],
         }
@@ -2054,6 +2160,7 @@ impl GeoExecutorCommand {
             Self::CompileEvidence => "compile-evidence",
             Self::AssessmentRollOwner => "assessment-roll-owner",
             Self::CondoBridge => "condo-bridge",
+            Self::RetryPass => "retry-pass",
             Self::AsOfResolution => "as-of-resolution",
             Self::TileIdentifierStability => "tile-identifier-stability",
             Self::FootprintRollEvidence => "footprint-roll-evidence",
@@ -2262,6 +2369,7 @@ fn contract_for_output_id(output_id: &str) -> Option<&'static str> {
         "compile_evidence" => Some(CANON_GEO_EVIDENCE_COMPILATION_VERSION),
         GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID => Some(CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION),
         GEO_CONDO_BRIDGE_OUTPUT_ID => Some(CANON_GEO_CONDO_BRIDGE_VERSION),
+        GEO_RETRY_LOOP_OUTPUT_ID => Some(CANON_GEO_RETRY_LOOP_VERSION),
         GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID => Some(CANON_GEO_EVIDENCE_REQUEST_VERSION),
         GEO_PROPAGATE_OUTPUT_ID => Some(CANON_GEO_PROPAGATION_VERSION),
         GEO_EXPLAIN_OUTPUT_ID => Some(CANON_GEO_EXPLANATION_VERSION),
@@ -2513,6 +2621,18 @@ fn ensure_canonical_artifact_bytes(
                 contract,
                 bytes,
                 canonical_condo_bridge_bytes(&artifact),
+            )
+        }
+        CANON_GEO_RETRY_LOOP_VERSION => {
+            let artifact: GeoRetryLoopArtifact =
+                parse_json_target(&node, bytes, CANON_GEO_RETRY_LOOP_VERSION)?;
+            validate_retry_loop_artifact(&artifact)
+                .map_err(|error| leaf_error_target(&node, "retry-loop validation", error))?;
+            require_exact_bytes(
+                &node,
+                contract,
+                bytes,
+                canonical_retry_loop_bytes(&artifact),
             )
         }
         CANON_GEO_AS_OF_RESOLUTION_VERSION => {

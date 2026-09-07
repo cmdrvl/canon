@@ -16,8 +16,9 @@ use crate::{
         CANON_GEO_EXPLANATION_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
         CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
         CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION,
-        CANON_GEO_PLAN_VERSION, CANON_GEO_PROPAGATION_VERSION, CANON_GEO_SEPARATION_INPUTS_VERSION,
-        CANON_GEO_SEPARATION_VERSION, CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
+        CANON_GEO_PLAN_VERSION, CANON_GEO_PROPAGATION_VERSION, CANON_GEO_RETRY_LOOP_VERSION,
+        CANON_GEO_SEPARATION_INPUTS_VERSION, CANON_GEO_SEPARATION_VERSION,
+        CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
         CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
         CANON_GEO_TILE_WORK_UNIT_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
         GeoAcquisitionDenominator, GeoAcquisitionProofClass, GeoAcquisitionSatisfaction,
@@ -53,6 +54,11 @@ use crate::{
         executor::GEO_PROPAGATE_OUTPUT_ID,
         executor::GEO_PROPAGATE_STAGE_COMMAND,
         executor::GEO_REQUEST_BINDING_ID,
+        executor::GEO_RETRY_LOOP_BINDING_ID,
+        executor::GEO_RETRY_LOOP_OUTPUT_ID,
+        executor::GEO_RETRY_PASS_STAGE_COMMAND,
+        executor::GEO_RETRY_RECEIPT_BINDING_ID,
+        executor::GEO_RETRY_RUN_BINDING_ID,
         executor::GEO_ROWS_BINDING_ID,
         executor::GEO_SEPARATION_OUTPUT_ID,
         executor::GEO_SEPARATION_STAGE_COMMAND,
@@ -2271,6 +2277,7 @@ fn output_contract_for_command(command: &str) -> Option<&'static str> {
         GEO_EXPLAIN_STAGE_COMMAND => Some(CANON_GEO_EXPLANATION_VERSION),
         GEO_SEPARATION_STAGE_COMMAND => Some(CANON_GEO_SEPARATION_VERSION),
         GEO_NEXT_EVIDENCE_STAGE_COMMAND => Some(CANON_GEO_NEXT_EVIDENCE_VERSION),
+        GEO_RETRY_PASS_STAGE_COMMAND => Some(CANON_GEO_RETRY_LOOP_VERSION),
         GEO_AS_OF_RESOLUTION_STAGE_COMMAND => Some(CANON_GEO_AS_OF_RESOLUTION_VERSION),
         GEO_TILE_IDENTIFIER_STABILITY_STAGE_COMMAND => {
             Some(CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION)
@@ -2294,6 +2301,7 @@ fn output_id_for_command(command: &str) -> Option<&'static str> {
         GEO_EXPLAIN_STAGE_COMMAND => Some(GEO_EXPLAIN_OUTPUT_ID),
         GEO_SEPARATION_STAGE_COMMAND => Some(GEO_SEPARATION_OUTPUT_ID),
         GEO_NEXT_EVIDENCE_STAGE_COMMAND => Some(GEO_NEXT_EVIDENCE_OUTPUT_ID),
+        GEO_RETRY_PASS_STAGE_COMMAND => Some(GEO_RETRY_LOOP_OUTPUT_ID),
         GEO_AS_OF_RESOLUTION_STAGE_COMMAND => Some(GEO_AS_OF_RESOLUTION_OUTPUT_ID),
         GEO_TILE_IDENTIFIER_STABILITY_STAGE_COMMAND => {
             Some(GEO_TILE_IDENTIFIER_STABILITY_OUTPUT_ID)
@@ -2317,6 +2325,7 @@ fn output_contract_for_output_id(output_id: &str) -> Option<&'static str> {
         GEO_EXPLAIN_OUTPUT_ID => Some(CANON_GEO_EXPLANATION_VERSION),
         GEO_SEPARATION_OUTPUT_ID => Some(CANON_GEO_SEPARATION_VERSION),
         GEO_NEXT_EVIDENCE_OUTPUT_ID => Some(CANON_GEO_NEXT_EVIDENCE_VERSION),
+        GEO_RETRY_LOOP_OUTPUT_ID => Some(CANON_GEO_RETRY_LOOP_VERSION),
         GEO_AS_OF_RESOLUTION_OUTPUT_ID => Some(CANON_GEO_AS_OF_RESOLUTION_VERSION),
         GEO_TILE_IDENTIFIER_STABILITY_OUTPUT_ID => {
             Some(CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION)
@@ -2387,6 +2396,26 @@ fn input_specs_for_command(command: &str) -> Option<Vec<GeoInputSpec>> {
             accepted_contracts: &[CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION],
             reason: "next-evidence requires local typed candidate actions, policy, and deterministic budget inputs",
         }]),
+        GEO_RETRY_PASS_STAGE_COMMAND => Some(vec![
+            GeoInputSpec {
+                binding_id: GEO_RETRY_LOOP_BINDING_ID,
+                required: true,
+                accepted_contracts: &[CANON_GEO_RETRY_LOOP_VERSION],
+                reason: "retry-pass requires the current typed retry-loop artifact",
+            },
+            GeoInputSpec {
+                binding_id: GEO_RETRY_RUN_BINDING_ID,
+                required: true,
+                accepted_contracts: &[CANON_GEO_RUN_VERSION],
+                reason: "retry-pass requires the latest pinned Geo run manifest",
+            },
+            GeoInputSpec {
+                binding_id: GEO_RETRY_RECEIPT_BINDING_ID,
+                required: false,
+                accepted_contracts: &[CANON_GEO_ACQUISITION_RECEIPT_VERSION],
+                reason: "retry-pass may bind the acquisition receipt for request digest validation",
+            },
+        ]),
         GEO_AS_OF_RESOLUTION_STAGE_COMMAND => Some(vec![GeoInputSpec {
             binding_id: GEO_REQUEST_BINDING_ID,
             required: true,

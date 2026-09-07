@@ -47,6 +47,7 @@ use super::{
         CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
         CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION,
     },
+    ledger::CANON_GEO_COLLATERAL_LEDGER_VERSION,
     lifecycle::{CANON_GEO_AS_OF_RESOLUTION_REQUEST_VERSION, CANON_GEO_AS_OF_RESOLUTION_VERSION},
     materialize::{
         CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
@@ -61,6 +62,7 @@ use super::{
     plan::CANON_GEO_PLAN_VERSION,
     propagate::CANON_GEO_PROPAGATION_VERSION,
     residual_benchmark::{CANON_GEO_RESIDUAL_BENCHMARK_VERSION, CANON_GEO_RESIDUAL_OBDD_VERSION},
+    retry::CANON_GEO_RETRY_LOOP_VERSION,
     run::CANON_GEO_RUN_VERSION,
     satisfy::CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION,
     stack::{
@@ -1283,9 +1285,19 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "PAD condo unit-lot to billing-lot bridge artifact contract",
         ),
         contract(
+            CANON_GEO_RETRY_LOOP_VERSION,
+            "schemas/canon.geo.retry_loop.v0.schema.json",
+            "bounded abstain/reacquisition retry-loop artifact contract",
+        ),
+        contract(
             CANON_GEO_LEDGER_BRIDGE_VERSION,
             "schemas/canon.geo.ledger_bridge.v0.schema.json",
             "condo unit to billing-BBL and BIN ledger bridge artifact contract",
+        ),
+        contract(
+            CANON_GEO_COLLATERAL_LEDGER_VERSION,
+            "schemas/canon.geo.collateral_ledger.v0.schema.json",
+            "physical collateral ledger artifact contract",
         ),
         contract(
             CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION,
@@ -1476,6 +1488,13 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
             false,
         ),
         command(
+            "canon geo ledger validate --ledger <LEDGER.json>",
+            GeoCommandSurface::Primary,
+            CANON_GEO_COLLATERAL_LEDGER_VERSION,
+            true,
+            false,
+        ),
+        command(
             "canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>",
             GeoCommandSurface::Leaf,
             ENTITY_MULTISOURCE_LINK_VERSION,
@@ -1567,6 +1586,13 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
             false,
         ),
         command(
+            "canon.geo.stage.retry_pass.v0",
+            GeoCommandSurface::Leaf,
+            CANON_GEO_RETRY_LOOP_VERSION,
+            true,
+            false,
+        ),
+        command(
             "canon.geo.stage.footprint_roll_evidence.v0",
             GeoCommandSurface::Leaf,
             CANON_GEO_EVIDENCE_REQUEST_VERSION,
@@ -1647,22 +1673,13 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
 }
 
 fn unavailable_geo_commands() -> Vec<GeoCommandCapability> {
-    vec![
-        command(
-            "canon geo inspect",
-            GeoCommandSurface::Primary,
-            "planned_not_implemented",
-            true,
-            false,
-        ),
-        command(
-            "canon geo ledger",
-            GeoCommandSurface::Primary,
-            "planned_not_implemented",
-            true,
-            false,
-        ),
-    ]
+    vec![command(
+        "canon geo inspect",
+        GeoCommandSurface::Primary,
+        "planned_not_implemented",
+        true,
+        false,
+    )]
 }
 
 pub fn canonicalize_capabilities(

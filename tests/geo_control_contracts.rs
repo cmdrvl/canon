@@ -13,29 +13,29 @@ use canon::geo::{
     CANON_GEO_ADDRESS_PARCEL_EVIDENCE_REQUEST_VERSION, CANON_GEO_ADDRESS_PARSE_FOREST_VERSION,
     CANON_GEO_ADDRESS_PARSE_REQUEST_VERSION, CANON_GEO_ADDRESS_QUERY_GRAMMAR_VERSION,
     CANON_GEO_AS_OF_RESOLUTION_REQUEST_VERSION, CANON_GEO_AS_OF_RESOLUTION_VERSION,
-    CANON_GEO_CAPABILITIES_VERSION, CANON_GEO_COMPOSITION_PROFILE_VERSION,
-    CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION,
-    CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION, CANON_GEO_CONDO_BRIDGE_VERSION,
-    CANON_GEO_DISCOVERY_REQUEST_VERSION, CANON_GEO_ENTITY_PROJECTION_VERSION,
-    CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
-    CANON_GEO_EXPLANATION_VERSION, CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION,
-    CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
-    CANON_GEO_GEOMETRY_VALUE_VERSION, CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION,
-    CANON_GEO_H7_POPULATION_ROWS_VERSION, CANON_GEO_H7_POPULATION_VERSION,
-    CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION, CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
-    CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_LEDGER_BRIDGE_VERSION,
-    CANON_GEO_LOCAL_FRAME_VERSION, CANON_GEO_MULTISOURCE_REQUEST_VERSION,
-    CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION, CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION,
-    CANON_GEO_NEXT_EVIDENCE_VERSION, CANON_GEO_PAD_ADDRESS_SET_VERSION,
-    CANON_GEO_PAD_MEMBERSHIP_VERSION, CANON_GEO_PLAN_VERSION,
+    CANON_GEO_CAPABILITIES_VERSION, CANON_GEO_COLLATERAL_LEDGER_VERSION,
+    CANON_GEO_COMPOSITION_PROFILE_VERSION, CANON_GEO_COMPOSITION_REQUEST_VERSION,
+    CANON_GEO_COMPOSITION_VERSION, CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION,
+    CANON_GEO_CONDO_BRIDGE_VERSION, CANON_GEO_DISCOVERY_REQUEST_VERSION,
+    CANON_GEO_ENTITY_PROJECTION_VERSION, CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_EXPLANATION_VERSION,
+    CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION, CANON_GEO_GEOMETRY_REQUEST_VERSION,
+    CANON_GEO_GEOMETRY_TILE_VERSION, CANON_GEO_GEOMETRY_VALUE_VERSION,
+    CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
+    CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
+    CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
+    CANON_GEO_LEDGER_BRIDGE_VERSION, CANON_GEO_LOCAL_FRAME_VERSION,
+    CANON_GEO_MULTISOURCE_REQUEST_VERSION, CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION,
+    CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION,
+    CANON_GEO_PAD_ADDRESS_SET_VERSION, CANON_GEO_PAD_MEMBERSHIP_VERSION, CANON_GEO_PLAN_VERSION,
     CANON_GEO_POPULATION_EVALUATION_VERSION, CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
     CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
     CANON_GEO_PROPAGATION_VERSION, CANON_GEO_QUESTION_VERSION,
     CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
     CANON_GEO_RESIDUAL_BENCHMARK_VERSION, CANON_GEO_RESIDUAL_OBDD_VERSION,
-    CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_RUN_VERSION, CANON_GEO_SEPARATION_INPUTS_VERSION,
-    CANON_GEO_SEPARATION_REQUEST_VERSION, CANON_GEO_SEPARATION_VERSION,
-    CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
+    CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_RETRY_LOOP_VERSION, CANON_GEO_RUN_VERSION,
+    CANON_GEO_SEPARATION_INPUTS_VERSION, CANON_GEO_SEPARATION_REQUEST_VERSION,
+    CANON_GEO_SEPARATION_VERSION, CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
     CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION, CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
     CANON_GEO_TILE_RECONCILIATION_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
     CANON_GEO_TILE_WORK_UNIT_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION,
@@ -171,7 +171,9 @@ fn expected_implemented_contracts() -> BTreeSet<&'static str> {
         CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION,
         CANON_GEO_PROPAGATION_VERSION,
         CANON_GEO_CONDO_BRIDGE_VERSION,
+        CANON_GEO_RETRY_LOOP_VERSION,
         CANON_GEO_LEDGER_BRIDGE_VERSION,
+        CANON_GEO_COLLATERAL_LEDGER_VERSION,
         CANON_GEO_EXPLANATION_VERSION,
         CANON_GEO_SEPARATION_INPUTS_VERSION,
         CANON_GEO_SEPARATION_REQUEST_VERSION,
@@ -280,6 +282,15 @@ fn expected_implemented_commands()
             ),
         ),
         (
+            "canon geo ledger validate --ledger <LEDGER.json>",
+            (
+                CANON_GEO_COLLATERAL_LEDGER_VERSION,
+                GeoCommandSurface::Primary,
+                true,
+                false,
+            ),
+        ),
+        (
             "canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>",
             (
                 ENTITY_MULTISOURCE_LINK_VERSION,
@@ -346,6 +357,15 @@ fn expected_implemented_commands()
             "canon.geo.stage.condo_bridge.v0",
             (
                 CANON_GEO_CONDO_BRIDGE_VERSION,
+                GeoCommandSurface::Leaf,
+                true,
+                false,
+            ),
+        ),
+        (
+            "canon.geo.stage.retry_pass.v0",
+            (
+                CANON_GEO_RETRY_LOOP_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
                 false,
@@ -535,13 +555,42 @@ fn operator_command_row_mut<'a>(
 fn operator_geo_rows_by_surface(
     manifest: &Value,
 ) -> Result<BTreeMap<String, BTreeSet<String>>, String> {
+    let aggregate_leaf_surfaces = operator_geo_rows(manifest)
+        .into_iter()
+        .filter(|row| row.get("aggregate").and_then(Value::as_bool) == Some(true))
+        .flat_map(|row| {
+            let parent_surface = row
+                .get("surface")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            row.get("leaves")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(move |leaf| (leaf.to_string(), parent_surface.clone()))
+                .collect::<Vec<_>>()
+        })
+        .collect::<BTreeMap<_, _>>();
     let mut rows_by_surface = BTreeMap::<String, BTreeSet<String>>::new();
     for row in operator_geo_rows(manifest) {
         let name = row["name"]
             .as_str()
             .expect("operator geo row name")
             .to_string();
+        let aggregate_parent_surface = aggregate_leaf_surfaces.get(&name);
+        if let Some(expected_surface) = aggregate_parent_surface
+            && row.get("surface").is_some()
+        {
+            return Err(format!(
+                "{name} is an aggregate leaf under {expected_surface} and must not declare its own geo surface"
+            ));
+        }
         let Some(surface) = row.get("surface") else {
+            if aggregate_parent_surface.is_some() {
+                continue;
+            }
             return Err(format!("{name} is missing required geo surface"));
         };
         let Some(surface) = surface.as_str() else {
@@ -948,26 +997,15 @@ fn geo_capabilities_cover_compiled_leaf_commands_and_public_contracts() {
         .collect::<BTreeMap<_, _>>();
     assert_eq!(
         unavailable_commands,
-        BTreeMap::from([
+        BTreeMap::from([(
+            "canon geo inspect",
             (
-                "canon geo inspect",
-                (
-                    "planned_not_implemented",
-                    GeoCommandSurface::Primary,
-                    true,
-                    false,
-                ),
+                "planned_not_implemented",
+                GeoCommandSurface::Primary,
+                true,
+                false,
             ),
-            (
-                "canon geo ledger",
-                (
-                    "planned_not_implemented",
-                    GeoCommandSurface::Primary,
-                    true,
-                    false,
-                ),
-            )
-        ])
+        )])
     );
     for command in &artifact.commands.unavailable {
         assert!(
@@ -1023,6 +1061,16 @@ fn operator_geo_rows_declare_valid_surface_tiers() {
     assert!(
         error.contains("geo capabilities") && error.contains("debug"),
         "unknown-surface refusal should name the row and bad value, got {error}"
+    );
+
+    let mut leaf_surface_drift = operator_manifest();
+    operator_command_row_mut(&mut leaf_surface_drift, "geo ledger validate")
+        .insert("surface".to_string(), json!("leaf"));
+    let error = operator_geo_rows_by_surface(&leaf_surface_drift)
+        .expect_err("aggregate leaf surface drift must refuse");
+    assert!(
+        error.contains("geo ledger validate") && error.contains("primary"),
+        "aggregate-leaf surface refusal should name the leaf and parent surface, got {error}"
     );
 }
 

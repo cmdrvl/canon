@@ -3,28 +3,40 @@
 use canon::geo::{
     CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
     CANON_GEO_COMPOSITION_VERSION, CANON_GEO_PLAN_VERSION, CANON_GEO_RETRY_LOOP_VERSION,
-    CANON_GEO_RUN_VERSION, GEO_RUN_JSON_MEDIA_TYPE, GeoAcquisitionCounts,
-    GeoAcquisitionDenominator, GeoAcquisitionProofClass, GeoAcquisitionReceipt,
-    GeoAcquisitionRequest, GeoAcquisitionResumability, GeoAcquisitionTerminalState,
-    GeoBoundedGeography, GeoBoundedSubset, GeoDenominatorSource, GeoDigest, GeoDigestAlgorithm,
-    GeoFieldRole, GeoLocalArtifactDigest, GeoPaginationReceipt, GeoPaginationRequest,
-    GeoPlanGrainStatus, GeoReleasePin, GeoRequestedField, GeoRetryErrorCode, GeoRetryLoopArtifact,
-    GeoRetryPolicy, GeoRetryTerminal, GeoRowByteCeilings, GeoRun, GeoRunBlocker, GeoRunBlockerKind,
-    GeoRunGrainState, GeoRunObservation, GeoRunOutputRef, GeoRunPhase, GeoRunPlanRef, GeoRunStatus,
-    GeoSubsetPredicate, GeoSubsetPredicateKind, canonical_retry_loop_bytes,
-    geo_acquisition_request_id, geo_acquisition_request_semantic_hash, geo_run_semantic_hash,
-    next_retry_pass, record_pass, validate_geo_acquisition_receipt,
-    validate_geo_acquisition_request, validate_geo_run, validate_retry_loop_artifact,
+    CANON_GEO_RUN_VERSION, GEO_RETRY_LOOP_BINDING_ID, GEO_RETRY_LOOP_OUTPUT_ID,
+    GEO_RETRY_PASS_STAGE_COMMAND, GEO_RETRY_RECEIPT_BINDING_ID, GEO_RETRY_RUN_BINDING_ID,
+    GEO_RUN_JSON_MEDIA_TYPE, GeoAcquisitionCounts, GeoAcquisitionDenominator,
+    GeoAcquisitionProofClass, GeoAcquisitionReceipt, GeoAcquisitionRequest,
+    GeoAcquisitionResumability, GeoAcquisitionTerminalState, GeoBoundedGeography, GeoBoundedSubset,
+    GeoBudgetAction, GeoClaimClass, GeoControlEntityLevel, GeoDenominatorSource, GeoDigest,
+    GeoDigestAlgorithm, GeoEntityLevel, GeoEvidenceClass, GeoFieldRole, GeoLocalArtifactDigest,
+    GeoNumericBound, GeoPaginationReceipt, GeoPaginationRequest, GeoPlan, GeoPlanArtifactRef,
+    GeoPlanBudgetRef, GeoPlanClaimEffect, GeoPlanCostEstimateRange, GeoPlanGrainOutcome,
+    GeoPlanGrainStatus, GeoPlanInventoryRef, GeoPlanNodeOverlay, GeoPlanProfileRef, GeoPlanStage,
+    GeoPlanStatus, GeoPlanTransitionSet, GeoReleasePin, GeoRequestedField, GeoResourceCounter,
+    GeoRetryErrorCode, GeoRetryLoopArtifact, GeoRetryPolicy, GeoRetryTerminal, GeoRowByteCeilings,
+    GeoRun, GeoRunArtifactBinding, GeoRunBlocker, GeoRunBlockerKind, GeoRunGrainState,
+    GeoRunObservation, GeoRunOutputRef, GeoRunPhase, GeoRunPlanRef, GeoRunRequest, GeoRunStatus,
+    GeoSubsetPredicate, GeoSubsetPredicateKind, GeoTelemetrySemanticEffect, GeoValueOrigin,
+    canonical_retry_loop_bytes, geo_acquisition_request_id, geo_acquisition_request_semantic_hash,
+    geo_plan_semantic_hash, geo_run_semantic_hash, next_retry_pass, record_pass, run_geo_plan,
+    validate_geo_acquisition_receipt, validate_geo_acquisition_request, validate_geo_plan,
+    validate_geo_run, validate_retry_loop_artifact,
 };
 use canon::project::{
-    CANON_PROJECT_RUN_VERSION, ProjectRunHashRef, ProjectRunNextAction as ProjectNextAction,
-    ProjectRunNodeOutcome, ProjectRunNodeReceipt, ProjectRunOutputReceipt, ProjectRunReceipt,
-    ProjectRunReport,
+    CANON_PROJECT_RUN_VERSION, ProjectExtensionDagNode, ProjectExtensionDagOutput,
+    ProjectExtensionDagRequest, ProjectPlanErrorCode, ProjectPlanNodeClass, ProjectPlanNodeKind,
+    ProjectPlanOutputMaterialization, ProjectPlanRefusalCondition, ProjectPlanSideEffect,
+    ProjectPlanSideEffectKind, ProjectRunHashRef, ProjectRunNextAction as ProjectNextAction,
+    ProjectRunNodeOutcome, ProjectRunNodeReceipt, ProjectRunOutputReceipt, ProjectRunPolicy,
+    ProjectRunReceipt, ProjectRunReport, compile_extension_project_plan,
 };
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fs};
 
 const RETRY_LOOP_SCHEMA: &str = include_str!("../schemas/canon.geo.retry_loop.v0.schema.json");
+const RETRY_STAGE_NODE_ID: &str = "geo.building.retry_pass";
+const RETRY_STAGE_OUTPUT_PATH: &str = "work/geo/retry_loop.json";
 
 #[test]
 fn t10_bounded_abstain_regeocode_retry_loop_records_two_passes_and_ceiling() {
@@ -92,6 +104,129 @@ fn t10_bounded_abstain_regeocode_retry_loop_records_two_passes_and_ceiling() {
         None
     );
     validate_retry_loop_artifact(&loop_state).expect("final loop validates");
+}
+
+#[test]
+fn t10_geo_run_dispatches_retry_pass_stage_executor() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = retry_stage_plan();
+    let policy = ProjectRunPolicy::new(temp.path(), "work");
+    let loop_state = retry_loop(retry_policy(2));
+    let latest_run = abstaining_run("stage-pass", "geocode_ambiguous");
+    let receipt = receipt_for_request(&loop_state.policy.regeocode_request_template);
+    let run = run_geo_plan(GeoRunRequest::new(
+        plan,
+        policy,
+        vec![
+            GeoRunArtifactBinding::from_json(
+                RETRY_STAGE_NODE_ID,
+                GEO_RETRY_LOOP_BINDING_ID,
+                CANON_GEO_RETRY_LOOP_VERSION,
+                &loop_state,
+            )
+            .expect("retry-loop binding"),
+            GeoRunArtifactBinding::from_json(
+                RETRY_STAGE_NODE_ID,
+                GEO_RETRY_RUN_BINDING_ID,
+                CANON_GEO_RUN_VERSION,
+                &latest_run,
+            )
+            .expect("latest-run binding"),
+            GeoRunArtifactBinding::from_json(
+                RETRY_STAGE_NODE_ID,
+                GEO_RETRY_RECEIPT_BINDING_ID,
+                CANON_GEO_ACQUISITION_RECEIPT_VERSION,
+                &receipt,
+            )
+            .expect("receipt binding"),
+        ],
+    ))
+    .expect("geo run dispatches retry-pass stage");
+
+    assert_eq!(run.status, GeoRunStatus::Completed);
+    assert!(
+        run.output_refs.iter().any(|output| {
+            output.project_node_id == RETRY_STAGE_NODE_ID
+                && output.output_id == GEO_RETRY_LOOP_OUTPUT_ID
+                && output.contract_version == CANON_GEO_RETRY_LOOP_VERSION
+        }),
+        "retry-pass stage output must be visible through geo run output refs"
+    );
+    let report = run.project_run_report.as_ref().expect("project report");
+    assert_eq!(report.executed_nodes, vec![RETRY_STAGE_NODE_ID.to_string()]);
+    let node_receipt = report
+        .receipt
+        .node_receipts
+        .iter()
+        .find(|receipt| receipt.node_id == RETRY_STAGE_NODE_ID)
+        .expect("retry node receipt");
+    assert_eq!(
+        node_receipt
+            .deterministic_usage
+            .get("retry_loop_next_request_emitted"),
+        Some(&1)
+    );
+    assert_eq!(
+        node_receipt
+            .deterministic_usage
+            .get("retry_loop_recorded_passes"),
+        Some(&1)
+    );
+
+    let output_bytes =
+        fs::read(temp.path().join(RETRY_STAGE_OUTPUT_PATH)).expect("retry-loop output");
+    let artifact: GeoRetryLoopArtifact =
+        serde_json::from_slice(&output_bytes).expect("retry-loop output parses");
+    validate_retry_loop_artifact(&artifact).expect("retry-loop output validates");
+    assert_eq!(artifact.passes.len(), 1);
+    assert_eq!(artifact.passes[0].run_blake3, latest_run.semantic_hash);
+    assert_eq!(artifact.passes[0].abstention_reason, "geocode_ambiguous");
+    assert_eq!(
+        artifact.passes[0].regeocode.as_ref(),
+        Some(&loop_state.policy.regeocode_request_template)
+    );
+    assert!(
+        artifact.passes[0]
+            .receipt_blake3
+            .as_deref()
+            .is_some_and(|digest| digest.starts_with("blake3:"))
+    );
+    assert_eq!(artifact.terminal, None);
+}
+
+#[test]
+fn t10_geo_run_retry_pass_preflight_requires_latest_run_binding() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = retry_stage_plan();
+    let policy = ProjectRunPolicy::new(temp.path(), "work");
+    let loop_state = retry_loop(retry_policy(2));
+    let run = run_geo_plan(GeoRunRequest::new(
+        plan,
+        policy,
+        vec![
+            GeoRunArtifactBinding::from_json(
+                RETRY_STAGE_NODE_ID,
+                GEO_RETRY_LOOP_BINDING_ID,
+                CANON_GEO_RETRY_LOOP_VERSION,
+                &loop_state,
+            )
+            .expect("retry-loop binding"),
+        ],
+    ))
+    .expect("geo run reports missing retry input");
+
+    assert_eq!(run.status, GeoRunStatus::WaitingForInput);
+    assert!(
+        run.blockers.iter().any(|blocker| {
+            blocker.project_node_id.as_deref() == Some(RETRY_STAGE_NODE_ID)
+                && blocker.reason.contains("latest pinned Geo run")
+        }),
+        "run preflight must expose the missing latest-run binding for retry-pass"
+    );
+    assert!(
+        !temp.path().join(RETRY_STAGE_OUTPUT_PATH).exists(),
+        "preflight-only retry run must not publish the retry-loop output"
+    );
 }
 
 #[test]
@@ -504,6 +639,154 @@ fn project_run_report(seed: &str) -> ProjectRunReport {
         node_reports: Vec::new(),
         invalidation_reasons: Vec::new(),
         resource_reuse: Default::default(),
+    }
+}
+
+fn retry_stage_plan() -> GeoPlan {
+    let bounds = vec![retry_stage_bound()];
+    let project_plan =
+        compile_extension_project_plan(ProjectExtensionDagRequest::offline_read_only(
+            "geo.retry.stage.project",
+            digest_label("geo.retry.stage.manifest"),
+            digest_label("geo.retry.stage.lock"),
+            vec![retry_stage_project_node(&bounds)],
+        ))
+        .expect("retry-stage project plan compiles");
+    let mut plan = GeoPlan {
+        version: CANON_GEO_PLAN_VERSION.to_string(),
+        plan_id: String::new(),
+        semantic_hash: String::new(),
+        status: GeoPlanStatus::Planned,
+        question_ref: plan_artifact_ref("geo.retry.stage.question"),
+        capabilities_ref: plan_artifact_ref("geo.retry.stage.capabilities"),
+        inventory_ref: GeoPlanInventoryRef {
+            inventory_id: "geo.retry.stage.inventory".to_string(),
+            semantic_hash: digest_label("geo.retry.stage.inventory.semantic"),
+            planning_hash: digest_label("geo.retry.stage.inventory.planning"),
+        },
+        profile_ref: GeoPlanProfileRef {
+            version: "canon_geo_composition_profile.v0".to_string(),
+            selection_level: GeoEntityLevel::Building,
+            semantic_hash: digest_label("geo.retry.stage.profile"),
+        },
+        budget_ref: GeoPlanBudgetRef {
+            budget_id: "geo.retry.stage.budget".to_string(),
+            semantic_hash: digest_label("geo.retry.stage.budget.semantic"),
+            planning_hash: digest_label("geo.retry.stage.budget.planning"),
+        },
+        project_plan,
+        geo_nodes: vec![retry_stage_overlay(&bounds)],
+        grain_outcomes: vec![GeoPlanGrainOutcome {
+            entity_level: GeoControlEntityLevel::Building,
+            status: GeoPlanGrainStatus::PlannedRelativeToDeclaredUniverse,
+            missing_evidence_classes: Vec::new(),
+            project_node_ids: vec![RETRY_STAGE_NODE_ID.to_string()],
+            claim_limitation:
+                "retry-pass records the prior pinned run and emits acquisition requests only"
+                    .to_string(),
+            next_action: "execute retry-pass through geo run".to_string(),
+        }],
+        external_requests: Vec::new(),
+        diagnostics: Vec::new(),
+    };
+    plan.semantic_hash = geo_plan_semantic_hash(&plan).expect("retry-stage plan semantic hash");
+    plan.plan_id = format!(
+        "{CANON_GEO_PLAN_VERSION}:{}",
+        plan.semantic_hash.trim_start_matches("blake3:")
+    );
+    validate_geo_plan(&plan).expect("retry-stage plan validates");
+    plan
+}
+
+fn retry_stage_project_node(bounds: &[GeoNumericBound]) -> ProjectExtensionDagNode {
+    ProjectExtensionDagNode {
+        node_id: RETRY_STAGE_NODE_ID.to_string(),
+        kind: ProjectPlanNodeKind::Evidence,
+        class: ProjectPlanNodeClass::Computation,
+        command: GEO_RETRY_PASS_STAGE_COMMAND.to_string(),
+        dependencies: Vec::new(),
+        content_hash_inputs: Vec::new(),
+        outputs: vec![ProjectExtensionDagOutput {
+            output_id: GEO_RETRY_LOOP_OUTPUT_ID.to_string(),
+            path: RETRY_STAGE_OUTPUT_PATH.to_string(),
+            materialization: ProjectPlanOutputMaterialization::PlannedArtifact,
+        }],
+        limits: bounds
+            .iter()
+            .map(|bound| (bound.semantic_id.clone(), bound.value))
+            .collect(),
+        cache_eligible: true,
+        side_effects: vec![
+            ProjectPlanSideEffect {
+                kind: ProjectPlanSideEffectKind::ReadsInput,
+                description:
+                    "reads declared retry-loop state, latest Geo run, and optional receipt"
+                        .to_string(),
+            },
+            ProjectPlanSideEffect {
+                kind: ProjectPlanSideEffectKind::WritesArtifact,
+                description: "publishes the canonical updated retry-loop artifact".to_string(),
+            },
+        ],
+        refusal_conditions: vec![ProjectPlanRefusalCondition {
+            code: ProjectPlanErrorCode::ArtifactContract,
+            message: "refuse on retry-loop, GeoRun, receipt, or output contract mismatch"
+                .to_string(),
+            next_command: None,
+        }],
+    }
+}
+
+fn retry_stage_overlay(bounds: &[GeoNumericBound]) -> GeoPlanNodeOverlay {
+    GeoPlanNodeOverlay {
+        project_node_id: RETRY_STAGE_NODE_ID.to_string(),
+        stage: GeoPlanStage::SelectNextEvidence,
+        entity_level: Some(GeoControlEntityLevel::Building),
+        evidence_classes: vec![GeoEvidenceClass::AddressSet],
+        claim_classes: vec![GeoClaimClass::CollateralComposition],
+        expected_output_contract: CANON_GEO_RETRY_LOOP_VERSION.to_string(),
+        preconditions: Vec::new(),
+        claim_effect: GeoPlanClaimEffect::CanChangeRequestedClaim,
+        bounded_section_required: false,
+        incidence_factorization_required: false,
+        exact_solve_scope: None,
+        deterministic_bounds: bounds.to_vec(),
+        cost_estimate_ranges: bounds
+            .iter()
+            .map(|bound| GeoPlanCostEstimateRange {
+                semantic_id: format!("estimate.{}", bound.semantic_id),
+                counter: bound.counter,
+                lower_bound: 0,
+                upper_bound: bound.value,
+                unit: bound.unit.clone(),
+                basis: "retry-pass fixture estimate bounded by one explicit run input".to_string(),
+                semantic_effect: GeoTelemetrySemanticEffect::None,
+            })
+            .collect(),
+        transitions: GeoPlanTransitionSet {
+            success: "retry loop updated".to_string(),
+            abstention: "retry request emitted for external acquisition".to_string(),
+            contradiction: "retry input contract refused".to_string(),
+            budget_fallback: "retry policy ceiling reported without geocoding".to_string(),
+        },
+    }
+}
+
+fn retry_stage_bound() -> GeoNumericBound {
+    GeoNumericBound {
+        semantic_id: "geo.retry.max_pass_records".to_string(),
+        counter: GeoResourceCounter::Operations,
+        value: 1,
+        unit: "operation".to_string(),
+        origin: GeoValueOrigin::CallerDeclared,
+        action: GeoBudgetAction::ReportBudgetFallback,
+    }
+}
+
+fn plan_artifact_ref(id: &str) -> GeoPlanArtifactRef {
+    GeoPlanArtifactRef {
+        artifact_id: id.to_string(),
+        semantic_hash: digest_label(id),
     }
 }
 
