@@ -67,6 +67,13 @@
     "node_reports": {
       "type": "array",
       "items": { "$ref": "#/$defs/node_report" }
+    },
+    "invalidation_reasons": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/invalidation_reason" }
+    },
+    "resource_reuse": {
+      "$ref": "#/$defs/resource_reuse"
     }
   },
   "x-canon-contract": {
@@ -77,6 +84,8 @@
     "semantic_dependency_identity": true,
     "telemetry_integrity_separated": true,
     "deterministic_usage_hash_bound": true,
+    "invalidation_reasons_are_edge_explainable": true,
+    "resource_reuse_uses_deterministic_counters_only": true,
     "runtime_telemetry_not_dependency_identity": true,
     "v1_receipts_refused_for_execution_reuse": true,
     "pending_nodes_require_registered_real_executor": true,
@@ -261,6 +270,58 @@
         "outcome": { "$ref": "#/$defs/outcome" },
         "receipt_hash": { "$ref": "#/$defs/blake3_digest" },
         "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "invalidation_reason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_id", "reason", "detail"],
+      "properties": {
+        "node_id": { "type": "string", "minLength": 1 },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "content_hash_input_changed",
+            "node_cache_key_changed",
+            "dependency_unavailable",
+            "dependency_semantic_changed",
+            "output_contract_changed",
+            "published_output_drift",
+            "downstream_dependency_invalidated"
+          ]
+        },
+        "detail": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "resource_reuse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "saved_nodes",
+        "saved_deterministic_usage",
+        "saved_deterministic_usage_by_node_kind",
+        "estimated_national_extrapolation"
+      ],
+      "properties": {
+        "saved_nodes": { "$ref": "#/$defs/uint64" },
+        "saved_deterministic_usage": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/uint64" }
+        },
+        "saved_deterministic_usage_by_node_kind": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": { "$ref": "#/$defs/uint64" }
+          }
+        },
+        "estimated_national_extrapolation": {
+          "type": ["object", "null"],
+          "additionalProperties": { "$ref": "#/$defs/uint64" }
+        }
       }
     }
   }

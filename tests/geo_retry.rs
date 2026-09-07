@@ -502,6 +502,8 @@ fn project_run_report(seed: &str) -> ProjectRunReport {
             node_receipts: vec![node_receipt],
         },
         node_reports: Vec::new(),
+        invalidation_reasons: Vec::new(),
+        resource_reuse: Default::default(),
     }
 }
 

@@ -206,6 +206,8 @@
       "project_run_report.blocked_nodes",
       "project_run_report.next_actions",
       "project_run_report.node_reports",
+      "project_run_report.invalidation_reasons",
+      "project_run_report.resource_reuse",
       "project_run_report.run_receipt_hash",
       "project_run_report.receipt.receipt_hash",
       "project_run_report.receipt.node_receipts[].semantic_hash",

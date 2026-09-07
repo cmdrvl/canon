@@ -115,6 +115,8 @@ fn schema_declares_strict_geo_run_contract() {
         "project_run_report.blocked_nodes",
         "project_run_report.next_actions",
         "project_run_report.node_reports",
+        "project_run_report.invalidation_reasons",
+        "project_run_report.resource_reuse",
         "project_run_report.receipt.node_receipts[].semantic_hash",
         "project_run_report.receipt.node_receipts[].failure_message",
         "project_run_report.receipt.node_receipts[].duration_millis",
@@ -330,6 +332,28 @@ fn schema_accepts_serialized_rust_unsigned_numeric_boundaries() {
     canonical_geo_run_bytes(&run)
         .expect("GeoRun runtime validation accepts schema-valid unsigned boundaries");
     serde_json::from_value::<GeoRun>(manifest).expect("Rust accepts its unsigned boundaries");
+}
+
+#[test]
+fn schema_accepts_project_run_resource_reuse_unsigned_numeric_boundaries() {
+    let mut manifest = serialized_complete_run_manifest();
+    manifest["project_run_report"]["resource_reuse"] = json!({
+        "saved_nodes": u64::MAX,
+        "saved_deterministic_usage": {
+            "reuse.max_u64": u64::MAX
+        },
+        "saved_deterministic_usage_by_node_kind": {
+            "intake": {
+                "reuse.max_u64": u64::MAX
+            }
+        },
+        "estimated_national_extrapolation": null
+    });
+
+    assert_schema_accepts(&manifest);
+    assert_project_run_schema_accepts(&manifest["project_run_report"]);
+    serde_json::from_value::<ProjectRunReport>(manifest["project_run_report"].clone())
+        .expect("Rust accepts resource_reuse unsigned boundaries");
 }
 
 #[test]
@@ -627,6 +651,24 @@ fn schema_rejects_fractional_project_run_integer_fields_without_rounding() {
         .is_err(),
         "ProjectRunReport resource observations must reject fractional JSON numbers"
     );
+
+    let mut fractional_reuse = serialized_complete_run_manifest();
+    fractional_reuse["project_run_report"]["resource_reuse"] = json!({
+        "saved_nodes": 1.0,
+        "saved_deterministic_usage": {},
+        "saved_deterministic_usage_by_node_kind": {},
+        "estimated_national_extrapolation": null
+    });
+    assert_schema_rejects(&fractional_reuse, "expected type integer");
+    assert_project_run_schema_rejects(
+        &fractional_reuse["project_run_report"],
+        "expected type integer",
+    );
+    assert!(
+        serde_json::from_value::<ProjectRunReport>(fractional_reuse["project_run_report"].clone())
+            .is_err(),
+        "ProjectRunReport resource_reuse counters must reject fractional JSON numbers"
+    );
 }
 
 #[test]
@@ -914,6 +956,8 @@ fn project_run_report() -> ProjectRunReport {
             receipt_hash: Some(digest('7')),
             reason: None,
         }],
+        invalidation_reasons: Vec::new(),
+        resource_reuse: Default::default(),
     }
 }
 

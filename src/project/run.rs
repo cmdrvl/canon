@@ -3,7 +3,7 @@
 use super::{
     plan::{
         ProjectExtensionNodePolicy, ProjectPlan, ProjectPlanCacheDecision, ProjectPlanError,
-        ProjectPlanHashRef, ProjectPlanNode, ProjectPlanNodeClass,
+        ProjectPlanHashRef, ProjectPlanNode, ProjectPlanNodeClass, ProjectPlanNodeKind,
         ProjectPlanOutputMaterialization, ProjectPlanSideEffectKind, project_plan_node_cache_key,
         validate_extension_node_effects,
     },
@@ -181,6 +181,45 @@ pub struct ProjectRunNodeReport {
     pub reason: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectRunInvalidationReason {
+    ContentHashInputChanged,
+    NodeCacheKeyChanged,
+    DependencyUnavailable,
+    DependencySemanticChanged,
+    OutputContractChanged,
+    PublishedOutputDrift,
+    DownstreamDependencyInvalidated,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ProjectRunInvalidation {
+    pub node_id: String,
+    pub reason: ProjectRunInvalidationReason,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub detail: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectRunResourceReuseReport {
+    pub saved_nodes: u64,
+    #[serde(default)]
+    pub saved_deterministic_usage: BTreeMap<String, u64>,
+    #[serde(default)]
+    pub saved_deterministic_usage_by_node_kind: BTreeMap<String, BTreeMap<String, u64>>,
+    pub estimated_national_extrapolation: Option<BTreeMap<String, u64>>,
+}
+
+impl ProjectRunResourceReuseReport {
+    pub fn is_empty(&self) -> bool {
+        self.saved_nodes == 0
+            && self.saved_deterministic_usage.is_empty()
+            && self.saved_deterministic_usage_by_node_kind.is_empty()
+            && self.estimated_national_extrapolation.is_none()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProjectRunReport {
     pub schema_version: String,
@@ -206,6 +245,13 @@ pub struct ProjectRunReport {
     pub receipt: ProjectRunReceipt,
     #[serde(default)]
     pub node_reports: Vec<ProjectRunNodeReport>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub invalidation_reasons: Vec<ProjectRunInvalidation>,
+    #[serde(
+        default,
+        skip_serializing_if = "ProjectRunResourceReuseReport::is_empty"
+    )]
+    pub resource_reuse: ProjectRunResourceReuseReport,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -264,11 +310,23 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
     let mut valid_receipts = existing.valid_receipts;
     let completed_receipts = existing.completed_receipts;
     let prior_receipts = existing.prior_receipts;
-    let mut invalidated_nodes = existing.invalidated_nodes;
+    let root_invalidated_nodes = existing.invalidated_nodes.clone();
+    let mut invalidation_reasons = existing.invalidation_reasons;
+    invalidation_reasons.extend(descendant_invalidation_reasons(
+        plan,
+        &root_invalidated_nodes,
+    ));
+    let mut invalidated_nodes = root_invalidated_nodes;
     invalidated_nodes.extend(descendants(plan, &invalidated_nodes));
     for invalidated in &invalidated_nodes {
         valid_receipts.remove(invalidated);
     }
+    let resumed_nodes = valid_receipts
+        .keys()
+        .filter(|node_id| target_nodes.contains(*node_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    let resource_reuse = project_run_resource_reuse_report(plan, &valid_receipts, &resumed_nodes)?;
 
     let mut report = ProjectRunReport {
         schema_version: CANON_PROJECT_RUN_VERSION.to_string(),
@@ -278,11 +336,7 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
         max_parallelism: policy.max_parallelism,
         max_ready_width: 0,
         executed_nodes: Vec::new(),
-        resumed_nodes: valid_receipts
-            .keys()
-            .filter(|node_id| target_nodes.contains(*node_id))
-            .cloned()
-            .collect(),
+        resumed_nodes,
         failed_nodes: Vec::new(),
         cancelled_nodes: Vec::new(),
         invalidated_nodes: invalidated_nodes
@@ -294,6 +348,11 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
         next_actions: BTreeMap::new(),
         receipt: empty_run_receipt(plan),
         node_reports: Vec::new(),
+        invalidation_reasons: invalidation_reasons
+            .into_iter()
+            .filter(|reason| target_nodes.contains(&reason.node_id))
+            .collect(),
+        resource_reuse,
     };
 
     let mut failed_nodes = BTreeSet::new();
@@ -435,7 +494,13 @@ pub fn inspect_project_run_reuse_only(
     }
 
     let mut valid_receipts = existing.valid_receipts;
-    let mut invalidated_nodes = existing.invalidated_nodes;
+    let root_invalidated_nodes = existing.invalidated_nodes.clone();
+    let mut invalidation_reasons = existing.invalidation_reasons;
+    invalidation_reasons.extend(descendant_invalidation_reasons(
+        plan,
+        &root_invalidated_nodes,
+    ));
+    let mut invalidated_nodes = root_invalidated_nodes;
     invalidated_nodes.extend(descendants(plan, &invalidated_nodes));
     for invalidated in &invalidated_nodes {
         valid_receipts.remove(invalidated);
@@ -476,6 +541,11 @@ pub fn inspect_project_run_reuse_only(
         next_actions: BTreeMap::new(),
         receipt: empty_run_receipt(plan),
         node_reports: reusable_node_reports,
+        invalidation_reasons: invalidation_reasons
+            .into_iter()
+            .filter(|reason| target_nodes.contains(&reason.node_id))
+            .collect(),
+        resource_reuse: ProjectRunResourceReuseReport::default(),
     };
 
     let completed = valid_receipts.keys().cloned().collect::<BTreeSet<_>>();
@@ -1141,6 +1211,8 @@ fn validate_report_receipt_binding(
         }
         completed_receipts.insert(receipt.node_id.clone(), receipt.receipt_hash.clone());
     }
+    validate_report_invalidation_reasons(plan, report, &known_nodes)?;
+    validate_report_resource_reuse(plan, report)?;
     let mut report_nodes = BTreeSet::new();
     for node_report in &report.node_reports {
         if !report_nodes.insert(node_report.node_id.clone()) {
@@ -1198,6 +1270,124 @@ fn validate_report_receipt_binding(
                 }
             }
         }
+    }
+    Ok(())
+}
+
+fn validate_report_invalidation_reasons(
+    plan: &ProjectPlan,
+    report: &ProjectRunReport,
+    known_nodes: &BTreeSet<String>,
+) -> ProjectRunResult<()> {
+    let invalidated = report
+        .invalidated_nodes
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let nodes_by_id = plan
+        .nodes
+        .iter()
+        .map(|node| (node.node_id.as_str(), node))
+        .collect::<BTreeMap<_, _>>();
+    let mut reason_nodes = BTreeSet::new();
+    let mut seen = BTreeSet::new();
+    for invalidation in &report.invalidation_reasons {
+        if !known_nodes.contains(&invalidation.node_id) {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(invalidation.node_id.clone()),
+                "project run invalidation reason references a node not present in the plan",
+            ));
+        }
+        if !invalidated.contains(&invalidation.node_id) {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(invalidation.node_id.clone()),
+                "project run invalidation reason must reference an invalidated node",
+            ));
+        }
+        if !seen.insert((
+            invalidation.node_id.clone(),
+            invalidation.reason,
+            invalidation.detail.clone(),
+        )) {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(invalidation.node_id.clone()),
+                "project run invalidation reasons must be unique",
+            ));
+        }
+        if invalidation.detail.is_empty() {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(invalidation.node_id.clone()),
+                "project run invalidation reason details must be present",
+            ));
+        }
+        for (key, value) in &invalidation.detail {
+            if key.trim().is_empty() || value.trim().is_empty() {
+                return Err(ProjectRunError::new(
+                    ProjectRunErrorCode::ArtifactContract,
+                    Some(invalidation.node_id.clone()),
+                    "project run invalidation reason details must be non-empty",
+                ));
+            }
+        }
+        if invalidation.reason == ProjectRunInvalidationReason::DownstreamDependencyInvalidated {
+            let dependency_id = invalidation.detail.get("dependency_id").ok_or_else(|| {
+                ProjectRunError::new(
+                    ProjectRunErrorCode::ArtifactContract,
+                    Some(invalidation.node_id.clone()),
+                    "downstream invalidation reason must name dependency_id",
+                )
+            })?;
+            let node = nodes_by_id
+                .get(invalidation.node_id.as_str())
+                .expect("known node was validated above");
+            if !node.dependencies.contains(dependency_id) {
+                return Err(ProjectRunError::new(
+                    ProjectRunErrorCode::ArtifactContract,
+                    Some(invalidation.node_id.clone()),
+                    "downstream invalidation reason dependency_id must be a direct dependency",
+                ));
+            }
+        }
+        reason_nodes.insert(invalidation.node_id.clone());
+    }
+    if !report.invalidation_reasons.is_empty() {
+        for node_id in &invalidated {
+            if !reason_nodes.contains(node_id) {
+                return Err(ProjectRunError::new(
+                    ProjectRunErrorCode::ArtifactContract,
+                    Some(node_id.clone()),
+                    "every invalidated node must carry an invalidation reason when reasons are present",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_report_resource_reuse(
+    plan: &ProjectPlan,
+    report: &ProjectRunReport,
+) -> ProjectRunResult<()> {
+    if report.resource_reuse.is_empty() {
+        return Ok(());
+    }
+    let completed = report
+        .receipt
+        .node_receipts
+        .iter()
+        .map(|receipt| (receipt.node_id.clone(), receipt.clone()))
+        .collect::<BTreeMap<_, _>>();
+    let expected = project_run_resource_reuse_report(plan, &completed, &report.resumed_nodes)?;
+    if report.resource_reuse != expected {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ArtifactContract,
+            None,
+            "project run resource_reuse does not match resumed node receipts",
+        ));
     }
     Ok(())
 }
@@ -2178,7 +2368,15 @@ struct ExistingReceipts {
     prior_receipts: BTreeMap<String, ProjectRunNodeReceipt>,
     semantic_backfill_nodes: BTreeSet<String>,
     invalidated_nodes: BTreeSet<String>,
+    invalidation_reasons: Vec<ProjectRunInvalidation>,
     poisoned_receipts: Vec<String>,
+}
+
+impl ExistingReceipts {
+    fn invalidate(&mut self, invalidation: ProjectRunInvalidation) {
+        self.invalidated_nodes.insert(invalidation.node_id.clone());
+        self.invalidation_reasons.push(invalidation);
+    }
 }
 
 fn validate_existing_receipts(
@@ -2244,14 +2442,25 @@ fn validate_existing_receipts(
                     && !node_receipt_matches_current(plan, node, receipt)
             })
         {
-            existing.invalidated_nodes.insert(node.node_id.clone());
+            let invalidation = existing
+                .completed_receipts
+                .get(&node.node_id)
+                .map(|receipt| current_mismatch_invalidation(node, receipt));
+            if let Some(invalidation) = invalidation {
+                existing.invalidate(invalidation);
+            }
             continue;
         }
         let Ok(expected_dependency_semantics) =
             dependency_semantic_hashes(node, &existing.valid_receipts)
         else {
             if existing.completed_receipts.contains_key(&node.node_id) {
-                existing.invalidated_nodes.insert(node.node_id.clone());
+                let invalidation = dependency_binding_invalidation(
+                    node,
+                    &existing.valid_receipts,
+                    &existing.invalidated_nodes,
+                );
+                existing.invalidate(invalidation);
             }
             continue;
         };
@@ -2301,7 +2510,8 @@ fn validate_existing_receipts(
                     node.cache.cache_key
                 ));
             } else {
-                existing.invalidated_nodes.insert(node.node_id.clone());
+                let invalidation = current_mismatch_invalidation(node, receipt);
+                existing.invalidate(invalidation);
             }
             continue;
         }
@@ -2314,7 +2524,12 @@ fn validate_existing_receipts(
                     semantic_path.display()
                 ));
             } else {
-                existing.invalidated_nodes.insert(node.node_id.clone());
+                let invalidation = if node_receipt_matches_current(plan, node, receipt) {
+                    dependency_semantic_invalidation(node, receipt, &existing.valid_receipts)
+                } else {
+                    current_mismatch_invalidation(node, receipt)
+                };
+                existing.invalidate(invalidation);
             }
             continue;
         }
@@ -2337,7 +2552,8 @@ fn validate_existing_receipts(
 
         if semantic_receipt.is_none() {
             if !outputs_match_receipt(&policy.workspace_root, receipt)? {
-                existing.invalidated_nodes.insert(node.node_id.clone());
+                let invalidation = published_output_drift_invalidation(node, receipt);
+                existing.invalidate(invalidation);
                 continue;
             }
             validate_existing_artifact_cas_if_present(policy, receipt)?;
@@ -2559,6 +2775,285 @@ fn descendants(plan: &ProjectPlan, roots: &BTreeSet<String>) -> BTreeSet<String>
         }
     }
     out
+}
+
+fn descendant_invalidation_reasons(
+    plan: &ProjectPlan,
+    roots: &BTreeSet<String>,
+) -> Vec<ProjectRunInvalidation> {
+    let mut out = BTreeSet::new();
+    let mut reasons = Vec::new();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for node in &plan.nodes {
+            if roots.contains(&node.node_id) || out.contains(&node.node_id) {
+                continue;
+            }
+            let dependency = node
+                .dependencies
+                .iter()
+                .filter(|dependency| roots.contains(*dependency) || out.contains(*dependency))
+                .min()
+                .cloned();
+            if let Some(dependency_id) = dependency {
+                out.insert(node.node_id.clone());
+                reasons.push(ProjectRunInvalidation {
+                    node_id: node.node_id.clone(),
+                    reason: ProjectRunInvalidationReason::DownstreamDependencyInvalidated,
+                    detail: BTreeMap::from([("dependency_id".to_string(), dependency_id)]),
+                });
+                changed = true;
+            }
+        }
+    }
+    reasons
+}
+
+fn current_mismatch_invalidation(
+    node: &ProjectPlanNode,
+    receipt: &ProjectRunNodeReceipt,
+) -> ProjectRunInvalidation {
+    if let Some(invalidation) = content_hash_input_invalidation(node, receipt) {
+        return invalidation;
+    }
+    if receipt.node_cache_key != node.cache.cache_key {
+        return ProjectRunInvalidation {
+            node_id: node.node_id.clone(),
+            reason: ProjectRunInvalidationReason::NodeCacheKeyChanged,
+            detail: BTreeMap::from([
+                (
+                    "previous_cache_key".to_string(),
+                    receipt.node_cache_key.clone(),
+                ),
+                (
+                    "current_cache_key".to_string(),
+                    node.cache.cache_key.clone(),
+                ),
+            ]),
+        };
+    }
+    if !receipt_outputs_match_node(node, receipt) {
+        return ProjectRunInvalidation {
+            node_id: node.node_id.clone(),
+            reason: ProjectRunInvalidationReason::OutputContractChanged,
+            detail: BTreeMap::from([("receipt_hash".to_string(), receipt.receipt_hash.clone())]),
+        };
+    }
+    ProjectRunInvalidation {
+        node_id: node.node_id.clone(),
+        reason: ProjectRunInvalidationReason::NodeCacheKeyChanged,
+        detail: BTreeMap::from([("receipt_hash".to_string(), receipt.receipt_hash.clone())]),
+    }
+}
+
+fn content_hash_input_invalidation(
+    node: &ProjectPlanNode,
+    receipt: &ProjectRunNodeReceipt,
+) -> Option<ProjectRunInvalidation> {
+    let current_inputs = receipt_hash_inputs(&node.content_hash_inputs);
+    let previous = receipt
+        .content_hash_inputs
+        .iter()
+        .map(|input| (input.ref_id.as_str(), input.content_hash.as_str()))
+        .collect::<BTreeMap<_, _>>();
+    let current = current_inputs
+        .iter()
+        .map(|input| (input.ref_id.as_str(), input.content_hash.as_str()))
+        .collect::<BTreeMap<_, _>>();
+    let changed_ref = previous
+        .keys()
+        .chain(current.keys())
+        .copied()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .find(|ref_id| previous.get(ref_id) != current.get(ref_id))?;
+    Some(ProjectRunInvalidation {
+        node_id: node.node_id.clone(),
+        reason: ProjectRunInvalidationReason::ContentHashInputChanged,
+        detail: BTreeMap::from([
+            ("ref_id".to_string(), changed_ref.to_string()),
+            (
+                "previous_content_hash".to_string(),
+                previous
+                    .get(changed_ref)
+                    .copied()
+                    .unwrap_or("missing")
+                    .to_string(),
+            ),
+            (
+                "current_content_hash".to_string(),
+                current
+                    .get(changed_ref)
+                    .copied()
+                    .unwrap_or("missing")
+                    .to_string(),
+            ),
+        ]),
+    })
+}
+
+fn dependency_binding_invalidation(
+    node: &ProjectPlanNode,
+    valid_receipts: &BTreeMap<String, ProjectRunNodeReceipt>,
+    invalidated_nodes: &BTreeSet<String>,
+) -> ProjectRunInvalidation {
+    if let Some(dependency_id) = node
+        .dependencies
+        .iter()
+        .find(|dependency| invalidated_nodes.contains(*dependency))
+        .cloned()
+    {
+        return ProjectRunInvalidation {
+            node_id: node.node_id.clone(),
+            reason: ProjectRunInvalidationReason::DownstreamDependencyInvalidated,
+            detail: BTreeMap::from([("dependency_id".to_string(), dependency_id)]),
+        };
+    }
+    let dependency_id = node
+        .dependencies
+        .iter()
+        .find(|dependency| !valid_receipts.contains_key(*dependency))
+        .cloned()
+        .unwrap_or_else(|| "unknown".to_string());
+    ProjectRunInvalidation {
+        node_id: node.node_id.clone(),
+        reason: ProjectRunInvalidationReason::DependencyUnavailable,
+        detail: BTreeMap::from([("dependency_id".to_string(), dependency_id)]),
+    }
+}
+
+fn dependency_semantic_invalidation(
+    node: &ProjectPlanNode,
+    receipt: &ProjectRunNodeReceipt,
+    valid_receipts: &BTreeMap<String, ProjectRunNodeReceipt>,
+) -> ProjectRunInvalidation {
+    let mut detail = BTreeMap::new();
+    if let Ok(expected) = dependency_semantic_hashes(node, valid_receipts) {
+        for dependency_id in &node.dependencies {
+            let previous = receipt
+                .dependency_semantic_hashes
+                .get(dependency_id)
+                .map(String::as_str)
+                .unwrap_or("missing");
+            let current = expected
+                .get(dependency_id)
+                .map(String::as_str)
+                .unwrap_or("missing");
+            if previous != current {
+                detail.insert("dependency_id".to_string(), dependency_id.clone());
+                detail.insert("previous_semantic_hash".to_string(), previous.to_string());
+                detail.insert("current_semantic_hash".to_string(), current.to_string());
+                break;
+            }
+        }
+    }
+    if detail.is_empty() {
+        detail.insert(
+            "dependency_count".to_string(),
+            receipt.dependency_semantic_hashes.len().to_string(),
+        );
+    }
+    ProjectRunInvalidation {
+        node_id: node.node_id.clone(),
+        reason: ProjectRunInvalidationReason::DependencySemanticChanged,
+        detail,
+    }
+}
+
+fn published_output_drift_invalidation(
+    node: &ProjectPlanNode,
+    receipt: &ProjectRunNodeReceipt,
+) -> ProjectRunInvalidation {
+    ProjectRunInvalidation {
+        node_id: node.node_id.clone(),
+        reason: ProjectRunInvalidationReason::PublishedOutputDrift,
+        detail: BTreeMap::from([("receipt_hash".to_string(), receipt.receipt_hash.clone())]),
+    }
+}
+
+fn project_run_resource_reuse_report(
+    plan: &ProjectPlan,
+    valid_receipts: &BTreeMap<String, ProjectRunNodeReceipt>,
+    resumed_nodes: &[String],
+) -> ProjectRunResult<ProjectRunResourceReuseReport> {
+    let nodes_by_id = plan
+        .nodes
+        .iter()
+        .map(|node| (node.node_id.as_str(), node))
+        .collect::<BTreeMap<_, _>>();
+    let mut report = ProjectRunResourceReuseReport {
+        saved_nodes: resumed_nodes.len() as u64,
+        saved_deterministic_usage: BTreeMap::new(),
+        saved_deterministic_usage_by_node_kind: BTreeMap::new(),
+        estimated_national_extrapolation: None,
+    };
+    for node_id in resumed_nodes {
+        let receipt = valid_receipts.get(node_id).ok_or_else(|| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(node_id.clone()),
+                "resumed node has no validated receipt for resource reuse accounting",
+            )
+        })?;
+        let node = nodes_by_id.get(node_id.as_str()).ok_or_else(|| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(node_id.clone()),
+                "resumed node is not present in the project plan",
+            )
+        })?;
+        let kind = project_node_kind_label(node.kind).to_string();
+        for (counter, value) in &receipt.deterministic_usage {
+            add_usage_counter(
+                &mut report.saved_deterministic_usage,
+                counter,
+                *value,
+                Some(node_id.clone()),
+            )?;
+            let by_kind = report
+                .saved_deterministic_usage_by_node_kind
+                .entry(kind.clone())
+                .or_default();
+            add_usage_counter(by_kind, counter, *value, Some(node_id.clone()))?;
+        }
+    }
+    Ok(report)
+}
+
+fn add_usage_counter(
+    counters: &mut BTreeMap<String, u64>,
+    key: &str,
+    value: u64,
+    node_id: Option<String>,
+) -> ProjectRunResult<()> {
+    let entry = counters.entry(key.to_string()).or_insert(0);
+    *entry = entry.checked_add(value).ok_or_else(|| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::ArtifactContract,
+            node_id,
+            format!("deterministic reuse counter {key} overflowed u64"),
+        )
+    })?;
+    Ok(())
+}
+
+fn project_node_kind_label(kind: ProjectPlanNodeKind) -> &'static str {
+    match kind {
+        ProjectPlanNodeKind::Intake => "intake",
+        ProjectPlanNodeKind::Normalize => "normalize",
+        ProjectPlanNodeKind::ExternalMaterialization => "external_materialization",
+        ProjectPlanNodeKind::Index => "index",
+        ProjectPlanNodeKind::Block => "block",
+        ProjectPlanNodeKind::Evidence => "evidence",
+        ProjectPlanNodeKind::Solve => "solve",
+        ProjectPlanNodeKind::Link => "link",
+        ProjectPlanNodeKind::Evaluate => "evaluate",
+        ProjectPlanNodeKind::Review => "review",
+        ProjectPlanNodeKind::Promote => "promote",
+        ProjectPlanNodeKind::ExactReplay => "exact_replay",
+        ProjectPlanNodeKind::Export => "export",
+    }
 }
 
 fn prepare_outputs(
@@ -3866,4 +4361,6 @@ fn sort_report(report: &mut ProjectRunReport) {
     report
         .node_reports
         .sort_by(|left, right| left.node_id.cmp(&right.node_id));
+    report.invalidation_reasons.sort();
+    report.invalidation_reasons.dedup();
 }

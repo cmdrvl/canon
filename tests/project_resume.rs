@@ -40,7 +40,7 @@ use receipt::{
 use run::{
     CANON_PROJECT_RUN_MANIFEST_REVISION_VERSION, PROJECT_INTERNAL_COPY_FILE_EXECUTOR,
     ProjectNodeExecutionContext, ProjectNodeExecutionResult, ProjectNodeExecutor, ProjectRunError,
-    ProjectRunErrorCode, ProjectRunFailurePolicy, ProjectRunPolicy,
+    ProjectRunErrorCode, ProjectRunFailurePolicy, ProjectRunInvalidationReason, ProjectRunPolicy,
     canonical_project_run_manifest_revision_bytes, canonical_project_run_report_bytes,
     inspect_project_run_reuse_only, project_run_manifest_head_path,
     project_run_manifest_revision_for_report, project_run_manifest_revision_path,
@@ -86,9 +86,26 @@ fn schema_declares_content_validated_resume_contract() {
         true
     );
     assert_eq!(
+        schema["x-canon-contract"]["invalidation_reasons_are_edge_explainable"],
+        true
+    );
+    assert_eq!(
+        schema["x-canon-contract"]["resource_reuse_uses_deterministic_counters_only"],
+        true
+    );
+    assert_eq!(
         schema["x-canon-contract"]["runtime_telemetry_not_dependency_identity"],
         true
     );
+    assert!(schema["properties"]["invalidation_reasons"].is_object());
+    assert!(schema["properties"]["resource_reuse"].is_object());
+    let invalidation_required = schema["$defs"]["invalidation_reason"]["required"]
+        .as_array()
+        .expect("invalidation reason required array")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect::<BTreeSet<_>>();
+    assert!(invalidation_required.contains("detail"));
     let node_receipt = &schema["$defs"]["node_receipt"];
     let required = node_receipt["required"]
         .as_array()
@@ -895,7 +912,216 @@ fn invalidation_reexecutes_changed_nodes_while_reusing_unchanged_nodes() {
     assert_eq!(resumed.executed_nodes, vec!["alpha".to_string()]);
     assert_eq!(resumed.resumed_nodes, vec!["beta".to_string()]);
     assert_eq!(resumed.invalidated_nodes, vec!["alpha".to_string()]);
+    assert_eq!(resumed.invalidation_reasons.len(), 1);
+    let reason = &resumed.invalidation_reasons[0];
+    assert_eq!(reason.node_id, "alpha");
+    assert_eq!(
+        reason.reason,
+        ProjectRunInvalidationReason::ContentHashInputChanged
+    );
+    assert_eq!(
+        reason.detail.get("ref_id").map(String::as_str),
+        Some("source.source_alpha")
+    );
+    assert_ne!(
+        reason.detail.get("previous_content_hash"),
+        reason.detail.get("current_content_hash"),
+        "T67 stale-id reuse guard: a changed source digest must be visible even when the node id is stable"
+    );
+    assert_eq!(resumed.resource_reuse.saved_nodes, 1);
+    assert_eq!(
+        resumed
+            .resource_reuse
+            .saved_deterministic_usage
+            .get("output_count"),
+        Some(&1)
+    );
+    assert_eq!(
+        resumed
+            .resource_reuse
+            .saved_deterministic_usage_by_node_kind
+            .get("intake")
+            .and_then(|usage| usage.get("output_count")),
+        Some(&1)
+    );
+    assert!(
+        resumed
+            .resource_reuse
+            .estimated_national_extrapolation
+            .is_none(),
+        "T67 resource report records saved deterministic work, not national extrapolation"
+    );
     assert!(resumed.next_actions.is_empty());
+
+    let fresh_temp = tempfile::tempdir().expect("fresh tempdir");
+    let mut fresh_executor = DeterministicExecutor::default();
+    run_project_plan(
+        &plan,
+        &approving_policy(fresh_temp.path()),
+        &mut fresh_executor,
+    )
+    .expect("fresh serial run over changed plan");
+    for node_id in ["alpha", "beta"] {
+        assert_eq!(
+            fs::read(artifact_path(temp.path(), &plan, node_id)).expect("resumed artifact"),
+            fs::read(artifact_path(fresh_temp.path(), &plan, node_id)).expect("fresh artifact"),
+            "T67 reuse must be invisible in artifact bytes for {node_id}"
+        );
+        assert_eq!(
+            read_node_receipt(&receipt_path(temp.path(), node_id))
+                .expect("resumed receipt")
+                .semantic_hash,
+            read_node_receipt(&receipt_path(fresh_temp.path(), node_id))
+                .expect("fresh receipt")
+                .semantic_hash,
+            "T67 reuse must be invisible in semantic receipt hash for {node_id}"
+        );
+    }
+}
+
+#[test]
+fn t67_reuse_only_inspection_refuses_pending_invalidated_nodes_without_execution() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut plan = independent_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor = DeterministicExecutor::default();
+    run_project_plan(&plan, &policy, &mut executor).expect("initial independent run");
+
+    let alpha = plan
+        .nodes
+        .iter_mut()
+        .find(|node| node.node_id == "alpha")
+        .expect("alpha node");
+    alpha.content_hash_inputs[0].content_hash = digest_bytes(b"changed-alpha");
+    refresh_node_cache_key(alpha);
+    let before = tree_bytes(temp.path());
+
+    let error = inspect_project_run_reuse_only(&plan, &policy)
+        .expect_err("reuse-only inspection refuses pending invalidated nodes");
+
+    assert_eq!(error.code, ProjectRunErrorCode::ExecutionFailed);
+    assert_eq!(error.node_id.as_deref(), Some("alpha"));
+    assert!(error.message.contains("pending nodes: alpha"));
+    assert_eq!(
+        tree_bytes(temp.path()),
+        before,
+        "reuse-only inspection may not execute or publish while refusing pending invalidated nodes"
+    );
+}
+
+#[test]
+fn t67_invalidation_reports_downstream_edges_without_recomputing_unaffected_nodes() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut plan = chain_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor = DeterministicExecutor::default();
+    run_project_plan(&plan, &policy, &mut executor).expect("initial chain run");
+
+    let alpha = plan
+        .nodes
+        .iter_mut()
+        .find(|node| node.node_id == "alpha")
+        .expect("alpha node");
+    alpha.content_hash_inputs[0].content_hash = digest_bytes(b"changed-alpha");
+    refresh_node_cache_key(alpha);
+
+    let mut resume_executor = DeterministicExecutor::default();
+    let resumed = run_project_plan(&plan, &policy, &mut resume_executor)
+        .expect("chain invalidation reruns changed closure");
+
+    assert_eq!(
+        resume_executor.calls,
+        vec!["alpha".to_string(), "beta".to_string()]
+    );
+    assert_eq!(
+        resumed.invalidated_nodes,
+        vec!["alpha".to_string(), "beta".to_string()]
+    );
+    assert_eq!(resumed.resumed_nodes, Vec::<String>::new());
+    assert_eq!(resumed.invalidation_reasons.len(), 2);
+    assert_eq!(
+        resumed.invalidation_reasons[0].reason,
+        ProjectRunInvalidationReason::ContentHashInputChanged
+    );
+    assert_eq!(
+        resumed.invalidation_reasons[1].reason,
+        ProjectRunInvalidationReason::DownstreamDependencyInvalidated
+    );
+    assert_eq!(
+        resumed.invalidation_reasons[1]
+            .detail
+            .get("dependency_id")
+            .map(String::as_str),
+        Some("alpha"),
+        "T67 descendant invalidation must name the dependency edge that made beta stale"
+    );
+    assert!(
+        resumed.resource_reuse.is_empty(),
+        "no unaffected node was available to count as saved work"
+    );
+}
+
+#[test]
+fn t67_report_validation_rejects_forged_downstream_invalidation_edge() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut plan = chain_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor = DeterministicExecutor::default();
+    run_project_plan(&plan, &policy, &mut executor).expect("initial chain run");
+
+    let alpha = plan
+        .nodes
+        .iter_mut()
+        .find(|node| node.node_id == "alpha")
+        .expect("alpha node");
+    alpha.content_hash_inputs[0].content_hash = digest_bytes(b"changed-alpha");
+    refresh_node_cache_key(alpha);
+
+    let mut resume_executor = DeterministicExecutor::default();
+    let mut resumed = run_project_plan(&plan, &policy, &mut resume_executor)
+        .expect("chain invalidation reruns changed closure");
+    let beta_reason = resumed
+        .invalidation_reasons
+        .iter_mut()
+        .find(|reason| reason.node_id == "beta")
+        .expect("beta downstream invalidation reason");
+    beta_reason
+        .detail
+        .insert("dependency_id".to_string(), "not-alpha".to_string());
+
+    let error = project_run_manifest_revision_for_report(&plan, &resumed, None)
+        .expect_err("forged downstream edge refuses before manifest revision");
+
+    assert_eq!(error.code, ProjectRunErrorCode::ArtifactContract);
+    assert!(
+        error.message.contains("direct dependency"),
+        "validator must bind invalidation reasons to declared DAG edges"
+    );
+}
+
+#[test]
+fn t67_report_validation_rejects_forged_resource_reuse_accounting() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = independent_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor = DeterministicExecutor::default();
+    run_project_plan(&plan, &policy, &mut executor).expect("initial independent run");
+
+    let mut resume_executor = DeterministicExecutor::default();
+    let mut resumed = run_project_plan(&plan, &policy, &mut resume_executor)
+        .expect("unchanged run resumes both nodes");
+    assert!(resume_executor.calls.is_empty());
+    assert_eq!(resumed.resource_reuse.saved_nodes, 2);
+    resumed.resource_reuse.saved_nodes = 1;
+
+    let error = project_run_manifest_revision_for_report(&plan, &resumed, None)
+        .expect_err("forged saved-node accounting refuses before manifest revision");
+
+    assert_eq!(error.code, ProjectRunErrorCode::ArtifactContract);
+    assert!(
+        error.message.contains("resource_reuse"),
+        "validator must bind saved-work counters to resumed receipts"
+    );
 }
 
 #[test]
@@ -1196,6 +1422,16 @@ fn plan_graph_hash_change_alone_reuses_project_scoped_node_receipts() {
         vec!["alpha".to_string(), "beta".to_string()]
     );
     assert!(resumed.invalidated_nodes.is_empty());
+    assert!(resumed.invalidation_reasons.is_empty());
+    assert_eq!(resumed.resource_reuse.saved_nodes, 2);
+    assert_eq!(
+        resumed
+            .resource_reuse
+            .saved_deterministic_usage
+            .get("output_count"),
+        Some(&2),
+        "presentation-only graph drift reports deterministic saved work without rerunning"
+    );
 }
 
 #[test]
@@ -1235,6 +1471,13 @@ fn command_effect_and_refusal_contract_changes_invalidate_node_local_reuse() {
             vec!["alpha".to_string()],
             "{label}"
         );
+        assert_eq!(resumed.invalidation_reasons.len(), 1, "{label}");
+        assert_eq!(
+            resumed.invalidation_reasons[0].reason,
+            ProjectRunInvalidationReason::NodeCacheKeyChanged,
+            "{label}"
+        );
+        assert_eq!(resumed.resource_reuse.saved_nodes, 1, "{label}");
         assert!(resumed.failed_nodes.is_empty(), "{label}");
     }
 }
