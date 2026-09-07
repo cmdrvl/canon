@@ -21,8 +21,10 @@ use canon::geo::assessment_roll::{
 };
 use canon::geo::condo::{
     CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION, CANON_GEO_CONDO_BRIDGE_VERSION,
-    GeoCondoBridgeCaseRequest, GeoCondoBridgeRequest, GeoPadBblRow, build_condo_bridge,
-    canonical_condo_bridge_bytes,
+    CANON_GEO_LEDGER_BRIDGE_VERSION, GeoCondoBridgeCaseRequest, GeoCondoBridgeRequest,
+    GeoCondoUnitBridgeRequest, GeoPadBblRow, bridge_condo_unit, build_condo_bridge,
+    canonical_condo_bridge_bytes, canonical_condo_unit_bridge_request_bytes,
+    canonical_ledger_bridge_bytes,
 };
 use canon::geo::footprint_roll::{
     CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION, GeoAssessmentRollGrossSqftRow,
@@ -174,7 +176,10 @@ const PROPERTY_ASSERTION_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.property_assertion_request.v0.schema.json");
 const PROPERTY_ASSERTION_SCHEMA: &str =
     include_str!("../schemas/canon.geo.property_assertion.v0.schema.json");
+const CONDO_BRIDGE_REQUEST_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.condo_bridge_request.v0.schema.json");
 const CONDO_BRIDGE_SCHEMA: &str = include_str!("../schemas/canon.geo.condo_bridge.v0.schema.json");
+const LEDGER_BRIDGE_SCHEMA: &str = include_str!("../schemas/canon.geo.ledger_bridge.v0.schema.json");
 const FOOTPRINT_ROLL_EVIDENCE_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.footprint_roll_evidence_request.v0.schema.json");
 const SEPARATION_REQUEST_SCHEMA: &str =
@@ -446,7 +451,19 @@ fn assert_instance_matches_schema(root: &Value, subschema: &Value, instance: &Va
             }
         }
         Value::Array(items) => {
-            if let Some(item_schema) = subschema.get("items") {
+            if let Some(prefix_items) = subschema.get("prefixItems").and_then(Value::as_array) {
+                for (index, item) in items.iter().enumerate() {
+                    let item_schema = prefix_items.get(index).unwrap_or_else(|| {
+                        panic!("{path}[{index}]: array item has no prefixItems schema")
+                    });
+                    assert_instance_matches_schema(
+                        root,
+                        item_schema,
+                        item,
+                        &format!("{path}[{index}]"),
+                    );
+                }
+            } else if let Some(item_schema) = subschema.get("items") {
                 for (index, item) in items.iter().enumerate() {
                     assert_instance_matches_schema(
                         root,
@@ -2596,6 +2613,59 @@ fn condo_bridge_request() -> GeoCondoBridgeRequest {
     }
 }
 
+fn condo_unit_bridge_request() -> GeoCondoUnitBridgeRequest {
+    serde_json::from_value(serde_json::json!({
+        "version": CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION,
+        "unit_bbl": "schema-unit-bbl",
+        "billing_bbl_candidates": ["1000010001"],
+        "bin_candidates": ["schema-bin-1"],
+        "block": "1",
+        "frame_id": "schema-frame",
+        "parcel_rings": {
+            "1000010001": {
+                "exterior": {
+                    "vertices": [
+                        { "x": 0, "y": 0 },
+                        { "x": 20000, "y": 0 },
+                        { "x": 20000, "y": 20000 },
+                        { "x": 0, "y": 20000 }
+                    ]
+                },
+                "holes": []
+            }
+        },
+        "footprint_rings": {
+            "schema-bin-1": {
+                "exterior": {
+                    "vertices": [
+                        { "x": 6000, "y": 6000 },
+                        { "x": 14000, "y": 6000 },
+                        { "x": 14000, "y": 14000 },
+                        { "x": 6000, "y": 14000 }
+                    ]
+                },
+                "holes": []
+            }
+        }
+    }))
+    .expect("schema condo unit bridge request parses")
+}
+
+#[test]
+fn condo_bridge_request_schema_matches_a_real_instance() {
+    let request = condo_unit_bridge_request();
+    let canonical_bytes =
+        canonical_condo_unit_bridge_request_bytes(&request).expect("condo request canonicalizes");
+    let instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("canonical condo request JSON parses");
+    assert_drift_free(
+        CONDO_BRIDGE_REQUEST_SCHEMA,
+        "canon.geo.condo_bridge_request.v0",
+        CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION,
+        &instance,
+    );
+}
+
 #[test]
 fn condo_bridge_schema_matches_a_real_instance() {
     let artifact = build_condo_bridge(&condo_bridge_request()).expect("condo bridge builds");
@@ -2607,6 +2677,22 @@ fn condo_bridge_schema_matches_a_real_instance() {
         CONDO_BRIDGE_SCHEMA,
         "canon.geo.condo_bridge.v0",
         CANON_GEO_CONDO_BRIDGE_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn ledger_bridge_schema_matches_a_real_instance() {
+    let request = condo_unit_bridge_request();
+    let bridge = bridge_condo_unit(&request).expect("ledger bridge builds");
+    let canonical_bytes =
+        canonical_ledger_bridge_bytes(&bridge).expect("ledger bridge canonicalizes");
+    let instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("canonical ledger bridge JSON parses");
+    assert_drift_free(
+        LEDGER_BRIDGE_SCHEMA,
+        "canon.geo.ledger_bridge.v0",
+        CANON_GEO_LEDGER_BRIDGE_VERSION,
         &instance,
     );
 }

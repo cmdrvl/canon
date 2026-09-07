@@ -23,7 +23,10 @@ use super::{
         GEO_CLIENT_SIX_FIELD_PROFILE_TEMPLATE_ID, GeoCompositionProfile,
         validate_composition_profile,
     },
-    condo::{CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION, CANON_GEO_CONDO_BRIDGE_VERSION},
+    condo::{
+        CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION, CANON_GEO_CONDO_BRIDGE_VERSION,
+        CANON_GEO_LEDGER_BRIDGE_VERSION,
+    },
     discovery::{
         CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
         CANON_GEO_DISCOVERY_REQUEST_VERSION,
@@ -1252,6 +1255,11 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             CANON_GEO_CONDO_BRIDGE_VERSION,
             "schemas/canon.geo.condo_bridge.v0.schema.json",
             "PAD condo unit-lot to billing-lot bridge artifact contract",
+        ),
+        contract(
+            CANON_GEO_LEDGER_BRIDGE_VERSION,
+            "schemas/canon.geo.ledger_bridge.v0.schema.json",
+            "condo unit to billing-BBL and BIN ledger bridge artifact contract",
         ),
         contract(
             CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION,
