@@ -1144,10 +1144,9 @@ fn t67_report_validation_rejects_forged_invalidation_class() {
         .iter_mut()
         .find(|reason| reason.node_id == "alpha")
         .expect("alpha invalidation reason");
-    alpha_reason.detail.insert(
-        "invalidation_class".to_string(),
-        "new_rows".to_string(),
-    );
+    alpha_reason
+        .detail
+        .insert("invalidation_class".to_string(), "new_rows".to_string());
 
     let error = project_run_manifest_revision_for_report(&plan, &resumed, None)
         .expect_err("forged invalidation class refuses before manifest revision");
