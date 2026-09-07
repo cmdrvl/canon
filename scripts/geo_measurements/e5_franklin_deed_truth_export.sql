@@ -128,30 +128,19 @@ SELECT
     COALESCE(bt.required_columns_present, 0)::NUMBER AS present_required_column_count,
     (SELECT COUNT(*) FROM table_scores)::NUMBER AS candidate_table_count,
     6::NUMBER AS source_pin_field_count,
-    ARRAY_CONSTRUCT(
-        'SOURCE_RELEASE',
-        'RELEASE_DT',
-        'SOURCE_SHA256',
-        'PARSER_VERSION',
-        'LICENSE_TERMS',
-        'ATTRIBUTION_TEXT'
-    ) AS required_source_pin_fields,
+    'SOURCE_RELEASE,RELEASE_DT,SOURCE_SHA256,PARSER_VERSION,LICENSE_TERMS,ATTRIBUTION_TEXT'::TEXT
+        AS required_source_pin_fields,
     COALESCE(
-        ARRAY_AGG(mc.column_name) WITHIN GROUP (ORDER BY mc.column_name),
-        ARRAY_CONSTRUCT()
+        LISTAGG(mc.column_name, ',') WITHIN GROUP (ORDER BY mc.column_name),
+        ''
     ) AS missing_columns,
     COALESCE(
         (
-            SELECT ARRAY_AGG(
-                OBJECT_CONSTRUCT(
-                    'table_schema', table_schema,
-                    'table_name', table_name,
-                    'required_columns_present', required_columns_present
-                )
-            ) WITHIN GROUP (ORDER BY required_columns_present DESC, table_schema, table_name)
+            SELECT LISTAGG(table_schema || '.' || table_name || ':' || required_columns_present, ',')
+                WITHIN GROUP (ORDER BY required_columns_present DESC, table_schema, table_name)
             FROM table_scores
         ),
-        ARRAY_CONSTRUCT()
+        ''
     ) AS candidate_tables,
     'truth_plane_only_not_candidate_evidence'::TEXT AS truth_scoring_role,
     'unique_plus_non_unique_discarded_plus_no_match_equals_loans'::TEXT AS denominator_policy,

@@ -807,47 +807,25 @@
       "expected_result_rows": [
         {
           "candidate_table_count": 0,
-          "candidate_tables": [],
+          "candidate_tables": "",
           "denominator_policy": "unique_plus_non_unique_discarded_plus_no_match_equals_loans",
           "match_policy": "mortgage_instrument_exact_amount_recording_window_unique_required",
           "measurement_guard_rows": 1,
-          "missing_columns": [
-            "AMOUNT_CENTS",
-            "ATTRIBUTION_TEXT",
-            "BORROWER_PARTY_BLAKE3",
-            "INSTRUMENT_ID",
-            "INSTRUMENT_TYPE",
-            "LENDER_PARTY_BLAKE3",
-            "LICENSE_TERMS",
-            "PARCEL_IDS",
-            "PARSER_VERSION",
-            "RECORDING_DATE",
-            "RELEASE_DT",
-            "ROW_BLAKE3",
-            "SOURCE_RELEASE",
-            "SOURCE_SHA256"
-          ],
+          "missing_columns": "AMOUNT_CENTS,ATTRIBUTION_TEXT,BORROWER_PARTY_BLAKE3,INSTRUMENT_ID,INSTRUMENT_TYPE,LENDER_PARTY_BLAKE3,LICENSE_TERMS,PARCEL_IDS,PARSER_VERSION,RECORDING_DATE,RELEASE_DT,ROW_BLAKE3,SOURCE_RELEASE,SOURCE_SHA256",
           "natural_key": "release/instrument_id",
           "output_contract": "canon_geo_deed_index_rows.v0",
           "present_required_column_count": 0,
           "proof_class": "fixture_class_not_scored",
           "recorder_source_status": "recorder_source_not_landed",
           "required_column_count": 14,
-          "required_source_pin_fields": [
-            "SOURCE_RELEASE",
-            "RELEASE_DT",
-            "SOURCE_SHA256",
-            "PARSER_VERSION",
-            "LICENSE_TERMS",
-            "ATTRIBUTION_TEXT"
-          ],
+          "required_source_pin_fields": "SOURCE_RELEASE,RELEASE_DT,SOURCE_SHA256,PARSER_VERSION,LICENSE_TERMS,ATTRIBUTION_TEXT",
           "source_pin_field_count": 6,
           "source_table": null,
           "truth_plane": "deed_grain_instrument",
           "truth_scoring_role": "truth_plane_only_not_candidate_evidence"
         }
       ],
-      "source_sql_sha256": "085e69d5f4c5c0d62589b79ec421e36fd99cf9f800fa4af47d78d495b272a9e5",
+      "source_sql_sha256": "cea6ce81e7ca2f7b976bd65ac85135779f2343d5a4e2a73cf7b031b1877d1c6c",
       "execution_transform": "cmdrvl_data_sqlglot_normalized_plus_tool_row_limit",
       "result_row_validation": "exact_manifest_rows",
       "limitations": [
