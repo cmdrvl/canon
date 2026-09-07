@@ -193,6 +193,15 @@ supplies `SOURCE_SHA256`, `SOURCE_RELEASE`, `RELEASE_DT`, `PARSER_VERSION`,
 `LICENSE_TERMS`, and `ATTRIBUTION_TEXT`. This is bounded source availability,
 not E5 accuracy, not parcel reach, and not four independent votes.
 
+Fixture derivation is exposed only through the measurement binary:
+
+```bash
+cargo run --bin canon_geo_measurements -- derive-deed-truth \
+  --loans tests/fixtures/geo/deed_truth_loans_fixture.json \
+  --deeds tests/fixtures/geo/deed_index_fixture.json \
+  --window-days 45
+```
+
 The original appendix labeled `882a100d8bfffff` as Manhattan. A fresh
 borough/coordinate control on 2026-08-29 proved it is Brooklyn: 2,343/2,343
 MapPLUTO rows have `BOROUGH='BK'`, 2,354/2,354 footprint BBLs have borough

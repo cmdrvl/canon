@@ -1,10 +1,12 @@
 #![forbid(unsafe_code)]
 
 use canon::geo::{
-    canonical_h7_population_bytes, materialize_h7_pip_block_population_batch,
-    materialize_h7_population_rows, materialize_h7_staging_source_record_bytes_batch,
+    canonical_deed_truth_bytes, canonical_h7_population_bytes, derive_deed_truth_from_index,
+    materialize_h7_pip_block_population_batch, materialize_h7_population_rows,
+    materialize_h7_staging_source_record_bytes_batch, GeoDeedIndexRowsRequest, GeoDeedTruthLoanRef,
     GeoH7PipBlockPopulationBatchRequest, GeoH7PopulationRowsRequest,
-    GeoH7StagingSourceRecordBytesBatchRequest, CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION,
+    GeoH7StagingSourceRecordBytesBatchRequest, CANON_GEO_DEED_INDEX_ROWS_VERSION,
+    CANON_GEO_DEED_TRUTH_VERSION, CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION,
     CANON_GEO_H7_POPULATION_ROWS_VERSION, CANON_GEO_H7_POPULATION_VERSION,
     CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
 };
@@ -72,12 +74,27 @@ enum EmitMode {
 
 #[derive(Debug, Subcommand)]
 enum MeasurementCommand {
+    #[command(name = "derive-deed-truth")]
+    DeedTruth(DeedTruthArgs),
     #[command(name = "materialize-h7-population")]
     Population(H7PopulationArgs),
     #[command(name = "materialize-h7-staging-batch")]
     StagingBatch(H7BatchArgs),
     #[command(name = "materialize-h7-pip-block-batch")]
     PipBlockBatch(H7BatchArgs),
+}
+
+#[derive(Debug, ClapArgs)]
+struct DeedTruthArgs {
+    /// JSON array of deed-truth loan references
+    #[arg(long)]
+    loans: PathBuf,
+    /// JSON file holding canon_geo_deed_index_rows.v0 rows
+    #[arg(long)]
+    deeds: PathBuf,
+    /// Inclusive recording-date window in days after origination
+    #[arg(long)]
+    window_days: u32,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -371,6 +388,27 @@ fn run() -> Result<ExitCode, AppError> {
 
 fn run_measurement_command(command: MeasurementCommand) -> Result<ExitCode, AppError> {
     match command {
+        MeasurementCommand::DeedTruth(args) => {
+            let loans: Vec<GeoDeedTruthLoanRef> = load_unversioned_json(
+                &args.loans,
+                "deed-truth loans",
+                "canon_geo_measurements derive-deed-truth --loans <LOANS.json>",
+            )?;
+            let deeds: GeoDeedIndexRowsRequest = load_json(
+                &args.deeds,
+                CANON_GEO_DEED_INDEX_ROWS_VERSION,
+                "deeds",
+                "canon_geo_measurements derive-deed-truth --deeds <DEEDS.json>",
+            )?;
+            let artifact = derive_deed_truth_from_index(&loans, &deeds, args.window_days)
+                .map_err(|error| AppError::new(error.to_string()))?;
+            let bytes = canonical_deed_truth_bytes(&artifact).map_err(|error| {
+                AppError::new(format!(
+                    "failed to serialize {CANON_GEO_DEED_TRUTH_VERSION}: {error}"
+                ))
+            })?;
+            write_canonical(&bytes)?;
+        }
         MeasurementCommand::Population(args) => {
             let rows: GeoH7PopulationRowsRequest = load_json(
                 &args.rows,
@@ -421,6 +459,21 @@ fn run_measurement_command(command: MeasurementCommand) -> Result<ExitCode, AppE
         }
     }
     Ok(ExitCode::SUCCESS)
+}
+
+fn load_unversioned_json<T: DeserializeOwned>(
+    path: &Path,
+    label: &str,
+    usage: &str,
+) -> Result<T, AppError> {
+    let bytes = fs::read(path)
+        .map_err(|error| AppError::new(format!("failed to read {}: {error}", path.display())))?;
+    serde_json::from_slice(&bytes).map_err(|error| {
+        AppError::new(format!(
+            "failed to decode {} as {label} for {usage}: {error}",
+            path.display()
+        ))
+    })
 }
 
 fn load_json<T: DeserializeOwned>(

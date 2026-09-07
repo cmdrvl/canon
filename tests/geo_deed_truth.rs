@@ -1,12 +1,13 @@
 #![forbid(unsafe_code)]
 
 use canon::geo::{
-    GeoDeedIndexRowsRequest, GeoDeedTruthArtifact, GeoDeedTruthLoanMatch, GeoDeedTruthLoanRef,
-    GeoDeedTruthMatchKind, GeoDeedTruthProofClass, GeoPopulationErrorCode,
-    GeoPopulationEvaluationRequest, GeoTruthPlane, canonical_deed_truth_bytes, derive_deed_truth,
-    derive_deed_truth_from_index, evaluate_population, validate_deed_index_rows_request,
-    validate_deed_truth_artifact, validate_deed_truth_plane_scope,
+    canonical_deed_truth_bytes, derive_deed_truth, derive_deed_truth_from_index,
+    evaluate_population, validate_deed_index_rows_request, validate_deed_truth_artifact,
+    validate_deed_truth_plane_scope, GeoDeedIndexRowsRequest, GeoDeedTruthArtifact,
+    GeoDeedTruthLoanMatch, GeoDeedTruthLoanRef, GeoDeedTruthMatchKind, GeoDeedTruthProofClass,
+    GeoPopulationErrorCode, GeoPopulationEvaluationRequest, GeoTruthPlane,
 };
+use std::process::Command;
 
 const DEED_INDEX_FIXTURE: &str = include_str!("fixtures/geo/deed_index_fixture.json");
 const DEED_TRUTH_LOANS_FIXTURE: &str = include_str!("fixtures/geo/deed_truth_loans_fixture.json");
@@ -176,6 +177,46 @@ fn t48_deed_truth_discards_non_unique_and_reports_round_amount_stratum() {
 }
 
 #[test]
+fn canon_geo_measurements_derives_deed_truth_fixture_without_geo_verb() {
+    let expected_artifact = derive_fixture_truth();
+    let expected_bytes = canonical_deed_truth_bytes(&expected_artifact).expect("canonical bytes");
+    let output = Command::new(env!("CARGO_BIN_EXE_canon_geo_measurements"))
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .args([
+            "derive-deed-truth",
+            "--loans",
+            "tests/fixtures/geo/deed_truth_loans_fixture.json",
+            "--deeds",
+            "tests/fixtures/geo/deed_index_fixture.json",
+            "--window-days",
+            "45",
+        ])
+        .output()
+        .expect("run canon_geo_measurements derive-deed-truth");
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let artifact: GeoDeedTruthArtifact =
+        serde_json::from_slice(&output.stdout).expect("stdout is deed truth json");
+    validate_deed_truth_artifact(&artifact).expect("measurement output validates");
+    assert_eq!(artifact.summary.unique, 4);
+    assert_eq!(artifact.summary.non_unique_discarded, 1);
+    assert_eq!(artifact.summary.no_match, 1);
+
+    let mut actual_bytes = output.stdout;
+    if actual_bytes.last() == Some(&b'\n') {
+        actual_bytes.pop();
+    }
+    assert_eq!(
+        actual_bytes, expected_bytes,
+        "measurement subcommand must emit library-canonical deed truth bytes"
+    );
+}
+
+#[test]
 fn t48_deed_truth_refuses_clear_address_fields() {
     let loans = fixture_loans();
     let mut index_with_address = fixture_index();
@@ -250,12 +291,10 @@ fn t49_deed_truth_plane_is_not_pooled_with_other_truth_planes() {
     assert_eq!(plane.solver_truth_scored_cases, artifact.summary.unique);
     assert_eq!(plane.truth_members, 5);
     assert_eq!(plane.truth_members_in_universe, 5);
-    assert!(
-        evaluation
-            .cases
-            .iter()
-            .all(|case| case.truth_plane == GeoTruthPlane::DeedGrainInstrument)
-    );
+    assert!(evaluation
+        .cases
+        .iter()
+        .all(|case| case.truth_plane == GeoTruthPlane::DeedGrainInstrument));
 
     validate_deed_truth_plane_scope([GeoTruthPlane::DeedGrainInstrument])
         .expect("single deed plane is allowed");
