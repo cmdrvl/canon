@@ -1,0 +1,73 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.image_tile_pin.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.image_tile_pin.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_image_tile_pin.v0",
+      "type": "string"
+    },
+    "source_profile_id": { "type": "string", "minLength": 1 },
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/image_tile_pin" }
+    }
+  },
+  "required": ["version", "source_profile_id", "rows"],
+  "$defs": {
+    "blake3": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "valid_time_interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start_day": { "type": "integer" },
+        "end_day": { "type": "integer" }
+      },
+      "required": ["start_day", "end_day"]
+    },
+    "image_tile_pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": { "type": "string", "minLength": 1 },
+        "byte_range": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 18446744073709551615
+          }
+        },
+        "etag": { "type": "string", "minLength": 1 },
+        "blake3": { "$ref": "#/$defs/blake3" },
+        "vintage": { "$ref": "#/$defs/valid_time_interval" },
+        "license_id": { "type": "string", "minLength": 1 },
+        "license_text_blake3": { "$ref": "#/$defs/blake3" },
+        "source_dataset": { "type": "string", "minLength": 1 }
+      },
+      "required": [
+        "url",
+        "blake3",
+        "vintage",
+        "license_id",
+        "license_text_blake3",
+        "source_dataset"
+      ]
+    }
+  },
+  "x-canon-contract": {
+    "runtime_only_invariants": [
+      "byte_range, when present, must be ordered",
+      "rows are retained local pins and do not authorize network acquisition inside Canon",
+      "license_id is evaluated against the caller-supplied forbidden license policy during admission"
+    ]
+  }
+}

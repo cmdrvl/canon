@@ -1,0 +1,424 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.observation_rows.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.observation_rows.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_observation_rows.v0",
+      "type": "string"
+    },
+    "contract": { "$ref": "#/$defs/observer_contract" },
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/observation_row" }
+    },
+    "rho_observations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rho_observation" }
+    },
+    "diagnostic_only_ids": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "not_admitted_ids": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "row_blake3s": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/blake3" }
+    }
+  },
+  "required": [
+    "version",
+    "contract",
+    "rows",
+    "rho_observations",
+    "diagnostic_only_ids",
+    "not_admitted_ids",
+    "row_blake3s"
+  ],
+  "$defs": {
+    "blake3": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "valid_time_interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start_day": { "type": "integer" },
+        "end_day": { "type": "integer" }
+      },
+      "required": ["start_day", "end_day"]
+    },
+    "entity_level": {
+      "type": "string",
+      "enum": ["poi_unit", "building", "parcel", "property"]
+    },
+    "entity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": { "$ref": "#/$defs/entity_level" },
+        "id": { "type": "string", "minLength": 1 }
+      },
+      "required": ["level", "id"]
+    },
+    "integer_measure": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "semantic_id": { "type": "string", "minLength": 1 },
+        "unit": { "type": "string", "minLength": 1 },
+        "value_origin": {
+          "type": "string",
+          "enum": ["source_asserted", "exact_derived"]
+        }
+      },
+      "required": ["semantic_id", "unit", "value_origin"]
+    },
+    "integer_member_value": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "value": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        }
+      },
+      "required": ["id", "value"]
+    },
+    "rho_observation_kind": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "exact_sets", "type": "string" },
+            "level": { "$ref": "#/$defs/entity_level" },
+            "sets": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 }
+              }
+            }
+          },
+          "required": ["kind", "level", "sets"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "existential_membership", "type": "string" },
+            "members": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/entity_ref" }
+            }
+          },
+          "required": ["kind", "members"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "integer_sum_band", "type": "string" },
+            "level": { "$ref": "#/$defs/entity_level" },
+            "measure": { "$ref": "#/$defs/integer_measure" },
+            "values": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/integer_member_value" }
+            },
+            "min": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            }
+          },
+          "required": ["kind", "level", "measure", "values", "min", "max"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "prefer_member", "type": "string" },
+            "member": { "$ref": "#/$defs/entity_ref" },
+            "cost_if_absent": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            }
+          },
+          "required": ["kind", "member", "cost_if_absent"]
+        }
+      ]
+    },
+    "rho_observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "contract_id": { "type": "string", "minLength": 1 },
+        "source_records": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/source_record_ref" }
+        },
+        "valid_time": { "$ref": "#/$defs/valid_time_interval" },
+        "observation": { "$ref": "#/$defs/rho_observation_kind" }
+      },
+      "required": ["id", "contract_id", "source_records", "observation"]
+    },
+    "source_record_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_record_id": { "type": "string", "minLength": 1 },
+        "source_vintage": { "type": "string", "minLength": 1 },
+        "record_blake3": { "$ref": "#/$defs/blake3" }
+      },
+      "required": ["source_record_id", "source_vintage", "record_blake3"]
+    },
+    "image_tile_pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": { "type": "string", "minLength": 1 },
+        "byte_range": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 18446744073709551615
+          }
+        },
+        "etag": { "type": "string", "minLength": 1 },
+        "blake3": { "$ref": "#/$defs/blake3" },
+        "vintage": { "$ref": "#/$defs/valid_time_interval" },
+        "license_id": { "type": "string", "minLength": 1 },
+        "license_text_blake3": { "$ref": "#/$defs/blake3" },
+        "source_dataset": { "type": "string", "minLength": 1 }
+      },
+      "required": [
+        "url",
+        "blake3",
+        "vintage",
+        "license_id",
+        "license_text_blake3",
+        "source_dataset"
+      ]
+    },
+    "observation_kind": {
+      "type": "string",
+      "enum": [
+        "structure_count_in_window",
+        "footprint_outline",
+        "height_or_floors",
+        "present_at_vintage",
+        "absent_at_vintage",
+        "change_event"
+      ]
+    },
+    "observation_payload": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "structure_count_in_window",
+              "type": "string"
+            },
+            "min": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            }
+          },
+          "required": ["kind", "min", "max"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "footprint_outline", "type": "string" },
+            "ring_blake3": { "$ref": "#/$defs/blake3" }
+          },
+          "required": ["kind", "ring_blake3"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "height_or_floors", "type": "string" },
+            "min": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            }
+          },
+          "required": ["kind", "min", "max"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "present_at_vintage", "type": "string" },
+            "interval": { "$ref": "#/$defs/valid_time_interval" }
+          },
+          "required": ["kind", "interval"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "absent_at_vintage", "type": "string" },
+            "interval": { "$ref": "#/$defs/valid_time_interval" }
+          },
+          "required": ["kind", "interval"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "change_event", "type": "string" },
+            "before": { "$ref": "#/$defs/valid_time_interval" },
+            "after": { "$ref": "#/$defs/valid_time_interval" }
+          },
+          "required": ["kind", "before", "after"]
+        }
+      ]
+    },
+    "observation_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "observer_id": { "type": "string", "minLength": 1 },
+        "tile_pins": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/image_tile_pin" }
+        },
+        "window_blake3": { "$ref": "#/$defs/blake3" },
+        "kind": { "$ref": "#/$defs/observation_kind" },
+        "payload": { "$ref": "#/$defs/observation_payload" },
+        "crop_blake3": { "$ref": "#/$defs/blake3" },
+        "label_blake3": { "$ref": "#/$defs/blake3" }
+      },
+      "required": [
+        "id",
+        "observer_id",
+        "tile_pins",
+        "window_blake3",
+        "kind",
+        "payload",
+        "crop_blake3",
+        "label_blake3"
+      ]
+    },
+    "observer_identity": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "rule_based", "type": "string" },
+            "rule_id": { "type": "string", "minLength": 1 },
+            "rule_version": { "type": "string", "minLength": 1 }
+          },
+          "required": ["kind", "rule_id", "rule_version"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "frozen_weight", "type": "string" },
+            "model_id": { "type": "string", "minLength": 1 },
+            "weight_blake3": { "$ref": "#/$defs/blake3" },
+            "arithmetic_contract": { "type": "string", "minLength": 1 }
+          },
+          "required": [
+            "kind",
+            "model_id",
+            "weight_blake3",
+            "arithmetic_contract"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "recorded_hosted", "type": "string" },
+            "model_id": { "type": "string", "minLength": 1 },
+            "model_version": { "type": "string", "minLength": 1 },
+            "prompt_blake3": { "$ref": "#/$defs/blake3" }
+          },
+          "required": ["kind", "model_id", "model_version", "prompt_blake3"]
+        }
+      ]
+    },
+    "observer_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": {
+          "const": "canon_geo_observer.v0",
+          "type": "string"
+        },
+        "identity": { "$ref": "#/$defs/observer_identity" },
+        "output_kinds": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/observation_kind" }
+        },
+        "error_population_id": { "type": "string", "minLength": 1 },
+        "characterization_blake3": { "$ref": "#/$defs/blake3" },
+        "rho_contract_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "identity",
+        "output_kinds",
+        "error_population_id",
+        "characterization_blake3",
+        "rho_contract_ids"
+      ]
+    }
+  },
+  "x-canon-contract": {
+    "runtime_only_invariants": [
+      "row_blake3s must contain one digest per row and each digest must match the stored row bytes",
+      "diagnostic_only_ids and not_admitted_ids must be sorted, unique, and row-scoped",
+      "replay verifies tile, crop, and label digests and never invokes an observer identity"
+    ]
+  }
+}

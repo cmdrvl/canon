@@ -1,0 +1,101 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.observer.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.observer.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "version": {
+      "const": "canon_geo_observer.v0",
+      "type": "string"
+    },
+    "identity": { "$ref": "#/$defs/observer_identity" },
+    "output_kinds": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/observation_kind" }
+    },
+    "error_population_id": { "type": "string", "minLength": 1 },
+    "characterization_blake3": { "$ref": "#/$defs/blake3" },
+    "rho_contract_ids": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "required": [
+    "id",
+    "version",
+    "identity",
+    "output_kinds",
+    "error_population_id",
+    "characterization_blake3",
+    "rho_contract_ids"
+  ],
+  "$defs": {
+    "blake3": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "observation_kind": {
+      "type": "string",
+      "enum": [
+        "structure_count_in_window",
+        "footprint_outline",
+        "height_or_floors",
+        "present_at_vintage",
+        "absent_at_vintage",
+        "change_event"
+      ]
+    },
+    "observer_identity": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "rule_based", "type": "string" },
+            "rule_id": { "type": "string", "minLength": 1 },
+            "rule_version": { "type": "string", "minLength": 1 }
+          },
+          "required": ["kind", "rule_id", "rule_version"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "frozen_weight", "type": "string" },
+            "model_id": { "type": "string", "minLength": 1 },
+            "weight_blake3": { "$ref": "#/$defs/blake3" },
+            "arithmetic_contract": { "type": "string", "minLength": 1 }
+          },
+          "required": [
+            "kind",
+            "model_id",
+            "weight_blake3",
+            "arithmetic_contract"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "recorded_hosted", "type": "string" },
+            "model_id": { "type": "string", "minLength": 1 },
+            "model_version": { "type": "string", "minLength": 1 },
+            "prompt_blake3": { "$ref": "#/$defs/blake3" }
+          },
+          "required": ["kind", "model_id", "model_version", "prompt_blake3"]
+        }
+      ]
+    }
+  },
+  "x-canon-contract": {
+    "runtime_only_invariants": [
+      "output_kinds must be sorted and unique",
+      "rho_contract_ids must be sorted and unique and each id must be present in admission inputs",
+      "recorded-hosted observers replay stored labels only and do not invoke a hosted client"
+    ]
+  }
+}

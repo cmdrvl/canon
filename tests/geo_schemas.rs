@@ -71,11 +71,12 @@ use canon::geo::{
     CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_PRIMARY_MAPPLUTO_RELEASE,
     CANON_GEO_H7_ROUND_AMOUNT_LATTICE_CENTS,
     CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
-    CANON_GEO_LOCAL_FRAME_VERSION, CANON_GEO_MULTISOURCE_REQUEST_VERSION,
-    CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION, CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION,
-    CANON_GEO_NEXT_EVIDENCE_VERSION, CANON_GEO_PAD_ADDRESS_SET_VERSION,
-    CANON_GEO_PAD_MEMBERSHIP_VERSION, CANON_GEO_POINT_POPULATION_VERSION,
-    CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
+    CANON_GEO_IMAGE_TILE_PIN_VERSION, CANON_GEO_LOCAL_FRAME_VERSION,
+    CANON_GEO_MULTISOURCE_REQUEST_VERSION, CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION,
+    CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION,
+    CANON_GEO_OBSERVATION_ROWS_VERSION, CANON_GEO_OBSERVER_VERSION,
+    CANON_GEO_PAD_ADDRESS_SET_VERSION, CANON_GEO_PAD_MEMBERSHIP_VERSION,
+    CANON_GEO_POINT_POPULATION_VERSION, CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
     CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
     CANON_GEO_PRE_RESOLUTION_VERSION, CANON_GEO_PROPAGATION_VERSION, CANON_GEO_QUESTION_VERSION,
     CANON_GEO_REDACTED_ARTIFACT_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
@@ -104,12 +105,14 @@ use canon::geo::{
     GeoH7StagingEvidenceRecordRef, GeoH7StagingSourceEvidenceRecord,
     GeoH7StagingSourceRecordBytesBatchRequest, GeoH7StagingSourceRecordBytesRow, GeoHardConstraint,
     GeoHardConstraintKind, GeoHomeCellAssignmentArtifact, GeoHomeCellRow, GeoHomeCellRowsRequest,
-    GeoIdentityParticipation, GeoIntegerMeasure, GeoIntegerMemberValue, GeoIntegerValueOrigin,
-    GeoLabeledCompositionCase, GeoLedgerPropertyRef, GeoLedgerRow, GeoLicenseClass,
-    GeoLocalAcquisitionState, GeoLocalArtifactRef, GeoLocalFrameContract, GeoMultisourceRequest,
-    GeoMultisourceSource, GeoNativeEntityScope, GeoNextAction, GeoNextActionClass,
-    GeoNextActionKind, GeoNextEvidenceCandidateInput, GeoNextEvidenceInputs,
-    GeoNextEvidenceRequest, GeoNumericBound, GeoNumericMeasure, GeoNycBorough, GeoPadAddressMember,
+    GeoIdentityParticipation, GeoImageTilePin, GeoImageTilePinArtifact, GeoIntegerMeasure,
+    GeoIntegerMemberValue, GeoIntegerValueOrigin, GeoLabeledCompositionCase, GeoLedgerPropertyRef,
+    GeoLedgerRow, GeoLicenseClass, GeoLocalAcquisitionState, GeoLocalArtifactRef,
+    GeoLocalFrameContract, GeoMultisourceRequest, GeoMultisourceSource, GeoNativeEntityScope,
+    GeoNextAction, GeoNextActionClass, GeoNextActionKind, GeoNextEvidenceCandidateInput,
+    GeoNextEvidenceInputs, GeoNextEvidenceRequest, GeoNumericBound, GeoNumericMeasure,
+    GeoNycBorough, GeoObservationKind, GeoObservationPayload, GeoObservationRow,
+    GeoObservationRowsArtifact, GeoObserverContract, GeoObserverIdentity, GeoPadAddressMember,
     GeoPadAddressSet, GeoPlanInventoryRef, GeoPointPopulationArtifact,
     GeoPopulationCaseEvidenceOverlay, GeoPopulationEvaluationRequest,
     GeoPopulationEvidenceStackRequest, GeoPreResolutionArtifact, GeoPreResolutionBuildReceipt,
@@ -126,25 +129,26 @@ use canon::geo::{
     GeoTileCandidateReachReference, GeoTileCandidateReachReferenceKind, GeoTileDecisionBatch,
     GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileFeatureRef,
     GeoTileReconciliationArtifact, GeoTileReconciliationRequest, GeoTileSourceBinding,
-    GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoTruthPlane, GeoValueOrigin,
-    GeoWarehouseEvidenceRow, GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest,
-    GeoWarehouseParcelRow, GeoWarehouseRowsRequest, assess_e4_gate, build_collateral_ledger,
+    GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoTruthPlane, GeoValidTimeInterval,
+    GeoValueOrigin, GeoWarehouseEvidenceRow, GeoWarehouseGeometryRow,
+    GeoWarehouseGeometryRowsRequest, GeoWarehouseParcelRow, GeoWarehouseRowsRequest,
+    admit_observations_with_universe, assess_e4_gate, build_collateral_ledger,
     canonical_collateral_ledger_bytes, canonical_collateral_ledger_seed_bytes,
     canonical_composition_bytes, canonical_deed_index_rows_bytes, canonical_deed_truth_bytes,
     canonical_e4_gate_assessment_bytes, canonical_error_population_bytes,
-    canonical_explanation_bytes, canonical_next_evidence_bytes,
+    canonical_explanation_bytes, canonical_image_tile_pin_bytes, canonical_next_evidence_bytes,
     canonical_next_evidence_inputs_bytes, canonical_next_evidence_request_bytes,
-    canonical_pre_resolution_bytes, canonical_propagation_bytes, canonical_redacted_artifact_bytes,
-    canonical_separation_bytes, canonical_separation_inputs_bytes,
-    canonical_separation_request_bytes, compile_evidence, correction_sets,
-    default_geo_capabilities, derive_deed_truth_from_index, evaluate_pad_membership,
-    evaluate_population, ingest_client_geometry_tile, materialize_geo_multisource,
-    materialize_geometry_tile, materialize_h7_population_rows, materialize_home_cells,
-    materialize_pre_resolution, materialize_tile_work_unit, materialize_warehouse_geometry,
-    minimal_core, parse_address_forest, propagate, recommend, reconcile_tile_decisions,
-    redact_geo_artifact, regional_inventory_semantic_hash, separate, solve_composition,
-    stack_population_evidence, validate_deed_index_rows_request, validate_deed_truth_artifact,
-    validate_e4_gate_assessment, validate_point_population_artifact,
+    canonical_observation_rows_bytes, canonical_observer_bytes, canonical_pre_resolution_bytes,
+    canonical_propagation_bytes, canonical_redacted_artifact_bytes, canonical_separation_bytes,
+    canonical_separation_inputs_bytes, canonical_separation_request_bytes, compile_evidence,
+    correction_sets, default_geo_capabilities, derive_deed_truth_from_index,
+    evaluate_pad_membership, evaluate_population, ingest_client_geometry_tile,
+    materialize_geo_multisource, materialize_geometry_tile, materialize_h7_population_rows,
+    materialize_home_cells, materialize_pre_resolution, materialize_tile_work_unit,
+    materialize_warehouse_geometry, minimal_core, parse_address_forest, propagate, recommend,
+    reconcile_tile_decisions, redact_geo_artifact, regional_inventory_semantic_hash, separate,
+    solve_composition, stack_population_evidence, validate_deed_index_rows_request,
+    validate_deed_truth_artifact, validate_e4_gate_assessment, validate_point_population_artifact,
     validate_pre_resolution_artifact, validate_redacted_artifact,
 };
 use canon::geo::{
@@ -282,6 +286,11 @@ const ACQUISITION_RECEIPT_SCHEMA: &str =
     include_str!("../schemas/canon.geo.acquisition_receipt.v0.schema.json");
 const ERROR_POPULATION_SCHEMA: &str =
     include_str!("../schemas/canon.geo.error_population.v0.schema.json");
+const IMAGE_TILE_PIN_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.image_tile_pin.v0.schema.json");
+const OBSERVER_SCHEMA: &str = include_str!("../schemas/canon.geo.observer.v0.schema.json");
+const OBSERVATION_ROWS_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.observation_rows.v0.schema.json");
 
 fn parsed(source: &str) -> Value {
     serde_json::from_str(source).expect("schema file must be valid JSON")
@@ -999,6 +1008,122 @@ fn error_population_contract_artifact() -> GeoErrorPopulationArtifact {
         .into_iter()
         .collect(),
     }
+}
+
+fn observer_interval() -> GeoValidTimeInterval {
+    GeoValidTimeInterval {
+        start_day: 19_800,
+        end_day: 19_830,
+    }
+}
+
+fn observer_image_tile_pin() -> GeoImageTilePin {
+    GeoImageTilePin {
+        url: "https://example.test/ortho/2024/tile.bin".to_string(),
+        byte_range: Some((0, 18)),
+        etag: Some("fixture-etag-2024".to_string()),
+        blake3: blake3::hash(b"schema tile bytes").to_hex().to_string(),
+        vintage: observer_interval(),
+        license_id: "cc_by_4_0".to_string(),
+        license_text_blake3: blake3::hash(b"schema license text").to_hex().to_string(),
+        source_dataset: "fixture.ortho.2024".to_string(),
+    }
+}
+
+fn observer_image_tile_pin_artifact() -> GeoImageTilePinArtifact {
+    GeoImageTilePinArtifact {
+        version: CANON_GEO_IMAGE_TILE_PIN_VERSION.to_string(),
+        source_profile_id: "fixture.nyc_ortho".to_string(),
+        rows: vec![observer_image_tile_pin()],
+    }
+}
+
+fn observer_contract_artifact() -> GeoObserverContract {
+    GeoObserverContract {
+        id: "observer.structure_count.v0".to_string(),
+        version: CANON_GEO_OBSERVER_VERSION.to_string(),
+        identity: GeoObserverIdentity::RuleBased {
+            rule_id: "rule.footprint_null_observer".to_string(),
+            rule_version: "v0".to_string(),
+        },
+        output_kinds: vec![
+            GeoObservationKind::StructureCountInWindow,
+            GeoObservationKind::FootprintOutline,
+            GeoObservationKind::HeightOrFloors,
+            GeoObservationKind::PresentAtVintage,
+            GeoObservationKind::AbsentAtVintage,
+            GeoObservationKind::ChangeEvent,
+        ],
+        error_population_id: "population.fixture.h7.observer".to_string(),
+        characterization_blake3: blake3::hash(b"schema characterization")
+            .to_hex()
+            .to_string(),
+        rho_contract_ids: vec!["rho.structure_count.v0".to_string()],
+    }
+}
+
+fn observer_rho_contract() -> GeoRhoContract {
+    GeoRhoContract {
+        id: "rho.structure_count.v0".to_string(),
+        version: "v0".to_string(),
+        source_dataset: "fixture.ortho.2024".to_string(),
+        source_release: "2024".to_string(),
+        source_lineage_ids: vec![
+            "characterization.fixture.v0".to_string(),
+            "population.fixture.h7.observer".to_string(),
+        ],
+        method_id: "observer.structure_count.band".to_string(),
+        method_version: "v0".to_string(),
+        claim_role: GeoEvidenceClaimRole::AttributeObservation,
+        basis: GeoRhoBasis::EmpiricalCalibration {
+            population_id: "population.fixture.h7.observer".to_string(),
+            calibration_blake3: blake3::hash(b"schema characterization")
+                .to_hex()
+                .to_string(),
+            falsification_rule_id: "structure_count_truth_outside_band".to_string(),
+            admissible_hard_band: false,
+        },
+    }
+}
+
+fn observer_universe() -> GeoCompositionUniverse {
+    GeoCompositionUniverse {
+        parcels: Vec::new(),
+        buildings: vec![
+            GeoBuildingCandidate {
+                id: "building.alpha".to_string(),
+                parcel_ids: Vec::new(),
+            },
+            GeoBuildingCandidate {
+                id: "building.beta".to_string(),
+                parcel_ids: Vec::new(),
+            },
+        ],
+    }
+}
+
+fn observer_observation_row() -> GeoObservationRow {
+    GeoObservationRow {
+        id: "obs.structure_count.1".to_string(),
+        observer_id: "observer.structure_count.v0".to_string(),
+        tile_pins: vec![observer_image_tile_pin()],
+        window_blake3: blake3::hash(b"schema window").to_hex().to_string(),
+        kind: GeoObservationKind::StructureCountInWindow,
+        payload: GeoObservationPayload::StructureCountInWindow { min: 1, max: 1 },
+        crop_blake3: blake3::hash(b"schema crop").to_hex().to_string(),
+        label_blake3: blake3::hash(b"{\"count\":1}").to_hex().to_string(),
+    }
+}
+
+fn observer_observation_rows_artifact() -> GeoObservationRowsArtifact {
+    admit_observations_with_universe(
+        &observer_contract_artifact(),
+        &[observer_observation_row()],
+        &[observer_rho_contract()],
+        &["commercial_basemap_tos".to_string()],
+        &observer_universe(),
+    )
+    .expect("schema observation rows admit")
 }
 
 fn acquisition_contract_receipt_for(request: GeoAcquisitionRequest) -> GeoAcquisitionReceipt {
@@ -2386,6 +2511,50 @@ fn error_population_schema_matches_a_real_instance() {
         ERROR_POPULATION_SCHEMA,
         &nested_unknown,
         "$.subjects[0].unregistered_window_field: key not declared",
+    );
+}
+
+#[test]
+fn image_tile_pin_schema_matches_a_real_instance() {
+    let artifact = observer_image_tile_pin_artifact();
+    let canonical_bytes =
+        canonical_image_tile_pin_bytes(&artifact).expect("image tile pin canonicalizes");
+    let instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("canonical image tile pin parses");
+    assert_drift_free(
+        IMAGE_TILE_PIN_SCHEMA,
+        "canon.geo.image_tile_pin.v0",
+        CANON_GEO_IMAGE_TILE_PIN_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn observer_schema_matches_a_real_instance() {
+    let contract = observer_contract_artifact();
+    let canonical_bytes = canonical_observer_bytes(&contract).expect("observer canonicalizes");
+    let instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("canonical observer parses");
+    assert_drift_free(
+        OBSERVER_SCHEMA,
+        "canon.geo.observer.v0",
+        CANON_GEO_OBSERVER_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn observation_rows_schema_matches_a_real_instance() {
+    let artifact = observer_observation_rows_artifact();
+    let canonical_bytes =
+        canonical_observation_rows_bytes(&artifact).expect("observation rows canonicalize");
+    let instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("canonical observation rows parse");
+    assert_drift_free(
+        OBSERVATION_ROWS_SCHEMA,
+        "canon.geo.observation_rows.v0",
+        CANON_GEO_OBSERVATION_ROWS_VERSION,
+        &instance,
     );
 }
 

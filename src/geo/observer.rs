@@ -6,7 +6,17 @@
 //! runtime. This module only validates retained pins, declared populations, and
 //! deterministic selection inputs that later observer artifacts bind by digest.
 
-use super::{evaluation::GeoTruthPlane, evidence::GeoValidTimeInterval};
+use super::{
+    composition::{
+        GeoBuildingCandidate, GeoCompositionUniverse, GeoEntityLevel, GeoEntityRef,
+        GeoIntegerMeasure, GeoIntegerMemberValue, GeoIntegerValueOrigin,
+    },
+    evaluation::GeoTruthPlane,
+    evidence::{
+        GeoEvidenceRecordRef, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind,
+        GeoValidTimeInterval,
+    },
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -14,6 +24,9 @@ use std::{
     fmt,
 };
 
+pub const CANON_GEO_IMAGE_TILE_PIN_VERSION: &str = "canon_geo_image_tile_pin.v0";
+pub const CANON_GEO_OBSERVER_VERSION: &str = "canon_geo_observer.v0";
+pub const CANON_GEO_OBSERVATION_ROWS_VERSION: &str = "canon_geo_observation_rows.v0";
 pub const CANON_GEO_ERROR_POPULATION_VERSION: &str = "canon_geo_error_population.v0";
 
 const SPLITMIX64_INCREMENT: u64 = 0x9E37_79B9_7F4A_7C15;
@@ -33,6 +46,108 @@ pub struct GeoImageTilePin {
     pub license_id: String,
     pub license_text_blake3: String,
     pub source_dataset: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoImageTilePinArtifact {
+    pub version: String,
+    pub source_profile_id: String,
+    pub rows: Vec<GeoImageTilePin>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum GeoObserverIdentity {
+    RuleBased {
+        rule_id: String,
+        rule_version: String,
+    },
+    FrozenWeight {
+        model_id: String,
+        weight_blake3: String,
+        arithmetic_contract: String,
+    },
+    RecordedHosted {
+        model_id: String,
+        model_version: String,
+        prompt_blake3: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoObservationKind {
+    StructureCountInWindow,
+    FootprintOutline,
+    HeightOrFloors,
+    PresentAtVintage,
+    AbsentAtVintage,
+    ChangeEvent,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoObserverContract {
+    pub id: String,
+    pub version: String,
+    pub identity: GeoObserverIdentity,
+    pub output_kinds: Vec<GeoObservationKind>,
+    pub error_population_id: String,
+    pub characterization_blake3: String,
+    pub rho_contract_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum GeoObservationPayload {
+    StructureCountInWindow {
+        min: u64,
+        max: u64,
+    },
+    FootprintOutline {
+        ring_blake3: String,
+    },
+    HeightOrFloors {
+        min: u64,
+        max: u64,
+    },
+    PresentAtVintage {
+        interval: GeoValidTimeInterval,
+    },
+    AbsentAtVintage {
+        interval: GeoValidTimeInterval,
+    },
+    ChangeEvent {
+        before: GeoValidTimeInterval,
+        after: GeoValidTimeInterval,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoObservationRow {
+    pub id: String,
+    pub observer_id: String,
+    pub tile_pins: Vec<GeoImageTilePin>,
+    pub window_blake3: String,
+    pub kind: GeoObservationKind,
+    pub payload: GeoObservationPayload,
+    pub crop_blake3: String,
+    pub label_blake3: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoObservationRowsArtifact {
+    pub version: String,
+    pub contract: GeoObserverContract,
+    pub rows: Vec<GeoObservationRow>,
+    pub rho_observations: Vec<GeoRhoObservation>,
+    pub diagnostic_only_ids: Vec<String>,
+    pub not_admitted_ids: Vec<String>,
+    #[serde(default)]
+    pub row_blake3s: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -66,7 +181,14 @@ pub struct GeoErrorPopulationArtifact {
 pub enum GeoObserverErrorCode {
     UnsupportedVersion,
     InvalidInput,
+    BudgetExceeded,
+    ArithmeticOverflow,
+    ObserverMissingProvenance,
+    ObserverErrorUncharacterized,
     ObserverLicenseForbidden,
+    ImageTileDigestMismatch,
+    ObservationRegeneratedAtReplay,
+    ObservationTemporalDiagnostic,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -109,6 +231,76 @@ impl GeoObserverError {
             [("field", field.to_string()), ("value", value.into())],
         )
     }
+
+    fn missing_provenance_field(
+        field: &'static str,
+        message: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Self {
+        Self::new(
+            GeoObserverErrorCode::ObserverMissingProvenance,
+            message,
+            [
+                ("field".to_string(), field.to_string()),
+                ("value".to_string(), value.into()),
+            ],
+        )
+    }
+
+    fn uncharacterized_field(
+        field: &'static str,
+        message: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Self {
+        Self::new(
+            GeoObserverErrorCode::ObserverErrorUncharacterized,
+            message,
+            [
+                ("field".to_string(), field.to_string()),
+                ("value".to_string(), value.into()),
+            ],
+        )
+    }
+
+    fn forbidden_license(
+        field: &'static str,
+        message: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Self {
+        Self::new(
+            GeoObserverErrorCode::ObserverLicenseForbidden,
+            message,
+            [
+                ("field".to_string(), field.to_string()),
+                ("value".to_string(), value.into()),
+            ],
+        )
+    }
+
+    fn digest_mismatch(
+        digest_field: &'static str,
+        row_id: impl Into<String>,
+        expected: impl Into<String>,
+        actual: impl Into<String>,
+    ) -> Self {
+        Self::new(
+            GeoObserverErrorCode::ImageTileDigestMismatch,
+            "Geo observer replay bytes do not match the stored digest",
+            [
+                (digest_field.to_string(), expected.into()),
+                ("row_id".to_string(), row_id.into()),
+                ("actual".to_string(), actual.into()),
+            ],
+        )
+    }
+
+    fn regenerated(row_id: impl Into<String>) -> Self {
+        Self::new(
+            GeoObserverErrorCode::ObservationRegeneratedAtReplay,
+            "Geo observer replay cannot accept a regenerated observation row",
+            [("observation_id".to_string(), row_id.into())],
+        )
+    }
 }
 
 impl fmt::Display for GeoObserverError {
@@ -118,6 +310,281 @@ impl fmt::Display for GeoObserverError {
 }
 
 impl Error for GeoObserverError {}
+
+pub fn validate_image_tile_pin_artifact(
+    artifact: &GeoImageTilePinArtifact,
+) -> Result<(), GeoObserverError> {
+    if artifact.version != CANON_GEO_IMAGE_TILE_PIN_VERSION {
+        return Err(GeoObserverError::new(
+            GeoObserverErrorCode::UnsupportedVersion,
+            "Unsupported Geo image tile pin artifact version",
+            [
+                ("actual", artifact.version.as_str()),
+                ("expected", CANON_GEO_IMAGE_TILE_PIN_VERSION),
+            ],
+        ));
+    }
+    validate_canonical_string("source_profile_id", &artifact.source_profile_id)?;
+    if artifact.rows.is_empty() {
+        return Err(GeoObserverError::invalid_field(
+            "rows",
+            "Geo image tile pin artifacts require at least one row",
+            "0",
+        ));
+    }
+    for pin in &artifact.rows {
+        validate_image_tile_pin(pin, &[])?;
+    }
+    Ok(())
+}
+
+pub fn canonical_image_tile_pin_bytes(
+    artifact: &GeoImageTilePinArtifact,
+) -> Result<Vec<u8>, GeoObserverError> {
+    validate_image_tile_pin_artifact(artifact)?;
+    serde_json::to_vec(artifact).map_err(|error| {
+        GeoObserverError::invalid(
+            "Geo image tile pin artifact could not be serialized",
+            [("error", error.to_string())],
+        )
+    })
+}
+
+pub fn validate_observer_contract(contract: &GeoObserverContract) -> Result<(), GeoObserverError> {
+    if contract.version != CANON_GEO_OBSERVER_VERSION {
+        return Err(GeoObserverError::new(
+            GeoObserverErrorCode::UnsupportedVersion,
+            "Unsupported Geo observer contract version",
+            [
+                ("actual", contract.version.as_str()),
+                ("expected", CANON_GEO_OBSERVER_VERSION),
+            ],
+        ));
+    }
+    validate_required_observer_string("id", &contract.id)?;
+    validate_observer_identity(&contract.identity)?;
+    validate_output_kinds(&contract.output_kinds)?;
+    validate_required_observer_string("error_population_id", &contract.error_population_id)
+        .map_err(|_| {
+            GeoObserverError::uncharacterized_field(
+                "error_population_id",
+                "Geo observer contracts require a named characterized error population",
+                contract.error_population_id.clone(),
+            )
+        })?;
+    validate_blake3("characterization_blake3", &contract.characterization_blake3).map_err(
+        |_| {
+            GeoObserverError::uncharacterized_field(
+                "characterization_blake3",
+                "Geo observer contracts require a characterized error digest",
+                contract.characterization_blake3.clone(),
+            )
+        },
+    )?;
+    validate_rho_contract_ids(&contract.rho_contract_ids)?;
+    Ok(())
+}
+
+pub fn canonical_observer_bytes(
+    contract: &GeoObserverContract,
+) -> Result<Vec<u8>, GeoObserverError> {
+    validate_observer_contract(contract)?;
+    serde_json::to_vec(contract).map_err(|error| {
+        GeoObserverError::invalid(
+            "Geo observer contract could not be serialized",
+            [("error", error.to_string())],
+        )
+    })
+}
+
+pub fn admit_observations(
+    contract: &GeoObserverContract,
+    rows: &[GeoObservationRow],
+    rho: &[GeoRhoContract],
+    forbidden_license_ids: &[String],
+) -> Result<GeoObservationRowsArtifact, GeoObserverError> {
+    admit_observations_with_universe(
+        contract,
+        rows,
+        rho,
+        forbidden_license_ids,
+        &GeoCompositionUniverse {
+            parcels: Vec::new(),
+            buildings: Vec::new(),
+        },
+    )
+}
+
+pub fn admit_observations_with_universe(
+    contract: &GeoObserverContract,
+    rows: &[GeoObservationRow],
+    rho: &[GeoRhoContract],
+    forbidden_license_ids: &[String],
+    universe: &GeoCompositionUniverse,
+) -> Result<GeoObservationRowsArtifact, GeoObserverError> {
+    validate_observer_contract(contract)?;
+    validate_forbidden_license_ids(forbidden_license_ids)?;
+    validate_rho_contracts_for_observer(contract, rho)?;
+
+    let mut rows = rows.to_vec();
+    rows.sort_by(|left, right| left.id.cmp(&right.id));
+    validate_observation_rows(contract, &rows, forbidden_license_ids)?;
+
+    let mut rho_observations = Vec::new();
+    let mut diagnostic_only_ids = Vec::new();
+    let mut not_admitted_ids = Vec::new();
+    let mut row_blake3s = BTreeMap::new();
+    for row in &rows {
+        row_blake3s.insert(row.id.clone(), observation_row_blake3(row)?);
+        if is_temporal_kind(row.kind) {
+            diagnostic_only_ids.push(row.id.clone());
+        }
+        match to_rho_observation(row, contract, universe) {
+            Some(observation) => rho_observations.push(observation),
+            None => not_admitted_ids.push(row.id.clone()),
+        }
+    }
+    rho_observations.sort_by(|left, right| left.id.cmp(&right.id));
+    diagnostic_only_ids.sort();
+    not_admitted_ids.sort();
+
+    let artifact = GeoObservationRowsArtifact {
+        version: CANON_GEO_OBSERVATION_ROWS_VERSION.to_string(),
+        contract: contract.clone(),
+        rows,
+        rho_observations,
+        diagnostic_only_ids,
+        not_admitted_ids,
+        row_blake3s,
+    };
+    validate_observation_rows_artifact(&artifact)?;
+    Ok(artifact)
+}
+
+pub fn to_rho_observation(
+    row: &GeoObservationRow,
+    contract: &GeoObserverContract,
+    universe: &GeoCompositionUniverse,
+) -> Option<GeoRhoObservation> {
+    let contract_id = contract.rho_contract_ids.first()?.clone();
+    let source_records = observation_source_records(row);
+    match &row.payload {
+        GeoObservationPayload::StructureCountInWindow { min, max } => Some(GeoRhoObservation {
+            id: row.id.clone(),
+            contract_id,
+            source_records,
+            valid_time: None,
+            observation: GeoRhoObservationKind::IntegerSumBand {
+                level: GeoEntityLevel::Building,
+                measure: GeoIntegerMeasure {
+                    semantic_id: "observer.structure_count_in_window".to_string(),
+                    unit: "structure".to_string(),
+                    value_origin: GeoIntegerValueOrigin::SourceAsserted,
+                },
+                values: building_unit_values(&universe.buildings),
+                min: *min,
+                max: *max,
+            },
+        }),
+        GeoObservationPayload::HeightOrFloors { min, max } => Some(GeoRhoObservation {
+            id: row.id.clone(),
+            contract_id,
+            source_records,
+            valid_time: None,
+            observation: GeoRhoObservationKind::IntegerSumBand {
+                level: GeoEntityLevel::Building,
+                measure: GeoIntegerMeasure {
+                    semantic_id: "observer.height_or_floors".to_string(),
+                    unit: "floor".to_string(),
+                    value_origin: GeoIntegerValueOrigin::SourceAsserted,
+                },
+                values: building_unit_values(&universe.buildings),
+                min: *min,
+                max: *max,
+            },
+        }),
+        GeoObservationPayload::PresentAtVintage { interval }
+        | GeoObservationPayload::AbsentAtVintage { interval } => Some(GeoRhoObservation {
+            id: row.id.clone(),
+            contract_id,
+            source_records,
+            valid_time: Some(*interval),
+            observation: GeoRhoObservationKind::ExistentialMembership {
+                members: building_members(&universe.buildings),
+            },
+        }),
+        GeoObservationPayload::FootprintOutline { .. }
+        | GeoObservationPayload::ChangeEvent { .. } => None,
+    }
+}
+
+pub fn validate_observation_rows_artifact(
+    artifact: &GeoObservationRowsArtifact,
+) -> Result<(), GeoObserverError> {
+    if artifact.version != CANON_GEO_OBSERVATION_ROWS_VERSION {
+        return Err(GeoObserverError::new(
+            GeoObserverErrorCode::UnsupportedVersion,
+            "Unsupported Geo observation rows artifact version",
+            [
+                ("actual", artifact.version.as_str()),
+                ("expected", CANON_GEO_OBSERVATION_ROWS_VERSION),
+            ],
+        ));
+    }
+    validate_observer_contract(&artifact.contract)?;
+    validate_observation_rows(&artifact.contract, &artifact.rows, &[])?;
+    validate_row_blake3s(&artifact.rows, &artifact.row_blake3s)?;
+    validate_id_list(
+        "diagnostic_only_ids",
+        &artifact.diagnostic_only_ids,
+        &artifact.rows,
+    )?;
+    validate_id_list(
+        "not_admitted_ids",
+        &artifact.not_admitted_ids,
+        &artifact.rows,
+    )?;
+    validate_rho_observation_rows(artifact)?;
+    Ok(())
+}
+
+pub fn canonical_observation_rows_bytes(
+    artifact: &GeoObservationRowsArtifact,
+) -> Result<Vec<u8>, GeoObserverError> {
+    validate_observation_rows_artifact(artifact)?;
+    serde_json::to_vec(artifact).map_err(|error| {
+        GeoObserverError::invalid(
+            "Geo observation rows artifact could not be serialized",
+            [("error", error.to_string())],
+        )
+    })
+}
+
+pub fn verify_replay(
+    artifact: &GeoObservationRowsArtifact,
+    bytes_by_blake3: &BTreeMap<String, Vec<u8>>,
+) -> Result<(), GeoObserverError> {
+    validate_observation_rows_artifact(artifact)?;
+    for row in &artifact.rows {
+        for pin in &row.tile_pins {
+            verify_replay_digest("tile", &row.id, &pin.blake3, bytes_by_blake3)?;
+        }
+        verify_replay_digest("crop", &row.id, &row.crop_blake3, bytes_by_blake3)?;
+        verify_replay_digest("label", &row.id, &row.label_blake3, bytes_by_blake3)?;
+    }
+    Ok(())
+}
+
+pub fn observation_row_blake3(row: &GeoObservationRow) -> Result<String, GeoObserverError> {
+    serde_json::to_vec(row)
+        .map(|bytes| blake3::hash(&bytes).to_hex().to_string())
+        .map_err(|error| {
+            GeoObserverError::invalid(
+                "Geo observation row could not be serialized",
+                [("error", error.to_string())],
+            )
+        })
+}
 
 pub fn validate_error_population_artifact(
     artifact: &GeoErrorPopulationArtifact,
@@ -257,6 +724,561 @@ pub fn select_error_population_subjects(
 
     selected.sort_by(|left, right| left.subject_id.cmp(&right.subject_id));
     Ok(selected)
+}
+
+fn validate_image_tile_pin(
+    pin: &GeoImageTilePin,
+    forbidden_license_ids: &[String],
+) -> Result<(), GeoObserverError> {
+    validate_required_observer_string("url", &pin.url)?;
+    if let Some((start, end)) = pin.byte_range
+        && start > end
+    {
+        return Err(GeoObserverError::invalid(
+            "Geo image tile pin byte ranges must be ordered",
+            [
+                ("field".to_string(), "byte_range".to_string()),
+                ("start".to_string(), start.to_string()),
+                ("end".to_string(), end.to_string()),
+            ],
+        ));
+    }
+    if let Some(etag) = &pin.etag {
+        validate_required_observer_string("etag", etag)?;
+    }
+    validate_blake3("blake3", &pin.blake3).map_err(|_| {
+        GeoObserverError::missing_provenance_field(
+            "blake3",
+            "Geo image tile pins require a tile content digest",
+            pin.blake3.clone(),
+        )
+    })?;
+    validate_interval("vintage", pin.vintage)?;
+    validate_required_observer_string("license_id", &pin.license_id)?;
+    if forbidden_license_ids
+        .binary_search_by(|probe| probe.as_str().cmp(pin.license_id.as_str()))
+        .is_ok()
+    {
+        return Err(GeoObserverError::forbidden_license(
+            "license_id",
+            "Geo image tile pin license is forbidden by the caller policy",
+            pin.license_id.clone(),
+        ));
+    }
+    validate_blake3("license_text_blake3", &pin.license_text_blake3).map_err(|_| {
+        GeoObserverError::forbidden_license(
+            "license_text_blake3",
+            "Geo image tile pins require a license text digest",
+            pin.license_text_blake3.clone(),
+        )
+    })?;
+    validate_required_observer_string("source_dataset", &pin.source_dataset)?;
+    Ok(())
+}
+
+fn validate_observer_identity(identity: &GeoObserverIdentity) -> Result<(), GeoObserverError> {
+    match identity {
+        GeoObserverIdentity::RuleBased {
+            rule_id,
+            rule_version,
+        } => {
+            validate_required_observer_string("identity.rule_id", rule_id)?;
+            validate_required_observer_string("identity.rule_version", rule_version)?;
+        }
+        GeoObserverIdentity::FrozenWeight {
+            model_id,
+            weight_blake3,
+            arithmetic_contract,
+        } => {
+            validate_required_observer_string("identity.model_id", model_id)?;
+            validate_blake3("identity.weight_blake3", weight_blake3).map_err(|_| {
+                GeoObserverError::missing_provenance_field(
+                    "identity.weight_blake3",
+                    "Geo frozen-weight observers require a pinned weight digest",
+                    weight_blake3.clone(),
+                )
+            })?;
+            validate_required_observer_string("identity.arithmetic_contract", arithmetic_contract)?;
+        }
+        GeoObserverIdentity::RecordedHosted {
+            model_id,
+            model_version,
+            prompt_blake3,
+        } => {
+            validate_required_observer_string("identity.model_id", model_id)?;
+            validate_required_observer_string("identity.model_version", model_version)?;
+            validate_blake3("identity.prompt_blake3", prompt_blake3).map_err(|_| {
+                GeoObserverError::missing_provenance_field(
+                    "identity.prompt_blake3",
+                    "Geo recorded-hosted observers require a pinned prompt digest",
+                    prompt_blake3.clone(),
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_output_kinds(kinds: &[GeoObservationKind]) -> Result<(), GeoObserverError> {
+    if kinds.is_empty() {
+        return Err(GeoObserverError::uncharacterized_field(
+            "output_kinds",
+            "Geo observer contracts require at least one output kind",
+            "0",
+        ));
+    }
+    let mut previous = None;
+    for kind in kinds {
+        if previous.is_some_and(|previous| previous >= *kind) {
+            return Err(GeoObserverError::uncharacterized_field(
+                "output_kinds",
+                "Geo observer output kinds must be sorted and unique",
+                format!("{kind:?}"),
+            ));
+        }
+        previous = Some(*kind);
+    }
+    Ok(())
+}
+
+fn validate_rho_contract_ids(ids: &[String]) -> Result<(), GeoObserverError> {
+    if ids.is_empty() {
+        return Err(GeoObserverError::uncharacterized_field(
+            "rho_contract_ids",
+            "Geo observer contracts require at least one rho contract id",
+            "0",
+        ));
+    }
+    let mut previous: Option<&str> = None;
+    for id in ids {
+        validate_required_observer_string("rho_contract_ids[]", id)?;
+        if previous.is_some_and(|previous| previous >= id.as_str()) {
+            return Err(GeoObserverError::uncharacterized_field(
+                "rho_contract_ids",
+                "Geo observer rho contract ids must be sorted and unique",
+                id.clone(),
+            ));
+        }
+        previous = Some(id.as_str());
+    }
+    Ok(())
+}
+
+fn validate_forbidden_license_ids(ids: &[String]) -> Result<(), GeoObserverError> {
+    if ids.is_empty() {
+        return Err(GeoObserverError::invalid_field(
+            "forbidden_license_ids",
+            "Geo observer admission requires a non-empty forbidden license policy",
+            "0",
+        ));
+    }
+    let mut previous: Option<&str> = None;
+    for id in ids {
+        validate_canonical_string("forbidden_license_ids[]", id)?;
+        if previous.is_some_and(|previous| previous >= id.as_str()) {
+            return Err(GeoObserverError::invalid(
+                "Geo observer forbidden license ids must be sorted and unique",
+                [("field", "forbidden_license_ids")],
+            ));
+        }
+        previous = Some(id.as_str());
+    }
+    Ok(())
+}
+
+fn validate_rho_contracts_for_observer(
+    contract: &GeoObserverContract,
+    rho: &[GeoRhoContract],
+) -> Result<(), GeoObserverError> {
+    let mut available = BTreeSet::new();
+    for rho_contract in rho {
+        validate_required_observer_string("rho[].id", &rho_contract.id)?;
+        if !available.insert(rho_contract.id.as_str()) {
+            return Err(GeoObserverError::uncharacterized_field(
+                "rho[].id",
+                "Geo observer admission rho contracts must be unique",
+                rho_contract.id.clone(),
+            ));
+        }
+    }
+    for id in &contract.rho_contract_ids {
+        if !available.contains(id.as_str()) {
+            return Err(GeoObserverError::uncharacterized_field(
+                "rho_contract_ids",
+                "Geo observer contract references an unavailable rho contract",
+                id.clone(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_observation_rows(
+    contract: &GeoObserverContract,
+    rows: &[GeoObservationRow],
+    forbidden_license_ids: &[String],
+) -> Result<(), GeoObserverError> {
+    if rows.is_empty() {
+        return Err(GeoObserverError::missing_provenance_field(
+            "rows",
+            "Geo observation artifacts require at least one row",
+            "0",
+        ));
+    }
+    let mut previous: Option<&str> = None;
+    for row in rows {
+        validate_observation_row(contract, row, forbidden_license_ids)?;
+        if previous.is_some_and(|previous| previous >= row.id.as_str()) {
+            return Err(GeoObserverError::invalid(
+                "Geo observation rows must be sorted and unique",
+                [
+                    ("field".to_string(), "rows".to_string()),
+                    ("id".to_string(), row.id.clone()),
+                ],
+            ));
+        }
+        previous = Some(row.id.as_str());
+    }
+    Ok(())
+}
+
+fn validate_observation_row(
+    contract: &GeoObserverContract,
+    row: &GeoObservationRow,
+    forbidden_license_ids: &[String],
+) -> Result<(), GeoObserverError> {
+    validate_required_observer_string("rows[].id", &row.id)?;
+    if row.observer_id != contract.id {
+        return Err(GeoObserverError::missing_provenance_field(
+            "observer_id",
+            "Geo observation rows must bind the observer contract id",
+            row.observer_id.clone(),
+        ));
+    }
+    if row.tile_pins.is_empty() {
+        return Err(GeoObserverError::missing_provenance_field(
+            "tile_pins",
+            "Geo observation rows require at least one pinned tile",
+            "0",
+        ));
+    }
+    for pin in &row.tile_pins {
+        validate_image_tile_pin(pin, forbidden_license_ids)?;
+    }
+    validate_blake3("window_blake3", &row.window_blake3).map_err(|_| {
+        GeoObserverError::missing_provenance_field(
+            "window_blake3",
+            "Geo observation rows require a pinned window digest",
+            row.window_blake3.clone(),
+        )
+    })?;
+    validate_blake3("crop_blake3", &row.crop_blake3).map_err(|_| {
+        GeoObserverError::missing_provenance_field(
+            "crop_blake3",
+            "Geo observation rows require a pinned crop digest",
+            row.crop_blake3.clone(),
+        )
+    })?;
+    validate_blake3("label_blake3", &row.label_blake3).map_err(|_| {
+        GeoObserverError::missing_provenance_field(
+            "label_blake3",
+            "Geo observation rows require a pinned label digest",
+            row.label_blake3.clone(),
+        )
+    })?;
+    if !contract.output_kinds.contains(&row.kind) {
+        return Err(GeoObserverError::uncharacterized_field(
+            "kind",
+            "Geo observation row kind is not declared by the observer contract",
+            format!("{:?}", row.kind),
+        ));
+    }
+    validate_payload_matches_kind(row)?;
+    Ok(())
+}
+
+fn validate_payload_matches_kind(row: &GeoObservationRow) -> Result<(), GeoObserverError> {
+    match (&row.kind, &row.payload) {
+        (
+            GeoObservationKind::StructureCountInWindow,
+            GeoObservationPayload::StructureCountInWindow { min, max },
+        )
+        | (
+            GeoObservationKind::HeightOrFloors,
+            GeoObservationPayload::HeightOrFloors { min, max },
+        ) => {
+            if min > max {
+                return Err(GeoObserverError::invalid(
+                    "Geo observation integer bands must be ordered",
+                    [
+                        ("field".to_string(), "payload".to_string()),
+                        ("observation_id".to_string(), row.id.clone()),
+                    ],
+                ));
+            }
+        }
+        (
+            GeoObservationKind::FootprintOutline,
+            GeoObservationPayload::FootprintOutline { ring_blake3 },
+        ) => validate_blake3("payload.ring_blake3", ring_blake3).map_err(|_| {
+            GeoObserverError::missing_provenance_field(
+                "payload.ring_blake3",
+                "Geo footprint outline observations require a ring digest",
+                ring_blake3.clone(),
+            )
+        })?,
+        (
+            GeoObservationKind::PresentAtVintage,
+            GeoObservationPayload::PresentAtVintage { interval },
+        )
+        | (
+            GeoObservationKind::AbsentAtVintage,
+            GeoObservationPayload::AbsentAtVintage { interval },
+        ) => validate_interval("payload.interval", *interval)?,
+        (GeoObservationKind::ChangeEvent, GeoObservationPayload::ChangeEvent { before, after }) => {
+            validate_interval("payload.before", *before)?;
+            validate_interval("payload.after", *after)?;
+        }
+        _ => {
+            return Err(GeoObserverError::uncharacterized_field(
+                "payload.kind",
+                "Geo observation payload kind must match the declared row kind",
+                row.id.clone(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_row_blake3s(
+    rows: &[GeoObservationRow],
+    row_blake3s: &BTreeMap<String, String>,
+) -> Result<(), GeoObserverError> {
+    if row_blake3s.len() != rows.len() {
+        return Err(GeoObserverError::regenerated("<row_blake3s>"));
+    }
+    for row in rows {
+        let Some(stored) = row_blake3s.get(&row.id) else {
+            return Err(GeoObserverError::regenerated(row.id.clone()));
+        };
+        validate_blake3("row_blake3s[]", stored)?;
+        let actual = observation_row_blake3(row)?;
+        if stored != &actual {
+            return Err(GeoObserverError::regenerated(row.id.clone()));
+        }
+    }
+    Ok(())
+}
+
+fn validate_id_list(
+    field: &'static str,
+    ids: &[String],
+    rows: &[GeoObservationRow],
+) -> Result<(), GeoObserverError> {
+    let row_ids = rows
+        .iter()
+        .map(|row| row.id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut previous: Option<&str> = None;
+    for id in ids {
+        validate_required_observer_string(field, id)?;
+        if previous.is_some_and(|previous| previous >= id.as_str()) {
+            return Err(GeoObserverError::invalid(
+                "Geo observation artifact id lists must be sorted and unique",
+                [
+                    ("field".to_string(), field.to_string()),
+                    ("id".to_string(), id.clone()),
+                ],
+            ));
+        }
+        if !row_ids.contains(id.as_str()) {
+            return Err(GeoObserverError::invalid(
+                "Geo observation artifact id lists must reference known rows",
+                [
+                    ("field".to_string(), field.to_string()),
+                    ("id".to_string(), id.clone()),
+                ],
+            ));
+        }
+        previous = Some(id.as_str());
+    }
+    Ok(())
+}
+
+fn validate_rho_observation_rows(
+    artifact: &GeoObservationRowsArtifact,
+) -> Result<(), GeoObserverError> {
+    let admitted_ids = artifact
+        .rows
+        .iter()
+        .map(|row| row.id.as_str())
+        .filter(|id| {
+            artifact
+                .not_admitted_ids
+                .binary_search_by(|probe| probe.as_str().cmp(id))
+                .is_err()
+        })
+        .collect::<BTreeSet<_>>();
+    let allowed_contracts = artifact
+        .contract
+        .rho_contract_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let mut previous: Option<&GeoRhoObservation> = None;
+    for observation in &artifact.rho_observations {
+        if previous.is_some_and(|previous| previous.id.as_str() >= observation.id.as_str()) {
+            return Err(GeoObserverError::invalid(
+                "Geo observation rho observations must be sorted and unique",
+                [("field", "rho_observations")],
+            ));
+        }
+        if !admitted_ids.contains(observation.id.as_str()) {
+            return Err(GeoObserverError::invalid(
+                "Geo observation rho rows must correspond to admitted observation rows",
+                [
+                    ("field".to_string(), "rho_observations".to_string()),
+                    ("observation_id".to_string(), observation.id.clone()),
+                ],
+            ));
+        }
+        if !allowed_contracts.contains(observation.contract_id.as_str()) {
+            return Err(GeoObserverError::uncharacterized_field(
+                "rho_observations[].contract_id",
+                "Geo observation rho rows must use a declared rho contract",
+                observation.contract_id.clone(),
+            ));
+        }
+        if observation.source_records.is_empty() {
+            return Err(GeoObserverError::missing_provenance_field(
+                "rho_observations[].source_records",
+                "Geo observation rho rows require source records",
+                observation.id.clone(),
+            ));
+        }
+        for record in &observation.source_records {
+            validate_required_observer_string(
+                "rho_observations[].source_records[].source_record_id",
+                &record.source_record_id,
+            )?;
+            validate_required_observer_string(
+                "rho_observations[].source_records[].source_vintage",
+                &record.source_vintage,
+            )?;
+            validate_blake3(
+                "rho_observations[].source_records[].record_blake3",
+                &record.record_blake3,
+            )?;
+        }
+        previous = Some(observation);
+    }
+    Ok(())
+}
+
+fn observation_source_records(row: &GeoObservationRow) -> Vec<GeoEvidenceRecordRef> {
+    let mut records = row
+        .tile_pins
+        .iter()
+        .enumerate()
+        .map(|(index, pin)| GeoEvidenceRecordRef {
+            source_record_id: format!("{}:tile:{index}", row.id),
+            source_vintage: format!("{}..{}", pin.vintage.start_day, pin.vintage.end_day),
+            record_blake3: pin.blake3.clone(),
+        })
+        .collect::<Vec<_>>();
+    records.push(GeoEvidenceRecordRef {
+        source_record_id: format!("{}:crop", row.id),
+        source_vintage: row
+            .tile_pins
+            .first()
+            .map(|pin| format!("{}..{}", pin.vintage.start_day, pin.vintage.end_day))
+            .unwrap_or_else(|| "undated".to_string()),
+        record_blake3: row.crop_blake3.clone(),
+    });
+    records.sort();
+    records
+}
+
+fn building_unit_values(buildings: &[GeoBuildingCandidate]) -> Vec<GeoIntegerMemberValue> {
+    let mut values = buildings
+        .iter()
+        .map(|building| GeoIntegerMemberValue {
+            id: building.id.clone(),
+            value: 1,
+        })
+        .collect::<Vec<_>>();
+    values.sort_by(|left, right| left.id.cmp(&right.id));
+    values
+}
+
+fn building_members(buildings: &[GeoBuildingCandidate]) -> Vec<GeoEntityRef> {
+    let mut members = buildings
+        .iter()
+        .map(|building| GeoEntityRef::new(GeoEntityLevel::Building, building.id.clone()))
+        .collect::<Vec<_>>();
+    members.sort();
+    members
+}
+
+fn verify_replay_digest(
+    detail_key: &'static str,
+    row_id: &str,
+    expected: &str,
+    bytes_by_blake3: &BTreeMap<String, Vec<u8>>,
+) -> Result<(), GeoObserverError> {
+    let Some(bytes) = bytes_by_blake3.get(expected) else {
+        return Err(GeoObserverError::digest_mismatch(
+            detail_key,
+            row_id,
+            expected,
+            "<missing>",
+        ));
+    };
+    let actual = blake3::hash(bytes).to_hex().to_string();
+    if actual != expected {
+        return Err(GeoObserverError::digest_mismatch(
+            detail_key, row_id, expected, actual,
+        ));
+    }
+    Ok(())
+}
+
+fn is_temporal_kind(kind: GeoObservationKind) -> bool {
+    matches!(
+        kind,
+        GeoObservationKind::PresentAtVintage | GeoObservationKind::AbsentAtVintage
+    )
+}
+
+fn validate_required_observer_string(
+    field: &'static str,
+    value: &str,
+) -> Result<(), GeoObserverError> {
+    if value.is_empty() || value.trim() != value {
+        return Err(GeoObserverError::missing_provenance_field(
+            field,
+            "Geo observer provenance fields must be non-empty and canonical-trimmed",
+            value,
+        ));
+    }
+    Ok(())
+}
+
+fn validate_interval(
+    field: &'static str,
+    interval: GeoValidTimeInterval,
+) -> Result<(), GeoObserverError> {
+    if interval.start_day > interval.end_day {
+        return Err(GeoObserverError::invalid(
+            "Geo observer valid-time intervals must be ordered",
+            [
+                ("field".to_string(), field.to_string()),
+                ("start_day".to_string(), interval.start_day.to_string()),
+                ("end_day".to_string(), interval.end_day.to_string()),
+            ],
+        ));
+    }
+    Ok(())
 }
 
 pub fn splitmix64(value: u64) -> u64 {
