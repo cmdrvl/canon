@@ -1,0 +1,413 @@
+{
+  "version": "canon_geo_deed_index_rows.v0",
+  "source_dataset": "fixture.deed_index",
+  "source_release": "fixture.release.2026-09-07.v0",
+  "source_pins": [
+    {
+      "source_table": "fixture.deed_index_rows",
+      "natural_key": "release/instrument_id",
+      "source_release": "fixture.release.2026-09-07.v0",
+      "source_release_field": "SOURCE_RELEASE",
+      "release_dt": "2026-09-07",
+      "release_dt_field": "RELEASE_DT",
+      "source_content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "source_content_sha256_field": "SOURCE_SHA256",
+      "parser_version": "fixture-parser.v0",
+      "parser_version_field": "PARSER_VERSION",
+      "license_terms": "fixture-only-not-live-recorder-proof",
+      "license_terms_field": "LICENSE_TERMS",
+      "attribution_text": "fixture deed index for canon geo D7 tests",
+      "attribution_text_field": "ATTRIBUTION_TEXT",
+      "proof_class": "fixture",
+      "source_file": "tests/fixtures/geo/deed_index_fixture.json",
+      "source_file_field": "fixture_file"
+    }
+  ],
+  "rows": [
+    {
+      "instrument_id": "inst-001",
+      "instrument_type": "mortgage",
+      "parcel_ids": ["parcel-001-a", "parcel-001-b"],
+      "recording_date": "2020-01-20",
+      "amount_cents": 12345670000,
+      "lender_party_blake3": "1111111111111111111111111111111111111111111111111111111111111111",
+      "borrower_party_blake3": "2222222222222222222222222222222222222222222222222222222222222222",
+      "source_release": "fixture.release.2026-09-07.v0",
+      "row_blake3": "1010101010101010101010101010101010101010101010101010101010101010",
+      "source_pins": [
+        {
+          "source_table": "fixture.deed_index_rows",
+          "natural_key": "release/instrument_id",
+          "source_release": "fixture.release.2026-09-07.v0",
+          "source_release_field": "SOURCE_RELEASE",
+          "release_dt": "2026-09-07",
+          "release_dt_field": "RELEASE_DT",
+          "source_content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source_content_sha256_field": "SOURCE_SHA256",
+          "parser_version": "fixture-parser.v0",
+          "parser_version_field": "PARSER_VERSION",
+          "license_terms": "fixture-only-not-live-recorder-proof",
+          "license_terms_field": "LICENSE_TERMS",
+          "attribution_text": "fixture deed index for canon geo D7 tests",
+          "attribution_text_field": "ATTRIBUTION_TEXT",
+          "proof_class": "fixture",
+          "source_file": "tests/fixtures/geo/deed_index_fixture.json",
+          "source_file_field": "fixture_file"
+        }
+      ]
+    },
+    {
+      "instrument_id": "inst-002",
+      "instrument_type": "mortgage",
+      "parcel_ids": ["parcel-002-a"],
+      "recording_date": "2020-02-20",
+      "amount_cents": 23456780000,
+      "lender_party_blake3": "3333333333333333333333333333333333333333333333333333333333333333",
+      "borrower_party_blake3": "4444444444444444444444444444444444444444444444444444444444444444",
+      "source_release": "fixture.release.2026-09-07.v0",
+      "row_blake3": "2020202020202020202020202020202020202020202020202020202020202020",
+      "source_pins": [
+        {
+          "source_table": "fixture.deed_index_rows",
+          "natural_key": "release/instrument_id",
+          "source_release": "fixture.release.2026-09-07.v0",
+          "source_release_field": "SOURCE_RELEASE",
+          "release_dt": "2026-09-07",
+          "release_dt_field": "RELEASE_DT",
+          "source_content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source_content_sha256_field": "SOURCE_SHA256",
+          "parser_version": "fixture-parser.v0",
+          "parser_version_field": "PARSER_VERSION",
+          "license_terms": "fixture-only-not-live-recorder-proof",
+          "license_terms_field": "LICENSE_TERMS",
+          "attribution_text": "fixture deed index for canon geo D7 tests",
+          "attribution_text_field": "ATTRIBUTION_TEXT",
+          "proof_class": "fixture",
+          "source_file": "tests/fixtures/geo/deed_index_fixture.json",
+          "source_file_field": "fixture_file"
+        }
+      ]
+    },
+    {
+      "instrument_id": "inst-003",
+      "instrument_type": "mortgage",
+      "parcel_ids": ["parcel-003-a", "parcel-003-b", "parcel-003-c"],
+      "recording_date": "2020-03-15",
+      "amount_cents": 34567890000,
+      "lender_party_blake3": "5555555555555555555555555555555555555555555555555555555555555555",
+      "borrower_party_blake3": "6666666666666666666666666666666666666666666666666666666666666666",
+      "source_release": "fixture.release.2026-09-07.v0",
+      "row_blake3": "3030303030303030303030303030303030303030303030303030303030303030",
+      "source_pins": [
+        {
+          "source_table": "fixture.deed_index_rows",
+          "natural_key": "release/instrument_id",
+          "source_release": "fixture.release.2026-09-07.v0",
+          "source_release_field": "SOURCE_RELEASE",
+          "release_dt": "2026-09-07",
+          "release_dt_field": "RELEASE_DT",
+          "source_content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source_content_sha256_field": "SOURCE_SHA256",
+          "parser_version": "fixture-parser.v0",
+          "parser_version_field": "PARSER_VERSION",
+          "license_terms": "fixture-only-not-live-recorder-proof",
+          "license_terms_field": "LICENSE_TERMS",
+          "attribution_text": "fixture deed index for canon geo D7 tests",
+          "attribution_text_field": "ATTRIBUTION_TEXT",
+          "proof_class": "fixture",
+          "source_file": "tests/fixtures/geo/deed_index_fixture.json",
+          "source_file_field": "fixture_file"
+        }
+      ]
+    },
+    {
+      "instrument_id": "inst-004",
+      "instrument_type": "mortgage",
+      "parcel_ids": ["parcel-004-a"],
+      "recording_date": "2020-04-10",
+      "amount_cents": 45678900000,
+      "lender_party_blake3": "7777777777777777777777777777777777777777777777777777777777777777",
+      "borrower_party_blake3": "8888888888888888888888888888888888888888888888888888888888888888",
+      "source_release": "fixture.release.2026-09-07.v0",
+      "row_blake3": "4040404040404040404040404040404040404040404040404040404040404040",
+      "source_pins": [
+        {
+          "source_table": "fixture.deed_index_rows",
+          "natural_key": "release/instrument_id",
+          "source_release": "fixture.release.2026-09-07.v0",
+          "source_release_field": "SOURCE_RELEASE",
+          "release_dt": "2026-09-07",
+          "release_dt_field": "RELEASE_DT",
+          "source_content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source_content_sha256_field": "SOURCE_SHA256",
+          "parser_version": "fixture-parser.v0",
+          "parser_version_field": "PARSER_VERSION",
+          "license_terms": "fixture-only-not-live-recorder-proof",
+          "license_terms_field": "LICENSE_TERMS",
+          "attribution_text": "fixture deed index for canon geo D7 tests",
+          "attribution_text_field": "ATTRIBUTION_TEXT",
+          "proof_class": "fixture",
+          "source_file": "tests/fixtures/geo/deed_index_fixture.json",
+          "source_file_field": "fixture_file"
+        }
+      ]
+    },
+    {
+      "instrument_id": "inst-005",
+      "instrument_type": "mortgage",
+      "parcel_ids": ["parcel-004-b"],
+      "recording_date": "2020-04-20",
+      "amount_cents": 45678900000,
+      "lender_party_blake3": "9999999999999999999999999999999999999999999999999999999999999999",
+      "borrower_party_blake3": "abababababababababababababababababababababababababababababababab",
+      "source_release": "fixture.release.2026-09-07.v0",
+      "row_blake3": "5050505050505050505050505050505050505050505050505050505050505050",
+      "source_pins": [
+        {
+          "source_table": "fixture.deed_index_rows",
+          "natural_key": "release/instrument_id",
+          "source_release": "fixture.release.2026-09-07.v0",
+          "source_release_field": "SOURCE_RELEASE",
+          "release_dt": "2026-09-07",
+          "release_dt_field": "RELEASE_DT",
+          "source_content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source_content_sha256_field": "SOURCE_SHA256",
+          "parser_version": "fixture-parser.v0",
+          "parser_version_field": "PARSER_VERSION",
+          "license_terms": "fixture-only-not-live-recorder-proof",
+          "license_terms_field": "LICENSE_TERMS",
+          "attribution_text": "fixture deed index for canon geo D7 tests",
+          "attribution_text_field": "ATTRIBUTION_TEXT",
+          "proof_class": "fixture",
+          "source_file": "tests/fixtures/geo/deed_index_fixture.json",
+          "source_file_field": "fixture_file"
+        }
+      ]
+    },
+    {
+      "instrument_id": "inst-006",
+      "instrument_type": "mortgage",
+      "parcel_ids": ["parcel-006-a"],
+      "recording_date": "2020-06-05",
+      "amount_cents": 5000000000,
+      "lender_party_blake3": "bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "borrower_party_blake3": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+      "source_release": "fixture.release.2026-09-07.v0",
+      "row_blake3": "6060606060606060606060606060606060606060606060606060606060606060",
+      "source_pins": [
+        {
+          "source_table": "fixture.deed_index_rows",
+          "natural_key": "release/instrument_id",
+          "source_release": "fixture.release.2026-09-07.v0",
+          "source_release_field": "SOURCE_RELEASE",
+          "release_dt": "2026-09-07",
+          "release_dt_field": "RELEASE_DT",
+          "source_content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source_content_sha256_field": "SOURCE_SHA256",
+          "parser_version": "fixture-parser.v0",
+          "parser_version_field": "PARSER_VERSION",
+          "license_terms": "fixture-only-not-live-recorder-proof",
+          "license_terms_field": "LICENSE_TERMS",
+          "attribution_text": "fixture deed index for canon geo D7 tests",
+          "attribution_text_field": "ATTRIBUTION_TEXT",
+          "proof_class": "fixture",
+          "source_file": "tests/fixtures/geo/deed_index_fixture.json",
+          "source_file_field": "fixture_file"
+        }
+      ]
+    },
+    {
+      "instrument_id": "inst-007",
+      "instrument_type": "mortgage",
+      "parcel_ids": [],
+      "recording_date": "2020-05-10",
+      "amount_cents": 56789010000,
+      "lender_party_blake3": "dededededededededededededededededededededededededededededededede",
+      "borrower_party_blake3": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+      "source_release": "fixture.release.2026-09-07.v0",
+      "row_blake3": "7070707070707070707070707070707070707070707070707070707070707070",
+      "source_pins": [
+        {
+          "source_table": "fixture.deed_index_rows",
+          "natural_key": "release/instrument_id",
+          "source_release": "fixture.release.2026-09-07.v0",
+          "source_release_field": "SOURCE_RELEASE",
+          "release_dt": "2026-09-07",
+          "release_dt_field": "RELEASE_DT",
+          "source_content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source_content_sha256_field": "SOURCE_SHA256",
+          "parser_version": "fixture-parser.v0",
+          "parser_version_field": "PARSER_VERSION",
+          "license_terms": "fixture-only-not-live-recorder-proof",
+          "license_terms_field": "LICENSE_TERMS",
+          "attribution_text": "fixture deed index for canon geo D7 tests",
+          "attribution_text_field": "ATTRIBUTION_TEXT",
+          "proof_class": "fixture",
+          "source_file": "tests/fixtures/geo/deed_index_fixture.json",
+          "source_file_field": "fixture_file"
+        }
+      ]
+    },
+    {
+      "instrument_id": "inst-008",
+      "instrument_type": "mortgage",
+      "parcel_ids": ["parcel-008-a"],
+      "recording_date": "2020-08-01",
+      "amount_cents": 12345670000,
+      "lender_party_blake3": "1212121212121212121212121212121212121212121212121212121212121212",
+      "borrower_party_blake3": "2323232323232323232323232323232323232323232323232323232323232323",
+      "source_release": "fixture.release.2026-09-07.v0",
+      "row_blake3": "8080808080808080808080808080808080808080808080808080808080808080",
+      "source_pins": [
+        {
+          "source_table": "fixture.deed_index_rows",
+          "natural_key": "release/instrument_id",
+          "source_release": "fixture.release.2026-09-07.v0",
+          "source_release_field": "SOURCE_RELEASE",
+          "release_dt": "2026-09-07",
+          "release_dt_field": "RELEASE_DT",
+          "source_content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source_content_sha256_field": "SOURCE_SHA256",
+          "parser_version": "fixture-parser.v0",
+          "parser_version_field": "PARSER_VERSION",
+          "license_terms": "fixture-only-not-live-recorder-proof",
+          "license_terms_field": "LICENSE_TERMS",
+          "attribution_text": "fixture deed index for canon geo D7 tests",
+          "attribution_text_field": "ATTRIBUTION_TEXT",
+          "proof_class": "fixture",
+          "source_file": "tests/fixtures/geo/deed_index_fixture.json",
+          "source_file_field": "fixture_file"
+        }
+      ]
+    },
+    {
+      "instrument_id": "inst-009",
+      "instrument_type": "deed",
+      "parcel_ids": ["parcel-009-a"],
+      "recording_date": "2020-01-18",
+      "amount_cents": 12345670000,
+      "lender_party_blake3": "3434343434343434343434343434343434343434343434343434343434343434",
+      "borrower_party_blake3": "4545454545454545454545454545454545454545454545454545454545454545",
+      "source_release": "fixture.release.2026-09-07.v0",
+      "row_blake3": "9090909090909090909090909090909090909090909090909090909090909090",
+      "source_pins": [
+        {
+          "source_table": "fixture.deed_index_rows",
+          "natural_key": "release/instrument_id",
+          "source_release": "fixture.release.2026-09-07.v0",
+          "source_release_field": "SOURCE_RELEASE",
+          "release_dt": "2026-09-07",
+          "release_dt_field": "RELEASE_DT",
+          "source_content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source_content_sha256_field": "SOURCE_SHA256",
+          "parser_version": "fixture-parser.v0",
+          "parser_version_field": "PARSER_VERSION",
+          "license_terms": "fixture-only-not-live-recorder-proof",
+          "license_terms_field": "LICENSE_TERMS",
+          "attribution_text": "fixture deed index for canon geo D7 tests",
+          "attribution_text_field": "ATTRIBUTION_TEXT",
+          "proof_class": "fixture",
+          "source_file": "tests/fixtures/geo/deed_index_fixture.json",
+          "source_file_field": "fixture_file"
+        }
+      ]
+    },
+    {
+      "instrument_id": "inst-010",
+      "instrument_type": "release",
+      "parcel_ids": ["parcel-010-a"],
+      "recording_date": "2020-02-03",
+      "amount_cents": 23456780000,
+      "lender_party_blake3": "5656565656565656565656565656565656565656565656565656565656565656",
+      "borrower_party_blake3": "6767676767676767676767676767676767676767676767676767676767676767",
+      "source_release": "fixture.release.2026-09-07.v0",
+      "row_blake3": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+      "source_pins": [
+        {
+          "source_table": "fixture.deed_index_rows",
+          "natural_key": "release/instrument_id",
+          "source_release": "fixture.release.2026-09-07.v0",
+          "source_release_field": "SOURCE_RELEASE",
+          "release_dt": "2026-09-07",
+          "release_dt_field": "RELEASE_DT",
+          "source_content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source_content_sha256_field": "SOURCE_SHA256",
+          "parser_version": "fixture-parser.v0",
+          "parser_version_field": "PARSER_VERSION",
+          "license_terms": "fixture-only-not-live-recorder-proof",
+          "license_terms_field": "LICENSE_TERMS",
+          "attribution_text": "fixture deed index for canon geo D7 tests",
+          "attribution_text_field": "ATTRIBUTION_TEXT",
+          "proof_class": "fixture",
+          "source_file": "tests/fixtures/geo/deed_index_fixture.json",
+          "source_file_field": "fixture_file"
+        }
+      ]
+    },
+    {
+      "instrument_id": "inst-011",
+      "instrument_type": "mortgage",
+      "parcel_ids": ["parcel-011-a"],
+      "recording_date": "2020-03-10",
+      "amount_cents": 34567890001,
+      "lender_party_blake3": "7878787878787878787878787878787878787878787878787878787878787878",
+      "borrower_party_blake3": "8989898989898989898989898989898989898989898989898989898989898989",
+      "source_release": "fixture.release.2026-09-07.v0",
+      "row_blake3": "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+      "source_pins": [
+        {
+          "source_table": "fixture.deed_index_rows",
+          "natural_key": "release/instrument_id",
+          "source_release": "fixture.release.2026-09-07.v0",
+          "source_release_field": "SOURCE_RELEASE",
+          "release_dt": "2026-09-07",
+          "release_dt_field": "RELEASE_DT",
+          "source_content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source_content_sha256_field": "SOURCE_SHA256",
+          "parser_version": "fixture-parser.v0",
+          "parser_version_field": "PARSER_VERSION",
+          "license_terms": "fixture-only-not-live-recorder-proof",
+          "license_terms_field": "LICENSE_TERMS",
+          "attribution_text": "fixture deed index for canon geo D7 tests",
+          "attribution_text_field": "ATTRIBUTION_TEXT",
+          "proof_class": "fixture",
+          "source_file": "tests/fixtures/geo/deed_index_fixture.json",
+          "source_file_field": "fixture_file"
+        }
+      ]
+    },
+    {
+      "instrument_id": "inst-012",
+      "instrument_type": "mortgage",
+      "parcel_ids": ["parcel-012-a"],
+      "recording_date": "2020-09-01",
+      "amount_cents": 5000000000,
+      "lender_party_blake3": "9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a",
+      "borrower_party_blake3": "acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac",
+      "source_release": "fixture.release.2026-09-07.v0",
+      "row_blake3": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+      "source_pins": [
+        {
+          "source_table": "fixture.deed_index_rows",
+          "natural_key": "release/instrument_id",
+          "source_release": "fixture.release.2026-09-07.v0",
+          "source_release_field": "SOURCE_RELEASE",
+          "release_dt": "2026-09-07",
+          "release_dt_field": "RELEASE_DT",
+          "source_content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source_content_sha256_field": "SOURCE_SHA256",
+          "parser_version": "fixture-parser.v0",
+          "parser_version_field": "PARSER_VERSION",
+          "license_terms": "fixture-only-not-live-recorder-proof",
+          "license_terms_field": "LICENSE_TERMS",
+          "attribution_text": "fixture deed index for canon geo D7 tests",
+          "attribution_text_field": "ATTRIBUTION_TEXT",
+          "proof_class": "fixture",
+          "source_file": "tests/fixtures/geo/deed_index_fixture.json",
+          "source_file_field": "fixture_file"
+        }
+      ]
+    }
+  ],
+  "max_rows": 12
+}

@@ -1,0 +1,32 @@
+[
+  {
+    "loan_id": "loan-001",
+    "amount_cents": 12345670000,
+    "origination_date": "2020-01-15"
+  },
+  {
+    "loan_id": "loan-002",
+    "amount_cents": 23456780000,
+    "origination_date": "2020-02-01"
+  },
+  {
+    "loan_id": "loan-003",
+    "amount_cents": 34567890000,
+    "origination_date": "2020-03-01"
+  },
+  {
+    "loan_id": "loan-004",
+    "amount_cents": 45678900000,
+    "origination_date": "2020-04-01"
+  },
+  {
+    "loan_id": "loan-005",
+    "amount_cents": 56789010000,
+    "origination_date": "2020-05-01"
+  },
+  {
+    "loan_id": "loan-006",
+    "amount_cents": 5000000000,
+    "origination_date": "2020-06-01"
+  }
+]
