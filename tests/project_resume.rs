@@ -1185,7 +1185,12 @@ fn t67_report_validation_rejects_forged_resource_reuse_accounting() {
 
 #[test]
 fn t67_new_rows_invalidates_only_touched_component() {
-    assert_t67_accretion_input_class("geo.new_rows.component_a", "new_rows", "new rows");
+    assert_t67_accretion_input_class(
+        "geo.new_rows.component_a",
+        "new_rows",
+        "new rows",
+        "source_adapter",
+    );
 }
 
 #[test]
@@ -1194,6 +1199,7 @@ fn t67_new_source_instance_invalidates_only_touched_component() {
         "geo.source_instance.component_a",
         "new_source_instance",
         "new source instance",
+        "source_adapter",
     );
 }
 
@@ -1203,6 +1209,7 @@ fn t67_release_replacement_with_stable_ids_invalidates_geometry_and_downstream()
         "geo.source_release.mappluto.component_a",
         "release_replacement",
         "source release replacement",
+        "source_adapter",
     );
 }
 
@@ -1212,6 +1219,7 @@ fn t67_rho_contract_change_invalidates_old_admissions() {
         "geo.rho_contract.component_a",
         "rho_contract_change",
         "rho contract",
+        "admissions",
     );
 }
 
@@ -1221,6 +1229,7 @@ fn t67_observer_characterization_or_pin_change_invalidates_old_admissions() {
         "geo.observer_characterization.component_a",
         "observer_characterization_or_pin_manifest_change",
         "observer characterization",
+        "admissions",
     );
 }
 
@@ -1230,6 +1239,7 @@ fn t67_query_as_of_change_invalidates_time_bound_section() {
         "geo.query_as_of.component_a",
         "query_as_of_change",
         "query as of",
+        "admissions",
     );
 }
 
@@ -1239,6 +1249,7 @@ fn t67_entity_level_or_profile_change_invalidates_profile_branch() {
         "geo.entity_level.profile.component_a",
         "entity_level_or_profile_change",
         "entity level profile",
+        "candidates",
     );
 }
 
@@ -1248,6 +1259,7 @@ fn t67_backend_order_or_vtree_policy_change_invalidates_solve_branch() {
         "geo.backend_order_vtree_policy.component_a",
         "backend_order_or_vtree_policy_change",
         "backend order vtree policy",
+        "solve",
     );
 }
 
@@ -3608,9 +3620,14 @@ const ACCRETION_COMPONENT_STAGES: [(&str, ProjectPlanNodeKind); 8] = [
     ("evaluation", ProjectPlanNodeKind::Evaluate),
 ];
 
-fn assert_t67_accretion_input_class(ref_id: &str, expected_class: &str, label: &str) {
+fn assert_t67_accretion_input_class(
+    ref_id: &str,
+    expected_class: &str,
+    label: &str,
+    changed_stage: &str,
+) {
     let temp = tempfile::tempdir().expect("tempdir");
-    let mut plan = two_component_accretion_plan(ref_id);
+    let mut plan = two_component_accretion_plan(ref_id, changed_stage);
     let policy = approving_policy(temp.path());
     let mut executor = DeterministicExecutor::default();
     run_project_plan(&plan, &policy, &mut executor)
@@ -3619,7 +3636,8 @@ fn assert_t67_accretion_input_class(ref_id: &str, expected_class: &str, label: &
         .expect("read first manifest head")
         .expect("first manifest head");
 
-    change_accretion_component_input(&mut plan, "component.a.source_adapter", label);
+    let changed_node_id = format!("component.a.{changed_stage}");
+    change_accretion_component_input(&mut plan, &changed_node_id, label);
 
     let mut resume_executor = DeterministicExecutor::default();
     let resumed = run_project_plan(&plan, &policy, &mut resume_executor)
@@ -3628,8 +3646,11 @@ fn assert_t67_accretion_input_class(ref_id: &str, expected_class: &str, label: &
         .expect("read second manifest head")
         .expect("second manifest head");
 
-    let affected = accretion_component_node_ids("a");
-    let unaffected = accretion_component_node_ids("b");
+    let affected = accretion_component_node_ids_from("a", changed_stage);
+    let unaffected = accretion_component_node_ids_before("a", changed_stage)
+        .into_iter()
+        .chain(accretion_component_node_ids("b"))
+        .collect::<Vec<_>>();
     assert_eq!(
         resume_executor.calls, affected,
         "T67 {label}: only the touched component should execute"
@@ -3654,7 +3675,7 @@ fn assert_t67_accretion_input_class(ref_id: &str, expected_class: &str, label: &
     let root_reason = resumed
         .invalidation_reasons
         .iter()
-        .find(|reason| reason.node_id == "component.a.source_adapter")
+        .find(|reason| reason.node_id == changed_node_id)
         .unwrap_or_else(|| panic!("T67 {label}: missing source invalidation reason"));
     assert_eq!(
         root_reason.reason,
@@ -3776,7 +3797,7 @@ fn assert_plan_outputs_and_semantic_hashes_match(
     }
 }
 
-fn two_component_accretion_plan(changed_ref_id: &str) -> ProjectPlan {
+fn two_component_accretion_plan(changed_ref_id: &str, changed_stage: &str) -> ProjectPlan {
     let mut plan = minimal_plan();
     let template = plan.nodes[0].clone();
     let mut nodes = Vec::new();
@@ -3784,11 +3805,11 @@ fn two_component_accretion_plan(changed_ref_id: &str) -> ProjectPlan {
         let mut previous = None;
         for (stage, kind) in ACCRETION_COMPONENT_STAGES {
             let node_id = format!("component.{component}.{stage}");
-            let ref_id = (stage == "source_adapter").then(|| {
+            let ref_id = (stage == changed_stage).then(|| {
                 if component == "a" {
                     changed_ref_id.to_string()
                 } else {
-                    "geo.source_rows.component_b".to_string()
+                    format!("geo.{stage}.component_b")
                 }
             });
             let dependencies = previous.into_iter().collect::<Vec<_>>();
@@ -3929,6 +3950,35 @@ fn accretion_component_node_ids(component: &str) -> Vec<String> {
         .iter()
         .map(|(stage, _)| format!("component.{component}.{stage}"))
         .collect()
+}
+
+fn accretion_component_node_ids_from(component: &str, start_stage: &str) -> Vec<String> {
+    let mut include = false;
+    let mut nodes = Vec::new();
+    for (stage, _) in ACCRETION_COMPONENT_STAGES {
+        if stage == start_stage {
+            include = true;
+        }
+        if include {
+            nodes.push(format!("component.{component}.{stage}"));
+        }
+    }
+    assert!(
+        include,
+        "T67 fixture requested unknown accretion stage {start_stage}"
+    );
+    nodes
+}
+
+fn accretion_component_node_ids_before(component: &str, stop_stage: &str) -> Vec<String> {
+    let mut nodes = Vec::new();
+    for (stage, _) in ACCRETION_COMPONENT_STAGES {
+        if stage == stop_stage {
+            return nodes;
+        }
+        nodes.push(format!("component.{component}.{stage}"));
+    }
+    panic!("T67 fixture requested unknown accretion stage {stop_stage}");
 }
 
 fn string_set(values: &[String]) -> BTreeSet<String> {
