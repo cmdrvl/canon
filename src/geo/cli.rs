@@ -11,8 +11,9 @@ use crate::{
     CanonOutput, Refusal, RefusalCode,
     cli::{
         GeoCapabilitiesCli, GeoCapabilitiesEmitMode, GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli,
-        GeoLinkSourcesCli, GeoMaterializeAddressEvidenceCli, GeoMaterializeEvidenceCli,
-        GeoMaterializeGeometryCli, GeoMaterializeH7PipBlockBatchCli, GeoMaterializeH7PopulationCli,
+        GeoLedgerCli, GeoLedgerSubcommand, GeoLedgerValidateCli, GeoLinkSourcesCli,
+        GeoMaterializeAddressEvidenceCli, GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli,
+        GeoMaterializeH7PipBlockBatchCli, GeoMaterializeH7PopulationCli,
         GeoMaterializeH7StagingBatchCli, GeoMaterializeHomeCellsCli,
         GeoMaterializeWarehouseGeometryCli, GeoPlanCli, GeoReconcileTilesCli,
         GeoReplanFromAcquisitionCli, GeoRunCli, GeoSolveCli, GeoStackEvidenceCli, GeoSubcommand,
@@ -71,6 +72,10 @@ use super::{
         canonical_geometry_tile_bytes, canonical_warehouse_geometry_bytes,
         materialize_geometry_tile, materialize_warehouse_geometry,
     },
+    ledger::{
+        CANON_GEO_COLLATERAL_LEDGER_VERSION, GeoCollateralLedger, GeoLedgerError,
+        canonical_collateral_ledger_bytes,
+    },
     materialize::{
         CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
         CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
@@ -123,6 +128,7 @@ const GEO_PLAN_NEXT_COMMAND: &str = "canon geo plan --question <QUESTION.json> -
 const GEO_RUN_NEXT_COMMAND: &str =
     "canon geo run --plan <PLAN.json> --work-dir <DIR> --input <NODE_ID:BINDING_ID=PATH>";
 const GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND: &str = "canon geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVENTORY.json> --question <QUESTION.json> --capabilities <CAPABILITIES.json> --profile <PROFILE.json> --budget <BUDGET.json> --satisfy <REQUEST_ID=RECEIPT.json> --local-artifact <LOCAL_ARTIFACT_ID=PATH> --advancement-out <ADVANCEMENT.json>";
+const GEO_LEDGER_VALIDATE_NEXT_COMMAND: &str = "canon geo ledger validate --ledger <LEDGER.json>";
 
 pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
     match &geo.command {
@@ -131,7 +137,7 @@ pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
         GeoSubcommand::Run(args) => run_geo_run(args),
         GeoSubcommand::ReplanFromAcquisition(args) => run_replan_from_acquisition(args),
         GeoSubcommand::Inspect => run_unavailable_primary("geo inspect"),
-        GeoSubcommand::Ledger => run_unavailable_primary("geo ledger"),
+        GeoSubcommand::Ledger(args) => run_ledger(args),
         GeoSubcommand::LinkSources(args) => run_link_sources(args),
         GeoSubcommand::MaterializeHomeCells(args) => run_materialize_home_cells(args),
         GeoSubcommand::TileWork(args) => run_tile_work(args),
@@ -459,6 +465,29 @@ fn run_replan_from_acquisition(args: &GeoReplanFromAcquisitionCli) -> Result<u8,
         );
     }
     write_canonical(&plan_bytes)
+}
+
+fn run_ledger(args: &GeoLedgerCli) -> Result<u8, Box<dyn Error>> {
+    match &args.command {
+        Some(GeoLedgerSubcommand::Validate(args)) => run_ledger_validate(args),
+        None => run_unavailable_primary("geo ledger"),
+    }
+}
+
+fn run_ledger_validate(args: &GeoLedgerValidateCli) -> Result<u8, Box<dyn Error>> {
+    let ledger: GeoCollateralLedger = match read_request(
+        &args.ledger,
+        "ledger",
+        CANON_GEO_COLLATERAL_LEDGER_VERSION,
+        GEO_LEDGER_VALIDATE_NEXT_COMMAND,
+    ) {
+        Ok(ledger) => ledger,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    match canonical_collateral_ledger_bytes(&ledger) {
+        Ok(bytes) => write_canonical(&bytes),
+        Err(error) => emit_ledger_error(error),
+    }
 }
 
 fn run_materialize_home_cells(args: &GeoMaterializeHomeCellsCli) -> Result<u8, Box<dyn Error>> {
@@ -2105,6 +2134,19 @@ fn emit_evidence_stack_error(error: GeoEvidenceStackError) -> Result<u8, Box<dyn
             "repair the inputs against canon_geo_population_request.v0 and canon_geo_population_evidence_stack_request.v0, then rerun canon geo stack-evidence"
                 .to_string(),
         ),
+    )
+}
+
+fn emit_ledger_error(error: GeoLedgerError) -> Result<u8, Box<dyn Error>> {
+    emit_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Geo collateral ledger artifact could not be validated",
+        json!({
+            "geo_ledger_error_code": code_name(&error.code),
+            "message": error.message,
+            "detail": error.detail,
+        }),
+        Some(GEO_LEDGER_VALIDATE_NEXT_COMMAND.to_string()),
     )
 }
 

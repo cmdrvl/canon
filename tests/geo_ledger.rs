@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+use assert_cmd::Command;
+
 mod geo {
     pub use canon::geo::*;
 }
@@ -24,7 +26,11 @@ use ledger::{
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+};
+use tempfile::tempdir;
 
 const E4_RESTACK_EVALUATION: &str =
     "../scripts/geo_measurements/fixtures/e4_gate_v2_restack_2026-09-03/e4_eval_roll.json";
@@ -39,6 +45,7 @@ const SYNTHETIC_DEAL: &str = "fixture-deal-a";
 const FORCED_REACH_NONE_CASE: &str = "3cf11e9a58e3b710";
 const FORCED_REACH_NONE_LOAN: &str = "073ad3a0862827c75501ac66570eb783";
 const FORCED_REACH_NONE_REASON: &str = "no_candidate_parcels";
+const GEO_LEDGER_VALIDATE_NEXT_COMMAND: &str = "canon geo ledger validate --ledger <LEDGER.json>";
 
 #[test]
 fn t07_fixture_gate_rows_roll_up_per_truth_plane_without_total() {
@@ -298,6 +305,65 @@ fn t07_last_observed_present_interval_is_validated_and_serialized() {
     assert_eq!(error.detail["loan_id"], inverted.rows[0].loan_id);
     assert_eq!(error.detail["start_day"], observed.end_day.to_string());
     assert_eq!(error.detail["end_day"], observed.start_day.to_string());
+}
+
+#[test]
+fn t07_geo_ledger_validate_cli_emits_canonical_ledger() {
+    let temp = tempdir().expect("tempdir");
+    let ledger = fixture_ledger();
+    let canonical =
+        canonical_collateral_ledger_bytes(&ledger).expect("fixture ledger canonicalizes");
+    let ledger_path = temp.path().join("ledger.json");
+    fs::write(&ledger_path, &canonical).expect("write ledger fixture");
+
+    let assert = canon_command()
+        .arg("geo")
+        .arg("ledger")
+        .arg("validate")
+        .arg("--ledger")
+        .arg(&ledger_path)
+        .assert()
+        .success();
+    assert!(assert.get_output().stderr.is_empty());
+    let mut expected_stdout = canonical;
+    expected_stdout.push(b'\n');
+    assert_eq!(assert.get_output().stdout, expected_stdout);
+}
+
+#[test]
+fn t23_geo_ledger_validate_cli_refuses_invalid_ledger_artifact() {
+    let temp = tempdir().expect("tempdir");
+    let mut ledger = fixture_ledger();
+    ledger.rows[0].truth_plane = None;
+    ledger.rollups = vec![roll_up_deal(&ledger.rows[1..]).expect("partial rollup")];
+    let ledger_path = temp.path().join("invalid-ledger.json");
+    fs::write(
+        &ledger_path,
+        serde_json::to_vec(&ledger).expect("invalid ledger serializes"),
+    )
+    .expect("write invalid ledger fixture");
+
+    let assert = canon_command()
+        .arg("geo")
+        .arg("ledger")
+        .arg("validate")
+        .arg("--ledger")
+        .arg(&ledger_path)
+        .assert()
+        .failure();
+    assert!(assert.get_output().stderr.is_empty());
+    let output: Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("refusal JSON parses");
+    assert_eq!(output["outcome"], "REFUSAL");
+    assert_eq!(output["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(
+        output["refusal"]["detail"]["geo_ledger_error_code"],
+        "ledger_truth_plane_pooled"
+    );
+    assert_eq!(
+        output["refusal"]["next_command"],
+        GEO_LEDGER_VALIDATE_NEXT_COMMAND
+    );
 }
 
 #[test]
@@ -613,6 +679,10 @@ fn with_evidence_reference(
 fn evidence_blake3(evidence: &GeoEvidenceCompilationArtifact) -> String {
     let canonical = canonical_evidence_compilation_bytes(evidence).expect("evidence canonicalizes");
     format!("blake3:{}", blake3::hash(&canonical).to_hex())
+}
+
+fn canon_command() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_canon"))
 }
 
 fn fixture_loan(loan_id: &str) -> GeoLedgerLoanRef {

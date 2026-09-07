@@ -282,7 +282,7 @@ pub enum GeoSubcommand {
     /// Inspect a Geo run's sections, receipts, and residual state
     Inspect,
     /// Build and inspect Geo adjudication ledgers
-    Ledger,
+    Ledger(GeoLedgerCli),
     /// Evaluate labeled composition cases without exposing labels to composition logic
     Evaluate(GeoEvaluateCli),
     /// Materialize three or more named sources into one budgeted consistency artifact
@@ -407,6 +407,25 @@ pub struct GeoReplanFromAcquisitionCli {
     /// Owned output path for canon_geo_regional_inventory_advancement.v0
     #[arg(long = "advancement-out")]
     pub advancement_out: PathBuf,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoLedgerCli {
+    #[command(subcommand)]
+    pub command: Option<GeoLedgerSubcommand>,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum GeoLedgerSubcommand {
+    /// Validate a physical collateral ledger artifact and emit canonical bytes
+    Validate(GeoLedgerValidateCli),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoLedgerValidateCli {
+    /// JSON file holding a canon_geo_collateral_ledger.v0 artifact
+    #[arg(long)]
+    pub ledger: PathBuf,
 }
 
 #[derive(Args, Debug, Clone)]
