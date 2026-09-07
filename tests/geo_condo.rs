@@ -585,13 +585,8 @@ fn assert_schema_pins(schema_text: &str, title: &str, version: &str, instance: &
         .keys()
         .cloned()
         .collect::<BTreeSet<_>>();
-    for key in instance
-        .as_object()
-        .expect("instance is an object")
-        .keys()
-        .cloned()
-    {
-        assert!(properties.contains(&key), "schema does not declare {key}");
+    for key in instance.as_object().expect("instance is an object").keys() {
+        assert!(properties.contains(key), "schema does not declare {key}");
     }
     for key in schema["required"]
         .as_array()
