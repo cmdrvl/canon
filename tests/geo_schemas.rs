@@ -60,6 +60,7 @@ use canon::geo::{
     CANON_GEO_ADDRESS_PARSE_FOREST_VERSION, CANON_GEO_ADDRESS_PARSE_REQUEST_VERSION,
     CANON_GEO_CAPABILITIES_VERSION, CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION,
     CANON_GEO_COLLATERAL_LEDGER_VERSION, CANON_GEO_COMPOSITION_REQUEST_VERSION,
+    CANON_GEO_DEED_INDEX_ROWS_VERSION, CANON_GEO_DEED_TRUTH_VERSION,
     CANON_GEO_ERROR_POPULATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
     CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_H7_ACRIS_RELEASE_DT,
     CANON_GEO_H7_AMOUNT_CENTS_QUANTIZATION, CANON_GEO_H7_BRIDGE_BUILD_ID,
@@ -90,15 +91,15 @@ use canon::geo::{
     GeoClientTileSourceFormat, GeoClientTileVendorIdentifier, GeoCollateralLedger,
     GeoCollateralLedgerProofClass, GeoCompositionModel, GeoCompositionProfile,
     GeoCompositionRequest, GeoCompositionStatus, GeoCompositionUniverse, GeoControlEntityLevel,
-    GeoCoveragePredicate, GeoEgressClass, GeoEntityLevel, GeoEntityRef, GeoErrorPopulationArtifact,
-    GeoErrorPopulationSubject, GeoEvidenceClaimRole, GeoEvidenceClass,
-    GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoExactSourceUnitMm,
-    GeoExplanationBudget, GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoH7AssociationPlane,
-    GeoH7BoroughEdge, GeoH7CandidateReachStatus, GeoH7FiledCountyMapping, GeoH7MapplutoReleasePin,
-    GeoH7PlaneDenominator, GeoH7PopulationProvenance, GeoH7PopulationRowsRequest,
-    GeoH7PopulationScope, GeoH7PopulationWarehouseRow, GeoH7QueryDisposition, GeoH7QueryReceipt,
-    GeoH7ResultMode, GeoH7SourceEvidenceRecord, GeoH7SourceRecordRole,
-    GeoH7StagingEvidenceRecordRef, GeoH7StagingSourceEvidenceRecord,
+    GeoCoveragePredicate, GeoDeedIndexRowsRequest, GeoDeedTruthLoanRef, GeoEgressClass,
+    GeoEntityLevel, GeoEntityRef, GeoErrorPopulationArtifact, GeoErrorPopulationSubject,
+    GeoEvidenceClaimRole, GeoEvidenceClass, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef,
+    GeoExactSourceUnitMm, GeoExplanationBudget, GeoGeometryFeatureInput, GeoGeometryTileRequest,
+    GeoH7AssociationPlane, GeoH7BoroughEdge, GeoH7CandidateReachStatus, GeoH7FiledCountyMapping,
+    GeoH7MapplutoReleasePin, GeoH7PlaneDenominator, GeoH7PopulationProvenance,
+    GeoH7PopulationRowsRequest, GeoH7PopulationScope, GeoH7PopulationWarehouseRow,
+    GeoH7QueryDisposition, GeoH7QueryReceipt, GeoH7ResultMode, GeoH7SourceEvidenceRecord,
+    GeoH7SourceRecordRole, GeoH7StagingEvidenceRecordRef, GeoH7StagingSourceEvidenceRecord,
     GeoH7StagingSourceRecordBytesBatchRequest, GeoH7StagingSourceRecordBytesRow, GeoHardConstraint,
     GeoHardConstraintKind, GeoHomeCellAssignmentArtifact, GeoHomeCellRow, GeoHomeCellRowsRequest,
     GeoIdentityParticipation, GeoIntegerMeasure, GeoIntegerMemberValue, GeoIntegerValueOrigin,
@@ -126,17 +127,19 @@ use canon::geo::{
     GeoWarehouseEvidenceRow, GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest,
     GeoWarehouseParcelRow, GeoWarehouseRowsRequest, build_collateral_ledger,
     canonical_collateral_ledger_bytes, canonical_composition_bytes,
-    canonical_error_population_bytes, canonical_explanation_bytes, canonical_next_evidence_bytes,
+    canonical_deed_index_rows_bytes, canonical_deed_truth_bytes, canonical_error_population_bytes,
+    canonical_explanation_bytes, canonical_next_evidence_bytes,
     canonical_next_evidence_inputs_bytes, canonical_next_evidence_request_bytes,
     canonical_pre_resolution_bytes, canonical_propagation_bytes, canonical_redacted_artifact_bytes,
     canonical_separation_bytes, canonical_separation_inputs_bytes,
     canonical_separation_request_bytes, compile_evidence, correction_sets,
-    default_geo_capabilities, evaluate_pad_membership, evaluate_population,
-    ingest_client_geometry_tile, materialize_geo_multisource, materialize_geometry_tile,
-    materialize_h7_population_rows, materialize_home_cells, materialize_pre_resolution,
-    materialize_tile_work_unit, materialize_warehouse_geometry, minimal_core, parse_address_forest,
-    propagate, recommend, reconcile_tile_decisions, redact_geo_artifact,
-    regional_inventory_semantic_hash, separate, solve_composition, stack_population_evidence,
+    default_geo_capabilities, derive_deed_truth_from_index, evaluate_pad_membership,
+    evaluate_population, ingest_client_geometry_tile, materialize_geo_multisource,
+    materialize_geometry_tile, materialize_h7_population_rows, materialize_home_cells,
+    materialize_pre_resolution, materialize_tile_work_unit, materialize_warehouse_geometry,
+    minimal_core, parse_address_forest, propagate, recommend, reconcile_tile_decisions,
+    redact_geo_artifact, regional_inventory_semantic_hash, separate, solve_composition,
+    stack_population_evidence, validate_deed_index_rows_request, validate_deed_truth_artifact,
     validate_point_population_artifact, validate_pre_resolution_artifact,
     validate_redacted_artifact,
 };
@@ -163,6 +166,11 @@ const POPULATION_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.population_request.v0.schema.json");
 const POPULATION_EVALUATION_SCHEMA: &str =
     include_str!("../schemas/canon.geo.population_evaluation.v0.schema.json");
+const DEED_INDEX_ROWS_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.deed_index_rows.v0.schema.json");
+const DEED_TRUTH_SCHEMA: &str = include_str!("../schemas/canon.geo.deed_truth.v0.schema.json");
+const DEED_INDEX_FIXTURE: &str = include_str!("fixtures/geo/deed_index_fixture.json");
+const DEED_TRUTH_LOANS_FIXTURE: &str = include_str!("fixtures/geo/deed_truth_loans_fixture.json");
 const POINT_POPULATION_SCHEMA: &str =
     include_str!("../schemas/canon.geo.point_population.v0.schema.json");
 const PRE_RESOLUTION_SCHEMA: &str =
@@ -4087,6 +4095,40 @@ fn population_evaluation_artifact_schema_matches_a_real_instance() {
         POPULATION_EVALUATION_SCHEMA,
         "canon.geo.population_evaluation.v0",
         "canon_geo_population_evaluation.v0",
+        &instance,
+    );
+}
+
+#[test]
+fn deed_index_rows_schema_matches_a_real_instance() {
+    let request: GeoDeedIndexRowsRequest =
+        serde_json::from_str(DEED_INDEX_FIXTURE).expect("deed index fixture parses");
+    validate_deed_index_rows_request(&request).expect("deed index fixture validates");
+    let bytes = canonical_deed_index_rows_bytes(&request).expect("deed index serializes");
+    let instance: Value = serde_json::from_slice(&bytes).expect("deed index JSON parses");
+    assert_drift_free(
+        DEED_INDEX_ROWS_SCHEMA,
+        "canon.geo.deed_index_rows.v0",
+        CANON_GEO_DEED_INDEX_ROWS_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn deed_truth_schema_matches_a_real_instance() {
+    let deed_index: GeoDeedIndexRowsRequest =
+        serde_json::from_str(DEED_INDEX_FIXTURE).expect("deed index fixture parses");
+    let loans: Vec<GeoDeedTruthLoanRef> =
+        serde_json::from_str(DEED_TRUTH_LOANS_FIXTURE).expect("deed truth loans parse");
+    let artifact =
+        derive_deed_truth_from_index(&loans, &deed_index, 45).expect("deed truth fixture derives");
+    validate_deed_truth_artifact(&artifact).expect("deed truth artifact validates");
+    let bytes = canonical_deed_truth_bytes(&artifact).expect("deed truth serializes");
+    let instance: Value = serde_json::from_slice(&bytes).expect("deed truth JSON parses");
+    assert_drift_free(
+        DEED_TRUTH_SCHEMA,
+        "canon.geo.deed_truth.v0",
+        CANON_GEO_DEED_TRUTH_VERSION,
         &instance,
     );
 }
