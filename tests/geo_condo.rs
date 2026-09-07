@@ -4,10 +4,10 @@ use canon::geo::{
     CANON_GEO_CONDO_BRIDGE_PAD_METHOD, CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION,
     CANON_GEO_LEDGER_BRIDGE_VERSION, GEO_CONDO_CONFIRMATION_INSUFFICIENT, GeoCandidateReachStatus,
     GeoCanonicalPolygonMm, GeoCanonicalRingMm, GeoCondoBridgeCaseRequest, GeoCondoBridgeReachKind,
-    GeoCondoBridgeRequest, GeoCondoConfirmation, GeoCondoUnitBridgeRequest, GeoEntityLevel,
-    GeoEntityRef, GeoIdentityRelation, GeoLedgerBridge, GeoLinearRingMm, GeoPadBblRow, GeoPointMm,
-    GeoPopulationCaseTruthReachByGrain, GeoPopulationEvaluationRequest, GeoTruthReachByGrain,
-    GeoTruthRepresentationGrain, bridge_condo_unit, build_condo_bridge,
+    GeoCondoBridgeRequest, GeoCondoConfirmation, GeoCondoSourcePin, GeoCondoUnitBridgeRequest,
+    GeoEntityLevel, GeoEntityRef, GeoIdentityRelation, GeoLedgerBridge, GeoLinearRingMm,
+    GeoPadBblRow, GeoPointMm, GeoPopulationCaseTruthReachByGrain, GeoPopulationEvaluationRequest,
+    GeoTruthReachByGrain, GeoTruthRepresentationGrain, bridge_condo_unit, build_condo_bridge,
     canonical_condo_bridge_bytes, canonical_condo_unit_bridge_request_bytes,
     canonical_ledger_bridge_bytes, evaluate_population_with_truth_reach_by_grain,
     footprint_majority_area_inside_parcel, validate_condo_bridge_artifact,
@@ -38,9 +38,40 @@ fn replay_pad_condo_bridge_fixture_exactly() {
         serde_json::from_slice(&canonical_bytes).expect("canonical artifact parses");
     assert_eq!(reparsed["version"], "canon_geo_condo_bridge.v0");
     assert!(artifact.source_dataset.starts_with("fixture."));
+    assert_eq!(artifact.source_pins, vec![fixture_pad_source_pin()]);
 
     let expected = read_json(fixture_path("condo_bridge_pad.json"));
     assert_eq!(receipt_projection(&artifact), expected);
+}
+
+#[test]
+fn condo_bridge_rows_preserve_source_pin_attribution() {
+    let artifact = build_condo_bridge(&fixture_bridge_request()).expect("bridge builds");
+    let mapping = artifact
+        .rows
+        .iter()
+        .flat_map(|row| row.lot_mappings.iter())
+        .find(|mapping| !mapping.source_pins.is_empty())
+        .expect("mapped fixture rows carry source pins");
+
+    let source_pin = mapping
+        .source_pins
+        .iter()
+        .find(|pin| pin.source_table == "EDGAR_DB.SOURCE.NYC_DCP_PAD_BBL_HOT")
+        .expect("mapping carries the PAD source pin");
+    assert_eq!(source_pin.source_release, "26B");
+    assert_eq!(
+        source_pin.source_content_sha256.as_deref(),
+        Some("016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd")
+    );
+    assert_eq!(
+        source_pin.license_terms,
+        "Public NYC Department of City Planning Bytes of the Big Apple release for informational purposes only; DCP disclaims completeness, accuracy, content, and fitness warranties."
+    );
+    assert_eq!(
+        source_pin.attribution_text,
+        "NYC Department of City Planning (DCP)"
+    );
 }
 
 #[test]
@@ -106,6 +137,7 @@ fn matched_zero_or_ambiguous_billing_rows_stay_unmapped() {
         source_dataset: "fixture.negative.pad_bbl".to_string(),
         source_release: "test".to_string(),
         source_lineage_ids: vec!["fixture.negative.pad_bbl".to_string()],
+        source_pins: vec![fixture_pad_source_pin()],
         max_pad_rows: 8,
         max_cases: 1,
         pad_rows: vec![
@@ -246,6 +278,7 @@ fn t11_condo_bridge_confirms_only_when_block_and_geometry_agree() {
     assert_eq!(bridge.confirmation, GeoCondoConfirmation::BlockAndGeometry);
     assert_eq!(bridge.billing_bbl.as_deref(), Some("1004540041"));
     assert_eq!(bridge.bins, vec!["1006494".to_string()]);
+    assert_eq!(bridge.source_pins, vec![fixture_geometry_source_pin()]);
     assert_eq!(bridge.abstained_reason, None);
     assert_eq!(
         bridge.relations,
@@ -451,6 +484,7 @@ fn fixture_unit_request_from_fixture(
             .collect(),
         block: block.to_string(),
         frame_id: fixture.frame_id.clone(),
+        source_pins: vec![fixture_geometry_source_pin()],
         parcel_rings,
         footprint_rings,
     }
@@ -603,6 +637,7 @@ fn fixture_bridge_request() -> GeoCondoBridgeRequest {
         source_dataset: "fixture.mcp_stack_2026_09_03.pad_bbl".to_string(),
         source_release: "26B_2026-05-01".to_string(),
         source_lineage_ids: vec!["EDGAR_DB.SOURCE.NYC_DCP_PAD_BBL_HOT:26B".to_string()],
+        source_pins: vec![fixture_pad_source_pin()],
         pad_rows: read_pad_rows(),
         cases,
         max_pad_rows: 1_000,
@@ -660,6 +695,55 @@ fn pad_row(
         billing_bbl_key: billing_bbl_key.map(str::to_string),
         condo_number: Some(condo_number),
         condo_flag: Some("C".to_string()),
+        release: None,
+        release_dt: None,
+        source_row_number: None,
+        source_file: None,
+        source_filename: None,
+        source_zip_sha256: None,
+        parser_version: None,
+        license_terms: None,
+        attribution_text: None,
+    }
+}
+
+fn fixture_pad_source_pin() -> GeoCondoSourcePin {
+    GeoCondoSourcePin {
+        source_table: "EDGAR_DB.SOURCE.NYC_DCP_PAD_BBL_HOT".to_string(),
+        natural_key: "release/source_row_number".to_string(),
+        source_release: "26B".to_string(),
+        release_dt: Some("2026-05-01".to_string()),
+        variant: None,
+        source_row_number: None,
+        source_file: Some("bobabbl.txt".to_string()),
+        source_file_field: Some("SOURCE_FILE".to_string()),
+        source_content_sha256: Some(
+            "016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd".to_string(),
+        ),
+        source_content_sha256_field: Some("SOURCE_ZIP_SHA256".to_string()),
+        parser_version: Some("2026-08-16".to_string()),
+        license_terms: "Public NYC Department of City Planning Bytes of the Big Apple release for informational purposes only; DCP disclaims completeness, accuracy, content, and fitness warranties.".to_string(),
+        attribution_text: "NYC Department of City Planning (DCP)".to_string(),
+    }
+}
+
+fn fixture_geometry_source_pin() -> GeoCondoSourcePin {
+    GeoCondoSourcePin {
+        source_table: "fixture.geometry".to_string(),
+        natural_key: "fixture_row".to_string(),
+        source_release: "fixture-release".to_string(),
+        release_dt: Some("2026-09-03".to_string()),
+        variant: None,
+        source_row_number: Some(1),
+        source_file: Some("fixture-geometry.json".to_string()),
+        source_file_field: Some("fixture_file".to_string()),
+        source_content_sha256: Some(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
+        ),
+        source_content_sha256_field: Some("fixture_sha256".to_string()),
+        parser_version: Some("fixture-parser-v1".to_string()),
+        license_terms: "fixture-only geometry terms".to_string(),
+        attribution_text: "fixture-only geometry attribution".to_string(),
     }
 }
 

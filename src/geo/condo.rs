@@ -30,6 +30,7 @@ pub struct GeoCondoBridgeRequest {
     pub source_dataset: String,
     pub source_release: String,
     pub source_lineage_ids: Vec<String>,
+    pub source_pins: Vec<GeoCondoSourcePin>,
     pub pad_rows: Vec<GeoPadBblRow>,
     pub cases: Vec<GeoCondoBridgeCaseRequest>,
     pub max_pad_rows: usize,
@@ -45,8 +46,35 @@ pub struct GeoCondoUnitBridgeRequest {
     pub bin_candidates: Vec<String>,
     pub block: String,
     pub frame_id: String,
+    pub source_pins: Vec<GeoCondoSourcePin>,
     pub parcel_rings: BTreeMap<String, GeoCanonicalPolygonMm>,
     pub footprint_rings: BTreeMap<String, GeoCanonicalPolygonMm>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoCondoSourcePin {
+    pub source_table: String,
+    pub natural_key: String,
+    pub source_release: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release_dt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_row_number: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_file: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_file_field: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_content_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_content_sha256_field: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parser_version: Option<String>,
+    pub license_terms: String,
+    pub attribution_text: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -69,6 +97,7 @@ pub struct GeoLedgerBridge {
     pub bins: Vec<String>,
     pub confirmation: GeoCondoConfirmation,
     pub relations: Vec<GeoLedgerBridgeRelation>,
+    pub source_pins: Vec<GeoCondoSourcePin>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub abstained_reason: Option<String>,
 }
@@ -87,6 +116,24 @@ pub struct GeoPadBblRow {
     pub condo_number: Option<u64>,
     #[serde(default, rename = "CONDO_FLAG")]
     pub condo_flag: Option<String>,
+    #[serde(default, rename = "RELEASE")]
+    pub release: Option<String>,
+    #[serde(default, rename = "RELEASE_DT")]
+    pub release_dt: Option<String>,
+    #[serde(default, rename = "SOURCE_ROW_NUMBER")]
+    pub source_row_number: Option<u64>,
+    #[serde(default, rename = "SOURCE_FILE")]
+    pub source_file: Option<String>,
+    #[serde(default, rename = "SOURCE_FILENAME")]
+    pub source_filename: Option<String>,
+    #[serde(default, rename = "SOURCE_ZIP_SHA256")]
+    pub source_zip_sha256: Option<String>,
+    #[serde(default, rename = "PARSER_VERSION")]
+    pub parser_version: Option<String>,
+    #[serde(default, rename = "LICENSE_TERMS")]
+    pub license_terms: Option<String>,
+    #[serde(default, rename = "ATTRIBUTION_TEXT")]
+    pub attribution_text: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -107,6 +154,7 @@ pub struct GeoCondoBridgeArtifact {
     pub source_dataset: String,
     pub source_release: String,
     pub source_lineage_ids: Vec<String>,
+    pub source_pins: Vec<GeoCondoSourcePin>,
     pub request_blake3: String,
     pub stats: GeoCondoBridgeStats,
     pub rows: Vec<GeoCondoBridgeCase>,
@@ -157,6 +205,8 @@ pub struct GeoCondoLotMapping {
     pub pad_bbl_keys: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub match_kind: Option<GeoCondoPadMatchKind>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_pins: Vec<GeoCondoSourcePin>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -168,6 +218,8 @@ pub struct GeoCondoUnmappedLot {
     pub candidate_billing_lots: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pad_bbl_keys: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_pins: Vec<GeoCondoSourcePin>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -377,6 +429,14 @@ pub fn validate_ledger_bridge_artifact(bridge: &GeoLedgerBridge) -> Result<(), G
         ));
     }
     validate_string("unit_bbl", &bridge.unit_bbl)?;
+    let mut source_pins = bridge.source_pins.clone();
+    validate_source_pins("source_pins", &mut source_pins, true)?;
+    if source_pins != bridge.source_pins {
+        return Err(GeoCondoError::invalid(
+            "Geo ledger bridge source_pins must be sorted and distinct",
+            [("field", "source_pins")],
+        ));
+    }
     validate_sorted_strings_readonly("bins", &bridge.bins)?;
     for (left, relation, right) in &bridge.relations {
         validate_identity_relation(left, right, *relation).map_err(|error| {
@@ -509,7 +569,7 @@ pub fn build_condo_bridge(
     let index = PadIndex::new(&request.pad_rows);
     let mut rows = Vec::new();
     for case in &request.cases {
-        let case_row = bridge_case(case, &index)?;
+        let case_row = bridge_case(case, &index, &request.source_pins)?;
         if case_row.unit_lots > 0 {
             rows.push(case_row);
         }
@@ -523,6 +583,7 @@ pub fn build_condo_bridge(
         source_dataset: request.source_dataset.clone(),
         source_release: request.source_release.clone(),
         source_lineage_ids: request.source_lineage_ids.clone(),
+        source_pins: request.source_pins.clone(),
         request_blake3: condo_bridge_request_blake3(&request)?,
         stats,
         rows,
@@ -559,6 +620,7 @@ pub fn canonicalize_condo_bridge_request(
         &mut canonical.source_lineage_ids,
         true,
     )?;
+    validate_source_pins("source_pins", &mut canonical.source_pins, true)?;
     for row in &canonical.pad_rows {
         validate_pad_row(row)?;
     }
@@ -634,6 +696,14 @@ pub fn validate_condo_bridge_artifact(
             [("field", "source_lineage_ids")],
         ));
     }
+    let mut source_pins = artifact.source_pins.clone();
+    validate_source_pins("source_pins", &mut source_pins, true)?;
+    if source_pins != artifact.source_pins {
+        return Err(GeoCondoError::invalid(
+            "Geo condo bridge source_pins must be sorted and distinct",
+            [("field", "source_pins")],
+        ));
+    }
 
     let stats = summarize_rows(&artifact.rows)?;
     if stats != artifact.stats {
@@ -662,6 +732,7 @@ pub fn validate_condo_bridge_artifact(
 fn bridge_case(
     case: &GeoCondoBridgeCaseRequest,
     index: &PadIndex,
+    fallback_source_pins: &[GeoCondoSourcePin],
 ) -> Result<GeoCondoBridgeCase, GeoCondoError> {
     let truth_original = sorted_unique(&case.truth_parcels);
     let universe_original = sorted_unique(&case.universe_parcels);
@@ -672,6 +743,7 @@ fn bridge_case(
     let truth_billing = reexpress_lots(
         &truth_original,
         index,
+        fallback_source_pins,
         true,
         &mut lot_mappings,
         &mut unmapped_lots,
@@ -681,6 +753,7 @@ fn bridge_case(
     let universe_billing = reexpress_lots(
         &universe_original,
         index,
+        fallback_source_pins,
         false,
         &mut ignored_mappings,
         &mut ignored_unmapped,
@@ -708,13 +781,14 @@ fn bridge_case(
 fn reexpress_lots(
     lots: &[String],
     index: &PadIndex,
+    fallback_source_pins: &[GeoCondoSourcePin],
     record_mappings: bool,
     mappings: &mut Vec<GeoCondoLotMapping>,
     unmapped: &mut Vec<GeoCondoUnmappedLot>,
 ) -> Result<Vec<String>, GeoCondoError> {
     let mut output = BTreeSet::new();
     for lot in lots {
-        let resolution = resolve_unit_lot(lot, index)?;
+        let resolution = resolve_unit_lot(lot, index, fallback_source_pins)?;
         if resolution.mapping.match_kind.is_some() {
             if record_mappings {
                 mappings.push(resolution.mapping.clone());
@@ -732,7 +806,11 @@ fn reexpress_lots(
     Ok(output.into_iter().collect())
 }
 
-fn resolve_unit_lot(lot: &str, index: &PadIndex) -> Result<LotResolution, GeoCondoError> {
+fn resolve_unit_lot(
+    lot: &str,
+    index: &PadIndex,
+    fallback_source_pins: &[GeoCondoSourcePin],
+) -> Result<LotResolution, GeoCondoError> {
     let block = block_key(lot)?;
     let matches = index
         .rows_by_block
@@ -746,10 +824,14 @@ fn resolve_unit_lot(lot: &str, index: &PadIndex) -> Result<LotResolution, GeoCon
     let mut billing_lots = BTreeSet::new();
     let mut pad_bbl_keys = BTreeSet::new();
     let mut condo_numbers = BTreeSet::new();
+    let mut source_pins = BTreeSet::new();
     let mut has_exact = false;
     for row in matches {
         pad_bbl_keys.insert(row.bbl_key.clone());
         has_exact |= row.bbl_key == lot;
+        if let Some(source_pin) = pad_source_pin_from_row(row) {
+            source_pins.insert(source_pin);
+        }
         if let Some(billing_lot) = &row.billing_bbl_key {
             billing_lots.insert(billing_lot.clone());
         }
@@ -760,6 +842,10 @@ fn resolve_unit_lot(lot: &str, index: &PadIndex) -> Result<LotResolution, GeoCon
 
     let candidate_billing_lots = billing_lots.into_iter().collect::<Vec<_>>();
     let pad_bbl_keys = pad_bbl_keys.into_iter().collect::<Vec<_>>();
+    if source_pins.is_empty() && !pad_bbl_keys.is_empty() {
+        source_pins.extend(fallback_source_pins.iter().cloned());
+    }
+    let source_pins = source_pins.into_iter().collect::<Vec<_>>();
     let condo_number = single_value(&condo_numbers);
     let match_kind = (!pad_bbl_keys.is_empty()).then_some(if has_exact {
         GeoCondoPadMatchKind::ExactRow
@@ -793,12 +879,14 @@ fn resolve_unit_lot(lot: &str, index: &PadIndex) -> Result<LotResolution, GeoCon
         candidate_billing_lots: candidate_billing_lots.clone(),
         pad_bbl_keys: pad_bbl_keys.clone(),
         match_kind,
+        source_pins: source_pins.clone(),
     };
     let unmapped = reason.map(|reason| GeoCondoUnmappedLot {
         unit_lot: lot.to_string(),
         reason,
         candidate_billing_lots,
         pad_bbl_keys,
+        source_pins,
     });
     Ok(LotResolution { mapping, unmapped })
 }
@@ -905,6 +993,7 @@ fn canonicalize_condo_unit_bridge_request(
     validate_string("frame_id", &request.frame_id)?;
 
     let mut canonical = request.clone();
+    validate_source_pins("source_pins", &mut canonical.source_pins, true)?;
     sort_dedup_strings(
         "billing_bbl_candidates",
         &mut canonical.billing_bbl_candidates,
@@ -938,6 +1027,7 @@ fn confirmed_ledger_bridge(
         bins: bins.to_vec(),
         confirmation: GeoCondoConfirmation::BlockAndGeometry,
         relations,
+        source_pins: request.source_pins.clone(),
         abstained_reason: None,
     };
     validate_ledger_bridge_artifact(&bridge)?;
@@ -956,6 +1046,7 @@ fn abstained_ledger_bridge(
         bins: Vec::new(),
         confirmation,
         relations: Vec::new(),
+        source_pins: request.source_pins.clone(),
         abstained_reason: Some(format!("{GEO_CONDO_CONFIRMATION_INSUFFICIENT}:{reason}")),
     };
     validate_ledger_bridge_artifact(&bridge)?;
@@ -1119,7 +1210,163 @@ fn validate_pad_row(row: &GeoPadBblRow) -> Result<(), GeoCondoError> {
     if let Some(condo_flag) = &row.condo_flag {
         validate_string("pad_rows[].CONDO_FLAG", condo_flag)?;
     }
+    validate_optional_string("pad_rows[].RELEASE", &row.release)?;
+    validate_optional_string("pad_rows[].RELEASE_DT", &row.release_dt)?;
+    validate_optional_string("pad_rows[].SOURCE_FILE", &row.source_file)?;
+    validate_optional_string("pad_rows[].SOURCE_FILENAME", &row.source_filename)?;
+    validate_optional_string("pad_rows[].PARSER_VERSION", &row.parser_version)?;
+    validate_optional_string("pad_rows[].LICENSE_TERMS", &row.license_terms)?;
+    validate_optional_string("pad_rows[].ATTRIBUTION_TEXT", &row.attribution_text)?;
+    if let Some(source_row_number) = row.source_row_number
+        && source_row_number == 0
+    {
+        return Err(GeoCondoError::invalid(
+            "Geo condo bridge PAD source row numbers are one-based",
+            [("field", "pad_rows[].SOURCE_ROW_NUMBER")],
+        ));
+    }
+    if let Some(source_zip_sha256) = &row.source_zip_sha256 {
+        validate_sha256("pad_rows[].SOURCE_ZIP_SHA256", source_zip_sha256)?;
+    }
+    if pad_row_has_source_pin(row) {
+        if row.release.is_none()
+            || row.release_dt.is_none()
+            || row.source_row_number.is_none()
+            || row.source_zip_sha256.is_none()
+            || row.parser_version.is_none()
+        {
+            return Err(GeoCondoError::invalid(
+                "Geo condo bridge PAD provenance rows require release, source row, source hash, and parser pins",
+                [("field", "pad_rows[]")],
+            ));
+        }
+        if row.license_terms.is_none() || row.attribution_text.is_none() {
+            return Err(GeoCondoError::invalid(
+                "Geo condo bridge PAD provenance rows must carry license and attribution text",
+                [("field", "pad_rows[]")],
+            ));
+        }
+    }
     Ok(())
+}
+
+fn validate_source_pins(
+    field: &str,
+    pins: &mut Vec<GeoCondoSourcePin>,
+    require_nonempty: bool,
+) -> Result<(), GeoCondoError> {
+    if require_nonempty && pins.is_empty() {
+        return Err(GeoCondoError::invalid(
+            "Geo condo bridge source pins must be non-empty",
+            [("field", field)],
+        ));
+    }
+    for pin in pins.iter() {
+        validate_source_pin(field, pin)?;
+    }
+    pins.sort();
+    pins.dedup();
+    Ok(())
+}
+
+fn validate_source_pin(field: &str, pin: &GeoCondoSourcePin) -> Result<(), GeoCondoError> {
+    validate_string(&format!("{field}[].source_table"), &pin.source_table)?;
+    validate_string(&format!("{field}[].natural_key"), &pin.natural_key)?;
+    validate_string(&format!("{field}[].source_release"), &pin.source_release)?;
+    validate_optional_string(&format!("{field}[].release_dt"), &pin.release_dt)?;
+    validate_optional_string(&format!("{field}[].variant"), &pin.variant)?;
+    validate_optional_string(&format!("{field}[].source_file"), &pin.source_file)?;
+    validate_optional_string(
+        &format!("{field}[].source_file_field"),
+        &pin.source_file_field,
+    )?;
+    validate_optional_string(
+        &format!("{field}[].source_content_sha256_field"),
+        &pin.source_content_sha256_field,
+    )?;
+    validate_optional_string(&format!("{field}[].parser_version"), &pin.parser_version)?;
+    validate_string(&format!("{field}[].license_terms"), &pin.license_terms)?;
+    validate_string(
+        &format!("{field}[].attribution_text"),
+        &pin.attribution_text,
+    )?;
+    if let Some(source_row_number) = pin.source_row_number
+        && source_row_number == 0
+    {
+        return Err(GeoCondoError::invalid(
+            "Geo condo bridge source pins use one-based source row numbers",
+            [("field", format!("{field}[].source_row_number"))],
+        ));
+    }
+    match (&pin.source_file, &pin.source_file_field) {
+        (Some(_), Some(_)) | (None, None) => {}
+        (Some(_), None) | (None, Some(_)) => {
+            return Err(GeoCondoError::invalid(
+                "Geo condo bridge source file pins require value and field name together",
+                [("field", format!("{field}[].source_file"))],
+            ));
+        }
+    }
+    match (&pin.source_content_sha256, &pin.source_content_sha256_field) {
+        (Some(source_content_sha256), Some(_)) => {
+            validate_sha256(
+                &format!("{field}[].source_content_sha256"),
+                source_content_sha256,
+            )?;
+        }
+        (None, None) => {}
+        (Some(_), None) | (None, Some(_)) => {
+            return Err(GeoCondoError::invalid(
+                "Geo condo bridge source content pins require SHA-256 value and field name together",
+                [("field", format!("{field}[].source_content_sha256"))],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn pad_row_has_source_pin(row: &GeoPadBblRow) -> bool {
+    row.release.is_some()
+        || row.release_dt.is_some()
+        || row.source_row_number.is_some()
+        || row.source_file.is_some()
+        || row.source_filename.is_some()
+        || row.source_zip_sha256.is_some()
+        || row.parser_version.is_some()
+        || row.license_terms.is_some()
+        || row.attribution_text.is_some()
+}
+
+fn pad_source_pin_from_row(row: &GeoPadBblRow) -> Option<GeoCondoSourcePin> {
+    let source_release = row.release.clone()?;
+    let license_terms = row.license_terms.clone()?;
+    let attribution_text = row.attribution_text.clone()?;
+    let (source_file, source_file_field) = match (&row.source_file, &row.source_filename) {
+        (Some(source_file), _) => (Some(source_file.clone()), Some("SOURCE_FILE".to_string())),
+        (None, Some(source_filename)) => (
+            Some(source_filename.clone()),
+            Some("SOURCE_FILENAME".to_string()),
+        ),
+        (None, None) => (None, None),
+    };
+    Some(GeoCondoSourcePin {
+        source_table: "EDGAR_DB.SOURCE.NYC_DCP_PAD_BBL_HOT".to_string(),
+        natural_key: "release/source_row_number".to_string(),
+        source_release,
+        release_dt: row.release_dt.clone(),
+        variant: None,
+        source_row_number: row.source_row_number,
+        source_file,
+        source_file_field,
+        source_content_sha256: row.source_zip_sha256.clone(),
+        source_content_sha256_field: row
+            .source_zip_sha256
+            .as_ref()
+            .map(|_| "SOURCE_ZIP_SHA256".to_string()),
+        parser_version: row.parser_version.clone(),
+        license_terms,
+        attribution_text,
+    })
 }
 
 fn validate_case_request(case: &GeoCondoBridgeCaseRequest) -> Result<(), GeoCondoError> {
@@ -1207,6 +1454,18 @@ fn validate_mappings(mappings: &[GeoCondoLotMapping]) -> Result<(), GeoCondoErro
             &mapping.candidate_billing_lots,
         )?;
         validate_sorted_bbls("lot_mappings[].pad_bbl_keys", &mapping.pad_bbl_keys)?;
+        let mut source_pins = mapping.source_pins.clone();
+        validate_source_pins(
+            "lot_mappings[].source_pins",
+            &mut source_pins,
+            mapping.match_kind.is_some(),
+        )?;
+        if source_pins != mapping.source_pins {
+            return Err(GeoCondoError::invalid(
+                "Geo condo bridge mapping source_pins must be sorted and distinct",
+                [("unit_lot", mapping.unit_lot.as_str())],
+            ));
+        }
         match mapping.status {
             GeoCondoLotMappingStatus::Mapped => {
                 if mapping.billing_lot.is_none() || mapping.candidate_billing_lots.len() != 1 {
@@ -1245,6 +1504,18 @@ fn validate_unmapped(unmapped: &[GeoCondoUnmappedLot]) -> Result<(), GeoCondoErr
             &lot.candidate_billing_lots,
         )?;
         validate_sorted_bbls("unmapped_lots[].pad_bbl_keys", &lot.pad_bbl_keys)?;
+        let mut source_pins = lot.source_pins.clone();
+        validate_source_pins(
+            "unmapped_lots[].source_pins",
+            &mut source_pins,
+            !lot.pad_bbl_keys.is_empty(),
+        )?;
+        if source_pins != lot.source_pins {
+            return Err(GeoCondoError::invalid(
+                "Geo condo bridge unmapped source_pins must be sorted and distinct",
+                [("unit_lot", lot.unit_lot.as_str())],
+            ));
+        }
     }
     Ok(())
 }
@@ -1369,6 +1640,13 @@ fn validate_bbl(field: &str, value: &str) -> Result<(), GeoCondoError> {
     Ok(())
 }
 
+fn validate_optional_string(field: &str, value: &Option<String>) -> Result<(), GeoCondoError> {
+    if let Some(value) = value {
+        validate_string(field, value)?;
+    }
+    Ok(())
+}
+
 fn validate_blake3_ref(field: &str, value: &str) -> Result<(), GeoCondoError> {
     let Some(hex) = value.strip_prefix("blake3:") else {
         return Err(GeoCondoError::invalid(
@@ -1383,6 +1661,20 @@ fn validate_blake3_ref(field: &str, value: &str) -> Result<(), GeoCondoError> {
     {
         return Err(GeoCondoError::invalid(
             "Geo condo bridge digest must be blake3-prefixed lowercase hex",
+            [("field", field), ("value", value)],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_sha256(field: &str, value: &str) -> Result<(), GeoCondoError> {
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(GeoCondoError::invalid(
+            "Geo condo bridge source content hashes must be lowercase SHA-256 hex",
             [("field", field), ("value", value)],
         ));
     }

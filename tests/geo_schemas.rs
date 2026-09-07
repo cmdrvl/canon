@@ -22,8 +22,8 @@ use canon::geo::assessment_roll::{
 use canon::geo::condo::{
     CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION, CANON_GEO_CONDO_BRIDGE_VERSION,
     CANON_GEO_LEDGER_BRIDGE_VERSION, GeoCondoBridgeCaseRequest, GeoCondoBridgeRequest,
-    GeoCondoUnitBridgeRequest, GeoPadBblRow, bridge_condo_unit, build_condo_bridge,
-    canonical_condo_bridge_bytes, canonical_condo_unit_bridge_request_bytes,
+    GeoCondoSourcePin, GeoCondoUnitBridgeRequest, GeoPadBblRow, bridge_condo_unit,
+    build_condo_bridge, canonical_condo_bridge_bytes, canonical_condo_unit_bridge_request_bytes,
     canonical_ledger_bridge_bytes,
 };
 use canon::geo::footprint_roll::{
@@ -59,34 +59,38 @@ use canon::geo::{
 use canon::geo::{
     CANON_GEO_ADDRESS_PARSE_FOREST_VERSION, CANON_GEO_ADDRESS_PARSE_REQUEST_VERSION,
     CANON_GEO_CAPABILITIES_VERSION, CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION,
-    CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_ERROR_POPULATION_VERSION,
-    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_GEOMETRY_REQUEST_VERSION,
-    CANON_GEO_H7_ACRIS_RELEASE_DT, CANON_GEO_H7_AMOUNT_CENTS_QUANTIZATION,
-    CANON_GEO_H7_BRIDGE_BUILD_ID, CANON_GEO_H7_COLLATERAL_SCOPE,
-    CANON_GEO_H7_LENDER_MATCH_TRANSFORM, CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION,
+    CANON_GEO_COLLATERAL_LEDGER_VERSION, CANON_GEO_COMPOSITION_REQUEST_VERSION,
+    CANON_GEO_ERROR_POPULATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
+    CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_H7_ACRIS_RELEASE_DT,
+    CANON_GEO_H7_AMOUNT_CENTS_QUANTIZATION, CANON_GEO_H7_BRIDGE_BUILD_ID,
+    CANON_GEO_H7_COLLATERAL_SCOPE, CANON_GEO_H7_LENDER_MATCH_TRANSFORM,
+    CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION,
     CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
     CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_PRIMARY_MAPPLUTO_RELEASE,
     CANON_GEO_H7_ROUND_AMOUNT_LATTICE_CENTS,
     CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
     CANON_GEO_LOCAL_FRAME_VERSION, CANON_GEO_MULTISOURCE_REQUEST_VERSION,
-    CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION,
-    CANON_GEO_PAD_ADDRESS_SET_VERSION, CANON_GEO_PAD_MEMBERSHIP_VERSION,
-    CANON_GEO_POINT_POPULATION_VERSION, CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
+    CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION, CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION,
+    CANON_GEO_NEXT_EVIDENCE_VERSION, CANON_GEO_PAD_ADDRESS_SET_VERSION,
+    CANON_GEO_PAD_MEMBERSHIP_VERSION, CANON_GEO_POINT_POPULATION_VERSION,
+    CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
     CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
     CANON_GEO_PRE_RESOLUTION_VERSION, CANON_GEO_PROPAGATION_VERSION, CANON_GEO_QUESTION_VERSION,
     CANON_GEO_REDACTED_ARTIFACT_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
-    CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_SEPARATION_REQUEST_VERSION,
-    CANON_GEO_SEPARATION_VERSION, CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
-    CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION,
-    CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoAbstentionDisposition,
-    GeoAbstentionPolicy, GeoAddressHouseNumber, GeoAddressJurisdiction, GeoAddressParity,
-    GeoAddressParseRequest, GeoAddressRangeOperator, GeoAddressStreet, GeoAffineProjectionMm,
+    CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_SEPARATION_INPUTS_VERSION,
+    CANON_GEO_SEPARATION_REQUEST_VERSION, CANON_GEO_SEPARATION_VERSION,
+    CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
+    CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
+    DEFAULT_MAX_MATERIALIZED_MODELS, GeoAbstentionDisposition, GeoAbstentionPolicy,
+    GeoAddressHouseNumber, GeoAddressJurisdiction, GeoAddressParity, GeoAddressParseRequest,
+    GeoAddressRangeOperator, GeoAddressStreet, GeoAffineProjectionMm,
     GeoArtifactFieldClassification, GeoArtifactFieldLicenseClass, GeoAsOf, GeoBoundedGeography,
-    GeoBudgetAction, GeoBuildingCandidate, GeoClaimClass, GeoClientTileCoverageExtent,
-    GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest, GeoClientTileSourceFormat,
-    GeoClientTileVendorIdentifier, GeoCompositionModel, GeoCompositionProfile,
-    GeoCompositionRequest, GeoCompositionUniverse, GeoControlEntityLevel, GeoCoveragePredicate,
-    GeoEgressClass, GeoEntityLevel, GeoEntityRef, GeoErrorPopulationArtifact,
+    GeoBudgetAction, GeoBuildingCandidate, GeoCandidateReachStatus, GeoClaimClass,
+    GeoClientTileCoverageExtent, GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest,
+    GeoClientTileSourceFormat, GeoClientTileVendorIdentifier, GeoCollateralLedger,
+    GeoCollateralLedgerProofClass, GeoCompositionModel, GeoCompositionProfile,
+    GeoCompositionRequest, GeoCompositionStatus, GeoCompositionUniverse, GeoControlEntityLevel,
+    GeoCoveragePredicate, GeoEgressClass, GeoEntityLevel, GeoEntityRef, GeoErrorPopulationArtifact,
     GeoErrorPopulationSubject, GeoEvidenceClaimRole, GeoEvidenceClass,
     GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoExactSourceUnitMm,
     GeoExplanationBudget, GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoH7AssociationPlane,
@@ -98,9 +102,10 @@ use canon::geo::{
     GeoH7StagingSourceRecordBytesBatchRequest, GeoH7StagingSourceRecordBytesRow, GeoHardConstraint,
     GeoHardConstraintKind, GeoHomeCellAssignmentArtifact, GeoHomeCellRow, GeoHomeCellRowsRequest,
     GeoIdentityParticipation, GeoIntegerMeasure, GeoIntegerMemberValue, GeoIntegerValueOrigin,
-    GeoLabeledCompositionCase, GeoLicenseClass, GeoLocalAcquisitionState, GeoLocalArtifactRef,
-    GeoLocalFrameContract, GeoMultisourceRequest, GeoMultisourceSource, GeoNativeEntityScope,
-    GeoNextAction, GeoNextActionClass, GeoNextActionKind, GeoNextEvidenceRequest, GeoNumericBound,
+    GeoLabeledCompositionCase, GeoLedgerRow, GeoLicenseClass, GeoLocalAcquisitionState,
+    GeoLocalArtifactRef, GeoLocalFrameContract, GeoMultisourceRequest, GeoMultisourceSource,
+    GeoNativeEntityScope, GeoNextAction, GeoNextActionClass, GeoNextActionKind,
+    GeoNextEvidenceCandidateInput, GeoNextEvidenceInputs, GeoNextEvidenceRequest, GeoNumericBound,
     GeoNumericMeasure, GeoNycBorough, GeoPadAddressMember, GeoPadAddressSet, GeoPlanInventoryRef,
     GeoPointPopulationArtifact, GeoPopulationCaseEvidenceOverlay, GeoPopulationEvaluationRequest,
     GeoPopulationEvidenceStackRequest, GeoPreResolutionArtifact, GeoPreResolutionBuildReceipt,
@@ -109,20 +114,22 @@ use canon::geo::{
     GeoProjectionProvenance, GeoPropagationBudget, GeoProspectiveObservation,
     GeoProspectiveOutcome, GeoQuestion, GeoRegionalInventory, GeoRegionalSourceInstance,
     GeoReliabilityOrder, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter, GeoRhoBasis,
-    GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoSeparationRequest,
-    GeoSourceAvailability, GeoSourceAxisDomain, GeoSourceGeometry, GeoSourcePointDecimal,
-    GeoSourcePointFixed, GeoSourceRelease, GeoStreetDirection, GeoStreetSuffix, GeoSubjectBinding,
-    GeoSubjectBindingClass, GeoTelemetryDeclaration, GeoTelemetryMetric,
-    GeoTelemetrySemanticEffect, GeoTemporalScope, GeoTileCandidateReachReference,
-    GeoTileCandidateReachReferenceKind, GeoTileDecisionBatch, GeoTileDecisionMember,
-    GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileFeatureRef,
+    GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoSeparationInputs,
+    GeoSeparationRequest, GeoSourceAvailability, GeoSourceAxisDomain, GeoSourceGeometry,
+    GeoSourcePointDecimal, GeoSourcePointFixed, GeoSourceRelease, GeoSourceReleasePin,
+    GeoStreetDirection, GeoStreetSuffix, GeoSubjectBinding, GeoSubjectBindingClass,
+    GeoTelemetryDeclaration, GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
+    GeoTileCandidateReachReference, GeoTileCandidateReachReferenceKind, GeoTileDecisionBatch,
+    GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileFeatureRef,
     GeoTileReconciliationArtifact, GeoTileReconciliationRequest, GeoTileSourceBinding,
     GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoTruthPlane, GeoValueOrigin,
     GeoWarehouseEvidenceRow, GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest,
-    GeoWarehouseParcelRow, GeoWarehouseRowsRequest, canonical_composition_bytes,
+    GeoWarehouseParcelRow, GeoWarehouseRowsRequest, build_collateral_ledger,
+    canonical_collateral_ledger_bytes, canonical_composition_bytes,
     canonical_error_population_bytes, canonical_explanation_bytes, canonical_next_evidence_bytes,
-    canonical_next_evidence_request_bytes, canonical_pre_resolution_bytes,
-    canonical_propagation_bytes, canonical_redacted_artifact_bytes, canonical_separation_bytes,
+    canonical_next_evidence_inputs_bytes, canonical_next_evidence_request_bytes,
+    canonical_pre_resolution_bytes, canonical_propagation_bytes, canonical_redacted_artifact_bytes,
+    canonical_separation_bytes, canonical_separation_inputs_bytes,
     canonical_separation_request_bytes, compile_evidence, correction_sets,
     default_geo_capabilities, evaluate_pad_membership, evaluate_population,
     ingest_client_geometry_tile, materialize_geo_multisource, materialize_geometry_tile,
@@ -166,6 +173,8 @@ const PROPAGATION_SCHEMA: &str = include_str!("../schemas/canon.geo.propagation.
 const EXPLANATION_SCHEMA: &str = include_str!("../schemas/canon.geo.explanation.v0.schema.json");
 const NEXT_EVIDENCE_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.next_evidence_request.v0.schema.json");
+const NEXT_EVIDENCE_INPUTS_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.next_evidence_inputs.v0.schema.json");
 const NEXT_EVIDENCE_SCHEMA: &str =
     include_str!("../schemas/canon.geo.next_evidence.v0.schema.json");
 const ASSESSMENT_ROLL_OWNER_REQUEST_SCHEMA: &str =
@@ -179,11 +188,16 @@ const PROPERTY_ASSERTION_SCHEMA: &str =
 const CONDO_BRIDGE_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.condo_bridge_request.v0.schema.json");
 const CONDO_BRIDGE_SCHEMA: &str = include_str!("../schemas/canon.geo.condo_bridge.v0.schema.json");
-const LEDGER_BRIDGE_SCHEMA: &str = include_str!("../schemas/canon.geo.ledger_bridge.v0.schema.json");
+const LEDGER_BRIDGE_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.ledger_bridge.v0.schema.json");
+const COLLATERAL_LEDGER_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.collateral_ledger.v0.schema.json");
 const FOOTPRINT_ROLL_EVIDENCE_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.footprint_roll_evidence_request.v0.schema.json");
 const SEPARATION_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.separation_request.v0.schema.json");
+const SEPARATION_INPUTS_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.separation_inputs.v0.schema.json");
 const SEPARATION_SCHEMA: &str = include_str!("../schemas/canon.geo.separation.v0.schema.json");
 const POPULATION_EVIDENCE_STACK_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.population_evidence_stack_request.v0.schema.json");
@@ -306,12 +320,14 @@ fn external_schema_source(schema_file: &str, reference: &str) -> &'static str {
         "canon.geo.geometry_tile.v0.schema.json" => GEOMETRY_TILE_SCHEMA,
         "canon.geo.h7_population_rows.v0.schema.json" => H7_POPULATION_ROWS_SCHEMA,
         "canon.geo.evidence_request.v0.schema.json" => EVIDENCE_REQUEST_SCHEMA,
+        "canon.geo.next_evidence_request.v0.schema.json" => NEXT_EVIDENCE_REQUEST_SCHEMA,
         "canon.geo.population_request.v0.schema.json" => POPULATION_REQUEST_SCHEMA,
         "canon.geo.population_evidence_stack_request.v0.schema.json" => {
             POPULATION_EVIDENCE_STACK_REQUEST_SCHEMA
         }
         "canon.geo.regional_inventory.v1.schema.json" => CONTROL_REGIONAL_INVENTORY_SCHEMA,
         "canon.geo.resource_budget.v0.schema.json" => CONTROL_RESOURCE_BUDGET_SCHEMA,
+        "canon.geo.separation_request.v0.schema.json" => SEPARATION_REQUEST_SCHEMA,
         _ => panic!("external $ref {reference} is not registered in the schema test"),
     }
 }
@@ -1422,6 +1438,14 @@ fn separation_request() -> GeoSeparationRequest {
     }
 }
 
+fn separation_inputs_fixture() -> GeoSeparationInputs {
+    GeoSeparationInputs {
+        version: CANON_GEO_SEPARATION_INPUTS_VERSION.to_string(),
+        subject_ref: None,
+        prospective: separation_request().prospective,
+    }
+}
+
 fn next_evidence_fixture() -> (
     canon::geo::GeoCompositionArtifact,
     canon::geo::GeoSeparationArtifact,
@@ -1462,6 +1486,64 @@ fn next_evidence_fixture() -> (
         budget_spent: BTreeMap::new(),
     };
     (composition, separation, request)
+}
+
+fn next_evidence_inputs_fixture() -> GeoNextEvidenceInputs {
+    let (_, separation, _) = next_evidence_fixture();
+    let observation = separation
+        .per_observation
+        .first()
+        .expect("schema separation has an observation");
+    GeoNextEvidenceInputs {
+        version: CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION.to_string(),
+        candidates: vec![GeoNextEvidenceCandidateInput {
+            action_id: "schema-action-observe-parcel-choice".to_string(),
+            class: GeoNextActionClass::SeparateResidual,
+            kind: GeoNextActionKind::Observe(observation.observation_id.clone()),
+            observation_id: Some(observation.observation_id.clone()),
+            cost_units: 2,
+            redundant: observation.redundant,
+            lineage_ids: Vec::new(),
+            stop_reason: None,
+        }],
+        policy: None,
+        budget: control_budget(),
+        budget_spent: BTreeMap::new(),
+    }
+}
+
+fn collateral_ledger_schema_instance() -> GeoCollateralLedger {
+    let digest = prefixed_blake3(b"schema collateral ledger");
+    let row = GeoLedgerRow {
+        version: CANON_GEO_COLLATERAL_LEDGER_VERSION.to_string(),
+        accession: "schema-accession".to_string(),
+        deal_id: "schema-deal".to_string(),
+        loan_id: "schema-loan".to_string(),
+        reach: GeoCandidateReachStatus::Full,
+        reach_none_reason: None,
+        parcel_set: Some(vec!["schema-parcel".to_string()]),
+        building_set: Some(Vec::new()),
+        deed_ids: Vec::new(),
+        truth_plane: Some(GeoTruthPlane::GateV2Historical),
+        claim_class: GeoClaimClass::CollateralComposition,
+        residual_model_count: 1,
+        count_exact: true,
+        backbone_complete: true,
+        last_observed_present: None,
+        source_release_pins: vec![GeoSourceReleasePin {
+            source_dataset: "fixture.schema.collateral_ledger".to_string(),
+            source_release: "schema-fixture-release".to_string(),
+            blake3: digest.clone(),
+        }],
+        composition_blake3: digest.clone(),
+        evidence_blake3: digest,
+        ambiguous_parcel_set: Vec::new(),
+        ambiguous_building_set: Vec::new(),
+        property_refs: Vec::new(),
+        composition_status: GeoCompositionStatus::Resolved,
+    };
+    build_collateral_ledger(vec![row], GeoCollateralLedgerProofClass::Fixture)
+        .expect("schema collateral ledger builds")
 }
 
 fn schema_rho_contract(id: &str) -> GeoRhoContract {
@@ -2576,6 +2658,7 @@ fn condo_bridge_request() -> GeoCondoBridgeRequest {
         source_dataset: "fixture.schema.pad_bbl".to_string(),
         source_release: "26B_2026-05-01".to_string(),
         source_lineage_ids: vec!["EDGAR_DB.SOURCE.NYC_DCP_PAD_BBL_HOT:26B".to_string()],
+        source_pins: vec![condo_source_pin()],
         pad_rows: vec![
             GeoPadBblRow {
                 bbl_key: "1000011001".to_string(),
@@ -2584,6 +2667,15 @@ fn condo_bridge_request() -> GeoCondoBridgeRequest {
                 billing_bbl_key: Some("1000017501".to_string()),
                 condo_number: Some(7),
                 condo_flag: Some("C".to_string()),
+                release: None,
+                release_dt: None,
+                source_row_number: None,
+                source_file: None,
+                source_filename: None,
+                source_zip_sha256: None,
+                parser_version: None,
+                license_terms: None,
+                attribution_text: None,
             },
             GeoPadBblRow {
                 bbl_key: "1000012001".to_string(),
@@ -2592,6 +2684,15 @@ fn condo_bridge_request() -> GeoCondoBridgeRequest {
                 billing_bbl_key: Some("1000017502".to_string()),
                 condo_number: Some(8),
                 condo_flag: Some("C".to_string()),
+                release: None,
+                release_dt: None,
+                source_row_number: None,
+                source_file: None,
+                source_filename: None,
+                source_zip_sha256: None,
+                parser_version: None,
+                license_terms: None,
+                attribution_text: None,
             },
             GeoPadBblRow {
                 bbl_key: "1000012001".to_string(),
@@ -2600,6 +2701,15 @@ fn condo_bridge_request() -> GeoCondoBridgeRequest {
                 billing_bbl_key: Some("1000017503".to_string()),
                 condo_number: Some(8),
                 condo_flag: Some("C".to_string()),
+                release: None,
+                release_dt: None,
+                source_row_number: None,
+                source_file: None,
+                source_filename: None,
+                source_zip_sha256: None,
+                parser_version: None,
+                license_terms: None,
+                attribution_text: None,
             },
         ],
         cases: vec![GeoCondoBridgeCaseRequest {
@@ -2613,6 +2723,26 @@ fn condo_bridge_request() -> GeoCondoBridgeRequest {
     }
 }
 
+fn condo_source_pin() -> GeoCondoSourcePin {
+    GeoCondoSourcePin {
+        source_table: "fixture.schema.pad_bbl".to_string(),
+        natural_key: "fixture_row".to_string(),
+        source_release: "fixture-release".to_string(),
+        release_dt: Some("2026-09-03".to_string()),
+        variant: None,
+        source_row_number: Some(1),
+        source_file: Some("fixture-pad-bbl.json".to_string()),
+        source_file_field: Some("fixture_file".to_string()),
+        source_content_sha256: Some(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
+        ),
+        source_content_sha256_field: Some("fixture_sha256".to_string()),
+        parser_version: Some("fixture-parser-v1".to_string()),
+        license_terms: "fixture-only PAD terms".to_string(),
+        attribution_text: "fixture-only PAD attribution".to_string(),
+    }
+}
+
 fn condo_unit_bridge_request() -> GeoCondoUnitBridgeRequest {
     serde_json::from_value(serde_json::json!({
         "version": CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION,
@@ -2621,6 +2751,20 @@ fn condo_unit_bridge_request() -> GeoCondoUnitBridgeRequest {
         "bin_candidates": ["schema-bin-1"],
         "block": "1",
         "frame_id": "schema-frame",
+        "source_pins": [{
+            "source_table": "fixture.schema.geometry",
+            "natural_key": "fixture_row",
+            "source_release": "fixture-release",
+            "release_dt": "2026-09-03",
+            "source_row_number": 1,
+            "source_file": "fixture-geometry.json",
+            "source_file_field": "fixture_file",
+            "source_content_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "source_content_sha256_field": "fixture_sha256",
+            "parser_version": "fixture-parser-v1",
+            "license_terms": "fixture-only geometry terms",
+            "attribution_text": "fixture-only geometry attribution"
+        }],
         "parcel_rings": {
             "1000010001": {
                 "exterior": {
@@ -2698,6 +2842,21 @@ fn ledger_bridge_schema_matches_a_real_instance() {
 }
 
 #[test]
+fn collateral_ledger_schema_matches_a_real_instance() {
+    let ledger = collateral_ledger_schema_instance();
+    let canonical_bytes =
+        canonical_collateral_ledger_bytes(&ledger).expect("collateral ledger canonicalizes");
+    let instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("canonical collateral ledger JSON parses");
+    assert_drift_free(
+        COLLATERAL_LEDGER_SCHEMA,
+        "canon.geo.collateral_ledger.v0",
+        CANON_GEO_COLLATERAL_LEDGER_VERSION,
+        &instance,
+    );
+}
+
+#[test]
 fn separation_request_schema_matches_a_real_instance() {
     let request = separation_request();
     let canonical_bytes =
@@ -2708,6 +2867,21 @@ fn separation_request_schema_matches_a_real_instance() {
         SEPARATION_REQUEST_SCHEMA,
         "canon.geo.separation_request.v0",
         CANON_GEO_SEPARATION_REQUEST_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn separation_inputs_schema_matches_a_real_instance() {
+    let inputs = separation_inputs_fixture();
+    let canonical_bytes =
+        canonical_separation_inputs_bytes(&inputs).expect("separation inputs canonicalize");
+    let instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("canonical separation inputs JSON parses");
+    assert_drift_free(
+        SEPARATION_INPUTS_SCHEMA,
+        "canon.geo.separation_inputs.v0",
+        CANON_GEO_SEPARATION_INPUTS_VERSION,
         &instance,
     );
 }
@@ -2724,6 +2898,21 @@ fn separation_schema_matches_a_real_instance() {
         SEPARATION_SCHEMA,
         "canon.geo.separation.v0",
         CANON_GEO_SEPARATION_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn next_evidence_inputs_schema_matches_a_real_instance() {
+    let inputs = next_evidence_inputs_fixture();
+    let canonical_bytes =
+        canonical_next_evidence_inputs_bytes(&inputs).expect("next-evidence inputs canonicalize");
+    let instance: Value = serde_json::from_slice(&canonical_bytes)
+        .expect("canonical next-evidence inputs JSON parses");
+    assert_drift_free(
+        NEXT_EVIDENCE_INPUTS_SCHEMA,
+        "canon.geo.next_evidence_inputs.v0",
+        CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION,
         &instance,
     );
 }

@@ -23,6 +23,11 @@
       "type": "array",
       "items": { "$ref": "#/$defs/relation_tuple" }
     },
+    "source_pins": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/source_pin" }
+    },
     "abstained_reason": { "type": "string" }
   },
   "required": [
@@ -30,9 +35,39 @@
     "unit_bbl",
     "bins",
     "confirmation",
-    "relations"
+    "relations",
+    "source_pins"
   ],
   "$defs": {
+    "source_pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_table": { "type": "string" },
+        "natural_key": { "type": "string" },
+        "source_release": { "type": "string" },
+        "release_dt": { "type": "string" },
+        "variant": { "type": "string" },
+        "source_row_number": { "type": "integer", "minimum": 1 },
+        "source_file": { "type": "string" },
+        "source_file_field": { "type": "string" },
+        "source_content_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "source_content_sha256_field": { "type": "string" },
+        "parser_version": { "type": "string" },
+        "license_terms": { "type": "string" },
+        "attribution_text": { "type": "string" }
+      },
+      "required": [
+        "source_table",
+        "natural_key",
+        "source_release",
+        "license_terms",
+        "attribution_text"
+      ]
+    },
     "entity_ref": {
       "type": "object",
       "additionalProperties": false,

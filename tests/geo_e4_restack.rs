@@ -15,13 +15,14 @@ use canon::geo::{
     DEFAULT_MAX_MATERIALIZED_MODELS, GEO_ASSESSMENT_ROLL_GROSS_SQFT_BAND_CONTRACT_ID,
     GEO_FOOTPRINT_BUILDING_COUNT_FLOOR_CONTRACT_ID, GeoBuildingFootprintRow,
     GeoCompositionBackbone, GeoCompositionProfile, GeoCompositionUniverse,
-    GeoCondoBridgeCaseRequest, GeoCondoBridgeRequest, GeoEntityLevel, GeoFootprintRollCalibration,
-    GeoFootprintRollEvidenceRequest, GeoFootprintRollLoanFields, GeoFootprintRollSourceConfig,
-    GeoPopulationCaseEvaluation, GeoPopulationCaseStatus, GeoPopulationEvaluationArtifact,
-    GeoPopulationEvaluationRequest, GeoPopulationEvidenceStackRequest, GeoRhoContract,
-    GeoRhoObservation, GeoRhoObservationKind, build_condo_bridge,
-    canonical_population_evaluation_bytes, evaluate_population_with_run_artifacts,
-    materialize_footprint_roll_evidence, stack_population_evidence,
+    GeoCondoBridgeCaseRequest, GeoCondoBridgeRequest, GeoCondoSourcePin, GeoEntityLevel,
+    GeoFootprintRollCalibration, GeoFootprintRollEvidenceRequest, GeoFootprintRollLoanFields,
+    GeoFootprintRollSourceConfig, GeoPopulationCaseEvaluation, GeoPopulationCaseStatus,
+    GeoPopulationEvaluationArtifact, GeoPopulationEvaluationRequest,
+    GeoPopulationEvidenceStackRequest, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind,
+    build_condo_bridge, canonical_population_evaluation_bytes,
+    evaluate_population_with_run_artifacts, materialize_footprint_roll_evidence,
+    stack_population_evidence,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -361,6 +362,7 @@ fn build_measurement() -> MeasurementBundle {
         source_dataset: "EDGAR_DB.SOURCE.NYC_DCP_PAD_BBL_HOT".to_string(),
         source_release: "26B/2026-05-01".to_string(),
         source_lineage_ids: vec!["EDGAR_DB.SOURCE.NYC_DCP_PAD_BBL_HOT:26B".to_string()],
+        source_pins: vec![condo_source_pin()],
         pad_rows: read_json_gz(rooted(&format!("{MCP_STACK_DIR}/pad_bbl.json.gz"))),
         cases: widened_population
             .cases
@@ -1209,6 +1211,26 @@ fn stage_observation_totals(cases: &[MeasurementCase]) -> StageObservationCounts
 fn only<'a>(values: &'a [String], field: &str) -> &'a String {
     assert_eq!(values.len(), 1, "{field} must contain exactly one value");
     &values[0]
+}
+
+fn condo_source_pin() -> GeoCondoSourcePin {
+    GeoCondoSourcePin {
+        source_table: "EDGAR_DB.SOURCE.NYC_DCP_PAD_BBL_HOT".to_string(),
+        natural_key: "release/source_row_number".to_string(),
+        source_release: "26B".to_string(),
+        release_dt: Some("2026-05-01".to_string()),
+        variant: None,
+        source_row_number: None,
+        source_file: Some("bobabbl.txt".to_string()),
+        source_file_field: Some("SOURCE_FILE".to_string()),
+        source_content_sha256: Some(
+            "016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd".to_string(),
+        ),
+        source_content_sha256_field: Some("SOURCE_ZIP_SHA256".to_string()),
+        parser_version: Some("2026-08-16".to_string()),
+        license_terms: "Public NYC Department of City Planning Bytes of the Big Apple release for informational purposes only; DCP disclaims completeness, accuracy, content, and fitness warranties.".to_string(),
+        attribution_text: "NYC Department of City Planning (DCP)".to_string(),
+    }
 }
 
 fn d1_subject_id(case_id: &str, subject_by_case: &BTreeMap<String, String>) -> String {
