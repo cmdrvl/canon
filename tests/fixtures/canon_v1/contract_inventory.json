@@ -2218,6 +2218,22 @@
       "crate_module": "canon::geo"
     },
     {
+      "id": "canon_geo_deed_index_rows.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.deed_index_rows.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_deed_truth.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.deed_truth.v0.schema.json"
+    },
+    {
       "id": "canon_geo_error_population.v0",
       "family": "geo",
       "action": "preserve",
