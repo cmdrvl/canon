@@ -1,0 +1,1149 @@
+{
+  "version": "canon_geo_e4_pluto_vintage_reach_measurement.v0",
+  "bead": "bd-1q5y",
+  "proof_class": "retained_cmdrvl_data_warehouse_measurement_not_live",
+  "measurement_name": "bd_1q5y_pluto_vintage_reach_hits",
+  "recorded_on": "2026-09-08",
+  "boundary": "Candidate-universe widening only. Adding a PLUTO historical lot makes the lot reachable as a candidate; it is not evidence that the lot is collateral and it does not relax rho admission. Retained warehouse measurement, not live proof.",
+  "frozen_population": {
+    "source_path": "scripts/geo_measurements/fixtures/d1_residuals/mcp_stack_2026-09-03/population_request_roll_universe.json.gz",
+    "evaluation_path": "scripts/geo_measurements/fixtures/d1_residuals/mcp_stack_2026-09-03/evaluation_roll_exact_owner_gsf_band.json",
+    "widened_population_path": "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/population_request_roll_universe_pluto_vintage_widened.json.gz",
+    "widened_population_sha256": "197e9286dd3637d982f37e6e5994a8de322c0f6b12ee4ac0206a4fa61ab3d0a0",
+    "case_denominator": 70,
+    "frozen_gate_denominator": 79,
+    "initial_reach": {
+      "full": 47,
+      "partial": 15,
+      "none": 8
+    },
+    "missing_truth_bbl_refs": 371,
+    "unique_missing_truth_bbls": 362
+  },
+  "source_tables": [
+    {
+      "table": "EDGAR_DB.SOURCE.NYC_DCP_PLUTO_LOT_VINTAGES",
+      "catalog_key": "snowflake://edgar_db.source/nyc_dcp_pluto_lot_vintages",
+      "cluster_by": "LINEAR(release, borough, bbl)",
+      "row_pins": [
+        "RELEASE",
+        "RELEASE_DT",
+        "SOURCE_ROW_NUMBER",
+        "SOURCE_FILENAME"
+      ],
+      "content_hash_source": "EDGAR_DB.SOURCE.NYC_DCP_PLUTO_MANIFEST_EXT payload artifacts[].sha256, joined by RELEASE/RELEASE_DT",
+      "license_terms": "Public NYC Department of City Planning release for informational purposes only; DCP disclaims completeness, accuracy, content, and fitness warranties.",
+      "attribution_text": "NYC Department of City Planning"
+    },
+    {
+      "table": "EDGAR_DB.SOURCE.NYC_DCP_PAD_BBL_HOT",
+      "catalog_key": "snowflake://edgar_db.source/nyc_dcp_pad_bbl_hot",
+      "cluster_by": "LINEAR(release, bbl_key)",
+      "row_pins": [
+        "RELEASE",
+        "RELEASE_DT",
+        "SOURCE_ROW_NUMBER",
+        "SOURCE_ZIP_SHA256",
+        "PARSER_VERSION",
+        "SOURCE_FILENAME"
+      ],
+      "license_terms": "Public NYC Department of City Planning Bytes of the Big Apple release for informational purposes only; DCP disclaims completeness, accuracy, content, and fitness warranties.",
+      "attribution_text": "NYC Department of City Planning (DCP)"
+    }
+  ],
+  "pluto_bbl_canonicalization": {
+    "bbl": "strip trailing .00 from NYC_DCP_PLUTO_LOT_VINTAGES.BBL",
+    "borough": "map MN/BX/BK/QN/SI to 1/2/3/4/5 before comparing with canonical BBL prefix"
+  },
+  "pluto_manifest_release_pins": [
+    {
+      "release": "16v2",
+      "release_dt": "2016-08-01",
+      "source_zip_sha256": "0a5144f0ea53e6b7f9133d2723b580461daa42a77084ba44cfbdf81d841ea4c5",
+      "source_zip_s3_key": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=raw/nyc_pluto_16v2.zip"
+    },
+    {
+      "release": "17v1",
+      "release_dt": "2017-05-01",
+      "source_zip_sha256": "a11baaf485d5a91c2b859972706da05dfb768e760e0154db1bb2b72012525b5f",
+      "source_zip_s3_key": "nyc/dcp_pluto/dataset=pluto/release=17v1/release_dt=2017-05-01/artifact=raw/nyc_pluto_17v1.zip?r=1"
+    },
+    {
+      "release": "17v1.1",
+      "release_dt": "2017-06-01",
+      "source_zip_sha256": "1a700b25d1f26d0ce06198499e708eab4c5d6f2e39362f663abaf30a7ae3d4cf",
+      "source_zip_s3_key": "nyc/dcp_pluto/dataset=pluto/release=17v1.1/release_dt=2017-06-01/artifact=raw/nyc_pluto_17v1_1.zip?r=1"
+    },
+    {
+      "release": "18v1",
+      "release_dt": "2018-05-01",
+      "source_zip_sha256": "545e0dfb0899012bae49d2c6ec3c038dcd9876bf81133d69260a31a60dd34848",
+      "source_zip_s3_key": "nyc/dcp_pluto/dataset=pluto/release=18v1/release_dt=2018-05-01/artifact=raw/nyc_pluto_18v1.zip"
+    },
+    {
+      "release": "18v1.1",
+      "release_dt": "2018-06-01",
+      "source_zip_sha256": "15f498e8789d192fa50d15fb8e6145a355299d1042528cab9117c0528b3f14d0",
+      "source_zip_s3_key": "nyc/dcp_pluto/dataset=pluto/release=18v1.1/release_dt=2018-06-01/artifact=raw/nyc_pluto_18v1_1_csv.zip"
+    },
+    {
+      "release": "18v2Beta",
+      "release_dt": "2018-08-01",
+      "source_zip_sha256": "0ce730b77ecc23fcb0b81720a174016563d04f3f14cb11b0662ec4650568c89e",
+      "source_zip_s3_key": "nyc/dcp_pluto/dataset=pluto/release=18v2Beta/release_dt=2018-08-01/artifact=raw/nyc_pluto_18v2_csv.zip"
+    },
+    {
+      "release": "18v2.1",
+      "release_dt": "2018-09-01",
+      "source_zip_sha256": "2795fb53e6474100b5787638183e5a02c097e1631f8a7f050a499a2bff975098",
+      "source_zip_s3_key": "nyc/dcp_pluto/dataset=pluto/release=18v2.1/release_dt=2018-09-01/artifact=raw/nyc_pluto_18v2_1_csv.zip"
+    },
+    {
+      "release": "19v1",
+      "release_dt": "2019-05-01",
+      "source_zip_sha256": "3be291c353499c5a363399a0e2c2d258c2031094bbdabce45ca1cce667777b16",
+      "source_zip_s3_key": "nyc/dcp_pluto/dataset=pluto/release=19v1/release_dt=2019-05-01/artifact=raw/nyc_pluto_19v1_csv.zip"
+    },
+    {
+      "release": "19v2",
+      "release_dt": "2019-08-01",
+      "source_zip_sha256": "b91a021ae9231e20b45af6e8c9f00963b2ec14fff1e1c9d7c916e77abcd81ff0",
+      "source_zip_s3_key": "nyc/dcp_pluto/dataset=pluto/release=19v2/release_dt=2019-08-01/artifact=raw/nyc_pluto_19v2_csv.zip"
+    },
+    {
+      "release": "20v1",
+      "release_dt": "2020-01-01",
+      "source_zip_sha256": "c349702510226f47ea049badb840f41c6f2fd5008b335f467e03d8d94ee412aa",
+      "source_zip_s3_key": "nyc/dcp_pluto/dataset=pluto/release=20v1/release_dt=2020-01-01/artifact=raw/nyc_pluto_20v1_csv.zip"
+    },
+    {
+      "release": "20v2",
+      "release_dt": "2020-02-28",
+      "source_zip_sha256": "69ba6140c242605c0150b7175d2cd963fa32f2bcff2e2da7f229ff7debd5aa7c",
+      "source_zip_s3_key": "nyc/dcp_pluto/dataset=pluto/release=20v2/release_dt=2020-02-28/artifact=raw/nyc_pluto_20v2_arc_csv.zip"
+    },
+    {
+      "release": "20v3",
+      "release_dt": "2020-04-24",
+      "source_zip_sha256": "ce3cecec79d1f448b08f5fd2f3f33cdb854c04dcd74eadba27cecb41388a10ad",
+      "source_zip_s3_key": "nyc/dcp_pluto/dataset=pluto/release=20v3/release_dt=2020-04-24/artifact=raw/nyc_pluto_20v3_arc_csv.zip"
+    }
+  ],
+  "pluto_vintage_hits": [
+    {
+      "bbl": "1007200021",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 7732,
+      "max_source_row_number": 839150,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000000/nyc_dcp_pluto_16v2_part-000000.parquet"
+    },
+    {
+      "bbl": "1007200022",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 7733,
+      "max_source_row_number": 787392,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000000/nyc_dcp_pluto_16v2_part-000000.parquet"
+    },
+    {
+      "bbl": "1010430004",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 11468,
+      "max_source_row_number": 788322,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000000/nyc_dcp_pluto_16v2_part-000000.parquet"
+    },
+    {
+      "bbl": "1010430061",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 14027,
+      "max_source_row_number": 850613,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000000/nyc_dcp_pluto_16v2_part-000000.parquet"
+    },
+    {
+      "bbl": "1010430062",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 14028,
+      "max_source_row_number": 779617,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000000/nyc_dcp_pluto_16v2_part-000000.parquet"
+    },
+    {
+      "bbl": "1014350020",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 2169,
+      "max_source_row_number": 818085,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000000/nyc_dcp_pluto_16v2_part-000000.parquet"
+    },
+    {
+      "bbl": "1014350021",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 22411,
+      "max_source_row_number": 728130,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000000/nyc_dcp_pluto_16v2_part-000000.parquet"
+    },
+    {
+      "bbl": "1014350022",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 22412,
+      "max_source_row_number": 646288,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000000/nyc_dcp_pluto_16v2_part-000000.parquet"
+    },
+    {
+      "bbl": "1014350023",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 22413,
+      "max_source_row_number": 787936,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000000/nyc_dcp_pluto_16v2_part-000000.parquet"
+    },
+    {
+      "bbl": "1014350024",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 22414,
+      "max_source_row_number": 810684,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000000/nyc_dcp_pluto_16v2_part-000000.parquet"
+    },
+    {
+      "bbl": "1014350025",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 2167,
+      "max_source_row_number": 787862,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000000/nyc_dcp_pluto_16v2_part-000000.parquet"
+    },
+    {
+      "bbl": "1014350026",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 22416,
+      "max_source_row_number": 845742,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000000/nyc_dcp_pluto_16v2_part-000000.parquet"
+    },
+    {
+      "bbl": "1021540024",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 38644,
+      "max_source_row_number": 831998,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000000/nyc_dcp_pluto_16v2_part-000000.parquet"
+    },
+    {
+      "bbl": "2023270012",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 44352,
+      "max_source_row_number": 646013,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000000/nyc_dcp_pluto_16v2_part-000000.parquet"
+    },
+    {
+      "bbl": "2026030007",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 48958,
+      "max_source_row_number": 847247,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000000/nyc_dcp_pluto_16v2_part-000000.parquet"
+    },
+    {
+      "bbl": "2058141101",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 29758,
+      "max_source_row_number": 766435,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000000/nyc_dcp_pluto_16v2_part-000000.parquet"
+    },
+    {
+      "bbl": "3015890047",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 18058,
+      "max_source_row_number": 794959,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000000/nyc_dcp_pluto_16v2_part-000000.parquet"
+    },
+    {
+      "bbl": "4007910022",
+      "vintage_row_count": 5,
+      "current_release_rows": 0,
+      "first_release_dt": "2019-05-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 30389,
+      "max_source_row_number": 760416,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=19v1/release_dt=2019-05-01/artifact=normalized/part=000002/nyc_dcp_pluto_19v1_part-000002.parquet"
+    },
+    {
+      "bbl": "4007910023",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 54046,
+      "max_source_row_number": 844516,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000001/nyc_dcp_pluto_16v2_part-000001.parquet"
+    },
+    {
+      "bbl": "4007910122",
+      "vintage_row_count": 5,
+      "current_release_rows": 0,
+      "first_release_dt": "2019-05-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 218263,
+      "max_source_row_number": 760417,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=19v1/release_dt=2019-05-01/artifact=normalized/part=000002/nyc_dcp_pluto_19v1_part-000002.parquet"
+    },
+    {
+      "bbl": "4007910123",
+      "vintage_row_count": 5,
+      "current_release_rows": 0,
+      "first_release_dt": "2019-05-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 96084,
+      "max_source_row_number": 670710,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=19v1/release_dt=2019-05-01/artifact=normalized/part=000002/nyc_dcp_pluto_19v1_part-000002.parquet"
+    },
+    {
+      "bbl": "4014360032",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 94131,
+      "max_source_row_number": 784650,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000001/nyc_dcp_pluto_16v2_part-000001.parquet"
+    },
+    {
+      "bbl": "4014480001",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 12397,
+      "max_source_row_number": 798450,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000001/nyc_dcp_pluto_16v2_part-000001.parquet"
+    },
+    {
+      "bbl": "4014490001",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 122896,
+      "max_source_row_number": 743667,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000001/nyc_dcp_pluto_16v2_part-000001.parquet"
+    },
+    {
+      "bbl": "4053030144",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 83272,
+      "max_source_row_number": 534672,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000002/nyc_dcp_pluto_16v2_part-000002.parquet"
+    },
+    {
+      "bbl": "4066320001",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 114256,
+      "max_source_row_number": 810384,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000002/nyc_dcp_pluto_16v2_part-000002.parquet"
+    },
+    {
+      "bbl": "4073490001",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 91785,
+      "max_source_row_number": 613443,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000002/nyc_dcp_pluto_16v2_part-000002.parquet"
+    },
+    {
+      "bbl": "4097130102",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 28688,
+      "max_source_row_number": 622594,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000002/nyc_dcp_pluto_16v2_part-000002.parquet"
+    },
+    {
+      "bbl": "4159100057",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 138115,
+      "max_source_row_number": 841653,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000002/nyc_dcp_pluto_16v2_part-000002.parquet"
+    },
+    {
+      "bbl": "4159100064",
+      "vintage_row_count": 7,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2018-09-01",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta"
+      ],
+      "min_source_row_number": 688897,
+      "max_source_row_number": 841098,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000002/nyc_dcp_pluto_16v2_part-000002.parquet"
+    },
+    {
+      "bbl": "4159100066",
+      "vintage_row_count": 12,
+      "current_release_rows": 0,
+      "first_release_dt": "2016-08-01",
+      "last_release_dt": "2020-04-24",
+      "releases": [
+        "16v2",
+        "17v1",
+        "17v1.1",
+        "18v1",
+        "18v1.1",
+        "18v2.1",
+        "18v2Beta",
+        "19v1",
+        "19v2",
+        "20v1",
+        "20v2",
+        "20v3"
+      ],
+      "min_source_row_number": 187719,
+      "max_source_row_number": 841655,
+      "example_source_filename": "nyc/dcp_pluto/dataset=pluto/release=16v2/release_dt=2016-08-01/artifact=normalized/part=000002/nyc_dcp_pluto_16v2_part-000002.parquet"
+    }
+  ],
+  "residual_pad_probe": {
+    "measurement_name": "bd_1q5y_pad_residual_condo_probe",
+    "release": "26B",
+    "release_dt": "2026-05-01",
+    "residual_bbls": 331,
+    "residual_bbls_in_pad_26b": 331,
+    "residual_bbls_in_condo_range": 325,
+    "residual_bbls_with_billing_bbl": 331,
+    "distinct_billing_bbls": 6,
+    "billing_bbls": [
+      "1000287502",
+      "1010297502",
+      "1012747504",
+      "1013267501",
+      "4050147502",
+      "4067977503"
+    ],
+    "source_zip_sha256": "016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd",
+    "parser_version": "2026-08-16",
+    "license_terms": "Public NYC Department of City Planning Bytes of the Big Apple release for informational purposes only; DCP disclaims completeness, accuracy, content, and fitness warranties.",
+    "attribution_text": "NYC Department of City Planning (DCP)"
+  },
+  "reach_measurement": {
+    "before": {
+      "full": 47,
+      "partial": 15,
+      "none": 8
+    },
+    "after": {
+      "full": 65,
+      "partial": 2,
+      "none": 3
+    },
+    "candidate_recall_failure_cases_before": 23,
+    "candidate_recall_failure_cases_after": 5,
+    "subjects_recovered_to_full_reach": 18,
+    "unique_historical_truth_bbls_added": 31,
+    "present_any_vintage_unique_missing_bbls": 31,
+    "absent_all_pluto_vintages_unique_missing_bbls": 331,
+    "present_current_unique_missing_bbls": 0,
+    "historical_only_unique_missing_bbls": 31
+  },
+  "changed_cases": [
+    {
+      "case_id": "h7-subject:non-round:37ab22474cdc2c5e7031b19537a5516d80e12f0e57da3edf8eb45b08e2f8f5d4",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "before_reach": "partial",
+      "after_reach": "full",
+      "newly_reached_truth_bbls": [
+        "1021540024"
+      ],
+      "still_missing_truth_bbl_count": 0
+    },
+    {
+      "case_id": "h7-subject:non-round:45ec05135653deebc211f6056f6d6492a947a8a2ed73dd86c26e6126e3d00a67",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "before_reach": "partial",
+      "after_reach": "full",
+      "newly_reached_truth_bbls": [
+        "4073490001"
+      ],
+      "still_missing_truth_bbl_count": 0
+    },
+    {
+      "case_id": "h7-subject:non-round:4bb51b76b9a709ec6f9cc298ac7e441f77a1320ee4edac1124efa9b11c05293f",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "before_reach": "partial",
+      "after_reach": "full",
+      "newly_reached_truth_bbls": [
+        "1010430004",
+        "1010430061",
+        "1010430062"
+      ],
+      "still_missing_truth_bbl_count": 0
+    },
+    {
+      "case_id": "h7-subject:non-round:524efa302815a83e7e33419b92fdb25064300e6185537c4c4ae1aca9effbd356",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "before_reach": "none",
+      "after_reach": "full",
+      "newly_reached_truth_bbls": [
+        "4007910022",
+        "4007910023",
+        "4007910122",
+        "4007910123"
+      ],
+      "still_missing_truth_bbl_count": 0
+    },
+    {
+      "case_id": "h7-subject:non-round:5934bb9370d31d9b1fa687544020e5e006512cb16d073ed3712ba0cf37a17c36",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "before_reach": "none",
+      "after_reach": "full",
+      "newly_reached_truth_bbls": [
+        "4159100057",
+        "4159100064",
+        "4159100066"
+      ],
+      "still_missing_truth_bbl_count": 0
+    },
+    {
+      "case_id": "h7-subject:non-round:7e3690f74c34f5b945ab0866c8af2f7bf06eaaa12e7b1d22c8c35f43468e8496",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "before_reach": "partial",
+      "after_reach": "full",
+      "newly_reached_truth_bbls": [
+        "4053030144"
+      ],
+      "still_missing_truth_bbl_count": 0
+    },
+    {
+      "case_id": "h7-subject:non-round:8ac12f0a324a578c82b0016151b093c3304c8160711294554b01eaecf837bd7b",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "before_reach": "partial",
+      "after_reach": "full",
+      "newly_reached_truth_bbls": [
+        "3015890047"
+      ],
+      "still_missing_truth_bbl_count": 0
+    },
+    {
+      "case_id": "h7-subject:non-round:95ffa8e15d66c259fb48f50e0ba3623ad1a34990d430f4513091658055c1f1fd",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "before_reach": "partial",
+      "after_reach": "full",
+      "newly_reached_truth_bbls": [
+        "2058141101"
+      ],
+      "still_missing_truth_bbl_count": 0
+    },
+    {
+      "case_id": "h7-subject:non-round:e1ee05351a5b681c0dcda44e19dd575c686c3c630809c137bd64cc3232bc256c",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "before_reach": "partial",
+      "after_reach": "full",
+      "newly_reached_truth_bbls": [
+        "4066320001"
+      ],
+      "still_missing_truth_bbl_count": 0
+    },
+    {
+      "case_id": "h7-subject:non-round:fd771efaa8d381c6a177515ebe97b7e2354d75604ea8be9a05b6336015ae4135",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "before_reach": "partial",
+      "after_reach": "full",
+      "newly_reached_truth_bbls": [
+        "2058141101"
+      ],
+      "still_missing_truth_bbl_count": 0
+    },
+    {
+      "case_id": "h7-subject:round-exact-lender:0a8342fd463d4869d604e870c300e5f43f452e10ff8d815b2e53e26302743be6",
+      "truth_plane": "round_exact_lender_party",
+      "before_reach": "partial",
+      "after_reach": "full",
+      "newly_reached_truth_bbls": [
+        "4097130102"
+      ],
+      "still_missing_truth_bbl_count": 0
+    },
+    {
+      "case_id": "h7-subject:round-exact-lender:343b390cda556db86a9448d2c13ca79b520630785f78471403c475e653c5f639",
+      "truth_plane": "round_exact_lender_party",
+      "before_reach": "partial",
+      "after_reach": "full",
+      "newly_reached_truth_bbls": [
+        "2058141101"
+      ],
+      "still_missing_truth_bbl_count": 0
+    },
+    {
+      "case_id": "h7-subject:round-exact-lender:4e262201c8bba72398744b8bd7361b5e421fe4935f723068ae0234631f3ea437",
+      "truth_plane": "round_exact_lender_party",
+      "before_reach": "partial",
+      "after_reach": "full",
+      "newly_reached_truth_bbls": [
+        "2023270012"
+      ],
+      "still_missing_truth_bbl_count": 0
+    },
+    {
+      "case_id": "h7-subject:round-exact-lender:8fd55140aa370ed0de8a0165bdc2badf437576fa21ed6840f7cdc922380e5a01",
+      "truth_plane": "round_exact_lender_party",
+      "before_reach": "partial",
+      "after_reach": "full",
+      "newly_reached_truth_bbls": [
+        "2026030007"
+      ],
+      "still_missing_truth_bbl_count": 0
+    },
+    {
+      "case_id": "h7-subject:round-exact-lender:9321e1c2650cce00f18b45f17c9a8f124b89d38912c52275d94e9570a69862db",
+      "truth_plane": "round_exact_lender_party",
+      "before_reach": "partial",
+      "after_reach": "full",
+      "newly_reached_truth_bbls": [
+        "4014360032",
+        "4014480001",
+        "4014490001"
+      ],
+      "still_missing_truth_bbl_count": 0
+    },
+    {
+      "case_id": "h7-subject:round-exact-lender:a6dd2e3136d10b2068ef95de45f80a233063493140468f1d4f943c20f9f0c205",
+      "truth_plane": "round_exact_lender_party",
+      "before_reach": "none",
+      "after_reach": "full",
+      "newly_reached_truth_bbls": [
+        "1014350020",
+        "1014350021",
+        "1014350022",
+        "1014350023",
+        "1014350024",
+        "1014350025",
+        "1014350026"
+      ],
+      "still_missing_truth_bbl_count": 0
+    },
+    {
+      "case_id": "h7-subject:round-exact-lender:a7dac634b44cc8175e7bde5b0a386f2ecda11361200f3b04bce5a3b84aa73ee3",
+      "truth_plane": "round_exact_lender_party",
+      "before_reach": "none",
+      "after_reach": "full",
+      "newly_reached_truth_bbls": [
+        "1014350020",
+        "1014350021",
+        "1014350022",
+        "1014350023",
+        "1014350024",
+        "1014350025",
+        "1014350026"
+      ],
+      "still_missing_truth_bbl_count": 0
+    },
+    {
+      "case_id": "h7-subject:round-exact-lender:f666262caacbe856aca99ad1ae40d1dea21df4a20be827e9ed693f4515c6647b",
+      "truth_plane": "round_exact_lender_party",
+      "before_reach": "none",
+      "after_reach": "full",
+      "newly_reached_truth_bbls": [
+        "1007200021",
+        "1007200022"
+      ],
+      "still_missing_truth_bbl_count": 0
+    }
+  ],
+  "residual_unreached_cases": [
+    {
+      "case_id": "h7-subject:non-round:655a127dc453d12220696e0a0f76929d2ab8dd91ebd1dbe363173e50408fb34b",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "after_reach": "partial",
+      "still_missing_truth_bbl_count": 145,
+      "first_still_missing_truth_bbl": "4067971301",
+      "last_still_missing_truth_bbl": "4067971445",
+      "cause": "pad_confirmed_condo_unit_lot_without_pluto_geometry"
+    },
+    {
+      "case_id": "h7-subject:non-round:68a1a4ced3f7c16edc483b877013238d0e2c26692c9ef0a5a721e6bb25872612",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "after_reach": "none",
+      "still_missing_truth_bbl_count": 2,
+      "first_still_missing_truth_bbl": "1012741304",
+      "last_still_missing_truth_bbl": "1013261075",
+      "cause": "pad_confirmed_condo_unit_lot_without_pluto_geometry"
+    },
+    {
+      "case_id": "h7-subject:non-round:e3a5228d84bb6bf01ff03e2849e4a996f223cb1fcff79eff04a65d84dcfa8deb",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "after_reach": "none",
+      "still_missing_truth_bbl_count": 10,
+      "first_still_missing_truth_bbl": "4050141101",
+      "last_still_missing_truth_bbl": "4050141110",
+      "cause": "pad_confirmed_condo_unit_lot_without_pluto_geometry"
+    },
+    {
+      "case_id": "h7-subject:round-exact-lender:0a6ff10eaf74e3ff8cde56399cf9297813f3833885064be70351eae286e6da9b",
+      "truth_plane": "round_exact_lender_party",
+      "after_reach": "partial",
+      "still_missing_truth_bbl_count": 2,
+      "first_still_missing_truth_bbl": "1000281301",
+      "last_still_missing_truth_bbl": "1000281302",
+      "cause": "pad_confirmed_condo_unit_lot_without_pluto_geometry"
+    },
+    {
+      "case_id": "h7-subject:round-exact-lender:91b2df274815b9997ac6ff6e772f2e142c7b3eac3ea61777131611896d6095a6",
+      "truth_plane": "round_exact_lender_party",
+      "after_reach": "none",
+      "still_missing_truth_bbl_count": 172,
+      "first_still_missing_truth_bbl": "1010291102",
+      "last_still_missing_truth_bbl": "1010291280",
+      "cause": "pad_confirmed_condo_unit_lot_without_pluto_geometry"
+    }
+  ],
+  "e4_solver_rescore": {
+    "status": "not_scored_in_this_increment",
+    "reason": "This artifact widens the candidate universe and freezes the reach delta; the E4 scorer must consume the widened universe to report resolved/correct/ambiguous/conflict/false_merge movements."
+  }
+}
