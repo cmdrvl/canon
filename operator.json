@@ -1485,6 +1485,7 @@
       "aggregate": true,
       "leaves": [
         "geo ledger build",
+        "geo ledger exposure",
         "geo ledger validate"
       ],
       "options": []
@@ -1563,6 +1564,88 @@
           "required": false,
           "repeatable": true,
           "description": "Bound evidence artifact as ARTIFACT_ID=EVIDENCE.json"
+        }
+      ]
+    },
+    {
+      "name": "geo ledger exposure",
+      "usage": "canon geo ledger exposure --ledger <LEDGER.json> --advisory <ADVISORY.json> --geometry <GEOMETRY.json> --archive <ARCHIVE.json>",
+      "description": "Join a pinned wind-radii advisory to exact collateral-ledger building geometry and emit canonical canon_geo_event_exposure.v0 bytes",
+      "output_mode": "json",
+      "output_schema": "canon_geo_event_exposure.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads only explicit --ledger, --advisory, --geometry, and --archive JSON files, validates advisory source pins and exact building polygons before emitting canonical event-exposure bytes on stdout, and performs no catalog, project, registry, work-dir, or network reads",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "geo read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "canonical canon_geo_event_exposure.v0 artifact emitted",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / ledger, advisory, geometry, archive, or exposure contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "canon geo ledger exposure --ledger <LEDGER.json> --advisory <ADVISORY.json> --geometry <GEOMETRY.json> --archive <ARCHIVE.json>",
+      "recovery": {
+        "next_command": "canon geo ledger exposure --ledger <LEDGER.json> --advisory <ADVISORY.json> --geometry <GEOMETRY.json> --archive <ARCHIVE.json>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "ledger",
+          "flag": "--ledger",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding a canon_geo_collateral_ledger.v0 artifact"
+        },
+        {
+          "name": "advisory",
+          "flag": "--advisory",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding a pinned advisory with wind-radius rings"
+        },
+        {
+          "name": "geometry",
+          "flag": "--geometry",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding frame_id plus building polygons or typed building geometries"
+        },
+        {
+          "name": "archive",
+          "flag": "--archive",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding archived advisory source pins and advisory numbers"
         }
       ]
     },

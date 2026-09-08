@@ -11,10 +11,10 @@ use crate::{
     CanonOutput, Refusal, RefusalCode,
     cli::{
         GeoCapabilitiesCli, GeoCapabilitiesEmitMode, GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli,
-        GeoInspectCli, GeoLedgerBuildCli, GeoLedgerCli, GeoLedgerSubcommand, GeoLedgerValidateCli,
-        GeoLinkSourcesCli, GeoMaterializeAddressEvidenceCli, GeoMaterializeEvidenceCli,
-        GeoMaterializeGeometryCli, GeoMaterializeH7PipBlockBatchCli, GeoMaterializeH7PopulationCli,
-        GeoMaterializeH7StagingBatchCli, GeoMaterializeHomeCellsCli,
+        GeoInspectCli, GeoLedgerBuildCli, GeoLedgerCli, GeoLedgerExposureCli, GeoLedgerSubcommand,
+        GeoLedgerValidateCli, GeoLinkSourcesCli, GeoMaterializeAddressEvidenceCli,
+        GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli, GeoMaterializeH7PipBlockBatchCli,
+        GeoMaterializeH7PopulationCli, GeoMaterializeH7StagingBatchCli, GeoMaterializeHomeCellsCli,
         GeoMaterializeWarehouseGeometryCli, GeoPlanCli, GeoReconcileTilesCli,
         GeoReplanFromAcquisitionCli, GeoRunCli, GeoSolveCli, GeoStackEvidenceCli, GeoSubcommand,
         GeoTileWorkCli, RegistryEmitMode,
@@ -72,12 +72,17 @@ use super::{
         CANON_GEO_CLIENT_TILE_SOURCE_VERSION, GEO_CLIENT_TILE_INGEST_STAGE_COMMAND,
         GEO_CLIENT_TILE_SOURCE_BINDING_ID,
     },
+    exposure::{
+        GeoAdvisoryArchive, GeoAdvisoryPin, GeoExposureError, GeoExposureGeometryInput,
+        canonical_event_exposure_bytes, join_exposure_from_geometry_input,
+    },
     geometry_value::{
         CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
         CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_VERSION,
-        GeoGeometryError, GeoGeometryTileRequest, GeoWarehouseGeometryRowsRequest,
-        canonical_geometry_tile_bytes, canonical_warehouse_geometry_bytes,
-        materialize_geometry_tile, materialize_warehouse_geometry,
+        GeoCanonicalPolygonMm, GeoGeometryError, GeoGeometryTileRequest,
+        GeoWarehouseGeometryRowsRequest, canonical_geometry_tile_bytes,
+        canonical_warehouse_geometry_bytes, materialize_geometry_tile,
+        materialize_warehouse_geometry,
     },
     inspect::{
         GeoInspectError, GeoInspectOptions, canonical_inspection_bytes, inspect_with_compare,
@@ -146,6 +151,7 @@ const GEO_INSPECT_NEXT_COMMAND: &str =
     "canon geo inspect --run <DIR> [--component <ID>] [--compare <OTHER_RUN>] [--recommend-next]";
 const GEO_LEDGER_BUILD_NEXT_COMMAND: &str = "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>";
 const GEO_LEDGER_VALIDATE_NEXT_COMMAND: &str = "canon geo ledger validate --ledger <LEDGER.json>";
+const GEO_LEDGER_EXPOSURE_NEXT_COMMAND: &str = "canon geo ledger exposure --ledger <LEDGER.json> --advisory <ADVISORY.json> --geometry <GEOMETRY.json> --archive <ARCHIVE.json>";
 
 pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
     match &geo.command {
@@ -491,13 +497,14 @@ fn run_replan_from_acquisition(args: &GeoReplanFromAcquisitionCli) -> Result<u8,
 fn run_ledger(args: &GeoLedgerCli) -> Result<u8, Box<dyn Error>> {
     match &args.command {
         Some(GeoLedgerSubcommand::Build(args)) => run_ledger_build(args),
+        Some(GeoLedgerSubcommand::Exposure(args)) => run_ledger_exposure(args),
         Some(GeoLedgerSubcommand::Validate(args)) => run_ledger_validate(args),
         None => emit_refusal(
             RefusalCode::EParse,
             "Geo ledger requires a subcommand",
             json!({
                 "command": "canon geo ledger",
-                "subcommands": ["build", "validate"],
+                "subcommands": ["build", "exposure", "validate"],
                 "writes_performed": false,
             }),
             Some(GEO_LEDGER_BUILD_NEXT_COMMAND.to_string()),
@@ -559,6 +566,49 @@ fn run_ledger_validate(args: &GeoLedgerValidateCli) -> Result<u8, Box<dyn Error>
     }
 }
 
+fn run_ledger_exposure(args: &GeoLedgerExposureCli) -> Result<u8, Box<dyn Error>> {
+    let ledger: GeoCollateralLedger = match read_request(
+        &args.ledger,
+        "ledger",
+        CANON_GEO_COLLATERAL_LEDGER_VERSION,
+        GEO_LEDGER_EXPOSURE_NEXT_COMMAND,
+    ) {
+        Ok(ledger) => ledger,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let advisory: GeoAdvisoryPin = match read_request(
+        &args.advisory,
+        "advisory",
+        "GeoAdvisoryPin",
+        GEO_LEDGER_EXPOSURE_NEXT_COMMAND,
+    ) {
+        Ok(advisory) => advisory,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let geometry = match read_exposure_geometry(&args.geometry) {
+        Ok(geometry) => geometry,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let archive: GeoAdvisoryArchive = match read_request(
+        &args.archive,
+        "archive",
+        "GeoAdvisoryArchive",
+        GEO_LEDGER_EXPOSURE_NEXT_COMMAND,
+    ) {
+        Ok(archive) => archive,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let exposure = match join_exposure_from_geometry_input(&ledger, &advisory, &geometry, &archive)
+    {
+        Ok(exposure) => exposure,
+        Err(error) => return emit_exposure_error(error),
+    };
+    match canonical_event_exposure_bytes(&exposure) {
+        Ok(bytes) => write_canonical(&bytes),
+        Err(error) => emit_exposure_error(error),
+    }
+}
+
 fn read_ledger_artifact_map<T: DeserializeOwned>(
     values: &[String],
     flag: &'static str,
@@ -608,6 +658,50 @@ fn read_ledger_artifact_map<T: DeserializeOwned>(
         artifacts.insert(artifact_id.to_string(), artifact);
     }
     Ok(artifacts)
+}
+
+#[derive(Deserialize)]
+struct GeoExposurePolygonGeometryFile {
+    frame_id: String,
+    buildings: BTreeMap<String, GeoCanonicalPolygonMm>,
+}
+
+fn read_exposure_geometry(path: &Path) -> Result<GeoExposureGeometryInput, u8> {
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            return Err(emit_refusal(
+                RefusalCode::EIo,
+                "Could not read the Geo --geometry file",
+                json!({
+                    "geometry": path_string(path),
+                    "error": error.to_string(),
+                }),
+                Some(GEO_LEDGER_EXPOSURE_NEXT_COMMAND.to_string()),
+            )
+            .unwrap_or(2));
+        }
+    };
+    if let Ok(geometry) = serde_json::from_slice::<GeoExposureGeometryInput>(&bytes) {
+        return Ok(geometry);
+    }
+    match serde_json::from_slice::<GeoExposurePolygonGeometryFile>(&bytes) {
+        Ok(geometry) => Ok(GeoExposureGeometryInput::from_polygons(
+            geometry.frame_id,
+            &geometry.buildings,
+        )),
+        Err(error) => Err(emit_refusal(
+            RefusalCode::EParse,
+            "Could not parse the Geo --geometry file as frame_id plus building geometries",
+            json!({
+                "geometry": path_string(path),
+                "expected": "frame_id plus buildings as tagged GeoCanonicalGeometryMm or GeoCanonicalPolygonMm values",
+                "error": error.to_string(),
+            }),
+            Some(GEO_LEDGER_EXPOSURE_NEXT_COMMAND.to_string()),
+        )
+        .unwrap_or(2)),
+    }
 }
 
 fn run_materialize_home_cells(args: &GeoMaterializeHomeCellsCli) -> Result<u8, Box<dyn Error>> {
@@ -2473,6 +2567,19 @@ fn emit_ledger_error(error: GeoLedgerError, next_command: &str) -> Result<u8, Bo
             "detail": error.detail,
         }),
         Some(next_command.to_string()),
+    )
+}
+
+fn emit_exposure_error(error: GeoExposureError) -> Result<u8, Box<dyn Error>> {
+    emit_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Geo event exposure could not be joined from ledger geometry and advisory rings",
+        json!({
+            "geo_exposure_error_code": code_name(&error.code),
+            "message": error.message,
+            "detail": error.detail,
+        }),
+        Some(GEO_LEDGER_EXPOSURE_NEXT_COMMAND.to_string()),
     )
 }
 

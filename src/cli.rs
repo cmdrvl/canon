@@ -438,6 +438,8 @@ pub struct GeoLedgerCli {
 pub enum GeoLedgerSubcommand {
     /// Build a physical collateral ledger from seed rows and bound solve/evidence artifacts
     Build(GeoLedgerBuildCli),
+    /// Join a pinned wind-radii advisory to exact ledger building geometry
+    Exposure(GeoLedgerExposureCli),
     /// Validate a physical collateral ledger artifact and emit canonical bytes
     Validate(GeoLedgerValidateCli),
 }
@@ -460,6 +462,22 @@ pub struct GeoLedgerValidateCli {
     /// JSON file holding a canon_geo_collateral_ledger.v0 artifact
     #[arg(long)]
     pub ledger: PathBuf,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoLedgerExposureCli {
+    /// JSON file holding a canon_geo_collateral_ledger.v0 artifact
+    #[arg(long)]
+    pub ledger: PathBuf,
+    /// JSON file holding a pinned advisory with wind-radius rings
+    #[arg(long)]
+    pub advisory: PathBuf,
+    /// JSON file holding frame_id plus building polygons or typed building geometries
+    #[arg(long)]
+    pub geometry: PathBuf,
+    /// JSON file holding archived advisory source pins and advisory numbers
+    #[arg(long)]
+    pub archive: PathBuf,
 }
 
 #[derive(Args, Debug, Clone)]

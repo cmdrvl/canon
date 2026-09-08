@@ -40,6 +40,7 @@ use super::{
         CANON_GEO_EXPLANATION_VERSION, CANON_GEO_SEPARATION_INPUTS_VERSION,
         CANON_GEO_SEPARATION_REQUEST_VERSION, CANON_GEO_SEPARATION_VERSION,
     },
+    exposure::CANON_GEO_EVENT_EXPOSURE_VERSION,
     footprint_roll::CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION,
     geometry_value::{
         CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
@@ -1323,6 +1324,11 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "physical collateral ledger artifact contract",
         ),
         contract(
+            CANON_GEO_EVENT_EXPOSURE_VERSION,
+            "schemas/canon.geo.event_exposure.v0.schema.json",
+            "loan-grain wind-radii event exposure artifact contract",
+        ),
+        contract(
             CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION,
             "schemas/canon.geo.footprint_roll_evidence_request.v0.schema.json",
             "assessment-roll gross-square-foot and footprint active-BIN evidence request contract",
@@ -1557,6 +1563,12 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
         unsurfaced_command(
             "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>",
             CANON_GEO_COLLATERAL_LEDGER_VERSION,
+            true,
+            false,
+        ),
+        unsurfaced_command(
+            "canon geo ledger exposure --ledger <LEDGER.json> --advisory <ADVISORY.json> --geometry <GEOMETRY.json> --archive <ARCHIVE.json>",
+            CANON_GEO_EVENT_EXPOSURE_VERSION,
             true,
             false,
         ),

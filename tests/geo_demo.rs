@@ -98,6 +98,7 @@ fn geo_capabilities_report_exact_surface_tier_counts() {
         unsurfaced_geo_commands(&capabilities),
         BTreeSet::from([
             "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>".to_string(),
+            "canon geo ledger exposure --ledger <LEDGER.json> --advisory <ADVISORY.json> --geometry <GEOMETRY.json> --archive <ARCHIVE.json>".to_string(),
             "canon geo ledger validate --ledger <LEDGER.json>".to_string(),
             "canon.geo.stage.ledger.v0".to_string(),
             "canon.geo.stage.observe_admit.v0".to_string(),

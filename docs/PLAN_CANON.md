@@ -100,6 +100,7 @@ canon geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVE
 canon geo inspect --run <DIR> [--component <ID>] [--compare <OTHER_RUN>] [--recommend-next] [--emit json|summary]
 canon geo ledger
 canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>
+canon geo ledger exposure --ledger <LEDGER.json> --advisory <ADVISORY.json> --geometry <GEOMETRY.json> --archive <ARCHIVE.json>
 canon geo ledger validate --ledger <LEDGER.json>
 canon geo evaluate --population <POPULATION.json> [--truth <DEED_TRUTH.json> --truth-plane deed_grain_instrument] [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>] [--e4-before-assessment <BEFORE.json> --e4-rescore-out <COMPARISON.json>]
 

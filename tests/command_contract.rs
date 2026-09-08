@@ -608,6 +608,7 @@ fn assert_runtime_corpus_coverage(manifest: &OperatorManifest, cases: &[RuntimeC
         "geo inspect",
         "geo ledger",
         "geo ledger build",
+        "geo ledger exposure",
         "geo ledger validate",
         "registry providers",
         "registry provider-schema",
@@ -1104,7 +1105,7 @@ impl RuntimeHarness {
                     "loan_id": "fixture-command-contract-loan",
                     "reach": "full",
                     "parcel_set": ["fixture-command-contract-parcel"],
-                    "building_set": [],
+                    "building_set": ["fixture-command-contract-building"],
                     "deed_ids": [],
                     "truth_plane": "gate_v2_historical",
                     "claim_class": "collateral_composition",
@@ -1141,6 +1142,78 @@ impl RuntimeHarness {
             .expect("geo ledger fixture serializes"),
         )
         .expect("geo ledger fixture");
+        let geo_exposure_source_blake3 = format!(
+            "blake3:{}",
+            blake3::hash(b"command-contract-geo-exposure-advisory").to_hex()
+        );
+        let geo_exposure_advisory = self.work.join("geo-exposure-advisory.json");
+        fs::write(
+            &geo_exposure_advisory,
+            serde_json::to_vec_pretty(&json!({
+                "advisory_id": "fixture-command-contract-advisory-12",
+                "storm_id": "fixture-command-contract-storm",
+                "advisory_number": 12,
+                "issued": {
+                    "start_day": 20705,
+                    "end_day": 20705
+                },
+                "source_blake3s": [geo_exposure_source_blake3.clone()],
+                "frame_id": "fixture-command-contract-frame",
+                "wind_radii": [{
+                    "knots": 64,
+                    "ring": {
+                        "exterior": {
+                            "vertices": [
+                                { "x": 0, "y": 0 },
+                                { "x": 20000, "y": 0 },
+                                { "x": 20000, "y": 20000 },
+                                { "x": 0, "y": 20000 }
+                            ]
+                        },
+                        "holes": []
+                    }
+                }]
+            }))
+            .expect("geo exposure advisory fixture serializes"),
+        )
+        .expect("geo exposure advisory fixture");
+        let geo_exposure_geometry = self.work.join("geo-exposure-geometry.json");
+        fs::write(
+            &geo_exposure_geometry,
+            serde_json::to_vec_pretty(&json!({
+                "source_dataset": "fixture.command_contract.geo_exposure_geometry",
+                "frame_id": "fixture-command-contract-frame",
+                "buildings": {
+                    "fixture-command-contract-building": {
+                        "exterior": {
+                            "vertices": [
+                                { "x": 5000, "y": 5000 },
+                                { "x": 15000, "y": 5000 },
+                                { "x": 15000, "y": 15000 },
+                                { "x": 5000, "y": 15000 }
+                            ]
+                        },
+                        "holes": []
+                    }
+                }
+            }))
+            .expect("geo exposure geometry fixture serializes"),
+        )
+        .expect("geo exposure geometry fixture");
+        let geo_exposure_archive = self.work.join("geo-exposure-archive.json");
+        fs::write(
+            &geo_exposure_archive,
+            serde_json::to_vec_pretty(&json!({
+                "source_blake3s": [geo_exposure_source_blake3.clone()],
+                "advisories": [{
+                    "storm_id": "fixture-command-contract-storm",
+                    "advisory_number": 12,
+                    "source_blake3s": [geo_exposure_source_blake3]
+                }]
+            }))
+            .expect("geo exposure archive fixture serializes"),
+        )
+        .expect("geo exposure archive fixture");
 
         vec![
             RuntimeCase {
@@ -1365,7 +1438,10 @@ impl RuntimeHarness {
                     .assert_eq("outcome", json!("REFUSAL"))
                     .assert_eq("refusal.code", json!("E_PARSE"))
                     .assert_eq("refusal.detail.command", json!("canon geo ledger"))
-                    .assert_eq("refusal.detail.subcommands", json!(["build", "validate"]))
+                    .assert_eq(
+                        "refusal.detail.subcommands",
+                        json!(["build", "exposure", "validate"]),
+                    )
                     .assert_eq(
                         "refusal.next_command",
                         json!("canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>"),
@@ -1394,6 +1470,35 @@ impl RuntimeHarness {
                 .assert_eq("proof_class", json!("fixture"))
                 .assert_eq("rows.0.loan_id", json!("fixture-command-contract-loan"))
                 .assert_eq("rows.0.parcel_set.0", json!("fixture-command-contract-parcel"))
+                .with_stderr(StderrExpectation::Empty),
+            },
+            RuntimeCase {
+                id: "geo_ledger_exposure_json",
+                command_name: "geo ledger exposure",
+                args: vec![
+                    "geo".to_string(),
+                    "ledger".to_string(),
+                    "exposure".to_string(),
+                    "--ledger".to_string(),
+                    path_arg(&geo_ledger),
+                    "--advisory".to_string(),
+                    path_arg(&geo_exposure_advisory),
+                    "--geometry".to_string(),
+                    path_arg(&geo_exposure_geometry),
+                    "--archive".to_string(),
+                    path_arg(&geo_exposure_archive),
+                ],
+                expected: RuntimeExpectation::json(
+                    0,
+                    "canon_geo_event_exposure.v0",
+                    SchemaField::Version,
+                )
+                .assert_eq(
+                    "exposed.0.building_id",
+                    json!("fixture-command-contract-building"),
+                )
+                .assert_eq("exposed.0.knots_band", json!(64))
+                .assert_eq("buildings_without_geometry", json!([]))
                 .with_stderr(StderrExpectation::Empty),
             },
             RuntimeCase {
