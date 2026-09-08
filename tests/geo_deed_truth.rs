@@ -17,6 +17,7 @@ const E4_POPULATION_REQUEST_FIXTURE: &str =
     include_str!("fixtures/geo/e4_gate_v2_population_request.json");
 const FRANKLIN_DEED_TRUTH_EXPORT_SQL: &str =
     include_str!("../scripts/geo_measurements/e5_franklin_deed_truth_export.sql");
+const E2E_DEED_TRUTH_SCRIPT: &str = include_str!("../scripts/geo_demo/e2e_deed_truth.sh");
 
 fn fixture_index() -> GeoDeedIndexRowsRequest {
     serde_json::from_str(DEED_INDEX_FIXTURE).expect("deed index fixture parses")
@@ -387,4 +388,61 @@ fn e5_franklin_deed_truth_export_is_pinned_truth_plane_input() {
             "deed truth export SQL must not depend on {forbidden:?}"
         );
     }
+}
+
+#[test]
+fn e2e_deed_truth_script_uses_measurement_binary_and_public_evaluate() {
+    for required in [
+        "canon_geo_measurements",
+        "derive-deed-truth",
+        "deed_truth_loans_fixture.json",
+        "deed_index_fixture.json",
+        "franklin_population_fixture.json",
+        "geo evaluate",
+        "--artifact-dir",
+        "deed_grain_instrument",
+        "artifact_blake3",
+        "solver_digest",
+        "compilation_digest",
+        "cargo test --manifest-path \"$repo_root/Cargo.toml\" --test geo_deed_truth",
+        "cargo test --manifest-path \"$repo_root/Cargo.toml\" --test geo_schemas deed_",
+        "cargo test --manifest-path \"$repo_root/Cargo.toml\" --test geo_e5_franklin_parcel franklin_instance_names_do_not_enter_the_generic_geo_engine",
+    ] {
+        assert!(
+            E2E_DEED_TRUTH_SCRIPT.contains(required),
+            "deed truth e2e script must contain {required:?}"
+        );
+    }
+
+    for forbidden in [
+        "geo truth derive-deed",
+        "canon geo truth",
+        "--truth ",
+        "--truth-plane",
+        "ST_CONTAINS",
+        "st_contains",
+        "BBL",
+        "borough",
+        "block_lot",
+    ] {
+        assert!(
+            !E2E_DEED_TRUTH_SCRIPT.contains(forbidden),
+            "deed truth e2e script must not contain withdrawn or NYC-shaped surface {forbidden:?}"
+        );
+    }
+
+    let script_path = format!(
+        "{}/scripts/geo_demo/e2e_deed_truth.sh",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let output = Command::new("bash")
+        .args(["-n", &script_path])
+        .output()
+        .expect("bash -n e2e_deed_truth.sh");
+    assert!(
+        output.status.success(),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
