@@ -1,0 +1,155 @@
+{
+  "version": "canon_geo_acquisition_receipt.v0",
+  "request_id": "canon_geo_acquisition_request.v0:d44e526747a02463cafccd023b0dcf2c7f2c4ca96d43a1655099e0b3296014b5",
+  "request_semantic_hash": "blake3:d44e526747a02463cafccd023b0dcf2c7f2c4ca96d43a1655099e0b3296014b5",
+  "terminal_state": "COMPLETE",
+  "proof_class": "retained",
+  "executor": {
+    "executor_kind": "local_file",
+    "executor_id": "census_geocoder_current",
+    "executor_version": "benchmark=Public_AR_Current;vintage=Current_Current",
+    "tool_id": "scripts/geo_acquisition/regeocode.py",
+    "tool_version": "bd-3p8e.v0",
+    "executor_request_id": "canon_geo_acquisition_request.v0:d44e526747a02463cafccd023b0dcf2c7f2c4ca96d43a1655099e0b3296014b5",
+    "executor_query_id": "retained-provider-response:48ff6461f43ea16181b0ce33a92a0d0602d65284df5b3f20119e37d3b02c1d22",
+    "executor_attempt_id": "point:e1.gross_class.0022"
+  },
+  "retained_receipt_id": "retained-provider-response:48ff6461f43ea16181b0ce33a92a0d0602d65284df5b3f20119e37d3b02c1d22",
+  "bounded_geography": {
+    "geography_id": "geo.retry-recovery.e1.gross_class.0022.geography",
+    "geography_kind": "gross_class_retry_recovery_point",
+    "description": "frozen G4 gross-class point requiring external re-geocode acquisition"
+  },
+  "subset": {
+    "subset_id": "geo.retry-recovery.e1.gross_class.0022.subset",
+    "geography": {
+      "geography_id": "geo.retry-recovery.e1.gross_class.0022.geography",
+      "geography_kind": "gross_class_retry_recovery_point",
+      "description": "frozen G4 gross-class point requiring external re-geocode acquisition"
+    },
+    "h3_cells": [
+      "892a100f12fffff"
+    ],
+    "predicates": [
+      {
+        "predicate_id": "point_id",
+        "kind": "explicit_identifiers",
+        "expression": "point_id = 'e1.gross_class.0022'"
+      },
+      {
+        "predicate_id": "subject_id",
+        "kind": "explicit_identifiers",
+        "expression": "subject_id = 'CREP-6AB181363BFF721C'"
+      },
+      {
+        "predicate_id": "asserted_address_blake3",
+        "kind": "explicit_identifiers",
+        "expression": "asserted_address_blake3 = 'fccff214d5a7217dd8a4dea1698d99692d1d9b1b8ec8f1adfbaaea44f8d634ff'"
+      }
+    ]
+  },
+  "releases": [
+    {
+      "source_instance_id": "census_geocoder_current",
+      "release_id": "benchmark=Public_AR_Current;vintage=Current_Current",
+      "release_digest": {
+        "digest_id": "provider_profile",
+        "algorithm": "blake3",
+        "hex_digest": "470ad41037434cc536256220021d2c47c04c9a072287b40f174ed2969f0eb36d"
+      }
+    }
+  ],
+  "fields": [
+    {
+      "field_id": "point_id",
+      "role": "identifier",
+      "required": true
+    },
+    {
+      "field_id": "subject_id",
+      "role": "identifier",
+      "required": true
+    },
+    {
+      "field_id": "address_text",
+      "role": "identifier",
+      "required": true
+    },
+    {
+      "field_id": "asserted_address_blake3",
+      "role": "digest",
+      "required": true
+    }
+  ],
+  "normalized_executed_request_digest": {
+    "digest_id": "executor.normalized_request",
+    "algorithm": "blake3",
+    "hex_digest": "d44e526747a02463cafccd023b0dcf2c7f2c4ca96d43a1655099e0b3296014b5"
+  },
+  "pagination": {
+    "requested_page": {
+      "page_size_rows": 10
+    },
+    "rows_truncated": false,
+    "bytes_truncated": false
+  },
+  "counts": {
+    "rows": 1,
+    "bytes": 5614
+  },
+  "denominators": [
+    {
+      "denominator_id": "requested-subset",
+      "source": "requested_subset",
+      "count": 1,
+      "unit": "row",
+      "description": "bounded acquisition request subjects"
+    }
+  ],
+  "source_digests": [
+    {
+      "digest_id": "source_release:census_geocoder_current:benchmark=Public_AR_Current;vintage=Current_Current:470ad41037434cc536256220021d2c47c04c9a072287b40f174ed2969f0eb36d",
+      "algorithm": "blake3",
+      "hex_digest": "470ad41037434cc536256220021d2c47c04c9a072287b40f174ed2969f0eb36d"
+    }
+  ],
+  "result_digests": [
+    {
+      "digest_id": "provider_response_bytes",
+      "algorithm": "blake3",
+      "hex_digest": "af5e5ad0577f806cd822f3c1eff2e5b625c993acaa2456320d3157d81bbff9aa"
+    },
+    {
+      "digest_id": "geocode_candidate_rows",
+      "algorithm": "blake3",
+      "hex_digest": "2f75687453847d13daf0bbc0afe69bd4880182574c35363d7f4068c190f356a6"
+    }
+  ],
+  "local_artifacts": [
+    {
+      "artifact_id": "provider_response_bytes",
+      "media_type": "application/octet-stream",
+      "byte_count": 5087,
+      "digest": {
+        "digest_id": "provider_response_bytes",
+        "algorithm": "blake3",
+        "hex_digest": "af5e5ad0577f806cd822f3c1eff2e5b625c993acaa2456320d3157d81bbff9aa"
+      }
+    },
+    {
+      "artifact_id": "geocode_candidate_rows",
+      "media_type": "application/json",
+      "byte_count": 527,
+      "digest": {
+        "digest_id": "geocode_candidate_rows",
+        "algorithm": "blake3",
+        "hex_digest": "2f75687453847d13daf0bbc0afe69bd4880182574c35363d7f4068c190f356a6"
+      }
+    }
+  ],
+  "unreadable_columns": [],
+  "resumability": {
+    "resumable": false,
+    "retry_guidance": "terminal acquisition receipt retained provider bytes and candidate rows"
+  }
+}

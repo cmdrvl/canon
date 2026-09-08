@@ -1,0 +1,98 @@
+{
+  "artifact_counts": {
+    "candidate_rows": 40,
+    "home_cell_assignments": 40,
+    "home_cell_rows": 40,
+    "home_runs": 40,
+    "provider_response_bytes": 40,
+    "receipt_json": 40,
+    "record_runs": 40,
+    "recorded_loops": 40
+  },
+  "bead": "bd-3p8e",
+  "boundary": {
+    "canon_binary_did_not_call_provider": true,
+    "denominator": 40,
+    "fixture_receipts_counted": false,
+    "live_label_retained": false,
+    "population": "tests/fixtures/geo/e1_gross_class_points.json",
+    "precision_claim": false,
+    "recovery_is_reach_only": true
+  },
+  "commands": {
+    "home_cell_replay": "canon_geo_measurements materialize-retry-recovery-run --population tests/fixtures/geo/e1_gross_class_points.json --point-id <POINT> --loop <prepared loop> --receipt <retained receipt> --candidate-rows <retained rows> --out-run <home run>",
+    "measure": "canon_geo_measurements measure-retry-recovery --population tests/fixtures/geo/e1_gross_class_points.json --loops recorded_loops --runs home_runs --receipts receipts",
+    "prepare": "canon_geo_measurements prepare-retry-recovery --population tests/fixtures/geo/e1_gross_class_points.json --address-rows /tmp/canon-bd-3p8e/live-prep/address_rows.json --provider-profile scripts/geo_acquisition/providers/census_geocoder_current.json --out-dir /tmp/canon-bd-3p8e/prepared",
+    "record_pass": "canon_geo_measurements record-retry-recovery-pass --loop <prepared loop> --latest-run <home run> --receipt <retained receipt> --out-loop <recorded loop>",
+    "retained_import": "scripts/geo_acquisition/regeocode.py --provider-response-bytes <retained bytes> --candidate-rows <retained rows> --proof-class retained"
+  },
+  "measurement": {
+    "abstained_at_ceiling": 0,
+    "blocked": 35,
+    "by_provider": {
+      "census_geocoder_current": 40
+    },
+    "denominator": 40,
+    "multi_or_no_singleton_home_cell_runs": 2,
+    "precision_claim": false,
+    "receipts_with_provider_request_id": 40,
+    "receipts_without_provider_request_id": 0,
+    "recovered": 5,
+    "singleton_home_cell_runs": 38,
+    "version": "canon_geo_retry_recovery.v0"
+  },
+  "non_singleton_points": [
+    {
+      "candidate_count": 3,
+      "point_id": "e1.gross_class.0015",
+      "request_semantic_hash": "blake3:b4ff1b4b6fc9d33eaaf946cc541d983318a3d90507c4791795568198639d3ba2"
+    },
+    {
+      "candidate_count": 2,
+      "point_id": "e1.gross_class.0039",
+      "request_semantic_hash": "blake3:5015381592597f0ad945477838aa4f21ed4fe0ca64e16d250ddea6ed49f90a72"
+    }
+  ],
+  "proof_class": "retained_fresh_census_geocoder_receipts_not_live",
+  "provider": {
+    "profile_blake3": "blake3:470ad41037434cc536256220021d2c47c04c9a072287b40f174ed2969f0eb36d",
+    "profile_path": "scripts/geo_acquisition/providers/census_geocoder_current.json",
+    "profile_sha256": "943a3ea8f49a80ba001b447ee4edf5aaab8c1a6f7c2ee7512f3070bd62fe29a5",
+    "provider_id": "census_geocoder_current",
+    "provider_version": "benchmark=Public_AR_Current;vintage=Current_Current"
+  },
+  "recorded_on_utc_day": "2026-09-08",
+  "recovered_points": [
+    {
+      "final_home_cell": "892a10745c7ffff",
+      "landed_home_cell": "892a1074513ffff",
+      "point_id": "e1.gross_class.0004",
+      "receipt_semantic_hash": "blake3:2074306ac2401d6d961471489b50008f3773e0b3567c501b0d269b548e937996"
+    },
+    {
+      "final_home_cell": "892a100e857ffff",
+      "landed_home_cell": "892a100e82bffff",
+      "point_id": "e1.gross_class.0013",
+      "receipt_semantic_hash": "blake3:b3f770be192a952a1db069486f4e89669709247b196e77134ff9fb5f58b7a5f4"
+    },
+    {
+      "final_home_cell": "892a100d14bffff",
+      "landed_home_cell": "892a100d143ffff",
+      "point_id": "e1.gross_class.0017",
+      "receipt_semantic_hash": "blake3:f2daa9a859453082e5f76e269b8db74f503845e1b84b5951aceb831b1d265522"
+    },
+    {
+      "final_home_cell": "892a100f12bffff",
+      "landed_home_cell": "892a100f12fffff",
+      "point_id": "e1.gross_class.0023",
+      "receipt_semantic_hash": "blake3:e0188479ae6aa890f143d35465b72082a1ed9281ac4234306175f785eb173ab0"
+    },
+    {
+      "final_home_cell": "892a100aa2fffff",
+      "landed_home_cell": "892a1008babffff",
+      "point_id": "e1.gross_class.0030",
+      "receipt_semantic_hash": "blake3:8a10f4efe3b39a69d72f343e18659d44628a9d824d30903d5e0168673d745796"
+    }
+  ],
+  "version": "g4_retry_recovery_retained_measurement.v0"
+}
