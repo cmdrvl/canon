@@ -50,6 +50,51 @@ pub struct GeoAdjudicationReceipt {
     pub notes_blake3: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoAdjudicationRetainedLabelRow {
+    pub case_id: String,
+    pub subject_id: String,
+    pub pin_id: String,
+    pub window_blake3: String,
+    pub candidate_parcel_ids: Vec<String>,
+    pub overlay_geometry_blake3: String,
+    pub crop_blake3: String,
+    pub label: GeoAdjudicationLabel,
+    pub adjudicator_id: String,
+    pub truth_plane: GeoTruthPlane,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes_blake3: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoAdjudicationInvalidLabelReason {
+    DuplicateCaseId,
+    MissingTilePin,
+    MissingCropBytes,
+    InvalidRequest,
+    InvalidReceipt,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoAdjudicationInvalidLabel {
+    pub case_id: String,
+    pub reason: GeoAdjudicationInvalidLabelReason,
+    pub detail: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoAdjudicationRevalidationReport {
+    pub labels_in: u64,
+    pub receipts_out: u64,
+    pub labels_unchanged: bool,
+    pub receipts: Vec<GeoAdjudicationReceipt>,
+    pub d0_labels_invalid: Vec<GeoAdjudicationInvalidLabel>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GeoAdjudicationErrorCode {
@@ -258,6 +303,18 @@ pub fn validate_adjudication_receipt_artifact(
     validate_blake3("crop_blake3", &receipt.crop_blake3)?;
     validate_label_shape(&receipt.label)?;
     validate_text("adjudicator_id", &receipt.adjudicator_id)?;
+    if !receipt.adjudicator_id.starts_with("adjudicator:") {
+        return Err(GeoAdjudicationError::label_scope(
+            "Geo adjudication receipts require a human adjudicator namespace",
+            [("adjudicator_id", receipt.adjudicator_id.as_str())],
+        ));
+    }
+    if receipt.truth_plane != GeoTruthPlane::HumanAdjudication {
+        return Err(GeoAdjudicationError::label_scope(
+            "Geo adjudication receipts must stay on the human adjudication truth plane",
+            [("truth_plane", truth_plane_name(receipt.truth_plane))],
+        ));
+    }
     if let Some(notes_blake3) = &receipt.notes_blake3 {
         validate_blake3("notes_blake3", notes_blake3)?;
     }
@@ -302,20 +359,6 @@ pub fn validate_adjudication_receipt(
         ));
     }
 
-    if !receipt.adjudicator_id.starts_with("adjudicator:") {
-        return Err(GeoAdjudicationError::label_scope(
-            "Geo adjudication receipts require a human adjudicator namespace",
-            [("adjudicator_id", receipt.adjudicator_id.as_str())],
-        ));
-    }
-
-    if receipt.truth_plane != GeoTruthPlane::HumanAdjudication {
-        return Err(GeoAdjudicationError::label_scope(
-            "Geo adjudication receipts must stay on the human adjudication truth plane",
-            [("truth_plane", truth_plane_name(receipt.truth_plane))],
-        ));
-    }
-
     if let GeoAdjudicationLabel::SelectedParcels(parcel_ids) = &receipt.label {
         let candidates = request
             .candidate_parcel_ids
@@ -333,6 +376,138 @@ pub fn validate_adjudication_receipt(
     }
 
     Ok(())
+}
+
+pub fn revalidate_adjudication_labels(
+    labels: &[GeoAdjudicationRetainedLabelRow],
+    pins_by_id: &BTreeMap<String, GeoImageTilePin>,
+    crop_bytes_by_case_id: &BTreeMap<String, Vec<u8>>,
+) -> Result<GeoAdjudicationRevalidationReport, GeoAdjudicationError> {
+    let labels_in = u64::try_from(labels.len()).map_err(|_| {
+        GeoAdjudicationError::new(
+            GeoAdjudicationErrorCode::ArithmeticOverflow,
+            "Geo adjudication retained label count exceeds u64",
+            [("field", "labels")],
+        )
+    })?;
+
+    let mut ordered_labels = labels.iter().collect::<Vec<_>>();
+    ordered_labels.sort_by(|left, right| left.case_id.cmp(&right.case_id));
+
+    let mut receipts = Vec::new();
+    let mut invalid = Vec::new();
+    let mut seen_case_ids = BTreeSet::new();
+    for row in ordered_labels {
+        if !seen_case_ids.insert(row.case_id.as_str()) {
+            invalid.push(retained_label_invalid(
+                row,
+                GeoAdjudicationInvalidLabelReason::DuplicateCaseId,
+                [("case_id".to_string(), row.case_id.clone())],
+            ));
+            continue;
+        }
+
+        let Some(tile_pin) = pins_by_id.get(&row.pin_id) else {
+            invalid.push(retained_label_invalid(
+                row,
+                GeoAdjudicationInvalidLabelReason::MissingTilePin,
+                [
+                    ("pin_id".to_string(), row.pin_id.clone()),
+                    ("case_id".to_string(), row.case_id.clone()),
+                ],
+            ));
+            continue;
+        };
+        let Some(crop_bytes) = crop_bytes_by_case_id.get(&row.case_id) else {
+            invalid.push(retained_label_invalid(
+                row,
+                GeoAdjudicationInvalidLabelReason::MissingCropBytes,
+                [
+                    ("case_id".to_string(), row.case_id.clone()),
+                    ("crop_blake3".to_string(), row.crop_blake3.clone()),
+                ],
+            ));
+            continue;
+        };
+
+        let request = GeoAdjudicationRequest {
+            version: CANON_GEO_ADJUDICATION_REQUEST_VERSION.to_string(),
+            case_id: row.case_id.clone(),
+            subject_id: row.subject_id.clone(),
+            tile_pin: tile_pin.clone(),
+            window_blake3: row.window_blake3.clone(),
+            candidate_parcel_ids: row.candidate_parcel_ids.clone(),
+            overlay_geometry_blake3: row.overlay_geometry_blake3.clone(),
+        };
+        if let Err(error) = validate_adjudication_request_artifact(&request) {
+            invalid.push(retained_label_invalid_from_error(
+                row,
+                GeoAdjudicationInvalidLabelReason::InvalidRequest,
+                error,
+            ));
+            continue;
+        }
+
+        let receipt = GeoAdjudicationReceipt {
+            version: CANON_GEO_ADJUDICATION_RECEIPT_VERSION.to_string(),
+            request_blake3: adjudication_request_blake3(&request)?,
+            crop_blake3: row.crop_blake3.clone(),
+            label: row.label.clone(),
+            adjudicator_id: row.adjudicator_id.clone(),
+            truth_plane: row.truth_plane,
+            notes_blake3: row.notes_blake3.clone(),
+        };
+        if let Err(error) = validate_adjudication_receipt(&request, &receipt, crop_bytes) {
+            invalid.push(retained_label_invalid_from_error(
+                row,
+                GeoAdjudicationInvalidLabelReason::InvalidReceipt,
+                error,
+            ));
+            continue;
+        }
+        receipts.push(receipt);
+    }
+
+    let receipts_out = u64::try_from(receipts.len()).map_err(|_| {
+        GeoAdjudicationError::new(
+            GeoAdjudicationErrorCode::ArithmeticOverflow,
+            "Geo adjudication receipt count exceeds u64",
+            [("field", "receipts")],
+        )
+    })?;
+
+    Ok(GeoAdjudicationRevalidationReport {
+        labels_in,
+        receipts_out,
+        labels_unchanged: true,
+        receipts,
+        d0_labels_invalid: invalid,
+    })
+}
+
+fn retained_label_invalid(
+    row: &GeoAdjudicationRetainedLabelRow,
+    reason: GeoAdjudicationInvalidLabelReason,
+    detail: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
+) -> GeoAdjudicationInvalidLabel {
+    GeoAdjudicationInvalidLabel {
+        case_id: row.case_id.clone(),
+        reason,
+        detail: detail
+            .into_iter()
+            .map(|(key, value)| (key.into(), value.into()))
+            .collect(),
+    }
+}
+
+fn retained_label_invalid_from_error(
+    row: &GeoAdjudicationRetainedLabelRow,
+    reason: GeoAdjudicationInvalidLabelReason,
+    error: GeoAdjudicationError,
+) -> GeoAdjudicationInvalidLabel {
+    let mut detail = error.detail;
+    detail.insert("error_code".to_string(), format!("{:?}", error.code));
+    retained_label_invalid(row, reason, detail)
 }
 
 fn polygon_blake3(polygon: &GeoCanonicalPolygonMm) -> Result<String, GeoAdjudicationError> {
