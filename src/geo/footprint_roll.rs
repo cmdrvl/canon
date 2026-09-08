@@ -176,6 +176,12 @@ pub struct GeoAssessmentRollGrossSqftBandCalibration {
 #[serde(deny_unknown_fields)]
 pub struct GeoAssessmentRollGrossSqftPropertyBand {
     pub property_class: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub population_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calibration_blake3: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub falsification_rule_id: Option<String>,
     pub lower_numerator: u64,
     pub lower_denominator: u64,
     pub upper_numerator: u64,
@@ -601,6 +607,9 @@ fn footprint_building_count_floor_observation(
 
 struct SelectedGrossSqftBand<'a> {
     property_class: Option<&'a str>,
+    population_id: &'a str,
+    calibration_blake3: &'a str,
+    falsification_rule_id: &'a str,
     lower_numerator: u64,
     lower_denominator: u64,
     upper_numerator: u64,
@@ -622,6 +631,18 @@ fn select_roll_gross_sqft_band<'a>(
     {
         return SelectedGrossSqftBand {
             property_class: Some(band.property_class.as_str()),
+            population_id: band
+                .population_id
+                .as_deref()
+                .unwrap_or(&calibration.population_id),
+            calibration_blake3: band
+                .calibration_blake3
+                .as_deref()
+                .unwrap_or(&calibration.calibration_blake3),
+            falsification_rule_id: band
+                .falsification_rule_id
+                .as_deref()
+                .unwrap_or(&calibration.falsification_rule_id),
             lower_numerator: band.lower_numerator,
             lower_denominator: band.lower_denominator,
             upper_numerator: band.upper_numerator,
@@ -634,6 +655,9 @@ fn select_roll_gross_sqft_band<'a>(
 
     SelectedGrossSqftBand {
         property_class: None,
+        population_id: &calibration.population_id,
+        calibration_blake3: &calibration.calibration_blake3,
+        falsification_rule_id: &calibration.falsification_rule_id,
         lower_numerator: calibration.lower_numerator,
         lower_denominator: calibration.lower_denominator,
         upper_numerator: calibration.upper_numerator,
@@ -683,9 +707,9 @@ fn assessment_roll_gross_sqft_band_contract(
         method_version: gross_sqft_band_method_version(&band),
         claim_role: GeoEvidenceClaimRole::AttributeObservation,
         basis: GeoRhoBasis::EmpiricalCalibration {
-            population_id: calibration.population_id.clone(),
-            calibration_blake3: calibration.calibration_blake3.clone(),
-            falsification_rule_id: calibration.falsification_rule_id.clone(),
+            population_id: band.population_id.to_string(),
+            calibration_blake3: band.calibration_blake3.to_string(),
+            falsification_rule_id: band.falsification_rule_id.to_string(),
             admissible_hard_band: band.admissible_hard_band,
             admission_policy: band.admission_policy.clone(),
         },
@@ -960,6 +984,24 @@ fn validate_calibration(
             "calibration.assessment_roll_gross_sqft_band.property_class_bands[].property_class",
             &band.property_class,
         )?;
+        if let Some(population_id) = &band.population_id {
+            validate_identifier(
+                "calibration.assessment_roll_gross_sqft_band.property_class_bands[].population_id",
+                population_id,
+            )?;
+        }
+        if let Some(calibration_blake3) = &band.calibration_blake3 {
+            validate_blake3(
+                "calibration.assessment_roll_gross_sqft_band.property_class_bands[].calibration_blake3",
+                calibration_blake3,
+            )?;
+        }
+        if let Some(falsification_rule_id) = &band.falsification_rule_id {
+            validate_identifier(
+                "calibration.assessment_roll_gross_sqft_band.property_class_bands[].falsification_rule_id",
+                falsification_rule_id,
+            )?;
+        }
         if !property_classes.insert(band.property_class.as_str()) {
             return Err(GeoFootprintRollEvidenceError::invalid(
                 "Geo roll sqft property-class bands must be distinct",

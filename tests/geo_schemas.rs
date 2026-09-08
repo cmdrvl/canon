@@ -3469,6 +3469,17 @@ fn footprint_roll_evidence_request_schema_matches_a_real_instance() {
                 canon::geo::footprint_roll::GeoAssessmentRollGrossSqftBandCalibration {
                     property_class_bands: vec![GeoAssessmentRollGrossSqftPropertyBand {
                         property_class: "MU".to_string(),
+                        population_id: Some(
+                            "h7-d1-residuals-2026-09-03-roll-property-type-MU".to_string(),
+                        ),
+                        calibration_blake3: Some(
+                            blake3::hash(b"schema mixed-use retained gsf calibration")
+                                .to_hex()
+                                .to_string(),
+                        ),
+                        falsification_rule_id: Some(
+                            "truth-gross-sum-outside-property-type-band".to_string(),
+                        ),
                         lower_numerator: 7,
                         lower_denominator: 10,
                         upper_numerator: 32,

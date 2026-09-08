@@ -1,0 +1,344 @@
+{
+  "baseline": {
+    "ambiguous": 54,
+    "component_fallbacks": 7,
+    "conflict": 3,
+    "exactly_correct": 6,
+    "false_merges": 0,
+    "name": "corroboration_policy_score",
+    "reach_full_partial_none": [
+      70,
+      0,
+      0
+    ],
+    "resolved": 6,
+    "truth_exclusions": 17
+  },
+  "bead": "bd-2nx4",
+  "boundary": "Admission-only overlay: candidate universe, truth labels, and solver scoring rules are unchanged. Property-type bands modify only rho.size.assessment_roll_gross_sqft_band contracts and observations for single-class profiled GSF observations.",
+  "calibration_profile": {
+    "bead": "bd-2nx4",
+    "profile_bands": [
+      {
+        "falsification_rule_id": "truth-gross-sum-outside-property-type-band",
+        "lower_denominator": 10,
+        "lower_numerator": 9,
+        "population_id": "h7-d1-residuals-2026-09-03-roll-property-type-MF",
+        "property_class": "MF",
+        "retained_truth_ratio_n": 2,
+        "retained_truth_ratio_range": [
+          0.99,
+          1.25
+        ],
+        "upper_denominator": 10,
+        "upper_inclusive_padding": 1,
+        "upper_numerator": 13
+      },
+      {
+        "falsification_rule_id": "truth-gross-sum-outside-property-type-band",
+        "lower_denominator": 10,
+        "lower_numerator": 7,
+        "population_id": "h7-d1-residuals-2026-09-03-roll-property-type-MU-retail-component",
+        "property_class": "MU",
+        "retained_truth_ratio_n": 8,
+        "retained_truth_ratio_range": [
+          0.758,
+          21.527
+        ],
+        "upper_denominator": 1,
+        "upper_inclusive_padding": 1,
+        "upper_numerator": 22
+      }
+    ],
+    "proof_class": "retained_population_measurement_not_live",
+    "selection_rule": "apply a property-type band only when every filed PROPERTY_PERIOD_FACT source row on a GSF observation maps to one known property type in this profile; mixed, unknown, or unprofiled classes inherit the source policy unchanged",
+    "source_property_type_rows": [
+      {
+        "filing_date": "2026-08-27",
+        "filing_id": "0001888524-26-015881",
+        "property_key": "CREP-10146FA00326CD92",
+        "property_type_code": "MF",
+        "reporting_period": "2026-08-11",
+        "size": 18000,
+        "size_measure": "SQFT",
+        "source_table": "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT"
+      },
+      {
+        "filing_date": "2026-08-27",
+        "filing_id": "0001888524-26-015367",
+        "property_key": "CREP-11B7C4F0999886E9",
+        "property_type_code": "MU",
+        "reporting_period": "2026-08-11",
+        "size": 35539,
+        "size_measure": "SQFT",
+        "source_table": "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT"
+      },
+      {
+        "filing_date": "2026-08-27",
+        "filing_id": "0001888524-26-015389",
+        "property_key": "CREP-1A0633DF0FC3530F",
+        "property_type_code": "MU",
+        "reporting_period": "2026-08-11",
+        "size": 7700,
+        "size_measure": "SQFT",
+        "source_table": "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT"
+      },
+      {
+        "filing_date": "2026-08-31",
+        "filing_id": "0001888524-26-016114",
+        "property_key": "CREP-2FFFD97ECD41F22F",
+        "property_type_code": "MF",
+        "reporting_period": "2026-08-11",
+        "size": 4180,
+        "size_measure": "SQFT",
+        "source_table": "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT"
+      },
+      {
+        "filing_date": "2026-08-27",
+        "filing_id": "0001888524-26-015389",
+        "property_key": "CREP-421E3F3A853C6539",
+        "property_type_code": "MU",
+        "reporting_period": "2026-08-11",
+        "size": 13660,
+        "size_measure": "SQFT",
+        "source_table": "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT"
+      },
+      {
+        "filing_date": "2026-08-26",
+        "filing_id": "0001888524-26-015343",
+        "property_key": "CREP-5891A1E52FAFED38",
+        "property_type_code": "MU",
+        "reporting_period": "2026-08-11",
+        "size": 10000,
+        "size_measure": "SQFT",
+        "source_table": "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT"
+      },
+      {
+        "filing_date": "2026-08-31",
+        "filing_id": "0001888524-26-016248",
+        "property_key": "CREP-6ED11D00BF146B26",
+        "property_type_code": "MU",
+        "reporting_period": "2026-08-11",
+        "size": 7400,
+        "size_measure": "SQFT",
+        "source_table": "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT"
+      },
+      {
+        "filing_date": "2026-08-27",
+        "filing_id": "0001888524-26-015865",
+        "property_key": "CREP-815E5FD0F60648B3",
+        "property_type_code": "MU",
+        "reporting_period": "2026-08-11",
+        "size": 9865,
+        "size_measure": "SQFT",
+        "source_table": "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT"
+      },
+      {
+        "filing_date": "2026-08-27",
+        "filing_id": "0001888524-26-015918",
+        "property_key": "CREP-9BFFF0D71E22165B",
+        "property_type_code": "MU",
+        "reporting_period": "2026-08-11",
+        "size": 10695,
+        "size_measure": "SQFT",
+        "source_table": "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT"
+      },
+      {
+        "filing_date": "2026-08-26",
+        "filing_id": "0001888524-26-015063",
+        "property_key": "CREP-A5945BE7BCF168F6",
+        "property_type_code": "MU",
+        "reporting_period": "2026-08-11",
+        "size": 10093,
+        "size_measure": "SQFT",
+        "source_table": "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT"
+      },
+      {
+        "filing_date": "2026-08-27",
+        "filing_id": "0001888524-26-015389",
+        "property_key": "CREP-CECF201F658A8349",
+        "property_type_code": "MU",
+        "reporting_period": "2026-08-11",
+        "size": 4076,
+        "size_measure": "SQFT",
+        "source_table": "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT"
+      },
+      {
+        "filing_date": "2026-08-26",
+        "filing_id": "0001888524-26-015236",
+        "property_key": "CREP-D3B290537E70714C",
+        "property_type_code": "MU",
+        "reporting_period": "2026-08-11",
+        "size": 2300,
+        "size_measure": "SQFT",
+        "source_table": "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT"
+      },
+      {
+        "filing_date": "2026-08-31",
+        "filing_id": "0001888524-26-016114",
+        "property_key": "CREP-D5B15F63FEC6A811",
+        "property_type_code": "MF",
+        "reporting_period": "2026-08-11",
+        "size": 3600,
+        "size_measure": "SQFT",
+        "source_table": "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT"
+      },
+      {
+        "filing_date": "2026-08-26",
+        "filing_id": "0001888524-26-015082",
+        "property_key": "CREP-E7A6A11FC3D1BF68",
+        "property_type_code": "MU",
+        "reporting_period": "2026-08-11",
+        "size": 8867,
+        "size_measure": "SQFT",
+        "source_table": "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT"
+      }
+    ],
+    "source_query": {
+      "applied_source_row_count": 14,
+      "described_table": "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT",
+      "measurement_name": "bd_2nx4_gsf_source_property_types",
+      "predicate": "PROPERTY_KEY IN the 34 PROPERTY_PERIOD_FACT keys referenced by retained GSF source_records; latest row by REPORTING_PERIOD DESC, FILING_DATE DESC, FILING_ID DESC",
+      "row_count": 34
+    },
+    "version": "canon_geo_gsf_property_type_band_profile.v0"
+  },
+  "calibration_profile_blake3": "f4242562e55bb4ad750d95f744d0f755a7ca2875ab3be6ea1bfe25b577a5473b",
+  "frozen_denominator": 79,
+  "local_bounded_smoke_not_full_score": {
+    "base_policy_result_for_changed_cases": "observed for comparison only; full score remains owned by bd-1g4x",
+    "method": "per-case target/debug/canon geo stack-evidence + evaluate, 25s evaluate timeout per changed case; timeouts retained for scorer and not dropped from denominator",
+    "notable_result": "MF tightening changed case 1ad5bdba from ambiguous to resolved exact in bounded smoke; MU widening cleared direct GSF truth exclusion on b76aa620 but left it ambiguous; 1f301680 remained slow under the local timeout.",
+    "unsafe_profile_rejected": "RT 0.9..1.2 was tested locally and rejected because it turned 13ff4751 into a false merge; RT is intentionally not profiled in this handoff."
+  },
+  "proof_class": "retained_population_measurement_not_live",
+  "retained_population_denominator": 70,
+  "score_handoff": {
+    "changed_gsf_case_count": 11,
+    "changed_gsf_cases": [
+      {
+        "case_id": "h7-subject:non-round:0e60eb66adadc21f4be4187e6ca87242d544bcce4ae57592bdc1f65cde1a8001",
+        "filed_size": 9865,
+        "max": 217031,
+        "min": 6905,
+        "property_class": "MU",
+        "source_property_keys": [
+          "CREP-815E5FD0F60648B3"
+        ]
+      },
+      {
+        "case_id": "h7-subject:non-round:1ad5bdba3889b00b072822850d087dbd433dbc1fe560d90751fc6b7e5ef55cda",
+        "filed_size": 18000,
+        "max": 23401,
+        "min": 16200,
+        "property_class": "MF",
+        "source_property_keys": [
+          "CREP-10146FA00326CD92"
+        ]
+      },
+      {
+        "case_id": "h7-subject:non-round:1f301680cb0f2c88d43c40f0869779eca34a07dfaca12b657b4509486df60a46",
+        "filed_size": 2300,
+        "max": 50601,
+        "min": 1610,
+        "property_class": "MU",
+        "source_property_keys": [
+          "CREP-D3B290537E70714C"
+        ]
+      },
+      {
+        "case_id": "h7-subject:non-round:2808547cf99b9ac8c5c091cd58f3aab0851274c3ab2550237fdc9f23ff5a0a7f",
+        "filed_size": 8867,
+        "max": 195075,
+        "min": 6206,
+        "property_class": "MU",
+        "source_property_keys": [
+          "CREP-E7A6A11FC3D1BF68"
+        ]
+      },
+      {
+        "case_id": "h7-subject:non-round:b76aa620c96bfba4de6cabde58b67c576c15ab7ad7e6a16d24e87a2069a30ec5",
+        "filed_size": 7400,
+        "max": 162801,
+        "min": 5180,
+        "property_class": "MU",
+        "source_property_keys": [
+          "CREP-6ED11D00BF146B26"
+        ]
+      },
+      {
+        "case_id": "h7-subject:non-round:e3a5228d84bb6bf01ff03e2849e4a996f223cb1fcff79eff04a65d84dcfa8deb",
+        "filed_size": 35539,
+        "max": 781859,
+        "min": 24877,
+        "property_class": "MU",
+        "source_property_keys": [
+          "CREP-11B7C4F0999886E9"
+        ]
+      },
+      {
+        "case_id": "h7-subject:non-round:f6dfda5297186039d20a3be759370b98d62463ad7e863f900eb8a66eac2497e6",
+        "filed_size": 10695,
+        "max": 235291,
+        "min": 7486,
+        "property_class": "MU",
+        "source_property_keys": [
+          "CREP-9BFFF0D71E22165B"
+        ]
+      },
+      {
+        "case_id": "h7-subject:round-exact-lender:03ff08e79939253c5baa893d07f37d872d3d9b41b611d036fa72ee1ae531c2ae",
+        "filed_size": 7780,
+        "max": 10115,
+        "min": 7002,
+        "property_class": "MF",
+        "source_property_keys": [
+          "CREP-2FFFD97ECD41F22F",
+          "CREP-D5B15F63FEC6A811"
+        ]
+      },
+      {
+        "case_id": "h7-subject:round-exact-lender:2418355a0c965813e4d8d3922a97f886d3e79211ba7c8ddf85b34718259cc4ae",
+        "filed_size": 10093,
+        "max": 222047,
+        "min": 7065,
+        "property_class": "MU",
+        "source_property_keys": [
+          "CREP-A5945BE7BCF168F6"
+        ]
+      },
+      {
+        "case_id": "h7-subject:round-exact-lender:3709a9d00478c8ed94c040f6cd950bec0ea503523b5cb8609d04cce3ce2d5d1a",
+        "filed_size": 25436,
+        "max": 559593,
+        "min": 17805,
+        "property_class": "MU",
+        "source_property_keys": [
+          "CREP-1A0633DF0FC3530F",
+          "CREP-421E3F3A853C6539",
+          "CREP-CECF201F658A8349"
+        ]
+      },
+      {
+        "case_id": "h7-subject:round-exact-lender:f608ce46d91a6e61eddb84f291cbb81c8fe43cb3a2fddc12d78c438fb55fc3a8",
+        "filed_size": 10000,
+        "max": 220001,
+        "min": 7000,
+        "property_class": "MU",
+        "source_property_keys": [
+          "CREP-5891A1E52FAFED38"
+        ]
+      }
+    ],
+    "full_70_score_status": "READY_TO_SCORE_by_bd_1g4x_not_scored_by_bd_2nx4",
+    "max_overlay_cases": 70,
+    "max_overlay_observations": 3000,
+    "overlay_case_count": 70,
+    "overlay_sha256": "6fc968202c67ae147956bae20b3b4c3cb4c2b78fa74b42cd336fb7e9f030dbc1",
+    "overlay_uncompressed_sha256": "8b3bc5cbc88339c8d1b6c6a00e54739b8a5e3c8209974d7740fb8c303d90fd8a",
+    "population_path": "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/population_request_roll_universe_pluto_vintage_condo_representation_widened.json.gz",
+    "property_type_overlay_path": "scripts/geo_measurements/fixtures/e4_gsf_property_type_bands_2026-09-08/overlay_request_property_type_gsf_bands.json.gz",
+    "source_policy_overlay_path": "scripts/geo_measurements/fixtures/e4_rho_admission_policy_2026-09-08/overlay_request_roll_owner_threshold_mu_gsf.json.gz"
+  },
+  "version": "canon_geo_e4_gsf_property_type_band_handoff.v0"
+}

@@ -500,6 +500,13 @@ fn property_class_profile_widens_mixed_use_gsf_band_without_core_branch() {
         .assessment_roll_gross_sqft_band
         .property_class_bands = vec![GeoAssessmentRollGrossSqftPropertyBand {
         property_class: "MU".to_string(),
+        population_id: Some("h7-d1-residuals-2026-09-03-roll-property-type-MU".to_string()),
+        calibration_blake3: Some(
+            blake3::hash(b"mixed-use retained roll gross sqft calibration")
+                .to_hex()
+                .to_string(),
+        ),
+        falsification_rule_id: Some("truth-gross-sum-outside-property-type-band".to_string()),
         lower_numerator: 7,
         lower_denominator: 10,
         upper_numerator: 32,
@@ -549,6 +556,29 @@ fn property_class_profile_widens_mixed_use_gsf_band_without_core_branch() {
         roll_contract.method_version.contains("property_class_MU"),
         "the selected property class must be visible in the rho method version"
     );
+    let GeoRhoBasis::EmpiricalCalibration {
+        population_id,
+        calibration_blake3,
+        falsification_rule_id,
+        ..
+    } = &roll_contract.basis
+    else {
+        panic!("roll contract must be empirical");
+    };
+    assert_eq!(
+        population_id,
+        "h7-d1-residuals-2026-09-03-roll-property-type-MU"
+    );
+    assert_eq!(
+        calibration_blake3,
+        &blake3::hash(b"mixed-use retained roll gross sqft calibration")
+            .to_hex()
+            .to_string()
+    );
+    assert_eq!(
+        falsification_rule_id,
+        "truth-gross-sum-outside-property-type-band"
+    );
     let compilation = compile_evidence(&evidence).expect("mixed-use evidence compiles");
     let solved =
         solve_composition(&compilation.composition_request).expect("mixed-use residual solves");
@@ -571,6 +601,9 @@ fn duplicate_property_class_gsf_bands_refuse_before_selection() {
         .property_class_bands = vec![
         GeoAssessmentRollGrossSqftPropertyBand {
             property_class: "MU".to_string(),
+            population_id: None,
+            calibration_blake3: None,
+            falsification_rule_id: None,
             lower_numerator: 7,
             lower_denominator: 10,
             upper_numerator: 32,
@@ -581,6 +614,9 @@ fn duplicate_property_class_gsf_bands_refuse_before_selection() {
         },
         GeoAssessmentRollGrossSqftPropertyBand {
             property_class: "MU".to_string(),
+            population_id: None,
+            calibration_blake3: None,
+            falsification_rule_id: None,
             lower_numerator: 7,
             lower_denominator: 10,
             upper_numerator: 16,

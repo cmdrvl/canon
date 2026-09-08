@@ -237,6 +237,16 @@
         "property_class": {
           "type": "string"
         },
+        "population_id": {
+          "type": "string"
+        },
+        "calibration_blake3": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "falsification_rule_id": {
+          "type": "string"
+        },
         "lower_numerator": {
           "type": "integer",
           "minimum": 0
@@ -340,7 +350,7 @@
       "The stage is offline and emits canon_geo_evidence_request.v0 only; it is not a public Geo verb.",
       "No assessment-roll gross-square-foot band is emitted unless SIZE_MEASURE is SQFT and filed_size is at least 500.",
       "No footprint building-count floor is emitted unless LOAN_COUNTY_PROPERTY_COUNT - 1 is positive and every candidate lot has at least one active footprint row.",
-      "Both emitted rho contracts carry EmpiricalCalibration with admissible_hard_band true and fixture calibration digests."
+      "Both emitted rho contracts carry EmpiricalCalibration; profile-supplied property-class GSF bands may carry their own population id, calibration digest, and falsification rule."
     ]
   }
 }
