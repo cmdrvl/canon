@@ -186,6 +186,7 @@
         "solver_artifact_missing",
         "residual_count_inexact",
         "rho_falsification",
+        "truth_classification_incomplete",
         "false_merge",
         "assignment_budget_exceeded",
         "component_budget_fallback"
@@ -385,6 +386,10 @@
         "solver_truth_scored_cases": { "$ref": "#/$defs/count" },
         "solver_truth_retained_cases": { "$ref": "#/$defs/count" },
         "solver_truth_exclusion_cases": { "$ref": "#/$defs/count" },
+        "solver_truth_classification_incomplete_cases": {
+          "description": "Full-reach solver-artifact cases whose residual truth classification did not complete; these remain in the empirical denominator but are not counted as retained or excluded truth.",
+          "$ref": "#/$defs/count"
+        },
         "exactly_correct_cases": {
           "description": "Resolved cases where the solver's resolved collateral set exactly equals deed truth; strict subsets, strict supersets, and unresolved or ambiguous outcomes are not exactly correct.",
           "$ref": "#/$defs/count"
@@ -401,6 +406,7 @@
         "solver_truth_scored_cases",
         "solver_truth_retained_cases",
         "solver_truth_exclusion_cases",
+        "solver_truth_classification_incomplete_cases",
         "exactly_correct_cases",
         "false_merge_cases",
         "backbone_complete_cases",

@@ -33,11 +33,12 @@
         { "$ref": "#/$defs/row_conflict" },
         { "$ref": "#/$defs/row_false_merges" },
         { "$ref": "#/$defs/row_truth_exclusions" },
+        { "$ref": "#/$defs/row_truth_classification_incomplete" },
         { "$ref": "#/$defs/row_component_fallbacks" }
       ],
       "items": false,
-      "minItems": 10,
-      "maxItems": 10
+      "minItems": 11,
+      "maxItems": 11
     },
     "execution": {
       "$ref": "#/$defs/execution"
@@ -137,6 +138,10 @@
         "truth_exclusion_cases": {
           "$ref": "#/$defs/count"
         },
+        "truth_classification_incomplete_cases": {
+          "description": "Full-reach solver-artifact cases whose residual truth classification did not complete; these remain in the empirical denominator but are not counted as retained or excluded truth.",
+          "$ref": "#/$defs/count"
+        },
         "component_fallback_cases": {
           "$ref": "#/$defs/count"
         }
@@ -157,6 +162,7 @@
         "conflict_cases",
         "false_merge_cases",
         "truth_exclusion_cases",
+        "truth_classification_incomplete_cases",
         "component_fallback_cases"
       ]
     },
@@ -315,6 +321,12 @@
       "allOf": [
         { "$ref": "#/$defs/row" },
         { "properties": { "metric": { "const": "truth_exclusions" } } }
+      ]
+    },
+    "row_truth_classification_incomplete": {
+      "allOf": [
+        { "$ref": "#/$defs/row" },
+        { "properties": { "metric": { "const": "truth_classification_incomplete" } } }
       ]
     },
     "row_component_fallbacks": {

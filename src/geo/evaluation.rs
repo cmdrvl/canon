@@ -167,6 +167,16 @@ pub enum GeoCandidateTruthRowStatus {
     UpstreamNoCandidateRequest,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoTruthModelResidualClassification {
+    #[default]
+    NotScored,
+    Retained,
+    Excluded,
+    Incomplete,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeoCandidateTruthCaseEvaluation {
     pub row_id: String,
@@ -193,6 +203,8 @@ pub struct GeoCandidateTruthCaseEvaluation {
     pub residual_count_complete: bool,
     pub residual_count_saturated: bool,
     pub solver_truth_scored: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub truth_model_residual_classification: Option<GeoTruthModelResidualClassification>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub truth_model_in_residual: Option<bool>,
     pub solver_abstained: bool,
@@ -216,6 +228,8 @@ pub struct GeoCandidateTruthPlaneSummary {
     pub candidate_reach_none_release_rows: u64,
     pub solver_truth_scored_release_rows: u64,
     pub rho_falsification_release_rows: u64,
+    #[serde(default)]
+    pub solver_truth_classification_incomplete_release_rows: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -240,6 +254,8 @@ pub struct GeoCandidateTruthEvaluationSummary {
     pub solver_truth_scored_release_rows: u64,
     pub solver_truth_retained_release_rows: u64,
     pub rho_falsification_release_rows: u64,
+    #[serde(default)]
+    pub solver_truth_classification_incomplete_release_rows: u64,
     pub false_merge_release_rows: u64,
     pub resolved_release_rows: u64,
     pub ambiguous_release_rows: u64,
@@ -488,11 +504,15 @@ pub struct GeoPopulationCaseEvaluation {
     pub residual_count_saturated: bool,
     pub full_truth_recall: bool,
     /// Exact formula-membership check against the admitted composition
-    /// request. It remains meaningful for component budget fallbacks even
-    /// when residual counts and backbone completeness are unavailable.
+    /// request. Present only for completed residual classifications; component
+    /// budget fallbacks with incomplete residual counts report
+    /// `truth_model_residual_classification=incomplete` instead of being folded
+    /// into retained/excluded.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub truth_model_in_residual: Option<bool>,
     pub solver_truth_scored: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub truth_model_residual_classification: Option<GeoTruthModelResidualClassification>,
     pub hard_forced: GeoCompositionBackbone,
     /// Whether `hard_forced` is the solver's complete hard backbone. A budget
     /// handoff must never be read as evidence that no member was forced.
@@ -550,12 +570,19 @@ pub struct GeoPopulationSummary {
     /// claimed as feasible or exact solves.
     pub solver_artifact_cases: u64,
     /// Denominator for empirical falsification: cases whose truth label was
-    /// representable and scored against the admitted solver residual.
+    /// representable and classified against the admitted solver residual.
+    /// Incomplete classifications remain in this denominator and are broken out
+    /// separately so they cannot masquerade as retained or excluded truth.
     pub empirical_falsification_eligible_cases: u64,
     /// Scored cases where admitted hard evidence excluded the labeled truth
     /// model. This is the population falsification count for the active rho
     /// contracts; it is distinct from a wrong singleton/false merge.
     pub solver_truth_exclusion_cases: u64,
+    /// Full-reach solver-artifact cases whose residual classification did not
+    /// complete, typically because a component budget fallback stopped before
+    /// the residual could be exhaustively classified.
+    #[serde(default)]
+    pub solver_truth_classification_incomplete_cases: u64,
     pub residual_count_complete_cases: u64,
     /// Cases whose residual count is exact, not a saturated lower bound.
     pub residual_count_exact_cases: u64,
@@ -591,6 +618,8 @@ pub struct GeoPopulationTruthPlaneSummary {
     pub solver_artifact_cases: u64,
     pub empirical_falsification_eligible_cases: u64,
     pub solver_truth_exclusion_cases: u64,
+    #[serde(default)]
+    pub solver_truth_classification_incomplete_cases: u64,
     pub residual_count_complete_cases: u64,
     pub residual_count_exact_cases: u64,
     pub residual_count_saturated_cases: u64,
@@ -704,6 +733,7 @@ pub enum GeoE4GateBlockerCode {
     SolverArtifactMissing,
     ResidualCountInexact,
     RhoFalsification,
+    TruthClassificationIncomplete,
     FalseMerge,
     AssignmentBudgetExceeded,
     ComponentBudgetFallback,
@@ -786,6 +816,8 @@ pub struct GeoE4TruthQualityPlaneScore {
     pub solver_truth_retained_cases: u64,
     pub solver_truth_exclusion_cases: u64,
     #[serde(default)]
+    pub solver_truth_classification_incomplete_cases: u64,
+    #[serde(default)]
     pub exactly_correct_cases: u64,
     pub false_merge_cases: u64,
     pub backbone_complete_cases: u64,
@@ -856,6 +888,7 @@ pub enum GeoE4RescoreMetric {
     Conflict,
     FalseMerges,
     TruthExclusions,
+    TruthClassificationIncomplete,
     ComponentFallbacks,
 }
 
@@ -886,6 +919,8 @@ pub struct GeoE4RescoreSnapshot {
     pub conflict_cases: u64,
     pub false_merge_cases: u64,
     pub truth_exclusion_cases: u64,
+    #[serde(default)]
+    pub truth_classification_incomplete_cases: u64,
     pub component_fallback_cases: u64,
 }
 
@@ -948,7 +983,7 @@ pub struct GeoE4RescoreComparisonArtifact {
     pub interpretation: GeoE4RescoreInterpretation,
 }
 
-const E4_RESCORE_METRICS: [GeoE4RescoreMetric; 10] = [
+const E4_RESCORE_METRICS: [GeoE4RescoreMetric; 11] = [
     GeoE4RescoreMetric::CandidateReachFull,
     GeoE4RescoreMetric::CandidateReachPartial,
     GeoE4RescoreMetric::CandidateReachNone,
@@ -958,6 +993,7 @@ const E4_RESCORE_METRICS: [GeoE4RescoreMetric; 10] = [
     GeoE4RescoreMetric::Conflict,
     GeoE4RescoreMetric::FalseMerges,
     GeoE4RescoreMetric::TruthExclusions,
+    GeoE4RescoreMetric::TruthClassificationIncomplete,
     GeoE4RescoreMetric::ComponentFallbacks,
 ];
 
@@ -1192,6 +1228,9 @@ where
                     residual_count_saturated: false,
                     truth_model_in_residual: None,
                     solver_truth_scored: false,
+                    truth_model_residual_classification: Some(
+                        GeoTruthModelResidualClassification::NotScored,
+                    ),
                     hard_forced: empty_backbone(),
                     backbone_complete: false,
                     backbone_true_positive_members: 0,
@@ -1216,17 +1255,6 @@ where
                     } else {
                         (0, 0)
                     };
-                let truth_model_in_residual = if solver_truth_scored {
-                    Some(
-                        match model_satisfies_request(&compilation.composition_request, &case.truth)
-                        {
-                            Ok(satisfied) => satisfied,
-                            Err(error) => return Err(map_composition_error(error)),
-                        },
-                    )
-                } else {
-                    None
-                };
                 let status = match artifact.status {
                     GeoCompositionStatus::Resolved => GeoPopulationCaseStatus::Resolved,
                     GeoCompositionStatus::Ambiguous => GeoPopulationCaseStatus::Ambiguous,
@@ -1235,11 +1263,17 @@ where
                         GeoPopulationCaseStatus::ComponentBudgetFallback
                     }
                 };
+                let residual_count_complete = artifact.summary.residual_model_count_complete;
+                let (truth_model_residual_classification, truth_model_in_residual) =
+                    classify_truth_model_residual(
+                        solver_truth_scored,
+                        residual_count_complete,
+                        || model_satisfies_request(&compilation.composition_request, &case.truth),
+                    )?;
                 let resolved_claim = resolved_claim_from_artifact(
                     &artifact,
                     compilation.composition_request.hard_constraints.len(),
                 );
-                let residual_count_complete = artifact.summary.residual_model_count_complete;
                 let false_merge = scored_false_merge(status, truth_model_in_residual);
                 let evaluation = GeoPopulationCaseEvaluation {
                     case_id: case.id,
@@ -1268,6 +1302,7 @@ where
                     residual_count_complete,
                     truth_model_in_residual,
                     solver_truth_scored,
+                    truth_model_residual_classification: Some(truth_model_residual_classification),
                     hard_forced: artifact.hard_forced.clone(),
                     backbone_complete: artifact.backbone_complete,
                     backbone_true_positive_members: backbone_true,
@@ -4728,6 +4763,9 @@ fn evaluate_candidate_truth_row(
             residual_count_complete: false,
             residual_count_saturated: false,
             solver_truth_scored: false,
+            truth_model_residual_classification: Some(
+                GeoTruthModelResidualClassification::NotScored,
+            ),
             truth_model_in_residual: None,
             solver_abstained: true,
             claim_abstained: true,
@@ -4770,6 +4808,9 @@ fn evaluate_candidate_truth_row(
                 residual_count_complete: false,
                 residual_count_saturated: false,
                 solver_truth_scored: false,
+                truth_model_residual_classification: Some(
+                    GeoTruthModelResidualClassification::NotScored,
+                ),
                 truth_model_in_residual: None,
                 solver_abstained: true,
                 claim_abstained: true,
@@ -4798,18 +4839,14 @@ fn evaluate_candidate_truth_row(
                 }
             };
             let solver_truth_scored = row.candidate_reach == GeoCandidateReachStatus::Full;
-            let truth_model_in_residual = if solver_truth_scored {
-                Some(
-                    match model_satisfies_request(&composition_request, &row.truth) {
-                        Ok(satisfied) => satisfied,
-                        Err(error) => return Err(map_composition_error(error)),
-                    },
-                )
-            } else {
-                None
-            };
             let residual_count_complete = artifact.summary.residual_model_count_complete;
             let residual_count_saturated = artifact.summary.residual_model_count_saturated;
+            let (truth_model_residual_classification, truth_model_in_residual) =
+                classify_truth_model_residual(
+                    solver_truth_scored,
+                    residual_count_complete,
+                    || model_satisfies_request(&composition_request, &row.truth),
+                )?;
             let false_merge = status == GeoCandidateTruthRowStatus::Resolved
                 && truth_model_in_residual == Some(false);
             let rho_falsification = truth_model_in_residual == Some(false);
@@ -4844,6 +4881,7 @@ fn evaluate_candidate_truth_row(
                 residual_count_complete,
                 residual_count_saturated,
                 solver_truth_scored,
+                truth_model_residual_classification: Some(truth_model_residual_classification),
                 truth_model_in_residual,
                 solver_abstained,
                 claim_abstained,
@@ -5377,12 +5415,16 @@ fn e4_plane_scores<'a>(
                 "e4.truth_quality.solver_truth_scored_cases",
             )?;
         }
-        match case.truth_model_in_residual {
-            Some(true) => checked_inc(
+        match stored_truth_model_residual_classification(
+            case.truth_model_residual_classification,
+            case.solver_truth_scored,
+            case.truth_model_in_residual,
+        ) {
+            GeoTruthModelResidualClassification::Retained => checked_inc(
                 &mut scores.truth_quality.solver_truth_retained_cases,
                 "e4.truth_quality.solver_truth_retained_cases",
             )?,
-            Some(false) => {
+            GeoTruthModelResidualClassification::Excluded => {
                 checked_inc(
                     &mut scores.truth_quality.solver_truth_exclusion_cases,
                     "e4.truth_quality.solver_truth_exclusion_cases",
@@ -5392,7 +5434,13 @@ fn e4_plane_scores<'a>(
                     "e4.admission.rho_falsification_cases",
                 )?;
             }
-            None => {}
+            GeoTruthModelResidualClassification::Incomplete => checked_inc(
+                &mut scores
+                    .truth_quality
+                    .solver_truth_classification_incomplete_cases,
+                "e4.truth_quality.solver_truth_classification_incomplete_cases",
+            )?,
+            GeoTruthModelResidualClassification::NotScored => {}
         }
         if case.false_merge {
             checked_inc(
@@ -5841,6 +5889,19 @@ fn e4_gate_blockers(
     e4_add_count_blocker(
         &mut blockers,
         GeoE4GatePlane::TruthQuality,
+        GeoE4GateBlockerCode::TruthClassificationIncomplete,
+        planes
+            .truth_quality
+            .solver_truth_classification_incomplete_cases,
+        0,
+        planes
+            .truth_quality
+            .solver_truth_classification_incomplete_cases
+            != 0,
+    );
+    e4_add_count_blocker(
+        &mut blockers,
+        GeoE4GatePlane::TruthQuality,
         GeoE4GateBlockerCode::FalseMerge,
         planes.truth_quality.false_merge_cases,
         0,
@@ -5924,6 +5985,21 @@ fn e4_gate_case_findings<'a>(
                 GeoE4GateBlockerCode::RhoFalsification,
                 "truth_excluded",
                 "truth_retained",
+            );
+        }
+        if stored_truth_model_residual_classification(
+            case.truth_model_residual_classification,
+            case.solver_truth_scored,
+            case.truth_model_in_residual,
+        ) == GeoTruthModelResidualClassification::Incomplete
+        {
+            push_e4_case_finding(
+                &mut findings,
+                case,
+                GeoE4GatePlane::TruthQuality,
+                GeoE4GateBlockerCode::TruthClassificationIncomplete,
+                "classification_incomplete",
+                "retained_or_excluded",
             );
         }
         if case.false_merge {
@@ -6161,6 +6237,15 @@ fn e4_sum_plane_scores<'a>(
             "e4.truth_planes.truth_quality.solver_truth_exclusion_cases",
         )?;
         checked_add(
+            &mut total
+                .truth_quality
+                .solver_truth_classification_incomplete_cases,
+            plane
+                .truth_quality
+                .solver_truth_classification_incomplete_cases,
+            "e4.truth_planes.truth_quality.solver_truth_classification_incomplete_cases",
+        )?;
+        checked_add(
             &mut total.truth_quality.exactly_correct_cases,
             plane.truth_quality.exactly_correct_cases,
             "e4.truth_planes.truth_quality.exactly_correct_cases",
@@ -6283,6 +6368,10 @@ fn e4_rescore_snapshot(
         conflict_cases: assessment.planes.reconciliation.conflict_cases,
         false_merge_cases: assessment.planes.truth_quality.false_merge_cases,
         truth_exclusion_cases: assessment.planes.truth_quality.solver_truth_exclusion_cases,
+        truth_classification_incomplete_cases: assessment
+            .planes
+            .truth_quality
+            .solver_truth_classification_incomplete_cases,
         component_fallback_cases: assessment
             .planes
             .solver_exactness
@@ -6304,6 +6393,12 @@ fn e4_rescore_metric_value(assessment: &GeoE4GateAssessment, metric: GeoE4Rescor
         GeoE4RescoreMetric::FalseMerges => assessment.planes.truth_quality.false_merge_cases,
         GeoE4RescoreMetric::TruthExclusions => {
             assessment.planes.truth_quality.solver_truth_exclusion_cases
+        }
+        GeoE4RescoreMetric::TruthClassificationIncomplete => {
+            assessment
+                .planes
+                .truth_quality
+                .solver_truth_classification_incomplete_cases
         }
         GeoE4RescoreMetric::ComponentFallbacks => {
             assessment
@@ -6328,6 +6423,9 @@ fn e4_rescore_snapshot_metric_value(
         GeoE4RescoreMetric::Conflict => snapshot.conflict_cases,
         GeoE4RescoreMetric::FalseMerges => snapshot.false_merge_cases,
         GeoE4RescoreMetric::TruthExclusions => snapshot.truth_exclusion_cases,
+        GeoE4RescoreMetric::TruthClassificationIncomplete => {
+            snapshot.truth_classification_incomplete_cases
+        }
         GeoE4RescoreMetric::ComponentFallbacks => snapshot.component_fallback_cases,
     }
 }
@@ -6417,6 +6515,21 @@ fn validate_e4_rescore_snapshot(
             "truth_exclusion_cases",
             snapshot.evaluated_cases,
             snapshot.truth_exclusion_cases,
+        ));
+    }
+    let truth_incomplete_or_excluded = sum_u64(
+        [
+            snapshot.truth_exclusion_cases,
+            snapshot.truth_classification_incomplete_cases,
+        ],
+        "e4_rescore_comparison.snapshot.truth_incomplete_or_excluded_cases",
+    )?;
+    if truth_incomplete_or_excluded > snapshot.evaluated_cases {
+        return Err(summary_invariant_error(
+            label,
+            "truth_incomplete_or_excluded_cases",
+            snapshot.evaluated_cases,
+            truth_incomplete_or_excluded,
         ));
     }
     Ok(())
@@ -6665,6 +6778,9 @@ fn validate_e4_plane_scores(
         [
             scores.truth_quality.solver_truth_retained_cases,
             scores.truth_quality.solver_truth_exclusion_cases,
+            scores
+                .truth_quality
+                .solver_truth_classification_incomplete_cases,
         ],
         "e4.truth_quality.solver_truth_scored_cases",
     )?;
@@ -6742,6 +6858,7 @@ fn validate_e4_gate_case_findings(
     let mut solver_artifact_missing = 0;
     let mut residual_count_inexact = 0;
     let mut rho_falsification = 0;
+    let mut truth_classification_incomplete = 0;
     let mut false_merge = 0;
     let mut assignment_budget_exceeded = 0;
     let mut component_budget_fallback = 0;
@@ -6797,6 +6914,10 @@ fn validate_e4_gate_case_findings(
             GeoE4GateBlockerCode::RhoFalsification => {
                 checked_inc(&mut rho_falsification, "e4.case_findings.rho_falsification")?
             }
+            GeoE4GateBlockerCode::TruthClassificationIncomplete => checked_inc(
+                &mut truth_classification_incomplete,
+                "e4.case_findings.truth_classification_incomplete",
+            )?,
             GeoE4GateBlockerCode::FalseMerge => {
                 checked_inc(&mut false_merge, "e4.case_findings.false_merge")?
             }
@@ -6858,6 +6979,13 @@ fn validate_e4_gate_case_findings(
         rho_falsification,
     )?;
     validate_e4_case_finding_count(
+        GeoE4GateBlockerCode::TruthClassificationIncomplete,
+        planes
+            .truth_quality
+            .solver_truth_classification_incomplete_cases,
+        truth_classification_incomplete,
+    )?;
+    validate_e4_case_finding_count(
         GeoE4GateBlockerCode::FalseMerge,
         planes.truth_quality.false_merge_cases,
         false_merge,
@@ -6896,7 +7024,9 @@ fn e4_case_finding_plane(code: GeoE4GateBlockerCode) -> Option<GeoE4GatePlane> {
         GeoE4GateBlockerCode::SolverArtifactMissing
         | GeoE4GateBlockerCode::ResidualCountInexact => Some(GeoE4GatePlane::SolverExactness),
         GeoE4GateBlockerCode::RhoFalsification => Some(GeoE4GatePlane::Admission),
-        GeoE4GateBlockerCode::FalseMerge => Some(GeoE4GatePlane::TruthQuality),
+        GeoE4GateBlockerCode::TruthClassificationIncomplete | GeoE4GateBlockerCode::FalseMerge => {
+            Some(GeoE4GatePlane::TruthQuality)
+        }
         GeoE4GateBlockerCode::AssignmentBudgetExceeded
         | GeoE4GateBlockerCode::ComponentBudgetFallback => Some(GeoE4GatePlane::Cost),
         GeoE4GateBlockerCode::ProofClassNotLiveComplete
@@ -6937,6 +7067,7 @@ fn e4_case_finding_count_field(code: GeoE4GateBlockerCode) -> &'static str {
         GeoE4GateBlockerCode::SolverArtifactMissing => "solver_artifact_missing",
         GeoE4GateBlockerCode::ResidualCountInexact => "residual_count_inexact",
         GeoE4GateBlockerCode::RhoFalsification => "rho_falsification",
+        GeoE4GateBlockerCode::TruthClassificationIncomplete => "truth_classification_incomplete",
         GeoE4GateBlockerCode::FalseMerge => "false_merge",
         GeoE4GateBlockerCode::AssignmentBudgetExceeded => "assignment_budget_exceeded",
         GeoE4GateBlockerCode::ComponentBudgetFallback => "component_budget_fallback",
@@ -6950,6 +7081,84 @@ fn scored_false_merge(
     truth_model_in_residual: Option<bool>,
 ) -> bool {
     status == GeoPopulationCaseStatus::Resolved && truth_model_in_residual == Some(false)
+}
+
+fn classify_truth_model_residual(
+    solver_truth_scored: bool,
+    residual_count_complete: bool,
+    evaluate: impl FnOnce() -> Result<bool, GeoCompositionError>,
+) -> Result<(GeoTruthModelResidualClassification, Option<bool>), GeoPopulationError> {
+    if !solver_truth_scored {
+        return Ok((GeoTruthModelResidualClassification::NotScored, None));
+    }
+    if !residual_count_complete {
+        return Ok((GeoTruthModelResidualClassification::Incomplete, None));
+    }
+    let retained = evaluate().map_err(map_composition_error)?;
+    Ok((
+        if retained {
+            GeoTruthModelResidualClassification::Retained
+        } else {
+            GeoTruthModelResidualClassification::Excluded
+        },
+        Some(retained),
+    ))
+}
+
+fn expected_truth_model_residual_classification(
+    solver_truth_scored: bool,
+    residual_count_complete: bool,
+    truth_model_in_residual: Option<bool>,
+) -> GeoTruthModelResidualClassification {
+    match (
+        solver_truth_scored,
+        residual_count_complete,
+        truth_model_in_residual,
+    ) {
+        (false, _, _) => GeoTruthModelResidualClassification::NotScored,
+        (true, false, _) => GeoTruthModelResidualClassification::Incomplete,
+        (true, true, Some(true)) => GeoTruthModelResidualClassification::Retained,
+        (true, true, Some(false)) => GeoTruthModelResidualClassification::Excluded,
+        (true, true, None) => GeoTruthModelResidualClassification::Incomplete,
+    }
+}
+
+fn legacy_truth_model_residual_classification(
+    solver_truth_scored: bool,
+    truth_model_in_residual: Option<bool>,
+) -> GeoTruthModelResidualClassification {
+    match (solver_truth_scored, truth_model_in_residual) {
+        (true, Some(true)) => GeoTruthModelResidualClassification::Retained,
+        (true, Some(false)) => GeoTruthModelResidualClassification::Excluded,
+        _ => GeoTruthModelResidualClassification::NotScored,
+    }
+}
+
+fn stored_truth_model_residual_classification(
+    stored: Option<GeoTruthModelResidualClassification>,
+    solver_truth_scored: bool,
+    truth_model_in_residual: Option<bool>,
+) -> GeoTruthModelResidualClassification {
+    stored.unwrap_or_else(|| {
+        legacy_truth_model_residual_classification(solver_truth_scored, truth_model_in_residual)
+    })
+}
+
+fn expected_stored_truth_model_residual_classification(
+    stored: Option<GeoTruthModelResidualClassification>,
+    solver_truth_scored: bool,
+    residual_count_complete: bool,
+    truth_model_in_residual: Option<bool>,
+) -> GeoTruthModelResidualClassification {
+    if stored.is_some() {
+        expected_truth_model_residual_classification(
+            solver_truth_scored,
+            residual_count_complete,
+            truth_model_in_residual,
+        )
+    } else {
+        legacy_truth_model_residual_classification(solver_truth_scored, truth_model_in_residual)
+    }
 }
 
 fn is_candidate_truth_solver_abstention_status(status: GeoCandidateTruthRowStatus) -> bool {
@@ -7017,6 +7226,11 @@ fn validate_candidate_truth_case_evaluation(
     }
     if row.candidate_reach != GeoCandidateReachStatus::Full
         && (row.solver_truth_scored
+            || stored_truth_model_residual_classification(
+                row.truth_model_residual_classification,
+                row.solver_truth_scored,
+                row.truth_model_in_residual,
+            ) != GeoTruthModelResidualClassification::NotScored
             || row.truth_model_in_residual.is_some()
             || row.false_merge
             || row.rho_falsification)
@@ -7030,10 +7244,52 @@ fn validate_candidate_truth_case_evaluation(
             ],
         ));
     }
-    if row.solver_truth_scored != row.truth_model_in_residual.is_some() {
+    let expected_truth_classification = expected_stored_truth_model_residual_classification(
+        row.truth_model_residual_classification,
+        row.solver_truth_scored,
+        row.residual_count_complete,
+        row.truth_model_in_residual,
+    );
+    let actual_truth_classification = stored_truth_model_residual_classification(
+        row.truth_model_residual_classification,
+        row.solver_truth_scored,
+        row.truth_model_in_residual,
+    );
+    if actual_truth_classification != expected_truth_classification {
         return Err(GeoPopulationError::new(
             GeoPopulationErrorCode::Composition,
-            "Geo candidate/truth evaluation truth scoring fields are inconsistent",
+            "Geo candidate/truth evaluation residual truth classification is inconsistent",
+            [
+                ("row_id", row.row_id.clone()),
+                ("expected", format!("{expected_truth_classification:?}")),
+                ("actual", format!("{actual_truth_classification:?}")),
+            ],
+        ));
+    }
+    if row.solver_truth_scored
+        && row.residual_count_complete
+        && row.truth_model_in_residual.is_none()
+    {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo candidate/truth evaluation omitted completed residual truth membership",
+            [("row_id", row.row_id.as_str())],
+        ));
+    }
+    if !row.solver_truth_scored && row.truth_model_in_residual.is_some() {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo candidate/truth evaluation emitted truth membership for an unscored row",
+            [("row_id", row.row_id.as_str())],
+        ));
+    }
+    if row.truth_model_residual_classification
+        == Some(GeoTruthModelResidualClassification::Incomplete)
+        && row.truth_model_in_residual.is_some()
+    {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo candidate/truth evaluation folded incomplete residual classification into truth membership",
             [("row_id", row.row_id.as_str())],
         ));
     }
@@ -7109,6 +7365,11 @@ fn validate_candidate_truth_case_evaluation(
                 || row.candidate_reach != GeoCandidateReachStatus::None
                 || row.residual_count_complete
                 || row.residual_model_count.is_some()
+                || stored_truth_model_residual_classification(
+                    row.truth_model_residual_classification,
+                    row.solver_truth_scored,
+                    row.truth_model_in_residual,
+                ) != GeoTruthModelResidualClassification::NotScored
             {
                 return Err(GeoPopulationError::new(
                     GeoPopulationErrorCode::Composition,
@@ -7122,6 +7383,11 @@ fn validate_candidate_truth_case_evaluation(
                 || row.residual_count_complete
                 || row.residual_model_count.is_some()
                 || row.solver_truth_scored
+                || stored_truth_model_residual_classification(
+                    row.truth_model_residual_classification,
+                    row.solver_truth_scored,
+                    row.truth_model_in_residual,
+                ) != GeoTruthModelResidualClassification::NotScored
             {
                 return Err(GeoPopulationError::new(
                     GeoPopulationErrorCode::Composition,
@@ -7200,11 +7466,49 @@ fn validate_case_evaluation(case: &GeoPopulationCaseEvaluation) -> Result<(), Ge
             "Geo population evaluation emitted residual count presence inconsistent with residual completeness",
         ));
     }
-    if case.solver_truth_scored != case.truth_model_in_residual.is_some() {
+    let expected_truth_classification = expected_stored_truth_model_residual_classification(
+        case.truth_model_residual_classification,
+        case.solver_truth_scored,
+        case.residual_count_complete,
+        case.truth_model_in_residual,
+    );
+    let actual_truth_classification = stored_truth_model_residual_classification(
+        case.truth_model_residual_classification,
+        case.solver_truth_scored,
+        case.truth_model_in_residual,
+    );
+    if actual_truth_classification != expected_truth_classification {
         return Err(case_invariant_error(
             case,
-            "solver_truth_scored",
-            "Geo population evaluation emitted solver truth scoring inconsistent with residual truth membership",
+            "truth_model_residual_classification",
+            "Geo population evaluation emitted residual truth classification inconsistent with residual truth membership",
+        ));
+    }
+    if case.solver_truth_scored
+        && case.residual_count_complete
+        && case.truth_model_in_residual.is_none()
+    {
+        return Err(case_invariant_error(
+            case,
+            "truth_model_in_residual",
+            "Geo population evaluation omitted completed residual truth membership",
+        ));
+    }
+    if !case.solver_truth_scored && case.truth_model_in_residual.is_some() {
+        return Err(case_invariant_error(
+            case,
+            "truth_model_in_residual",
+            "Geo population evaluation emitted truth membership for an unscored case",
+        ));
+    }
+    if case.truth_model_residual_classification
+        == Some(GeoTruthModelResidualClassification::Incomplete)
+        && case.truth_model_in_residual.is_some()
+    {
+        return Err(case_invariant_error(
+            case,
+            "truth_model_in_residual",
+            "Geo population evaluation folded incomplete residual classification into truth membership",
         ));
     }
     if case.solver_truth_scored && case.candidate_reach != GeoCandidateReachStatus::Full {
@@ -7283,6 +7587,11 @@ fn validate_case_evaluation(case: &GeoPopulationCaseEvaluation) -> Result<(), Ge
                 || case.residual_model_count.is_some()
                 || case.truth_model_in_residual.is_some()
                 || case.solver_truth_scored
+                || stored_truth_model_residual_classification(
+                    case.truth_model_residual_classification,
+                    case.solver_truth_scored,
+                    case.truth_model_in_residual,
+                ) != GeoTruthModelResidualClassification::NotScored
                 || case.backbone_complete
                 || case.false_merge
             {
@@ -7379,6 +7688,7 @@ fn summarize(
         solver_artifact_cases: 0,
         empirical_falsification_eligible_cases: 0,
         solver_truth_exclusion_cases: 0,
+        solver_truth_classification_incomplete_cases: 0,
         residual_count_complete_cases: 0,
         residual_count_exact_cases: 0,
         residual_count_saturated_cases: 0,
@@ -7530,11 +7840,25 @@ fn summarize(
                 "empirical_falsification_eligible_cases",
             )?;
         }
-        if case.truth_model_in_residual == Some(false) {
-            checked_inc(
-                &mut summary.solver_truth_exclusion_cases,
-                "solver_truth_exclusion_cases",
-            )?;
+        match stored_truth_model_residual_classification(
+            case.truth_model_residual_classification,
+            case.solver_truth_scored,
+            case.truth_model_in_residual,
+        ) {
+            GeoTruthModelResidualClassification::Excluded => {
+                checked_inc(
+                    &mut summary.solver_truth_exclusion_cases,
+                    "solver_truth_exclusion_cases",
+                )?;
+            }
+            GeoTruthModelResidualClassification::Incomplete => {
+                checked_inc(
+                    &mut summary.solver_truth_classification_incomplete_cases,
+                    "solver_truth_classification_incomplete_cases",
+                )?;
+            }
+            GeoTruthModelResidualClassification::NotScored
+            | GeoTruthModelResidualClassification::Retained => {}
         }
         if case.residual_count_complete {
             checked_inc(
@@ -7642,6 +7966,7 @@ fn summarize_candidate_truth_evaluations(
         solver_truth_scored_release_rows: 0,
         solver_truth_retained_release_rows: 0,
         rho_falsification_release_rows: 0,
+        solver_truth_classification_incomplete_release_rows: 0,
         false_merge_release_rows: 0,
         resolved_release_rows: 0,
         ambiguous_release_rows: 0,
@@ -7733,17 +8058,30 @@ fn summarize_candidate_truth_evaluations(
                 "solver_truth_scored_release_rows",
             )?;
         }
-        if row.truth_model_in_residual == Some(true) {
-            checked_inc(
-                &mut summary.solver_truth_retained_release_rows,
-                "solver_truth_retained_release_rows",
-            )?;
-        }
-        if row.rho_falsification {
-            checked_inc(
-                &mut summary.rho_falsification_release_rows,
-                "rho_falsification_release_rows",
-            )?;
+        match stored_truth_model_residual_classification(
+            row.truth_model_residual_classification,
+            row.solver_truth_scored,
+            row.truth_model_in_residual,
+        ) {
+            GeoTruthModelResidualClassification::Retained => {
+                checked_inc(
+                    &mut summary.solver_truth_retained_release_rows,
+                    "solver_truth_retained_release_rows",
+                )?;
+            }
+            GeoTruthModelResidualClassification::Excluded => {
+                checked_inc(
+                    &mut summary.rho_falsification_release_rows,
+                    "rho_falsification_release_rows",
+                )?;
+            }
+            GeoTruthModelResidualClassification::Incomplete => {
+                checked_inc(
+                    &mut summary.solver_truth_classification_incomplete_release_rows,
+                    "solver_truth_classification_incomplete_release_rows",
+                )?;
+            }
+            GeoTruthModelResidualClassification::NotScored => {}
         }
         if row.false_merge {
             checked_inc(
@@ -7892,6 +8230,7 @@ fn validate_summary(summary: &GeoPopulationSummary) -> Result<(), GeoPopulationE
         summary.solver_truth_scored_cases,
         summary.empirical_falsification_eligible_cases,
         summary.solver_truth_exclusion_cases,
+        summary.solver_truth_classification_incomplete_cases,
         summary.residual_count_complete_cases,
         summary.residual_count_saturated_cases,
         summary.residual_count_exact_cases,
@@ -7918,6 +8257,7 @@ fn validate_summary(summary: &GeoPopulationSummary) -> Result<(), GeoPopulationE
             plane.solver_truth_scored_cases,
             plane.empirical_falsification_eligible_cases,
             plane.solver_truth_exclusion_cases,
+            plane.solver_truth_classification_incomplete_cases,
             plane.residual_count_complete_cases,
             plane.residual_count_saturated_cases,
             plane.residual_count_exact_cases,
@@ -7969,6 +8309,7 @@ fn validate_candidate_truth_summary(
         [
             summary.solver_truth_retained_release_rows,
             summary.rho_falsification_release_rows,
+            summary.solver_truth_classification_incomplete_release_rows,
         ],
         "solver_truth_scored_release_rows",
     )?;
@@ -8146,6 +8487,14 @@ fn validate_candidate_truth_summary(
             .truth_planes
             .iter()
             .map(|plane| plane.rho_falsification_release_rows),
+    )?;
+    validate_candidate_truth_plane_sum(
+        "solver_truth_classification_incomplete_release_rows",
+        summary.solver_truth_classification_incomplete_release_rows,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.solver_truth_classification_incomplete_release_rows),
     )
 }
 
@@ -8395,6 +8744,14 @@ fn validate_truth_plane_sums(summary: &GeoPopulationSummary) -> Result<(), GeoPo
             .map(|plane| plane.solver_truth_exclusion_cases),
     )?;
     validate_truth_plane_sum(
+        "solver_truth_classification_incomplete_cases",
+        summary.solver_truth_classification_incomplete_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.solver_truth_classification_incomplete_cases),
+    )?;
+    validate_truth_plane_sum(
         "residual_count_complete_cases",
         summary.residual_count_complete_cases,
         summary
@@ -8546,6 +8903,7 @@ fn validate_summary_denominators(
     solver_truth_scored_cases: u64,
     empirical_falsification_eligible_cases: u64,
     solver_truth_exclusion_cases: u64,
+    solver_truth_classification_incomplete_cases: u64,
     residual_count_complete_cases: u64,
     residual_count_saturated_cases: u64,
     residual_count_exact_cases: u64,
@@ -8613,12 +8971,19 @@ fn validate_summary_denominators(
             empirical_falsification_eligible_cases,
         ));
     }
-    if solver_truth_exclusion_cases > empirical_falsification_eligible_cases {
+    let classified_truth_cases = sum_u64(
+        [
+            solver_truth_exclusion_cases,
+            solver_truth_classification_incomplete_cases,
+        ],
+        "solver_truth_exclusion_or_incomplete_cases",
+    )?;
+    if classified_truth_cases > empirical_falsification_eligible_cases {
         return Err(summary_invariant_error(
             scope,
-            "solver_truth_exclusion_cases",
+            "solver_truth_exclusion_or_incomplete_cases",
             empirical_falsification_eligible_cases,
-            solver_truth_exclusion_cases,
+            classified_truth_cases,
         ));
     }
     let exact_or_saturated_cases = sum_u64(
@@ -8677,6 +9042,7 @@ impl GeoPopulationTruthPlaneSummary {
             solver_artifact_cases: 0,
             empirical_falsification_eligible_cases: 0,
             solver_truth_exclusion_cases: 0,
+            solver_truth_classification_incomplete_cases: 0,
             residual_count_complete_cases: 0,
             residual_count_exact_cases: 0,
             residual_count_saturated_cases: 0,
@@ -8828,11 +9194,25 @@ impl GeoPopulationTruthPlaneSummary {
                 "truth_plane.empirical_falsification_eligible_cases",
             )?;
         }
-        if case.truth_model_in_residual == Some(false) {
-            checked_inc(
-                &mut self.solver_truth_exclusion_cases,
-                "truth_plane.solver_truth_exclusion_cases",
-            )?;
+        match stored_truth_model_residual_classification(
+            case.truth_model_residual_classification,
+            case.solver_truth_scored,
+            case.truth_model_in_residual,
+        ) {
+            GeoTruthModelResidualClassification::Excluded => {
+                checked_inc(
+                    &mut self.solver_truth_exclusion_cases,
+                    "truth_plane.solver_truth_exclusion_cases",
+                )?;
+            }
+            GeoTruthModelResidualClassification::Incomplete => {
+                checked_inc(
+                    &mut self.solver_truth_classification_incomplete_cases,
+                    "truth_plane.solver_truth_classification_incomplete_cases",
+                )?;
+            }
+            GeoTruthModelResidualClassification::NotScored
+            | GeoTruthModelResidualClassification::Retained => {}
         }
         if case.residual_count_complete {
             checked_inc(
@@ -8982,6 +9362,7 @@ impl GeoCandidateTruthPlaneSummary {
             candidate_reach_none_release_rows: 0,
             solver_truth_scored_release_rows: 0,
             rho_falsification_release_rows: 0,
+            solver_truth_classification_incomplete_release_rows: 0,
         }
     }
 
@@ -9013,11 +9394,25 @@ impl GeoCandidateTruthPlaneSummary {
                 "truth_plane.solver_truth_scored_release_rows",
             )?;
         }
-        if row.rho_falsification {
-            checked_inc(
-                &mut self.rho_falsification_release_rows,
-                "truth_plane.rho_falsification_release_rows",
-            )?;
+        match stored_truth_model_residual_classification(
+            row.truth_model_residual_classification,
+            row.solver_truth_scored,
+            row.truth_model_in_residual,
+        ) {
+            GeoTruthModelResidualClassification::Excluded => {
+                checked_inc(
+                    &mut self.rho_falsification_release_rows,
+                    "truth_plane.rho_falsification_release_rows",
+                )?;
+            }
+            GeoTruthModelResidualClassification::Incomplete => {
+                checked_inc(
+                    &mut self.solver_truth_classification_incomplete_release_rows,
+                    "truth_plane.solver_truth_classification_incomplete_release_rows",
+                )?;
+            }
+            GeoTruthModelResidualClassification::NotScored
+            | GeoTruthModelResidualClassification::Retained => {}
         }
         Ok(())
     }

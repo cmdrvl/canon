@@ -1757,6 +1757,7 @@ fn e4_rescore_comparison_predeclares_before_after_measurement_table() {
             GeoE4RescoreMetric::Conflict,
             GeoE4RescoreMetric::FalseMerges,
             GeoE4RescoreMetric::TruthExclusions,
+            GeoE4RescoreMetric::TruthClassificationIncomplete,
             GeoE4RescoreMetric::ComponentFallbacks,
         ]
     );
@@ -2770,6 +2771,7 @@ fn geo_evaluate_writes_e4_rescore_comparison_against_typed_baseline() {
             GeoE4RescoreMetric::Conflict,
             GeoE4RescoreMetric::FalseMerges,
             GeoE4RescoreMetric::TruthExclusions,
+            GeoE4RescoreMetric::TruthClassificationIncomplete,
             GeoE4RescoreMetric::ComponentFallbacks,
         ]
     );

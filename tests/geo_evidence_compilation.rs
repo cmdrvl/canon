@@ -3,16 +3,17 @@ use canon::geo::{
     CANON_GEO_POPULATION_REQUEST_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoBuildingCandidate,
     GeoCandidateReachStatus, GeoCollateralCompletenessAssertion,
     GeoCollateralCompletenessObservationRequest, GeoCompositionModel, GeoCompositionProfile,
-    GeoCompositionRequest, GeoCompositionStatus, GeoCompositionUniverse, GeoEntityLevel,
-    GeoEntityRef, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest, GeoEvidenceCoverageStatus,
-    GeoEvidenceDisposition, GeoEvidenceRecordRef, GeoHardConstraintKind, GeoIntegerMeasure,
-    GeoIntegerMemberValue, GeoIntegerValueOrigin, GeoLabeledCompositionCase,
+    GeoCompositionRequest, GeoCompositionStatus, GeoCompositionUniverse, GeoE4GateBlockerCode,
+    GeoEntityLevel, GeoEntityRef, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest,
+    GeoEvidenceCoverageStatus, GeoEvidenceDisposition, GeoEvidenceRecordRef, GeoHardConstraintKind,
+    GeoIntegerMeasure, GeoIntegerMemberValue, GeoIntegerValueOrigin, GeoLabeledCompositionCase,
     GeoPopulationCaseStatus, GeoPopulationErrorCode, GeoPopulationEvaluationArtifact,
     GeoPopulationEvaluationRequest, GeoPopulationSummary, GeoPopulationTruthPlaneSummary,
     GeoResolvedClaimClass, GeoRhoAdmissionFallback, GeoRhoAdmissionPolicy, GeoRhoBasis,
-    GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoRhoSoundness, GeoTruthPlane,
-    GeoValidTimeInterval, canonical_evidence_compilation_bytes,
-    collateral_completeness_observations, compile_evidence, evaluate_population, solve_composition,
+    GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoRhoSoundness,
+    GeoTruthModelResidualClassification, GeoTruthPlane, GeoValidTimeInterval, assess_e4_gate,
+    canonical_evidence_compilation_bytes, collateral_completeness_observations, compile_evidence,
+    e4_proof_source_from_population_request, evaluate_population, solve_composition,
     validate_evidence_compilation_artifact, validate_population_evaluation_artifact,
 };
 use serde::Deserialize;
@@ -434,6 +435,7 @@ fn assert_summary_matches_truth_plane_sums(summary: &GeoPopulationSummary) {
     assert_plane_sum!(solver_artifact_cases);
     assert_plane_sum!(empirical_falsification_eligible_cases);
     assert_plane_sum!(solver_truth_exclusion_cases);
+    assert_plane_sum!(solver_truth_classification_incomplete_cases);
     assert_plane_sum!(residual_count_complete_cases);
     assert_plane_sum!(residual_count_exact_cases);
     assert_plane_sum!(residual_count_saturated_cases);
@@ -2048,8 +2050,12 @@ fn population_never_reports_budget_fallback_placeholder_zero_as_a_model_count() 
     assert!(!case.residual_count_complete);
     assert!(!case.residual_count_saturated);
     assert!(case.solver_digest.is_some());
-    assert_eq!(case.truth_model_in_residual, Some(true));
+    assert_eq!(case.truth_model_in_residual, None);
     assert!(case.solver_truth_scored);
+    assert_eq!(
+        case.truth_model_residual_classification,
+        Some(GeoTruthModelResidualClassification::Incomplete)
+    );
     assert!(!case.backbone_complete);
     assert!(case.abstained);
     assert_eq!(artifact.summary.component_budget_fallback_cases, 1);
@@ -2061,8 +2067,112 @@ fn population_never_reports_budget_fallback_placeholder_zero_as_a_model_count() 
     assert_eq!(artifact.summary.assignment_budget_exceeded_cases, 0);
     assert_eq!(artifact.summary.solver_truth_scored_cases, 1);
     assert_eq!(artifact.summary.solver_truth_exclusion_cases, 0);
+    assert_eq!(
+        artifact
+            .summary
+            .solver_truth_classification_incomplete_cases,
+        1
+    );
     assert_eq!(artifact.summary.residual_count_unavailable_cases, 1);
     assert_eq!(artifact.summary.backbone_complete_cases, 0);
+}
+
+#[test]
+fn population_reports_incomplete_classification_instead_of_fallback_truth_exclusion() {
+    let parcel_ids = (0..12)
+        .map(|index| format!("p{index:02}"))
+        .collect::<Vec<_>>();
+    let evidence = GeoEvidenceCompilationRequest {
+        version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
+        universe: GeoCompositionUniverse {
+            parcels: parcel_ids.clone(),
+            buildings: Vec::new(),
+        },
+        contracts: vec![contract("requires-p00", GeoRhoSoundness::LogicallySound)],
+        observations: vec![GeoRhoObservation {
+            id: "p00-only".to_string(),
+            contract_id: "requires-p00".to_string(),
+            source_records: vec![source_record("p00-only-row")],
+            valid_time: None,
+            observation: GeoRhoObservationKind::ExactSets {
+                level: GeoEntityLevel::Parcel,
+                sets: vec![parcels(&["p00"])],
+            },
+        }],
+        max_assignments: 100,
+        max_materialized_models: 0,
+    };
+    let request = GeoPopulationEvaluationRequest {
+        version: CANON_GEO_POPULATION_REQUEST_VERSION.to_string(),
+        cases: vec![GeoLabeledCompositionCase {
+            id: "fallback-would-exclude-truth".to_string(),
+            evidence,
+            truth_plane: GeoTruthPlane::GateV2Historical,
+            truth: GeoCompositionModel {
+                parcels: parcels(&["p01"]),
+                buildings: Vec::new(),
+            },
+        }],
+        max_cases: 1,
+    };
+    let artifact = evaluate_population(&request)
+        .expect("fallback is an incomplete classification, not a dropped denominator");
+
+    let case = &artifact.cases[0];
+    assert_eq!(
+        case.status,
+        GeoPopulationCaseStatus::ComponentBudgetFallback
+    );
+    assert!(case.solver_truth_scored);
+    assert!(!case.residual_count_complete);
+    assert_eq!(case.truth_model_in_residual, None);
+    assert_eq!(
+        case.truth_model_residual_classification,
+        Some(GeoTruthModelResidualClassification::Incomplete)
+    );
+    assert!(!case.false_merge);
+    assert_eq!(artifact.summary.solver_truth_scored_cases, 1);
+    assert_eq!(artifact.summary.empirical_falsification_eligible_cases, 1);
+    assert_eq!(artifact.summary.solver_truth_exclusion_cases, 0);
+    assert_eq!(
+        artifact
+            .summary
+            .solver_truth_classification_incomplete_cases,
+        1
+    );
+
+    let proof_source =
+        e4_proof_source_from_population_request(&request).expect("fixture proof source derives");
+    let assessment = assess_e4_gate(&artifact, &proof_source).expect("E4 assessment scores");
+    assert_eq!(assessment.planes.admission.rho_falsification_cases, 0);
+    assert_eq!(
+        assessment
+            .planes
+            .truth_quality
+            .solver_truth_classification_incomplete_cases,
+        1
+    );
+    assert!(
+        assessment
+            .blockers
+            .iter()
+            .any(|blocker| { blocker.code == GeoE4GateBlockerCode::TruthClassificationIncomplete })
+    );
+    assert!(assessment.case_findings.iter().any(|finding| {
+        finding.code == GeoE4GateBlockerCode::TruthClassificationIncomplete
+            && finding.case_id == "fallback-would-exclude-truth"
+            && finding.observed == "classification_incomplete"
+    }));
+
+    let mut folded = artifact.clone();
+    folded.cases[0].truth_model_residual_classification =
+        Some(GeoTruthModelResidualClassification::Excluded);
+    folded.cases[0].truth_model_in_residual = Some(false);
+    let error = assess_e4_gate(&folded, &proof_source)
+        .expect_err("budget fallbacks must not be folded into completed truth exclusions");
+    assert_eq!(error.code, GeoPopulationErrorCode::Composition);
+    assert_eq!(error.detail["field"], "truth_model_residual_classification");
 }
 
 #[test]
