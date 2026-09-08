@@ -1,12 +1,16 @@
 #![forbid(unsafe_code)]
 
 use canon::geo::{
-    GEO_ACRIS_DOCUMENT_LEGAL_COMPLETENESS_CONTRACT_ID, GeoCollateralCompletenessAssertion,
-    GeoCollateralCompletenessCaseAssertion, GeoCollateralCompletenessContractSource,
-    GeoCollateralCompletenessOverlayRequest, GeoCompositionModel, GeoEntityLevel, GeoEntityRef,
-    GeoH7PopulationArtifact, GeoH7SourceRecordRole, GeoPopulationEvaluationRequest,
-    GeoPopulationEvidenceStackRequest, GeoRhoObservation, GeoRhoObservationKind,
-    build_collateral_completeness_overlay, stack_population_evidence,
+    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
+    DEFAULT_MAX_MATERIALIZED_MODELS, GEO_ACRIS_DOCUMENT_LEGAL_COMPLETENESS_CONTRACT_ID,
+    GeoCollateralCompletenessAssertion, GeoCollateralCompletenessCaseAssertion,
+    GeoCollateralCompletenessContractSource, GeoCollateralCompletenessOverlayRequest,
+    GeoCompositionModel, GeoCompositionUniverse, GeoEntityLevel, GeoEntityRef,
+    GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoH7PopulationArtifact,
+    GeoH7SourceRecordRole, GeoLabeledCompositionCase, GeoPopulationCaseStatus,
+    GeoPopulationEvaluationRequest, GeoPopulationEvidenceStackRequest, GeoRhoObservation,
+    GeoRhoObservationKind, GeoTruthPlane, build_collateral_completeness_overlay,
+    evaluate_population, stack_population_evidence,
 };
 use flate2::{Compression, GzBuilder, read::GzDecoder};
 use serde::de::DeserializeOwned;
@@ -156,13 +160,7 @@ fn acris_completeness_probe_cases_emit_truth_all_of_and_exact_cardinality() {
 
 #[test]
 fn partial_or_unasserted_completeness_source_emits_no_stack_request() {
-    let source_record = canon::geo::GeoEvidenceRecordRef {
-        source_record_id: "fixture:complete-source:row".to_string(),
-        source_vintage: "fixture-v1".to_string(),
-        record_blake3: blake3::hash(b"fixture:complete-source:row")
-            .to_hex()
-            .to_string(),
-    };
+    let source_record = fixture_source_record("fixture:complete-source:row");
     let request = GeoCollateralCompletenessOverlayRequest::acris_document_legal(
         acris_contract_source(),
         vec![
@@ -191,6 +189,68 @@ fn partial_or_unasserted_completeness_source_emits_no_stack_request() {
     assert_eq!(artifact.summary.asserted_complete_cases, 0);
     assert_eq!(artifact.summary.abstained_cases, 2);
     assert_eq!(artifact.summary.emitted_observations, 0);
+}
+
+#[test]
+fn partial_or_unasserted_completeness_claims_do_not_narrow_the_residual() {
+    let population = partial_completeness_negative_population();
+    let baseline = evaluate_population(&population).expect("baseline population evaluates");
+    let baseline_case = baseline
+        .cases
+        .first()
+        .expect("baseline has one scored case");
+    assert_eq!(baseline_case.status, GeoPopulationCaseStatus::Ambiguous);
+    assert_eq!(baseline_case.residual_model_count, Some(7));
+    assert_eq!(baseline_case.hard_constraint_observations, 0);
+
+    for assertion in [
+        GeoCollateralCompletenessAssertion::Partial,
+        GeoCollateralCompletenessAssertion::Unasserted,
+    ] {
+        let request = GeoCollateralCompletenessOverlayRequest::acris_document_legal(
+            acris_contract_source(),
+            vec![GeoCollateralCompletenessCaseAssertion {
+                case_id: "case-completeness-negative".to_string(),
+                level: GeoEntityLevel::Parcel,
+                members: vec![
+                    GeoEntityRef::new(GeoEntityLevel::Parcel, "p1"),
+                    GeoEntityRef::new(GeoEntityLevel::Parcel, "p2"),
+                ],
+                source_records: vec![fixture_source_record(
+                    "fixture:partial-completeness-negative:row",
+                )],
+                assertion,
+            }],
+            1,
+            2,
+        );
+        let artifact = build_collateral_completeness_overlay(&request)
+            .expect("partial and unasserted completeness requests abstain safely");
+        let scored_population = if let Some(stack_request) = artifact.stack_request.as_ref() {
+            stack_population_evidence(&population, stack_request)
+                .expect("emitted partial/unasserted overlay stacks")
+                .population
+        } else {
+            population.clone()
+        };
+        let scored = evaluate_population(&scored_population)
+            .expect("partial/unasserted completeness population evaluates");
+        let scored_case = scored.cases.first().expect("scored case exists");
+
+        assert_eq!(scored_case.status, baseline_case.status, "{assertion:?}");
+        assert_eq!(
+            scored_case.residual_model_count, baseline_case.residual_model_count,
+            "{assertion:?} must not collapse feasible subsets"
+        );
+        assert_eq!(
+            scored_case.hard_constraint_observations, baseline_case.hard_constraint_observations,
+            "{assertion:?} must not emit pruning evidence"
+        );
+        assert!(
+            scored_case.truth_model_in_residual.unwrap_or(false),
+            "{assertion:?} must leave the complete truth model feasible"
+        );
+    }
 }
 
 #[test]
@@ -359,6 +419,45 @@ fn acris_contract_source() -> GeoCollateralCompletenessContractSource {
         source_lineage_ids: vec![
             "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_LEGALS_EXT:release_dt=2026-08-10".to_string(),
         ],
+    }
+}
+
+fn partial_completeness_negative_population() -> GeoPopulationEvaluationRequest {
+    GeoPopulationEvaluationRequest {
+        version: CANON_GEO_POPULATION_REQUEST_VERSION.to_string(),
+        cases: vec![GeoLabeledCompositionCase {
+            id: "case-completeness-negative".to_string(),
+            evidence: GeoEvidenceCompilationRequest {
+                version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+                profile: Default::default(),
+                universe: GeoCompositionUniverse {
+                    parcels: parcel_ids(&["p1", "p2", "p3"]),
+                    buildings: Vec::new(),
+                },
+                contracts: Vec::new(),
+                observations: Vec::new(),
+                max_assignments: 64,
+                max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+            },
+            truth_plane: GeoTruthPlane::GateV2Historical,
+            truth: GeoCompositionModel {
+                parcels: parcel_ids(&["p1", "p2", "p3"]),
+                buildings: Vec::new(),
+            },
+        }],
+        max_cases: 1,
+    }
+}
+
+fn parcel_ids(ids: &[&str]) -> Vec<String> {
+    ids.iter().map(|id| (*id).to_string()).collect()
+}
+
+fn fixture_source_record(id: &str) -> GeoEvidenceRecordRef {
+    GeoEvidenceRecordRef {
+        source_record_id: id.to_string(),
+        source_vintage: "fixture-v1".to_string(),
+        record_blake3: blake3::hash(id.as_bytes()).to_hex().to_string(),
     }
 }
 
