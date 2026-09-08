@@ -1,0 +1,234 @@
+{
+  "baseline": {
+    "ambiguous": 55,
+    "component_fallbacks": 8,
+    "conflict": 0,
+    "exactly_correct": 7,
+    "false_merges": 0,
+    "name": "combined_pad_owner_gsf_repair_score",
+    "reach_full_partial_none": [
+      70,
+      0,
+      0
+    ],
+    "resolved": 7,
+    "truth_exclusions": 8
+  },
+  "bead": "bd-2rwf",
+  "boundary": "Classification-only retained adjudication. No PAD membership contract is widened, no candidate universe is changed, and no rho admission overlay is produced. These cases decide whether the remaining PAD-disjoint exclusions are incomplete bd-2rc0 bridge defects or source/truth binding conflicts.",
+  "cases": [
+    {
+      "case_fragment": "5934bb93",
+      "case_id": "h7-subject:non-round:5934bb9370d31d9b1fa687544020e5e006512cb16d073ed3712ba0cf37a17c36",
+      "completeness_score_interaction": {
+        "classified_as_completeness_conflict": true,
+        "conflict_contract_family": "pad_membership"
+      },
+      "filed_property": {
+        "address": "83-10 35TH AVE",
+        "county": "QUEENS",
+        "name": "83-10 35TH AVENUE OWNERS CORP.",
+        "property_key": "CREP-6AB181363BFF721C"
+      },
+      "filed_truth_relation": {
+        "acris_legal_addresses": [
+          "3-29 BEACH 65 STREET",
+          "3-17 BEACH 65 STREET",
+          "3-11 BEACH 65 STREET"
+        ],
+        "overlap": "none",
+        "pad_emitted_address_family": "35 AVENUE / 83 STREET, Jackson Heights",
+        "pad_truth_address_family": "BEACH 65 STREET, Far Rockaway"
+      },
+      "pad": {
+        "emitted_hard_members": [
+          "4014570001"
+        ],
+        "emitted_member_matches_filed_property": true,
+        "truth_bbl_count": 3,
+        "truth_bbls": [
+          "4159100057",
+          "4159100064",
+          "4159100066"
+        ],
+        "truth_pad_address_exact_bbl_count": 2,
+        "truth_pad_bbl_range_bbl_count": 2
+      },
+      "settlement": {
+        "bd_2rc0_fix_incomplete": false,
+        "classification": "retained_truth_document_binding_conflict",
+        "expected_direct_e4_movement": {
+          "ambiguous_delta": 0,
+          "exactly_correct_delta": 0,
+          "false_merges_delta": 0,
+          "resolved_delta": 0,
+          "truth_exclusions_delta": 0
+        },
+        "release_claim_allowed": false,
+        "remedy": "Audit or correct the retained truth/document binding. The PAD bridge selected the filed 83-10 35th Avenue property; the retained ACRIS truth rows describe Beach 65 Street parcels.",
+        "wrong_side": "truth_source_binding"
+      }
+    },
+    {
+      "case_fragment": "e3a5228d",
+      "case_id": "h7-subject:non-round:e3a5228d84bb6bf01ff03e2849e4a996f223cb1fcff79eff04a65d84dcfa8deb",
+      "completeness_score_interaction": {
+        "classified_as_completeness_conflict": true,
+        "conflict_contract_family": "pad_membership"
+      },
+      "filed_property": {
+        "address": "47-01 Queens Boulevard",
+        "county": "Queens",
+        "name": "47-01 Queens Boulevard",
+        "property_key": "CREP-11B7C4F0999886E9"
+      },
+      "filed_truth_relation": {
+        "acris_legal_addresses": [
+          "144-74 NORTHERN BLVD",
+          "14474 NORTHERN BLVD"
+        ],
+        "overlap": "none",
+        "pad_emitted_address_family": "QUEENS BOULEVARD / 47 STREET, Sunnyside",
+        "pad_truth_address_family": "NORTHERN BOULEVARD, Flushing"
+      },
+      "gsf_context": {
+        "corrected_truth_gsf_sum": 133295,
+        "corrected_truth_sum_inside_band": true,
+        "note": "The current-universe GSF vector passes for this truth set; the remaining exclusion is not a GSF admission problem."
+      },
+      "pad": {
+        "emitted_hard_members": [
+          "4001400010"
+        ],
+        "emitted_member_matches_filed_property": true,
+        "truth_bbl_count": 10,
+        "truth_bbls": [
+          "4050141101",
+          "4050141102",
+          "4050141103",
+          "4050141104",
+          "4050141105",
+          "4050141106",
+          "4050141107",
+          "4050141108",
+          "4050141109",
+          "4050141110"
+        ],
+        "truth_pad_address_exact_bbl_count": 1,
+        "truth_pad_bbl_range_bbl_count": 10
+      },
+      "settlement": {
+        "bd_2rc0_fix_incomplete": false,
+        "classification": "retained_truth_document_binding_conflict",
+        "expected_direct_e4_movement": {
+          "ambiguous_delta": 0,
+          "exactly_correct_delta": 0,
+          "false_merges_delta": 0,
+          "resolved_delta": 0,
+          "truth_exclusions_delta": 0
+        },
+        "release_claim_allowed": false,
+        "remedy": "Audit or correct the retained truth/document binding. The PAD bridge selected the filed Queens Boulevard property; the retained ACRIS truth rows describe the Northern Boulevard condo range.",
+        "wrong_side": "truth_source_binding"
+      }
+    },
+    {
+      "case_fragment": "a7dac634",
+      "case_id": "h7-subject:round-exact-lender:a7dac634b44cc8175e7bde5b0a386f2ecda11361200f3b04bce5a3b84aa73ee3",
+      "completeness_score_interaction": {
+        "classified_as_completeness_conflict": false,
+        "conflict_contract_family": null,
+        "reason": "The retained inputs are logically disjoint under completeness plus PAD, but the scorer reported this case through component_budget_fallback with residual_count_complete=false. bd-3cez owns the instrument defect; this bead classifies the source side."
+      },
+      "filed_property": {
+        "address": "350 WEST 40TH STREET",
+        "county": "New York",
+        "loan_county_property_count": 1,
+        "loan_property_count": 2,
+        "name": "DOUBLETREE NEW YORK TIMES SQUARE WEST LEASED FEE",
+        "property_key": "CREP-2D511F8FD5A117D5"
+      },
+      "filed_truth_relation": {
+        "acris_legal_addresses": [
+          "345 EAST 60TH ST",
+          "347 EAST 60TH ST",
+          "349 EAST 60TH ST",
+          "1097 1ST AVENUE",
+          "1099 1ST AVENUE",
+          "1101 1ST AVE",
+          "1103 1ST AVE"
+        ],
+        "overlap": "none",
+        "pad_emitted_address_family": "WEST 40 STREET, Times Square",
+        "pad_truth_address_family": "EAST 60 STREET / 1 AVENUE"
+      },
+      "pad": {
+        "emitted_hard_members": [
+          "1007630067"
+        ],
+        "emitted_member_matches_filed_property": true,
+        "truth_bbl_count": 7,
+        "truth_bbls": [
+          "1014350020",
+          "1014350021",
+          "1014350022",
+          "1014350023",
+          "1014350024",
+          "1014350025",
+          "1014350026"
+        ],
+        "truth_pad_address_exact_bbl_count": 7,
+        "truth_pad_bbl_range_bbl_count": 7
+      },
+      "settlement": {
+        "bd_2rc0_fix_incomplete": false,
+        "classification": "retained_truth_document_binding_conflict",
+        "expected_direct_e4_movement": {
+          "ambiguous_delta": 0,
+          "exactly_correct_delta": 0,
+          "false_merges_delta": 0,
+          "resolved_delta": 0,
+          "truth_exclusions_delta": 0
+        },
+        "release_claim_allowed": false,
+        "remedy": "Audit or correct the retained truth/document binding. The PAD bridge selected the filed West 40th Street property; the retained ACRIS truth rows describe East 60th Street / 1st Avenue.",
+        "wrong_side": "truth_source_binding"
+      }
+    }
+  ],
+  "expected_direct_e4_movement": {
+    "ambiguous_delta": 0,
+    "exactly_correct_delta": 0,
+    "false_merges_delta": 0,
+    "resolved_delta": 0,
+    "truth_exclusions_delta": 0
+  },
+  "frozen_denominator": 79,
+  "measurement": {
+    "bd_2rc0_fix_incomplete_cases": 0,
+    "case_count": 3,
+    "classification_counts": {
+      "retained_truth_document_binding_conflict": 3
+    },
+    "direct_pad_admission_lever": "none",
+    "measurement_name": "bd_2rwf_pad_residual_adjudication",
+    "safe_canon_pad_lever_exists": false
+  },
+  "proof_class": "retained_population_measurement_not_live",
+  "release_claim_allowed": false,
+  "retained_inputs": {
+    "acris_completeness_overlay_path": "scripts/geo_measurements/fixtures/e4_collateral_completeness_2026-09-08/overlay_request_acris_document_legal_completeness.json.gz",
+    "acris_completeness_overlay_sha256": "84ce03bea21e88ada62b48bc05a2b58a4ef6329ac1c21235d382ce5999b964e2",
+    "pad_truth_binding_review_path": "scripts/geo_measurements/fixtures/e4_pad_truth_binding_2026-09-08/pad_truth_binding_review.json",
+    "pad_truth_binding_review_sha256": "6390c4d57880a9cca631e54c071ed02f93d5c7db0b66b4d17a308d6180334842",
+    "population_path": "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/population_request_roll_universe_pluto_vintage_condo_representation_widened.json.gz",
+    "population_sha256": "04816dcf5d2f73fc9eb7661d11ef93209da623d3f9be0173109fc55558433405"
+  },
+  "retained_population_denominator": 70,
+  "source_verification": {
+    "consumed_review_measurement": "bd_1hgq_pad_membership_binding_gaps_after_bd_2rc0",
+    "new_source_queries": [],
+    "reason_no_new_source_query": "The closed bd-1hgq retained review already pins the SEC property rows, ACRIS master/legal/party rows, PAD address rows, and PAD BBL range rows required for this classification."
+  },
+  "version": "bd_2rwf_pad_residual_adjudication.v0"
+}
