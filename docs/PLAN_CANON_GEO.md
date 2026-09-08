@@ -1154,7 +1154,8 @@ coverage/precision plane:
   fixed-point errors. The same current bridge also bounds Microsoft GlobalML
   `2026-07-24` footprint availability to 168,778 features in 581 of 585 center+k1
   r8 work cells, with zero HOT-geometry misses. Franklin-specific names remain
-  outside generic materializer, composition, solver, and tile modules.
+  outside generic materializer, evidence, composition, solver, and tile modules;
+  no E5 fuel core dispatch edit was required.
 
   This materially starts the typical-county tier but does not complete E5. Candidate
   reach and footprint source coverage are upstream of truth accuracy; the deed-grain

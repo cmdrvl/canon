@@ -218,13 +218,23 @@ fn franklin_instance_names_do_not_enter_the_generic_geo_engine() {
         include_str!("../src/geo/ledger.rs"),
         include_str!("../src/geo/materialize.rs"),
         include_str!("../src/geo/geometry_value.rs"),
+        include_str!("../src/geo/evidence.rs"),
         include_str!("../src/geo/composition.rs"),
         include_str!("../src/geo/tile.rs"),
     ] {
         let folded = source.to_ascii_lowercase();
-        assert!(!folded.contains("franklin"));
-        assert!(!folded.contains("39049"));
-        assert!(!folded.contains("epsg:3735"));
+        for forbidden in [
+            "franklin",
+            "39049",
+            "epsg:3735",
+            "microsoft_globalml",
+            "globalml",
+        ] {
+            assert!(
+                !folded.contains(forbidden),
+                "generic Geo module must not carry source-specific literal {forbidden:?}"
+            );
+        }
     }
 }
 
