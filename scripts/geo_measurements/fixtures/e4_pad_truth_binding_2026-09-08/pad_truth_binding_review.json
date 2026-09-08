@@ -1,0 +1,779 @@
+{
+  "version": "canon_geo_e4_pad_truth_binding_review.v0",
+  "bead": "bd-1hgq",
+  "proof_class": "retained_cmdrvl_data_warehouse_source_audit_not_live",
+  "frozen_denominator": 79,
+  "retained_population_denominator": 70,
+  "denominator": {
+    "scope": "bd_1fq2_pad_membership_binding_gaps_after_bd_2rc0",
+    "case_count": 3,
+    "case_ids": [
+      "h7-subject:non-round:5934bb9370d31d9b1fa687544020e5e006512cb16d073ed3712ba0cf37a17c36",
+      "h7-subject:non-round:e3a5228d84bb6bf01ff03e2849e4a996f223cb1fcff79eff04a65d84dcfa8deb",
+      "h7-subject:round-exact-lender:a7dac634b44cc8175e7bde5b0a386f2ecda11361200f3b04bce5a3b84aa73ee3"
+    ],
+    "excluded_from_this_denominator": [
+      {
+        "short_id": "524efa30",
+        "reason": "classified and repaired by bd-2rc0; remaining E4 exclusion is dual PAD+GSF and waits for bd-3frw"
+      },
+      {
+        "short_id": "69dbf5da",
+        "reason": "classified and repaired by bd-2rc0; remaining E4 exclusion is dual PAD+owner"
+      },
+      {
+        "short_id": "a6dd2e31",
+        "reason": "classified and repaired by bd-2rc0; isolated PAD score cleared the exclusion"
+      }
+    ]
+  },
+  "boundary": "Review classification only. These rows bind filed SEC property addresses, ACRIS legal truth rows, and PAD source rows at property grain. They do not widen rho.address.pad.membership, do not introduce candidates, do not assert live proof, and do not hand off an admission overlay.",
+  "measurement": {
+    "classifications": {
+      "same_collateral_property": 0,
+      "different_property": 3,
+      "needs_review": 0
+    },
+    "expected_direct_e4_movement_from_this_review": {
+      "resolved": 0,
+      "exactly_correct": 0,
+      "false_merges": 0,
+      "truth_exclusions": 0,
+      "reason": "All three cases bind the accepted ACRIS truth document to a different filed SEC property address. They are truth/source binding or adjudication work, not admission-policy input."
+    }
+  },
+  "source_terms": {
+    "property_mart": {
+      "source_table": "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY",
+      "grain": "one row per loan_key/property_key bridge",
+      "license_terms": "Derived mart row; source licensing is carried by the underlying SEC and source pins.",
+      "attribution_text": "PROPERTY_MART loan/property bridge"
+    },
+    "acris": {
+      "source_tables": [
+        "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_MASTER_EXT",
+        "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_LEGALS_EXT",
+        "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES"
+      ],
+      "release_dt": "2026-08-10",
+      "license_terms": "NYC Open Data public dataset; Socrata metadata did not provide a license code. Use under NYC Open Data Terms of Use with source attribution to Department of Finance (DOF).",
+      "attribution_text": "Department of Finance (DOF)"
+    },
+    "pad": {
+      "source_tables": [
+        "EDGAR_DB.SOURCE.NYC_DCP_PAD_ADDRESS_HOT",
+        "EDGAR_DB.SOURCE.NYC_DCP_PAD_BBL_HOT"
+      ],
+      "release": "26B",
+      "release_dt": "2026-05-01",
+      "source_zip_sha256": "016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd",
+      "parser_version": "2026-08-16",
+      "license_terms": "Public NYC Department of City Planning Bytes of the Big Apple release for informational purposes only; DCP disclaims completeness, accuracy, content, and fitness warranties.",
+      "attribution_text": "NYC Department of City Planning (DCP)"
+    }
+  },
+  "source_queries": [
+    {
+      "measurement_name": "bd_1hgq_loan_property_rows",
+      "source_table": "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY",
+      "predicate": "loan_key IN ('a89343223f12351e8cc666345560b9a8', 'd709ee238f8a21b5452734d5fd8c2de5', '9970d9136018599001e61f2ba8be3519')",
+      "row_count": 4
+    },
+    {
+      "measurement_name": "bd_1hgq_acris_master_pins",
+      "source_table": "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_MASTER_EXT",
+      "predicate": "release_dt = '2026-08-10' AND source_row_number IN (14336645, 15524726, 14904275)",
+      "row_count": 3
+    },
+    {
+      "measurement_name": "bd_1hgq_acris_legal_pins",
+      "source_table": "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_LEGALS_EXT",
+      "predicate": "release_dt = '2026-08-10' AND source_row_number IN the retained ACRIS legal source pins for the three cases",
+      "row_count": 20
+    },
+    {
+      "measurement_name": "bd_1hgq_acris_party_pins_staged",
+      "source_table": "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES",
+      "predicate": "release_dt = '2026-08-10' AND document_id IN ('2018032200347012', '2021082300874002', '2019112700560003')",
+      "row_count": 6
+    },
+    {
+      "measurement_name": "bd_1hgq_pad_address_exact_rows",
+      "source_table": "EDGAR_DB.SOURCE.NYC_DCP_PAD_ADDRESS_HOT",
+      "predicate": "release = '26B' AND bbl_key IN emitted PAD hard members plus truth BBLs",
+      "row_count": 19
+    },
+    {
+      "measurement_name": "bd_1hgq_pad_bbl_range_rows",
+      "source_table": "EDGAR_DB.SOURCE.NYC_DCP_PAD_BBL_HOT",
+      "predicate": "release = '26B' AND target truth BBL BETWEEN low_bbl_key AND high_bbl_key",
+      "row_count": 19
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "h7-subject:non-round:5934bb9370d31d9b1fa687544020e5e006512cb16d073ed3712ba0cf37a17c36",
+      "short_id": "5934bb93",
+      "classification": "different_property",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "loan_key": "a89343223f12351e8cc666345560b9a8",
+      "property_key": "CREP-6AB181363BFF721C",
+      "document_id": "2018032200347012",
+      "truth_bbls": [
+        "4159100057",
+        "4159100064",
+        "4159100066"
+      ],
+      "emitted_pad_hard_members": [
+        "4014570001"
+      ],
+      "filed_property": {
+        "source_record": {
+          "source_record_id": "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY:d5ddd2d9-07dc-44d6-bf8b-b7bfc373dbc3:a89343223f12351e8cc666345560b9a8:CREP-6AB181363BFF721C:70fd303843624e59f9db34593c61b59f",
+          "source_vintage": "d5ddd2d9-07dc-44d6-bf8b-b7bfc373dbc3",
+          "record_blake3": "c95c15c9c34dcdbe79bb15e73dcc44087ec4589bffb0995dc0d9899c64837ef5"
+        },
+        "loan_issuance_property_key": "70fd303843624e59f9db34593c61b59f",
+        "property_name": "83-10 35TH AVENUE OWNERS CORP.",
+        "address": "83-10 35TH AVE",
+        "city": "JACKSON HEIGHTS",
+        "county": "QUEENS",
+        "state": "NY",
+        "zip": "11372",
+        "county_fips": "36081",
+        "recorded_borough": 4,
+        "source_loan_observation_key": "a2183bbf32c21e57358c2efa5c7ed097",
+        "build_id": "d012ffbb-f95f-4c29-9b3d-804f38ada29e"
+      },
+      "acris": {
+        "master": {
+          "source_table": "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_MASTER_EXT",
+          "release_dt": "2026-08-10",
+          "source_row_number": 14336645,
+          "document_id": "2018032200347012",
+          "doc_type": "MTGE",
+          "document_date": "2018-03-21",
+          "document_amount": 2750000,
+          "recorded_borough": 1,
+          "recorded_datetime": "2018-03-23 00:00:00.000",
+          "raw_csv_sha256": "474fe590f7ba76213ed7205ce45b9b8e84af954de517f8a1e264a9f15e24616f",
+          "parser_version": "2026-08-14",
+          "filename": "nyc/acris_real_property/dataset=real_property_master/release_dt=2026-08-10/artifact=normalized/page=000144/nyc_acris_real_property_master_2026-08-10_page_000144.parquet"
+        },
+        "legal_rows": [
+          {
+            "source_row_number": 18810470,
+            "bbl": "4159100057",
+            "property_type": "D3",
+            "address": "3-29 BEACH 65 STREET",
+            "raw_csv_sha256": "80658ce56786f38ddf613ae6dccf6be40a94cbf14dd73f801824a46b83a6b6b0",
+            "parser_version": "2026-08-14"
+          },
+          {
+            "source_row_number": 18815458,
+            "bbl": "4159100064",
+            "property_type": "F1",
+            "address": "3-17 BEACH 65 STREET",
+            "raw_csv_sha256": "80658ce56786f38ddf613ae6dccf6be40a94cbf14dd73f801824a46b83a6b6b0",
+            "parser_version": "2026-08-14"
+          },
+          {
+            "source_row_number": 18811528,
+            "bbl": "4159100066",
+            "property_type": "D3",
+            "address": "3-11 BEACH 65 STREET",
+            "raw_csv_sha256": "80658ce56786f38ddf613ae6dccf6be40a94cbf14dd73f801824a46b83a6b6b0",
+            "parser_version": "2026-08-14"
+          }
+        ],
+        "party_rows": [
+          {
+            "source_table": "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES",
+            "release_dt": "2026-08-10",
+            "source_row_number": 31272868,
+            "document_id": "2018032200347012",
+            "party_type": "1",
+            "name": "BEACH 65TH ST HOLDINGS LLC",
+            "party_name_norm": "BEACH 65TH ST HOLDINGS LLC",
+            "raw_csv_sha256": "7ef50a3da72e6e1404cba1e3168cd7c6b56e9a868158230b95fcb13ad5dbe057",
+            "parser_version": "2026-08-14"
+          },
+          {
+            "source_table": "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES",
+            "release_dt": "2026-08-10",
+            "source_row_number": 7010389,
+            "document_id": "2018032200347012",
+            "party_type": "2",
+            "name": "S III CAPITAL SOURCE LLC",
+            "party_name_norm": "S III CAPITAL SOURCE LLC",
+            "raw_csv_sha256": "37a444d666a7534e40b21027aec18fe7ac6fe5a600606c69e8ac46db9db0ddfe",
+            "parser_version": "2026-08-14"
+          }
+        ]
+      },
+      "pad": {
+        "emitted_hard_member_rows": [
+          {
+            "source_row_number": 663795,
+            "bbl_key": "4014570001",
+            "address": "83-02..83-10 35 AVENUE",
+            "zipcode": "11372"
+          },
+          {
+            "source_row_number": 663796,
+            "bbl_key": "4014570001",
+            "address": "35-01..35-15 83 STREET",
+            "zipcode": "11372"
+          }
+        ],
+        "truth_bbl_coverage": {
+          "truth_bbl_count": 3,
+          "pad_address_exact_bbl_count": 2,
+          "pad_bbl_range_bbl_count": 2,
+          "missing_pad_truth_bbls": [
+            "4159100064"
+          ]
+        },
+        "truth_address_rows": [
+          {
+            "source_row_number": 1128678,
+            "bbl_key": "4159100057",
+            "address": "329 BEACH 65 STREET",
+            "zipcode": "11692"
+          },
+          {
+            "source_row_number": 1128685,
+            "bbl_key": "4159100066",
+            "address": "311 BEACH 65 STREET",
+            "zipcode": "11692"
+          }
+        ],
+        "truth_bbl_rows": [
+          {
+            "source_row_number": 734769,
+            "bbl_key": "4159100057",
+            "low_bbl_key": "4159100057",
+            "high_bbl_key": "4159100057"
+          },
+          {
+            "source_row_number": 734776,
+            "bbl_key": "4159100066",
+            "low_bbl_key": "4159100066",
+            "high_bbl_key": "4159100066"
+          }
+        ]
+      },
+      "filed_truth_relation": {
+        "filed_property_addresses": [
+          "83-10 35TH AVE"
+        ],
+        "acris_legal_addresses": [
+          "3-29 BEACH 65 STREET",
+          "3-17 BEACH 65 STREET",
+          "3-11 BEACH 65 STREET"
+        ],
+        "pad_emitted_address_family": "35 AVENUE / 83 STREET, Jackson Heights",
+        "pad_truth_address_family": "BEACH 65 STREET, Far Rockaway",
+        "overlap": "none",
+        "finding": "The retained hard PAD member matches the SEC filed property address. The accepted ACRIS truth document names different Queens parcels on Beach 65 Street, so this is a property-grain truth/source binding conflict rather than a PAD admission defect."
+      }
+    },
+    {
+      "case_id": "h7-subject:non-round:e3a5228d84bb6bf01ff03e2849e4a996f223cb1fcff79eff04a65d84dcfa8deb",
+      "short_id": "e3a5228d",
+      "classification": "different_property",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "loan_key": "d709ee238f8a21b5452734d5fd8c2de5",
+      "property_key": "CREP-11B7C4F0999886E9",
+      "document_id": "2021082300874002",
+      "truth_bbls": [
+        "4050141101",
+        "4050141102",
+        "4050141103",
+        "4050141104",
+        "4050141105",
+        "4050141106",
+        "4050141107",
+        "4050141108",
+        "4050141109",
+        "4050141110"
+      ],
+      "emitted_pad_hard_members": [
+        "4001400010"
+      ],
+      "filed_property": {
+        "source_record": {
+          "source_record_id": "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY:d5ddd2d9-07dc-44d6-bf8b-b7bfc373dbc3:d709ee238f8a21b5452734d5fd8c2de5:CREP-11B7C4F0999886E9:c82104d07f770869c71daeead548739e",
+          "source_vintage": "d5ddd2d9-07dc-44d6-bf8b-b7bfc373dbc3",
+          "record_blake3": "eb1f0a029415925dd43b28272505cde5b209387e13c9d29917d6fcbe7f1a71df"
+        },
+        "loan_issuance_property_key": "c82104d07f770869c71daeead548739e",
+        "property_name": "47-01 Queens Boulevard",
+        "address": "47-01 Queens Boulevard",
+        "city": "Queens",
+        "county": "Queens",
+        "state": "NY",
+        "zip": "11104",
+        "county_fips": "36081",
+        "recorded_borough": 4,
+        "source_loan_observation_key": "f66518cf4dc6f2f89a0cdd93ba1a24da",
+        "build_id": "d012ffbb-f95f-4c29-9b3d-804f38ada29e"
+      },
+      "acris": {
+        "master": {
+          "source_table": "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_MASTER_EXT",
+          "release_dt": "2026-08-10",
+          "source_row_number": 15524726,
+          "document_id": "2021082300874002",
+          "doc_type": "MTGE",
+          "document_date": "2021-07-30",
+          "document_amount": 12750000,
+          "recorded_borough": 1,
+          "recorded_datetime": "2021-08-26 00:00:00.000",
+          "raw_csv_sha256": "897533d5d80e488cd234f877e95814e66add303be48d92596c200e999c5fac73",
+          "parser_version": "2026-08-14",
+          "filename": "nyc/acris_real_property/dataset=real_property_master/release_dt=2026-08-10/artifact=normalized/page=000156/nyc_acris_real_property_master_2026-08-10_page_000156.parquet"
+        },
+        "legal_rows": [
+          {
+            "source_row_number": 20456111,
+            "bbl": "4050141101",
+            "property_type": "PS",
+            "address": "144-74 NORTHERN BLVD COM P",
+            "raw_csv_sha256": "ebbfb82941d5ba1484132707461e70e2384b5684654d041ff4cecd8885a43bc8",
+            "parser_version": "2026-08-14"
+          },
+          {
+            "source_row_number": 20456112,
+            "bbl": "4050141102",
+            "property_type": "PS",
+            "address": "144-74 NORTHERN BLVD RAP",
+            "raw_csv_sha256": "ebbfb82941d5ba1484132707461e70e2384b5684654d041ff4cecd8885a43bc8",
+            "parser_version": "2026-08-14"
+          },
+          {
+            "source_row_number": 20456103,
+            "bbl": "4050141103",
+            "property_type": "OT",
+            "address": "14474 NORTHERN BLVD RU1",
+            "raw_csv_sha256": "ebbfb82941d5ba1484132707461e70e2384b5684654d041ff4cecd8885a43bc8",
+            "parser_version": "2026-08-14"
+          },
+          {
+            "source_row_number": 20456104,
+            "bbl": "4050141104",
+            "property_type": "OT",
+            "address": "14474 NORTHERN BLVD RU2",
+            "raw_csv_sha256": "ebbfb82941d5ba1484132707461e70e2384b5684654d041ff4cecd8885a43bc8",
+            "parser_version": "2026-08-14"
+          },
+          {
+            "source_row_number": 20456105,
+            "bbl": "4050141105",
+            "property_type": "OT",
+            "address": "14474 NORTHERN BLVD RU3",
+            "raw_csv_sha256": "ebbfb82941d5ba1484132707461e70e2384b5684654d041ff4cecd8885a43bc8",
+            "parser_version": "2026-08-14"
+          },
+          {
+            "source_row_number": 20456106,
+            "bbl": "4050141106",
+            "property_type": "OT",
+            "address": "14474 NORTHERN BLVD RU4",
+            "raw_csv_sha256": "ebbfb82941d5ba1484132707461e70e2384b5684654d041ff4cecd8885a43bc8",
+            "parser_version": "2026-08-14"
+          },
+          {
+            "source_row_number": 20456107,
+            "bbl": "4050141107",
+            "property_type": "OT",
+            "address": "14474 NORTHERN BLVD RU5",
+            "raw_csv_sha256": "ebbfb82941d5ba1484132707461e70e2384b5684654d041ff4cecd8885a43bc8",
+            "parser_version": "2026-08-14"
+          },
+          {
+            "source_row_number": 20456108,
+            "bbl": "4050141108",
+            "property_type": "CC",
+            "address": "14474 NORTHERN BLVD CF1",
+            "raw_csv_sha256": "ebbfb82941d5ba1484132707461e70e2384b5684654d041ff4cecd8885a43bc8",
+            "parser_version": "2026-08-14"
+          },
+          {
+            "source_row_number": 20456109,
+            "bbl": "4050141109",
+            "property_type": "CC",
+            "address": "14474 NORTHERN BLVD CF2",
+            "raw_csv_sha256": "ebbfb82941d5ba1484132707461e70e2384b5684654d041ff4cecd8885a43bc8",
+            "parser_version": "2026-08-14"
+          },
+          {
+            "source_row_number": 20456110,
+            "bbl": "4050141110",
+            "property_type": "BS",
+            "address": "14474 NORTHERN BLVD RES",
+            "raw_csv_sha256": "ebbfb82941d5ba1484132707461e70e2384b5684654d041ff4cecd8885a43bc8",
+            "parser_version": "2026-08-14"
+          }
+        ],
+        "party_rows": [
+          {
+            "source_table": "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES",
+            "release_dt": "2026-08-10",
+            "source_row_number": 41967580,
+            "document_id": "2021082300874002",
+            "party_type": "1",
+            "name": "SKY VIEW NORTHERN TENANT LP",
+            "party_name_norm": "SKY VIEW NORTHERN TENANT LP",
+            "raw_csv_sha256": "fedd45f47164036ab83bc1fd34740f7bbade2205978d301cb78818156236fbc4",
+            "parser_version": "2026-08-14"
+          },
+          {
+            "source_table": "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES",
+            "release_dt": "2026-08-10",
+            "source_row_number": 41967581,
+            "document_id": "2021082300874002",
+            "party_type": "2",
+            "name": "WELLS FARGO BANK, NATIONAL ASSOCIATION",
+            "party_name_norm": "WELLS FARGO BANK  NATIONAL ASSOCIATION",
+            "raw_csv_sha256": "fedd45f47164036ab83bc1fd34740f7bbade2205978d301cb78818156236fbc4",
+            "parser_version": "2026-08-14"
+          }
+        ]
+      },
+      "pad": {
+        "emitted_hard_member_rows": [
+          {
+            "source_row_number": 612514,
+            "bbl_key": "4001400010",
+            "address": "43-41..43-47 47 STREET",
+            "zipcode": "11104"
+          },
+          {
+            "source_row_number": 612515,
+            "bbl_key": "4001400010",
+            "address": "47-01..47-09 QUEENS BOULEVARD",
+            "zipcode": "11104"
+          }
+        ],
+        "truth_bbl_coverage": {
+          "truth_bbl_count": 10,
+          "pad_address_exact_bbl_count": 1,
+          "pad_bbl_range_bbl_count": 10,
+          "missing_pad_truth_bbls": []
+        },
+        "truth_address_rows": [
+          {
+            "source_row_number": 790329,
+            "bbl_key": "4050141101",
+            "address": "144-62..144-72 NORTHERN BOULEVARD",
+            "zipcode": "11354"
+          },
+          {
+            "source_row_number": 790330,
+            "bbl_key": "4050141101",
+            "address": "144-76..144-82 NORTHERN BOULEVARD",
+            "zipcode": "11354"
+          },
+          {
+            "source_row_number": 790331,
+            "bbl_key": "4050141101",
+            "address": "144-74 NORTHERN BOULEVARD",
+            "zipcode": "11354"
+          },
+          {
+            "source_row_number": 790332,
+            "bbl_key": "4050141101",
+            "address": "146-02..146-04 NORTHERN BOULEVARD",
+            "zipcode": "11354"
+          }
+        ],
+        "truth_bbl_rows": [
+          {
+            "source_row_number": 534118,
+            "bbl_key": "4050141101",
+            "low_bbl_key": "4050141101",
+            "high_bbl_key": "4050141110",
+            "billing_bbl_key": "4050147502",
+            "condo_flag": "C",
+            "condo_number": 1182
+          }
+        ]
+      },
+      "filed_truth_relation": {
+        "filed_property_addresses": [
+          "47-01 Queens Boulevard"
+        ],
+        "acris_legal_addresses": [
+          "144-74 NORTHERN BLVD",
+          "14474 NORTHERN BLVD"
+        ],
+        "pad_emitted_address_family": "QUEENS BOULEVARD / 47 STREET, Sunnyside",
+        "pad_truth_address_family": "NORTHERN BOULEVARD, Flushing",
+        "overlap": "none",
+        "finding": "PAD contains the filed Queens Boulevard property and the Northern Boulevard condo truth range, but they are different address families and different BBL blocks. This is not a missing PAD row or a membership threshold problem."
+      }
+    },
+    {
+      "case_id": "h7-subject:round-exact-lender:a7dac634b44cc8175e7bde5b0a386f2ecda11361200f3b04bce5a3b84aa73ee3",
+      "short_id": "a7dac634",
+      "classification": "different_property",
+      "truth_plane": "round_exact_lender_party",
+      "loan_key": "9970d9136018599001e61f2ba8be3519",
+      "property_key": "CREP-2D511F8FD5A117D5",
+      "document_id": "2019112700560003",
+      "truth_bbls": [
+        "1014350020",
+        "1014350021",
+        "1014350022",
+        "1014350023",
+        "1014350024",
+        "1014350025",
+        "1014350026"
+      ],
+      "emitted_pad_hard_members": [
+        "1007630067"
+      ],
+      "filed_property": {
+        "source_record": {
+          "source_record_id": "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY:d5ddd2d9-07dc-44d6-bf8b-b7bfc373dbc3:9970d9136018599001e61f2ba8be3519:CREP-2D511F8FD5A117D5:c84a649628639e9966cbe4a68263b5ed",
+          "source_vintage": "d5ddd2d9-07dc-44d6-bf8b-b7bfc373dbc3",
+          "record_blake3": "e5dd737948830a1aa1cb4f21c8de9b33deefab378eb98db43712afa5a328ee02"
+        },
+        "loan_issuance_property_key": "c84a649628639e9966cbe4a68263b5ed",
+        "property_name": "DOUBLETREE NEW YORK TIMES SQUARE WEST LEASED FEE",
+        "address": "350 WEST 40TH STREET",
+        "city": "New York",
+        "county": "New York",
+        "state": "NY",
+        "zip": "10018",
+        "county_fips": "36061",
+        "recorded_borough": 1,
+        "source_loan_observation_key": "98dc3ce0f94c93609b77c3b292eda0db",
+        "loan_property_count": 2,
+        "loan_county_property_count": 1,
+        "build_id": "d012ffbb-f95f-4c29-9b3d-804f38ada29e"
+      },
+      "acris": {
+        "master": {
+          "source_table": "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_MASTER_EXT",
+          "release_dt": "2026-08-10",
+          "source_row_number": 14904275,
+          "document_id": "2019112700560003",
+          "doc_type": "M&CON",
+          "document_date": "2019-11-20",
+          "document_amount": 30000000,
+          "recorded_borough": 1,
+          "recorded_datetime": "2019-11-29 00:00:00.000",
+          "raw_csv_sha256": "120520a6fa87e4a3c9318e96b36684c647fd5cbb0d4ffc50873abacbaf11545a",
+          "parser_version": "2026-08-14",
+          "filename": "nyc/acris_real_property/dataset=real_property_master/release_dt=2026-08-10/artifact=normalized/page=000150/nyc_acris_real_property_master_2026-08-10_page_000150.parquet"
+        },
+        "legal_rows": [
+          {
+            "source_row_number": 19588127,
+            "bbl": "1014350020",
+            "property_type": "CR",
+            "address": "345 EAST 60TH ST",
+            "raw_csv_sha256": "8184482d1c0b81725b60e929d524e0103f93d62ce3c7f24490257fe85f3bafb7",
+            "parser_version": "2026-08-14"
+          },
+          {
+            "source_row_number": 19588128,
+            "bbl": "1014350021",
+            "property_type": "CR",
+            "address": "347 EAST 60TH ST",
+            "raw_csv_sha256": "8184482d1c0b81725b60e929d524e0103f93d62ce3c7f24490257fe85f3bafb7",
+            "parser_version": "2026-08-14"
+          },
+          {
+            "source_row_number": 19588129,
+            "bbl": "1014350022",
+            "property_type": "CR",
+            "address": "349 EAST 60TH ST",
+            "raw_csv_sha256": "8184482d1c0b81725b60e929d524e0103f93d62ce3c7f24490257fe85f3bafb7",
+            "parser_version": "2026-08-14"
+          },
+          {
+            "source_row_number": 19588130,
+            "bbl": "1014350023",
+            "property_type": "CR",
+            "address": "1097 1ST AVENUE",
+            "raw_csv_sha256": "8184482d1c0b81725b60e929d524e0103f93d62ce3c7f24490257fe85f3bafb7",
+            "parser_version": "2026-08-14"
+          },
+          {
+            "source_row_number": 19588131,
+            "bbl": "1014350024",
+            "property_type": "CR",
+            "address": "1099 1ST AVENUE",
+            "raw_csv_sha256": "8184482d1c0b81725b60e929d524e0103f93d62ce3c7f24490257fe85f3bafb7",
+            "parser_version": "2026-08-14"
+          },
+          {
+            "source_row_number": 19588132,
+            "bbl": "1014350025",
+            "property_type": "CR",
+            "address": "1101 1ST AVE",
+            "raw_csv_sha256": "8184482d1c0b81725b60e929d524e0103f93d62ce3c7f24490257fe85f3bafb7",
+            "parser_version": "2026-08-14"
+          },
+          {
+            "source_row_number": 19588133,
+            "bbl": "1014350026",
+            "property_type": "CR",
+            "address": "1103 1ST AVE",
+            "raw_csv_sha256": "8184482d1c0b81725b60e929d524e0103f93d62ce3c7f24490257fe85f3bafb7",
+            "parser_version": "2026-08-14"
+          }
+        ],
+        "party_rows": [
+          {
+            "source_table": "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES",
+            "release_dt": "2026-08-10",
+            "source_row_number": 40194681,
+            "document_id": "2019112700560003",
+            "party_type": "1",
+            "name": "FIRST SIGMA DE LLC",
+            "party_name_norm": "FIRST SIGMA DE LLC",
+            "raw_csv_sha256": "430aef299221eb08ee52e0381faa4d95bc342822cac14db0669fb647d53ee7d5",
+            "parser_version": "2026-08-14"
+          },
+          {
+            "source_table": "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES",
+            "release_dt": "2026-08-10",
+            "source_row_number": 40194682,
+            "document_id": "2019112700560003",
+            "party_type": "2",
+            "name": "UBS AG",
+            "party_name_norm": "UBS AG",
+            "raw_csv_sha256": "430aef299221eb08ee52e0381faa4d95bc342822cac14db0669fb647d53ee7d5",
+            "parser_version": "2026-08-14"
+          }
+        ]
+      },
+      "pad": {
+        "emitted_hard_member_rows": [
+          {
+            "source_row_number": 21118,
+            "bbl_key": "1007630067",
+            "address": "346..354 WEST 40 STREET",
+            "zipcode": "10018"
+          }
+        ],
+        "truth_bbl_coverage": {
+          "truth_bbl_count": 7,
+          "pad_address_exact_bbl_count": 7,
+          "pad_bbl_range_bbl_count": 7,
+          "missing_pad_truth_bbls": []
+        },
+        "truth_address_rows": [
+          {
+            "source_row_number": 42397,
+            "bbl_key": "1014350020",
+            "address": "345 EAST 60 STREET",
+            "zipcode": "10022"
+          },
+          {
+            "source_row_number": 42398,
+            "bbl_key": "1014350021",
+            "address": "347 EAST 60 STREET",
+            "zipcode": "10022"
+          },
+          {
+            "source_row_number": 42399,
+            "bbl_key": "1014350022",
+            "address": "349 EAST 60 STREET",
+            "zipcode": "10022"
+          },
+          {
+            "source_row_number": 42400,
+            "bbl_key": "1014350023",
+            "address": "1097 1 AVENUE",
+            "zipcode": "10065"
+          },
+          {
+            "source_row_number": 42402,
+            "bbl_key": "1014350024",
+            "address": "1099 1 AVENUE",
+            "zipcode": "10065"
+          },
+          {
+            "source_row_number": 42403,
+            "bbl_key": "1014350025",
+            "address": "1101 1 AVENUE",
+            "zipcode": "10065"
+          },
+          {
+            "source_row_number": 42404,
+            "bbl_key": "1014350026",
+            "address": "1103 1 AVENUE",
+            "zipcode": "10065"
+          }
+        ],
+        "truth_bbl_rows": [
+          {
+            "source_row_number": 26559,
+            "bbl_key": "1014350020",
+            "low_bbl_key": "1014350020",
+            "high_bbl_key": "1014350020"
+          },
+          {
+            "source_row_number": 26560,
+            "bbl_key": "1014350021",
+            "low_bbl_key": "1014350021",
+            "high_bbl_key": "1014350021"
+          },
+          {
+            "source_row_number": 26561,
+            "bbl_key": "1014350022",
+            "low_bbl_key": "1014350022",
+            "high_bbl_key": "1014350022"
+          },
+          {
+            "source_row_number": 26562,
+            "bbl_key": "1014350023",
+            "low_bbl_key": "1014350023",
+            "high_bbl_key": "1014350023"
+          },
+          {
+            "source_row_number": 26563,
+            "bbl_key": "1014350024",
+            "low_bbl_key": "1014350024",
+            "high_bbl_key": "1014350024"
+          },
+          {
+            "source_row_number": 26564,
+            "bbl_key": "1014350025",
+            "low_bbl_key": "1014350025",
+            "high_bbl_key": "1014350025"
+          },
+          {
+            "source_row_number": 26565,
+            "bbl_key": "1014350026",
+            "low_bbl_key": "1014350026",
+            "high_bbl_key": "1014350026"
+          }
+        ]
+      },
+      "filed_truth_relation": {
+        "filed_property_addresses": [
+          "350 WEST 40TH STREET"
+        ],
+        "acris_legal_addresses": [
+          "345 EAST 60TH ST",
+          "347 EAST 60TH ST",
+          "349 EAST 60TH ST",
+          "1097 1ST AVENUE",
+          "1099 1ST AVENUE",
+          "1101 1ST AVE",
+          "1103 1ST AVE"
+        ],
+        "pad_emitted_address_family": "WEST 40 STREET, Times Square",
+        "pad_truth_address_family": "EAST 60 STREET / 1 AVENUE",
+        "overlap": "none",
+        "finding": "The loan has two filed properties, but only one NYC property row: 350 West 40th Street. The accepted ACRIS document is a different Manhattan property at East 60th Street / 1st Avenue. The round-lender truth predicate found a plausible mortgage document, not the SEC collateral property."
+      }
+    }
+  ]
+}
