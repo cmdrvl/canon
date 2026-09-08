@@ -66,7 +66,7 @@ use super::{
     plan::CANON_GEO_PLAN_VERSION,
     propagate::CANON_GEO_PROPAGATION_VERSION,
     residual_benchmark::{CANON_GEO_RESIDUAL_BENCHMARK_VERSION, CANON_GEO_RESIDUAL_OBDD_VERSION},
-    retry::CANON_GEO_RETRY_LOOP_VERSION,
+    retry::{CANON_GEO_RETRY_LOOP_VERSION, CANON_GEO_RETRY_RECOVERY_VERSION},
     run::CANON_GEO_RUN_VERSION,
     satisfy::CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION,
     stack::{
@@ -1292,6 +1292,11 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             CANON_GEO_RETRY_LOOP_VERSION,
             "schemas/canon.geo.retry_loop.v0.schema.json",
             "bounded abstain/reacquisition retry-loop artifact contract",
+        ),
+        contract(
+            CANON_GEO_RETRY_RECOVERY_VERSION,
+            "schemas/canon.geo.retry_recovery.v0.schema.json",
+            "fresh-geocode retry-loop recovery measurement artifact contract",
         ),
         contract(
             CANON_GEO_LEDGER_BRIDGE_VERSION,

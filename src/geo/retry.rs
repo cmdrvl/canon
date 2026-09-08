@@ -3,7 +3,8 @@
 //! Retry-population fixtures and bounded Geo reacquisition loop artifacts.
 
 use crate::geo::{
-    GeoAcquisitionReceipt, GeoAcquisitionRequest, GeoRun, GeoRunStatus,
+    CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, GeoAcquisitionProofClass, GeoAcquisitionReceipt,
+    GeoAcquisitionRequest, GeoDigestAlgorithm, GeoRun, GeoRunStatus,
     geo_acquisition_request_semantic_hash, validate_geo_acquisition_receipt,
     validate_geo_acquisition_request, validate_geo_run,
 };
@@ -18,11 +19,15 @@ use std::{
 
 pub const CANON_GEO_RETRY_LOOP_VERSION: &str = "canon_geo_retry_loop.v0";
 pub const CANON_GEO_POINT_POPULATION_VERSION: &str = "canon_geo_point_population.v0";
+pub const CANON_GEO_RETRY_RECOVERY_VERSION: &str = "canon_geo_retry_recovery.v0";
 
 const NYC_MIN_LON_E7: i64 = -743_000_000;
 const NYC_MAX_LON_E7: i64 = -736_500_000;
 const NYC_MIN_LAT_E7: i64 = 404_500_000;
 const NYC_MAX_LAT_E7: i64 = 410_000_000;
+const G4_RETRY_RECOVERY_DENOMINATOR: usize = 40;
+const PROVIDER_RESPONSE_BYTES_DIGEST_ID: &str = "provider_response_bytes";
+const GEOCODE_CANDIDATE_ROWS_ARTIFACT_ID: &str = "geocode_candidate_rows";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -118,6 +123,39 @@ pub struct GeoRetryLoopArtifact {
     pub terminal: Option<GeoRetryTerminal>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoRetryRecovery {
+    pub version: String,
+    pub population_blake3: String,
+    pub policy: GeoRetryPolicy,
+    pub denominator: u64,
+    pub per_point: Vec<GeoRetryRecoveryPoint>,
+    pub recovered: u64,
+    pub abstained_at_ceiling: u64,
+    pub blocked: u64,
+    pub by_provider: BTreeMap<String, u64>,
+    pub receipts_with_provider_request_id: u64,
+    pub receipts_without_provider_request_id: u64,
+    pub precision_claim: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoRetryRecoveryPoint {
+    pub point_id: String,
+    pub passes: u8,
+    pub terminal: GeoRetryTerminal,
+    pub recovered: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_recovering_pass: Option<u8>,
+    pub receipt_semantic_hashes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub final_home_cell: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub landed_home_cell: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GeoRetryErrorCode {
@@ -127,6 +165,8 @@ pub enum GeoRetryErrorCode {
     ArithmeticOverflow,
     RetryPassCeiling,
     RetryPolicyUnbounded,
+    RetryRecoveryDenominatorMismatch,
+    RetryReceiptUnbound,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -396,6 +436,470 @@ pub fn canonical_retry_loop_bytes(
     })
 }
 
+pub fn measure_recovery(
+    population: &GeoPointPopulationArtifact,
+    loops: &[GeoRetryLoopArtifact],
+    runs: &BTreeMap<String, GeoRun>,
+    receipts: &BTreeMap<String, GeoAcquisitionReceipt>,
+) -> Result<GeoRetryRecovery, GeoRetryError> {
+    let population_blake3 = retry_population_blake3(population)?;
+    if population.points.len() != G4_RETRY_RECOVERY_DENOMINATOR {
+        return Err(recovery_denominator_mismatch(
+            "Geo retry recovery G4 measurement requires the frozen 40-point gross-class denominator",
+            G4_RETRY_RECOVERY_DENOMINATOR,
+            population.points.len(),
+            None,
+            None,
+        ));
+    }
+
+    let mut population_by_subject = BTreeMap::<String, &GeoPointPopulationPoint>::new();
+    for point in &population.points {
+        if population_by_subject
+            .insert(point.subject_id.clone(), point)
+            .is_some()
+        {
+            return Err(recovery_denominator_mismatch(
+                "Geo retry recovery population subject ids must be unique",
+                population.points.len(),
+                population_by_subject.len(),
+                Some(point.subject_id.as_str()),
+                Some(point.point_id.as_str()),
+            ));
+        }
+    }
+
+    let mut policy: Option<GeoRetryPolicy> = None;
+    let mut loops_by_subject = BTreeMap::<String, &GeoRetryLoopArtifact>::new();
+    for loop_state in loops {
+        validate_retry_loop_artifact(loop_state)?;
+        if !population_by_subject.contains_key(&loop_state.subject_id) {
+            return Err(recovery_denominator_mismatch(
+                "Geo retry recovery loop subject is outside the frozen population",
+                population.points.len(),
+                loops.len(),
+                Some(loop_state.subject_id.as_str()),
+                None,
+            ));
+        }
+        if loops_by_subject
+            .insert(loop_state.subject_id.clone(), loop_state)
+            .is_some()
+        {
+            return Err(recovery_denominator_mismatch(
+                "Geo retry recovery loops must be unique by subject id",
+                population.points.len(),
+                loops.len(),
+                Some(loop_state.subject_id.as_str()),
+                None,
+            ));
+        }
+        match &policy {
+            Some(expected) if expected.max_passes != loop_state.policy.max_passes => {
+                return Err(GeoRetryError::invalid(
+                    "Geo retry recovery loops must share one bounded pass policy",
+                    [
+                        ("subject_id".to_string(), loop_state.subject_id.clone()),
+                        (
+                            "expected_max_passes".to_string(),
+                            expected.max_passes.to_string(),
+                        ),
+                        (
+                            "actual_max_passes".to_string(),
+                            loop_state.policy.max_passes.to_string(),
+                        ),
+                    ],
+                ));
+            }
+            Some(_) => {}
+            None => policy = Some(loop_state.policy.clone()),
+        }
+    }
+
+    if loops_by_subject.len() != population.points.len() {
+        let missing = population
+            .points
+            .iter()
+            .find(|point| !loops_by_subject.contains_key(&point.subject_id))
+            .expect("loop count mismatch implies at least one missing subject");
+        return Err(recovery_denominator_mismatch(
+            "Geo retry recovery requires exactly one terminal loop per population point",
+            population.points.len(),
+            loops_by_subject.len(),
+            Some(missing.subject_id.as_str()),
+            Some(missing.point_id.as_str()),
+        ));
+    }
+    let policy = policy.ok_or_else(|| {
+        recovery_denominator_mismatch(
+            "Geo retry recovery requires a non-empty loop set",
+            population.points.len(),
+            loops_by_subject.len(),
+            None,
+            None,
+        )
+    })?;
+
+    let retained_or_live_receipts_present = receipts
+        .values()
+        .any(|receipt| receipt.proof_class != GeoAcquisitionProofClass::Fixture);
+    let mut per_point = Vec::with_capacity(population.points.len());
+    let mut recovered_count = 0_u64;
+    let mut abstained_count = 0_u64;
+    let mut blocked_count = 0_u64;
+    let mut by_provider = BTreeMap::<String, u64>::new();
+    let mut receipts_with_provider_request_id = 0_u64;
+    let mut receipts_without_provider_request_id = 0_u64;
+
+    for point in &population.points {
+        let loop_state = loops_by_subject
+            .get(&point.subject_id)
+            .expect("loop presence checked above");
+        let terminal = loop_state.terminal.ok_or_else(|| {
+            GeoRetryError::invalid(
+                "Geo retry recovery requires terminal retry loops",
+                [
+                    ("subject_id", loop_state.subject_id.as_str()),
+                    ("point_id", point.point_id.as_str()),
+                    ("field", "terminal"),
+                ],
+            )
+        })?;
+        let passes = u8::try_from(loop_state.passes.len()).map_err(|_| {
+            GeoRetryError::new(
+                GeoRetryErrorCode::ArithmeticOverflow,
+                "Geo retry recovery pass count exceeded u8 range",
+                [("field", "passes")],
+            )
+        })?;
+        let mut receipt_semantic_hashes = Vec::new();
+        let mut first_recovering_pass = None;
+        let mut final_run: Option<&GeoRun> = None;
+
+        for pass in &loop_state.passes {
+            let run = runs.get(&pass.run_blake3).ok_or_else(|| {
+                GeoRetryError::invalid(
+                    "Geo retry recovery requires every pass run_blake3 to be supplied",
+                    [
+                        ("point_id".to_string(), point.point_id.clone()),
+                        ("pass".to_string(), pass.index.to_string()),
+                        ("run_blake3".to_string(), pass.run_blake3.clone()),
+                    ],
+                )
+            })?;
+            validate_latest_run(run)?;
+            final_run = Some(run);
+            if let Some(request) = &pass.regeocode {
+                let request_hash = retry_acquisition_request_hash(request, point, pass)?;
+                let receipt = receipts.get(&request_hash).ok_or_else(|| {
+                    receipt_unbound(
+                        point.point_id.as_str(),
+                        pass.index,
+                        "Geo retry recovery pass has no receipt keyed by the emitted acquisition request",
+                        [
+                            ("expected", request_hash.clone()),
+                            ("actual", "missing".to_string()),
+                        ],
+                    )
+                })?;
+                validate_recovery_receipt_binding(
+                    point,
+                    pass,
+                    request,
+                    receipt,
+                    retained_or_live_receipts_present,
+                )?;
+                receipt_semantic_hashes.push(request_hash);
+                if let Some(executor) = &receipt.executor {
+                    increment_count(
+                        by_provider.entry(executor.executor_id.clone()).or_insert(0),
+                        "by_provider",
+                    )?;
+                    increment_count(
+                        &mut receipts_with_provider_request_id,
+                        "receipts_with_provider_request_id",
+                    )?;
+                } else {
+                    increment_count(
+                        &mut receipts_without_provider_request_id,
+                        "receipts_without_provider_request_id",
+                    )?;
+                }
+                if first_recovering_pass.is_none()
+                    && latest_run_disposition(run) == RetryRunDisposition::Resolved
+                    && recovery_condition(point, run, final_home_cell_from_run(run).as_deref())
+                {
+                    first_recovering_pass = Some(pass.index);
+                }
+            }
+        }
+
+        let final_home_cell = final_run.and_then(final_home_cell_from_run);
+        let recovered = terminal == GeoRetryTerminal::Resolved
+            && final_run
+                .is_some_and(|run| recovery_condition(point, run, final_home_cell.as_deref()));
+        match (terminal, recovered) {
+            (GeoRetryTerminal::Resolved, true) => {
+                increment_count(&mut recovered_count, "recovered")?;
+            }
+            (GeoRetryTerminal::AbstainedAtCeiling, _) => {
+                increment_count(&mut abstained_count, "abstained_at_ceiling")?;
+            }
+            _ => {
+                increment_count(&mut blocked_count, "blocked")?;
+            }
+        }
+        per_point.push(GeoRetryRecoveryPoint {
+            point_id: point.point_id.clone(),
+            passes,
+            terminal,
+            recovered,
+            first_recovering_pass,
+            receipt_semantic_hashes,
+            final_home_cell,
+            landed_home_cell: Some(point.home_cell_r9.clone()),
+        });
+    }
+
+    let denominator = usize_to_u64(population.points.len(), "denominator")?;
+    let recovery = GeoRetryRecovery {
+        version: CANON_GEO_RETRY_RECOVERY_VERSION.to_string(),
+        population_blake3,
+        policy,
+        denominator,
+        per_point,
+        recovered: recovered_count,
+        abstained_at_ceiling: abstained_count,
+        blocked: blocked_count,
+        by_provider,
+        receipts_with_provider_request_id,
+        receipts_without_provider_request_id,
+        precision_claim: false,
+    };
+    validate_retry_recovery_artifact(&recovery)?;
+    Ok(recovery)
+}
+
+pub fn validate_retry_recovery_artifact(artifact: &GeoRetryRecovery) -> Result<(), GeoRetryError> {
+    if artifact.version != CANON_GEO_RETRY_RECOVERY_VERSION {
+        return Err(GeoRetryError::new(
+            GeoRetryErrorCode::UnsupportedVersion,
+            "Geo retry recovery artifact declares an unsupported version",
+            [
+                ("expected", CANON_GEO_RETRY_RECOVERY_VERSION),
+                ("actual", artifact.version.as_str()),
+            ],
+        ));
+    }
+    validate_prefixed_blake3("population_blake3", &artifact.population_blake3)?;
+    validate_retry_policy(&artifact.policy)?;
+    if artifact.denominator != G4_RETRY_RECOVERY_DENOMINATOR as u64
+        || artifact.per_point.len() != G4_RETRY_RECOVERY_DENOMINATOR
+    {
+        return Err(recovery_denominator_mismatch(
+            "Geo retry recovery artifact must preserve the frozen 40-point denominator",
+            G4_RETRY_RECOVERY_DENOMINATOR,
+            artifact.per_point.len(),
+            None,
+            None,
+        ));
+    }
+    if artifact.denominator != usize_to_u64(artifact.per_point.len(), "per_point.len")? {
+        return Err(recovery_denominator_mismatch(
+            "Geo retry recovery denominator must equal per_point.len()",
+            artifact.denominator as usize,
+            artifact.per_point.len(),
+            None,
+            None,
+        ));
+    }
+    if artifact.precision_claim {
+        return Err(GeoRetryError::invalid(
+            "Geo retry recovery is a reach measurement and must not claim precision",
+            [("field", "precision_claim")],
+        ));
+    }
+
+    let mut previous_point_id: Option<&str> = None;
+    let mut recovered = 0_u64;
+    let mut abstained = 0_u64;
+    let mut blocked = 0_u64;
+    let mut receipt_refs = 0_u64;
+    for point in &artifact.per_point {
+        validate_retry_string("per_point[].point_id", &point.point_id)?;
+        if let Some(previous) = previous_point_id
+            && previous >= point.point_id.as_str()
+        {
+            return Err(GeoRetryError::invalid(
+                "Geo retry recovery points must be strictly sorted by point_id",
+                [
+                    ("field", "per_point[].point_id".to_string()),
+                    ("previous_point_id", previous.to_string()),
+                    ("point_id", point.point_id.clone()),
+                ],
+            ));
+        }
+        previous_point_id = Some(point.point_id.as_str());
+        if point.passes == 0 || point.passes > artifact.policy.max_passes {
+            return Err(GeoRetryError::invalid(
+                "Geo retry recovery point pass counts must be bounded by policy",
+                [
+                    ("field", "per_point[].passes".to_string()),
+                    ("point_id", point.point_id.clone()),
+                    ("passes", point.passes.to_string()),
+                    ("max_passes", artifact.policy.max_passes.to_string()),
+                ],
+            ));
+        }
+        if point.receipt_semantic_hashes.len() != usize::from(point.passes) {
+            return Err(GeoRetryError::invalid(
+                "Geo retry recovery points must bind one receipt semantic hash per retry pass",
+                [
+                    ("field", "per_point[].receipt_semantic_hashes".to_string()),
+                    ("point_id", point.point_id.clone()),
+                    ("passes", point.passes.to_string()),
+                    (
+                        "receipt_semantic_hashes",
+                        point.receipt_semantic_hashes.len().to_string(),
+                    ),
+                ],
+            ));
+        }
+        receipt_refs = receipt_refs
+            .checked_add(usize_to_u64(
+                point.receipt_semantic_hashes.len(),
+                "receipt_semantic_hashes.len",
+            )?)
+            .ok_or_else(|| {
+                GeoRetryError::new(
+                    GeoRetryErrorCode::ArithmeticOverflow,
+                    "Geo retry recovery receipt-reference count overflowed",
+                    [("field", "receipt_semantic_hashes")],
+                )
+            })?;
+        for receipt_hash in &point.receipt_semantic_hashes {
+            validate_prefixed_blake3("per_point[].receipt_semantic_hashes[]", receipt_hash)?;
+        }
+        if let Some(first_recovering_pass) = point.first_recovering_pass
+            && (!point.recovered
+                || first_recovering_pass == 0
+                || first_recovering_pass > point.passes)
+        {
+            return Err(GeoRetryError::invalid(
+                "Geo retry recovery first_recovering_pass must point at a recovering pass",
+                [
+                    ("field", "per_point[].first_recovering_pass".to_string()),
+                    ("point_id", point.point_id.clone()),
+                    ("first_recovering_pass", first_recovering_pass.to_string()),
+                ],
+            ));
+        }
+        if point.recovered && point.terminal != GeoRetryTerminal::Resolved {
+            return Err(GeoRetryError::invalid(
+                "Geo retry recovery points can recover only from a resolved retry terminal",
+                [
+                    ("field", "per_point[].recovered".to_string()),
+                    ("point_id", point.point_id.clone()),
+                ],
+            ));
+        }
+        if let Some(home_cell) = &point.final_home_cell {
+            validate_home_cell_string("per_point[].final_home_cell", &point.point_id, home_cell)?;
+        }
+        if let Some(home_cell) = &point.landed_home_cell {
+            validate_home_cell_string("per_point[].landed_home_cell", &point.point_id, home_cell)?;
+        }
+
+        match (point.terminal, point.recovered) {
+            (GeoRetryTerminal::Resolved, true) => increment_count(&mut recovered, "recovered")?,
+            (GeoRetryTerminal::AbstainedAtCeiling, _) => {
+                increment_count(&mut abstained, "abstained_at_ceiling")?;
+            }
+            _ => increment_count(&mut blocked, "blocked")?,
+        }
+    }
+    if artifact.recovered != recovered
+        || artifact.abstained_at_ceiling != abstained
+        || artifact.blocked != blocked
+    {
+        return Err(GeoRetryError::invalid(
+            "Geo retry recovery summary counts must replay from per_point rows",
+            [
+                ("expected_recovered", recovered.to_string()),
+                ("actual_recovered", artifact.recovered.to_string()),
+                ("expected_abstained_at_ceiling", abstained.to_string()),
+                (
+                    "actual_abstained_at_ceiling",
+                    artifact.abstained_at_ceiling.to_string(),
+                ),
+                ("expected_blocked", blocked.to_string()),
+                ("actual_blocked", artifact.blocked.to_string()),
+            ],
+        ));
+    }
+    let sum = artifact
+        .recovered
+        .checked_add(artifact.abstained_at_ceiling)
+        .and_then(|value| value.checked_add(artifact.blocked))
+        .ok_or_else(|| {
+            GeoRetryError::new(
+                GeoRetryErrorCode::ArithmeticOverflow,
+                "Geo retry recovery summary counts overflowed",
+                [("field", "summary")],
+            )
+        })?;
+    if sum != artifact.denominator {
+        return Err(recovery_denominator_mismatch(
+            "Geo retry recovery summary counts must add to denominator",
+            artifact.denominator as usize,
+            sum as usize,
+            None,
+            None,
+        ));
+    }
+    for (provider, count) in &artifact.by_provider {
+        validate_retry_string("by_provider.key", provider)?;
+        if *count == 0 {
+            return Err(GeoRetryError::invalid(
+                "Geo retry recovery by_provider counts must be positive",
+                [("provider", provider.as_str())],
+            ));
+        }
+    }
+    let receipt_counter_sum = artifact
+        .receipts_with_provider_request_id
+        .checked_add(artifact.receipts_without_provider_request_id)
+        .ok_or_else(|| {
+            GeoRetryError::new(
+                GeoRetryErrorCode::ArithmeticOverflow,
+                "Geo retry recovery receipt counter sum overflowed",
+                [("field", "receipt counters")],
+            )
+        })?;
+    if receipt_counter_sum != receipt_refs {
+        return Err(GeoRetryError::invalid(
+            "Geo retry recovery receipt counters must equal bound receipt references",
+            [
+                ("expected", receipt_refs.to_string()),
+                ("actual", receipt_counter_sum.to_string()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+pub fn canonical_retry_recovery_bytes(
+    artifact: &GeoRetryRecovery,
+) -> Result<Vec<u8>, GeoRetryError> {
+    validate_retry_recovery_artifact(artifact)?;
+    serde_json::to_vec(artifact).map_err(|error| {
+        GeoRetryError::invalid(
+            "Geo retry recovery artifact could not be serialized",
+            [("serde_error", error.to_string())],
+        )
+    })
+}
+
 pub fn validate_point_population_artifact(
     artifact: &GeoPointPopulationArtifact,
 ) -> Result<(), GeoPointPopulationError> {
@@ -585,6 +1089,328 @@ fn validate_receipt_for_retry_request(
         )
     })?;
     Ok(receipt_blake3)
+}
+
+fn validate_recovery_receipt_binding(
+    point: &GeoPointPopulationPoint,
+    pass: &GeoRetryPass,
+    request: &GeoAcquisitionRequest,
+    receipt: &GeoAcquisitionReceipt,
+    retained_or_live_receipts_present: bool,
+) -> Result<String, GeoRetryError> {
+    let receipt_blake3 = retry_receipt_blake3(receipt, point, pass)?;
+    let expected_request_hash = retry_acquisition_request_hash(request, point, pass)?;
+    if receipt.request_semantic_hash != expected_request_hash {
+        return Err(receipt_unbound(
+            point.point_id.as_str(),
+            pass.index,
+            "Geo retry recovery receipt request_semantic_hash does not match the emitted acquisition request",
+            [
+                ("field", "receipt.request_semantic_hash".to_string()),
+                ("receipt_blake3", receipt_blake3),
+                ("expected", expected_request_hash),
+                ("actual", receipt.request_semantic_hash.clone()),
+            ],
+        ));
+    }
+    if let Some(expected_receipt_blake3) = &pass.receipt_blake3 {
+        if expected_receipt_blake3 != &receipt_blake3 {
+            return Err(receipt_unbound(
+                point.point_id.as_str(),
+                pass.index,
+                "Geo retry recovery pass receipt_blake3 does not match the supplied receipt bytes",
+                [
+                    ("field", "passes[].receipt_blake3".to_string()),
+                    ("expected", expected_receipt_blake3.clone()),
+                    ("actual", receipt_blake3.clone()),
+                ],
+            ));
+        }
+    } else {
+        return Err(receipt_unbound(
+            point.point_id.as_str(),
+            pass.index,
+            "Geo retry recovery pass has an acquisition request without a receipt digest",
+            [("field", "passes[].receipt_blake3".to_string())],
+        ));
+    }
+    validate_geo_acquisition_receipt(request, receipt).map_err(|error| {
+        receipt_unbound(
+            point.point_id.as_str(),
+            pass.index,
+            "Geo retry recovery receipt does not satisfy the emitted acquisition request",
+            [
+                ("field", "receipt".to_string()),
+                ("receipt_blake3", receipt_blake3.clone()),
+                ("source_code", format!("{:?}", error.code)),
+                ("source_message", error.message),
+            ],
+        )
+    })?;
+    if retained_or_live_receipts_present && receipt.proof_class == GeoAcquisitionProofClass::Fixture
+    {
+        return Err(receipt_unbound(
+            point.point_id.as_str(),
+            pass.index,
+            "Geo retry recovery cannot mix fixture acquisition receipts into retained or live recovery counts",
+            [("proof_class", "fixture".to_string())],
+        ));
+    }
+    validate_provider_response_bytes_pin(point, pass, receipt)?;
+    validate_candidate_rows_pin(point, pass, receipt)?;
+    Ok(receipt_blake3)
+}
+
+fn retry_acquisition_request_hash(
+    request: &GeoAcquisitionRequest,
+    point: &GeoPointPopulationPoint,
+    pass: &GeoRetryPass,
+) -> Result<String, GeoRetryError> {
+    geo_acquisition_request_semantic_hash(request).map_err(|error| {
+        receipt_unbound(
+            point.point_id.as_str(),
+            pass.index,
+            "Geo retry recovery could not recompute the emitted acquisition request hash",
+            [
+                ("field", "passes[].regeocode".to_string()),
+                ("source_code", format!("{:?}", error.code)),
+                ("source_message", error.message),
+            ],
+        )
+    })
+}
+
+fn retry_receipt_blake3(
+    receipt: &GeoAcquisitionReceipt,
+    point: &GeoPointPopulationPoint,
+    pass: &GeoRetryPass,
+) -> Result<String, GeoRetryError> {
+    serde_json::to_vec(receipt)
+        .map(|bytes| prefixed_hash(&bytes))
+        .map_err(|error| {
+            receipt_unbound(
+                point.point_id.as_str(),
+                pass.index,
+                "Geo retry recovery acquisition receipt could not be serialized",
+                [("serde_error", error.to_string())],
+            )
+        })
+}
+
+fn validate_provider_response_bytes_pin(
+    point: &GeoPointPopulationPoint,
+    pass: &GeoRetryPass,
+    receipt: &GeoAcquisitionReceipt,
+) -> Result<(), GeoRetryError> {
+    let Some(result_digest) = receipt
+        .result_digests
+        .iter()
+        .find(|digest| digest.digest_id == PROVIDER_RESPONSE_BYTES_DIGEST_ID)
+    else {
+        return Err(receipt_unbound(
+            point.point_id.as_str(),
+            pass.index,
+            "Geo retry recovery receipts must pin retained provider response bytes",
+            [("digest_id", PROVIDER_RESPONSE_BYTES_DIGEST_ID.to_string())],
+        ));
+    };
+    if result_digest.algorithm != GeoDigestAlgorithm::Blake3 {
+        return Err(receipt_unbound(
+            point.point_id.as_str(),
+            pass.index,
+            "Geo retry recovery provider response bytes must be pinned with Blake3",
+            [
+                ("digest_id", PROVIDER_RESPONSE_BYTES_DIGEST_ID.to_string()),
+                ("algorithm", format!("{:?}", result_digest.algorithm)),
+            ],
+        ));
+    }
+    let Some(local_artifact) = receipt
+        .local_artifacts
+        .iter()
+        .find(|artifact| artifact.artifact_id == PROVIDER_RESPONSE_BYTES_DIGEST_ID)
+    else {
+        return Err(receipt_unbound(
+            point.point_id.as_str(),
+            pass.index,
+            "Geo retry recovery receipts must retain the provider response bytes artifact",
+            [("artifact_id", PROVIDER_RESPONSE_BYTES_DIGEST_ID.to_string())],
+        ));
+    };
+    if local_artifact.digest.algorithm != GeoDigestAlgorithm::Blake3
+        || local_artifact.digest.hex_digest != result_digest.hex_digest
+    {
+        return Err(receipt_unbound(
+            point.point_id.as_str(),
+            pass.index,
+            "Geo retry recovery provider response bytes digest is stale relative to the retained artifact pin",
+            [
+                ("digest_id", PROVIDER_RESPONSE_BYTES_DIGEST_ID.to_string()),
+                ("expected", result_digest.hex_digest.clone()),
+                ("actual", local_artifact.digest.hex_digest.clone()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_candidate_rows_pin(
+    point: &GeoPointPopulationPoint,
+    pass: &GeoRetryPass,
+    receipt: &GeoAcquisitionReceipt,
+) -> Result<(), GeoRetryError> {
+    if receipt
+        .local_artifacts
+        .iter()
+        .any(|artifact| artifact.artifact_id == GEOCODE_CANDIDATE_ROWS_ARTIFACT_ID)
+    {
+        return Ok(());
+    }
+    Err(receipt_unbound(
+        point.point_id.as_str(),
+        pass.index,
+        "Geo retry recovery receipts must retain per-candidate geocode rows",
+        [(
+            "artifact_id",
+            GEOCODE_CANDIDATE_ROWS_ARTIFACT_ID.to_string(),
+        )],
+    ))
+}
+
+fn retry_population_blake3(
+    population: &GeoPointPopulationArtifact,
+) -> Result<String, GeoRetryError> {
+    canonical_point_population_bytes(population)
+        .map(|bytes| prefixed_hash(&bytes))
+        .map_err(|error| {
+            GeoRetryError::invalid(
+                "Geo retry recovery requires a valid point-population artifact",
+                [
+                    ("field", "population".to_string()),
+                    ("source_code", format!("{:?}", error.code)),
+                    ("source_message", error.message),
+                ],
+            )
+        })
+}
+
+fn recovery_condition(
+    point: &GeoPointPopulationPoint,
+    run: &GeoRun,
+    final_home_cell: Option<&str>,
+) -> bool {
+    let home_cell_changed = final_home_cell.is_some_and(|cell| cell != point.home_cell_r9);
+    let refuter_silent = point.refuter_fired
+        && latest_run_disposition(run) == RetryRunDisposition::Resolved
+        && run.blockers.is_empty();
+    home_cell_changed || refuter_silent
+}
+
+fn final_home_cell_from_run(run: &GeoRun) -> Option<String> {
+    run.output_refs
+        .iter()
+        .filter(|output| output.contract_version == CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION)
+        .find_map(|output| {
+            if is_h3_r9(&output.output_id) {
+                return Some(output.output_id.clone());
+            }
+            let suffix = output.artifact_id.rsplit('/').next()?;
+            if is_h3_r9(suffix) {
+                return Some(suffix.to_string());
+            }
+            None
+        })
+}
+
+fn validate_home_cell_string(
+    field: &'static str,
+    point_id: &str,
+    value: &str,
+) -> Result<(), GeoRetryError> {
+    if is_h3_r9(value) {
+        return Ok(());
+    }
+    Err(GeoRetryError::invalid(
+        "Geo retry recovery home-cell fields must be valid H3 resolution-9 cells",
+        [
+            ("field", field.to_string()),
+            ("point_id", point_id.to_string()),
+            ("value", value.to_string()),
+        ],
+    ))
+}
+
+fn is_h3_r9(value: &str) -> bool {
+    CellIndex::from_str(value)
+        .map(|cell| u8::from(cell.resolution()) == 9)
+        .unwrap_or(false)
+}
+
+fn recovery_denominator_mismatch(
+    message: &'static str,
+    expected: usize,
+    actual: usize,
+    subject_id: Option<&str>,
+    point_id: Option<&str>,
+) -> GeoRetryError {
+    let mut detail = BTreeMap::from([
+        ("expected".to_string(), expected.to_string()),
+        ("actual".to_string(), actual.to_string()),
+    ]);
+    if let Some(subject_id) = subject_id {
+        detail.insert("subject_id".to_string(), subject_id.to_string());
+    }
+    if let Some(point_id) = point_id {
+        detail.insert("point_id".to_string(), point_id.to_string());
+    }
+    GeoRetryError {
+        code: GeoRetryErrorCode::RetryRecoveryDenominatorMismatch,
+        message: message.to_string(),
+        detail,
+    }
+}
+
+fn receipt_unbound(
+    point_id: &str,
+    pass: u8,
+    message: &'static str,
+    detail: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
+) -> GeoRetryError {
+    let mut mapped = BTreeMap::from([
+        ("point_id".to_string(), point_id.to_string()),
+        ("pass".to_string(), pass.to_string()),
+    ]);
+    mapped.extend(
+        detail
+            .into_iter()
+            .map(|(key, value)| (key.into(), value.into())),
+    );
+    GeoRetryError {
+        code: GeoRetryErrorCode::RetryReceiptUnbound,
+        message: message.to_string(),
+        detail: mapped,
+    }
+}
+
+fn increment_count(value: &mut u64, field: &'static str) -> Result<(), GeoRetryError> {
+    *value = value.checked_add(1).ok_or_else(|| {
+        GeoRetryError::new(
+            GeoRetryErrorCode::ArithmeticOverflow,
+            "Geo retry recovery count overflowed",
+            [("field", field)],
+        )
+    })?;
+    Ok(())
+}
+
+fn usize_to_u64(value: usize, field: &'static str) -> Result<u64, GeoRetryError> {
+    u64::try_from(value).map_err(|_| {
+        GeoRetryError::new(
+            GeoRetryErrorCode::ArithmeticOverflow,
+            "Geo retry recovery count exceeded u64 range",
+            [("field", field)],
+        )
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

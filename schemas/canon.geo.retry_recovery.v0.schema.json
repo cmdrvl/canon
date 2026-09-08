@@ -1,0 +1,150 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.retry_recovery.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.retry_recovery.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_retry_recovery.v0",
+      "type": "string"
+    },
+    "population_blake3": {
+      "$ref": "#/$defs/blake3_digest"
+    },
+    "policy": {
+      "$ref": "#/$defs/policy"
+    },
+    "denominator": {
+      "const": 40,
+      "type": "integer"
+    },
+    "per_point": {
+      "type": "array",
+      "minItems": 40,
+      "maxItems": 40,
+      "items": {
+        "$ref": "#/$defs/recovery_point"
+      }
+    },
+    "recovered": {
+      "$ref": "#/$defs/count"
+    },
+    "abstained_at_ceiling": {
+      "$ref": "#/$defs/count"
+    },
+    "blocked": {
+      "$ref": "#/$defs/count"
+    },
+    "by_provider": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "receipts_with_provider_request_id": {
+      "$ref": "#/$defs/count"
+    },
+    "receipts_without_provider_request_id": {
+      "$ref": "#/$defs/count"
+    },
+    "precision_claim": {
+      "const": false,
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "version",
+    "population_blake3",
+    "policy",
+    "denominator",
+    "per_point",
+    "recovered",
+    "abstained_at_ceiling",
+    "blocked",
+    "by_provider",
+    "receipts_with_provider_request_id",
+    "receipts_without_provider_request_id",
+    "precision_claim"
+  ],
+  "$defs": {
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_passes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 255
+        },
+        "regeocode_request_template": {
+          "$ref": "canon.geo.acquisition_request.v0.schema.json"
+        }
+      },
+      "required": ["max_passes", "regeocode_request_template"]
+    },
+    "recovery_point": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "point_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "passes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 255
+        },
+        "terminal": {
+          "$ref": "#/$defs/terminal"
+        },
+        "recovered": {
+          "type": "boolean"
+        },
+        "first_recovering_pass": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 255
+        },
+        "receipt_semantic_hashes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/blake3_digest"
+          }
+        },
+        "final_home_cell": {
+          "$ref": "#/$defs/h3_r9"
+        },
+        "landed_home_cell": {
+          "$ref": "#/$defs/h3_r9"
+        }
+      },
+      "required": [
+        "point_id",
+        "passes",
+        "terminal",
+        "recovered",
+        "receipt_semantic_hashes"
+      ]
+    },
+    "terminal": {
+      "type": "string",
+      "enum": ["resolved", "abstained_at_ceiling", "blocked"]
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 40
+    },
+    "blake3_digest": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "h3_r9": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{15}$"
+    }
+  }
+}

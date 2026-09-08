@@ -81,13 +81,13 @@ use canon::geo::{
     CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
     CANON_GEO_PRE_RESOLUTION_VERSION, CANON_GEO_PROPAGATION_VERSION, CANON_GEO_QUESTION_VERSION,
     CANON_GEO_REDACTED_ARTIFACT_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
-    CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_SEPARATION_INPUTS_VERSION,
-    CANON_GEO_SEPARATION_REQUEST_VERSION, CANON_GEO_SEPARATION_VERSION,
-    CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
-    CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
-    DEFAULT_MAX_MATERIALIZED_MODELS, GeoAbstentionDisposition, GeoAbstentionPolicy,
-    GeoAddressHouseNumber, GeoAddressJurisdiction, GeoAddressParity, GeoAddressParseRequest,
-    GeoAddressRangeOperator, GeoAddressStreet, GeoAffineProjectionMm,
+    CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_RETRY_RECOVERY_VERSION,
+    CANON_GEO_SEPARATION_INPUTS_VERSION, CANON_GEO_SEPARATION_REQUEST_VERSION,
+    CANON_GEO_SEPARATION_VERSION, CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
+    CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION,
+    CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoAbstentionDisposition,
+    GeoAbstentionPolicy, GeoAddressHouseNumber, GeoAddressJurisdiction, GeoAddressParity,
+    GeoAddressParseRequest, GeoAddressRangeOperator, GeoAddressStreet, GeoAffineProjectionMm,
     GeoArtifactFieldClassification, GeoArtifactFieldLicenseClass, GeoAsOf, GeoBoundedGeography,
     GeoBudgetAction, GeoBuildingCandidate, GeoCandidateReachStatus, GeoClaimClass,
     GeoClientTileCoverageExtent, GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest,
@@ -121,12 +121,13 @@ use canon::geo::{
     GeoPreResolutionRunStatus, GeoPreResolutionSourceCorpus, GeoPreResolutionSourceRow,
     GeoProjectionProvenance, GeoPropagationBudget, GeoProspectiveObservation,
     GeoProspectiveOutcome, GeoQuestion, GeoRegionalInventory, GeoRegionalSourceInstance,
-    GeoReliabilityOrder, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter, GeoRhoBasis,
-    GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoSeparationInputs,
-    GeoSeparationRequest, GeoSourceAvailability, GeoSourceAxisDomain, GeoSourceGeometry,
-    GeoSourcePointDecimal, GeoSourcePointFixed, GeoSourceRelease, GeoSourceReleasePin,
-    GeoStreetDirection, GeoStreetSuffix, GeoSubjectBinding, GeoSubjectBindingClass,
-    GeoTelemetryDeclaration, GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
+    GeoReliabilityOrder, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter, GeoRetryPolicy,
+    GeoRetryRecovery, GeoRetryRecoveryPoint, GeoRetryTerminal, GeoRhoBasis, GeoRhoContract,
+    GeoRhoObservation, GeoRhoObservationKind, GeoSeparationInputs, GeoSeparationRequest,
+    GeoSourceAvailability, GeoSourceAxisDomain, GeoSourceGeometry, GeoSourcePointDecimal,
+    GeoSourcePointFixed, GeoSourceRelease, GeoSourceReleasePin, GeoStreetDirection,
+    GeoStreetSuffix, GeoSubjectBinding, GeoSubjectBindingClass, GeoTelemetryDeclaration,
+    GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
     GeoTileCandidateReachReference, GeoTileCandidateReachReferenceKind, GeoTileDecisionBatch,
     GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileFeatureRef,
     GeoTileReconciliationArtifact, GeoTileReconciliationRequest, GeoTileSourceBinding,
@@ -140,10 +141,11 @@ use canon::geo::{
     canonical_explanation_bytes, canonical_image_tile_pin_bytes, canonical_next_evidence_bytes,
     canonical_next_evidence_inputs_bytes, canonical_next_evidence_request_bytes,
     canonical_observation_rows_bytes, canonical_observer_admission_request_bytes,
-    canonical_observer_bytes, canonical_pre_resolution_bytes, canonical_propagation_bytes,
-    canonical_redacted_artifact_bytes, canonical_separation_bytes,
-    canonical_separation_inputs_bytes, canonical_separation_request_bytes, compile_evidence,
-    correction_sets, default_geo_capabilities, derive_deed_truth_from_index,
+    canonical_observer_bytes, canonical_point_population_bytes, canonical_pre_resolution_bytes,
+    canonical_propagation_bytes, canonical_redacted_artifact_bytes, canonical_retry_recovery_bytes,
+    canonical_separation_bytes, canonical_separation_inputs_bytes,
+    canonical_separation_request_bytes, compile_evidence, correction_sets,
+    default_geo_capabilities, derive_deed_truth_from_index,
     e4_proof_source_from_population_request, evaluate_pad_membership, evaluate_population,
     ingest_client_geometry_tile, materialize_geo_multisource, materialize_geometry_tile,
     materialize_h7_population_rows, materialize_home_cells, materialize_pre_resolution,
@@ -152,7 +154,7 @@ use canon::geo::{
     regional_inventory_semantic_hash, separate, solve_composition, stack_population_evidence,
     validate_deed_index_rows_request, validate_deed_truth_artifact, validate_e4_gate_assessment,
     validate_point_population_artifact, validate_pre_resolution_artifact,
-    validate_redacted_artifact,
+    validate_redacted_artifact, validate_retry_recovery_artifact,
 };
 use canon::geo::{
     CANON_GEO_TEMPORAL_CONTAINMENT_VERSION, GeoTemporalContainmentArtifact,
@@ -186,6 +188,8 @@ const DEED_INDEX_FIXTURE: &str = include_str!("fixtures/geo/deed_index_fixture.j
 const DEED_TRUTH_LOANS_FIXTURE: &str = include_str!("fixtures/geo/deed_truth_loans_fixture.json");
 const POINT_POPULATION_SCHEMA: &str =
     include_str!("../schemas/canon.geo.point_population.v0.schema.json");
+const RETRY_RECOVERY_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.retry_recovery.v0.schema.json");
 const PRE_RESOLUTION_SCHEMA: &str =
     include_str!("../schemas/canon.geo.pre_resolution.v0.schema.json");
 const TEMPORAL_CONTAINMENT_SCHEMA: &str =
@@ -4102,6 +4106,113 @@ fn point_population_schema_matches_a_real_instance() {
             .and_then(Value::as_i64),
         Some(410000000)
     );
+}
+
+#[test]
+fn retry_recovery_schema_matches_a_real_instance() {
+    let artifact = retry_recovery_artifact();
+    validate_retry_recovery_artifact(&artifact).expect("retry recovery validates");
+    let bytes = canonical_retry_recovery_bytes(&artifact).expect("retry recovery serializes");
+    let instance: Value = serde_json::from_slice(&bytes).expect("retry recovery JSON parses");
+    assert_drift_free(
+        RETRY_RECOVERY_SCHEMA,
+        "canon.geo.retry_recovery.v0",
+        CANON_GEO_RETRY_RECOVERY_VERSION,
+        &instance,
+    );
+
+    let schema = parsed(RETRY_RECOVERY_SCHEMA);
+    assert_eq!(
+        schema
+            .pointer("/properties/denominator/const")
+            .and_then(Value::as_u64),
+        Some(40)
+    );
+    assert_eq!(
+        schema
+            .pointer("/properties/precision_claim/const")
+            .and_then(Value::as_bool),
+        Some(false)
+    );
+}
+
+fn retry_recovery_artifact() -> GeoRetryRecovery {
+    let population: GeoPointPopulationArtifact =
+        serde_json::from_str(include_str!("fixtures/geo/e1_gross_class_points.json"))
+            .expect("point population fixture parses");
+    let population_blake3 = format!(
+        "blake3:{}",
+        blake3::hash(
+            &canonical_point_population_bytes(&population).expect("point population canonicalizes")
+        )
+        .to_hex()
+    );
+    let policy = GeoRetryPolicy {
+        max_passes: 2,
+        regeocode_request_template: acquisition_contract_request(),
+    };
+    let receipt_hash = geo_acquisition_request_semantic_hash(&policy.regeocode_request_template)
+        .expect("request hash computes");
+    let home_cells = population
+        .points
+        .iter()
+        .map(|point| point.home_cell_r9.clone())
+        .collect::<Vec<_>>();
+    let per_point = population
+        .points
+        .iter()
+        .enumerate()
+        .map(|(index, point)| {
+            let terminal = if index < 25 {
+                GeoRetryTerminal::Resolved
+            } else if index < 35 {
+                GeoRetryTerminal::AbstainedAtCeiling
+            } else {
+                GeoRetryTerminal::Blocked
+            };
+            let recovered = index < 25;
+            let passes: u8 = if terminal == GeoRetryTerminal::AbstainedAtCeiling {
+                2
+            } else {
+                1
+            };
+            GeoRetryRecoveryPoint {
+                point_id: point.point_id.clone(),
+                passes,
+                terminal,
+                recovered,
+                first_recovering_pass: recovered.then_some(1),
+                receipt_semantic_hashes: vec![receipt_hash.clone(); usize::from(passes)],
+                final_home_cell: recovered
+                    .then(|| retry_recovery_different_home_cell(index, &home_cells).to_string()),
+                landed_home_cell: Some(point.home_cell_r9.clone()),
+            }
+        })
+        .collect();
+    GeoRetryRecovery {
+        version: CANON_GEO_RETRY_RECOVERY_VERSION.to_string(),
+        population_blake3,
+        policy,
+        denominator: 40,
+        per_point,
+        recovered: 25,
+        abstained_at_ceiling: 10,
+        blocked: 5,
+        by_provider: BTreeMap::new(),
+        receipts_with_provider_request_id: 0,
+        receipts_without_provider_request_id: 50,
+        precision_claim: false,
+    }
+}
+
+fn retry_recovery_different_home_cell(index: usize, home_cells: &[String]) -> &str {
+    let landed = &home_cells[index];
+    home_cells
+        .iter()
+        .enumerate()
+        .find(|(candidate_index, cell)| *candidate_index != index && *cell != landed)
+        .map(|(_, cell)| cell.as_str())
+        .expect("fixture has at least two distinct home cells")
 }
 
 #[test]

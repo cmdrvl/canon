@@ -1,14 +1,18 @@
 #![forbid(unsafe_code)]
 
 use canon::geo::{
-    canonical_deed_truth_bytes, canonical_h7_population_bytes, derive_deed_truth_from_index,
-    materialize_h7_pip_block_population_batch, materialize_h7_population_rows,
-    materialize_h7_staging_source_record_bytes_batch, GeoDeedIndexRowsRequest, GeoDeedTruthLoanRef,
-    GeoH7PipBlockPopulationBatchRequest, GeoH7PopulationRowsRequest,
-    GeoH7StagingSourceRecordBytesBatchRequest, CANON_GEO_DEED_INDEX_ROWS_VERSION,
+    CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_DEED_INDEX_ROWS_VERSION,
     CANON_GEO_DEED_TRUTH_VERSION, CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION,
     CANON_GEO_H7_POPULATION_ROWS_VERSION, CANON_GEO_H7_POPULATION_VERSION,
-    CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
+    CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION, CANON_GEO_POINT_POPULATION_VERSION,
+    CANON_GEO_RETRY_LOOP_VERSION, CANON_GEO_RETRY_RECOVERY_VERSION, CANON_GEO_RUN_VERSION,
+    GeoAcquisitionReceipt, GeoDeedIndexRowsRequest, GeoDeedTruthLoanRef, GeoDigestAlgorithm,
+    GeoH7PipBlockPopulationBatchRequest, GeoH7PopulationRowsRequest,
+    GeoH7StagingSourceRecordBytesBatchRequest, GeoPointPopulationArtifact, GeoRetryLoopArtifact,
+    GeoRun, canonical_deed_truth_bytes, canonical_h7_population_bytes,
+    canonical_retry_recovery_bytes, derive_deed_truth_from_index,
+    materialize_h7_pip_block_population_batch, materialize_h7_population_rows,
+    materialize_h7_staging_source_record_bytes_batch, measure_recovery,
 };
 use chrono::{DateTime, NaiveDate};
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum};
@@ -36,6 +40,8 @@ const EXECUTION_TRANSFORM: &str = "cmdrvl_data_sqlglot_normalized_plus_tool_row_
 const LIVENESS_NOT_ATTESTED: &str = "receipt is internally consistent, but this offline runner does not attest liveness, authenticity, or query-history provenance";
 const QUERY_HISTORY_BOUND: &str = "cmdrvl_data_live receipt query_id is bound to local query history statement text by executed_query_text_sha256; this attests query correspondence only, not warehouse liveness or authenticity";
 const CLAIM_BOUNDARY: &str = "Offline receipt consistency validation only. A receipt_consistent row means the receipt is bound to result artifact bytes and executed query text bytes, and matches the manifest's declared offline checks. source_sql_sha256 is the local file byte digest; executed_query_text_sha256 is recomputed from the supplied normalized query text artifact after the declared cmdrvl-data/Snowflake transform. result_set_sha256 is over an unordered canonical result set sorted deterministically by compact JSON row encoding. cmdrvl_data_live receipts require --query-history correspondence before LiveComplete attestation; missing history stays query_history_unattested and mismatched query text is malformed. This proves byte integrity and query correspondence, not authenticity or liveness. Integration-test positive JSON is a contract fixture, not live proof of cmdrvl-data execution.";
+const PROVIDER_RESPONSE_BYTES_DIGEST_ID: &str = "provider_response_bytes";
+const GEOCODE_CANDIDATE_ROWS_ARTIFACT_ID: &str = "geocode_candidate_rows";
 const REQUIRED_CORE_MEASUREMENT_IDS: &[&str] = &[
     "appendix_b_centroid_percolation",
     "appendix_c_r8_density",
@@ -76,6 +82,8 @@ enum EmitMode {
 enum MeasurementCommand {
     #[command(name = "derive-deed-truth")]
     DeedTruth(DeedTruthArgs),
+    #[command(name = "measure-retry-recovery")]
+    RetryRecovery(RetryRecoveryArgs),
     #[command(name = "materialize-h7-population")]
     Population(H7PopulationArgs),
     #[command(name = "materialize-h7-staging-batch")]
@@ -95,6 +103,22 @@ struct DeedTruthArgs {
     /// Inclusive recording-date window in days after origination
     #[arg(long)]
     window_days: u32,
+}
+
+#[derive(Debug, ClapArgs)]
+struct RetryRecoveryArgs {
+    /// canon_geo_point_population.v0 file with the frozen gross-class denominator
+    #[arg(long)]
+    population: PathBuf,
+    /// Directory of canon_geo_retry_loop.v0 JSON files
+    #[arg(long)]
+    loops: PathBuf,
+    /// Directory of canon_geo_run.v0 JSON files keyed by run semantic hash
+    #[arg(long)]
+    runs: PathBuf,
+    /// Directory of canon_geo_acquisition_receipt.v0 files plus retained byte sidecars
+    #[arg(long)]
+    receipts: PathBuf,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -409,6 +433,31 @@ fn run_measurement_command(command: MeasurementCommand) -> Result<ExitCode, AppE
             })?;
             write_canonical(&bytes)?;
         }
+        MeasurementCommand::RetryRecovery(args) => {
+            let population: GeoPointPopulationArtifact = load_json(
+                &args.population,
+                CANON_GEO_POINT_POPULATION_VERSION,
+                "population",
+                "canon_geo_measurements measure-retry-recovery --population <POPULATION.json>",
+            )?;
+            let loops: Vec<GeoRetryLoopArtifact> = load_json_dir(
+                &args.loops,
+                CANON_GEO_RETRY_LOOP_VERSION,
+                "retry loops",
+                "loops",
+                false,
+            )?;
+            let runs = load_geo_runs(&args.runs)?;
+            let receipts = load_acquisition_receipts(&args.receipts)?;
+            let artifact = measure_recovery(&population, &loops, &runs, &receipts)
+                .map_err(|error| AppError::new(error.to_string()))?;
+            let bytes = canonical_retry_recovery_bytes(&artifact).map_err(|error| {
+                AppError::new(format!(
+                    "failed to serialize {CANON_GEO_RETRY_RECOVERY_VERSION}: {error}"
+                ))
+            })?;
+            write_canonical(&bytes)?;
+        }
         MeasurementCommand::Population(args) => {
             let rows: GeoH7PopulationRowsRequest = load_json(
                 &args.rows,
@@ -509,6 +558,186 @@ fn load_json<T: DeserializeOwned>(
             path.display()
         ))
     })
+}
+
+fn load_json_dir<T: DeserializeOwned>(
+    dir: &Path,
+    expected_version: &str,
+    label: &str,
+    arg_name: &str,
+    skip_candidate_rows: bool,
+) -> Result<Vec<T>, AppError> {
+    let files = sorted_json_files(dir, label, skip_candidate_rows)?;
+    if files.is_empty() {
+        return Err(AppError::new(format!(
+            "{label} directory {} contains no JSON files",
+            dir.display()
+        )));
+    }
+    files
+        .iter()
+        .map(|path| {
+            load_json(
+                path,
+                expected_version,
+                label,
+                &format!("canon_geo_measurements measure-retry-recovery --{arg_name} <DIR>"),
+            )
+        })
+        .collect()
+}
+
+fn load_geo_runs(dir: &Path) -> Result<BTreeMap<String, GeoRun>, AppError> {
+    let runs: Vec<GeoRun> = load_json_dir(dir, CANON_GEO_RUN_VERSION, "runs", "runs", false)?;
+    let mut by_hash = BTreeMap::new();
+    for run in runs {
+        if by_hash.insert(run.semantic_hash.clone(), run).is_some() {
+            return Err(AppError::new(
+                "duplicate GeoRun semantic_hash in runs directory",
+            ));
+        }
+    }
+    Ok(by_hash)
+}
+
+fn load_acquisition_receipts(
+    dir: &Path,
+) -> Result<BTreeMap<String, GeoAcquisitionReceipt>, AppError> {
+    let files = sorted_json_files(dir, "receipts", true)?;
+    if files.is_empty() {
+        return Err(AppError::new(format!(
+            "receipts directory {} contains no receipt JSON files",
+            dir.display()
+        )));
+    }
+    let mut by_request_hash = BTreeMap::new();
+    for path in files {
+        let receipt: GeoAcquisitionReceipt = load_json(
+            &path,
+            CANON_GEO_ACQUISITION_RECEIPT_VERSION,
+            "receipts",
+            "canon_geo_measurements measure-retry-recovery --receipts <DIR>",
+        )?;
+        verify_retry_recovery_receipt_sidecars(dir, &receipt)?;
+        if by_request_hash
+            .insert(receipt.request_semantic_hash.clone(), receipt)
+            .is_some()
+        {
+            return Err(AppError::new(
+                "duplicate GeoAcquisitionReceipt request_semantic_hash in receipts directory",
+            ));
+        }
+    }
+    Ok(by_request_hash)
+}
+
+fn sorted_json_files(
+    dir: &Path,
+    label: &str,
+    skip_candidate_rows: bool,
+) -> Result<Vec<PathBuf>, AppError> {
+    let entries = fs::read_dir(dir)
+        .map_err(|error| AppError::new(format!("failed to read {label} dir: {error}")))?;
+    let mut files = Vec::new();
+    for entry in entries {
+        let entry = entry
+            .map_err(|error| AppError::new(format!("failed to read {label} dir entry: {error}")))?;
+        let path = entry.path();
+        let is_json = path.extension().and_then(|extension| extension.to_str()) == Some("json");
+        let is_candidate_rows = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.ends_with(".rows.json"));
+        if is_json && !(skip_candidate_rows && is_candidate_rows) {
+            files.push(path);
+        }
+    }
+    files.sort();
+    Ok(files)
+}
+
+fn verify_retry_recovery_receipt_sidecars(
+    dir: &Path,
+    receipt: &GeoAcquisitionReceipt,
+) -> Result<(), AppError> {
+    let response_digest = receipt
+        .result_digests
+        .iter()
+        .find(|digest| digest.digest_id == PROVIDER_RESPONSE_BYTES_DIGEST_ID)
+        .ok_or_else(|| {
+            AppError::new(format!(
+                "receipt {} is missing result digest {PROVIDER_RESPONSE_BYTES_DIGEST_ID}",
+                receipt.request_semantic_hash
+            ))
+        })?;
+    if response_digest.algorithm != GeoDigestAlgorithm::Blake3 {
+        return Err(AppError::new(format!(
+            "receipt {} result digest {PROVIDER_RESPONSE_BYTES_DIGEST_ID} must use Blake3",
+            receipt.request_semantic_hash
+        )));
+    }
+    let response_artifact = receipt
+        .local_artifacts
+        .iter()
+        .find(|artifact| artifact.artifact_id == PROVIDER_RESPONSE_BYTES_DIGEST_ID)
+        .ok_or_else(|| {
+            AppError::new(format!(
+                "receipt {} is missing local artifact {PROVIDER_RESPONSE_BYTES_DIGEST_ID}",
+                receipt.request_semantic_hash
+            ))
+        })?;
+    if response_artifact.digest.algorithm != GeoDigestAlgorithm::Blake3
+        || response_artifact.digest.hex_digest != response_digest.hex_digest
+    {
+        return Err(AppError::new(format!(
+            "receipt {} has stale {PROVIDER_RESPONSE_BYTES_DIGEST_ID} local artifact digest",
+            receipt.request_semantic_hash
+        )));
+    }
+    verify_blake3_sidecar(
+        &dir.join(format!("{}.bytes", receipt.request_semantic_hash)),
+        &response_digest.hex_digest,
+        PROVIDER_RESPONSE_BYTES_DIGEST_ID,
+    )?;
+
+    let candidate_rows_artifact = receipt
+        .local_artifacts
+        .iter()
+        .find(|artifact| artifact.artifact_id == GEOCODE_CANDIDATE_ROWS_ARTIFACT_ID)
+        .ok_or_else(|| {
+            AppError::new(format!(
+                "receipt {} is missing local artifact {GEOCODE_CANDIDATE_ROWS_ARTIFACT_ID}",
+                receipt.request_semantic_hash
+            ))
+        })?;
+    if candidate_rows_artifact.digest.algorithm != GeoDigestAlgorithm::Blake3 {
+        return Err(AppError::new(format!(
+            "receipt {} local artifact {GEOCODE_CANDIDATE_ROWS_ARTIFACT_ID} must use Blake3",
+            receipt.request_semantic_hash
+        )));
+    }
+    verify_blake3_sidecar(
+        &dir.join(format!("{}.rows.json", receipt.request_semantic_hash)),
+        &candidate_rows_artifact.digest.hex_digest,
+        GEOCODE_CANDIDATE_ROWS_ARTIFACT_ID,
+    )
+}
+
+fn verify_blake3_sidecar(path: &Path, expected: &str, digest_id: &str) -> Result<(), AppError> {
+    let bytes = fs::read(path).map_err(|error| {
+        AppError::new(format!(
+            "failed to read {digest_id} sidecar {}: {error}",
+            path.display()
+        ))
+    })?;
+    let actual = blake3::hash(&bytes).to_hex().to_string();
+    if actual != expected {
+        return Err(AppError::new(format!(
+            "sidecar {} digest mismatch for {digest_id}: expected {expected}, actual {actual}",
+            path.display()
+        )));
+    }
+    Ok(())
 }
 
 fn load_manifest(repo_root: &Path, manifest_path: &Path) -> Result<Manifest, AppError> {

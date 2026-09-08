@@ -101,7 +101,9 @@
         "budget_exceeded",
         "arithmetic_overflow",
         "retry_pass_ceiling",
-        "retry_policy_unbounded"
+        "retry_policy_unbounded",
+        "retry_recovery_denominator_mismatch",
+        "retry_receipt_unbound"
       ]
     },
     "blake3_digest": {
