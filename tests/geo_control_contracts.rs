@@ -36,9 +36,10 @@ use canon::geo::{
     CANON_GEO_PROPAGATION_VERSION, CANON_GEO_QUESTION_VERSION,
     CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
     CANON_GEO_RESIDUAL_BENCHMARK_VERSION, CANON_GEO_RESIDUAL_OBDD_VERSION,
-    CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_RETRY_LOOP_VERSION, CANON_GEO_RUN_VERSION,
-    CANON_GEO_SEPARATION_INPUTS_VERSION, CANON_GEO_SEPARATION_REQUEST_VERSION,
-    CANON_GEO_SEPARATION_VERSION, CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
+    CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_RETRY_LOOP_VERSION,
+    CANON_GEO_RETRY_RECOVERY_VERSION, CANON_GEO_RUN_VERSION, CANON_GEO_SEPARATION_INPUTS_VERSION,
+    CANON_GEO_SEPARATION_REQUEST_VERSION, CANON_GEO_SEPARATION_VERSION,
+    CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
     CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION, CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
     CANON_GEO_TILE_RECONCILIATION_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
     CANON_GEO_TILE_WORK_UNIT_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION,
@@ -175,6 +176,7 @@ fn expected_implemented_contracts() -> BTreeSet<&'static str> {
         CANON_GEO_PROPAGATION_VERSION,
         CANON_GEO_CONDO_BRIDGE_VERSION,
         CANON_GEO_RETRY_LOOP_VERSION,
+        CANON_GEO_RETRY_RECOVERY_VERSION,
         CANON_GEO_LEDGER_BRIDGE_VERSION,
         CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION,
         CANON_GEO_COLLATERAL_LEDGER_VERSION,
@@ -250,12 +252,30 @@ fn expected_diagnostic_contracts() -> BTreeSet<&'static str> {
     ])
 }
 
-fn expected_implemented_commands()
--> BTreeMap<&'static str, (&'static str, GeoCommandSurface, bool, bool)> {
+type ExpectedGeoCommand = (&'static str, Option<GeoCommandSurface>, bool, bool);
+
+fn surfaced_command(
+    output_contract: &'static str,
+    surface: GeoCommandSurface,
+    read_only: bool,
+    uses_network: bool,
+) -> ExpectedGeoCommand {
+    (output_contract, Some(surface), read_only, uses_network)
+}
+
+fn unsurfaced_command(
+    output_contract: &'static str,
+    read_only: bool,
+    uses_network: bool,
+) -> ExpectedGeoCommand {
+    (output_contract, None, read_only, uses_network)
+}
+
+fn expected_implemented_commands() -> BTreeMap<&'static str, ExpectedGeoCommand> {
     BTreeMap::from([
         (
             "canon geo capabilities --emit json",
-            (
+            surfaced_command(
                 CANON_GEO_CAPABILITIES_VERSION,
                 GeoCommandSurface::Primary,
                 true,
@@ -264,7 +284,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>",
-            (
+            surfaced_command(
                 CANON_GEO_PLAN_VERSION,
                 GeoCommandSurface::Primary,
                 true,
@@ -273,7 +293,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]",
-            (
+            surfaced_command(
                 CANON_GEO_RUN_VERSION,
                 GeoCommandSurface::Primary,
                 false,
@@ -282,7 +302,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVENTORY.json> --question <QUESTION.json> --capabilities <CAPABILITIES.json> --profile <PROFILE.json> --budget <BUDGET.json> --satisfy <REQUEST_ID=RECEIPT.json> --local-artifact <LOCAL_ARTIFACT_ID=PATH>... [--result <DIGEST_ID=PATH>...] --advancement-out <ADVANCEMENT.json>",
-            (
+            surfaced_command(
                 CANON_GEO_PLAN_VERSION,
                 GeoCommandSurface::Primary,
                 false,
@@ -290,26 +310,33 @@ fn expected_implemented_commands()
             ),
         ),
         (
-            "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>",
-            (
+            "canon geo ledger",
+            surfaced_command(
                 CANON_GEO_COLLATERAL_LEDGER_VERSION,
                 GeoCommandSurface::Primary,
+                true,
+                false,
+            ),
+        ),
+        (
+            "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>",
+            unsurfaced_command(
+                CANON_GEO_COLLATERAL_LEDGER_VERSION,
                 true,
                 false,
             ),
         ),
         (
             "canon geo ledger validate --ledger <LEDGER.json>",
-            (
+            unsurfaced_command(
                 CANON_GEO_COLLATERAL_LEDGER_VERSION,
-                GeoCommandSurface::Primary,
                 true,
                 false,
             ),
         ),
         (
             "canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>",
-            (
+            surfaced_command(
                 ENTITY_MULTISOURCE_LINK_VERSION,
                 GeoCommandSurface::Leaf,
                 false,
@@ -318,7 +345,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon geo materialize-home-cells --rows <ROWS.json>",
-            (
+            surfaced_command(
                 CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
@@ -327,7 +354,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon geo tile-work --request <REQUEST.json>",
-            (
+            surfaced_command(
                 CANON_GEO_TILE_WORK_UNIT_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
@@ -336,7 +363,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon geo reconcile-tiles --request <REQUEST.json>",
-            (
+            surfaced_command(
                 CANON_GEO_TILE_RECONCILIATION_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
@@ -345,7 +372,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon geo solve --request <REQUEST.json>",
-            (
+            surfaced_command(
                 CANON_GEO_COMPOSITION_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
@@ -354,7 +381,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon.geo.stage.propagate.v0",
-            (
+            surfaced_command(
                 CANON_GEO_PROPAGATION_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
@@ -363,7 +390,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon.geo.stage.assessment_roll_owner.v0",
-            (
+            surfaced_command(
                 CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
@@ -372,7 +399,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon.geo.stage.condo_bridge.v0",
-            (
+            surfaced_command(
                 CANON_GEO_CONDO_BRIDGE_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
@@ -381,7 +408,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon.geo.stage.retry_pass.v0",
-            (
+            surfaced_command(
                 CANON_GEO_RETRY_LOOP_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
@@ -390,25 +417,23 @@ fn expected_implemented_commands()
         ),
         (
             "canon.geo.stage.ledger.v0",
-            (
+            unsurfaced_command(
                 CANON_GEO_COLLATERAL_LEDGER_VERSION,
-                GeoCommandSurface::Leaf,
                 true,
                 false,
             ),
         ),
         (
             "canon.geo.stage.observe_admit.v0",
-            (
+            unsurfaced_command(
                 CANON_GEO_OBSERVATION_ROWS_VERSION,
-                GeoCommandSurface::Leaf,
                 true,
                 false,
             ),
         ),
         (
             "canon.geo.stage.explain.v0",
-            (
+            surfaced_command(
                 CANON_GEO_EXPLANATION_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
@@ -417,7 +442,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon.geo.stage.separation.v0",
-            (
+            surfaced_command(
                 CANON_GEO_SEPARATION_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
@@ -426,7 +451,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon.geo.stage.next_evidence.v0",
-            (
+            surfaced_command(
                 CANON_GEO_NEXT_EVIDENCE_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
@@ -435,7 +460,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon.geo.stage.as_of_resolution.v0",
-            (
+            surfaced_command(
                 CANON_GEO_AS_OF_RESOLUTION_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
@@ -444,7 +469,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon.geo.stage.tile_identifier_stability.v0",
-            (
+            surfaced_command(
                 CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
@@ -453,7 +478,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon.geo.stage.footprint_roll_evidence.v0",
-            (
+            surfaced_command(
                 CANON_GEO_EVIDENCE_REQUEST_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
@@ -462,7 +487,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon geo materialize-geometry --request <REQUEST.json>",
-            (
+            surfaced_command(
                 CANON_GEO_GEOMETRY_TILE_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
@@ -471,7 +496,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon geo materialize-warehouse-geometry --rows <ROWS.json>",
-            (
+            surfaced_command(
                 CANON_GEO_WAREHOUSE_GEOMETRY_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
@@ -480,7 +505,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon geo materialize-evidence --rows <ROWS.json>",
-            (
+            surfaced_command(
                 CANON_GEO_EVIDENCE_REQUEST_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
@@ -489,7 +514,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon geo materialize-address-evidence --request <REQUEST.json>",
-            (
+            surfaced_command(
                 CANON_GEO_ADDRESS_PARCEL_EVIDENCE_BUNDLE_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
@@ -498,7 +523,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon geo materialize-h7-population --rows <ROWS.json>",
-            (
+            surfaced_command(
                 CANON_GEO_H7_POPULATION_VERSION,
                 GeoCommandSurface::Measurement,
                 true,
@@ -507,7 +532,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon geo materialize-h7-staging-batch --batch <BATCH.json>",
-            (
+            surfaced_command(
                 CANON_GEO_H7_POPULATION_VERSION,
                 GeoCommandSurface::Measurement,
                 true,
@@ -516,7 +541,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon geo materialize-h7-pip-block-batch --batch <BATCH.json>",
-            (
+            surfaced_command(
                 CANON_GEO_H7_POPULATION_VERSION,
                 GeoCommandSurface::Measurement,
                 true,
@@ -525,7 +550,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon geo compile-evidence --request <REQUEST.json>",
-            (
+            surfaced_command(
                 CANON_GEO_EVIDENCE_COMPILATION_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
@@ -534,7 +559,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon geo stack-evidence --population <POPULATION.json> --overlay <OVERLAY.json>",
-            (
+            surfaced_command(
                 CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION,
                 GeoCommandSurface::Leaf,
                 true,
@@ -543,7 +568,7 @@ fn expected_implemented_commands()
         ),
         (
             "canon geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>]",
-            (
+            surfaced_command(
                 CANON_GEO_POPULATION_EVALUATION_VERSION,
                 GeoCommandSurface::Primary,
                 false,
