@@ -25,6 +25,7 @@
 
 use canon::geo::{
     CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_E4_GATE_ASSESSMENT_VERSION,
+    CANON_GEO_E4_RESCORE_COMPARISON_VERSION,
     CANON_GEO_FROZEN_E4_H7_CANDIDATE_TRUTH_HANDOFF_REQUEST_VERSION, CANON_GEO_FROZEN_E4_H7_GATE_ID,
     CANON_GEO_FROZEN_E4_H7_RELEASE_26V1, CANON_GEO_FROZEN_E4_H7_RELEASE_26V2,
     CANON_GEO_FROZEN_E4_H7_REQUIRED_SUBJECTS, CANON_GEO_H7_POPULATION_VERSION,
@@ -35,13 +36,15 @@ use canon::geo::{
     GeoCandidateTruthRowStatus, GeoCompositionModel, GeoCompositionRequest, GeoCompositionStatus,
     GeoCompositionUniverse, GeoE4GateAssessment, GeoE4GateBlockerCode, GeoE4GatePlane,
     GeoE4GateProofClass, GeoE4GateProofDerivation, GeoE4GateProofSource, GeoE4GateStatus,
-    GeoEntityLevel, GeoEntityRef, GeoH7PopulationScope, GeoH7ResultMode, GeoHardConstraint,
-    GeoHardConstraintKind, GeoPopulationCaseStatus, GeoPopulationEvaluationArtifact, GeoTruthPlane,
-    assess_e4_gate, canonical_candidate_truth_evaluation_bytes, canonical_e4_gate_assessment_bytes,
-    canonical_population_evaluation_bytes, e4_proof_source_from_population_request,
+    GeoE4RescoreMetric, GeoEntityLevel, GeoEntityRef, GeoH7PopulationScope, GeoH7ResultMode,
+    GeoHardConstraint, GeoHardConstraintKind, GeoPopulationCaseStatus,
+    GeoPopulationEvaluationArtifact, GeoPopulationEvaluationRequest, GeoTruthPlane, assess_e4_gate,
+    canonical_candidate_truth_evaluation_bytes, canonical_e4_gate_assessment_bytes,
+    canonical_e4_rescore_comparison_bytes, canonical_population_evaluation_bytes,
+    compare_e4_gate_assessments, e4_proof_source_from_population_request,
     evaluate_candidate_truth_handoff, model_satisfies_request, solve_composition,
     validate_candidate_truth_evaluation_artifact, validate_e4_gate_assessment,
-    validate_e4_gate_proof_source,
+    validate_e4_gate_proof_source, validate_e4_rescore_comparison_artifact,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -1402,6 +1405,18 @@ fn live_complete_stack_proof_source() -> GeoE4GateProofSource {
     proof_source
 }
 
+fn fixture_subset_e4_assessment() -> GeoE4GateAssessment {
+    let population_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/geo/e4_gate_v2_population_request.json");
+    let request: GeoPopulationEvaluationRequest =
+        serde_json::from_slice(&std::fs::read(&population_path).expect("population fixture reads"))
+            .expect("population fixture parses");
+    let evaluation = canon::geo::evaluate_population(&request).expect("fixture evaluates");
+    let proof_source =
+        e4_proof_source_from_population_request(&request).expect("fixture proof source derives");
+    assess_e4_gate(&evaluation, &proof_source).expect("fixture assessment scores")
+}
+
 #[test]
 fn e4_gate_assessment_scores_retained_roll_population_without_live_claim() {
     let artifact = retained_roll_e4_evaluation();
@@ -1484,6 +1499,7 @@ fn e4_gate_assessment_scores_retained_roll_population_without_live_claim() {
         assessment.planes.truth_quality.solver_truth_exclusion_cases,
         15
     );
+    assert_eq!(assessment.planes.truth_quality.exactly_correct_cases, 6);
     assert_eq!(assessment.planes.cost.max_candidate_members, 831);
 
     let blocker_codes = assessment
@@ -1621,6 +1637,141 @@ fn e4_gate_assessment_scores_retained_roll_population_without_live_claim() {
     assert_eq!(
         canonical_e4_gate_assessment_bytes(&assessment).expect("assessment serializes"),
         canonical_e4_gate_assessment_bytes(&assessment_again).expect("assessment serializes again")
+    );
+}
+
+#[test]
+fn e4_rescore_comparison_predeclares_before_after_measurement_table() {
+    let before = assess_e4_gate(
+        &retained_roll_e4_evaluation(),
+        &retained_complete_stack_proof_source(),
+    )
+    .expect("retained E4 assessment scores");
+    let after = fixture_subset_e4_assessment();
+    let comparison = compare_e4_gate_assessments(&before, &after).expect("comparison scores");
+    validate_e4_rescore_comparison_artifact(&comparison).expect("comparison validates");
+
+    assert_eq!(comparison.version, CANON_GEO_E4_RESCORE_COMPARISON_VERSION);
+    assert_eq!(comparison.gate_id, CANON_GEO_FROZEN_E4_H7_GATE_ID);
+    assert_eq!(comparison.required_subjects, 79);
+    assert_eq!(
+        comparison.before.proof_class,
+        GeoE4GateProofClass::RetainedComplete
+    );
+    assert_eq!(comparison.before.evaluated_cases, 70);
+    assert_eq!(
+        comparison.after.proof_class,
+        GeoE4GateProofClass::FixtureSubset
+    );
+    assert_eq!(comparison.after.evaluated_cases, after.evaluated_cases);
+    assert!(comparison.interpretation.denominator_frozen);
+    assert!(comparison.interpretation.failures_remain_in_denominator);
+    assert!(
+        comparison
+            .interpretation
+            .candidate_universe_change_is_truth_neutral
+    );
+    assert!(
+        comparison
+            .interpretation
+            .ambiguity_may_increase_when_reach_improves
+    );
+
+    let metrics = comparison
+        .table
+        .iter()
+        .map(|row| row.metric)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        metrics,
+        vec![
+            GeoE4RescoreMetric::CandidateReachFull,
+            GeoE4RescoreMetric::CandidateReachPartial,
+            GeoE4RescoreMetric::CandidateReachNone,
+            GeoE4RescoreMetric::Resolved,
+            GeoE4RescoreMetric::ExactlyCorrect,
+            GeoE4RescoreMetric::Ambiguous,
+            GeoE4RescoreMetric::Conflict,
+            GeoE4RescoreMetric::FalseMerges,
+            GeoE4RescoreMetric::TruthExclusions,
+            GeoE4RescoreMetric::ComponentFallbacks,
+        ]
+    );
+
+    let row = |metric| {
+        comparison
+            .table
+            .iter()
+            .find(|row| row.metric == metric)
+            .unwrap_or_else(|| panic!("missing {metric:?}"))
+    };
+    assert_eq!(
+        row(GeoE4RescoreMetric::CandidateReachFull).before,
+        before.planes.candidate_reach.full_cases
+    );
+    assert_eq!(
+        row(GeoE4RescoreMetric::CandidateReachFull).after,
+        after.planes.candidate_reach.full_cases
+    );
+    assert_eq!(
+        row(GeoE4RescoreMetric::ExactlyCorrect).before,
+        before.planes.truth_quality.exactly_correct_cases
+    );
+    assert_eq!(row(GeoE4RescoreMetric::ExactlyCorrect).before, 6);
+    assert_eq!(
+        row(GeoE4RescoreMetric::FalseMerges).before,
+        before.planes.truth_quality.false_merge_cases
+    );
+    assert_eq!(
+        row(GeoE4RescoreMetric::TruthExclusions).after,
+        after.planes.truth_quality.solver_truth_exclusion_cases
+    );
+    assert_eq!(
+        row(GeoE4RescoreMetric::ComponentFallbacks).delta,
+        i64::try_from(
+            after
+                .planes
+                .solver_exactness
+                .component_budget_fallback_cases
+        )
+        .expect("small count")
+            - i64::try_from(
+                before
+                    .planes
+                    .solver_exactness
+                    .component_budget_fallback_cases
+            )
+            .expect("small count")
+    );
+
+    let bytes = canonical_e4_rescore_comparison_bytes(&comparison).expect("comparison serializes");
+    assert_eq!(
+        bytes,
+        canonical_e4_rescore_comparison_bytes(
+            &compare_e4_gate_assessments(&before, &after).expect("comparison re-scores")
+        )
+        .expect("comparison serializes again")
+    );
+}
+
+#[test]
+fn e4_rescore_comparison_rejects_omitted_predeclared_metric() {
+    let before = assess_e4_gate(
+        &retained_roll_e4_evaluation(),
+        &retained_complete_stack_proof_source(),
+    )
+    .expect("retained E4 assessment scores");
+    let after = fixture_subset_e4_assessment();
+    let mut comparison = compare_e4_gate_assessments(&before, &after).expect("comparison scores");
+    comparison
+        .table
+        .retain(|row| row.metric != GeoE4RescoreMetric::FalseMerges);
+
+    let error = validate_e4_rescore_comparison_artifact(&comparison)
+        .expect_err("omitted false-merge metric must fail closed");
+    assert!(
+        error.message.contains("predeclared metric set"),
+        "{error:?}"
     );
 }
 
@@ -2384,6 +2535,91 @@ fn geo_evaluate_writes_e4_gate_assessment_sidecar_bound_to_stdout() {
     assert_eq!(
         std::fs::read(&assessment_path).expect("tampered assessment persists"),
         br#"{"tampered":true}"#
+    );
+}
+
+#[test]
+fn geo_evaluate_writes_e4_rescore_comparison_against_typed_baseline() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let before = assess_e4_gate(
+        &retained_roll_e4_evaluation(),
+        &retained_complete_stack_proof_source(),
+    )
+    .expect("retained E4 assessment scores");
+    let before_bytes =
+        canonical_e4_gate_assessment_bytes(&before).expect("baseline assessment serializes");
+    let before_path = temp.path().join("before-assessment.json");
+    let comparison_path = temp.path().join("rescore-comparison.json");
+    std::fs::write(&before_path, &before_bytes).expect("baseline assessment writes");
+    let population_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/geo/e4_gate_v2_population_request.json");
+
+    let stdout = assert_cmd::Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(["geo", "evaluate", "--population"])
+        .arg(&population_path)
+        .arg("--e4-before-assessment")
+        .arg(&before_path)
+        .arg("--e4-rescore-out")
+        .arg(&comparison_path)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let evaluation: GeoPopulationEvaluationArtifact =
+        serde_json::from_slice(&stdout).expect("evaluation JSON parses");
+    let comparison_bytes = std::fs::read(&comparison_path).expect("comparison sidecar exists");
+    let comparison: canon::geo::GeoE4RescoreComparisonArtifact =
+        serde_json::from_slice(&comparison_bytes).expect("comparison JSON parses");
+    validate_e4_rescore_comparison_artifact(&comparison).expect("comparison validates");
+
+    assert_eq!(comparison.version, CANON_GEO_E4_RESCORE_COMPARISON_VERSION);
+    assert_eq!(
+        comparison.before.assessment_blake3,
+        blake3::hash(&before_bytes).to_hex().to_string()
+    );
+    assert_eq!(comparison.after.evaluated_cases, evaluation.summary.cases);
+    assert_eq!(comparison.required_subjects, 79);
+    assert_eq!(comparison.before.evaluated_cases, 70);
+    assert_eq!(comparison.after.evaluated_cases, 15);
+    assert_eq!(
+        comparison
+            .table
+            .iter()
+            .map(|row| row.metric)
+            .collect::<Vec<_>>(),
+        vec![
+            GeoE4RescoreMetric::CandidateReachFull,
+            GeoE4RescoreMetric::CandidateReachPartial,
+            GeoE4RescoreMetric::CandidateReachNone,
+            GeoE4RescoreMetric::Resolved,
+            GeoE4RescoreMetric::ExactlyCorrect,
+            GeoE4RescoreMetric::Ambiguous,
+            GeoE4RescoreMetric::Conflict,
+            GeoE4RescoreMetric::FalseMerges,
+            GeoE4RescoreMetric::TruthExclusions,
+            GeoE4RescoreMetric::ComponentFallbacks,
+        ]
+    );
+    assert!(
+        comparison
+            .interpretation
+            .ambiguity_may_increase_when_reach_improves
+    );
+
+    let original_comparison_bytes = comparison_bytes.clone();
+    assert_cmd::Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(["geo", "evaluate", "--population"])
+        .arg(&population_path)
+        .arg("--e4-before-assessment")
+        .arg(&before_path)
+        .arg("--e4-rescore-out")
+        .arg(&comparison_path)
+        .assert()
+        .success();
+    assert_eq!(
+        std::fs::read(&comparison_path).expect("comparison rereads"),
+        original_comparison_bytes
     );
 }
 

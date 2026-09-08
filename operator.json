@@ -2515,8 +2515,8 @@
     },
     {
       "name": "geo evaluate",
-      "usage": "canon geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>]",
-      "description": "Evaluate a labeled population request, H7 population artifact, or replay-validated evidence-stack artifact without letting labels reach the compiler or solver, emit the canonical evaluation artifact on stdout, and optionally publish an E4 gate assessment sidecar whose proof class is derived from the input provenance",
+      "usage": "canon geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>] [--e4-before-assessment <BEFORE.json> --e4-rescore-out <COMPARISON.json>]",
+      "description": "Evaluate a labeled population request, H7 population artifact, or replay-validated evidence-stack artifact without letting labels reach the compiler or solver, emit the canonical evaluation artifact on stdout, and optionally publish E4 gate assessment and before/after rescore comparison sidecars whose proof classes are derived from typed input provenance",
       "surface": "primary",
       "output_mode": "json",
       "output_schema": "canon_geo_population_evaluation.v0",
@@ -2524,7 +2524,7 @@
       "read_only": false,
       "safety": {
         "owned_temp_fixtures_only": true,
-        "notes": "reads one declared local population artifact, emits the canonical evaluation on stdout, and optionally publishes explicit create-or-identical owned evaluation artifacts and E4 assessment sidecars; E4 proof class is derived from the input contract provenance; no registry, cache, work-dir, or network writes",
+        "notes": "reads one declared local population artifact and optional typed baseline E4 assessment, emits the canonical evaluation on stdout, and optionally publishes explicit create-or-identical owned evaluation artifacts, E4 assessment sidecars, and E4 rescore comparison sidecars; E4 proof class is derived from the input contract provenance; no registry, cache, work-dir, or network writes",
         "mutation_class": "OwnedOutput",
         "network_class": "Offline",
         "concurrency_class": "AtomicOwnedOutput",
@@ -2587,6 +2587,20 @@
           "type": "file_path",
           "required": false,
           "description": "Optional create-or-identical output path for canon_geo_e4_gate_assessment.v0"
+        },
+        {
+          "name": "e4-before-assessment",
+          "flag": "--e4-before-assessment",
+          "type": "file_path",
+          "required": false,
+          "description": "Existing canon_geo_e4_gate_assessment.v0 sidecar to compare against when --e4-rescore-out is set"
+        },
+        {
+          "name": "e4-rescore-out",
+          "flag": "--e4-rescore-out",
+          "type": "file_path",
+          "required": false,
+          "description": "Optional create-or-identical output path for canon_geo_e4_rescore_comparison.v0"
         }
       ]
     },

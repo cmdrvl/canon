@@ -385,6 +385,10 @@
         "solver_truth_scored_cases": { "$ref": "#/$defs/count" },
         "solver_truth_retained_cases": { "$ref": "#/$defs/count" },
         "solver_truth_exclusion_cases": { "$ref": "#/$defs/count" },
+        "exactly_correct_cases": {
+          "description": "Resolved cases where the solver's resolved collateral set exactly equals deed truth; strict subsets, strict supersets, and unresolved or ambiguous outcomes are not exactly correct.",
+          "$ref": "#/$defs/count"
+        },
         "false_merge_cases": { "$ref": "#/$defs/count" },
         "backbone_complete_cases": { "$ref": "#/$defs/count" },
         "truth_members": { "$ref": "#/$defs/count" },
@@ -397,6 +401,7 @@
         "solver_truth_scored_cases",
         "solver_truth_retained_cases",
         "solver_truth_exclusion_cases",
+        "exactly_correct_cases",
         "false_merge_cases",
         "backbone_complete_cases",
         "truth_members",

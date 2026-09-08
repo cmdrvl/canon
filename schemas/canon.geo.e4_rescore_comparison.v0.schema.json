@@ -1,0 +1,269 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.e4_rescore_comparison.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.e4_rescore_comparison.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_e4_rescore_comparison.v0",
+      "type": "string"
+    },
+    "gate_id": {
+      "type": "string"
+    },
+    "required_subjects": {
+      "$ref": "#/$defs/count"
+    },
+    "before": {
+      "$ref": "#/$defs/snapshot"
+    },
+    "after": {
+      "$ref": "#/$defs/snapshot"
+    },
+    "table": {
+      "type": "array",
+      "prefixItems": [
+        { "$ref": "#/$defs/row_candidate_reach_full" },
+        { "$ref": "#/$defs/row_candidate_reach_partial" },
+        { "$ref": "#/$defs/row_candidate_reach_none" },
+        { "$ref": "#/$defs/row_resolved" },
+        { "$ref": "#/$defs/row_exactly_correct" },
+        { "$ref": "#/$defs/row_ambiguous" },
+        { "$ref": "#/$defs/row_conflict" },
+        { "$ref": "#/$defs/row_false_merges" },
+        { "$ref": "#/$defs/row_truth_exclusions" },
+        { "$ref": "#/$defs/row_component_fallbacks" }
+      ],
+      "items": false,
+      "minItems": 10,
+      "maxItems": 10
+    },
+    "interpretation": {
+      "$ref": "#/$defs/interpretation"
+    }
+  },
+  "required": [
+    "version",
+    "gate_id",
+    "required_subjects",
+    "before",
+    "after",
+    "table",
+    "interpretation"
+  ],
+  "$defs": {
+    "blake3": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "delta": {
+      "type": "integer"
+    },
+    "proof_class": {
+      "type": "string",
+      "enum": [
+        "fixture_subset",
+        "observed_snapshot",
+        "retained_complete",
+        "live_complete"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "passed"
+      ]
+    },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "assessment_blake3": {
+          "$ref": "#/$defs/blake3"
+        },
+        "proof_class": {
+          "$ref": "#/$defs/proof_class"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "release_claim_allowed": {
+          "type": "boolean"
+        },
+        "evaluated_cases": {
+          "$ref": "#/$defs/count"
+        },
+        "subject_deficit": {
+          "$ref": "#/$defs/count"
+        },
+        "candidate_reach_full_cases": {
+          "$ref": "#/$defs/count"
+        },
+        "candidate_reach_partial_cases": {
+          "$ref": "#/$defs/count"
+        },
+        "candidate_reach_none_cases": {
+          "$ref": "#/$defs/count"
+        },
+        "resolved_cases": {
+          "$ref": "#/$defs/count"
+        },
+        "exactly_correct_cases": {
+          "description": "Resolved cases where the solver's resolved collateral set exactly equals deed truth; strict subsets, strict supersets, and unresolved or ambiguous outcomes are not exactly correct.",
+          "$ref": "#/$defs/count"
+        },
+        "ambiguous_cases": {
+          "$ref": "#/$defs/count"
+        },
+        "conflict_cases": {
+          "$ref": "#/$defs/count"
+        },
+        "false_merge_cases": {
+          "$ref": "#/$defs/count"
+        },
+        "truth_exclusion_cases": {
+          "$ref": "#/$defs/count"
+        },
+        "component_fallback_cases": {
+          "$ref": "#/$defs/count"
+        }
+      },
+      "required": [
+        "assessment_blake3",
+        "proof_class",
+        "status",
+        "release_claim_allowed",
+        "evaluated_cases",
+        "subject_deficit",
+        "candidate_reach_full_cases",
+        "candidate_reach_partial_cases",
+        "candidate_reach_none_cases",
+        "resolved_cases",
+        "exactly_correct_cases",
+        "ambiguous_cases",
+        "conflict_cases",
+        "false_merge_cases",
+        "truth_exclusion_cases",
+        "component_fallback_cases"
+      ]
+    },
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "metric": {
+          "type": "string"
+        },
+        "before": {
+          "$ref": "#/$defs/count"
+        },
+        "after": {
+          "$ref": "#/$defs/count"
+        },
+        "delta": {
+          "$ref": "#/$defs/delta"
+        }
+      },
+      "required": [
+        "metric",
+        "before",
+        "after",
+        "delta"
+      ]
+    },
+    "row_candidate_reach_full": {
+      "allOf": [
+        { "$ref": "#/$defs/row" },
+        { "properties": { "metric": { "const": "candidate_reach_full" } } }
+      ]
+    },
+    "row_candidate_reach_partial": {
+      "allOf": [
+        { "$ref": "#/$defs/row" },
+        { "properties": { "metric": { "const": "candidate_reach_partial" } } }
+      ]
+    },
+    "row_candidate_reach_none": {
+      "allOf": [
+        { "$ref": "#/$defs/row" },
+        { "properties": { "metric": { "const": "candidate_reach_none" } } }
+      ]
+    },
+    "row_resolved": {
+      "allOf": [
+        { "$ref": "#/$defs/row" },
+        { "properties": { "metric": { "const": "resolved" } } }
+      ]
+    },
+    "row_exactly_correct": {
+      "allOf": [
+        { "$ref": "#/$defs/row" },
+        { "properties": { "metric": { "const": "exactly_correct" } } }
+      ]
+    },
+    "row_ambiguous": {
+      "allOf": [
+        { "$ref": "#/$defs/row" },
+        { "properties": { "metric": { "const": "ambiguous" } } }
+      ]
+    },
+    "row_conflict": {
+      "allOf": [
+        { "$ref": "#/$defs/row" },
+        { "properties": { "metric": { "const": "conflict" } } }
+      ]
+    },
+    "row_false_merges": {
+      "allOf": [
+        { "$ref": "#/$defs/row" },
+        { "properties": { "metric": { "const": "false_merges" } } }
+      ]
+    },
+    "row_truth_exclusions": {
+      "allOf": [
+        { "$ref": "#/$defs/row" },
+        { "properties": { "metric": { "const": "truth_exclusions" } } }
+      ]
+    },
+    "row_component_fallbacks": {
+      "allOf": [
+        { "$ref": "#/$defs/row" },
+        { "properties": { "metric": { "const": "component_fallbacks" } } }
+      ]
+    },
+    "interpretation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "denominator_frozen": {
+          "const": true,
+          "type": "boolean"
+        },
+        "failures_remain_in_denominator": {
+          "const": true,
+          "type": "boolean"
+        },
+        "candidate_universe_change_is_truth_neutral": {
+          "const": true,
+          "type": "boolean"
+        },
+        "ambiguity_may_increase_when_reach_improves": {
+          "const": true,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "denominator_frozen",
+        "failures_remain_in_denominator",
+        "candidate_universe_change_is_truth_neutral",
+        "ambiguity_may_increase_when_reach_improves"
+      ]
+    }
+  }
+}

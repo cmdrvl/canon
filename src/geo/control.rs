@@ -31,7 +31,10 @@ use super::{
         CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
         CANON_GEO_DISCOVERY_REQUEST_VERSION,
     },
-    evaluation::{CANON_GEO_POPULATION_EVALUATION_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION},
+    evaluation::{
+        CANON_GEO_E4_GATE_ASSESSMENT_VERSION, CANON_GEO_E4_RESCORE_COMPARISON_VERSION,
+        CANON_GEO_POPULATION_EVALUATION_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
+    },
     evidence::{CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION},
     explain::{
         CANON_GEO_EXPLANATION_VERSION, CANON_GEO_SEPARATION_INPUTS_VERSION,
@@ -1479,6 +1482,16 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "schemas/canon.geo.population_evaluation.v0.schema.json",
             "population evaluation artifact contract",
         ),
+        contract(
+            CANON_GEO_E4_GATE_ASSESSMENT_VERSION,
+            "schemas/canon.geo.e4_gate_assessment.v0.schema.json",
+            "E4 frozen gate assessment sidecar contract",
+        ),
+        contract(
+            CANON_GEO_E4_RESCORE_COMPARISON_VERSION,
+            "schemas/canon.geo.e4_rescore_comparison.v0.schema.json",
+            "E4 before/after rescore comparison sidecar contract",
+        ),
     ]
 }
 
@@ -1734,7 +1747,7 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
             false,
         ),
         command(
-            "canon geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>]",
+            "canon geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>] [--e4-before-assessment <BEFORE.json> --e4-rescore-out <COMPARISON.json>]",
             GeoCommandSurface::Primary,
             CANON_GEO_POPULATION_EVALUATION_VERSION,
             false,

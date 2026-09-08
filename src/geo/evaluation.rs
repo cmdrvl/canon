@@ -73,6 +73,7 @@ use std::{
 pub const CANON_GEO_POPULATION_REQUEST_VERSION: &str = "canon_geo_population_request.v0";
 pub const CANON_GEO_POPULATION_EVALUATION_VERSION: &str = "canon_geo_population_evaluation.v0";
 pub const CANON_GEO_E4_GATE_ASSESSMENT_VERSION: &str = "canon_geo_e4_gate_assessment.v0";
+pub const CANON_GEO_E4_RESCORE_COMPARISON_VERSION: &str = "canon_geo_e4_rescore_comparison.v0";
 const CANON_GEO_POPULATION_EVIDENCE_STACK_PROOF_VERSION: &str =
     "canon_geo_population_evidence_stack.v0";
 pub const CANON_GEO_FROZEN_E4_H7_CANDIDATE_TRUTH_HANDOFF_REQUEST_VERSION: &str =
@@ -765,6 +766,8 @@ pub struct GeoE4TruthQualityPlaneScore {
     pub solver_truth_scored_cases: u64,
     pub solver_truth_retained_cases: u64,
     pub solver_truth_exclusion_cases: u64,
+    #[serde(default)]
+    pub exactly_correct_cases: u64,
     pub false_merge_cases: u64,
     pub backbone_complete_cases: u64,
     pub truth_members: u64,
@@ -821,6 +824,81 @@ pub struct GeoE4GateAssessment {
     pub planes: GeoE4GatePlaneScores,
     pub truth_planes: Vec<GeoE4TruthPlaneGateAssessment>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoE4RescoreMetric {
+    CandidateReachFull,
+    CandidateReachPartial,
+    CandidateReachNone,
+    Resolved,
+    ExactlyCorrect,
+    Ambiguous,
+    Conflict,
+    FalseMerges,
+    TruthExclusions,
+    ComponentFallbacks,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoE4RescoreSnapshot {
+    pub assessment_blake3: String,
+    pub proof_class: GeoE4GateProofClass,
+    pub status: GeoE4GateStatus,
+    pub release_claim_allowed: bool,
+    pub evaluated_cases: u64,
+    pub subject_deficit: u64,
+    pub candidate_reach_full_cases: u64,
+    pub candidate_reach_partial_cases: u64,
+    pub candidate_reach_none_cases: u64,
+    pub resolved_cases: u64,
+    pub exactly_correct_cases: u64,
+    pub ambiguous_cases: u64,
+    pub conflict_cases: u64,
+    pub false_merge_cases: u64,
+    pub truth_exclusion_cases: u64,
+    pub component_fallback_cases: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoE4RescoreComparisonRow {
+    pub metric: GeoE4RescoreMetric,
+    pub before: u64,
+    pub after: u64,
+    pub delta: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoE4RescoreInterpretation {
+    pub denominator_frozen: bool,
+    pub failures_remain_in_denominator: bool,
+    pub candidate_universe_change_is_truth_neutral: bool,
+    pub ambiguity_may_increase_when_reach_improves: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoE4RescoreComparisonArtifact {
+    pub version: String,
+    pub gate_id: String,
+    pub required_subjects: u64,
+    pub before: GeoE4RescoreSnapshot,
+    pub after: GeoE4RescoreSnapshot,
+    pub table: Vec<GeoE4RescoreComparisonRow>,
+    pub interpretation: GeoE4RescoreInterpretation,
+}
+
+const E4_RESCORE_METRICS: [GeoE4RescoreMetric; 10] = [
+    GeoE4RescoreMetric::CandidateReachFull,
+    GeoE4RescoreMetric::CandidateReachPartial,
+    GeoE4RescoreMetric::CandidateReachNone,
+    GeoE4RescoreMetric::Resolved,
+    GeoE4RescoreMetric::ExactlyCorrect,
+    GeoE4RescoreMetric::Ambiguous,
+    GeoE4RescoreMetric::Conflict,
+    GeoE4RescoreMetric::FalseMerges,
+    GeoE4RescoreMetric::TruthExclusions,
+    GeoE4RescoreMetric::ComponentFallbacks,
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GeoPopulationCaseArtifacts {
@@ -2493,6 +2571,196 @@ pub fn canonical_e4_gate_assessment_bytes(
     assessment: &GeoE4GateAssessment,
 ) -> Result<Vec<u8>, serde_json::Error> {
     serde_json::to_vec(assessment)
+}
+
+pub fn compare_e4_gate_assessments(
+    before: &GeoE4GateAssessment,
+    after: &GeoE4GateAssessment,
+) -> Result<GeoE4RescoreComparisonArtifact, GeoPopulationError> {
+    validate_e4_gate_assessment(before)?;
+    validate_e4_gate_assessment(after)?;
+    if before.gate_id != after.gate_id {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo E4 rescore comparison requires matching gate ids",
+            [
+                ("before_gate_id", before.gate_id.as_str()),
+                ("after_gate_id", after.gate_id.as_str()),
+            ],
+        ));
+    }
+    if before.required_subjects != after.required_subjects {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo E4 rescore comparison requires matching frozen denominators",
+            [
+                (
+                    "before_required_subjects",
+                    before.required_subjects.to_string(),
+                ),
+                (
+                    "after_required_subjects",
+                    after.required_subjects.to_string(),
+                ),
+            ],
+        ));
+    }
+    let before_blake3 = digest_e4_gate_assessment(before)?;
+    let after_blake3 = digest_e4_gate_assessment(after)?;
+    let mut table = Vec::with_capacity(E4_RESCORE_METRICS.len());
+    for metric in E4_RESCORE_METRICS {
+        let before_value = e4_rescore_metric_value(before, metric);
+        let after_value = e4_rescore_metric_value(after, metric);
+        table.push(GeoE4RescoreComparisonRow {
+            metric,
+            before: before_value,
+            after: after_value,
+            delta: signed_delta(
+                "e4_rescore_comparison.table.delta",
+                before_value,
+                after_value,
+            )?,
+        });
+    }
+    let artifact = GeoE4RescoreComparisonArtifact {
+        version: CANON_GEO_E4_RESCORE_COMPARISON_VERSION.to_string(),
+        gate_id: before.gate_id.clone(),
+        required_subjects: before.required_subjects,
+        before: e4_rescore_snapshot(before, before_blake3),
+        after: e4_rescore_snapshot(after, after_blake3),
+        table,
+        interpretation: GeoE4RescoreInterpretation {
+            denominator_frozen: true,
+            failures_remain_in_denominator: true,
+            candidate_universe_change_is_truth_neutral: true,
+            ambiguity_may_increase_when_reach_improves: true,
+        },
+    };
+    validate_e4_rescore_comparison_artifact(&artifact)?;
+    Ok(artifact)
+}
+
+pub fn canonical_e4_rescore_comparison_bytes(
+    comparison: &GeoE4RescoreComparisonArtifact,
+) -> Result<Vec<u8>, serde_json::Error> {
+    serde_json::to_vec(comparison)
+}
+
+pub fn validate_e4_rescore_comparison_artifact(
+    comparison: &GeoE4RescoreComparisonArtifact,
+) -> Result<(), GeoPopulationError> {
+    if comparison.version != CANON_GEO_E4_RESCORE_COMPARISON_VERSION {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::UnsupportedVersion,
+            "Unsupported Geo E4 rescore comparison version",
+            [
+                ("expected", CANON_GEO_E4_RESCORE_COMPARISON_VERSION),
+                ("actual", comparison.version.as_str()),
+            ],
+        ));
+    }
+    if comparison.gate_id != CANON_GEO_FROZEN_E4_H7_GATE_ID {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo E4 rescore comparison gate_id is not the frozen E4/H7 gate",
+            [
+                ("expected", CANON_GEO_FROZEN_E4_H7_GATE_ID),
+                ("actual", comparison.gate_id.as_str()),
+            ],
+        ));
+    }
+    if comparison.required_subjects != CANON_GEO_FROZEN_E4_H7_REQUIRED_SUBJECTS {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo E4 rescore comparison required_subjects must equal the frozen E4/H7 count",
+            [
+                (
+                    "expected",
+                    CANON_GEO_FROZEN_E4_H7_REQUIRED_SUBJECTS.to_string(),
+                ),
+                ("actual", comparison.required_subjects.to_string()),
+            ],
+        ));
+    }
+    validate_e4_rescore_snapshot("before", comparison.required_subjects, &comparison.before)?;
+    validate_e4_rescore_snapshot("after", comparison.required_subjects, &comparison.after)?;
+    if !comparison.interpretation.denominator_frozen
+        || !comparison.interpretation.failures_remain_in_denominator
+        || !comparison
+            .interpretation
+            .candidate_universe_change_is_truth_neutral
+        || !comparison
+            .interpretation
+            .ambiguity_may_increase_when_reach_improves
+    {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo E4 rescore comparison interpretation must preserve the frozen-denominator reach semantics",
+            [("field", "interpretation")],
+        ));
+    }
+    if comparison.table.len() != E4_RESCORE_METRICS.len() {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo E4 rescore comparison table must contain the predeclared metric set",
+            [
+                ("expected", E4_RESCORE_METRICS.len().to_string()),
+                ("actual", comparison.table.len().to_string()),
+            ],
+        ));
+    }
+    for (index, row) in comparison.table.iter().enumerate() {
+        let expected_metric = E4_RESCORE_METRICS[index];
+        if row.metric != expected_metric {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo E4 rescore comparison table metrics must stay in predeclared order",
+                [
+                    ("index", index.to_string()),
+                    ("expected", format!("{expected_metric:?}")),
+                    ("actual", format!("{:?}", row.metric)),
+                ],
+            ));
+        }
+        let expected_before = e4_rescore_snapshot_metric_value(&comparison.before, row.metric);
+        if row.before != expected_before {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo E4 rescore comparison row before value is inconsistent with the snapshot",
+                [
+                    ("metric", format!("{:?}", row.metric)),
+                    ("expected", expected_before.to_string()),
+                    ("actual", row.before.to_string()),
+                ],
+            ));
+        }
+        let expected_after = e4_rescore_snapshot_metric_value(&comparison.after, row.metric);
+        if row.after != expected_after {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo E4 rescore comparison row after value is inconsistent with the snapshot",
+                [
+                    ("metric", format!("{:?}", row.metric)),
+                    ("expected", expected_after.to_string()),
+                    ("actual", row.after.to_string()),
+                ],
+            ));
+        }
+        let expected_delta =
+            signed_delta("e4_rescore_comparison.table.delta", row.before, row.after)?;
+        if row.delta != expected_delta {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo E4 rescore comparison row delta is inconsistent",
+                [
+                    ("metric", format!("{:?}", row.metric)),
+                    ("expected", expected_delta.to_string()),
+                    ("actual", row.delta.to_string()),
+                ],
+            ));
+        }
+    }
+    Ok(())
 }
 
 pub fn validate_e4_gate_assessment(
@@ -4526,6 +4794,12 @@ fn e4_plane_scores<'a>(
                         "e4.reconciliation.resolved_with_reach_not_full_cases",
                     )?;
                 }
+                if case.truth_model_in_residual == Some(true) {
+                    checked_inc(
+                        &mut scores.truth_quality.exactly_correct_cases,
+                        "e4.truth_quality.exactly_correct_cases",
+                    )?;
+                }
             }
             GeoPopulationCaseStatus::Ambiguous => {
                 checked_inc(
@@ -5403,6 +5677,11 @@ fn e4_sum_plane_scores<'a>(
             "e4.truth_planes.truth_quality.solver_truth_exclusion_cases",
         )?;
         checked_add(
+            &mut total.truth_quality.exactly_correct_cases,
+            plane.truth_quality.exactly_correct_cases,
+            "e4.truth_planes.truth_quality.exactly_correct_cases",
+        )?;
+        checked_add(
             &mut total.truth_quality.false_merge_cases,
             plane.truth_quality.false_merge_cases,
             "e4.truth_planes.truth_quality.false_merge_cases",
@@ -5483,6 +5762,169 @@ fn e4_sum_plane_scores<'a>(
     }
     validate_e4_plane_scores("e4.truth_plane_score_sum", &total)?;
     Ok(total)
+}
+
+fn digest_e4_gate_assessment(
+    assessment: &GeoE4GateAssessment,
+) -> Result<String, GeoPopulationError> {
+    let bytes = canonical_e4_gate_assessment_bytes(assessment).map_err(|error| {
+        GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo E4 rescore comparison could not serialize an assessment",
+            [("error", error.to_string())],
+        )
+    })?;
+    Ok(blake3::hash(&bytes).to_hex().to_string())
+}
+
+fn e4_rescore_snapshot(
+    assessment: &GeoE4GateAssessment,
+    assessment_blake3: String,
+) -> GeoE4RescoreSnapshot {
+    GeoE4RescoreSnapshot {
+        assessment_blake3,
+        proof_class: assessment.proof_class,
+        status: assessment.status,
+        release_claim_allowed: assessment.release_claim_allowed,
+        evaluated_cases: assessment.evaluated_cases,
+        subject_deficit: assessment.subject_deficit,
+        candidate_reach_full_cases: assessment.planes.candidate_reach.full_cases,
+        candidate_reach_partial_cases: assessment.planes.candidate_reach.partial_cases,
+        candidate_reach_none_cases: assessment.planes.candidate_reach.none_cases,
+        resolved_cases: assessment.planes.reconciliation.resolved_cases,
+        exactly_correct_cases: assessment.planes.truth_quality.exactly_correct_cases,
+        ambiguous_cases: assessment.planes.reconciliation.ambiguous_cases,
+        conflict_cases: assessment.planes.reconciliation.conflict_cases,
+        false_merge_cases: assessment.planes.truth_quality.false_merge_cases,
+        truth_exclusion_cases: assessment.planes.truth_quality.solver_truth_exclusion_cases,
+        component_fallback_cases: assessment
+            .planes
+            .solver_exactness
+            .component_budget_fallback_cases,
+    }
+}
+
+fn e4_rescore_metric_value(assessment: &GeoE4GateAssessment, metric: GeoE4RescoreMetric) -> u64 {
+    match metric {
+        GeoE4RescoreMetric::CandidateReachFull => assessment.planes.candidate_reach.full_cases,
+        GeoE4RescoreMetric::CandidateReachPartial => {
+            assessment.planes.candidate_reach.partial_cases
+        }
+        GeoE4RescoreMetric::CandidateReachNone => assessment.planes.candidate_reach.none_cases,
+        GeoE4RescoreMetric::Resolved => assessment.planes.reconciliation.resolved_cases,
+        GeoE4RescoreMetric::ExactlyCorrect => assessment.planes.truth_quality.exactly_correct_cases,
+        GeoE4RescoreMetric::Ambiguous => assessment.planes.reconciliation.ambiguous_cases,
+        GeoE4RescoreMetric::Conflict => assessment.planes.reconciliation.conflict_cases,
+        GeoE4RescoreMetric::FalseMerges => assessment.planes.truth_quality.false_merge_cases,
+        GeoE4RescoreMetric::TruthExclusions => {
+            assessment.planes.truth_quality.solver_truth_exclusion_cases
+        }
+        GeoE4RescoreMetric::ComponentFallbacks => {
+            assessment
+                .planes
+                .solver_exactness
+                .component_budget_fallback_cases
+        }
+    }
+}
+
+fn e4_rescore_snapshot_metric_value(
+    snapshot: &GeoE4RescoreSnapshot,
+    metric: GeoE4RescoreMetric,
+) -> u64 {
+    match metric {
+        GeoE4RescoreMetric::CandidateReachFull => snapshot.candidate_reach_full_cases,
+        GeoE4RescoreMetric::CandidateReachPartial => snapshot.candidate_reach_partial_cases,
+        GeoE4RescoreMetric::CandidateReachNone => snapshot.candidate_reach_none_cases,
+        GeoE4RescoreMetric::Resolved => snapshot.resolved_cases,
+        GeoE4RescoreMetric::ExactlyCorrect => snapshot.exactly_correct_cases,
+        GeoE4RescoreMetric::Ambiguous => snapshot.ambiguous_cases,
+        GeoE4RescoreMetric::Conflict => snapshot.conflict_cases,
+        GeoE4RescoreMetric::FalseMerges => snapshot.false_merge_cases,
+        GeoE4RescoreMetric::TruthExclusions => snapshot.truth_exclusion_cases,
+        GeoE4RescoreMetric::ComponentFallbacks => snapshot.component_fallback_cases,
+    }
+}
+
+fn validate_e4_rescore_snapshot(
+    label: &'static str,
+    required_subjects: u64,
+    snapshot: &GeoE4RescoreSnapshot,
+) -> Result<(), GeoPopulationError> {
+    validate_lowercase_hex64(
+        "e4_rescore_comparison.assessment_blake3",
+        &snapshot.assessment_blake3,
+    )?;
+    let expected_deficit = required_subjects.saturating_sub(snapshot.evaluated_cases);
+    if snapshot.subject_deficit != expected_deficit {
+        return Err(summary_invariant_error(
+            label,
+            "subject_deficit",
+            expected_deficit,
+            snapshot.subject_deficit,
+        ));
+    }
+    let expected_release_claim_allowed = snapshot.status == GeoE4GateStatus::Passed
+        && snapshot.proof_class == GeoE4GateProofClass::LiveComplete;
+    if snapshot.release_claim_allowed != expected_release_claim_allowed {
+        let expected = expected_release_claim_allowed.to_string();
+        let actual = snapshot.release_claim_allowed.to_string();
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo E4 rescore comparison snapshot release-claim field is inconsistent",
+            [
+                ("snapshot", label.to_string()),
+                ("expected", expected),
+                ("actual", actual),
+            ],
+        ));
+    }
+    let reach_total = sum_u64(
+        [
+            snapshot.candidate_reach_full_cases,
+            snapshot.candidate_reach_partial_cases,
+            snapshot.candidate_reach_none_cases,
+        ],
+        "e4_rescore_comparison.snapshot.candidate_reach_cases",
+    )?;
+    if reach_total != snapshot.evaluated_cases {
+        return Err(summary_invariant_error(
+            label,
+            "candidate_reach_cases",
+            snapshot.evaluated_cases,
+            reach_total,
+        ));
+    }
+    if snapshot.exactly_correct_cases > snapshot.resolved_cases {
+        return Err(summary_invariant_error(
+            label,
+            "exactly_correct_cases",
+            snapshot.resolved_cases,
+            snapshot.exactly_correct_cases,
+        ));
+    }
+    if snapshot.false_merge_cases > snapshot.resolved_cases {
+        return Err(summary_invariant_error(
+            label,
+            "false_merge_cases",
+            snapshot.resolved_cases,
+            snapshot.false_merge_cases,
+        ));
+    }
+    if snapshot.truth_exclusion_cases > snapshot.evaluated_cases {
+        return Err(summary_invariant_error(
+            label,
+            "truth_exclusion_cases",
+            snapshot.evaluated_cases,
+            snapshot.truth_exclusion_cases,
+        ));
+    }
+    Ok(())
+}
+
+fn signed_delta(field: &'static str, before: u64, after: u64) -> Result<i64, GeoPopulationError> {
+    let delta = i128::from(after) - i128::from(before);
+    i64::try_from(delta).map_err(|_| GeoPopulationError::overflow(field))
 }
 
 fn e4_proof_class_name(proof_class: GeoE4GateProofClass) -> &'static str {
@@ -5749,6 +6191,23 @@ fn validate_e4_plane_scores(
             "truth_quality.solver_truth_scored_cases",
             scores.candidate_reach.full_cases,
             scores.truth_quality.solver_truth_scored_cases,
+        ));
+    }
+    if scores.truth_quality.exactly_correct_cases > scores.reconciliation.resolved_cases {
+        return Err(summary_invariant_error(
+            scope,
+            "truth_quality.exactly_correct_cases",
+            scores.reconciliation.resolved_cases,
+            scores.truth_quality.exactly_correct_cases,
+        ));
+    }
+    if scores.truth_quality.exactly_correct_cases > scores.truth_quality.solver_truth_retained_cases
+    {
+        return Err(summary_invariant_error(
+            scope,
+            "truth_quality.exactly_correct_cases",
+            scores.truth_quality.solver_truth_retained_cases,
+            scores.truth_quality.exactly_correct_cases,
         ));
     }
     if scores.truth_quality.false_merge_cases > scores.reconciliation.resolved_cases {

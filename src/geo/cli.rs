@@ -51,12 +51,14 @@ use super::{
     },
     discovery::{CANON_GEO_ACQUISITION_RECEIPT_VERSION, GeoAcquisitionReceipt, GeoDigestAlgorithm},
     evaluation::{
-        CANON_GEO_E4_GATE_ASSESSMENT_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
-        GeoE4GateProofSource, GeoPopulationCaseArtifacts, GeoPopulationError,
-        GeoPopulationEvaluationRequest, assess_e4_gate, canonical_e4_gate_assessment_bytes,
-        canonical_population_evaluation_bytes, e4_proof_source_from_h7_population,
-        e4_proof_source_from_population_request, e4_proof_source_from_population_stack,
-        evaluate_population_with_artifacts, evaluate_population_with_run_artifacts,
+        CANON_GEO_E4_GATE_ASSESSMENT_VERSION, CANON_GEO_E4_RESCORE_COMPARISON_VERSION,
+        CANON_GEO_POPULATION_REQUEST_VERSION, GeoE4GateAssessment, GeoE4GateProofSource,
+        GeoPopulationCaseArtifacts, GeoPopulationError, GeoPopulationEvaluationRequest,
+        assess_e4_gate, canonical_e4_gate_assessment_bytes, canonical_e4_rescore_comparison_bytes,
+        canonical_population_evaluation_bytes, compare_e4_gate_assessments,
+        e4_proof_source_from_h7_population, e4_proof_source_from_population_request,
+        e4_proof_source_from_population_stack, evaluate_population_with_artifacts,
+        evaluate_population_with_run_artifacts, validate_e4_gate_assessment,
     },
     evidence::{
         CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
@@ -908,10 +910,8 @@ fn run_compile_evidence(args: &GeoCompileEvidenceCli) -> Result<u8, Box<dyn Erro
 }
 
 fn run_evaluate(args: &GeoEvaluateCli) -> Result<u8, Box<dyn Error>> {
-    let population = match read_population_or_stack(
-        &args.population,
-        "canon geo evaluate --population <POPULATION.json>",
-    ) {
+    let next_command = "canon geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>] [--e4-before-assessment <BEFORE.json> --e4-rescore-out <COMPARISON.json>]";
+    let population = match read_population_or_stack(&args.population, next_command) {
         Ok(population) => population,
         Err(exit_code) => return Ok(exit_code),
     };
@@ -937,12 +937,19 @@ fn run_evaluate(args: &GeoEvaluateCli) -> Result<u8, Box<dyn Error>> {
             Err(error) => return emit_population_error(error),
         }
     };
-    if let Some(assessment_out) = &args.e4_assessment_out {
-        let assessment = match assess_e4_gate(&evaluated.evaluation, &proof_source) {
+    let assessment = if args.e4_assessment_out.is_some() || args.e4_rescore_out.is_some() {
+        Some(match assess_e4_gate(&evaluated.evaluation, &proof_source) {
             Ok(assessment) => assessment,
             Err(error) => return emit_population_error(error),
-        };
-        let assessment_bytes = match canonical_e4_gate_assessment_bytes(&assessment) {
+        })
+    } else {
+        None
+    };
+    if let Some(assessment_out) = &args.e4_assessment_out {
+        let assessment = assessment
+            .as_ref()
+            .expect("assessment computed when --e4-assessment-out is set");
+        let assessment_bytes = match canonical_e4_gate_assessment_bytes(assessment) {
             Ok(bytes) => bytes,
             Err(error) => {
                 return emit_serialization_refusal(CANON_GEO_E4_GATE_ASSESSMENT_VERSION, &error);
@@ -964,10 +971,69 @@ fn run_evaluate(args: &GeoEvaluateCli) -> Result<u8, Box<dyn Error>> {
             );
         }
     }
+    if let Some(rescore_out) = &args.e4_rescore_out {
+        let before_path = match &args.e4_before_assessment {
+            Some(path) => path,
+            None => {
+                return emit_refusal(
+                    RefusalCode::EParse,
+                    "Geo evaluate --e4-rescore-out requires --e4-before-assessment",
+                    json!({
+                        "missing": "--e4-before-assessment",
+                    }),
+                    Some(next_command.to_string()),
+                );
+            }
+        };
+        let before = match read_e4_gate_assessment(before_path, next_command) {
+            Ok(assessment) => assessment,
+            Err(exit_code) => return Ok(exit_code),
+        };
+        let after = assessment
+            .as_ref()
+            .expect("assessment computed when --e4-rescore-out is set");
+        let comparison = match compare_e4_gate_assessments(&before, after) {
+            Ok(comparison) => comparison,
+            Err(error) => return emit_population_error(error),
+        };
+        let comparison_bytes = match canonical_e4_rescore_comparison_bytes(&comparison) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                return emit_serialization_refusal(CANON_GEO_E4_RESCORE_COMPARISON_VERSION, &error);
+            }
+        };
+        if let Err(error) = publish_geo_sidecar(rescore_out, &comparison_bytes) {
+            return emit_refusal(
+                RefusalCode::EIo,
+                "Geo evaluate could not publish the E4 rescore comparison sidecar",
+                json!({
+                    "e4_rescore_out": error.target,
+                    "temp_path": error.temp_path,
+                    "error": error.message,
+                }),
+                Some(
+                    "choose a writable --e4-rescore-out path and rerun canon geo evaluate"
+                        .to_string(),
+                ),
+            );
+        }
+    }
     match canonical_population_evaluation_bytes(&evaluated.evaluation) {
         Ok(bytes) => write_canonical(&bytes),
         Err(error) => emit_serialization_refusal("canon_geo_population_evaluation.v0", &error),
     }
+}
+
+fn read_e4_gate_assessment(path: &Path, next_command: &str) -> Result<GeoE4GateAssessment, u8> {
+    let assessment = read_request(
+        path,
+        "e4-before-assessment",
+        CANON_GEO_E4_GATE_ASSESSMENT_VERSION,
+        next_command,
+    )?;
+    validate_e4_gate_assessment(&assessment)
+        .map_err(|error| emit_population_error(error).unwrap_or(2))?;
+    Ok(assessment)
 }
 
 fn evaluate_run_workspace(

@@ -101,7 +101,7 @@ canon geo inspect --run <DIR> [--component <ID>] [--compare <OTHER_RUN>] [--reco
 canon geo ledger
 canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>
 canon geo ledger validate --ledger <LEDGER.json>
-canon geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>]
+canon geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>] [--e4-before-assessment <BEFORE.json> --e4-rescore-out <COMPARISON.json>]
 
 # Geo stage leaves (used by geo run and Demo 0)
 canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>

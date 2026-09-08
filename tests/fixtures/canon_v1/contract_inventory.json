@@ -412,7 +412,8 @@
       "primary_contracts": [
         "canon_geo_population_request.v0",
         "canon_geo_population_evaluation.v0",
-        "canon_geo_e4_gate_assessment.v0"
+        "canon_geo_e4_gate_assessment.v0",
+        "canon_geo_e4_rescore_comparison.v0"
       ],
       "action": "preserve"
     },
@@ -2260,6 +2261,14 @@
       "access_boundary": "public_crate_api",
       "crate_module": "canon::geo",
       "source_path": "schemas/canon.geo.e4_gate_assessment.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_e4_rescore_comparison.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.e4_rescore_comparison.v0.schema.json"
     },
     {
       "id": "canon_geo_deed_index_rows.v0",
