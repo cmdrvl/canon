@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use canon::geo::footprint_roll::GeoAssessmentRollGrossSqftPropertyBand;
 use canon::geo::{
     CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION,
     DEFAULT_MAX_MATERIALIZED_MODELS, GEO_ASSESSMENT_ROLL_GROSS_SQFT_BAND_CALIBRATION_BLAKE3,
@@ -9,8 +10,8 @@ use canon::geo::{
     GeoAssessmentRollGrossSqftRow, GeoBuildingCandidate, GeoBuildingFootprintRow,
     GeoCompositionModel, GeoCompositionProfile, GeoCompositionStatus, GeoCompositionUniverse,
     GeoEvidenceDisposition, GeoFootprintRollCalibration, GeoFootprintRollEvidenceRequest,
-    GeoFootprintRollLoanFields, GeoFootprintRollSourceConfig, GeoIntegerValueOrigin, GeoRhoBasis,
-    GeoRhoObservationKind, calibration_receipt_blake3,
+    GeoFootprintRollLoanFields, GeoFootprintRollSourceConfig, GeoIntegerValueOrigin,
+    GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoObservationKind, calibration_receipt_blake3,
     canonical_footprint_roll_evidence_request_bytes, compile_evidence,
     materialize_footprint_roll_evidence, solve_composition,
 };
@@ -86,6 +87,7 @@ fn source_record_ids(request: &GeoFootprintRollEvidenceRequest) -> GeoFootprintR
         loan_key: request.loan.loan_key.clone(),
         filed_size: request.loan.filed_size,
         size_measure: request.loan.size_measure.clone(),
+        property_class: request.loan.property_class.clone(),
         loan_county_property_count: request.loan.loan_county_property_count,
         size_source_record_id: request.loan.size_source_record_id.clone(),
         size_source_vintage: request.loan.size_source_vintage.clone(),
@@ -118,6 +120,7 @@ fn request_with(
             loan_key: "loan-fixture".to_string(),
             filed_size,
             size_measure: size_measure.to_string(),
+            property_class: None,
             loan_county_property_count: county_count,
             size_source_record_id: "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT:loan-fixture:size"
                 .to_string(),
@@ -479,6 +482,119 @@ fn any_universe_lot_without_active_footprint_row_suppresses_footprint_floor() {
             observation.contract_id != GEO_FOOTPRINT_BUILDING_COUNT_FLOOR_CONTRACT_ID
         }),
         "every universe lot must have an active footprint row before the floor is emitted"
+    );
+}
+
+#[test]
+fn property_class_profile_widens_mixed_use_gsf_band_without_core_branch() {
+    let mut request = request_with(
+        "SQFT",
+        Some(9_865),
+        None,
+        &["312_97th_unit_1", "312_97th_unit_2", "312_97th_unit_3"],
+    );
+    request.case_id = "312_97th_mixed_use_band_profile".to_string();
+    request.loan.property_class = Some("MU".to_string());
+    request
+        .calibration
+        .assessment_roll_gross_sqft_band
+        .property_class_bands = vec![GeoAssessmentRollGrossSqftPropertyBand {
+        property_class: "MU".to_string(),
+        lower_numerator: 7,
+        lower_denominator: 10,
+        upper_numerator: 32,
+        upper_denominator: 10,
+        upper_inclusive_padding: 1,
+        admissible_hard_band: true,
+        admission_policy: GeoRhoAdmissionPolicy::Declared,
+    }];
+    request.assessment_roll_rows = vec![
+        GeoAssessmentRollGrossSqftRow {
+            bbl: "312_97th_unit_1".to_string(),
+            gross_sqft: Some(4_000),
+            units: Some(1),
+        },
+        GeoAssessmentRollGrossSqftRow {
+            bbl: "312_97th_unit_2".to_string(),
+            gross_sqft: Some(6_000),
+            units: Some(1),
+        },
+        GeoAssessmentRollGrossSqftRow {
+            bbl: "312_97th_unit_3".to_string(),
+            gross_sqft: Some(20_008),
+            units: Some(1),
+        },
+    ];
+
+    let evidence =
+        materialize_footprint_roll_evidence(&request).expect("mixed-use evidence materializes");
+    let roll = evidence
+        .observations
+        .iter()
+        .find(|observation| {
+            observation.contract_id == GEO_ASSESSMENT_ROLL_GROSS_SQFT_BAND_CONTRACT_ID
+        })
+        .expect("roll observation");
+    let GeoRhoObservationKind::IntegerSumBand { min, max, .. } = &roll.observation else {
+        panic!("roll observation must be an integer sum band");
+    };
+    assert_eq!((*min, *max), (6_905, 31_569));
+
+    let roll_contract = evidence
+        .contracts
+        .iter()
+        .find(|contract| contract.id == GEO_ASSESSMENT_ROLL_GROSS_SQFT_BAND_CONTRACT_ID)
+        .expect("roll contract");
+    assert!(
+        roll_contract.method_version.contains("property_class_MU"),
+        "the selected property class must be visible in the rho method version"
+    );
+    let compilation = compile_evidence(&evidence).expect("mixed-use evidence compiles");
+    let solved =
+        solve_composition(&compilation.composition_request).expect("mixed-use residual solves");
+    assert!(
+        solved.residual_models.contains(&GeoCompositionModel {
+            parcels: parcels(&["312_97th_unit_1", "312_97th_unit_2", "312_97th_unit_3"]),
+            buildings: Vec::new(),
+        }),
+        "the mixed-use profile band keeps the three-unit truth set representable"
+    );
+}
+
+#[test]
+fn duplicate_property_class_gsf_bands_refuse_before_selection() {
+    let mut request = request_with("SQFT", Some(9_865), None, &["p1", "p2"]);
+    request.loan.property_class = Some("MU".to_string());
+    request
+        .calibration
+        .assessment_roll_gross_sqft_band
+        .property_class_bands = vec![
+        GeoAssessmentRollGrossSqftPropertyBand {
+            property_class: "MU".to_string(),
+            lower_numerator: 7,
+            lower_denominator: 10,
+            upper_numerator: 32,
+            upper_denominator: 10,
+            upper_inclusive_padding: 1,
+            admissible_hard_band: true,
+            admission_policy: GeoRhoAdmissionPolicy::Declared,
+        },
+        GeoAssessmentRollGrossSqftPropertyBand {
+            property_class: "MU".to_string(),
+            lower_numerator: 7,
+            lower_denominator: 10,
+            upper_numerator: 16,
+            upper_denominator: 10,
+            upper_inclusive_padding: 1,
+            admissible_hard_band: true,
+            admission_policy: GeoRhoAdmissionPolicy::Declared,
+        },
+    ];
+    let error = materialize_footprint_roll_evidence(&request)
+        .expect_err("duplicate property-class bands must refuse");
+    assert!(
+        error.message.contains("distinct"),
+        "unexpected error: {error:?}"
     );
 }
 

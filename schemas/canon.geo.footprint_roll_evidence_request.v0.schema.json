@@ -86,6 +86,9 @@
         "size_measure": {
           "type": "string"
         },
+        "property_class": {
+          "type": "string"
+        },
         "loan_county_property_count": {
           "$ref": "#/$defs/nullable_u64"
         },
@@ -202,12 +205,67 @@
         "upper_inclusive_padding": {
           "type": "integer",
           "minimum": 0
+        },
+        "admissible_hard_band": {
+          "type": "boolean"
+        },
+        "admission_policy": {
+          "$ref": "canon.geo.evidence_request.v0.schema.json#/$defs/rho_admission_policy"
+        },
+        "property_class_bands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/roll_property_class_band"
+          }
         }
       },
       "required": [
         "population_id",
         "calibration_blake3",
         "falsification_rule_id",
+        "lower_numerator",
+        "lower_denominator",
+        "upper_numerator",
+        "upper_denominator",
+        "upper_inclusive_padding"
+      ]
+    },
+    "roll_property_class_band": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "property_class": {
+          "type": "string"
+        },
+        "lower_numerator": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lower_denominator": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "upper_numerator": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "upper_denominator": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "upper_inclusive_padding": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "admissible_hard_band": {
+          "type": "boolean"
+        },
+        "admission_policy": {
+          "$ref": "canon.geo.evidence_request.v0.schema.json#/$defs/rho_admission_policy"
+        }
+      },
+      "required": [
+        "property_class",
         "lower_numerator",
         "lower_denominator",
         "upper_numerator",

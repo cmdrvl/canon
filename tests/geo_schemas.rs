@@ -27,9 +27,9 @@ use canon::geo::condo::{
     canonical_ledger_bridge_bytes,
 };
 use canon::geo::footprint_roll::{
-    CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION, GeoAssessmentRollGrossSqftRow,
-    GeoBuildingFootprintRow, GeoFootprintRollCalibration, GeoFootprintRollEvidenceRequest,
-    GeoFootprintRollLoanFields, GeoFootprintRollSourceConfig,
+    CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION, GeoAssessmentRollGrossSqftPropertyBand,
+    GeoAssessmentRollGrossSqftRow, GeoBuildingFootprintRow, GeoFootprintRollCalibration,
+    GeoFootprintRollEvidenceRequest, GeoFootprintRollLoanFields, GeoFootprintRollSourceConfig,
     canonical_footprint_roll_evidence_request_bytes,
 };
 use canon::geo::property::{
@@ -3001,6 +3001,10 @@ fn assessment_roll_owner_request() -> GeoAssessmentRollOwnerRequest {
                 .to_string(),
             exact_falsification_rule_id: "truth-lot-owner-not-exact".to_string(),
             affiliate_falsification_rule_id: "truth-lot-owner-mismatch".to_string(),
+            exact_admission_policy: GeoRhoAdmissionPolicy::HardOnlyWhenSupportedMembersAtLeast {
+                minimum_supported_members: 2,
+                fallback: GeoRhoAdmissionFallback::SoftWithWeight { cost_if_absent: 1 },
+            },
         },
         roll_rows: vec![
             GeoAssessmentRollLotRow {
@@ -3167,6 +3171,7 @@ fn footprint_roll_evidence_request_schema_matches_a_real_instance() {
             loan_key: "loan-footprint-roll".to_string(),
             filed_size: Some(1_000),
             size_measure: "SQFT".to_string(),
+            property_class: Some("MU".to_string()),
             loan_county_property_count: Some(3),
             size_source_record_id:
                 "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT:loan-footprint-roll:size".to_string(),
@@ -3177,7 +3182,25 @@ fn footprint_roll_evidence_request_schema_matches_a_real_instance() {
             county_property_count_source_vintage: "current".to_string(),
         },
         source_config: GeoFootprintRollSourceConfig::default(),
-        calibration: GeoFootprintRollCalibration::default(),
+        calibration: GeoFootprintRollCalibration {
+            assessment_roll_gross_sqft_band:
+                canon::geo::footprint_roll::GeoAssessmentRollGrossSqftBandCalibration {
+                    property_class_bands: vec![GeoAssessmentRollGrossSqftPropertyBand {
+                        property_class: "MU".to_string(),
+                        lower_numerator: 7,
+                        lower_denominator: 10,
+                        upper_numerator: 32,
+                        upper_denominator: 10,
+                        upper_inclusive_padding: 1,
+                        admissible_hard_band: false,
+                        admission_policy: GeoRhoAdmissionPolicy::DiagnosticOnly {
+                            reason: "schema_mixed_use_band_retained_falsification".to_string(),
+                        },
+                    }],
+                    ..Default::default()
+                },
+            ..Default::default()
+        },
         assessment_roll_rows: vec![
             GeoAssessmentRollGrossSqftRow {
                 bbl: "1000010001".to_string(),

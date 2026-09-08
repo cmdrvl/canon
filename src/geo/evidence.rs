@@ -766,7 +766,9 @@ fn validate_contract_policy_references(
     Ok(())
 }
 
-fn validate_admission_policy(policy: &GeoRhoAdmissionPolicy) -> Result<(), GeoEvidenceError> {
+pub(crate) fn validate_admission_policy(
+    policy: &GeoRhoAdmissionPolicy,
+) -> Result<(), GeoEvidenceError> {
     match policy {
         GeoRhoAdmissionPolicy::Declared => {}
         GeoRhoAdmissionPolicy::HardOnlyWhenCorroborated {

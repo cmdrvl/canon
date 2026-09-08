@@ -15,7 +15,7 @@ use super::{
     evidence::{
         CANON_GEO_EVIDENCE_REQUEST_VERSION, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest,
         GeoEvidenceRecordRef, GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoContract,
-        GeoRhoObservation, GeoRhoObservationKind, compile_evidence,
+        GeoRhoObservation, GeoRhoObservationKind, compile_evidence, validate_admission_policy,
     },
     stack::{
         CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION, GeoPopulationCaseEvidenceOverlay,
@@ -48,6 +48,10 @@ const EXACT_METHOD_ID: &str = "assessment-roll-owner-exact-exclusion";
 const AFFILIATE_METHOD_ID: &str = "assessment-roll-owner-token-preference";
 const OWNER_METHOD_VERSION: &str = "1.0.0";
 const OWNER_CONTRACT_VERSION: &str = "1.0.0";
+
+fn is_default_admission_policy(value: &GeoRhoAdmissionPolicy) -> bool {
+    matches!(value, GeoRhoAdmissionPolicy::Declared)
+}
 
 const STOP_WORDS: &[&str] = &[
     "LLC",
@@ -95,6 +99,8 @@ pub struct GeoAssessmentRollOwnerCalibration {
     pub calibration_blake3: String,
     pub exact_falsification_rule_id: String,
     pub affiliate_falsification_rule_id: String,
+    #[serde(default, skip_serializing_if = "is_default_admission_policy")]
+    pub exact_admission_policy: GeoRhoAdmissionPolicy,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -518,6 +524,12 @@ pub fn canonicalize_assessment_roll_owner_request(
         "calibration.affiliate_falsification_rule_id",
         &request.calibration.affiliate_falsification_rule_id,
     )?;
+    validate_admission_policy(&request.calibration.exact_admission_policy).map_err(|error| {
+        GeoAssessmentRollOwnerError::invalid(
+            "Geo assessment-roll owner exact admission policy is invalid",
+            error.detail,
+        )
+    })?;
 
     let mut canonical = request.clone();
     canonical.population = canonicalize_population(&canonical.population)?;
@@ -762,7 +774,7 @@ fn exact_contract(request: &GeoAssessmentRollOwnerRequest) -> GeoRhoContract {
             calibration_blake3: request.calibration.calibration_blake3.clone(),
             falsification_rule_id: request.calibration.exact_falsification_rule_id.clone(),
             admissible_hard_band: true,
-            admission_policy: GeoRhoAdmissionPolicy::Declared,
+            admission_policy: request.calibration.exact_admission_policy.clone(),
         },
     }
 }

@@ -19,8 +19,8 @@ use canon::geo::{
     GeoFootprintRollCalibration, GeoFootprintRollEvidenceRequest, GeoFootprintRollLoanFields,
     GeoFootprintRollSourceConfig, GeoPadBblRow, GeoPopulationCaseEvaluation,
     GeoPopulationCaseStatus, GeoPopulationEvaluationArtifact, GeoPopulationEvaluationRequest,
-    GeoPopulationEvidenceStackRequest, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind,
-    build_condo_bridge, canonical_population_evaluation_bytes,
+    GeoPopulationEvidenceStackRequest, GeoRhoAdmissionPolicy, GeoRhoContract, GeoRhoObservation,
+    GeoRhoObservationKind, build_condo_bridge, canonical_population_evaluation_bytes,
     evaluate_population_with_run_artifacts, materialize_footprint_roll_evidence,
     stack_population_evidence,
 };
@@ -330,6 +330,7 @@ fn build_measurement() -> MeasurementBundle {
             )),
             exact_falsification_rule_id: "truth-lot-owner-not-exact".to_string(),
             affiliate_falsification_rule_id: "truth-lot-owner-mismatch".to_string(),
+            exact_admission_policy: GeoRhoAdmissionPolicy::Declared,
         },
         roll_rows: roll_stage_rows,
         party_rows,
@@ -745,6 +746,7 @@ fn footprint_roll_overlay_for_e4_cases(
                 } else {
                     "UNITS".to_string()
                 },
+                property_class: None,
                 loan_county_property_count: footprint_count_by_subject
                     .get(d1_subject.as_str())
                     .copied(),

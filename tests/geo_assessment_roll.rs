@@ -9,10 +9,11 @@ use canon::geo::assessment_roll::{
     normalize_assessment_roll_owner_name, produce_assessment_roll_owner_evidence,
 };
 use canon::geo::{
-    GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoPopulationCaseEvidenceOverlay,
-    GeoPopulationCaseStatus, GeoPopulationEvaluationArtifact, GeoPopulationEvaluationRequest,
-    GeoPopulationEvidenceStackRequest, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
-    evaluate_population, stack_population_evidence,
+    GeoEvidenceCompilationRequest, GeoEvidenceDisposition, GeoEvidenceRecordRef,
+    GeoPopulationCaseEvidenceOverlay, GeoPopulationCaseStatus, GeoPopulationEvaluationArtifact,
+    GeoPopulationEvaluationRequest, GeoPopulationEvidenceStackRequest, GeoRhoAdmissionFallback,
+    GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind, evaluate_population,
+    stack_population_evidence,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -313,6 +314,112 @@ fn affiliate_only_match_never_emits_the_hard_exact_band() {
     );
 }
 
+#[test]
+fn exact_owner_policy_demotes_singleton_match_before_it_can_exclude_truth() {
+    let population = GeoPopulationEvaluationRequest {
+        version: canon::geo::CANON_GEO_POPULATION_REQUEST_VERSION.to_string(),
+        max_cases: 1,
+        cases: vec![canon::geo::GeoLabeledCompositionCase {
+            id: "case-owner-policy-demotion".to_string(),
+            evidence: GeoEvidenceCompilationRequest {
+                version: canon::geo::CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+                profile: canon::geo::GeoCompositionProfile::parcel(),
+                universe: canon::geo::GeoCompositionUniverse {
+                    parcels: vec!["1000000001".to_string(), "1000000002".to_string()],
+                    buildings: Vec::new(),
+                },
+                contracts: Vec::new(),
+                observations: Vec::new(),
+                max_assignments: 64,
+                max_materialized_models: 64,
+            },
+            truth_plane: canon::geo::GeoTruthPlane::HumanAdjudication,
+            truth: canon::geo::GeoCompositionModel {
+                parcels: vec!["1000000001".to_string(), "1000000002".to_string()],
+                buildings: Vec::new(),
+            },
+        }],
+    };
+    let mut calibration = calibration_from_fixture_contracts(
+        &fixture_contract(GEO_ASSESSMENT_ROLL_OWNER_EXACT_CONTRACT_ID),
+        &fixture_contract(GEO_ASSESSMENT_ROLL_OWNER_AFFILIATE_CONTRACT_ID),
+    );
+    calibration.exact_admission_policy =
+        GeoRhoAdmissionPolicy::HardOnlyWhenSupportedMembersAtLeast {
+            minimum_supported_members: 2,
+            fallback: GeoRhoAdmissionFallback::SoftWithWeight { cost_if_absent: 1 },
+        };
+    let artifact = produce_assessment_roll_owner_evidence(&GeoAssessmentRollOwnerRequest {
+        version: CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION.to_string(),
+        proof_class: GeoAssessmentRollOwnerProofClass::Fixture,
+        population,
+        case_documents: vec![GeoAssessmentRollCaseDocument {
+            case_id: "case-owner-policy-demotion".to_string(),
+            document_id: "doc-owner-policy-demotion".to_string(),
+        }],
+        contract_source: contract_source(),
+        calibration,
+        roll_rows: vec![
+            GeoAssessmentRollLotRow {
+                bbl: "1000000001".to_string(),
+                owner: "ACME BORROWER LLC".to_string(),
+                gross_sqft: "1000".to_string(),
+                units: "1".to_string(),
+                condo_number: String::new(),
+                source_record_id:
+                    "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.PROPERTY_VALUATION:FY2026P3:1000000001"
+                        .to_string(),
+                source_vintage: "FY2026P3".to_string(),
+            },
+            GeoAssessmentRollLotRow {
+                bbl: "1000000002".to_string(),
+                owner: "AFFILIATE HOLDINGS LLC".to_string(),
+                gross_sqft: "1000".to_string(),
+                units: "1".to_string(),
+                condo_number: String::new(),
+                source_record_id:
+                    "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.PROPERTY_VALUATION:FY2026P3:1000000002"
+                        .to_string(),
+                source_vintage: "FY2026P3".to_string(),
+            },
+        ],
+        party_rows: vec![GeoAssessmentRollPartyRow {
+            document_id: "doc-owner-policy-demotion".to_string(),
+            party_type: "1".to_string(),
+            party_name_norm: "ACME BORROWER LLC".to_string(),
+            source_record_id:
+                "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES:doc-owner-policy-demotion:ACME_BORROWER_LLC"
+                    .to_string(),
+            source_vintage: "latest".to_string(),
+        }],
+        max_cases: 1,
+        max_roll_rows: 2,
+        max_party_rows: 1,
+        max_overlay_observations: 4,
+    })
+    .expect("owner policy request produces overlay");
+
+    let stacked = stack_population_evidence(&artifact.widened_population, &artifact.overlay)
+        .expect("owner policy overlay stacks");
+    let compilation = canon::geo::compile_evidence(&stacked.population.cases[0].evidence)
+        .expect("owner policy evidence compiles");
+    assert!(compilation.composition_request.hard_constraints.is_empty());
+    assert_eq!(compilation.composition_request.soft_preferences.len(), 1);
+    let exact_admission = compilation
+        .admissions
+        .iter()
+        .find(|admission| admission.contract.id == GEO_ASSESSMENT_ROLL_OWNER_EXACT_CONTRACT_ID)
+        .expect("exact owner admission");
+    assert_eq!(
+        exact_admission.disposition,
+        GeoEvidenceDisposition::SoftPreference
+    );
+    assert_eq!(
+        exact_admission.admission_reason.as_deref(),
+        Some("rho_member_support_not_met")
+    );
+}
+
 fn assessment_roll_owner_fixture_request(
     population: &GeoPopulationEvaluationRequest,
     retained_overlay: &GeoPopulationEvidenceStackRequest,
@@ -450,6 +557,7 @@ fn calibration_from_fixture_contracts(
         calibration_blake3: calibration_blake3.clone(),
         exact_falsification_rule_id: exact_falsification_rule_id.clone(),
         affiliate_falsification_rule_id: affiliate_falsification_rule_id.clone(),
+        exact_admission_policy: GeoRhoAdmissionPolicy::Declared,
     }
 }
 

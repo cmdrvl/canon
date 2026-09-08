@@ -11,7 +11,7 @@ use super::{
     GeoCompositionUniverse, GeoEntityLevel, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest,
     GeoEvidenceError, GeoEvidenceRecordRef, GeoIntegerMeasure, GeoIntegerMemberValue,
     GeoIntegerValueOrigin, GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoContract, GeoRhoObservation,
-    GeoRhoObservationKind, compile_evidence,
+    GeoRhoObservationKind, compile_evidence, evidence::validate_admission_policy,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -67,6 +67,18 @@ const FOOTPRINT_LINEAGE: [&str; 2] = [
     "EDGAR_DB.SOURCE.NYC_BUILDING_FOOTPRINTS_HOT:latest",
 ];
 
+fn default_true() -> bool {
+    true
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
+}
+
+fn is_default_admission_policy(value: &GeoRhoAdmissionPolicy) -> bool {
+    matches!(value, GeoRhoAdmissionPolicy::Declared)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeoFootprintRollEvidenceRequest {
@@ -95,6 +107,8 @@ pub struct GeoFootprintRollLoanFields {
     pub loan_key: String,
     pub filed_size: Option<u64>,
     pub size_measure: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub property_class: Option<String>,
     pub loan_county_property_count: Option<u64>,
     pub size_source_record_id: String,
     pub size_source_vintage: String,
@@ -150,6 +164,27 @@ pub struct GeoAssessmentRollGrossSqftBandCalibration {
     pub upper_numerator: u64,
     pub upper_denominator: u64,
     pub upper_inclusive_padding: u64,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub admissible_hard_band: bool,
+    #[serde(default, skip_serializing_if = "is_default_admission_policy")]
+    pub admission_policy: GeoRhoAdmissionPolicy,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub property_class_bands: Vec<GeoAssessmentRollGrossSqftPropertyBand>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoAssessmentRollGrossSqftPropertyBand {
+    pub property_class: String,
+    pub lower_numerator: u64,
+    pub lower_denominator: u64,
+    pub upper_numerator: u64,
+    pub upper_denominator: u64,
+    pub upper_inclusive_padding: u64,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub admissible_hard_band: bool,
+    #[serde(default, skip_serializing_if = "is_default_admission_policy")]
+    pub admission_policy: GeoRhoAdmissionPolicy,
 }
 
 impl Default for GeoAssessmentRollGrossSqftBandCalibration {
@@ -163,6 +198,9 @@ impl Default for GeoAssessmentRollGrossSqftBandCalibration {
             upper_numerator: 16,
             upper_denominator: 10,
             upper_inclusive_padding: 1,
+            admissible_hard_band: true,
+            admission_policy: GeoRhoAdmissionPolicy::Declared,
+            property_class_bands: Vec::new(),
         }
     }
 }
@@ -302,6 +340,7 @@ pub fn materialize_footprint_roll_evidence(
     if let Some(observation) = roll_gross_sqft_band_observation(&request, &roll_rows)? {
         contracts.push(assessment_roll_gross_sqft_band_contract(
             &request.source_config,
+            &request.loan,
             &request.calibration.assessment_roll_gross_sqft_band,
         ));
         observations.push(observation);
@@ -374,6 +413,11 @@ pub fn canonicalize_footprint_roll_evidence_request(
     validate_calibration(&request.calibration)?;
 
     let mut canonical = request.clone();
+    canonical
+        .calibration
+        .assessment_roll_gross_sqft_band
+        .property_class_bands
+        .sort_by(|left, right| left.property_class.cmp(&right.property_class));
     validate_and_sort_ids("universe.parcels", &mut canonical.universe.parcels)?;
     let parcel_set = canonical
         .universe
@@ -465,19 +509,20 @@ fn roll_gross_sqft_band_observation(
 
     values.sort();
     let calibration = &request.calibration.assessment_roll_gross_sqft_band;
+    let band = select_roll_gross_sqft_band(&request.loan, calibration);
     let min = floor_ratio(
         filed_size,
-        calibration.lower_numerator,
-        calibration.lower_denominator,
+        band.lower_numerator,
+        band.lower_denominator,
         "assessment roll gross sqft lower band",
     )?;
     let max = floor_ratio(
         filed_size,
-        calibration.upper_numerator,
-        calibration.upper_denominator,
+        band.upper_numerator,
+        band.upper_denominator,
         "assessment roll gross sqft upper band",
     )?
-    .checked_add(calibration.upper_inclusive_padding)
+    .checked_add(band.upper_inclusive_padding)
     .ok_or_else(|| GeoFootprintRollEvidenceError::overflow("assessment roll upper padding"))?;
 
     Ok(Some(GeoRhoObservation {
@@ -554,10 +599,73 @@ fn footprint_building_count_floor_observation(
     }))
 }
 
+struct SelectedGrossSqftBand<'a> {
+    property_class: Option<&'a str>,
+    lower_numerator: u64,
+    lower_denominator: u64,
+    upper_numerator: u64,
+    upper_denominator: u64,
+    upper_inclusive_padding: u64,
+    admissible_hard_band: bool,
+    admission_policy: &'a GeoRhoAdmissionPolicy,
+}
+
+fn select_roll_gross_sqft_band<'a>(
+    loan: &'a GeoFootprintRollLoanFields,
+    calibration: &'a GeoAssessmentRollGrossSqftBandCalibration,
+) -> SelectedGrossSqftBand<'a> {
+    if let Some(property_class) = loan.property_class.as_deref()
+        && let Some(band) = calibration
+            .property_class_bands
+            .iter()
+            .find(|band| band.property_class == property_class)
+    {
+        return SelectedGrossSqftBand {
+            property_class: Some(band.property_class.as_str()),
+            lower_numerator: band.lower_numerator,
+            lower_denominator: band.lower_denominator,
+            upper_numerator: band.upper_numerator,
+            upper_denominator: band.upper_denominator,
+            upper_inclusive_padding: band.upper_inclusive_padding,
+            admissible_hard_band: band.admissible_hard_band,
+            admission_policy: &band.admission_policy,
+        };
+    }
+
+    SelectedGrossSqftBand {
+        property_class: None,
+        lower_numerator: calibration.lower_numerator,
+        lower_denominator: calibration.lower_denominator,
+        upper_numerator: calibration.upper_numerator,
+        upper_denominator: calibration.upper_denominator,
+        upper_inclusive_padding: calibration.upper_inclusive_padding,
+        admissible_hard_band: calibration.admissible_hard_band,
+        admission_policy: &calibration.admission_policy,
+    }
+}
+
+fn gross_sqft_band_method_version(band: &SelectedGrossSqftBand<'_>) -> String {
+    let mut version = format!(
+        "1.0.0_band_{}_over_{}_to_{}_over_{}_upper_plus_{}",
+        band.lower_numerator,
+        band.lower_denominator,
+        band.upper_numerator,
+        band.upper_denominator,
+        band.upper_inclusive_padding
+    );
+    if let Some(property_class) = band.property_class {
+        version.push_str("_property_class_");
+        version.push_str(property_class);
+    }
+    version
+}
+
 fn assessment_roll_gross_sqft_band_contract(
     source_config: &GeoFootprintRollSourceConfig,
+    loan: &GeoFootprintRollLoanFields,
     calibration: &GeoAssessmentRollGrossSqftBandCalibration,
 ) -> GeoRhoContract {
+    let band = select_roll_gross_sqft_band(loan, calibration);
     GeoRhoContract {
         id: GEO_ASSESSMENT_ROLL_GROSS_SQFT_BAND_CONTRACT_ID.to_string(),
         version: "1.0.0".to_string(),
@@ -572,21 +680,14 @@ fn assessment_roll_gross_sqft_band_contract(
             .map(|id| (*id).to_string())
             .collect(),
         method_id: "asserted-sqft-roll-gross-sum-band".to_string(),
-        method_version: format!(
-            "1.0.0_band_{}_over_{}_to_{}_over_{}_upper_plus_{}",
-            calibration.lower_numerator,
-            calibration.lower_denominator,
-            calibration.upper_numerator,
-            calibration.upper_denominator,
-            calibration.upper_inclusive_padding
-        ),
+        method_version: gross_sqft_band_method_version(&band),
         claim_role: GeoEvidenceClaimRole::AttributeObservation,
         basis: GeoRhoBasis::EmpiricalCalibration {
             population_id: calibration.population_id.clone(),
             calibration_blake3: calibration.calibration_blake3.clone(),
             falsification_rule_id: calibration.falsification_rule_id.clone(),
-            admissible_hard_band: true,
-            admission_policy: GeoRhoAdmissionPolicy::Declared,
+            admissible_hard_band: band.admissible_hard_band,
+            admission_policy: band.admission_policy.clone(),
         },
     }
 }
@@ -678,6 +779,7 @@ fn loan_size_source_record(
             field: "SIZE",
             value,
             size_measure: &loan.size_measure,
+            property_class: loan.property_class.as_deref(),
         },
     )
 }
@@ -758,6 +860,8 @@ struct LoanSizeSourcePayload<'a> {
     field: &'static str,
     value: u64,
     size_measure: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    property_class: Option<&'a str>,
 }
 
 #[derive(Serialize)]
@@ -772,6 +876,9 @@ fn validate_loan_fields(
 ) -> Result<(), GeoFootprintRollEvidenceError> {
     validate_identifier("loan.loan_key", &loan.loan_key)?;
     validate_identifier("loan.size_measure", &loan.size_measure)?;
+    if let Some(property_class) = &loan.property_class {
+        validate_identifier("loan.property_class", property_class)?;
+    }
     validate_identifier("loan.size_source_record_id", &loan.size_source_record_id)?;
     validate_identifier("loan.size_source_vintage", &loan.size_source_vintage)?;
     validate_identifier(
@@ -834,19 +941,44 @@ fn validate_calibration(
         "calibration.roll.falsification_rule_id",
         &roll.falsification_rule_id,
     )?;
-    if roll.lower_denominator == 0 || roll.upper_denominator == 0 {
-        return Err(GeoFootprintRollEvidenceError::invalid(
-            "Geo roll sqft calibration denominators must be positive",
-            [("field", "calibration.assessment_roll_gross_sqft_band")],
-        ));
-    }
-    if u128::from(roll.lower_numerator) * u128::from(roll.upper_denominator)
-        > u128::from(roll.upper_numerator) * u128::from(roll.lower_denominator)
-    {
-        return Err(GeoFootprintRollEvidenceError::invalid(
-            "Geo roll sqft calibration lower band exceeds upper band",
-            [("field", "calibration.assessment_roll_gross_sqft_band")],
-        ));
+    validate_roll_band(
+        "calibration.assessment_roll_gross_sqft_band",
+        roll.lower_numerator,
+        roll.lower_denominator,
+        roll.upper_numerator,
+        roll.upper_denominator,
+    )?;
+    validate_admission_policy(&roll.admission_policy).map_err(|error| {
+        GeoFootprintRollEvidenceError::invalid(
+            "Geo roll sqft base admission policy is invalid",
+            error.detail,
+        )
+    })?;
+    let mut property_classes = BTreeSet::new();
+    for band in &roll.property_class_bands {
+        validate_identifier(
+            "calibration.assessment_roll_gross_sqft_band.property_class_bands[].property_class",
+            &band.property_class,
+        )?;
+        if !property_classes.insert(band.property_class.as_str()) {
+            return Err(GeoFootprintRollEvidenceError::invalid(
+                "Geo roll sqft property-class bands must be distinct",
+                [("property_class", band.property_class.as_str())],
+            ));
+        }
+        validate_roll_band(
+            "calibration.assessment_roll_gross_sqft_band.property_class_bands[]",
+            band.lower_numerator,
+            band.lower_denominator,
+            band.upper_numerator,
+            band.upper_denominator,
+        )?;
+        validate_admission_policy(&band.admission_policy).map_err(|error| {
+            GeoFootprintRollEvidenceError::invalid(
+                "Geo roll sqft property-class admission policy is invalid",
+                error.detail,
+            )
+        })?;
     }
 
     let footprint = &calibration.footprint_building_count_floor;
@@ -862,6 +994,30 @@ fn validate_calibration(
         "calibration.footprint.falsification_rule_id",
         &footprint.falsification_rule_id,
     )
+}
+
+fn validate_roll_band(
+    field: &'static str,
+    lower_numerator: u64,
+    lower_denominator: u64,
+    upper_numerator: u64,
+    upper_denominator: u64,
+) -> Result<(), GeoFootprintRollEvidenceError> {
+    if lower_denominator == 0 || upper_denominator == 0 {
+        return Err(GeoFootprintRollEvidenceError::invalid(
+            "Geo roll sqft calibration denominators must be positive",
+            [("field", field)],
+        ));
+    }
+    if u128::from(lower_numerator) * u128::from(upper_denominator)
+        > u128::from(upper_numerator) * u128::from(lower_denominator)
+    {
+        return Err(GeoFootprintRollEvidenceError::invalid(
+            "Geo roll sqft calibration lower band exceeds upper band",
+            [("field", field)],
+        ));
+    }
+    Ok(())
 }
 
 fn validate_and_sort_ids(
