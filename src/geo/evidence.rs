@@ -151,6 +151,24 @@ pub struct GeoEvidenceRecordRef {
     pub record_blake3: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoCollateralCompletenessAssertion {
+    AssertedComplete,
+    Partial,
+    Unasserted,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoCollateralCompletenessObservationRequest {
+    pub observation_id_prefix: String,
+    pub contract_id: String,
+    pub source_records: Vec<GeoEvidenceRecordRef>,
+    pub level: GeoEntityLevel,
+    pub members: Vec<GeoEntityRef>,
+    pub assertion: GeoCollateralCompletenessAssertion,
+}
+
 /// Closed interval in whole UTC days since 1970-01-01. Integer days avoid
 /// locale/time-zone ambiguity while allowing deliberately wide intervals for
 /// coarse source dates.
@@ -218,6 +236,45 @@ pub struct GeoEvidenceCompilationRequest {
 
 fn default_max_materialized_models() -> u64 {
     super::composition::DEFAULT_MAX_MATERIALIZED_MODELS
+}
+
+pub fn collateral_completeness_observations(
+    request: &GeoCollateralCompletenessObservationRequest,
+) -> Result<Vec<GeoRhoObservation>, GeoEvidenceError> {
+    validate_identifier(
+        "collateral_completeness.observation_id_prefix",
+        &request.observation_id_prefix,
+    )?;
+    validate_identifier("collateral_completeness.contract_id", &request.contract_id)?;
+    validate_source_records(&request.observation_id_prefix, &request.source_records)?;
+    validate_supported_level("collateral_completeness.level", request.level)?;
+    validate_completeness_members(request.level, &request.members)?;
+
+    if request.assertion != GeoCollateralCompletenessAssertion::AssertedComplete {
+        return Ok(Vec::new());
+    }
+
+    Ok(vec![
+        GeoRhoObservation {
+            id: format!("{}:all_of", request.observation_id_prefix),
+            contract_id: request.contract_id.clone(),
+            source_records: request.source_records.clone(),
+            valid_time: None,
+            observation: GeoRhoObservationKind::AllOf {
+                members: request.members.clone(),
+            },
+        },
+        GeoRhoObservation {
+            id: format!("{}:exact_cardinality", request.observation_id_prefix),
+            contract_id: request.contract_id.clone(),
+            source_records: request.source_records.clone(),
+            valid_time: None,
+            observation: GeoRhoObservationKind::ExactCardinality {
+                level: request.level,
+                count: request.members.len(),
+            },
+        },
+    ])
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -1525,6 +1582,26 @@ fn validate_distinct_members(
             return Err(GeoEvidenceError::invalid(
                 "Geo evidence observation members must be distinct",
                 [("field", field), ("member_id", member.id.as_str())],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_completeness_members(
+    level: GeoEntityLevel,
+    members: &[GeoEntityRef],
+) -> Result<(), GeoEvidenceError> {
+    validate_distinct_members("collateral_completeness.members", members)?;
+    for member in members {
+        if member.level != level {
+            return Err(GeoEvidenceError::invalid(
+                "Geo collateral completeness members must match the asserted level",
+                [
+                    ("level", evidence_level_name(level)),
+                    ("member_level", evidence_level_name(member.level)),
+                    ("member_id", member.id.as_str()),
+                ],
             ));
         }
     }

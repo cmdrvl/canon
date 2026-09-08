@@ -1,18 +1,19 @@
 use canon::geo::{
     CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
     CANON_GEO_POPULATION_REQUEST_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoBuildingCandidate,
-    GeoCandidateReachStatus, GeoCompositionModel, GeoCompositionProfile, GeoCompositionRequest,
-    GeoCompositionStatus, GeoCompositionUniverse, GeoEntityLevel, GeoEntityRef,
-    GeoEvidenceClaimRole, GeoEvidenceCompilationRequest, GeoEvidenceCoverageStatus,
+    GeoCandidateReachStatus, GeoCollateralCompletenessAssertion,
+    GeoCollateralCompletenessObservationRequest, GeoCompositionModel, GeoCompositionProfile,
+    GeoCompositionRequest, GeoCompositionStatus, GeoCompositionUniverse, GeoEntityLevel,
+    GeoEntityRef, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest, GeoEvidenceCoverageStatus,
     GeoEvidenceDisposition, GeoEvidenceRecordRef, GeoHardConstraintKind, GeoIntegerMeasure,
     GeoIntegerMemberValue, GeoIntegerValueOrigin, GeoLabeledCompositionCase,
     GeoPopulationCaseStatus, GeoPopulationErrorCode, GeoPopulationEvaluationArtifact,
     GeoPopulationEvaluationRequest, GeoPopulationSummary, GeoPopulationTruthPlaneSummary,
     GeoResolvedClaimClass, GeoRhoAdmissionFallback, GeoRhoAdmissionPolicy, GeoRhoBasis,
     GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoRhoSoundness, GeoTruthPlane,
-    GeoValidTimeInterval, canonical_evidence_compilation_bytes, compile_evidence,
-    evaluate_population, solve_composition, validate_evidence_compilation_artifact,
-    validate_population_evaluation_artifact,
+    GeoValidTimeInterval, canonical_evidence_compilation_bytes,
+    collateral_completeness_observations, compile_evidence, evaluate_population, solve_composition,
+    validate_evidence_compilation_artifact, validate_population_evaluation_artifact,
 };
 use serde::Deserialize;
 
@@ -107,8 +108,28 @@ fn source_record(id: &str) -> GeoEvidenceRecordRef {
     }
 }
 
+fn completeness_observation_request(
+    assertion: GeoCollateralCompletenessAssertion,
+) -> GeoCollateralCompletenessObservationRequest {
+    GeoCollateralCompletenessObservationRequest {
+        observation_id_prefix: "schedule-complete".to_string(),
+        contract_id: "rho.collateral.schedule_complete.fixture".to_string(),
+        source_records: vec![source_record("schedule-complete-row")],
+        level: GeoEntityLevel::Parcel,
+        members: vec![
+            GeoEntityRef::new(GeoEntityLevel::Parcel, "p1"),
+            GeoEntityRef::new(GeoEntityLevel::Parcel, "p2"),
+        ],
+        assertion,
+    }
+}
+
 #[test]
 fn completeness_observations_compile_to_all_of_and_exact_cardinality() {
+    let observations = collateral_completeness_observations(&completeness_observation_request(
+        GeoCollateralCompletenessAssertion::AssertedComplete,
+    ))
+    .expect("asserted completeness request builds observations");
     let request = GeoEvidenceCompilationRequest {
         version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
         profile: Default::default(),
@@ -117,30 +138,7 @@ fn completeness_observations_compile_to_all_of_and_exact_cardinality() {
             "rho.collateral.schedule_complete.fixture",
             GeoRhoSoundness::LogicallySound,
         )],
-        observations: vec![
-            GeoRhoObservation {
-                id: "schedule-all-of".to_string(),
-                contract_id: "rho.collateral.schedule_complete.fixture".to_string(),
-                source_records: vec![source_record("schedule-all-of-row")],
-                valid_time: None,
-                observation: GeoRhoObservationKind::AllOf {
-                    members: vec![
-                        GeoEntityRef::new(GeoEntityLevel::Parcel, "p1"),
-                        GeoEntityRef::new(GeoEntityLevel::Parcel, "p2"),
-                    ],
-                },
-            },
-            GeoRhoObservation {
-                id: "schedule-exact-cardinality".to_string(),
-                contract_id: "rho.collateral.schedule_complete.fixture".to_string(),
-                source_records: vec![source_record("schedule-exact-cardinality-row")],
-                valid_time: None,
-                observation: GeoRhoObservationKind::ExactCardinality {
-                    level: GeoEntityLevel::Parcel,
-                    count: 2,
-                },
-            },
-        ],
+        observations,
         max_assignments: 64,
         max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
     };
@@ -303,6 +301,22 @@ fn partial_or_unadmitted_completeness_does_not_exclude_supersets() {
         GeoCompositionStatus::Ambiguous
     );
     assert_eq!(diagnostic_composition.summary.residual_model_count, 7);
+}
+
+#[test]
+fn unasserted_or_partial_completeness_builder_emits_no_pruning_observations() {
+    for assertion in [
+        GeoCollateralCompletenessAssertion::Partial,
+        GeoCollateralCompletenessAssertion::Unasserted,
+    ] {
+        let observations =
+            collateral_completeness_observations(&completeness_observation_request(assertion))
+                .expect("non-complete schedule request is valid but non-pruning");
+        assert!(
+            observations.is_empty(),
+            "partial or unasserted completeness must abstain rather than exclude subsets"
+        );
+    }
 }
 
 fn building_universe(ids: &[&str]) -> GeoCompositionUniverse {
