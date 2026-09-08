@@ -501,6 +501,102 @@ fn t23_geo_ledger_build_cli_refuses_mismatched_valid_artifacts() {
 }
 
 #[test]
+fn t23_geo_ledger_build_cli_refuses_missing_bound_composition_artifact() {
+    let temp = tempdir().expect("tempdir");
+    let evidence = compile_evidence(&sample_evidence_request()).expect("seed evidence compiles");
+    let mut seed = fixture_build_seed();
+    seed.rows.truncate(1);
+    let seed_path = write_seed_fixture(temp.path(), "seed.json", &seed);
+    let evidence_path = write_evidence_fixture(temp.path(), "evidence.json", &evidence);
+
+    let assert = canon_command()
+        .arg("geo")
+        .arg("ledger")
+        .arg("build")
+        .arg("--seed")
+        .arg(&seed_path)
+        .arg("--evidence")
+        .arg(format!("evidence-a={}", evidence_path.display()))
+        .assert()
+        .failure();
+    assert!(assert.get_output().stderr.is_empty());
+    let output: Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("refusal JSON parses");
+    assert_eq!(output["outcome"], "REFUSAL");
+    assert_eq!(output["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(
+        output["refusal"]["detail"]["geo_ledger_error_code"],
+        "ledger_sets_without_artifacts"
+    );
+    assert_eq!(
+        output["refusal"]["detail"]["detail"]["field"],
+        "composition_artifact_ref"
+    );
+    assert_eq!(
+        output["refusal"]["detail"]["detail"]["artifact_ref"],
+        "solve-a"
+    );
+    assert_eq!(
+        output["refusal"]["detail"]["detail"]["loan_id"],
+        "loan-build-a"
+    );
+    assert_eq!(
+        output["refusal"]["next_command"],
+        "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>"
+    );
+}
+
+#[test]
+fn t23_geo_ledger_build_cli_refuses_missing_bound_evidence_artifact() {
+    let temp = tempdir().expect("tempdir");
+    let evidence = compile_evidence(&sample_evidence_request()).expect("seed evidence compiles");
+    let composition = with_evidence_reference(
+        sample_composition(GeoCompositionStatus::Resolved, vec!["parcel:seed:1"], 1),
+        &evidence,
+    );
+    let mut seed = fixture_build_seed();
+    seed.rows.truncate(1);
+    let seed_path = write_seed_fixture(temp.path(), "seed.json", &seed);
+    let composition_path = write_composition_fixture(temp.path(), "solve.json", &composition);
+
+    let assert = canon_command()
+        .arg("geo")
+        .arg("ledger")
+        .arg("build")
+        .arg("--seed")
+        .arg(&seed_path)
+        .arg("--composition")
+        .arg(format!("solve-a={}", composition_path.display()))
+        .assert()
+        .failure();
+    assert!(assert.get_output().stderr.is_empty());
+    let output: Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("refusal JSON parses");
+    assert_eq!(output["outcome"], "REFUSAL");
+    assert_eq!(output["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(
+        output["refusal"]["detail"]["geo_ledger_error_code"],
+        "ledger_sets_without_artifacts"
+    );
+    assert_eq!(
+        output["refusal"]["detail"]["detail"]["field"],
+        "evidence_artifact_ref"
+    );
+    assert_eq!(
+        output["refusal"]["detail"]["detail"]["artifact_ref"],
+        "evidence-a"
+    );
+    assert_eq!(
+        output["refusal"]["detail"]["detail"]["loan_id"],
+        "loan-build-a"
+    );
+    assert_eq!(
+        output["refusal"]["next_command"],
+        "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>"
+    );
+}
+
+#[test]
 fn t07_geo_ledger_cli_requires_a_subcommand() {
     let assert = canon_command().arg("geo").arg("ledger").assert().failure();
     assert!(assert.get_output().stderr.is_empty());
