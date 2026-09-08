@@ -1,0 +1,345 @@
+{
+  "acquisition_if_exact_unit_geometry_is_required": {
+    "minimum_fields": [
+      "SOURCE_RELEASE",
+      "RELEASE_DT",
+      "SOURCE_SHA256",
+      "PARSER_VERSION",
+      "LICENSE_TERMS",
+      "ATTRIBUTION_TEXT",
+      "UNIT_BBL",
+      "BILLING_BBL",
+      "CONDO_NUMBER",
+      "GEOM_WKB_OR_WKT",
+      "SOURCE_CRS_IDENTIFIER",
+      "TRANSFORM_EXECUTION_ID",
+      "ROW_BLAKE3"
+    ],
+    "reason": "PAD plus MapPLUTO supplies billing-lot representation geometry, but the landed PLUTO/MapPLUTO geometry planes contain 0 rows for the 331 unit BBLs.",
+    "status": "dtm_condo_tax_map_geometry_required_for_exact_unit_lot_geometry"
+  },
+  "answer": {
+    "can_pad_crosswalk_plus_mappluto_supply_usable_candidate_geometry": "yes_with_declared_condo_unit_to_billing_lot_representation",
+    "candidate_geometry": "six_pad_billing_bbls_have_pinned_mappluto_geom_v3_rows_covering_all_331_unit_bbl_identities",
+    "exact_unit_lot_geometry": "no_landed_mappluto_geometry_rows_for_the_331_unit_bbls"
+  },
+  "bead": "bd-1q6h",
+  "boundary": "Candidate-universe-only recovery. The 331 condo unit BBL identities are added as candidates only when accompanied by a typed representation bridge to PAD 26B billing-lot MapPLUTO geometry. Billing-lot geometry is not unit-lot geometry, not collateral truth, and does not relax rho admission.",
+  "candidate_population": {
+    "handoff": "Use this population request plus this artifact as the representation sidecar; downstream scoring remains responsible for ambiguity, exactness, truth exclusions, false merges, and rho checks.",
+    "path": "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/population_request_roll_universe_pluto_vintage_condo_representation_widened.json.gz",
+    "sha256": "04816dcf5d2f73fc9eb7661d11ef93209da623d3f9be0173109fc55558433405",
+    "status": "ready_for_e4_scorer"
+  },
+  "case_recovery_rows": [
+    {
+      "after_condo_representation_reach": "full",
+      "after_pluto_vintage_reach": "partial",
+      "billing_bbls": [
+        "4067977503"
+      ],
+      "billing_bbls_with_mappluto_geometry": [
+        "4067977503"
+      ],
+      "case_id": "h7-subject:non-round:655a127dc453d12220696e0a0f76929d2ab8dd91ebd1dbe363173e50408fb34b",
+      "first_represented_unit_bbl": "4067971301",
+      "last_represented_unit_bbl": "4067971445",
+      "representation_choice": "condo_unit_bbl_identity_represented_by_pad_26b_billing_lot_geometry",
+      "represented_unit_bbls_added_to_candidate_universe": 145,
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "unit_bbls_with_exact_mappluto_geometry": 0
+    },
+    {
+      "after_condo_representation_reach": "full",
+      "after_pluto_vintage_reach": "none",
+      "billing_bbls": [
+        "1012747504",
+        "1013267501"
+      ],
+      "billing_bbls_with_mappluto_geometry": [
+        "1012747504",
+        "1013267501"
+      ],
+      "case_id": "h7-subject:non-round:68a1a4ced3f7c16edc483b877013238d0e2c26692c9ef0a5a721e6bb25872612",
+      "first_represented_unit_bbl": "1012741304",
+      "last_represented_unit_bbl": "1013261075",
+      "representation_choice": "condo_unit_bbl_identity_represented_by_pad_26b_billing_lot_geometry",
+      "represented_unit_bbls_added_to_candidate_universe": 2,
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "unit_bbls_with_exact_mappluto_geometry": 0
+    },
+    {
+      "after_condo_representation_reach": "full",
+      "after_pluto_vintage_reach": "none",
+      "billing_bbls": [
+        "4050147502"
+      ],
+      "billing_bbls_with_mappluto_geometry": [
+        "4050147502"
+      ],
+      "case_id": "h7-subject:non-round:e3a5228d84bb6bf01ff03e2849e4a996f223cb1fcff79eff04a65d84dcfa8deb",
+      "first_represented_unit_bbl": "4050141101",
+      "last_represented_unit_bbl": "4050141110",
+      "representation_choice": "condo_unit_bbl_identity_represented_by_pad_26b_billing_lot_geometry",
+      "represented_unit_bbls_added_to_candidate_universe": 10,
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "unit_bbls_with_exact_mappluto_geometry": 0
+    },
+    {
+      "after_condo_representation_reach": "full",
+      "after_pluto_vintage_reach": "partial",
+      "billing_bbls": [
+        "1000287502"
+      ],
+      "billing_bbls_with_mappluto_geometry": [
+        "1000287502"
+      ],
+      "case_id": "h7-subject:round-exact-lender:0a6ff10eaf74e3ff8cde56399cf9297813f3833885064be70351eae286e6da9b",
+      "first_represented_unit_bbl": "1000281301",
+      "last_represented_unit_bbl": "1000281302",
+      "representation_choice": "condo_unit_bbl_identity_represented_by_pad_26b_billing_lot_geometry",
+      "represented_unit_bbls_added_to_candidate_universe": 2,
+      "truth_plane": "round_exact_lender_party",
+      "unit_bbls_with_exact_mappluto_geometry": 0
+    },
+    {
+      "after_condo_representation_reach": "full",
+      "after_pluto_vintage_reach": "none",
+      "billing_bbls": [
+        "1010297502"
+      ],
+      "billing_bbls_with_mappluto_geometry": [
+        "1010297502"
+      ],
+      "case_id": "h7-subject:round-exact-lender:91b2df274815b9997ac6ff6e772f2e142c7b3eac3ea61777131611896d6095a6",
+      "first_represented_unit_bbl": "1010291102",
+      "last_represented_unit_bbl": "1010291280",
+      "representation_choice": "condo_unit_bbl_identity_represented_by_pad_26b_billing_lot_geometry",
+      "represented_unit_bbls_added_to_candidate_universe": 172,
+      "truth_plane": "round_exact_lender_party",
+      "unit_bbls_with_exact_mappluto_geometry": 0
+    }
+  ],
+  "e4_solver_rescore": {
+    "expected_effect_before_solver": "reach full 65->70; ambiguity may rise when the wider candidate universe is solved",
+    "next_owner": "bd-1g4x",
+    "population_request_path": "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/population_request_roll_universe_pluto_vintage_condo_representation_widened.json.gz",
+    "population_request_sha256": "04816dcf5d2f73fc9eb7661d11ef93209da623d3f9be0173109fc55558433405",
+    "status": "not_scored_by_bd_1q6h"
+  },
+  "frozen_population": {
+    "case_denominator": 70,
+    "frozen_gate_denominator": 79,
+    "reach_after_condo_representation_bridge": {
+      "full": 70,
+      "none": 0,
+      "partial": 0
+    },
+    "reach_before_condo_representation_bridge": {
+      "full": 65,
+      "none": 3,
+      "partial": 2
+    },
+    "represented_candidate_unit_bbls_added": 331,
+    "residual_cases_after_bridge": 0,
+    "residual_cases_before_bridge": 5,
+    "residual_unit_bbls_before_bridge": 331
+  },
+  "input_artifacts": {
+    "condo_billing_geometry_bridge_path": "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/condo_billing_geometry_bridge_measurement.json",
+    "condo_billing_geometry_bridge_sha256": "6af40b705c4bcf04ed837955b482380cea9c8fae0a314b4f2377e2b59f45014a",
+    "condo_billing_geometry_bridge_sql_path": "scripts/geo_measurements/e4_condo_billing_geometry_bridge.sql",
+    "condo_billing_geometry_bridge_sql_sha256": "d6eaa62cc941eae8b0018ab7c22c35c87d1d9bfbeaf31f5f8e3631b341733548",
+    "pluto_vintage_widened_population_path": "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/population_request_roll_universe_pluto_vintage_widened.json.gz",
+    "pluto_vintage_widened_population_sha256": "197e9286dd3637d982f37e6e5994a8de322c0f6b12ee4ac0206a4fa61ab3d0a0"
+  },
+  "proof_class": "retained_cmdrvl_data_warehouse_measurement_with_bounded_mcp_replay_not_live_receipt",
+  "recorded_on": "2026-09-08",
+  "representation_bridge": {
+    "billing_bbls": [
+      "1000287502",
+      "1010297502",
+      "1012747504",
+      "1013267501",
+      "4050147502",
+      "4067977503"
+    ],
+    "bridgeable_candidate_geometry_status": "all_331_residual_unit_bbl_identities_have_pad_26b_billing_bbls_with_mappluto_geom_v3_geometry",
+    "exact_unit_lot_geometry_status": "absent_from_landed_mappluto_geometry",
+    "geometry_grain": "pad_billing_bbl_mappluto_geometry",
+    "identity_grain": "condo_unit_bbl",
+    "mappluto_releases": [
+      "26v1",
+      "26v2"
+    ],
+    "pad_release": "26B",
+    "representation_choice": "condo_unit_bbl_identity_represented_by_pad_26b_billing_lot_geometry"
+  },
+  "source_tables": [
+    {
+      "cluster_by": "LINEAR(release, bbl_key)",
+      "filter": "release = '26B' and BBL/range-bounded residual unit BBLs",
+      "row_pins": [
+        "RELEASE",
+        "RELEASE_DT",
+        "SOURCE_ROW_NUMBER",
+        "SOURCE_ZIP_SHA256",
+        "PARSER_VERSION",
+        "LICENSE_TERMS",
+        "ATTRIBUTION_TEXT"
+      ],
+      "table": "EDGAR_DB.SOURCE.NYC_DCP_PAD_BBL_HOT"
+    },
+    {
+      "filter": "SPLIT_PART(BBL, '.', 1) in six PAD billing BBLs or 331 residual unit BBLs",
+      "row_pins": [
+        "RELEASE",
+        "RELEASE_DT",
+        "VARIANT",
+        "SOURCE_ROW_NUMBER",
+        "OBJECTID",
+        "GEOM_WGS84_SHA256",
+        "SOURCE_GEOM_WKB_SHA256",
+        "TRANSFORM_EXECUTION_ID",
+        "TRANSFORM_DEFINITION_ID"
+      ],
+      "table": "EDGAR_DB.SOURCE.NYC_DCP_MAPPLUTO_GEOM_V3_EXT"
+    },
+    {
+      "filter": "SPLIT_PART(BBL, '.', 1) in six PAD billing BBLs",
+      "row_pins": [
+        "RELEASE",
+        "RELEASE_DT",
+        "SOURCE_ROW_NUMBER",
+        "OBJECTID",
+        "SOURCE_ARCHIVE_SHA256",
+        "SOURCE_ARCHIVE_S3_KEY",
+        "SOURCE_CRS_IDENTIFIER",
+        "SOURCE_CRS_WKT2_SHA256"
+      ],
+      "table": "EDGAR_DB.SOURCE.NYC_DCP_MAPPLUTO_GEOMETRY_EVIDENCE_EXT"
+    }
+  ],
+  "unit_to_billing_groups": [
+    {
+      "billing_bbl": "4067977503",
+      "case_id": "h7-subject:non-round:655a127dc453d12220696e0a0f76929d2ab8dd91ebd1dbe363173e50408fb34b",
+      "first_unit_bbl": "4067971301",
+      "last_unit_bbl": "4067971301",
+      "pad_match_kind": "exact_bbl_key",
+      "represented_unit_bbls": 1,
+      "truth_plane": "non_round_amount_date_legal_borough"
+    },
+    {
+      "billing_bbl": "4067977503",
+      "case_id": "h7-subject:non-round:655a127dc453d12220696e0a0f76929d2ab8dd91ebd1dbe363173e50408fb34b",
+      "first_unit_bbl": "4067971302",
+      "last_unit_bbl": "4067971445",
+      "pad_match_kind": "range_contains",
+      "represented_unit_bbls": 144,
+      "truth_plane": "non_round_amount_date_legal_borough"
+    },
+    {
+      "billing_bbl": "1012747504",
+      "case_id": "h7-subject:non-round:68a1a4ced3f7c16edc483b877013238d0e2c26692c9ef0a5a721e6bb25872612",
+      "first_unit_bbl": "1012741304",
+      "last_unit_bbl": "1012741304",
+      "pad_match_kind": "range_contains",
+      "represented_unit_bbls": 1,
+      "truth_plane": "non_round_amount_date_legal_borough"
+    },
+    {
+      "billing_bbl": "1013267501",
+      "case_id": "h7-subject:non-round:68a1a4ced3f7c16edc483b877013238d0e2c26692c9ef0a5a721e6bb25872612",
+      "first_unit_bbl": "1013261075",
+      "last_unit_bbl": "1013261075",
+      "pad_match_kind": "range_contains",
+      "represented_unit_bbls": 1,
+      "truth_plane": "non_round_amount_date_legal_borough"
+    },
+    {
+      "billing_bbl": "4050147502",
+      "case_id": "h7-subject:non-round:e3a5228d84bb6bf01ff03e2849e4a996f223cb1fcff79eff04a65d84dcfa8deb",
+      "first_unit_bbl": "4050141101",
+      "last_unit_bbl": "4050141101",
+      "pad_match_kind": "exact_bbl_key",
+      "represented_unit_bbls": 1,
+      "truth_plane": "non_round_amount_date_legal_borough"
+    },
+    {
+      "billing_bbl": "4050147502",
+      "case_id": "h7-subject:non-round:e3a5228d84bb6bf01ff03e2849e4a996f223cb1fcff79eff04a65d84dcfa8deb",
+      "first_unit_bbl": "4050141102",
+      "last_unit_bbl": "4050141110",
+      "pad_match_kind": "range_contains",
+      "represented_unit_bbls": 9,
+      "truth_plane": "non_round_amount_date_legal_borough"
+    },
+    {
+      "billing_bbl": "1000287502",
+      "case_id": "h7-subject:round-exact-lender:0a6ff10eaf74e3ff8cde56399cf9297813f3833885064be70351eae286e6da9b",
+      "first_unit_bbl": "1000281301",
+      "last_unit_bbl": "1000281302",
+      "pad_match_kind": "range_contains",
+      "represented_unit_bbls": 2,
+      "truth_plane": "round_exact_lender_party"
+    },
+    {
+      "billing_bbl": "1010297502",
+      "case_id": "h7-subject:round-exact-lender:91b2df274815b9997ac6ff6e772f2e142c7b3eac3ea61777131611896d6095a6",
+      "first_unit_bbl": "1010291102",
+      "last_unit_bbl": "1010291105",
+      "pad_match_kind": "exact_bbl_key",
+      "represented_unit_bbls": 4,
+      "truth_plane": "round_exact_lender_party"
+    },
+    {
+      "billing_bbl": "1010297502",
+      "case_id": "h7-subject:round-exact-lender:91b2df274815b9997ac6ff6e772f2e142c7b3eac3ea61777131611896d6095a6",
+      "first_unit_bbl": "1010291106",
+      "last_unit_bbl": "1010291280",
+      "pad_match_kind": "range_contains",
+      "represented_unit_bbls": 168,
+      "truth_plane": "round_exact_lender_party"
+    }
+  ],
+  "version": "canon_geo_e4_condo_representation_reach_measurement.v0",
+  "warehouse_replay": {
+    "grain_note": "Counts are distinct by unit BBL and by MapPLUTO BBL/release/source-row/objectid so the two MapPLUTO releases do not double the unit denominator.",
+    "measurement_names": [
+      "bd_1q6h_condo_residual_billing_geometry_replay_distinct_grain",
+      "bd_1q6h_condo_residual_unit_to_billing_groups"
+    ],
+    "summary": {
+      "billing_bbls": [
+        "1000287502",
+        "1010297502",
+        "1012747504",
+        "1013267501",
+        "4050147502",
+        "4067977503"
+      ],
+      "billing_bbls_with_mappluto_geom_v3": 6,
+      "billing_geometry_releases": [
+        "26v1",
+        "26v2"
+      ],
+      "billing_rows_with_geom_wgs84_sha256": 12,
+      "billing_rows_with_source_archive_sha256": 12,
+      "billing_rows_with_source_geom_wkb_sha256": 12,
+      "billing_rows_with_transform_execution_id": 12,
+      "distinct_billing_bbls": 6,
+      "mappluto_geom_v3_billing_rows": 12,
+      "pad_parser_version": "2026-08-16",
+      "pad_source_zip_sha256": "016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd",
+      "residual_cases": 5,
+      "residual_unit_bbls": 331,
+      "unit_bbls_with_mappluto_geom_v3": 0,
+      "units_matched_by_exact_key": 6,
+      "units_matched_by_range": 325,
+      "units_with_billing_bbl": 331,
+      "units_with_pad_row": 331
+    },
+    "tool": "cmdrvl-data.edgar_data_run_query"
+  }
+}
