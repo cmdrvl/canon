@@ -64,8 +64,9 @@ use canon::geo::{
     CANON_GEO_DEED_INDEX_ROWS_VERSION, CANON_GEO_DEED_TRUTH_VERSION,
     CANON_GEO_E4_GATE_ASSESSMENT_VERSION, CANON_GEO_E4_RESCORE_COMPARISON_VERSION,
     CANON_GEO_ERROR_POPULATION_VERSION, CANON_GEO_EVENT_EXPOSURE_VERSION,
-    CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
-    CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_H7_ACRIS_RELEASE_DT,
+    CANON_GEO_EVIDENCE_CARD_VERSION, CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_GEOMETRY_REQUEST_VERSION,
+    CANON_GEO_GEOMETRY_VALUE_VERSION, CANON_GEO_H7_ACRIS_RELEASE_DT,
     CANON_GEO_H7_AMOUNT_CENTS_QUANTIZATION, CANON_GEO_H7_BRIDGE_BUILD_ID,
     CANON_GEO_H7_COLLATERAL_SCOPE, CANON_GEO_H7_LENDER_MATCH_TRANSFORM,
     CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION,
@@ -92,22 +93,24 @@ use canon::geo::{
     GeoAddressHouseNumber, GeoAddressJurisdiction, GeoAddressParity, GeoAddressParseRequest,
     GeoAddressRangeOperator, GeoAddressStreet, GeoAdvisoryPin, GeoAffineProjectionMm,
     GeoArtifactFieldClassification, GeoArtifactFieldLicenseClass, GeoAsOf, GeoBoundedGeography,
-    GeoBudgetAction, GeoBuildingCandidate, GeoCandidateReachStatus, GeoCanonicalPolygonMm,
-    GeoCanonicalRingMm, GeoClaimClass, GeoClientTileCoverageExtent,
-    GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest, GeoClientTileSourceFormat,
-    GeoClientTileVendorIdentifier, GeoCollateralLedger, GeoCollateralLedgerProofClass,
-    GeoCollateralLedgerSeed, GeoCollateralLedgerSeedRow, GeoCompositionModel,
-    GeoCompositionProfile, GeoCompositionRequest, GeoCompositionStatus, GeoCompositionUniverse,
-    GeoControlEntityLevel, GeoCoveragePredicate, GeoDeedIndexRowsRequest, GeoDeedTruthLoanRef,
-    GeoE4RescoreComparisonArtifact, GeoEgressClass, GeoEntityLevel, GeoEntityRef,
-    GeoErrorPopulationArtifact, GeoErrorPopulationSubject, GeoEventExposure, GeoEvidenceClaimRole,
-    GeoEvidenceClass, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoExactSourceUnitMm,
-    GeoExplanationBudget, GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoH7AssociationPlane,
-    GeoH7BoroughEdge, GeoH7CandidateReachStatus, GeoH7FiledCountyMapping, GeoH7MapplutoReleasePin,
-    GeoH7PlaneDenominator, GeoH7PopulationProvenance, GeoH7PopulationRowsRequest,
-    GeoH7PopulationScope, GeoH7PopulationWarehouseRow, GeoH7QueryDisposition, GeoH7QueryReceipt,
-    GeoH7ResultMode, GeoH7SourceEvidenceRecord, GeoH7SourceRecordRole,
-    GeoH7StagingEvidenceRecordRef, GeoH7StagingSourceEvidenceRecord,
+    GeoBoundingBoxMm, GeoBudgetAction, GeoBuildingCandidate, GeoCandidateReachStatus,
+    GeoCanonicalGeometryMm, GeoCanonicalPolygonMm, GeoCanonicalRingMm, GeoClaimClass,
+    GeoClientTileCoverageExtent, GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest,
+    GeoClientTileSourceFormat, GeoClientTileVendorIdentifier, GeoCollateralLedger,
+    GeoCollateralLedgerProofClass, GeoCollateralLedgerSeed, GeoCollateralLedgerSeedRow,
+    GeoCompositionModel, GeoCompositionProfile, GeoCompositionRequest, GeoCompositionStatus,
+    GeoCompositionUniverse, GeoControlEntityLevel, GeoCoveragePredicate, GeoDeedIndexRowsRequest,
+    GeoDeedTruthLoanRef, GeoE4RescoreComparisonArtifact, GeoEgressClass, GeoEntityLevel,
+    GeoEntityRef, GeoErrorPopulationArtifact, GeoErrorPopulationSubject, GeoEventExposure,
+    GeoEvidenceCardBuildContext, GeoEvidenceCardCoverage, GeoEvidenceCardCoverageState,
+    GeoEvidenceCardProofClass, GeoEvidenceCardSubjectRef, GeoEvidenceClaimRole, GeoEvidenceClass,
+    GeoEvidenceCompilationReference, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef,
+    GeoExactSourceUnitMm, GeoExplanationBudget, GeoGeometryFeatureInput, GeoGeometryTileRequest,
+    GeoH7AssociationPlane, GeoH7BoroughEdge, GeoH7CandidateReachStatus, GeoH7FiledCountyMapping,
+    GeoH7MapplutoReleasePin, GeoH7PlaneDenominator, GeoH7PopulationProvenance,
+    GeoH7PopulationRowsRequest, GeoH7PopulationScope, GeoH7PopulationWarehouseRow,
+    GeoH7QueryDisposition, GeoH7QueryReceipt, GeoH7ResultMode, GeoH7SourceEvidenceRecord,
+    GeoH7SourceRecordRole, GeoH7StagingEvidenceRecordRef, GeoH7StagingSourceEvidenceRecord,
     GeoH7StagingSourceRecordBytesBatchRequest, GeoH7StagingSourceRecordBytesRow, GeoHardConstraint,
     GeoHardConstraintKind, GeoHomeCellAssignmentArtifact, GeoHomeCellRow, GeoHomeCellRowsRequest,
     GeoIdentityParticipation, GeoImageTilePin, GeoImageTilePinArtifact, GeoInspectErrorCode,
@@ -126,36 +129,38 @@ use canon::geo::{
     GeoPreResolutionCorpusKind, GeoPreResolutionProofClass, GeoPreResolutionRequest,
     GeoPreResolutionRunStatus, GeoPreResolutionSourceCorpus, GeoPreResolutionSourceRow,
     GeoProjectionProvenance, GeoPropagationBudget, GeoProspectiveObservation,
-    GeoProspectiveOutcome, GeoQuestion, GeoRegionalInventory, GeoRegionalSourceInstance,
-    GeoReliabilityOrder, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter, GeoRetryPolicy,
-    GeoRetryRecovery, GeoRetryRecoveryPoint, GeoRetryTerminal, GeoRhoAdmissionFallback,
-    GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind,
-    GeoRunArtifactRef, GeoRunPlanRef, GeoSeparationInputs, GeoSeparationRequest,
-    GeoSourceAvailability, GeoSourceAxisDomain, GeoSourceGeometry, GeoSourcePointDecimal,
-    GeoSourcePointFixed, GeoSourceRelease, GeoSourceReleasePin, GeoStreetDirection,
-    GeoStreetSuffix, GeoSubjectBinding, GeoSubjectBindingClass, GeoTelemetryDeclaration,
-    GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
+    GeoProspectiveOutcome, GeoQuantizationAudit, GeoQuestion, GeoRegionalInventory,
+    GeoRegionalSourceInstance, GeoReliabilityOrder, GeoRequestedGrain, GeoResourceBudget,
+    GeoResourceCounter, GeoRetryPolicy, GeoRetryRecovery, GeoRetryRecoveryPoint, GeoRetryTerminal,
+    GeoRhoAdmissionFallback, GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoContract, GeoRhoObservation,
+    GeoRhoObservationKind, GeoRunArtifactRef, GeoRunPlanRef, GeoSeparationInputs,
+    GeoSeparationRequest, GeoSourceAvailability, GeoSourceAxisDomain, GeoSourceGeometry,
+    GeoSourcePointDecimal, GeoSourcePointFixed, GeoSourceRelease, GeoSourceReleasePin,
+    GeoStreetDirection, GeoStreetSuffix, GeoSubjectBinding, GeoSubjectBindingClass,
+    GeoTelemetryDeclaration, GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
     GeoTileCandidateReachReference, GeoTileCandidateReachReferenceKind, GeoTileDecisionBatch,
     GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileFeatureRef,
     GeoTileReconciliationArtifact, GeoTileReconciliationRequest, GeoTileSourceBinding,
-    GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoTruthPlane, GeoValidTimeInterval,
-    GeoValueOrigin, GeoWarehouseEvidenceRow, GeoWarehouseGeometryRow,
-    GeoWarehouseGeometryRowsRequest, GeoWarehouseParcelRow, GeoWarehouseRowsRequest,
-    GeoWindRadiusRing, admit_observations_with_universe, assess_e4_gate, build_collateral_ledger,
-    canonical_collateral_ledger_bytes, canonical_collateral_ledger_seed_bytes,
-    canonical_composition_bytes, canonical_deed_index_rows_bytes, canonical_deed_truth_bytes,
+    GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoTruthPlane, GeoTruthRepresentationGrain,
+    GeoTypedGeometry, GeoValidTimeInterval, GeoValueOrigin, GeoWarehouseEvidenceRow,
+    GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest, GeoWarehouseParcelRow,
+    GeoWarehouseRowsRequest, GeoWindRadiusRing, admit_observations_with_universe, assess_e4_gate,
+    build_collateral_ledger, build_evidence_card_with_context, canonical_collateral_ledger_bytes,
+    canonical_collateral_ledger_seed_bytes, canonical_composition_bytes,
+    canonical_deed_index_rows_bytes, canonical_deed_truth_bytes,
     canonical_e4_gate_assessment_bytes, canonical_e4_rescore_comparison_bytes,
-    canonical_error_population_bytes, canonical_event_exposure_bytes, canonical_explanation_bytes,
-    canonical_image_tile_pin_bytes, canonical_inspection_bytes, canonical_next_evidence_bytes,
-    canonical_next_evidence_inputs_bytes, canonical_next_evidence_request_bytes,
-    canonical_observation_rows_bytes, canonical_observer_admission_request_bytes,
-    canonical_observer_bytes, canonical_point_population_bytes, canonical_pre_resolution_bytes,
-    canonical_propagation_bytes, canonical_redacted_artifact_bytes, canonical_retry_recovery_bytes,
-    canonical_separation_bytes, canonical_separation_inputs_bytes,
-    canonical_separation_request_bytes, compare_e4_gate_assessments, compile_evidence,
-    correction_sets, default_geo_capabilities, derive_deed_truth_from_index,
-    e4_proof_source_from_population_request, evaluate_pad_membership, evaluate_population,
-    ingest_client_geometry_tile, inspection_semantic_hash, join_exposure,
+    canonical_error_population_bytes, canonical_event_exposure_bytes,
+    canonical_evidence_card_bytes, canonical_evidence_compilation_bytes,
+    canonical_explanation_bytes, canonical_image_tile_pin_bytes, canonical_inspection_bytes,
+    canonical_next_evidence_bytes, canonical_next_evidence_inputs_bytes,
+    canonical_next_evidence_request_bytes, canonical_observation_rows_bytes,
+    canonical_observer_admission_request_bytes, canonical_observer_bytes,
+    canonical_point_population_bytes, canonical_pre_resolution_bytes, canonical_propagation_bytes,
+    canonical_redacted_artifact_bytes, canonical_retry_recovery_bytes, canonical_separation_bytes,
+    canonical_separation_inputs_bytes, canonical_separation_request_bytes,
+    compare_e4_gate_assessments, compile_evidence, correction_sets, default_geo_capabilities,
+    derive_deed_truth_from_index, e4_proof_source_from_population_request, evaluate_pad_membership,
+    evaluate_population, ingest_client_geometry_tile, inspection_semantic_hash, join_exposure,
     materialize_geo_multisource, materialize_geometry_tile, materialize_h7_population_rows,
     materialize_home_cells, materialize_pre_resolution, materialize_tile_work_unit,
     materialize_warehouse_geometry, minimal_core, parse_address_forest, propagate, recommend,
@@ -314,6 +319,8 @@ const OBSERVER_ADMISSION_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.observer_admission_request.v0.schema.json");
 const OBSERVATION_ROWS_SCHEMA: &str =
     include_str!("../schemas/canon.geo.observation_rows.v0.schema.json");
+const EVIDENCE_CARD_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.evidence_card.v0.schema.json");
 
 fn parsed(source: &str) -> Value {
     serde_json::from_str(source).expect("schema file must be valid JSON")
@@ -365,6 +372,7 @@ fn external_schema_source(schema_file: &str, reference: &str) -> &'static str {
         "canon.geo.pad_address_set.v0.schema.json" => PAD_ADDRESS_SET_SCHEMA,
         "canon.geo.pad_membership.v0.schema.json" => PAD_MEMBERSHIP_SCHEMA,
         "canon.geo.composition_request.v0.schema.json" => COMPOSITION_REQUEST_SCHEMA,
+        "canon.geo.evidence_compilation.v0.schema.json" => EVIDENCE_COMPILATION_SCHEMA,
         "canon.geo.geometry_tile.v0.schema.json" => GEOMETRY_TILE_SCHEMA,
         "canon.geo.h7_population_rows.v0.schema.json" => H7_POPULATION_ROWS_SCHEMA,
         "canon.geo.evidence_request.v0.schema.json" => EVIDENCE_REQUEST_SCHEMA,
@@ -1161,6 +1169,111 @@ fn observer_admission_request() -> GeoObserverAdmissionRequest {
     }
 }
 
+fn evidence_card_schema_instance() -> canon::geo::GeoEvidenceCard {
+    let evidence = compile_evidence(&evidence_request()).expect("schema evidence compiles");
+    let evidence_bytes =
+        canonical_evidence_compilation_bytes(&evidence).expect("schema evidence serializes");
+    let mut composition =
+        solve_composition(&evidence.composition_request).expect("schema composition solves");
+    composition.evidence_compilation = Some(GeoEvidenceCompilationReference {
+        version: evidence.version.clone(),
+        request_version: evidence.request_version.clone(),
+        blake3: blake3::hash(&evidence_bytes).to_hex().to_string(),
+    });
+    let mut geometry = BTreeMap::new();
+    for (index, parcel) in evidence
+        .composition_request
+        .universe
+        .parcels
+        .iter()
+        .enumerate()
+    {
+        geometry.insert(
+            parcel.clone(),
+            schema_typed_geometry((index as i64) * 20, 0),
+        );
+    }
+    for (index, building) in evidence
+        .composition_request
+        .universe
+        .buildings
+        .iter()
+        .enumerate()
+    {
+        geometry.insert(
+            building.id.clone(),
+            schema_typed_geometry((index as i64) * 20, 40),
+        );
+    }
+    build_evidence_card_with_context(
+        "schema-card-subject",
+        &composition,
+        &evidence,
+        None,
+        &observer_image_tile_pin(),
+        &geometry,
+        GeoEvidenceCardBuildContext {
+            proof_class: GeoEvidenceCardProofClass::Fixture,
+            subject_ref: Some(GeoEvidenceCardSubjectRef {
+                accession: "schema-accession".to_string(),
+                deal_id: "schema-deal".to_string(),
+                loan_id: "schema-loan".to_string(),
+                deed_ids: vec!["schema-deed".to_string()],
+            }),
+            truth_plane: Some(GeoTruthPlane::GateV2Historical),
+            reach: GeoCandidateReachStatus::Full,
+            reach_none_reason: None,
+            coverage: GeoEvidenceCardCoverage {
+                state: GeoEvidenceCardCoverageState::Covered,
+                reason: None,
+            },
+            answer_grain: GeoTruthRepresentationGrain::BillingLot,
+            answer_grain_caveat: Some(
+                "billing-lot representation answers at billing-lot grain".to_string(),
+            ),
+            geometry_source_pins: vec![GeoSourceReleasePin {
+                source_dataset: "fixture.schema.mappluto".to_string(),
+                source_release: "schema-fixture-release".to_string(),
+                blake3: prefixed_blake3(b"schema mappluto geometry source"),
+            }],
+            home_cell: Some("882a107707fffff".to_string()),
+            halo_members: vec![GeoEntityRef::new(GeoEntityLevel::Building, "building-a")],
+            multi_containment_cardinality: Some(2),
+            field_classifications: vec![
+                GeoArtifactFieldClassification {
+                    field_path: "$.candidate_buildings[].geometry".to_string(),
+                    license_class: GeoArtifactFieldLicenseClass::LicensedGeometry,
+                    source_instance_id: Some("fixture.schema.mappluto".to_string()),
+                    reconstructive: true,
+                    rationale: "retained building geometry is local-only".to_string(),
+                },
+                GeoArtifactFieldClassification {
+                    field_path: "$.candidate_parcels[].geometry".to_string(),
+                    license_class: GeoArtifactFieldLicenseClass::LicensedGeometry,
+                    source_instance_id: Some("fixture.schema.mappluto".to_string()),
+                    reconstructive: true,
+                    rationale: "retained parcel geometry is local-only".to_string(),
+                },
+                GeoArtifactFieldClassification {
+                    field_path: "$.composition_status".to_string(),
+                    license_class: GeoArtifactFieldLicenseClass::Public,
+                    source_instance_id: None,
+                    reconstructive: false,
+                    rationale: "decision state is shareable".to_string(),
+                },
+                GeoArtifactFieldClassification {
+                    field_path: "$.multi_containment_cardinality".to_string(),
+                    license_class: GeoArtifactFieldLicenseClass::DerivedMeasure,
+                    source_instance_id: None,
+                    reconstructive: false,
+                    rationale: "candidate cardinality is derived".to_string(),
+                },
+            ],
+        },
+    )
+    .expect("schema evidence card builds")
+}
+
 fn acquisition_contract_receipt_for(request: GeoAcquisitionRequest) -> GeoAcquisitionReceipt {
     GeoAcquisitionReceipt {
         version: CANON_GEO_ACQUISITION_RECEIPT_VERSION.to_string(),
@@ -1842,6 +1955,35 @@ fn square(min_x: i64, min_y: i64, max_x: i64, max_y: i64) -> GeoCanonicalPolygon
             ],
         },
         holes: Vec::new(),
+    }
+}
+
+fn schema_typed_geometry(min_x: i64, min_y: i64) -> GeoTypedGeometry {
+    GeoTypedGeometry {
+        version: CANON_GEO_GEOMETRY_VALUE_VERSION.to_string(),
+        source_crs: "LOCAL:SCHEMA".to_string(),
+        local_frame_id: "schema-local-frame".to_string(),
+        coordinate_unit: "millimetre".to_string(),
+        coordinate_scale: 1,
+        vertex_count: 4,
+        bbox: GeoBoundingBoxMm {
+            min_x,
+            min_y,
+            max_x: min_x + 10,
+            max_y: min_y + 10,
+        },
+        quantization: GeoQuantizationAudit {
+            max_abs_snap_error_numerator_mm: 0,
+            affine_denominator: 1,
+            max_abs_snap_error_micrometres_ceiling: 0,
+            projection_error_envelope_micrometres: 0,
+            combined_error_envelope_micrometres: 0,
+            minimum_nonzero_bbox_extent_mm: Some(10),
+            endpoint_distance_error_ppm_upper_bound: Some(0),
+        },
+        geometry: GeoCanonicalGeometryMm::Polygon {
+            polygon: square(min_x, min_y, min_x + 10, min_y + 10),
+        },
     }
 }
 
@@ -2674,6 +2816,20 @@ fn observation_rows_schema_matches_a_real_instance() {
         OBSERVATION_ROWS_SCHEMA,
         "canon.geo.observation_rows.v0",
         CANON_GEO_OBSERVATION_ROWS_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn evidence_card_schema_matches_a_real_instance() {
+    let card = evidence_card_schema_instance();
+    let canonical_bytes = canonical_evidence_card_bytes(&card).expect("card canonicalizes");
+    let instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("canonical evidence card parses");
+    assert_drift_free(
+        EVIDENCE_CARD_SCHEMA,
+        "canon.geo.evidence_card.v0",
+        CANON_GEO_EVIDENCE_CARD_VERSION,
         &instance,
     );
 }

@@ -1,0 +1,288 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.geo.evidence_card.v0.schema.json",
+  "title": "canon.geo.evidence_card.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "proof_class",
+    "subject_id",
+    "reach",
+    "coverage",
+    "answer_grain",
+    "ortho_pin",
+    "halo_members",
+    "candidate_parcels",
+    "candidate_buildings",
+    "forced",
+    "ambiguous_members",
+    "conflicting_records",
+    "evidence_admissions",
+    "geometry_source_pins",
+    "field_classifications",
+    "composition_status",
+    "residual_model_count",
+    "count_exact",
+    "backbone_complete",
+    "multi_containment_cardinality",
+    "composition_blake3",
+    "evidence_blake3",
+    "request_blake3"
+  ],
+  "properties": {
+    "version": { "const": "canon_geo_evidence_card.v0" },
+    "proof_class": {
+      "type": "string",
+      "enum": ["fixture", "retained_artifact"]
+    },
+    "subject_id": { "$ref": "#/$defs/nonempty_string" },
+    "subject_ref": { "$ref": "#/$defs/subject_ref" },
+    "truth_plane": { "$ref": "#/$defs/truth_plane" },
+    "reach": { "$ref": "#/$defs/candidate_reach" },
+    "reach_none_reason": { "$ref": "#/$defs/nonempty_string" },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "answer_grain": { "$ref": "#/$defs/answer_grain" },
+    "answer_grain_caveat": { "$ref": "#/$defs/nonempty_string" },
+    "ortho_pin": { "$ref": "#/$defs/tile_pin" },
+    "home_cell": { "$ref": "#/$defs/nonempty_string" },
+    "halo_members": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entity_ref" }
+    },
+    "candidate_parcels": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/candidate" }
+    },
+    "candidate_buildings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/candidate" }
+    },
+    "forced": { "$ref": "#/$defs/backbone" },
+    "ambiguous_members": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entity_ref" }
+    },
+    "conflicting_records": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/evidence_record_ref" }
+    },
+    "evidence_admissions": {
+      "type": "array",
+      "items": {
+        "$ref": "canon.geo.evidence_compilation.v0.schema.json#/$defs/evidence_admission"
+      }
+    },
+    "geometry_source_pins": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/source_release_pin" }
+    },
+    "field_classifications": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/field_classification" }
+    },
+    "composition_status": { "$ref": "#/$defs/composition_status" },
+    "residual_model_count": { "type": "integer", "minimum": 0 },
+    "count_exact": { "type": "boolean" },
+    "backbone_complete": { "type": "boolean" },
+    "multi_containment_cardinality": { "type": "integer", "minimum": 0 },
+    "composition_blake3": {
+      "anyOf": [{ "$ref": "#/$defs/blake3_uri" }, { "const": "" }]
+    },
+    "evidence_blake3": {
+      "anyOf": [{ "$ref": "#/$defs/blake3_uri" }, { "const": "" }]
+    },
+    "request_blake3": {
+      "anyOf": [{ "$ref": "#/$defs/blake3_uri" }, { "const": "" }]
+    },
+    "explanation_blake3": { "$ref": "#/$defs/blake3_uri" }
+  },
+  "$defs": {
+    "nonempty_string": { "type": "string", "minLength": 1 },
+    "hex_blake3": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "blake3_uri": { "type": "string", "pattern": "^blake3:[0-9a-f]{64}$" },
+    "candidate_reach": {
+      "type": "string",
+      "enum": ["full", "partial", "none"]
+    },
+    "coverage_state": {
+      "type": "string",
+      "enum": ["covered", "partial", "absent"]
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state"],
+      "properties": {
+        "state": { "$ref": "#/$defs/coverage_state" },
+        "reason": { "$ref": "#/$defs/nonempty_string" }
+      }
+    },
+    "answer_grain": {
+      "type": "string",
+      "enum": ["unit_lot", "billing_lot"]
+    },
+    "truth_plane": {
+      "type": "string",
+      "enum": [
+        "gate_v2_historical",
+        "non_round_amount_date_legal_borough",
+        "round_exact_lender_party",
+        "address_derived_control",
+        "deed_grain_instrument",
+        "human_adjudication"
+      ]
+    },
+    "entity_level": {
+      "type": "string",
+      "enum": ["parcel", "building", "poi_unit", "property"]
+    },
+    "entity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "id"],
+      "properties": {
+        "level": { "$ref": "#/$defs/entity_level" },
+        "id": { "$ref": "#/$defs/nonempty_string" }
+      }
+    },
+    "subject_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accession", "deal_id", "loan_id"],
+      "properties": {
+        "accession": { "$ref": "#/$defs/nonempty_string" },
+        "deal_id": { "$ref": "#/$defs/nonempty_string" },
+        "loan_id": { "$ref": "#/$defs/nonempty_string" },
+        "deed_ids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonempty_string" }
+        }
+      }
+    },
+    "valid_time_interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start_day", "end_day"],
+      "properties": {
+        "start_day": { "type": "integer" },
+        "end_day": { "type": "integer" }
+      }
+    },
+    "tile_pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "url",
+        "blake3",
+        "vintage",
+        "license_id",
+        "license_text_blake3",
+        "source_dataset"
+      ],
+      "properties": {
+        "url": { "$ref": "#/$defs/nonempty_string" },
+        "byte_range": {
+          "type": "array",
+          "prefixItems": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "integer", "minimum": 0 }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "etag": { "$ref": "#/$defs/nonempty_string" },
+        "blake3": { "$ref": "#/$defs/hex_blake3" },
+        "vintage": { "$ref": "#/$defs/valid_time_interval" },
+        "license_id": { "$ref": "#/$defs/nonempty_string" },
+        "license_text_blake3": { "$ref": "#/$defs/hex_blake3" },
+        "source_dataset": { "$ref": "#/$defs/nonempty_string" }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "geometry_blake3",
+        "geometry",
+        "in_halo",
+        "evidence_observation_ids"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonempty_string" },
+        "geometry_blake3": { "$ref": "#/$defs/blake3_uri" },
+        "geometry": {
+          "$ref": "canon.geo.geometry_tile.v0.schema.json#/$defs/typed_geometry"
+        },
+        "in_halo": { "type": "boolean" },
+        "evidence_observation_ids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonempty_string" }
+        }
+      }
+    },
+    "backbone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parcels", "buildings"],
+      "properties": {
+        "parcels": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonempty_string" }
+        },
+        "buildings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonempty_string" }
+        }
+      }
+    },
+    "evidence_record_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_record_id", "source_vintage", "record_blake3"],
+      "properties": {
+        "source_record_id": { "$ref": "#/$defs/nonempty_string" },
+        "source_vintage": { "$ref": "#/$defs/nonempty_string" },
+        "record_blake3": { "$ref": "#/$defs/hex_blake3" }
+      }
+    },
+    "source_release_pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_dataset", "source_release", "blake3"],
+      "properties": {
+        "source_dataset": { "$ref": "#/$defs/nonempty_string" },
+        "source_release": { "$ref": "#/$defs/nonempty_string" },
+        "blake3": { "$ref": "#/$defs/blake3_uri" }
+      }
+    },
+    "field_license_class": {
+      "type": "string",
+      "enum": ["licensed-geometry", "derived-measure", "identifier", "public"]
+    },
+    "field_classification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field_path",
+        "license_class",
+        "reconstructive",
+        "rationale"
+      ],
+      "properties": {
+        "field_path": { "$ref": "#/$defs/nonempty_string" },
+        "license_class": { "$ref": "#/$defs/field_license_class" },
+        "source_instance_id": { "$ref": "#/$defs/nonempty_string" },
+        "reconstructive": { "type": "boolean" },
+        "rationale": { "$ref": "#/$defs/nonempty_string" }
+      }
+    },
+    "composition_status": {
+      "type": "string",
+      "enum": ["resolved", "ambiguous", "conflict", "budget_fallback"]
+    }
+  }
+}

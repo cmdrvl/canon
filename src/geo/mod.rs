@@ -7,6 +7,7 @@
 
 pub mod address;
 pub mod assessment_roll;
+pub mod card;
 pub mod cli;
 pub mod composition;
 pub mod condo;
@@ -41,6 +42,7 @@ pub mod stack;
 pub mod tile;
 
 pub use address::*;
+pub use card::*;
 pub use composition::*;
 pub use condo::*;
 pub use control::*;

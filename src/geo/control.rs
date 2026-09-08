@@ -17,6 +17,7 @@ use super::{
     assessment_roll::{
         CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION, CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION,
     },
+    card::CANON_GEO_EVIDENCE_CARD_VERSION,
     composition::{
         CANON_GEO_COMPOSITION_PROFILE_VERSION, CANON_GEO_COMPOSITION_REQUEST_VERSION,
         CANON_GEO_COMPOSITION_VERSION, CANON_GEO_ENTITY_PROJECTION_VERSION,
@@ -1442,6 +1443,11 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             CANON_GEO_OBSERVATION_ROWS_VERSION,
             "schemas/canon.geo.observation_rows.v0.schema.json",
             "rho-admitted imagery observation rows artifact contract",
+        ),
+        contract(
+            CANON_GEO_EVIDENCE_CARD_VERSION,
+            "schemas/canon.geo.evidence_card.v0.schema.json",
+            "offline visual evidence-card data artifact contract",
         ),
         contract(
             CANON_GEO_WAREHOUSE_ROWS_VERSION,

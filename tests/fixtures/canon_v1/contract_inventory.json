@@ -2340,6 +2340,14 @@
       "source_path": "schemas/canon.geo.observation_rows.v0.schema.json"
     },
     {
+      "id": "canon_geo_evidence_card.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.evidence_card.v0.schema.json"
+    },
+    {
       "id": "canon_geo_point_population.v0",
       "family": "geo",
       "action": "preserve",
