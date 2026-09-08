@@ -63,11 +63,12 @@ use canon::geo::{
     CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION,
     CANON_GEO_DEED_INDEX_ROWS_VERSION, CANON_GEO_DEED_TRUTH_VERSION,
     CANON_GEO_E4_GATE_ASSESSMENT_VERSION, CANON_GEO_E4_RESCORE_COMPARISON_VERSION,
-    CANON_GEO_ERROR_POPULATION_VERSION, CANON_GEO_EVIDENCE_COMPILATION_VERSION,
-    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_GEOMETRY_REQUEST_VERSION,
-    CANON_GEO_H7_ACRIS_RELEASE_DT, CANON_GEO_H7_AMOUNT_CENTS_QUANTIZATION,
-    CANON_GEO_H7_BRIDGE_BUILD_ID, CANON_GEO_H7_COLLATERAL_SCOPE,
-    CANON_GEO_H7_LENDER_MATCH_TRANSFORM, CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION,
+    CANON_GEO_ERROR_POPULATION_VERSION, CANON_GEO_EVENT_EXPOSURE_VERSION,
+    CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
+    CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_H7_ACRIS_RELEASE_DT,
+    CANON_GEO_H7_AMOUNT_CENTS_QUANTIZATION, CANON_GEO_H7_BRIDGE_BUILD_ID,
+    CANON_GEO_H7_COLLATERAL_SCOPE, CANON_GEO_H7_LENDER_MATCH_TRANSFORM,
+    CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION,
     CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
     CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_PRIMARY_MAPPLUTO_RELEASE,
     CANON_GEO_H7_ROUND_AMOUNT_LATTICE_CENTS,
@@ -89,16 +90,17 @@ use canon::geo::{
     CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
     DEFAULT_MAX_MATERIALIZED_MODELS, GeoAbstentionDisposition, GeoAbstentionPolicy,
     GeoAddressHouseNumber, GeoAddressJurisdiction, GeoAddressParity, GeoAddressParseRequest,
-    GeoAddressRangeOperator, GeoAddressStreet, GeoAffineProjectionMm,
+    GeoAddressRangeOperator, GeoAddressStreet, GeoAdvisoryPin, GeoAffineProjectionMm,
     GeoArtifactFieldClassification, GeoArtifactFieldLicenseClass, GeoAsOf, GeoBoundedGeography,
-    GeoBudgetAction, GeoBuildingCandidate, GeoCandidateReachStatus, GeoClaimClass,
-    GeoClientTileCoverageExtent, GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest,
-    GeoClientTileSourceFormat, GeoClientTileVendorIdentifier, GeoCollateralLedger,
-    GeoCollateralLedgerProofClass, GeoCollateralLedgerSeed, GeoCollateralLedgerSeedRow,
-    GeoCompositionModel, GeoCompositionProfile, GeoCompositionRequest, GeoCompositionStatus,
-    GeoCompositionUniverse, GeoControlEntityLevel, GeoCoveragePredicate, GeoDeedIndexRowsRequest,
-    GeoDeedTruthLoanRef, GeoE4RescoreComparisonArtifact, GeoEgressClass, GeoEntityLevel,
-    GeoEntityRef, GeoErrorPopulationArtifact, GeoErrorPopulationSubject, GeoEvidenceClaimRole,
+    GeoBudgetAction, GeoBuildingCandidate, GeoCandidateReachStatus, GeoCanonicalPolygonMm,
+    GeoCanonicalRingMm, GeoClaimClass, GeoClientTileCoverageExtent,
+    GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest, GeoClientTileSourceFormat,
+    GeoClientTileVendorIdentifier, GeoCollateralLedger, GeoCollateralLedgerProofClass,
+    GeoCollateralLedgerSeed, GeoCollateralLedgerSeedRow, GeoCompositionModel,
+    GeoCompositionProfile, GeoCompositionRequest, GeoCompositionStatus, GeoCompositionUniverse,
+    GeoControlEntityLevel, GeoCoveragePredicate, GeoDeedIndexRowsRequest, GeoDeedTruthLoanRef,
+    GeoE4RescoreComparisonArtifact, GeoEgressClass, GeoEntityLevel, GeoEntityRef,
+    GeoErrorPopulationArtifact, GeoErrorPopulationSubject, GeoEventExposure, GeoEvidenceClaimRole,
     GeoEvidenceClass, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoExactSourceUnitMm,
     GeoExplanationBudget, GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoH7AssociationPlane,
     GeoH7BoroughEdge, GeoH7CandidateReachStatus, GeoH7FiledCountyMapping, GeoH7MapplutoReleasePin,
@@ -118,7 +120,7 @@ use canon::geo::{
     GeoNextEvidenceCandidateInput, GeoNextEvidenceInputs, GeoNextEvidenceRequest, GeoNumericBound,
     GeoNumericMeasure, GeoNycBorough, GeoObservationKind, GeoObservationPayload, GeoObservationRow,
     GeoObservationRowsArtifact, GeoObserverAdmissionRequest, GeoObserverContract,
-    GeoObserverIdentity, GeoPadAddressMember, GeoPadAddressSet, GeoPlanInventoryRef,
+    GeoObserverIdentity, GeoPadAddressMember, GeoPadAddressSet, GeoPlanInventoryRef, GeoPointMm,
     GeoPointPopulationArtifact, GeoPopulationCaseEvidenceOverlay, GeoPopulationEvaluationRequest,
     GeoPopulationEvidenceStackRequest, GeoPreResolutionArtifact, GeoPreResolutionBuildReceipt,
     GeoPreResolutionCorpusKind, GeoPreResolutionProofClass, GeoPreResolutionRequest,
@@ -139,13 +141,12 @@ use canon::geo::{
     GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoTruthPlane, GeoValidTimeInterval,
     GeoValueOrigin, GeoWarehouseEvidenceRow, GeoWarehouseGeometryRow,
     GeoWarehouseGeometryRowsRequest, GeoWarehouseParcelRow, GeoWarehouseRowsRequest,
-    admit_observations_with_universe, assess_e4_gate, build_collateral_ledger,
-    canonical_collateral_ledger_bytes,
-    canonical_collateral_ledger_seed_bytes, canonical_composition_bytes,
-    canonical_deed_index_rows_bytes, canonical_deed_truth_bytes,
+    GeoWindRadiusRing, admit_observations_with_universe, assess_e4_gate, build_collateral_ledger,
+    canonical_collateral_ledger_bytes, canonical_collateral_ledger_seed_bytes,
+    canonical_composition_bytes, canonical_deed_index_rows_bytes, canonical_deed_truth_bytes,
     canonical_e4_gate_assessment_bytes, canonical_e4_rescore_comparison_bytes,
-    canonical_error_population_bytes, canonical_explanation_bytes, canonical_image_tile_pin_bytes,
-    canonical_inspection_bytes, canonical_next_evidence_bytes,
+    canonical_error_population_bytes, canonical_event_exposure_bytes, canonical_explanation_bytes,
+    canonical_image_tile_pin_bytes, canonical_inspection_bytes, canonical_next_evidence_bytes,
     canonical_next_evidence_inputs_bytes, canonical_next_evidence_request_bytes,
     canonical_observation_rows_bytes, canonical_observer_admission_request_bytes,
     canonical_observer_bytes, canonical_point_population_bytes, canonical_pre_resolution_bytes,
@@ -154,15 +155,15 @@ use canon::geo::{
     canonical_separation_request_bytes, compare_e4_gate_assessments, compile_evidence,
     correction_sets, default_geo_capabilities, derive_deed_truth_from_index,
     e4_proof_source_from_population_request, evaluate_pad_membership, evaluate_population,
-    ingest_client_geometry_tile, inspection_semantic_hash, materialize_geo_multisource,
-    materialize_geometry_tile, materialize_h7_population_rows, materialize_home_cells,
-    materialize_pre_resolution, materialize_tile_work_unit, materialize_warehouse_geometry,
-    minimal_core, parse_address_forest, propagate, recommend, reconcile_tile_decisions,
-    redact_geo_artifact, regional_inventory_semantic_hash, separate, solve_composition,
-    stack_population_evidence, validate_deed_index_rows_request, validate_deed_truth_artifact,
-    validate_e4_gate_assessment, validate_e4_rescore_comparison_artifact,
-    validate_point_population_artifact, validate_pre_resolution_artifact,
-    validate_redacted_artifact, validate_retry_recovery_artifact,
+    ingest_client_geometry_tile, inspection_semantic_hash, join_exposure,
+    materialize_geo_multisource, materialize_geometry_tile, materialize_h7_population_rows,
+    materialize_home_cells, materialize_pre_resolution, materialize_tile_work_unit,
+    materialize_warehouse_geometry, minimal_core, parse_address_forest, propagate, recommend,
+    reconcile_tile_decisions, redact_geo_artifact, regional_inventory_semantic_hash, separate,
+    solve_composition, stack_population_evidence, validate_deed_index_rows_request,
+    validate_deed_truth_artifact, validate_e4_gate_assessment,
+    validate_e4_rescore_comparison_artifact, validate_point_population_artifact,
+    validate_pre_resolution_artifact, validate_redacted_artifact, validate_retry_recovery_artifact,
 };
 use canon::geo::{
     CANON_GEO_TEMPORAL_CONTAINMENT_VERSION, GeoEntityExistenceInterval,
@@ -230,6 +231,8 @@ const COLLATERAL_LEDGER_SEED_SCHEMA: &str =
     include_str!("../schemas/canon.geo.collateral_ledger_seed.v0.schema.json");
 const COLLATERAL_LEDGER_SCHEMA: &str =
     include_str!("../schemas/canon.geo.collateral_ledger.v0.schema.json");
+const EVENT_EXPOSURE_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.event_exposure.v0.schema.json");
 const FOOTPRINT_ROLL_EVIDENCE_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.footprint_roll_evidence_request.v0.schema.json");
 const SEPARATION_REQUEST_SCHEMA: &str =
@@ -1769,6 +1772,76 @@ fn collateral_ledger_seed_schema_instance() -> GeoCollateralLedgerSeed {
                 last_observed_present: None,
             },
         ],
+    }
+}
+
+fn event_exposure_schema_instance() -> GeoEventExposure {
+    let digest = prefixed_blake3(b"schema event exposure ledger");
+    let row = GeoLedgerRow {
+        version: CANON_GEO_COLLATERAL_LEDGER_VERSION.to_string(),
+        accession: "schema-exposure-accession".to_string(),
+        deal_id: "schema-exposure-deal".to_string(),
+        loan_id: "schema-exposure-loan".to_string(),
+        reach: GeoCandidateReachStatus::Full,
+        reach_none_reason: None,
+        parcel_set: Some(vec!["schema-exposure-parcel".to_string()]),
+        building_set: Some(vec!["schema-exposure-building".to_string()]),
+        deed_ids: Vec::new(),
+        truth_plane: Some(GeoTruthPlane::GateV2Historical),
+        claim_class: GeoClaimClass::CollateralComposition,
+        residual_model_count: 1,
+        count_exact: true,
+        backbone_complete: true,
+        last_observed_present: None,
+        source_release_pins: vec![GeoSourceReleasePin {
+            source_dataset: "fixture.schema.event_exposure".to_string(),
+            source_release: "schema-fixture-release".to_string(),
+            blake3: digest.clone(),
+        }],
+        composition_blake3: digest.clone(),
+        evidence_blake3: digest,
+        ambiguous_parcel_set: Vec::new(),
+        ambiguous_building_set: Vec::new(),
+        property_refs: Vec::new(),
+        composition_status: GeoCompositionStatus::Resolved,
+    };
+    let ledger = build_collateral_ledger(vec![row], GeoCollateralLedgerProofClass::Fixture)
+        .expect("schema exposure ledger builds");
+    let source_blake3 = prefixed_blake3(b"schema event exposure advisory");
+    let advisory = GeoAdvisoryPin {
+        advisory_id: "schema-exposure-advisory".to_string(),
+        storm_id: "schema-exposure-storm".to_string(),
+        advisory_number: 12,
+        issued: GeoValidTimeInterval {
+            start_day: 20_705,
+            end_day: 20_705,
+        },
+        source_blake3s: vec![source_blake3],
+        frame_id: "schema-exposure-frame".to_string(),
+        wind_radii: vec![GeoWindRadiusRing {
+            knots: 34,
+            ring: square(0, 0, 20_000, 20_000),
+        }],
+    };
+    let geometry = BTreeMap::from([(
+        "schema-exposure-building".to_string(),
+        square(5_000, 5_000, 15_000, 15_000),
+    )]);
+    join_exposure(&ledger, &advisory, &geometry, &advisory.source_blake3s)
+        .expect("schema event exposure joins")
+}
+
+fn square(min_x: i64, min_y: i64, max_x: i64, max_y: i64) -> GeoCanonicalPolygonMm {
+    GeoCanonicalPolygonMm {
+        exterior: GeoCanonicalRingMm {
+            vertices: vec![
+                GeoPointMm::new(min_x, min_y),
+                GeoPointMm::new(max_x, min_y),
+                GeoPointMm::new(max_x, max_y),
+                GeoPointMm::new(min_x, max_y),
+            ],
+        },
+        holes: Vec::new(),
     }
 }
 
@@ -3359,6 +3432,21 @@ fn collateral_ledger_seed_schema_matches_a_real_instance() {
         COLLATERAL_LEDGER_SEED_SCHEMA,
         "canon.geo.collateral_ledger_seed.v0",
         CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn event_exposure_schema_matches_a_real_instance() {
+    let artifact = event_exposure_schema_instance();
+    let canonical_bytes =
+        canonical_event_exposure_bytes(&artifact).expect("event exposure canonicalizes");
+    let instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("canonical event exposure JSON parses");
+    assert_drift_free(
+        EVENT_EXPOSURE_SCHEMA,
+        "canon.geo.event_exposure.v0",
+        CANON_GEO_EVENT_EXPOSURE_VERSION,
         &instance,
     );
 }
