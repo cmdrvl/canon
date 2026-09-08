@@ -1,0 +1,475 @@
+{
+  "baseline": {
+    "ambiguous": 55,
+    "component_fallbacks": 8,
+    "conflict": 0,
+    "exactly_correct": 7,
+    "false_merges": 0,
+    "name": "combined_pad_owner_gsf_repair_score",
+    "reach_full_partial_none": [
+      70,
+      0,
+      0
+    ],
+    "resolved": 7,
+    "truth_exclusions": 8
+  },
+  "bead": "bd-3g94",
+  "boundary": "Classification-only retained adjudication. No overlay is produced, no GSF band is widened, no candidate universe is changed, and no rho admission is relaxed. The result decides whether the retained GSF residuals are Canon binding defects, truth/source binding defects, genuine property mismatches, or acquisition gaps.",
+  "cases": [
+    {
+      "acris_document_binding": {
+        "document_amount": 1825000,
+        "document_id": "2019121000627002",
+        "document_type": "MTGE",
+        "legal_addresses": [
+          "250 EAST 53RD STREET",
+          "768 5 AVENUE"
+        ],
+        "legal_bbl_count": 2,
+        "loan_key": "e134fd1ecaebbd36aa47a3c73acaaf59",
+        "property_type_codes": [
+          "SC"
+        ],
+        "recorded_date": "2020-02-21",
+        "sample_legal_bbls": [
+          "1012741304",
+          "1013261075"
+        ]
+      },
+      "case_fragment": "68a1a4ce",
+      "case_id": "h7-subject:non-round:68a1a4ced3f7c16edc483b877013238d0e2c26692c9ef0a5a721e6bb25872612",
+      "completeness_score_interaction": {
+        "classified_as_completeness_conflict": true,
+        "conflict_contract_family": "gsf_band"
+      },
+      "current_gsf_contract": {
+        "band_max": 1703,
+        "band_min": 744,
+        "contract_id": "rho.size.assessment_roll_gross_sqft_band",
+        "corrected_truth_gsf_sum": 2134,
+        "corrected_truth_sum_inside_band": false,
+        "filed_size": 1064,
+        "property_class": "RT",
+        "vector_count": 201
+      },
+      "filed_property": {
+        "address": "208 East 14th Street",
+        "city": "New York",
+        "county": "New York",
+        "filing_date": "2026-08-31",
+        "filing_id": "0001888524-26-016250",
+        "loan_asset_key": "31",
+        "name": "Dunkin' Donuts East 14th Street",
+        "property_key": "CREP-A2512F406EDBE52C",
+        "property_type_code": "RT",
+        "reporting_period": "2026-08-11",
+        "size": 1064,
+        "size_measure": "SQFT"
+      },
+      "property_mart_context": {
+        "matching_filed_property_rows_for_acris_legal_addresses": [],
+        "target_property_key_history": {
+          "addresses": [
+            "208 East 14th Street"
+          ],
+          "names": [
+            "Dunkin' Donuts East 14th Street"
+          ],
+          "property_keys": [
+            "CREP-A2512F406EDBE52C"
+          ]
+        }
+      },
+      "settlement": {
+        "classification": "retained_truth_document_binding_conflict",
+        "expected_direct_e4_movement": {
+          "ambiguous_delta": 0,
+          "exactly_correct_delta": 0,
+          "false_merges_delta": 0,
+          "resolved_delta": 0,
+          "truth_exclusions_delta": 0
+        },
+        "release_claim_allowed": false,
+        "remedy": "Audit the loan-property-to-ACRIS-document binding or reject the retained ACRIS truth binding for this subject if the filed collateral remains Dunkin' Donuts East 14th Street.",
+        "settling_evidence_required": [
+          "independent SEC annex/legal-description row tying the loan property to the ACRIS mortgage document",
+          "property-row-to-document bridge that maps CREP-A2512F406EDBE52C to document 2019121000627002",
+          "or a truth-plane correction removing the unrelated ACRIS legal rows from this filed property"
+        ],
+        "wrong_side": "truth_source_binding"
+      },
+      "truth_roll_summary": {
+        "class_counts": {
+          "R4": 1,
+          "RH": 1
+        },
+        "distinct_owner_count": 2,
+        "sample_rows": [
+          {
+            "apt": "1126",
+            "bbl": "1012741304",
+            "building_class": "RH",
+            "condo_number": "101508",
+            "gross_sqft": 556,
+            "owner": "BLUE HORSESHOE FUNDING LLC",
+            "street": "768 5 AVENUE",
+            "units": 1
+          },
+          {
+            "apt": "1901",
+            "bbl": "1013261075",
+            "building_class": "R4",
+            "condo_number": "101840",
+            "gross_sqft": 1578,
+            "owner": "ZHEN-ZHOU TENG, KEVIN",
+            "street": "250 EAST 53 STREET",
+            "units": 1
+          }
+        ],
+        "truth_parcel_count": 2,
+        "truth_unit_count": 2
+      }
+    },
+    {
+      "acris_document_binding": {
+        "document_amount": 18000000,
+        "document_id": "2021060701261001",
+        "document_type": "MTGE",
+        "legal_addresses": [
+          "217 WEST 57TH STREET"
+        ],
+        "legal_bbl_count": 172,
+        "loan_key": "9b01e88088f06c65fbd3123bb1ebf9e3",
+        "property_type_codes": [
+          "OT",
+          "SC"
+        ],
+        "recorded_date": "2021-06-14",
+        "sample_legal_bbls": [
+          "1010291102",
+          "1010291103",
+          "1010291104"
+        ]
+      },
+      "case_fragment": "91b2df27",
+      "case_id": "h7-subject:round-exact-lender:91b2df274815b9997ac6ff6e772f2e142c7b3eac3ea61777131611896d6095a6",
+      "completeness_score_interaction": {
+        "classified_as_completeness_conflict": false,
+        "conflict_contract_family": null,
+        "follow_up": "Retained completeness and GSF inputs are logically incompatible, but the completeness score left this case in the exclusion/fallback path rather than reporting a conflict. Score-report diagnostics should explain why the contradiction is not surfaced before this case is interpreted."
+      },
+      "current_gsf_contract": {
+        "band_max": 41418,
+        "band_min": 18120,
+        "contract_id": "rho.size.assessment_roll_gross_sqft_band",
+        "corrected_truth_gsf_sum": 584046,
+        "corrected_truth_sum_inside_band": false,
+        "filed_size": 25886,
+        "property_class": "RT",
+        "vector_count": 791
+      },
+      "filed_property": {
+        "address": "5 East 22nd Street Units Garage, Commercial A and Commercial B",
+        "city": "New York",
+        "county": "New York",
+        "filing_date": "2026-08-31",
+        "filing_id": "0001888524-26-016188",
+        "loan_asset_key": "18",
+        "name": "5 East 22nd Street",
+        "property_key": "CREP-5BA5855CC20797E5",
+        "property_type_code": "RT",
+        "reporting_period": "2026-08-11",
+        "size": 25886,
+        "size_measure": "SQFT"
+      },
+      "property_mart_context": {
+        "matching_filed_property_rows_for_acris_legal_addresses": [],
+        "target_property_key_history": {
+          "addresses": [
+            "5 East 22nd Street",
+            "5 East 22nd Street Units Garage, Commercial A and Commercial B"
+          ],
+          "names": [
+            "5 East 22nd Street"
+          ],
+          "property_keys": [
+            "CREP-5BA5855CC20797E5"
+          ]
+        }
+      },
+      "settlement": {
+        "classification": "retained_truth_document_binding_conflict",
+        "expected_direct_e4_movement": {
+          "ambiguous_delta": 0,
+          "exactly_correct_delta": 0,
+          "false_merges_delta": 0,
+          "resolved_delta": 0,
+          "truth_exclusions_delta": 0
+        },
+        "release_claim_allowed": false,
+        "remedy": "Audit the loan-property-to-ACRIS-document binding or reject the retained ACRIS truth binding for this subject if the filed collateral remains the 5 East 22nd Street garage/commercial-unit row.",
+        "settling_evidence_required": [
+          "independent SEC annex/legal-description row tying the loan property to 217 West 57th Street",
+          "property-row-to-document bridge that maps CREP-5BA5855CC20797E5 to document 2021060701261001",
+          "or a truth-plane correction separating the 217 West 57th Street ACRIS legal set from this filed property"
+        ],
+        "wrong_side": "truth_source_binding"
+      },
+      "truth_roll_summary": {
+        "class_counts": {
+          "R4": 172
+        },
+        "condo_number": "102967",
+        "distinct_owner_count": 114,
+        "representative_street": "217 WEST 57TH STREET",
+        "truth_parcel_count": 172,
+        "truth_unit_count": 172
+      }
+    },
+    {
+      "acris_document_binding": {
+        "document_amount": 16675000,
+        "document_id": "2019050100411003",
+        "document_type": "MTGE",
+        "legal_addresses": [
+          "141-02 79TH AVENUE",
+          "141-24 78TH AVENUE",
+          "141-48 78TH ROAD"
+        ],
+        "legal_bbl_count": 3,
+        "loan_key": "6bfe47de21ff7d7e24bf6464871dea9f",
+        "property_type_codes": [
+          "AP"
+        ],
+        "recorded_date": "2019-05-01",
+        "sample_legal_bbls": [
+          "4066310001",
+          "4066320001",
+          "4066330001"
+        ]
+      },
+      "case_fragment": "e1ee0535",
+      "case_id": "h7-subject:non-round:e1ee05351a5b681c0dcda44e19dd575c686c3c630809c137bd64cc3232bc256c",
+      "completeness_score_interaction": {
+        "classified_as_completeness_conflict": true,
+        "conflict_contract_family": "gsf_band"
+      },
+      "current_gsf_contract": {
+        "band_max": 292553,
+        "band_min": 127991,
+        "contract_id": "rho.size.assessment_roll_gross_sqft_band",
+        "corrected_truth_gsf_sum": 455607,
+        "corrected_truth_sum_inside_band": false,
+        "filed_size": 182845,
+        "property_class": "OF",
+        "vector_count": 353
+      },
+      "filed_property": {
+        "address": "450-460 PARK AVENUE SOUTH",
+        "city": "New York",
+        "county": "New York",
+        "filing_date": "2026-08-27",
+        "filing_id": "0001888524-26-015948",
+        "loan_asset_key": "15",
+        "name": "450-460 PARK AVENUE SOUTH",
+        "property_key": "CREP-5F8AE5E0FA6B5506",
+        "property_type_code": "OF",
+        "reporting_period": "2026-08-11",
+        "size": 182845,
+        "size_measure": "SQFT"
+      },
+      "property_mart_context": {
+        "same_loan_matching_property_rows": [
+          {
+            "address": "141-24 78th Avenue, 141-48 78th Road, & 141-02 79th Avenue",
+            "name": "Regency Gardens Apartment Corp.",
+            "observation_count": 1,
+            "property_key": "CREP-72177B208235E832",
+            "size": 544,
+            "size_measure": "UNITS"
+          },
+          {
+            "address": "141-41A Union Turnpike",
+            "name": "Regency Gardens Apartment Corp.",
+            "observation_count": 39,
+            "property_key": "CREP-0C97A73C45D5CD7C",
+            "size": 181,
+            "size_measure": "UNITS"
+          },
+          {
+            "address": "141-41 UNION TPKE",
+            "name": "Regency Gardens Apartment Corp.",
+            "observation_count": 42,
+            "property_key": "CREP-5F29F9FB87795B4A",
+            "size": 0,
+            "size_measure": "SQFT"
+          }
+        ],
+        "target_property_key_history": {
+          "addresses": [
+            "450-460 PARK AVENUE SOUTH"
+          ],
+          "names": [
+            "450-460 PARK AVENUE SOUTH"
+          ],
+          "property_keys": [
+            "CREP-5F8AE5E0FA6B5506"
+          ]
+        }
+      },
+      "settlement": {
+        "classification": "canon_property_row_binding_defect",
+        "expected_direct_e4_movement": {
+          "ambiguous_delta": 0,
+          "exactly_correct_delta": 0,
+          "false_merges_delta": 0,
+          "resolved_delta": 0,
+          "truth_exclusions_delta": 0
+        },
+        "release_claim_allowed": false,
+        "remedy": "Bind this subject to the same-loan Regency Gardens property rows before scoring; do not widen the OF GSF band for the unrelated 450-460 Park Avenue South row.",
+        "settling_evidence_required": [
+          "canonical loan-subject binding that selects the Regency Gardens property rows for document 2019050100411003",
+          "per-property evidence stack rebuilt after that binding",
+          "a re-score that keeps candidate reach and rho boundaries explicit"
+        ],
+        "wrong_side": "canon_property_row_binding"
+      },
+      "truth_roll_summary": {
+        "class_counts": {
+          "C6": 3
+        },
+        "distinct_owner_count": 1,
+        "sample_rows": [
+          {
+            "bbl": "4066310001",
+            "building_class": "C6",
+            "gross_sqft": 151869,
+            "owner": "REGENCY GARDENS APARTMENT CORP",
+            "street": "141-24/141-45 78 AVENUE",
+            "units": 181
+          },
+          {
+            "bbl": "4066320001",
+            "building_class": "C6",
+            "gross_sqft": 151869,
+            "owner": "REGENCY GARDENS APARTMENT CORP",
+            "street": "141-48 78 ROAD",
+            "units": 180
+          },
+          {
+            "bbl": "4066330001",
+            "building_class": "C6",
+            "gross_sqft": 151869,
+            "owner": "REGENCY GARDENS APARTMENT CORP",
+            "street": "141-02 79 AVENUE",
+            "units": 181
+          }
+        ],
+        "truth_parcel_count": 3,
+        "truth_unit_count": 542
+      }
+    }
+  ],
+  "expected_direct_e4_movement": {
+    "ambiguous_delta": 0,
+    "exactly_correct_delta": 0,
+    "false_merges_delta": 0,
+    "resolved_delta": 0,
+    "truth_exclusions_delta": 0
+  },
+  "frozen_denominator": 79,
+  "measurement": {
+    "case_count": 3,
+    "classification_counts": {
+      "canon_property_row_binding_defect": 1,
+      "retained_truth_document_binding_conflict": 2
+    },
+    "direct_gsf_admission_lever": "none",
+    "measurement_name": "bd_3g94_gsf_conflict_adjudication",
+    "safe_canon_gsf_lever_exists": false
+  },
+  "proof_class": "retained_cmdrvl_data_warehouse_adjudication_not_live",
+  "release_claim_allowed": false,
+  "retained_inputs": {
+    "collateral_completeness_measurement_path": "scripts/geo_measurements/fixtures/e4_collateral_completeness_2026-09-08/measurement.json",
+    "collateral_completeness_measurement_sha256": "446030e2b8f75e04f550ca941c8617eaa9c6c42b4b153c01e1c54c643f66f938",
+    "gsf_residual_measurement_path": "scripts/geo_measurements/fixtures/e4_gsf_residuals_2026-09-08/measurement.json",
+    "gsf_residual_measurement_sha256": "acde72e38c6c3f357831fd0f6e01401fce2c878e29ee5978315dd2c132f43ed5",
+    "gsf_value_vector_rebuild_measurement_path": "scripts/geo_measurements/fixtures/e4_gsf_value_vector_rebuild_2026-09-08/measurement.json",
+    "gsf_value_vector_rebuild_measurement_sha256": "f9a321d3db91411fa255e146405918d886a7c04a6aa1ef64d5c158fc0fdaad0b",
+    "gsf_value_vector_rebuild_overlay_path": "scripts/geo_measurements/fixtures/e4_gsf_value_vector_rebuild_2026-09-08/overlay_request_current_universe_gsf_vectors.json.gz",
+    "gsf_value_vector_rebuild_overlay_sha256": "bdcfe1f54c622b878c90a5567a2bc58eda5eff27f74519c5ef48bb4a89184c13",
+    "population_path": "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/population_request_roll_universe_pluto_vintage_condo_representation_widened.json.gz",
+    "population_sha256": "04816dcf5d2f73fc9eb7661d11ef93209da623d3f9be0173109fc55558433405"
+  },
+  "retained_population_denominator": 70,
+  "source_terms": {
+    "acris": {
+      "attribution_text": "Department of Finance (DOF)",
+      "license_terms": "NYC Open Data public dataset; Socrata metadata did not provide a license code. Use under NYC Open Data Terms of Use with source attribution to Department of Finance (DOF).",
+      "release_dt": "2026-08-10",
+      "source_tables": [
+        "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_MASTER_EXT",
+        "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_LEGALS_EXT"
+      ]
+    },
+    "assessment_roll": {
+      "attribution_text": "New York City Department of Finance property valuation and assessment data",
+      "license_terms": "NYC Open Data public dataset; use under NYC Open Data Terms of Use with source attribution.",
+      "period": "FY2026P3",
+      "source_table": "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.WRGL_NYC_OPENDATA_PROPERTY_VALUATION_AND_ASSESSMENT_DATA_TAX_CLASSES_1_2_3_4__STRUCTURED"
+    },
+    "loan_property_mart": {
+      "attribution_text": "PROPERTY_MART loan/property bridge",
+      "grain": "one row per loan_key/property_key bridge",
+      "license_terms": "Derived mart row; source licensing is carried by the underlying SEC and source pins.",
+      "source_tables": [
+        "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE",
+        "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY",
+        "EDGAR_DB.PROPERTY_MART.PROPERTY_DIM",
+        "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT"
+      ]
+    }
+  },
+  "source_verification": {
+    "described_tables": [
+      "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT",
+      "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE",
+      "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY",
+      "EDGAR_DB.PROPERTY_MART.PROPERTY_DIM",
+      "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_MASTER_EXT",
+      "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_LEGALS_EXT",
+      "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.WRGL_NYC_OPENDATA_PROPERTY_VALUATION_AND_ASSESSMENT_DATA_TAX_CLASSES_1_2_3_4__STRUCTURED"
+    ],
+    "queries": [
+      {
+        "measurement_name": "bd_3g94_sec_loan_property_fanout",
+        "predicate": "target retained property keys joined to LOAN_ISSUANCE, LOAN_ISSUANCE_PROPERTY, PROPERTY_DIM, and latest PROPERTY_PERIOD_FACT rows",
+        "row_count": 15
+      },
+      {
+        "measurement_name": "bd_3g94_acris_truth_document_trace",
+        "predicate": "ACRIS mortgage document candidates by retained loan amount/date and sampled retained truth BBLs",
+        "row_count": 3
+      },
+      {
+        "measurement_name": "bd_3g94_acris_document_full_legal_counts",
+        "predicate": "complete ACRIS legal row counts and legal-address sets for the three retained document_ids",
+        "row_count": 3
+      },
+      {
+        "measurement_name": "bd_3g94_property_key_history_summary",
+        "predicate": "all retained PROPERTY_PERIOD_FACT history for target property keys and loan_key/property_key fanout",
+        "row_count": 12
+      },
+      {
+        "measurement_name": "bd_3g94_filed_rows_matching_acris_legal_addresses",
+        "predicate": "PROPERTY_PERIOD_FACT rows whose filed address/name matches the retained ACRIS legal addresses",
+        "row_count": 7
+      }
+    ]
+  },
+  "version": "bd_3g94_gsf_conflict_adjudication.v0"
+}
