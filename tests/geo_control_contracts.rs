@@ -542,11 +542,11 @@ fn expected_implemented_commands()
             ),
         ),
         (
-            "canon geo evaluate --population <POPULATION.json>",
+            "canon geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>]",
             (
                 CANON_GEO_POPULATION_EVALUATION_VERSION,
                 GeoCommandSurface::Primary,
-                true,
+                false,
                 false,
             ),
         ),

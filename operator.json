@@ -2484,14 +2484,15 @@
       "read_only": false,
       "safety": {
         "owned_temp_fixtures_only": true,
-        "notes": "geo requests are answered on stdout; optional --artifact-dir and --e4-assessment-out publish create-or-identical owned output files; E4 proof class is derived from the input contract provenance; no registry, cache, work-dir, or network writes",
+        "notes": "reads one declared local population artifact, emits the canonical evaluation on stdout, and optionally publishes explicit create-or-identical owned evaluation artifacts and E4 assessment sidecars; E4 proof class is derived from the input contract provenance; no registry, cache, work-dir, or network writes",
         "mutation_class": "OwnedOutput",
         "network_class": "Offline",
-        "concurrency_class": "StatelessRead",
+        "concurrency_class": "AtomicOwnedOutput",
         "platform_classes": [
-          "PortablePathUtf8"
+          "PortablePathUtf8",
+          "SameFilesystemAtomicNoClobber"
         ],
-        "declaration_command": "geo read"
+        "declaration_command": "geo evaluate"
       },
       "side_effects": {
         "reads_stdin": false,

@@ -411,7 +411,8 @@
       "operator_name": "geo evaluate",
       "primary_contracts": [
         "canon_geo_population_request.v0",
-        "canon_geo_population_evaluation.v0"
+        "canon_geo_population_evaluation.v0",
+        "canon_geo_e4_gate_assessment.v0"
       ],
       "action": "preserve"
     },

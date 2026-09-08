@@ -564,6 +564,21 @@ pub const COMMAND_SAFETY_DECLARATIONS: &[CommandSafetyDeclaration] = &[
         notes: "reads declared local CSV sources and atomically replaces only the explicit merged-row output",
     },
     CommandSafetyDeclaration {
+        command: "geo evaluate",
+        operator_contract_name: Some("geo evaluate"),
+        usage: "canon geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>]",
+        read_only: false,
+        mutation: MutationClass::OwnedOutput,
+        network: NetworkClass::Offline,
+        concurrency: ConcurrencyClass::AtomicOwnedOutput,
+        platforms: &[
+            PlatformClass::PortablePathUtf8,
+            PlatformClass::SameFilesystemAtomicNoClobber,
+        ],
+        owned_temp_fixtures_only: true,
+        notes: "reads one declared local population artifact, emits the canonical evaluation on stdout, and optionally publishes explicit create-or-identical owned evaluation artifacts and E4 assessment sidecars; no registry, cache, work-dir, or network writes",
+    },
+    CommandSafetyDeclaration {
         command: "geo read",
         operator_contract_name: None,
         usage: "geo composition/evidence/population request read",

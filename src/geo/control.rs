@@ -1718,10 +1718,10 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
             false,
         ),
         command(
-            "canon geo evaluate --population <POPULATION.json>",
+            "canon geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>]",
             GeoCommandSurface::Primary,
             CANON_GEO_POPULATION_EVALUATION_VERSION,
-            true,
+            false,
             false,
         ),
     ]
