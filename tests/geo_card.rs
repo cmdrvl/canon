@@ -253,6 +253,15 @@ fn canon_command() -> Command {
     Command::new(env!("CARGO_BIN_EXE_canon"))
 }
 
+fn read_fixture_card(name: &str) -> GeoEvidenceCard {
+    let path = Path::new("tests/fixtures/geo").join(name);
+    let bytes = fs::read(&path).expect("fixture card artifact reads");
+    let card: GeoEvidenceCard = serde_json::from_slice(&bytes).expect("fixture card parses");
+    validate_evidence_card_artifact(&card).expect("fixture card validates");
+    canonical_evidence_card_bytes(&card).expect("fixture card canonicalizes");
+    card
+}
+
 fn source_pin(id: &str) -> GeoSourceReleasePin {
     GeoSourceReleasePin {
         source_dataset: format!("fixture.{id}"),
@@ -749,4 +758,152 @@ fn evidence_card_cli_refuses_mismatched_stored_artifact_chain_before_card_output
         output["refusal"]["next_command"],
         "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> --composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json> [--explanation <EXPLANATION.json>]"
     );
+}
+
+#[test]
+fn evidence_card_committed_fixture_237_park_is_drawable_offline() {
+    let card = read_fixture_card("card_237_park.json");
+    let tile_bytes = b"fixture retained 237 park ortho tile bytes";
+
+    assert_eq!(card.version, CANON_GEO_EVIDENCE_CARD_VERSION);
+    assert_eq!(card.proof_class, GeoEvidenceCardProofClass::Fixture);
+    assert_eq!(card.subject_id, "subject.fixture.237_park_multilot");
+    assert_eq!(card.reach, GeoCandidateReachStatus::Full);
+    assert_eq!(card.coverage.state, GeoEvidenceCardCoverageState::Covered);
+    assert_eq!(card.answer_grain, GeoTruthRepresentationGrain::UnitLot);
+    assert_eq!(card.home_cell.as_deref(), Some("892a100d2d3ffff"));
+    assert_eq!(card.candidate_parcels.len(), 2);
+    assert_eq!(card.forced.parcels, vec!["bbl.1012920026".to_string()]);
+    assert!(card.ambiguous_members.is_empty());
+    assert_eq!(card.multi_containment_cardinality, 2);
+    assert_eq!(card.evidence_admissions.len(), 2);
+    assert_eq!(card.composition_status, GeoCompositionStatus::Resolved);
+    assert!(card.composition_blake3.starts_with("blake3:"));
+    assert!(card.evidence_blake3.starts_with("blake3:"));
+    assert!(card.request_blake3.starts_with("blake3:"));
+    assert!(card.explanation_blake3.is_none());
+
+    let rejected = card
+        .candidate_parcels
+        .iter()
+        .find(|candidate| candidate.id == "bbl.1012920001")
+        .expect("rejected 245 Park candidate is retained");
+    assert!(rejected.in_halo);
+    assert_eq!(
+        rejected.evidence_observation_ids,
+        vec!["obs.237_park.rooftop_in_two_lots".to_string()]
+    );
+    assert!(rejected.geometry_blake3.starts_with("blake3:"));
+
+    let winner = card
+        .candidate_parcels
+        .iter()
+        .find(|candidate| candidate.id == "bbl.1012920026")
+        .expect("237 Park winning candidate is retained");
+    assert_eq!(
+        winner.evidence_observation_ids,
+        vec![
+            "obs.237_park.address_breaks_tie".to_string(),
+            "obs.237_park.rooftop_in_two_lots".to_string()
+        ]
+    );
+    assert!(winner.geometry_blake3.starts_with("blake3:"));
+
+    let admission_ids = card
+        .evidence_admissions
+        .iter()
+        .map(|admission| admission.observation_id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        admission_ids,
+        vec![
+            "obs.237_park.address_breaks_tie",
+            "obs.237_park.rooftop_in_two_lots"
+        ]
+    );
+    assert!(
+        card.evidence_admissions
+            .iter()
+            .all(|admission| admission.contract.source_dataset.starts_with("fixture.")),
+        "fixture card must not relabel retained fixture evidence as live"
+    );
+    assert!(card.ortho_pin.source_dataset.starts_with("fixture."));
+    assert!(
+        card.geometry_source_pins
+            .iter()
+            .all(|pin| pin.source_dataset.starts_with("fixture."))
+    );
+    assert!(
+        card.field_classifications.iter().any(|classification| {
+            classification.field_path == "$.candidate_parcels[].geometry"
+                && classification.license_class == GeoArtifactFieldLicenseClass::LicensedGeometry
+                && classification.reconstructive
+        }),
+        "card must classify retained geometry as reconstructive licensed geometry"
+    );
+    assert!(
+        card.field_classifications.iter().any(|classification| {
+            classification.field_path == "$.coverage"
+                && classification.license_class == GeoArtifactFieldLicenseClass::Public
+                && !classification.reconstructive
+        }),
+        "card must classify coverage as shareable state distinct from geometry"
+    );
+
+    verify_evidence_card_tile_replay(
+        &card,
+        &BTreeMap::from([(card.ortho_pin.blake3.clone(), tile_bytes.to_vec())]),
+    )
+    .expect("committed 237 Park fixture replays from retained tile bytes");
+}
+
+#[test]
+fn evidence_card_committed_byop_partial_coverage_fixture_names_absent_layer() {
+    let card = read_fixture_card("card_byop_partial_coverage.json");
+    let tile_bytes = b"fixture retained byop partial ortho tile bytes";
+
+    assert_eq!(card.version, CANON_GEO_EVIDENCE_CARD_VERSION);
+    assert_eq!(card.proof_class, GeoEvidenceCardProofClass::Fixture);
+    assert_eq!(card.subject_id, "subject.fixture.byop_partial_coverage");
+    assert_eq!(card.reach, GeoCandidateReachStatus::None);
+    assert_eq!(
+        card.reach_none_reason.as_deref(),
+        Some("client_layer_does_not_cover_tile")
+    );
+    assert_eq!(card.coverage.state, GeoEvidenceCardCoverageState::Absent);
+    assert_eq!(
+        card.coverage.reason.as_deref(),
+        Some("client_layer_does_not_cover_tile")
+    );
+    assert_eq!(card.answer_grain, GeoTruthRepresentationGrain::UnitLot);
+    assert!(card.candidate_parcels.is_empty());
+    assert!(card.candidate_buildings.is_empty());
+    assert!(card.forced.parcels.is_empty());
+    assert!(card.forced.buildings.is_empty());
+    assert!(card.ambiguous_members.is_empty());
+    assert!(card.conflicting_records.is_empty());
+    assert!(card.evidence_admissions.is_empty());
+    assert!(card.composition_blake3.is_empty());
+    assert!(card.evidence_blake3.is_empty());
+    assert!(card.request_blake3.is_empty());
+    assert!(card.explanation_blake3.is_none());
+    assert_eq!(card.multi_containment_cardinality, 0);
+    assert!(card.ortho_pin.source_dataset.starts_with("fixture."));
+    assert!(
+        card.geometry_source_pins
+            .iter()
+            .all(|pin| pin.source_dataset.starts_with("fixture."))
+    );
+    assert!(
+        card.field_classifications
+            .iter()
+            .any(|classification| classification.field_path == "$.reach_none_reason"),
+        "partial coverage card must name the absent-layer reason explicitly"
+    );
+
+    verify_evidence_card_tile_replay(
+        &card,
+        &BTreeMap::from([(card.ortho_pin.blake3.clone(), tile_bytes.to_vec())]),
+    )
+    .expect("committed BYOP fixture replays from retained tile bytes");
 }
