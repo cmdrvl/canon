@@ -116,6 +116,7 @@ pub struct GeoNullUnassignedFootprint {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeoNullWarehouseRows {
+    pub source_pin: GeoNullFootprintPlaneSourcePin,
     pub request: GeoWarehouseRowsRequest,
     pub unassigned_footprints: Vec<GeoNullUnassignedFootprint>,
 }
@@ -418,6 +419,7 @@ pub fn null_observer_rows_to_warehouse_rows(
         max_materialized_models,
     };
     Ok(GeoNullWarehouseRows {
+        source_pin: plane.source_pin.clone(),
         request,
         unassigned_footprints,
     })

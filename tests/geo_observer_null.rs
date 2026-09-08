@@ -338,6 +338,36 @@ fn t32_null_observer_warehouse_rows_are_admitted_but_residual_redundant() {
             ("1006500", Some("1004540047")),
         ]
     );
+    let null_contract = converted
+        .request
+        .contracts
+        .first()
+        .expect("null rho contract emitted");
+    assert_eq!(
+        null_contract.source_release,
+        converted.source_pin.source_release
+    );
+    assert!(null_contract.source_lineage_ids.contains(&format!(
+        "{}:{}",
+        converted.source_pin.source_dataset, converted.source_pin.source_release
+    )));
+    assert!(
+        null_contract
+            .source_lineage_ids
+            .contains(&format!("{GEO_NULL_FOOTPRINT_OBSERVER_ID}:{POPULATION_ID}"))
+    );
+    assert_eq!(
+        converted.source_pin.license_terms,
+        "Fixture geometry for Canon Geo tests only"
+    );
+    assert_eq!(converted.source_pin.attribution_text, "CMD+RVL fixture");
+
+    let mut unlicensed_pin = converted.source_pin.clone();
+    unlicensed_pin.license_terms.clear();
+    let pin_error = null_footprint_rho_contract(&unlicensed_pin, POPULATION_ID)
+        .expect_err("unlicensed source pin must refuse");
+    assert_eq!(pin_error.code, GeoObserverErrorCode::InvalidInput);
+    assert_eq!(pin_error.detail["field"], "license_terms");
 
     let evidence_request =
         materialize_warehouse_rows(&converted.request).expect("null rows materialize");
