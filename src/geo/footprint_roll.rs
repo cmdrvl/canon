@@ -10,8 +10,8 @@ use super::{
     CANON_GEO_EVIDENCE_REQUEST_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoCompositionProfile,
     GeoCompositionUniverse, GeoEntityLevel, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest,
     GeoEvidenceError, GeoEvidenceRecordRef, GeoIntegerMeasure, GeoIntegerMemberValue,
-    GeoIntegerValueOrigin, GeoRhoBasis, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind,
-    compile_evidence,
+    GeoIntegerValueOrigin, GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoContract, GeoRhoObservation,
+    GeoRhoObservationKind, compile_evidence,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -586,6 +586,7 @@ fn assessment_roll_gross_sqft_band_contract(
             calibration_blake3: calibration.calibration_blake3.clone(),
             falsification_rule_id: calibration.falsification_rule_id.clone(),
             admissible_hard_band: true,
+            admission_policy: GeoRhoAdmissionPolicy::Declared,
         },
     }
 }
@@ -611,6 +612,7 @@ fn footprint_building_count_floor_contract(
             calibration_blake3: calibration.calibration_blake3.clone(),
             falsification_rule_id: calibration.falsification_rule_id.clone(),
             admissible_hard_band: true,
+            admission_policy: GeoRhoAdmissionPolicy::Declared,
         },
     }
 }

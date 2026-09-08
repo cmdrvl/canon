@@ -126,22 +126,23 @@ use canon::geo::{
     GeoProjectionProvenance, GeoPropagationBudget, GeoProspectiveObservation,
     GeoProspectiveOutcome, GeoQuestion, GeoRegionalInventory, GeoRegionalSourceInstance,
     GeoReliabilityOrder, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter, GeoRetryPolicy,
-    GeoRetryRecovery, GeoRetryRecoveryPoint, GeoRetryTerminal, GeoRhoAdmissionPolicy, GeoRhoBasis,
-    GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoRunArtifactRef, GeoRunPlanRef,
-    GeoSeparationInputs, GeoSeparationRequest, GeoSourceAvailability, GeoSourceAxisDomain,
-    GeoSourceGeometry, GeoSourcePointDecimal, GeoSourcePointFixed, GeoSourceRelease,
-    GeoSourceReleasePin, GeoStreetDirection, GeoStreetSuffix, GeoSubjectBinding,
-    GeoSubjectBindingClass, GeoTelemetryDeclaration, GeoTelemetryMetric,
-    GeoTelemetrySemanticEffect, GeoTemporalScope, GeoTileCandidateReachReference,
-    GeoTileCandidateReachReferenceKind, GeoTileDecisionBatch, GeoTileDecisionMember,
-    GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileFeatureRef,
+    GeoRetryRecovery, GeoRetryRecoveryPoint, GeoRetryTerminal, GeoRhoAdmissionFallback,
+    GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind,
+    GeoRunArtifactRef, GeoRunPlanRef, GeoSeparationInputs, GeoSeparationRequest,
+    GeoSourceAvailability, GeoSourceAxisDomain, GeoSourceGeometry, GeoSourcePointDecimal,
+    GeoSourcePointFixed, GeoSourceRelease, GeoSourceReleasePin, GeoStreetDirection,
+    GeoStreetSuffix, GeoSubjectBinding, GeoSubjectBindingClass, GeoTelemetryDeclaration,
+    GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
+    GeoTileCandidateReachReference, GeoTileCandidateReachReferenceKind, GeoTileDecisionBatch,
+    GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileFeatureRef,
     GeoTileReconciliationArtifact, GeoTileReconciliationRequest, GeoTileSourceBinding,
     GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoTruthPlane, GeoValidTimeInterval,
     GeoValueOrigin, GeoWarehouseEvidenceRow, GeoWarehouseGeometryRow,
     GeoWarehouseGeometryRowsRequest, GeoWarehouseParcelRow, GeoWarehouseRowsRequest,
     admit_observations_with_universe, assess_e4_gate, build_collateral_ledger,
-    canonical_collateral_ledger_bytes, canonical_collateral_ledger_seed_bytes,
-    canonical_composition_bytes, canonical_deed_index_rows_bytes, canonical_deed_truth_bytes,
+    canonical_collateral_ledger_bytes,
+    canonical_collateral_ledger_seed_bytes, canonical_composition_bytes,
+    canonical_deed_index_rows_bytes, canonical_deed_truth_bytes,
     canonical_e4_gate_assessment_bytes, canonical_e4_rescore_comparison_bytes,
     canonical_error_population_bytes, canonical_explanation_bytes, canonical_image_tile_pin_bytes,
     canonical_inspection_bytes, canonical_next_evidence_bytes,
@@ -4173,6 +4174,84 @@ fn evidence_request_schema_matches_a_real_instance() {
         "canon.geo.evidence_request.v0",
         "canon_geo_evidence_request.v0",
         &instance,
+    );
+}
+
+#[test]
+fn evidence_policy_schemas_match_real_corrobored_admission_instances() {
+    let mut request = evidence_request();
+    request.universe = GeoCompositionUniverse {
+        parcels: vec!["parcel-a".to_string(), "parcel-b".to_string()],
+        buildings: Vec::new(),
+    };
+    request.contracts = vec![
+        GeoRhoContract {
+            id: "contract-owner-mask".to_string(),
+            version: "v1".to_string(),
+            source_dataset: "fixture:dataset".to_string(),
+            source_release: "fixture-v1".to_string(),
+            source_lineage_ids: vec!["fixture:upstream-dataset".to_string()],
+            method_id: "fixture:owner-mask".to_string(),
+            method_version: "v1".to_string(),
+            claim_role: GeoEvidenceClaimRole::AttributeObservation,
+            basis: GeoRhoBasis::EmpiricalCalibration {
+                population_id: "fixture:population".to_string(),
+                calibration_blake3: blake3::hash(b"schema policy calibration")
+                    .to_hex()
+                    .to_string(),
+                falsification_rule_id: "fixture:falsification".to_string(),
+                admissible_hard_band: true,
+                admission_policy: GeoRhoAdmissionPolicy::HardOnlyWhenCorroborated {
+                    minimum_distinct_contracts: 1,
+                    corroborating_contract_ids: vec!["contract-family".to_string()],
+                    fallback: GeoRhoAdmissionFallback::SoftWithWeight { cost_if_absent: 1 },
+                },
+            },
+        },
+        schema_rho_contract("contract-family"),
+    ];
+    request.observations = vec![GeoRhoObservation {
+        id: "owner-mask".to_string(),
+        contract_id: "contract-owner-mask".to_string(),
+        source_records: vec![schema_source_record("owner-mask-row")],
+        valid_time: None,
+        observation: GeoRhoObservationKind::IntegerSumBand {
+            level: GeoEntityLevel::Parcel,
+            measure: GeoIntegerMeasure {
+                semantic_id: "schema.owner_not_exact".to_string(),
+                unit: "lots".to_string(),
+                value_origin: GeoIntegerValueOrigin::SourceAsserted,
+            },
+            values: vec![
+                GeoIntegerMemberValue {
+                    id: "parcel-a".to_string(),
+                    value: 0,
+                },
+                GeoIntegerMemberValue {
+                    id: "parcel-b".to_string(),
+                    value: 1,
+                },
+            ],
+            min: 0,
+            max: 0,
+        },
+    }];
+
+    let request_instance = serde_json::to_value(&request).expect("request must serialize");
+    assert_drift_free(
+        EVIDENCE_REQUEST_SCHEMA,
+        "canon.geo.evidence_request.v0",
+        "canon_geo_evidence_request.v0",
+        &request_instance,
+    );
+
+    let artifact = compile_evidence(&request).expect("policy evidence compiles");
+    let artifact_instance = serde_json::to_value(&artifact).expect("artifact must serialize");
+    assert_drift_free(
+        EVIDENCE_COMPILATION_SCHEMA,
+        "canon.geo.evidence_compilation.v0",
+        "canon_geo_evidence_compilation.v0",
+        &artifact_instance,
     );
 }
 

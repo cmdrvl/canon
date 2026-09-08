@@ -5,11 +5,11 @@ use canon::geo::{
     GeoCompositionUniverse, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest,
     GeoEvidenceDisposition, GeoImageTilePin, GeoObservationKind, GeoObservationPayload,
     GeoObservationRow, GeoObserverAdmissionRequest, GeoObserverContract, GeoObserverErrorCode,
-    GeoObserverIdentity, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind, GeoValidTimeInterval,
-    admit_observations_with_universe, admit_observer_request, canonical_observation_rows_bytes,
-    canonical_observer_admission_request_bytes, compile_evidence, solve_composition,
-    to_rho_observation, validate_observation_rows_artifact, validate_observer_admission_request,
-    verify_replay,
+    GeoObserverIdentity, GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
+    GeoValidTimeInterval, admit_observations_with_universe, admit_observer_request,
+    canonical_observation_rows_bytes, canonical_observer_admission_request_bytes, compile_evidence,
+    solve_composition, to_rho_observation, validate_observation_rows_artifact,
+    validate_observer_admission_request, verify_replay,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -98,6 +98,7 @@ fn rho_contract(admissible_hard_band: bool, claim_role: GeoEvidenceClaimRole) ->
             calibration_blake3: hex(b"fixture observer characterization"),
             falsification_rule_id: "structure_count_truth_outside_band".to_string(),
             admissible_hard_band,
+            admission_policy: GeoRhoAdmissionPolicy::Declared,
         },
     }
 }

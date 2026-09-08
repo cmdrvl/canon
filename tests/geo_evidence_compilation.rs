@@ -7,10 +7,11 @@ use canon::geo::{
     GeoEvidenceDisposition, GeoEvidenceRecordRef, GeoIntegerMeasure, GeoIntegerMemberValue,
     GeoIntegerValueOrigin, GeoLabeledCompositionCase, GeoPopulationCaseStatus,
     GeoPopulationErrorCode, GeoPopulationEvaluationArtifact, GeoPopulationEvaluationRequest,
-    GeoPopulationSummary, GeoPopulationTruthPlaneSummary, GeoResolvedClaimClass, GeoRhoBasis,
-    GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoRhoSoundness, GeoTruthPlane,
-    GeoValidTimeInterval, canonical_evidence_compilation_bytes, compile_evidence,
-    evaluate_population, solve_composition, validate_population_evaluation_artifact,
+    GeoPopulationSummary, GeoPopulationTruthPlaneSummary, GeoResolvedClaimClass,
+    GeoRhoAdmissionFallback, GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoContract, GeoRhoObservation,
+    GeoRhoObservationKind, GeoRhoSoundness, GeoTruthPlane, GeoValidTimeInterval,
+    canonical_evidence_compilation_bytes, compile_evidence, evaluate_population, solve_composition,
+    validate_population_evaluation_artifact,
 };
 use serde::Deserialize;
 
@@ -46,6 +47,7 @@ fn contract(id: &str, soundness: GeoRhoSoundness) -> GeoRhoContract {
                     .to_string(),
                 falsification_rule_id: format!("fixture:{id}:falsify"),
                 admissible_hard_band: false,
+                admission_policy: GeoRhoAdmissionPolicy::Declared,
             },
         },
     }
@@ -609,6 +611,166 @@ fn empirical_integer_sum_band_requires_admissible_hard_band_contract() {
     assert_eq!(flagged_solve.summary.residual_model_count, 3);
     assert!(
         flagged_solve.summary.residual_model_count < unflagged_solve.summary.residual_model_count
+    );
+}
+
+#[test]
+fn corroborated_hard_policy_demotes_truth_falsifying_mask_until_corroborated() {
+    let mut exact_owner = flagged_empirical_contract("rho.owner.partial.v0");
+    if let GeoRhoBasis::EmpiricalCalibration {
+        admission_policy, ..
+    } = &mut exact_owner.basis
+    {
+        *admission_policy = GeoRhoAdmissionPolicy::HardOnlyWhenCorroborated {
+            minimum_distinct_contracts: 1,
+            corroborating_contract_ids: vec!["rho.owner.family.v0".to_string()],
+            fallback: GeoRhoAdmissionFallback::SoftWithWeight { cost_if_absent: 2 },
+        };
+    }
+    let family = contract(
+        "rho.owner.family.v0",
+        GeoRhoSoundness::EmpiricalHighCoverage,
+    );
+    let owner_mask = GeoRhoObservation {
+        id: "owner-mask".to_string(),
+        contract_id: exact_owner.id.clone(),
+        source_records: vec![source_record("owner-mask-row")],
+        valid_time: None,
+        observation: GeoRhoObservationKind::IntegerSumBand {
+            level: GeoEntityLevel::Parcel,
+            measure: GeoIntegerMeasure {
+                semantic_id: "fixture.owner_not_exact".to_string(),
+                unit: "lots".to_string(),
+                value_origin: GeoIntegerValueOrigin::SourceAsserted,
+            },
+            values: vec![
+                GeoIntegerMemberValue {
+                    id: "p2".to_string(),
+                    value: 1,
+                },
+                GeoIntegerMemberValue {
+                    id: "p1".to_string(),
+                    value: 0,
+                },
+            ],
+            min: 0,
+            max: 0,
+        },
+    };
+    let request = |observations: Vec<GeoRhoObservation>| GeoEvidenceCompilationRequest {
+        version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
+        universe: universe(&["p1", "p2"]),
+        contracts: vec![exact_owner.clone(), family.clone()],
+        observations,
+        max_assignments: 4,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    };
+
+    let demoted = compile_evidence(&request(vec![owner_mask.clone()]))
+        .expect("uncorroborated hard-capable owner mask demotes to soft");
+    assert!(demoted.composition_request.hard_constraints.is_empty());
+    assert_eq!(demoted.composition_request.soft_preferences.len(), 1);
+    assert_eq!(
+        demoted.admissions[0].disposition,
+        GeoEvidenceDisposition::SoftPreference
+    );
+    assert_eq!(
+        demoted.admissions[0].admission_reason.as_deref(),
+        Some("rho_corroboration_not_met")
+    );
+    assert_eq!(
+        demoted.admissions[0].generated_ids,
+        vec!["rho:rho.owner.partial.v0@v1:owner-mask:soft:0000".to_string()]
+    );
+    assert_eq!(
+        demoted.composition_request.soft_preferences[0].member,
+        GeoEntityRef::new(GeoEntityLevel::Parcel, "p1")
+    );
+    let demoted_solve =
+        solve_composition(&demoted.composition_request).expect("demoted request solves");
+    assert_eq!(demoted_solve.status, GeoCompositionStatus::Ambiguous);
+    assert!(
+        demoted_solve
+            .residual_models
+            .contains(&GeoCompositionModel {
+                parcels: parcels(&["p1", "p2"]),
+                buildings: Vec::new(),
+            }),
+        "demotion keeps the full known-truth model in the residual"
+    );
+
+    let corroborated = compile_evidence(&request(vec![
+        owner_mask,
+        GeoRhoObservation {
+            id: "family-support".to_string(),
+            contract_id: family.id.clone(),
+            source_records: vec![source_record("family-support-row")],
+            valid_time: None,
+            observation: GeoRhoObservationKind::PreferMember {
+                member: GeoEntityRef::new(GeoEntityLevel::Parcel, "p2"),
+                cost_if_absent: 1,
+            },
+        },
+    ]))
+    .expect("corroborated owner mask admits as hard");
+    assert_eq!(corroborated.composition_request.hard_constraints.len(), 1);
+    assert!(
+        corroborated
+            .admissions
+            .iter()
+            .any(|admission| admission.observation_id == "owner-mask"
+                && admission.disposition == GeoEvidenceDisposition::HardConstraint)
+    );
+}
+
+#[test]
+fn soft_policy_keeps_non_membership_numeric_bands_diagnostic() {
+    let mut size_band = flagged_empirical_contract("rho.size.gsf.v0");
+    if let GeoRhoBasis::EmpiricalCalibration {
+        admission_policy, ..
+    } = &mut size_band.basis
+    {
+        *admission_policy = GeoRhoAdmissionPolicy::SoftWithWeight { cost_if_absent: 1 };
+    }
+    let mut observation = integer_sum_observation("gross-sqft", &size_band.id);
+    if let GeoRhoObservationKind::IntegerSumBand {
+        measure,
+        values,
+        min,
+        max,
+        ..
+    } = &mut observation.observation
+    {
+        measure.semantic_id = "fixture.gross_sqft".to_string();
+        measure.unit = "sqft".to_string();
+        values[0].value = 400;
+        values[1].value = 700;
+        values[2].value = 6_002;
+        *min = 7_000;
+        *max = 16_001;
+    }
+
+    let compiled = compile_evidence(&GeoEvidenceCompilationRequest {
+        version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
+        universe: universe(&["p1", "p2", "p3"]),
+        contracts: vec![size_band],
+        observations: vec![observation],
+        max_assignments: 16,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    })
+    .expect("non-membership numeric band compiles as diagnostic under soft policy");
+
+    assert!(compiled.composition_request.hard_constraints.is_empty());
+    assert!(compiled.composition_request.soft_preferences.is_empty());
+    assert_eq!(
+        compiled.admissions[0].disposition,
+        GeoEvidenceDisposition::DiagnosticOnly
+    );
+    assert_eq!(
+        compiled.admissions[0].admission_reason.as_deref(),
+        Some("rho_soft_fallback_not_representable")
     );
 }
 

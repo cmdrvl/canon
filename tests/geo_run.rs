@@ -2138,6 +2138,7 @@ fn observer_rho_contract_for_run() -> GeoRhoContract {
             calibration_blake3: digest_hex("fixture observer characterization"),
             falsification_rule_id: "structure_count_truth_outside_band".to_string(),
             admissible_hard_band: true,
+            admission_policy: geo::GeoRhoAdmissionPolicy::Declared,
         },
     }
 }

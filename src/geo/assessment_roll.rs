@@ -14,8 +14,8 @@ use super::{
     evaluation::{GeoLabeledCompositionCase, GeoPopulationEvaluationRequest},
     evidence::{
         CANON_GEO_EVIDENCE_REQUEST_VERSION, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest,
-        GeoEvidenceRecordRef, GeoRhoBasis, GeoRhoContract, GeoRhoObservation,
-        GeoRhoObservationKind, compile_evidence,
+        GeoEvidenceRecordRef, GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoContract,
+        GeoRhoObservation, GeoRhoObservationKind, compile_evidence,
     },
     stack::{
         CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION, GeoPopulationCaseEvidenceOverlay,
@@ -762,6 +762,7 @@ fn exact_contract(request: &GeoAssessmentRollOwnerRequest) -> GeoRhoContract {
             calibration_blake3: request.calibration.calibration_blake3.clone(),
             falsification_rule_id: request.calibration.exact_falsification_rule_id.clone(),
             admissible_hard_band: true,
+            admission_policy: GeoRhoAdmissionPolicy::Declared,
         },
     }
 }
@@ -781,6 +782,7 @@ fn affiliate_contract(request: &GeoAssessmentRollOwnerRequest) -> GeoRhoContract
             calibration_blake3: request.calibration.calibration_blake3.clone(),
             falsification_rule_id: request.calibration.affiliate_falsification_rule_id.clone(),
             admissible_hard_band: false,
+            admission_policy: GeoRhoAdmissionPolicy::Declared,
         },
     }
 }

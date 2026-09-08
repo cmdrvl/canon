@@ -10,9 +10,9 @@ use canon::geo::{
     GeoEvidenceStackErrorCode, GeoH7PopulationScope, GeoH7ResultMode, GeoIntegerMeasure,
     GeoIntegerMemberValue, GeoIntegerValueOrigin, GeoLabeledCompositionCase,
     GeoPopulationCaseEvidenceOverlay, GeoPopulationCaseStatus, GeoPopulationEvaluationRequest,
-    GeoPopulationEvidenceStackArtifact, GeoPopulationEvidenceStackRequest, GeoRhoBasis,
-    GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoTruthPlane, GeoValidTimeInterval,
-    canonical_population_evidence_stack_bytes, compile_evidence,
+    GeoPopulationEvidenceStackArtifact, GeoPopulationEvidenceStackRequest, GeoRhoAdmissionPolicy,
+    GeoRhoBasis, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoTruthPlane,
+    GeoValidTimeInterval, canonical_population_evidence_stack_bytes, compile_evidence,
     e4_proof_source_from_population_request, evaluate_population, stack_population_evidence,
     stack_population_evidence_with_source_provenance, validate_e4_gate_proof_source,
     validate_population_evidence_stack_artifact,
@@ -70,6 +70,7 @@ fn empirical_contract(id: &str) -> GeoRhoContract {
                 .to_string(),
             falsification_rule_id: format!("fixture:{id}:falsification"),
             admissible_hard_band: false,
+            admission_policy: GeoRhoAdmissionPolicy::Declared,
         },
     }
 }
