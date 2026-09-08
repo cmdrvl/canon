@@ -899,9 +899,11 @@
       "declared_grain": "truth_plane",
       "description": "Franklin County deed-grain recorder-source bounded source availability guard for canon_geo_deed_index_rows.v0 input.",
       "sql_path": "scripts/geo_measurements/e5_franklin_deed_truth_export.sql",
-      "as_of": "2026-09-07",
+      "as_of": "2026-09-08",
       "expected_row_count": 1,
       "release_pins": {
+        "bridge_build_id": "80d0ea39-a5aa-4c27-a8d7-f662a4507257",
+        "county_fips": "39049",
         "recorder_source_status": "recorder_source_not_landed",
         "required_content_hash_field": "SOURCE_SHA256",
         "required_license_fields": "LICENSE_TERMS,ATTRIBUTION_TEXT",
@@ -914,27 +916,37 @@
       "denominator_fields": [
         "measurement_guard_rows",
         "required_column_count",
-        "source_pin_field_count"
+        "source_pin_field_count",
+        "truth_denominator_loans",
+        "truth_denominator_properties"
       ],
       "expected_denominators": {
         "measurement_guard_rows": 1,
         "required_column_count": 14,
-        "source_pin_field_count": 6
+        "source_pin_field_count": 6,
+        "truth_denominator_loans": 202,
+        "truth_denominator_properties": 151
       },
       "expected_sanity": {
         "artifact_row_count_matches_expected": true,
         "candidate_table_count": 0,
+        "county_fips": "39049",
+        "max_present_required_column_count": 0,
         "output_contract": "canon_geo_deed_index_rows.v0",
         "present_required_column_count": 0,
         "proof_class": "fixture_class_not_scored",
         "recorder_source_status": "recorder_source_not_landed",
-        "truth_plane": "deed_grain_instrument"
+        "truth_plane": "deed_grain_instrument",
+        "usable_table_count": 0
       },
       "result_fields": [
+        "bridge_build_id",
         "candidate_table_count",
         "candidate_tables",
+        "county_fips",
         "denominator_policy",
         "match_policy",
+        "max_present_required_column_count",
         "measurement_guard_rows",
         "missing_columns",
         "natural_key",
@@ -946,15 +958,21 @@
         "required_source_pin_fields",
         "source_pin_field_count",
         "source_table",
+        "truth_denominator_loans",
+        "truth_denominator_properties",
         "truth_plane",
-        "truth_scoring_role"
+        "truth_scoring_role",
+        "usable_table_count"
       ],
       "expected_result_rows": [
         {
+          "bridge_build_id": "80d0ea39-a5aa-4c27-a8d7-f662a4507257",
           "candidate_table_count": 0,
           "candidate_tables": "",
+          "county_fips": "39049",
           "denominator_policy": "unique_plus_non_unique_discarded_plus_no_match_equals_loans",
           "match_policy": "mortgage_instrument_exact_amount_recording_window_unique_required",
+          "max_present_required_column_count": 0,
           "measurement_guard_rows": 1,
           "missing_columns": "AMOUNT_CENTS,ATTRIBUTION_TEXT,BORROWER_PARTY_BLAKE3,INSTRUMENT_ID,INSTRUMENT_TYPE,LENDER_PARTY_BLAKE3,LICENSE_TERMS,PARCEL_IDS,PARSER_VERSION,RECORDING_DATE,RELEASE_DT,ROW_BLAKE3,SOURCE_RELEASE,SOURCE_SHA256",
           "natural_key": "release/instrument_id",
@@ -966,11 +984,14 @@
           "required_source_pin_fields": "SOURCE_RELEASE,RELEASE_DT,SOURCE_SHA256,PARSER_VERSION,LICENSE_TERMS,ATTRIBUTION_TEXT",
           "source_pin_field_count": 6,
           "source_table": null,
+          "truth_denominator_loans": 202,
+          "truth_denominator_properties": 151,
           "truth_plane": "deed_grain_instrument",
-          "truth_scoring_role": "truth_plane_only_not_candidate_evidence"
+          "truth_scoring_role": "truth_plane_only_not_candidate_evidence",
+          "usable_table_count": 0
         }
       ],
-      "source_sql_sha256": "cea6ce81e7ca2f7b976bd65ac85135779f2343d5a4e2a73cf7b031b1877d1c6c",
+      "source_sql_sha256": "72cc49024f0dda9ddf1efc838ed9253fa814257c148afaaa3064e2b071ada642",
       "execution_transform": "cmdrvl_data_sqlglot_normalized_plus_tool_row_limit",
       "result_row_validation": "exact_manifest_rows",
       "limitations": [

@@ -467,6 +467,8 @@ fn derive_denominators(measurement_id: &str, rows: &[Value]) -> Value {
                 "measurement_guard_rows",
                 "required_column_count",
                 "source_pin_field_count",
+                "truth_denominator_loans",
+                "truth_denominator_properties",
             ],
         ),
         "e5_microsoft_globalml_franklin_h3_coverage_v0" => single_row_denominators(

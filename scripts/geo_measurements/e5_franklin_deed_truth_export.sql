@@ -7,6 +7,8 @@
 
 WITH params AS (
     SELECT
+        '80d0ea39-a5aa-4c27-a8d7-f662a4507257'::TEXT AS bridge_build_id,
+        '39049'::TEXT AS county_fips,
         'canon_geo_deed_index_rows.v0'::TEXT AS output_contract,
         'deed_grain_instrument'::TEXT AS truth_plane,
         'fixture_class_not_scored'::TEXT AS absent_proof_class,
@@ -94,6 +96,16 @@ best_table AS (
         ORDER BY required_columns_present DESC, table_schema, table_name
     ) = 1
 ),
+bridge_subjects AS (
+    SELECT DISTINCT
+        loan_key,
+        property_key
+    FROM EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY
+    WHERE build_id = (SELECT bridge_build_id FROM params)
+      AND county_fips = (SELECT county_fips FROM params)
+      AND loan_key IS NOT NULL
+      AND property_key IS NOT NULL
+),
 missing_columns AS (
     SELECT rc.column_name
     FROM required_columns rc
@@ -106,6 +118,8 @@ missing_columns AS (
 SELECT
     p.output_contract,
     p.truth_plane,
+    p.bridge_build_id,
+    p.county_fips,
     CASE
         WHEN bt.table_name IS NULL THEN p.absent_proof_class
         WHEN bt.required_columns_present = (SELECT COUNT(*) FROM required_columns)
@@ -124,9 +138,20 @@ SELECT
     END AS source_table,
     p.required_natural_key AS natural_key,
     1::NUMBER AS measurement_guard_rows,
+    (SELECT COUNT(DISTINCT loan_key) FROM bridge_subjects)::NUMBER
+        AS truth_denominator_loans,
+    (SELECT COUNT(DISTINCT property_key) FROM bridge_subjects)::NUMBER
+        AS truth_denominator_properties,
     (SELECT COUNT(*) FROM required_columns)::NUMBER AS required_column_count,
     COALESCE(bt.required_columns_present, 0)::NUMBER AS present_required_column_count,
     (SELECT COUNT(*) FROM table_scores)::NUMBER AS candidate_table_count,
+    (
+        SELECT COUNT(*)
+        FROM table_scores
+        WHERE required_columns_present = (SELECT COUNT(*) FROM required_columns)
+    )::NUMBER AS usable_table_count,
+    COALESCE((SELECT MAX(required_columns_present) FROM table_scores), 0)::NUMBER
+        AS max_present_required_column_count,
     6::NUMBER AS source_pin_field_count,
     'SOURCE_RELEASE,RELEASE_DT,SOURCE_SHA256,PARSER_VERSION,LICENSE_TERMS,ATTRIBUTION_TEXT'::TEXT
         AS required_source_pin_fields,
@@ -154,6 +179,8 @@ LEFT JOIN missing_columns mc
 GROUP BY
     p.output_contract,
     p.truth_plane,
+    p.bridge_build_id,
+    p.county_fips,
     p.absent_proof_class,
     p.present_proof_class,
     p.required_natural_key,

@@ -340,11 +340,19 @@ fn t49_deed_truth_plane_is_not_pooled_with_other_truth_planes() {
 #[test]
 fn e5_franklin_deed_truth_export_is_pinned_truth_plane_input() {
     for required in [
+        "'80d0ea39-a5aa-4c27-a8d7-f662a4507257'::TEXT AS bridge_build_id",
+        "'39049'::TEXT AS county_fips",
         "'canon_geo_deed_index_rows.v0'::TEXT AS output_contract",
         "'deed_grain_instrument'::TEXT AS truth_plane",
         "'fixture_class_not_scored'::TEXT AS absent_proof_class",
         "edgar_db.information_schema.tables",
         "edgar_db.information_schema.columns",
+        "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY",
+        "COUNT(DISTINCT loan_key) FROM bridge_subjects",
+        "COUNT(DISTINCT property_key) FROM bridge_subjects",
+        "truth_denominator_loans",
+        "truth_denominator_properties",
+        "usable_table_count",
         "SOURCE_RELEASE",
         "RELEASE_DT",
         "SOURCE_SHA256",

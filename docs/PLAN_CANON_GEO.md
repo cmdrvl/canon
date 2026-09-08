@@ -1161,7 +1161,11 @@ coverage/precision plane:
   reach and footprint source coverage are upstream of truth accuracy; the deed-grain
   truth plane, exact-local predicate replay, multi-source incidence, actual solver
   evaluation, and the coverage/precision curve remain unmeasured. Successful MCP
-  calls also still lack query ids, preventing durable live receipt promotion. The
+  calls also still lack query ids, preventing durable live receipt promotion. A
+  2026-09-08 recorder-source guard still finds no Franklin `canon_geo_deed_index_rows.v0`
+  source; the future DeedGrainInstrument denominator is the same current Franklin
+  bridge's 202 loans / 151 properties, with only unique amount/date instrument
+  matches admitted as truth. The
   parcel-free case remains relevant: missing parcels must suppress parcel answers,
   not discard useful
   building/address observations. FEMA is pinned to the

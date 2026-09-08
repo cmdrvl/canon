@@ -204,12 +204,18 @@ empirical reference here, not Canon exact-local-integer truth.
 `e5_franklin_deed_truth_export.sql` is the D7 deed-grain truth-source guard and
 export input. It scans only warehouse metadata for a county recorder deed or
 mortgage index with the generic `canon_geo_deed_index_rows.v0` shape and emits
-one exact manifest row. On 2026-09-07 the guard is
-`recorder_source_not_landed`: no live Franklin deed-grain precision is claimed,
-and the artifact is fixture-class/not-scored until an external recorder landing
-supplies `SOURCE_SHA256`, `SOURCE_RELEASE`, `RELEASE_DT`, `PARSER_VERSION`,
-`LICENSE_TERMS`, and `ATTRIBUTION_TEXT`. This is bounded source availability,
-not E5 accuracy, not parcel reach, and not four independent votes.
+one exact manifest row. On the 2026-09-08 recheck
+(`bd_13ju_codex_geo_2_franklin_deed_truth_source_guard_2026_09_08`) the guard
+is still `recorder_source_not_landed`: zero candidate recorder/deed tables and
+zero usable `canon_geo_deed_index_rows.v0`-shaped tables were found across
+`SOURCE`, `DBT_STAGING_GEO`, and `PROPERTY_MART`. The same row now carries the
+current Franklin truth denominator, 202 loans / 151 properties from bridge build
+`80d0ea39-a5aa-4c27-a8d7-f662a4507257`. No live Franklin deed-grain precision
+is claimed, and the artifact is fixture-class/not-scored until an external
+recorder landing supplies `SOURCE_SHA256`, `SOURCE_RELEASE`, `RELEASE_DT`,
+`PARSER_VERSION`, `LICENSE_TERMS`, and `ATTRIBUTION_TEXT`. This is bounded
+source availability, not E5 accuracy, not parcel reach, and not four
+independent votes.
 
 Fixture derivation is exposed only through the measurement binary:
 
