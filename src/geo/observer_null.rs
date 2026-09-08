@@ -106,6 +106,17 @@ pub struct GeoNullFootprintObservationResult {
     pub holes_ignored: bool,
 }
 
+pub struct GeoNullFootprintObservationRequest<'a> {
+    pub contract: &'a GeoObserverContract,
+    pub rho_contract: &'a GeoRhoContract,
+    pub tile_pin: &'a GeoImageTilePin,
+    pub window_blake3: &'a str,
+    pub window: &'a GeoCanonicalPolygonMm,
+    pub frame_id: &'a str,
+    pub footprint_rings: &'a BTreeMap<String, GeoCanonicalPolygonMm>,
+    pub forbidden_license_ids: &'a [String],
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeoNullUnassignedFootprint {
@@ -187,15 +198,19 @@ pub fn null_footprint_rho_contract(
 }
 
 pub fn emit_null_footprint_observations(
-    contract: &GeoObserverContract,
-    rho_contract: &GeoRhoContract,
-    tile_pin: &GeoImageTilePin,
-    window_blake3: &str,
-    window: &GeoCanonicalPolygonMm,
-    frame_id: &str,
-    footprint_rings: &BTreeMap<String, GeoCanonicalPolygonMm>,
-    forbidden_license_ids: &[String],
+    request: GeoNullFootprintObservationRequest<'_>,
 ) -> Result<GeoNullFootprintObservationResult, GeoObserverError> {
+    let GeoNullFootprintObservationRequest {
+        contract,
+        rho_contract,
+        tile_pin,
+        window_blake3,
+        window,
+        frame_id,
+        footprint_rings,
+        forbidden_license_ids,
+    } = request;
+
     if contract.id != GEO_NULL_FOOTPRINT_OBSERVER_ID {
         return Err(observer_invalid(
             "Geo null observer rows require the null footprint observer contract",

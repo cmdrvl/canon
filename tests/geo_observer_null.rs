@@ -4,13 +4,13 @@ use canon::geo::{
     DEFAULT_MAX_MATERIALIZED_MODELS, GEO_NULL_FOOTPRINT_OBSERVER_ID,
     GEO_NULL_FOOTPRINT_RHO_CONTRACT_ID, GEO_NULL_FOOTPRINT_SOURCE_DATASET, GeoCanonicalPolygonMm,
     GeoCanonicalRingMm, GeoCompositionArtifact, GeoCompositionRequest, GeoEntityLevel,
-    GeoEntityRef, GeoEvidenceDisposition, GeoImageTilePin, GeoNullFootprintPlane,
-    GeoNullFootprintPlaneSourcePin, GeoNullRedundancyCase, GeoObservationKind,
-    GeoObservationPayload, GeoObserverErrorCode, GeoPointMm, GeoSoftPreference, assert_redundant,
-    canonical_polygon_blake3, canonical_ring_blake3, canonicalize_composition_request,
-    characterize_null, compile_evidence, emit_null_footprint_observations,
-    materialize_warehouse_rows, null_footprint_observer_contract, null_footprint_rho_contract,
-    null_observer_rows_to_warehouse_rows, solve_composition,
+    GeoEntityRef, GeoEvidenceDisposition, GeoImageTilePin, GeoNullFootprintObservationRequest,
+    GeoNullFootprintPlane, GeoNullFootprintPlaneSourcePin, GeoNullRedundancyCase,
+    GeoObservationKind, GeoObservationPayload, GeoObserverErrorCode, GeoPointMm, GeoSoftPreference,
+    assert_redundant, canonical_polygon_blake3, canonical_ring_blake3,
+    canonicalize_composition_request, characterize_null, compile_evidence,
+    emit_null_footprint_observations, materialize_warehouse_rows, null_footprint_observer_contract,
+    null_footprint_rho_contract, null_observer_rows_to_warehouse_rows, solve_composition,
 };
 use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
@@ -164,16 +164,18 @@ fn emit_fixture_null(
             .expect("rho contract builds");
     let window = core_window();
     let window_blake3 = canonical_polygon_blake3(&window).expect("window hashes");
-    emit_null_footprint_observations(
-        &contract,
-        &rho_contract,
-        &fixture_tile_pin(),
-        &window_blake3,
-        &window,
-        &fixture.frame_id,
-        &plane.footprint_rings,
-        &["commercial_basemap_tos".to_string()],
-    )
+    let tile_pin = fixture_tile_pin();
+    let forbidden_license_ids = ["commercial_basemap_tos".to_string()];
+    emit_null_footprint_observations(GeoNullFootprintObservationRequest {
+        contract: &contract,
+        rho_contract: &rho_contract,
+        tile_pin: &tile_pin,
+        window_blake3: &window_blake3,
+        window: &window,
+        frame_id: &fixture.frame_id,
+        footprint_rings: &plane.footprint_rings,
+        forbidden_license_ids: &forbidden_license_ids,
+    })
     .expect("null observer emits")
 }
 
