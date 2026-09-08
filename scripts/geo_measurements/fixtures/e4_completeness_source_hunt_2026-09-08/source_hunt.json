@@ -4,8 +4,29 @@
   "owner": "codex-geo-2",
   "handoff": "SOURCE HUNT READY FOR MECHANISM",
   "proof_class": "retained_cmdrvl_data_warehouse_source_hunt_not_live",
+  "release_claim_allowed": false,
   "e4_score_label": "definitional_on_this_population_not_independent_precision",
-  "frozen_denominator": 79,
+  "frozen_denominator": 77,
+  "reported_frozen_denominator": 79,
+  "retained_population_deficit": 7,
+  "denominator_ruling": {
+    "bead": "bd-1g4x",
+    "commit": "a0025b3",
+    "issued_by": "Zac",
+    "previous_frozen_denominator": 79,
+    "restated_frozen_denominator": 77,
+    "evaluated_subjects": 70,
+    "previous_subject_deficit": 9,
+    "restated_subject_deficit": 7,
+    "excluded_case_fragments": [
+      "6eb465fd908bc59f",
+      "aacff3c254d36ae6"
+    ],
+    "kept_case_fragments": [
+      "ced7ad9f0d74abf7"
+    ],
+    "reason": "H4 extension duplicates with no H7 loan key are excluded under PLAN_CANON_GEO.md H.7; the distinct-loan ced7ad9f0d74abf7 case remains in the denominator pending an identity bridge."
+  },
   "retained_population_denominator": 70,
   "probe_denominator": 3,
   "boundary": "Source hunt only. These findings name landed sources that can feed a typed all-of or exact-cardinality completeness relation, but they do not add candidates, do not relax rho admission, do not assert live proof, and do not allow a partial or unasserted schedule to exclude subsets.",

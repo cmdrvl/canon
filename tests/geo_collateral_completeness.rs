@@ -61,7 +61,10 @@ fn acris_completeness_handoff_is_definitional_and_ready_to_score() {
             .expect("proof boundary")
             .contains("must not be cited as independent precision")
     );
-    assert_eq!(measurement["frozen_denominator"], 79);
+    assert_eq!(measurement["release_claim_allowed"], false);
+    assert_eq!(measurement["frozen_denominator"], 77);
+    assert_eq!(measurement["reported_frozen_denominator"], 79);
+    assert_eq!(measurement["retained_population_deficit"], 7);
     assert_eq!(measurement["retained_population_denominator"], 70);
     assert_eq!(measurement["source_hunt_path"], SOURCE_HUNT);
     assert_eq!(
@@ -352,7 +355,28 @@ fn measurement_artifact(overlay: &GeoPopulationEvidenceStackRequest) -> Value {
         "version": "canon_geo_e4_collateral_completeness_handoff.v0",
         "bead": "bd-2gvl",
         "proof_class": "retained_definitional_on_this_population_not_independent_precision",
-        "frozen_denominator": 79,
+        "release_claim_allowed": false,
+        "frozen_denominator": 77,
+        "reported_frozen_denominator": 79,
+        "retained_population_deficit": 7,
+        "denominator_ruling": {
+            "bead": "bd-1g4x",
+            "commit": "a0025b3",
+            "issued_by": "Zac",
+            "previous_frozen_denominator": 79,
+            "restated_frozen_denominator": 77,
+            "evaluated_subjects": 70,
+            "previous_subject_deficit": 9,
+            "restated_subject_deficit": 7,
+            "excluded_case_fragments": [
+                "6eb465fd908bc59f",
+                "aacff3c254d36ae6"
+            ],
+            "kept_case_fragments": [
+                "ced7ad9f0d74abf7"
+            ],
+            "reason": "H4 extension duplicates with no H7 loan key are excluded under PLAN_CANON_GEO.md H.7; the distinct-loan ced7ad9f0d74abf7 case remains in the denominator pending an identity bridge."
+        },
         "retained_population_denominator": 70,
         "source_hunt_path": SOURCE_HUNT,
         "proof_boundary": "ACRIS document legal rows assert collateral-set completeness and are production-relevant evidence, but this E4 truth plane is derived from the same ACRIS legals joined on matched mortgage DOCUMENT_ID. The score is a mechanism/replay check and must not be cited as independent precision.",

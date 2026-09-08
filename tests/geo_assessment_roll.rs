@@ -547,7 +547,10 @@ fn owner_exact_normalization_handoff_is_retained_and_ready_to_score() {
         measurement["proof_class"],
         "retained_population_measurement_not_live"
     );
-    assert_eq!(measurement["frozen_denominator"], 79);
+    assert_eq!(measurement["release_claim_allowed"], false);
+    assert_eq!(measurement["frozen_denominator"], 77);
+    assert_eq!(measurement["reported_frozen_denominator"], 79);
+    assert_eq!(measurement["retained_population_deficit"], 7);
     assert_eq!(measurement["retained_population_denominator"], 70);
     assert_eq!(
         measurement["baseline"]["reach_full_partial_none"],

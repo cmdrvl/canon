@@ -170,7 +170,10 @@ fn rho_admission_policy_handoff_artifact_is_retained_not_live() {
         artifact["proof_class"],
         "retained_population_measurement_not_live"
     );
-    assert_eq!(artifact["frozen_denominator"], 79);
+    assert_eq!(artifact["release_claim_allowed"], false);
+    assert_eq!(artifact["frozen_denominator"], 77);
+    assert_eq!(artifact["reported_frozen_denominator"], 79);
+    assert_eq!(artifact["retained_population_deficit"], 7);
     assert_eq!(artifact["retained_population_denominator"], 70);
     assert_eq!(
         artifact["policy_handoff"]["population_path"],

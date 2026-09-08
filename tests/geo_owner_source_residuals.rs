@@ -35,9 +35,21 @@ fn owner_source_residual_artifact_declares_zero_direct_movement() {
         "retained_cmdrvl_data_warehouse_verification_not_live"
     );
     assert_eq!(measurement["release_claim_allowed"], false);
-    assert_eq!(measurement["frozen_denominator"], 79);
+    assert_eq!(measurement["frozen_denominator"], 77);
+    assert_eq!(measurement["reported_frozen_denominator"], 79);
+    assert_eq!(measurement["retained_population_deficit"], 7);
     assert_eq!(measurement["retained_population_denominator"], 70);
-    assert_eq!(measurement["baseline"]["truth_exclusions"], 8);
+    assert_eq!(measurement["baseline"]["truth_exclusions"], 6);
+    assert_eq!(measurement["baseline"]["truth_exclusions_completed"], 6);
+    assert_eq!(measurement["baseline"]["reported_truth_exclusions"], 8);
+    assert_eq!(
+        measurement["baseline"]["truth_classification_incomplete"],
+        2
+    );
+    assert_eq!(
+        measurement["baseline"]["truth_classification_incomplete_case_fragments"],
+        json!(["91b2df27", "a7dac634"])
+    );
     assert_eq!(measurement["baseline"]["resolved"], 7);
     assert_eq!(measurement["baseline"]["exactly_correct"], 7);
     assert_eq!(measurement["baseline"]["false_merges"], 0);

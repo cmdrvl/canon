@@ -1,11 +1,31 @@
 {
   "version": "canon_geo_truth_quality_residual_audit.v0",
   "bead": "bd-1hvb",
-  "scope": "Truth-quality audit for the eight remaining retained E4 truth exclusions after reach, admission policy, PAD, owner-normalization, and GSF-vector repairs. This is not a rescore and not an admission lever.",
+  "scope": "Truth-quality audit for the six completed retained E4 truth exclusions plus two truth_classification_incomplete residual cases after reach, admission policy, PAD, owner-normalization, and GSF-vector repairs. The previously reported eight exclusions split into six completed exclusions plus two incomplete classifications after bd-3cez. This is not a rescore and not an admission lever.",
   "proof_class": "retained_cmdrvl_data_warehouse_truth_quality_audit_not_live",
   "release_claim_allowed": false,
   "is_rescore": false,
-  "frozen_denominator": 79,
+  "frozen_denominator": 77,
+  "reported_frozen_denominator": 79,
+  "retained_population_deficit": 7,
+  "denominator_ruling": {
+    "bead": "bd-1g4x",
+    "commit": "a0025b3",
+    "issued_by": "Zac",
+    "previous_frozen_denominator": 79,
+    "restated_frozen_denominator": 77,
+    "evaluated_subjects": 70,
+    "previous_subject_deficit": 9,
+    "restated_subject_deficit": 7,
+    "excluded_case_fragments": [
+      "6eb465fd908bc59f",
+      "aacff3c254d36ae6"
+    ],
+    "kept_case_fragments": [
+      "ced7ad9f0d74abf7"
+    ],
+    "reason": "H4 extension duplicates with no H7 loan key are excluded under PLAN_CANON_GEO.md H.7; the distinct-loan ced7ad9f0d74abf7 case remains in the denominator pending an identity bridge."
+  },
   "retained_population_denominator": 70,
   "baseline": {
     "name": "combined_pad_owner_gsf_repair_score",
@@ -19,7 +39,22 @@
     "ambiguous": 55,
     "conflict": 0,
     "false_merges": 0,
-    "truth_exclusions": 8,
+    "truth_exclusions": 6,
+    "truth_exclusions_completed": 6,
+    "reported_truth_exclusions": 8,
+    "truth_classification_incomplete": 2,
+    "truth_classification_incomplete_case_fragments": [
+      "91b2df27",
+      "a7dac634"
+    ],
+    "truth_exclusion_correction": {
+      "bead": "bd-flu0",
+      "corrected_by": "bd-3cez",
+      "reason": "component-budget fallback cases with residual_count_complete=false were previously folded into truth_exclusions",
+      "reported_truth_exclusions": 8,
+      "truth_exclusions_completed": 6,
+      "truth_classification_incomplete": 2
+    },
     "component_fallbacks": 8
   },
   "expected_direct_e4_movement": {
@@ -57,17 +92,17 @@
   },
   "retained_inputs": {
     "owner_source_residual_measurement_path": "scripts/geo_measurements/fixtures/e4_owner_source_residuals_2026-09-08/measurement.json",
-    "owner_source_residual_measurement_sha256": "0f54969a1f125fc9d9e2d108185e6ea53201ee785c69f4cb719740a7bbf477c0",
+    "owner_source_residual_measurement_sha256": "030b1774c30c7d305c14f55c5f59606fa09bf4991c62b2274be1d4f2e1714ac6",
     "pad_residual_adjudication_path": "scripts/geo_measurements/fixtures/e4_pad_residual_adjudication_2026-09-08/measurement.json",
-    "pad_residual_adjudication_sha256": "968d7ea5319daf94c5c38086c8c8a746830593cdae476f9976b96062d4845923",
+    "pad_residual_adjudication_sha256": "de56d8a0dee3de393befdc6e07ad86e235ee4861399b71e84748a3ea9fa05622",
     "pad_truth_binding_review_path": "scripts/geo_measurements/fixtures/e4_pad_truth_binding_2026-09-08/pad_truth_binding_review.json",
-    "pad_truth_binding_review_sha256": "6390c4d57880a9cca631e54c071ed02f93d5c7db0b66b4d17a308d6180334842",
+    "pad_truth_binding_review_sha256": "fd9fc7a8083d6ecc060f885d4a0a4921d219b24980ae35a9352493a9a2b3c5ff",
     "gsf_residual_measurement_path": "scripts/geo_measurements/fixtures/e4_gsf_residuals_2026-09-08/measurement.json",
-    "gsf_residual_measurement_sha256": "acde72e38c6c3f357831fd0f6e01401fce2c878e29ee5978315dd2c132f43ed5",
+    "gsf_residual_measurement_sha256": "92a9e3f5c2a6477d2e19832a8bc7826dafed138de4503c2ddad2586cfa28b8fc",
     "gsf_conflict_adjudication_path": "scripts/geo_measurements/fixtures/e4_gsf_conflict_adjudication_2026-09-08/measurement.json",
-    "gsf_conflict_adjudication_sha256": "12be2b94338b15683df37b54ed62cf15819d29d7310a13327cd98a2926030d6f",
+    "gsf_conflict_adjudication_sha256": "881fd26bb58770a01398a35b7c10d7fe2eacbb3a3c21d4fd19dbb412f4f3b8af",
     "completeness_source_hunt_path": "scripts/geo_measurements/fixtures/e4_completeness_source_hunt_2026-09-08/source_hunt.json",
-    "completeness_source_hunt_sha256": "6da5a04fbe47a55f7ee4501c0ea875ee8ccc3c8bc985d5a8e7a2b08e39f1146c",
+    "completeness_source_hunt_sha256": "af43a4c936e07b132f72fa070cf26fda10dbc5681c979ee8bd0e33a913a9d449",
     "acris_completeness_overlay_path": "scripts/geo_measurements/fixtures/e4_collateral_completeness_2026-09-08/overlay_request_acris_document_legal_completeness.json.gz",
     "acris_completeness_overlay_sha256": "84ce03bea21e88ada62b48bc05a2b58a4ef6329ac1c21235d382ce5999b964e2"
   },

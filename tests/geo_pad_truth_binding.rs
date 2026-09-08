@@ -28,7 +28,10 @@ fn pad_truth_binding_review_keeps_three_gap_denominator_and_no_overlay() {
         review["proof_class"],
         "retained_cmdrvl_data_warehouse_source_audit_not_live"
     );
-    assert_eq!(review["frozen_denominator"], 79);
+    assert_eq!(review["release_claim_allowed"], false);
+    assert_eq!(review["frozen_denominator"], 77);
+    assert_eq!(review["reported_frozen_denominator"], 79);
+    assert_eq!(review["retained_population_deficit"], 7);
     assert_eq!(review["retained_population_denominator"], 70);
     assert_eq!(review["denominator"]["case_count"], 3);
     assert_eq!(

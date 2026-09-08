@@ -11,7 +11,28 @@
     "truth_exclusions": 15
   },
   "bead": "bd-2gvl",
-  "frozen_denominator": 79,
+  "release_claim_allowed": false,
+  "frozen_denominator": 77,
+  "reported_frozen_denominator": 79,
+  "retained_population_deficit": 7,
+  "denominator_ruling": {
+    "bead": "bd-1g4x",
+    "commit": "a0025b3",
+    "issued_by": "Zac",
+    "previous_frozen_denominator": 79,
+    "restated_frozen_denominator": 77,
+    "evaluated_subjects": 70,
+    "previous_subject_deficit": 9,
+    "restated_subject_deficit": 7,
+    "excluded_case_fragments": [
+      "6eb465fd908bc59f",
+      "aacff3c254d36ae6"
+    ],
+    "kept_case_fragments": [
+      "ced7ad9f0d74abf7"
+    ],
+    "reason": "H4 extension duplicates with no H7 loan key are excluded under PLAN_CANON_GEO.md H.7; the distinct-loan ced7ad9f0d74abf7 case remains in the denominator pending an identity bridge."
+  },
   "overlay_summary": {
     "contracts_per_case": 1,
     "hard_observations": 140,

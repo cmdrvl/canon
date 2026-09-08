@@ -33,7 +33,10 @@ fn completeness_source_hunt_classifies_landed_sources_by_grain() {
         hunt["e4_score_label"],
         "definitional_on_this_population_not_independent_precision"
     );
-    assert_eq!(hunt["frozen_denominator"], 79);
+    assert_eq!(hunt["release_claim_allowed"], false);
+    assert_eq!(hunt["frozen_denominator"], 77);
+    assert_eq!(hunt["reported_frozen_denominator"], 79);
+    assert_eq!(hunt["retained_population_deficit"], 7);
     assert_eq!(hunt["retained_population_denominator"], 70);
     assert_eq!(hunt["probe_denominator"], 3);
     assert!(

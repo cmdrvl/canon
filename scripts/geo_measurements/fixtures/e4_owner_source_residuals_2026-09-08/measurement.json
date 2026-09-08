@@ -3,7 +3,27 @@
   "bead": "bd-1u3x",
   "proof_class": "retained_cmdrvl_data_warehouse_verification_not_live",
   "release_claim_allowed": false,
-  "frozen_denominator": 79,
+  "frozen_denominator": 77,
+  "reported_frozen_denominator": 79,
+  "retained_population_deficit": 7,
+  "denominator_ruling": {
+    "bead": "bd-1g4x",
+    "commit": "a0025b3",
+    "issued_by": "Zac",
+    "previous_frozen_denominator": 79,
+    "restated_frozen_denominator": 77,
+    "evaluated_subjects": 70,
+    "previous_subject_deficit": 9,
+    "restated_subject_deficit": 7,
+    "excluded_case_fragments": [
+      "6eb465fd908bc59f",
+      "aacff3c254d36ae6"
+    ],
+    "kept_case_fragments": [
+      "ced7ad9f0d74abf7"
+    ],
+    "reason": "H4 extension duplicates with no H7 loan key are excluded under PLAN_CANON_GEO.md H.7; the distinct-loan ced7ad9f0d74abf7 case remains in the denominator pending an identity bridge."
+  },
   "retained_population_denominator": 70,
   "baseline": {
     "name": "combined_pad_owner_gsf_repairs",
@@ -17,7 +37,22 @@
     "ambiguous": 55,
     "conflict": 0,
     "false_merges": 0,
-    "truth_exclusions": 8,
+    "truth_exclusions": 6,
+    "truth_exclusions_completed": 6,
+    "reported_truth_exclusions": 8,
+    "truth_classification_incomplete": 2,
+    "truth_classification_incomplete_case_fragments": [
+      "91b2df27",
+      "a7dac634"
+    ],
+    "truth_exclusion_correction": {
+      "bead": "bd-flu0",
+      "corrected_by": "bd-3cez",
+      "reason": "component-budget fallback cases with residual_count_complete=false were previously folded into truth_exclusions",
+      "reported_truth_exclusions": 8,
+      "truth_exclusions_completed": 6,
+      "truth_classification_incomplete": 2
+    },
     "component_fallbacks": 8
   },
   "scope": {

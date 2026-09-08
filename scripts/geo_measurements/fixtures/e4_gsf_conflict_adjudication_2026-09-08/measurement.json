@@ -12,7 +12,22 @@
       0
     ],
     "resolved": 7,
-    "truth_exclusions": 8
+    "truth_exclusions": 6,
+    "truth_exclusions_completed": 6,
+    "reported_truth_exclusions": 8,
+    "truth_classification_incomplete": 2,
+    "truth_classification_incomplete_case_fragments": [
+      "91b2df27",
+      "a7dac634"
+    ],
+    "truth_exclusion_correction": {
+      "bead": "bd-flu0",
+      "corrected_by": "bd-3cez",
+      "reason": "component-budget fallback cases with residual_count_complete=false were previously folded into truth_exclusions",
+      "reported_truth_exclusions": 8,
+      "truth_exclusions_completed": 6,
+      "truth_classification_incomplete": 2
+    }
   },
   "bead": "bd-3g94",
   "boundary": "Classification-only retained adjudication. No overlay is produced, no GSF band is widened, no candidate universe is changed, and no rho admission is relaxed. The result decides whether the retained GSF residuals are Canon binding defects, truth/source binding defects, genuine property mismatches, or acquisition gaps.",
@@ -379,7 +394,27 @@
     "resolved_delta": 0,
     "truth_exclusions_delta": 0
   },
-  "frozen_denominator": 79,
+  "frozen_denominator": 77,
+  "reported_frozen_denominator": 79,
+  "retained_population_deficit": 7,
+  "denominator_ruling": {
+    "bead": "bd-1g4x",
+    "commit": "a0025b3",
+    "issued_by": "Zac",
+    "previous_frozen_denominator": 79,
+    "restated_frozen_denominator": 77,
+    "evaluated_subjects": 70,
+    "previous_subject_deficit": 9,
+    "restated_subject_deficit": 7,
+    "excluded_case_fragments": [
+      "6eb465fd908bc59f",
+      "aacff3c254d36ae6"
+    ],
+    "kept_case_fragments": [
+      "ced7ad9f0d74abf7"
+    ],
+    "reason": "H4 extension duplicates with no H7 loan key are excluded under PLAN_CANON_GEO.md H.7; the distinct-loan ced7ad9f0d74abf7 case remains in the denominator pending an identity bridge."
+  },
   "measurement": {
     "case_count": 3,
     "classification_counts": {
@@ -394,11 +429,11 @@
   "release_claim_allowed": false,
   "retained_inputs": {
     "collateral_completeness_measurement_path": "scripts/geo_measurements/fixtures/e4_collateral_completeness_2026-09-08/measurement.json",
-    "collateral_completeness_measurement_sha256": "446030e2b8f75e04f550ca941c8617eaa9c6c42b4b153c01e1c54c643f66f938",
+    "collateral_completeness_measurement_sha256": "2900ddddd63661d97a97379717dc86ecf45d7cd0a4bfd9c51c49bf2986dd0fb0",
     "gsf_residual_measurement_path": "scripts/geo_measurements/fixtures/e4_gsf_residuals_2026-09-08/measurement.json",
-    "gsf_residual_measurement_sha256": "acde72e38c6c3f357831fd0f6e01401fce2c878e29ee5978315dd2c132f43ed5",
+    "gsf_residual_measurement_sha256": "92a9e3f5c2a6477d2e19832a8bc7826dafed138de4503c2ddad2586cfa28b8fc",
     "gsf_value_vector_rebuild_measurement_path": "scripts/geo_measurements/fixtures/e4_gsf_value_vector_rebuild_2026-09-08/measurement.json",
-    "gsf_value_vector_rebuild_measurement_sha256": "f9a321d3db91411fa255e146405918d886a7c04a6aa1ef64d5c158fc0fdaad0b",
+    "gsf_value_vector_rebuild_measurement_sha256": "8b709f52ec77d723102fda8e76f4d5642c9485078aa61631c41c26749a0b0ae7",
     "gsf_value_vector_rebuild_overlay_path": "scripts/geo_measurements/fixtures/e4_gsf_value_vector_rebuild_2026-09-08/overlay_request_current_universe_gsf_vectors.json.gz",
     "gsf_value_vector_rebuild_overlay_sha256": "bdcfe1f54c622b878c90a5567a2bc58eda5eff27f74519c5ef48bb4a89184c13",
     "population_path": "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/population_request_roll_universe_pluto_vintage_condo_representation_widened.json.gz",

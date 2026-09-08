@@ -37,15 +37,32 @@ fn denominator_deficit_characterization_declares_scope_and_counts() {
         measurement["boundary"]
             .as_str()
             .expect("boundary")
-            .contains("no denominator edit")
+            .contains("authorized denominator-ruling restatement")
     );
-    assert_eq!(measurement["denominator"]["frozen_e4_subjects"], 79);
+    assert_eq!(measurement["denominator"]["frozen_e4_subjects"], 77);
+    assert_eq!(
+        measurement["denominator"]["reported_frozen_e4_subjects"],
+        79
+    );
     assert_eq!(measurement["denominator"]["evaluated_subjects"], 70);
-    assert_eq!(measurement["denominator"]["deficit_subjects"], 9);
-    assert_eq!(measurement["denominator"]["classified_deficit_subjects"], 9);
+    assert_eq!(measurement["denominator"]["deficit_subjects"], 7);
+    assert_eq!(measurement["denominator"]["reported_deficit_subjects"], 9);
+    assert_eq!(measurement["denominator"]["classified_deficit_subjects"], 7);
+    assert_eq!(
+        measurement["denominator"]["classified_reported_deficit_subjects"],
+        9
+    );
     assert_eq!(
         measurement["denominator"]["unclassified_deficit_subjects"],
         0
+    );
+    assert_eq!(
+        measurement["denominator"]["denominator_ruling"]["previous_frozen_denominator"],
+        79
+    );
+    assert_eq!(
+        measurement["denominator"]["denominator_ruling"]["restated_frozen_denominator"],
+        77
     );
 
     let rows = rows_by_id(&measurement);
@@ -54,7 +71,8 @@ fn denominator_deficit_characterization_declares_scope_and_counts() {
         count_field(&rows, "classification"),
         BTreeMap::from([
             ("BLOCKED_ON_DATA_WE_DO_NOT_HAVE".to_string(), 6),
-            ("OUT_OF_SCOPE".to_string(), 3),
+            ("BLOCKED_ON_IDENTITY_BRIDGE".to_string(), 1),
+            ("EXCLUDED_BY_DENOMINATOR_RULING".to_string(), 2),
         ])
     );
     assert_eq!(
@@ -70,12 +88,20 @@ fn denominator_deficit_characterization_declares_scope_and_counts() {
         6
     );
     assert_eq!(
-        measurement["summary"]["classification_counts"]["OUT_OF_SCOPE"],
+        measurement["summary"]["classification_counts"]["BLOCKED_ON_IDENTITY_BRIDGE"],
+        1
+    );
+    assert_eq!(
+        measurement["summary"]["classification_counts"]["EXCLUDED_BY_DENOMINATOR_RULING"],
+        2
+    );
+    assert_eq!(
+        measurement["summary"]["reported_classification_counts_before_ruling"]["OUT_OF_SCOPE"],
         3
     );
     assert_eq!(
         measurement["summary"]["max_denominator_movement_if_recovered"],
-        6
+        7
     );
     assert_eq!(
         rows.values()
@@ -83,7 +109,7 @@ fn denominator_deficit_characterization_declares_scope_and_counts() {
                 .as_u64()
                 .expect("movement"))
             .sum::<u64>(),
-        6
+        7
     );
     assert_eq!(
         rows.values()
@@ -168,9 +194,14 @@ fn denominator_deficit_historical_rows_are_duplicate_truth_sets() {
     let h4_by_id = h4_cases_by_id(&h4);
 
     let ced7 = &rows["gate_v2_duplicate_ced7ad9f0d74abf7"];
-    assert_eq!(ced7["classification"], "OUT_OF_SCOPE");
+    assert_eq!(ced7["classification"], "BLOCKED_ON_IDENTITY_BRIDGE");
+    assert_eq!(
+        ced7["reported_classification_before_ruling"],
+        "OUT_OF_SCOPE"
+    );
     assert_eq!(ced7["drop_stage"], "truth_binding");
     assert_eq!(ced7["follow_up_bead"], Value::Null);
+    assert_eq!(ced7["max_denominator_movement_if_recovered"], 1);
     let ced7_truth = string_set(&gate_v2_by_id["ced7ad9f0d74abf7"]["truth"]["parcels"]);
     let duplicate_truth = string_set(&gate_v2_by_id["3cf11e9a58e3b710"]["truth"]["parcels"]);
     assert_eq!(ced7_truth, duplicate_truth);
@@ -196,7 +227,8 @@ fn denominator_deficit_historical_rows_are_duplicate_truth_sets() {
         ),
     ] {
         let row = &rows[row_id];
-        assert_eq!(row["classification"], "OUT_OF_SCOPE");
+        assert_eq!(row["classification"], "EXCLUDED_BY_DENOMINATOR_RULING");
+        assert_eq!(row["reported_classification_before_ruling"], "OUT_OF_SCOPE");
         assert_eq!(row["drop_stage"], "truth_binding");
         assert_eq!(row["follow_up_bead"], Value::Null);
         let truth = string_set(&h4_by_id[h4_case_id]["truth_parcels"]);

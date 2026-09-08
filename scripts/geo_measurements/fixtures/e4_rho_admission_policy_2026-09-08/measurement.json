@@ -16,7 +16,28 @@
   },
   "bead": "bd-2wby",
   "boundary": "Admission policy changes rho disposition only. Candidate universe, truth labels, frozen denominator, and solver scoring rules are unchanged; this is not live proof.",
-  "frozen_denominator": 79,
+  "release_claim_allowed": false,
+  "frozen_denominator": 77,
+  "reported_frozen_denominator": 79,
+  "retained_population_deficit": 7,
+  "denominator_ruling": {
+    "bead": "bd-1g4x",
+    "commit": "a0025b3",
+    "issued_by": "Zac",
+    "previous_frozen_denominator": 79,
+    "restated_frozen_denominator": 77,
+    "evaluated_subjects": 70,
+    "previous_subject_deficit": 9,
+    "restated_subject_deficit": 7,
+    "excluded_case_fragments": [
+      "6eb465fd908bc59f",
+      "aacff3c254d36ae6"
+    ],
+    "kept_case_fragments": [
+      "ced7ad9f0d74abf7"
+    ],
+    "reason": "H4 extension duplicates with no H7 loan key are excluded under PLAN_CANON_GEO.md H.7; the distinct-loan ced7ad9f0d74abf7 case remains in the denominator pending an identity bridge."
+  },
   "full_70_exploratory_note": "A local per-case exploratory pass completed 68 of 70 rows and cleared false_merge_cases to 0 on completed rows, but two rows timed out under the local limit; this artifact does not claim the full E4 score.",
   "handoff_command": [
     "gzip -dc scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/population_request_roll_universe_pluto_vintage_condo_representation_widened.json.gz > /tmp/canon-bd-2wby/full_reach_population.json",

@@ -5,17 +5,44 @@
   "measurement_date": "2026-09-08",
   "proof_class": "retained_fixture_and_plan_evidence_not_live",
   "release_claim_allowed": false,
-  "purpose": "Characterize the 9-subject gap between the frozen E4 denominator of 79 and the 70 retained H.7 subjects evaluated by the current E4 scorer.",
-  "boundary": "Characterization only: no denominator edit, no rho relaxation, no release-row duplication, no truth-plane replay counted as a new subject.",
+  "purpose": "Characterize the original 9-subject gap between the previously reported frozen E4 denominator of 79 and the 70 retained H.7 subjects evaluated by the current E4 scorer, then restate it under Zac's bd-1g4x denominator ruling as a 7-subject deficit against denominator 77.",
+  "boundary": "Characterization and authorized denominator-ruling restatement only: no rho relaxation, no release-row duplication, no truth-plane replay counted as a new subject, and no release claim.",
   "denominator": {
-    "frozen_e4_subjects": 79,
+    "frozen_e4_subjects": 77,
+    "reported_frozen_e4_subjects": 79,
     "evaluated_subjects": 70,
-    "deficit_subjects": 9,
-    "classified_deficit_subjects": 9,
-    "unclassified_deficit_subjects": 0
+    "deficit_subjects": 7,
+    "reported_deficit_subjects": 9,
+    "classified_deficit_subjects": 7,
+    "classified_reported_deficit_subjects": 9,
+    "unclassified_deficit_subjects": 0,
+    "denominator_ruling": {
+      "bead": "bd-1g4x",
+      "commit": "a0025b3",
+      "issued_by": "Zac",
+      "previous_frozen_denominator": 79,
+      "restated_frozen_denominator": 77,
+      "previous_subject_deficit": 9,
+      "restated_subject_deficit": 7,
+      "excluded_case_fragments": [
+        "6eb465fd908bc59f",
+        "aacff3c254d36ae6"
+      ],
+      "kept_case_fragments": [
+        "ced7ad9f0d74abf7"
+      ],
+      "reason": "The two H4 extension duplicates carry no H7 loan key and cannot fill the denominator by truth-plane replay under PLAN_CANON_GEO.md H.7. The ced7ad9f0d74abf7 duplicate-by-collateral case has its own loan key and remains in the denominator pending a cross-gate identity/grain bridge."
+    }
   },
   "summary": {
     "classification_counts": {
+      "BLOCKED_ON_IDENTITY_BRIDGE": 1,
+      "BLOCKED_ON_DATA_WE_DO_NOT_HAVE": 6,
+      "EXCLUDED_BY_DENOMINATOR_RULING": 2,
+      "BLOCKED_ON_US": 0,
+      "UNCLASSIFIED": 0
+    },
+    "reported_classification_counts_before_ruling": {
       "OUT_OF_SCOPE": 3,
       "BLOCKED_ON_DATA_WE_DO_NOT_HAVE": 6,
       "BLOCKED_ON_US": 0,
@@ -26,11 +53,12 @@
       "truth_binding": 3,
       "universe_construction": 5
     },
-    "max_denominator_movement_if_recovered": 6,
-    "max_exact_correct_movement_if_recovered_upper_bound": 6,
+    "max_denominator_movement_if_recovered": 7,
+    "max_exact_correct_movement_if_recovered_upper_bound": 7,
     "immediate_exact_correct_movement_from_characterization": 0,
-    "winnable_if_followups_land": 6,
-    "requires_operator_denominator_ruling": true
+    "winnable_if_followups_land": 7,
+    "requires_operator_denominator_ruling": false,
+    "operator_denominator_ruling_received": true
   },
   "source_artifacts": [
     {
@@ -111,8 +139,9 @@
       "truth_plane": "gate_v2_historical",
       "association_plane": "historical_gate_v2",
       "drop_stage": "truth_binding",
-      "classification": "OUT_OF_SCOPE",
-      "reason": "This retained Gate V2 diagnostic row has the same truth parcel set as 3cf11e9a58e3b710 and as a current H.7 subject. Counting it as a new denominator subject would be duplicate truth-plane replay without a cross-gate identity bridge.",
+      "classification": "BLOCKED_ON_IDENTITY_BRIDGE",
+      "reported_classification_before_ruling": "OUT_OF_SCOPE",
+      "reason": "Zac's bd-1g4x denominator ruling kept this retained Gate V2 diagnostic row in scope because it has its own distinct loan key, even though it has the same collateral truth parcel set as 3cf11e9a58e3b710 and as a current H.7 subject. It remains unevaluated pending a cross-gate identity/grain bridge.",
       "evidence": [
         "e4_gate_v2_population_request.json shows ced7ad9f0d74abf7 and 3cf11e9a58e3b710 share the same six truth BBLs.",
         "canon_geo_h7_population.v0.json contains the same six-BBL truth set as h7-subject:non-round:1f301680cb0f2c88d43c40f0869779eca34a07dfaca12b657b4509486df60a46.",
@@ -131,8 +160,8 @@
         "h7_subject_id": "h7-subject:non-round:1f301680cb0f2c88d43c40f0869779eca34a07dfaca12b657b4509486df60a46"
       },
       "follow_up_bead": null,
-      "max_denominator_movement_if_recovered": 0,
-      "max_exact_correct_movement_if_recovered_upper_bound": 0,
+      "max_denominator_movement_if_recovered": 1,
+      "max_exact_correct_movement_if_recovered_upper_bound": 1,
       "immediate_exact_correct_movement": 0
     },
     {
@@ -145,11 +174,12 @@
       "truth_plane": "h4_extension_historical",
       "association_plane": "historical_h4_extension",
       "drop_stage": "truth_binding",
-      "classification": "OUT_OF_SCOPE",
-      "reason": "This H.4 extension row has no H.7 loan key and duplicates a current H.7 truth parcel set. It can diagnose reach but cannot fill the frozen denominator as a new logical subject without an operator ruling and a cross-gate identity bridge.",
+      "classification": "EXCLUDED_BY_DENOMINATOR_RULING",
+      "reported_classification_before_ruling": "OUT_OF_SCOPE",
+      "reason": "Zac's bd-1g4x denominator ruling excludes this H.4 extension row because it has no H.7 loan key and duplicates a current H.7 truth parcel set. It can diagnose reach but cannot fill the frozen denominator as a new logical subject by truth-plane replay.",
       "evidence": [
         "e4_h4_extension.json truth_parcels equal a current H.7 subject truth set.",
-        "PLAN_CANON_GEO.md H.7 states the two H.4 extension cases carry no H.7 loan key and the frozen 79-case gate remains five genuine nonduplicate cases short."
+        "PLAN_CANON_GEO.md H.7 states the two H.4 extension cases carry no H.7 loan key and the previously reported frozen 79-case gate remained five genuine nonduplicate cases short."
       ],
       "truth_parcels": [
         "4066300015",
@@ -174,11 +204,12 @@
       "truth_plane": "h4_extension_historical",
       "association_plane": "historical_h4_extension",
       "drop_stage": "truth_binding",
-      "classification": "OUT_OF_SCOPE",
-      "reason": "This H.4 extension row has no H.7 loan key and duplicates a current H.7 truth parcel set. It can diagnose reach but cannot fill the frozen denominator as a new logical subject without an operator ruling and a cross-gate identity bridge.",
+      "classification": "EXCLUDED_BY_DENOMINATOR_RULING",
+      "reported_classification_before_ruling": "OUT_OF_SCOPE",
+      "reason": "Zac's bd-1g4x denominator ruling excludes this H.4 extension row because it has no H.7 loan key and duplicates a current H.7 truth parcel set. It can diagnose reach but cannot fill the frozen denominator as a new logical subject by truth-plane replay.",
       "evidence": [
         "e4_h4_extension.json truth_parcels equal a current H.7 subject truth set.",
-        "PLAN_CANON_GEO.md H.7 states the two H.4 extension cases carry no H.7 loan key and the frozen 79-case gate remains five genuine nonduplicate cases short."
+        "PLAN_CANON_GEO.md H.7 states the two H.4 extension cases carry no H.7 loan key and the previously reported frozen 79-case gate remained five genuine nonduplicate cases short."
       ],
       "truth_parcels": [
         "3014840015",

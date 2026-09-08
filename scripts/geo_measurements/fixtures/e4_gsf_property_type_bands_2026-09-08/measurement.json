@@ -204,7 +204,28 @@
     "version": "canon_geo_gsf_property_type_band_profile.v0"
   },
   "calibration_profile_blake3": "f4242562e55bb4ad750d95f744d0f755a7ca2875ab3be6ea1bfe25b577a5473b",
-  "frozen_denominator": 79,
+  "release_claim_allowed": false,
+  "frozen_denominator": 77,
+  "reported_frozen_denominator": 79,
+  "retained_population_deficit": 7,
+  "denominator_ruling": {
+    "bead": "bd-1g4x",
+    "commit": "a0025b3",
+    "issued_by": "Zac",
+    "previous_frozen_denominator": 79,
+    "restated_frozen_denominator": 77,
+    "evaluated_subjects": 70,
+    "previous_subject_deficit": 9,
+    "restated_subject_deficit": 7,
+    "excluded_case_fragments": [
+      "6eb465fd908bc59f",
+      "aacff3c254d36ae6"
+    ],
+    "kept_case_fragments": [
+      "ced7ad9f0d74abf7"
+    ],
+    "reason": "H4 extension duplicates with no H7 loan key are excluded under PLAN_CANON_GEO.md H.7; the distinct-loan ced7ad9f0d74abf7 case remains in the denominator pending an identity bridge."
+  },
   "local_bounded_smoke_not_full_score": {
     "base_policy_result_for_changed_cases": "observed for comparison only; full score remains owned by bd-1g4x",
     "method": "per-case target/debug/canon geo stack-evidence + evaluate, 25s evaluate timeout per changed case; timeouts retained for scorer and not dropped from denominator",

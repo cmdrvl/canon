@@ -32,7 +32,9 @@ fn pad_residual_adjudication_declares_no_direct_pad_lever() {
             .as_bool()
             .expect("release claim flag")
     );
-    assert_eq!(measurement["frozen_denominator"], 79);
+    assert_eq!(measurement["frozen_denominator"], 77);
+    assert_eq!(measurement["reported_frozen_denominator"], 79);
+    assert_eq!(measurement["retained_population_deficit"], 7);
     assert_eq!(measurement["retained_population_denominator"], 70);
     assert!(
         measurement["boundary"]
@@ -41,7 +43,17 @@ fn pad_residual_adjudication_declares_no_direct_pad_lever() {
             .contains("No PAD membership contract is widened")
     );
 
-    assert_eq!(measurement["baseline"]["truth_exclusions"], 8);
+    assert_eq!(measurement["baseline"]["truth_exclusions"], 6);
+    assert_eq!(measurement["baseline"]["truth_exclusions_completed"], 6);
+    assert_eq!(measurement["baseline"]["reported_truth_exclusions"], 8);
+    assert_eq!(
+        measurement["baseline"]["truth_classification_incomplete"],
+        2
+    );
+    assert_eq!(
+        measurement["baseline"]["truth_classification_incomplete_case_fragments"],
+        serde_json::json!(["91b2df27", "a7dac634"])
+    );
     assert_eq!(measurement["baseline"]["resolved"], 7);
     assert_eq!(measurement["baseline"]["exactly_correct"], 7);
     assert_eq!(measurement["baseline"]["false_merges"], 0);
