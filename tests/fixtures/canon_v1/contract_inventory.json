@@ -2331,6 +2331,22 @@
       "source_path": "schemas/canon.geo.image_tile_pin.v0.schema.json"
     },
     {
+      "id": "canon_geo_adjudication_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.adjudication_request.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_adjudication_receipt.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.adjudication_receipt.v0.schema.json"
+    },
+    {
       "id": "canon_geo_observer.v0",
       "family": "geo",
       "action": "preserve",

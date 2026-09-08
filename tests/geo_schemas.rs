@@ -58,6 +58,7 @@ use canon::geo::{
 };
 use canon::geo::{
     CANON_GEO_ADDRESS_PARSE_FOREST_VERSION, CANON_GEO_ADDRESS_PARSE_REQUEST_VERSION,
+    CANON_GEO_ADJUDICATION_RECEIPT_VERSION, CANON_GEO_ADJUDICATION_REQUEST_VERSION,
     CANON_GEO_CAPABILITIES_VERSION, CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION,
     CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION, CANON_GEO_COLLATERAL_LEDGER_VERSION,
     CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION,
@@ -91,17 +92,18 @@ use canon::geo::{
     CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
     DEFAULT_MAX_MATERIALIZED_MODELS, GeoAbstentionDisposition, GeoAbstentionPolicy,
     GeoAddressHouseNumber, GeoAddressJurisdiction, GeoAddressParity, GeoAddressParseRequest,
-    GeoAddressRangeOperator, GeoAddressStreet, GeoAdvisoryPin, GeoAffineProjectionMm,
-    GeoArtifactFieldClassification, GeoArtifactFieldLicenseClass, GeoAsOf, GeoBoundedGeography,
-    GeoBoundingBoxMm, GeoBudgetAction, GeoBuildingCandidate, GeoCandidateReachStatus,
-    GeoCanonicalGeometryMm, GeoCanonicalPolygonMm, GeoCanonicalRingMm, GeoClaimClass,
-    GeoClientTileCoverageExtent, GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest,
-    GeoClientTileSourceFormat, GeoClientTileVendorIdentifier, GeoCollateralLedger,
-    GeoCollateralLedgerProofClass, GeoCollateralLedgerSeed, GeoCollateralLedgerSeedRow,
-    GeoCompositionModel, GeoCompositionProfile, GeoCompositionRequest, GeoCompositionStatus,
-    GeoCompositionUniverse, GeoControlEntityLevel, GeoCoveragePredicate, GeoDeedIndexRowsRequest,
-    GeoDeedTruthLoanRef, GeoE4RescoreComparisonArtifact, GeoEgressClass, GeoEntityLevel,
-    GeoEntityRef, GeoErrorPopulationArtifact, GeoErrorPopulationSubject, GeoEventExposure,
+    GeoAddressRangeOperator, GeoAddressStreet, GeoAdjudicationLabel, GeoAdjudicationReceipt,
+    GeoAdvisoryPin, GeoAffineProjectionMm, GeoArtifactFieldClassification,
+    GeoArtifactFieldLicenseClass, GeoAsOf, GeoBoundedGeography, GeoBoundingBoxMm, GeoBudgetAction,
+    GeoBuildingCandidate, GeoCandidateReachStatus, GeoCanonicalGeometryMm, GeoCanonicalPolygonMm,
+    GeoCanonicalRingMm, GeoClaimClass, GeoClientTileCoverageExtent,
+    GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest, GeoClientTileSourceFormat,
+    GeoClientTileVendorIdentifier, GeoCollateralLedger, GeoCollateralLedgerProofClass,
+    GeoCollateralLedgerSeed, GeoCollateralLedgerSeedRow, GeoCompositionModel,
+    GeoCompositionProfile, GeoCompositionRequest, GeoCompositionStatus, GeoCompositionUniverse,
+    GeoControlEntityLevel, GeoCoveragePredicate, GeoDeedIndexRowsRequest, GeoDeedTruthLoanRef,
+    GeoE4RescoreComparisonArtifact, GeoEgressClass, GeoEntityLevel, GeoEntityRef,
+    GeoErrorPopulationArtifact, GeoErrorPopulationSubject, GeoEventExposure,
     GeoEvidenceCardBuildContext, GeoEvidenceCardCoverage, GeoEvidenceCardCoverageState,
     GeoEvidenceCardProofClass, GeoEvidenceCardSubjectRef, GeoEvidenceClaimRole, GeoEvidenceClass,
     GeoEvidenceCompilationReference, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef,
@@ -176,6 +178,10 @@ use canon::geo::{
     GeoTemporalContainmentInterval, GeoTemporalContainmentRelation,
     GeoTemporalContainmentSourceReceipt, GeoTemporalContainmentSummary,
     canonical_temporal_containment_bytes, validate_temporal_containment_artifact,
+};
+use canon::geo::{
+    adjudication_request_blake3, build_adjudication_requests, canonical_adjudication_receipt_bytes,
+    canonical_adjudication_request_bytes,
 };
 use h3o::{LatLng, Resolution};
 use serde_json::Value;
@@ -319,6 +325,10 @@ const OBSERVER_ADMISSION_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.observer_admission_request.v0.schema.json");
 const OBSERVATION_ROWS_SCHEMA: &str =
     include_str!("../schemas/canon.geo.observation_rows.v0.schema.json");
+const ADJUDICATION_REQUEST_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.adjudication_request.v0.schema.json");
+const ADJUDICATION_RECEIPT_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.adjudication_receipt.v0.schema.json");
 const EVIDENCE_CARD_SCHEMA: &str =
     include_str!("../schemas/canon.geo.evidence_card.v0.schema.json");
 
@@ -1166,6 +1176,47 @@ fn observer_admission_request() -> GeoObserverAdmissionRequest {
         rho_contracts: vec![observer_rho_contract()],
         forbidden_license_ids: vec!["commercial_basemap_tos".to_string()],
         universe: observer_universe(),
+    }
+}
+
+fn adjudication_request_schema_instance() -> canon::geo::GeoAdjudicationRequest {
+    let cases = vec![(
+        "schema-adjudication-case".to_string(),
+        "schema-adjudication-subject".to_string(),
+        vec!["schema-parcel-2".to_string(), "schema-parcel-1".to_string()],
+    )];
+    let pins = BTreeMap::from([(
+        "schema-adjudication-subject".to_string(),
+        observer_image_tile_pin(),
+    )]);
+    let overlays = BTreeMap::from([(
+        "schema-adjudication-case".to_string(),
+        square(0, 0, 10_000, 10_000),
+    )]);
+
+    build_adjudication_requests(&cases, &pins, &overlays)
+        .expect("schema adjudication request builds")
+        .into_iter()
+        .next()
+        .expect("one schema adjudication request")
+}
+
+fn adjudication_receipt_schema_instance() -> GeoAdjudicationReceipt {
+    let request = adjudication_request_schema_instance();
+    GeoAdjudicationReceipt {
+        version: CANON_GEO_ADJUDICATION_RECEIPT_VERSION.to_string(),
+        request_blake3: adjudication_request_blake3(&request).expect("schema request hashes"),
+        crop_blake3: blake3::hash(b"schema retained adjudication crop")
+            .to_hex()
+            .to_string(),
+        label: GeoAdjudicationLabel::SelectedParcels(vec!["schema-parcel-1".to_string()]),
+        adjudicator_id: "adjudicator:schema-reviewer".to_string(),
+        truth_plane: GeoTruthPlane::HumanAdjudication,
+        notes_blake3: Some(
+            blake3::hash(b"schema adjudication notes")
+                .to_hex()
+                .to_string(),
+        ),
     }
 }
 
@@ -2816,6 +2867,36 @@ fn observation_rows_schema_matches_a_real_instance() {
         OBSERVATION_ROWS_SCHEMA,
         "canon.geo.observation_rows.v0",
         CANON_GEO_OBSERVATION_ROWS_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn adjudication_request_schema_matches_a_real_instance() {
+    let request = adjudication_request_schema_instance();
+    let canonical_bytes =
+        canonical_adjudication_request_bytes(&request).expect("adjudication request canonicalizes");
+    let instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("canonical adjudication request parses");
+    assert_drift_free(
+        ADJUDICATION_REQUEST_SCHEMA,
+        "canon.geo.adjudication_request.v0",
+        CANON_GEO_ADJUDICATION_REQUEST_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn adjudication_receipt_schema_matches_a_real_instance() {
+    let receipt = adjudication_receipt_schema_instance();
+    let canonical_bytes =
+        canonical_adjudication_receipt_bytes(&receipt).expect("adjudication receipt canonicalizes");
+    let instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("canonical adjudication receipt parses");
+    assert_drift_free(
+        ADJUDICATION_RECEIPT_SCHEMA,
+        "canon.geo.adjudication_receipt.v0",
+        CANON_GEO_ADJUDICATION_RECEIPT_VERSION,
         &instance,
     );
 }

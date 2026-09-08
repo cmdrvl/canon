@@ -1,0 +1,83 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.adjudication_receipt.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.adjudication_receipt.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_adjudication_receipt.v0",
+      "type": "string"
+    },
+    "request_blake3": { "$ref": "#/$defs/blake3" },
+    "crop_blake3": { "$ref": "#/$defs/blake3" },
+    "label": { "$ref": "#/$defs/adjudication_label" },
+    "adjudicator_id": { "$ref": "#/$defs/nonempty_string" },
+    "truth_plane": { "$ref": "#/$defs/truth_plane" },
+    "notes_blake3": { "$ref": "#/$defs/blake3" }
+  },
+  "required": [
+    "version",
+    "request_blake3",
+    "crop_blake3",
+    "label",
+    "adjudicator_id",
+    "truth_plane"
+  ],
+  "$defs": {
+    "nonempty_string": { "type": "string", "minLength": 1 },
+    "blake3": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "truth_plane": {
+      "type": "string",
+      "enum": [
+        "gate_v2_historical",
+        "non_round_amount_date_legal_borough",
+        "round_exact_lender_party",
+        "address_derived_control",
+        "deed_grain_instrument",
+        "human_adjudication"
+      ]
+    },
+    "adjudication_label": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "selected_parcels", "type": "string" },
+            "parcel_ids": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/nonempty_string" }
+            }
+          },
+          "required": ["kind", "parcel_ids"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "none_visible", "type": "string" }
+          },
+          "required": ["kind"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "unresolvable", "type": "string" }
+          },
+          "required": ["kind"]
+        }
+      ]
+    }
+  },
+  "x-canon-contract": {
+    "runtime_only_invariants": [
+      "request_blake3 must match the canonical adjudication request bytes",
+      "crop_blake3 must match the retained crop bytes",
+      "truth_plane must be human_adjudication",
+      "selected parcel labels must be drawn from the request candidate_parcel_ids"
+    ]
+  }
+}

@@ -6,6 +6,7 @@
 //! exact registry replay path.
 
 pub mod address;
+pub mod adjudicate;
 pub mod assessment_roll;
 pub mod card;
 pub mod cli;
@@ -42,6 +43,7 @@ pub mod stack;
 pub mod tile;
 
 pub use address::*;
+pub use adjudicate::*;
 pub use card::*;
 pub use composition::*;
 pub use condo::*;
