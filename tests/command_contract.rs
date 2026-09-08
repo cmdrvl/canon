@@ -604,6 +604,7 @@ fn assert_runtime_corpus_coverage(manifest: &OperatorManifest, cases: &[RuntimeC
         "doctor capabilities",
         "doctor robot-docs",
         "geo capabilities",
+        "geo evaluate",
         "geo inspect",
         "geo ledger",
         "geo ledger build",
@@ -1034,6 +1035,10 @@ impl RuntimeHarness {
         let calibrate_em_strategy = self.work.join("calibrate-em-strategy.yaml");
         let block_preflight_rows = self.work.join("block-preflight-rows.csv");
         let block_preflight_strategy = self.work.join("block-preflight-strategy.yaml");
+        let geo_evaluate_population = self
+            .root
+            .join("tests/fixtures/geo/e4_gate_v2_population_request.json");
+        let geo_evaluate_assessment = self.work.join("geo-e4-assessment.json");
         fs::write(
             &calibrate_result,
             concat!(
@@ -1302,6 +1307,25 @@ impl RuntimeHarness {
                 .assert_array_non_empty("commands.implemented")
                 .assert_array_non_empty("contracts.implemented")
                 .with_stderr(StderrExpectation::Empty),
+            },
+            RuntimeCase {
+                id: "geo_evaluate_writes_assessment_sidecar",
+                command_name: "geo evaluate",
+                args: vec![
+                    "geo".to_string(),
+                    "evaluate".to_string(),
+                    "--population".to_string(),
+                    path_arg(&geo_evaluate_population),
+                    "--e4-assessment-out".to_string(),
+                    path_arg(&geo_evaluate_assessment),
+                ],
+                expected: RuntimeExpectation::json(
+                    0,
+                    "canon_geo_population_evaluation.v0",
+                    SchemaField::Version,
+                )
+                .with_stderr(StderrExpectation::Empty)
+                .with_mutation(MutationExpectation::Exists(geo_evaluate_assessment)),
             },
             RuntimeCase {
                 id: "geo_inspect_planned_refusal",
