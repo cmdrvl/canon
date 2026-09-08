@@ -31,6 +31,11 @@ use tempfile::tempdir;
 
 const RESPONSE_BYTES_DIGEST_ID: &str = "provider_response_bytes";
 const CANDIDATE_ROWS_ARTIFACT_ID: &str = "geocode_candidate_rows";
+const PROVIDER_PROFILE_VERSION: &str = "canon_geo_acquisition_provider_profile.v0";
+const CENSUS_PROVIDER_ID: &str = "census_geocoder_current";
+const CENSUS_PROVIDER_VERSION: &str = "benchmark=Public_AR_Current;vintage=Current_Current";
+const REGEOCODE_TOOL_ID: &str = "scripts/geo_acquisition/regeocode.py";
+const REGEOCODE_TOOL_VERSION: &str = "bd-3p8e.v0";
 
 #[test]
 fn t46_measures_frozen_40_point_retry_recovery_denominator() {
@@ -293,7 +298,7 @@ fn regeocode_script_import_mode_materializes_retained_receipt_without_network() 
     let out_dir = temp.path().join("receipts");
     write_json(&request_path, &request);
     let response_bytes = br#"{"provider":"fixture-geocoder","mode":"import"}"#;
-    let rows_bytes = br#"[{"candidate_rank":1,"lat_e7":405760240,"lon_e7":-739648020,"provider_id":"fixture-geocoder"}]"#;
+    let rows_bytes = br#"[{"candidate_rank":1,"lat_e7":405760240,"lon_e7":-739648020,"provider_id":"census_geocoder_current","provider_version":"benchmark=Public_AR_Current;vintage=Current_Current"}]"#;
     fs::write(&response_path, response_bytes).expect("write response bytes");
     fs::write(&rows_path, rows_bytes).expect("write candidate rows");
 
@@ -307,6 +312,8 @@ fn regeocode_script_import_mode_materializes_retained_receipt_without_network() 
         .arg(&response_path)
         .arg("--candidate-rows")
         .arg(&rows_path)
+        .arg("--provider-profile")
+        .arg(provider_profile_path())
         .arg("--measurement-bin")
         .arg(env!("CARGO_BIN_EXE_canon_geo_measurements"))
         .output()
@@ -320,6 +327,15 @@ fn regeocode_script_import_mode_materializes_retained_receipt_without_network() 
     let receipt: GeoAcquisitionReceipt =
         serde_json::from_slice(&output.stdout).expect("receipt JSON parses");
     assert_eq!(receipt.proof_class, GeoAcquisitionProofClass::Retained);
+    let executor = receipt
+        .executor
+        .as_ref()
+        .expect("script receipt has executor");
+    assert_eq!(executor.executor_kind, GeoExecutorKind::LocalFile);
+    assert_eq!(executor.executor_id, CENSUS_PROVIDER_ID);
+    assert_eq!(executor.executor_version, CENSUS_PROVIDER_VERSION);
+    assert_eq!(executor.tool_id, REGEOCODE_TOOL_ID);
+    assert_eq!(executor.tool_version, REGEOCODE_TOOL_VERSION);
     let expected_retained_id = format!("retained-provider-response:{}", sha2_hex(response_bytes));
     assert_eq!(
         receipt.retained_receipt_id.as_deref(),
@@ -334,6 +350,73 @@ fn regeocode_script_import_mode_materializes_retained_receipt_without_network() 
     assert_eq!(
         fs::read(out_dir.join(format!("{request_hash}.rows.json"))).expect("rows sidecar"),
         rows_bytes
+    );
+}
+
+#[test]
+fn regeocode_provider_profile_declares_external_acquisition_boundary() {
+    let profile: Value = serde_json::from_str(include_str!(
+        "../scripts/geo_acquisition/providers/census_geocoder_current.json"
+    ))
+    .expect("provider profile parses");
+
+    assert_eq!(profile["version"], PROVIDER_PROFILE_VERSION);
+    assert_eq!(profile["provider_id"], CENSUS_PROVIDER_ID);
+    assert_eq!(profile["provider_version"], CENSUS_PROVIDER_VERSION);
+    assert_eq!(
+        profile["endpoint"],
+        "https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress"
+    );
+    assert_eq!(profile["network_class"], "external_acquisition_only");
+    assert_eq!(profile["tool_id"], REGEOCODE_TOOL_ID);
+    assert_eq!(profile["tool_version"], REGEOCODE_TOOL_VERSION);
+    assert!(
+        profile["proof_boundary"]
+            .as_str()
+            .expect("proof boundary is string")
+            .contains("retained import cannot claim live proof"),
+        "profile must keep retained import outside live proof: {profile:?}"
+    );
+}
+
+#[test]
+fn regeocode_script_refuses_provider_profile_version_drift() {
+    let request = acquisition_request("script-bad-profile", "fixture.retry.bad-profile.subject");
+    let temp = tempdir().expect("tempdir");
+    let request_path = temp.path().join("request.json");
+    let response_path = temp.path().join("provider-response.json");
+    let rows_path = temp.path().join("candidate-rows.json");
+    let profile_path = temp.path().join("bad-provider-profile.json");
+    write_json(&request_path, &request);
+    fs::write(&response_path, b"{\"provider\":\"fixture\"}").expect("write response bytes");
+    fs::write(&rows_path, b"[]").expect("write candidate rows");
+    fs::write(
+        &profile_path,
+        br#"{"version":"wrong","provider_id":"fixture","provider_version":"v1","endpoint":"https://example.invalid","benchmark":"b","vintage":"v","source_attribution":"fixture","tool_id":"scripts/geo_acquisition/regeocode.py","tool_version":"fixture","network_class":"external_acquisition_only","proof_boundary":"retained import cannot claim live proof"}"#,
+    )
+    .expect("write bad provider profile");
+
+    let output = Command::new("python3")
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/geo_acquisition/regeocode.py"))
+        .arg("--request")
+        .arg(&request_path)
+        .arg("--out-dir")
+        .arg(temp.path().join("receipts"))
+        .arg("--provider-response-bytes")
+        .arg(&response_path)
+        .arg("--candidate-rows")
+        .arg(&rows_path)
+        .arg("--provider-profile")
+        .arg(&profile_path)
+        .arg("--measurement-bin")
+        .arg(env!("CARGO_BIN_EXE_canon_geo_measurements"))
+        .output()
+        .expect("run regeocode script");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains(PROVIDER_PROFILE_VERSION),
+        "unexpected stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
 }
 
@@ -371,6 +454,11 @@ fn regeocode_script_import_mode_refuses_live_proof_label() {
         "unexpected stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+fn provider_profile_path() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("scripts/geo_acquisition/providers/census_geocoder_current.json")
 }
 
 #[test]

@@ -18,19 +18,19 @@ import urllib.parse
 import urllib.request
 
 
-PROVIDER_ID = "census_geocoder_current"
-PROVIDER_VERSION = "benchmark=Public_AR_Current;vintage=Current_Current"
-TOOL_ID = "scripts/geo_acquisition/regeocode.py"
-TOOL_VERSION = "bd-3p8e.v0"
-
-
+PROFILE_VERSION = "canon_geo_acquisition_provider_profile.v0"
 def main() -> int:
     args = parse_args()
+    profile = load_provider_profile(args.provider_profile)
     request = load_json(args.request)
     request_id = required_string(request, "request_id")
     out_dir = args.out_dir
     staging_dir = out_dir / "_acquisition_inputs" / safe_name(request_id)
     staging_dir.mkdir(parents=True, exist_ok=True)
+    executor_id = args.executor_id or required_string(profile, "provider_id")
+    executor_version = args.executor_version or required_string(profile, "provider_version")
+    tool_id = required_string(profile, "tool_id")
+    tool_version = required_string(profile, "tool_version")
 
     import_mode = args.provider_response_bytes is not None or args.candidate_rows is not None
     if import_mode:
@@ -50,10 +50,12 @@ def main() -> int:
             raise SystemExit("--proof-class retained requires retained response bytes")
         if not args.address:
             raise SystemExit("--address is required unless retained response bytes are supplied")
-        response_bytes, query_id = fetch_census_response(args.address, args.timeout_seconds)
+        response_bytes, query_id = fetch_census_response(
+            profile, args.address, args.timeout_seconds
+        )
         response_path = staging_dir / "provider_response.bytes"
         response_path.write_bytes(response_bytes)
-        rows = candidate_rows_from_census(response_bytes, args.address, args.point_id)
+        rows = candidate_rows_from_census(profile, response_bytes, args.address, args.point_id)
         rows_path = staging_dir / "candidate_rows.json"
         rows_path.write_bytes(canonical_json_bytes(rows))
         proof_class = args.proof_class or "live"
@@ -78,13 +80,13 @@ def main() -> int:
         "--executor-kind",
         "http-service" if not import_mode else "local-file",
         "--executor-id",
-        args.executor_id,
+        executor_id,
         "--executor-version",
-        args.executor_version,
+        executor_version,
         "--tool-id",
-        TOOL_ID,
+        tool_id,
         "--tool-version",
-        TOOL_VERSION,
+        tool_version,
         "--executor-request-id",
         request_id,
         "--executor-query-id",
@@ -116,25 +118,35 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--retained-receipt-id")
     parser.add_argument("--measurement-bin", type=Path)
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
-    parser.add_argument("--executor-id", default=PROVIDER_ID)
-    parser.add_argument("--executor-version", default=PROVIDER_VERSION)
+    parser.add_argument(
+        "--provider-profile",
+        type=Path,
+        default=Path(__file__).resolve().parent
+        / "providers"
+        / "census_geocoder_current.json",
+    )
+    parser.add_argument("--executor-id")
+    parser.add_argument("--executor-version")
     parser.add_argument("--timeout-seconds", type=float, default=20.0)
     return parser.parse_args()
 
 
-def fetch_census_response(address: str, timeout_seconds: float) -> tuple[bytes, str]:
+def fetch_census_response(
+    profile: dict[str, object], address: str, timeout_seconds: float
+) -> tuple[bytes, str]:
+    endpoint = required_string(profile, "endpoint")
+    benchmark = required_string(profile, "benchmark")
+    vintage = required_string(profile, "vintage")
+    provider_id = required_string(profile, "provider_id")
     params = urllib.parse.urlencode(
         {
             "address": address,
-            "benchmark": "Public_AR_Current",
-            "vintage": "Current_Current",
+            "benchmark": benchmark,
+            "vintage": vintage,
             "format": "json",
         }
     )
-    url = (
-        "https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress"
-        f"?{params}"
-    )
+    url = f"{endpoint}?{params}"
     request = urllib.request.Request(
         url,
         headers={
@@ -143,12 +155,15 @@ def fetch_census_response(address: str, timeout_seconds: float) -> tuple[bytes, 
         },
     )
     with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-        return response.read(), f"{PROVIDER_ID}:{sha256_hex(url.encode('utf-8'))}"
+        return response.read(), f"{provider_id}:{sha256_hex(url.encode('utf-8'))}"
 
 
 def candidate_rows_from_census(
-    response_bytes: bytes, address: str, point_id: str | None
+    profile: dict[str, object], response_bytes: bytes, address: str, point_id: str | None
 ) -> list[dict[str, object]]:
+    provider_id = required_string(profile, "provider_id")
+    provider_version = required_string(profile, "provider_version")
+    source_attribution = required_string(profile, "source_attribution")
     response = json.loads(response_bytes.decode("utf-8"))
     matches = response.get("result", {}).get("addressMatches", [])
     if not isinstance(matches, list):
@@ -161,8 +176,8 @@ def candidate_rows_from_census(
         lon = coordinates.get("x") if isinstance(coordinates, dict) else None
         lat = coordinates.get("y") if isinstance(coordinates, dict) else None
         row: dict[str, object] = {
-            "provider_id": PROVIDER_ID,
-            "provider_version": PROVIDER_VERSION,
+            "provider_id": provider_id,
+            "provider_version": provider_version,
             "candidate_rank": index,
             "input_address_sha256": sha256_hex(address.encode("utf-8")),
             "matched_address": match.get("matchedAddress"),
@@ -170,6 +185,7 @@ def candidate_rows_from_census(
             if isinstance(match.get("tigerLine"), dict)
             else None,
             "accuracy_type": "census_geocoder_current",
+            "source_attribution": source_attribution,
         }
         if point_id:
             row["point_id"] = point_id
@@ -182,6 +198,28 @@ def candidate_rows_from_census(
             row["tract_geoid"] = tract_geoid
         rows.append({key: value for key, value in row.items() if value is not None})
     return rows
+
+
+def load_provider_profile(path: Path) -> dict[str, object]:
+    profile = load_json(path)
+    if profile.get("version") != PROFILE_VERSION:
+        raise SystemExit(
+            f"{path} must declare version {PROFILE_VERSION}, got {profile.get('version')!r}"
+        )
+    for field in [
+        "provider_id",
+        "provider_version",
+        "endpoint",
+        "benchmark",
+        "vintage",
+        "source_attribution",
+        "tool_id",
+        "tool_version",
+        "network_class",
+        "proof_boundary",
+    ]:
+        required_string(profile, field)
+    return profile
 
 
 def census_tract_geoid(match: dict[str, object]) -> str | None:

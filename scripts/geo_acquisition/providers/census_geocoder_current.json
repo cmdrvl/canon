@@ -1,0 +1,25 @@
+{
+  "version": "canon_geo_acquisition_provider_profile.v0",
+  "provider_id": "census_geocoder_current",
+  "provider_version": "benchmark=Public_AR_Current;vintage=Current_Current",
+  "endpoint": "https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress",
+  "benchmark": "Public_AR_Current",
+  "vintage": "Current_Current",
+  "request_field_mapping": {
+    "address": "address",
+    "format": "json",
+    "benchmark": "benchmark",
+    "vintage": "vintage"
+  },
+  "response_candidate_path": "result.addressMatches",
+  "coordinate_fields": {
+    "longitude": "coordinates.x",
+    "latitude": "coordinates.y"
+  },
+  "tract_geoid_path": "geographies.Census Tracts[0].GEOID",
+  "source_attribution": "U.S. Census Geocoder Public_AR_Current / Current_Current",
+  "tool_id": "scripts/geo_acquisition/regeocode.py",
+  "tool_version": "bd-3p8e.v0",
+  "network_class": "external_acquisition_only",
+  "proof_boundary": "Live proof requires fresh provider response bytes retained by canon_geo_acquisition_receipt.v0; retained import cannot claim live proof."
+}
