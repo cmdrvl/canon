@@ -533,6 +533,25 @@ pub struct GeoEntityExistenceInterval {
     pub source_receipts: Vec<GeoTemporalContainmentSourceReceipt>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoEntityLifecycleEvidenceKind {
+    ObservedPresent,
+    AuthoritativeBirth,
+    AuthoritativeDeath,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoEntityLifecycleEvidenceRow {
+    pub evidence_id: String,
+    pub cluster_id: String,
+    pub entity_level: GeoEntityLevel,
+    pub evidence_kind: GeoEntityLifecycleEvidenceKind,
+    pub observed_utc_day: String,
+    pub source_receipt: GeoTemporalContainmentSourceReceipt,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeoTemporalContainmentSummary {
@@ -789,6 +808,94 @@ pub fn entity_existence_as_of(
         rows,
         summary,
     })
+}
+
+pub fn entity_existence_intervals_from_lifecycle_evidence(
+    rows: &[GeoEntityLifecycleEvidenceRow],
+) -> Result<Vec<GeoEntityExistenceInterval>, GeoLifecycleError> {
+    if rows.is_empty() {
+        return Err(invalid_field(
+            "lifecycle_evidence_rows",
+            "Geo lifecycle evidence materialization requires at least one row",
+            "0",
+        ));
+    }
+    let mut evidence_ids = BTreeSet::new();
+    let mut grouped =
+        BTreeMap::<(String, GeoEntityLevel), Vec<&GeoEntityLifecycleEvidenceRow>>::new();
+    for row in rows {
+        validate_lifecycle_evidence_row(row)?;
+        if !evidence_ids.insert(row.evidence_id.as_str()) {
+            return Err(GeoLifecycleError::invalid(
+                "Geo lifecycle evidence ids must be unique",
+                [("evidence_id", row.evidence_id.as_str())],
+            ));
+        }
+        grouped
+            .entry((row.cluster_id.clone(), row.entity_level))
+            .or_default()
+            .push(row);
+    }
+
+    let mut intervals = Vec::new();
+    for ((cluster_id, entity_level), rows) in grouped {
+        let observed_start = rows
+            .iter()
+            .map(|row| row.observed_utc_day.as_str())
+            .min()
+            .expect("group has at least one row")
+            .to_string();
+        let observed_end = rows
+            .iter()
+            .map(|row| row.observed_utc_day.as_str())
+            .max()
+            .expect("group has at least one row")
+            .to_string();
+        let authoritative_birth = rows
+            .iter()
+            .filter(|row| row.evidence_kind == GeoEntityLifecycleEvidenceKind::AuthoritativeBirth)
+            .map(|row| row.observed_utc_day.as_str())
+            .min()
+            .map(str::to_string);
+        let authoritative_death = rows
+            .iter()
+            .filter(|row| row.evidence_kind == GeoEntityLifecycleEvidenceKind::AuthoritativeDeath)
+            .map(|row| row.observed_utc_day.as_str())
+            .min()
+            .map(str::to_string);
+        if let (Some(birth), Some(death)) = (&authoritative_birth, &authoritative_death)
+            && birth > death
+        {
+            return Err(GeoLifecycleError::invalid(
+                "Geo lifecycle evidence implies death before authoritative birth",
+                [
+                    ("field", "lifecycle_evidence_rows".to_string()),
+                    ("cluster_id", cluster_id.clone()),
+                    ("birth_utc_day", birth.clone()),
+                    ("death_utc_day", death.clone()),
+                ],
+            ));
+        }
+        let mut source_receipts = rows
+            .iter()
+            .map(|row| row.source_receipt.clone())
+            .collect::<Vec<_>>();
+        source_receipts.sort();
+        source_receipts.dedup();
+        intervals.push(GeoEntityExistenceInterval {
+            cluster_id,
+            entity_level,
+            observed_interval: GeoTemporalContainmentInterval {
+                start_utc_day: observed_start,
+                end_utc_day: observed_end,
+            },
+            authoritative_birth_utc_day: authoritative_birth,
+            authoritative_death_utc_day: authoritative_death,
+            source_receipts,
+        });
+    }
+    intervals.sort_by(existence_interval_sort_order);
+    Ok(intervals)
 }
 
 pub fn resolve_geo_as_of(
@@ -2432,6 +2539,22 @@ fn validate_source_receipt(
     )?;
     validate_string("source_receipt.proof_class", &receipt.proof_class)?;
     validate_string("source_receipt.rule_id", &receipt.rule_id)
+}
+
+fn validate_lifecycle_evidence_row(
+    row: &GeoEntityLifecycleEvidenceRow,
+) -> Result<(), GeoLifecycleError> {
+    validate_string("lifecycle_evidence_rows[].evidence_id", &row.evidence_id)?;
+    validate_cluster_id(
+        "lifecycle_evidence_rows[].cluster_id",
+        &row.cluster_id,
+        row.entity_level,
+    )?;
+    validate_utc_day(
+        "lifecycle_evidence_rows[].observed_utc_day",
+        &row.observed_utc_day,
+    )?;
+    validate_source_receipt(&row.source_receipt)
 }
 
 fn validate_receipts_are_canonical(

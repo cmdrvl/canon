@@ -1,11 +1,12 @@
 use canon::geo::{
     CANON_GEO_TEMPORAL_CONTAINMENT_VERSION, GeoContainmentAsOfQuery, GeoEntityExistenceAsOfQuery,
     GeoEntityExistenceInterval, GeoEntityExistenceNextEvidenceKind, GeoEntityExistenceReason,
-    GeoEntityExistenceStatus, GeoEntityLevel, GeoLifecycleErrorCode,
-    GeoTemporalContainmentArtifact, GeoTemporalContainmentCluster, GeoTemporalContainmentEdge,
-    GeoTemporalContainmentInterval, GeoTemporalContainmentRelation,
-    GeoTemporalContainmentSourceReceipt, GeoTemporalContainmentSummary,
-    canonical_temporal_containment_bytes, containment_as_of, entity_existence_as_of,
+    GeoEntityExistenceStatus, GeoEntityLevel, GeoEntityLifecycleEvidenceKind,
+    GeoEntityLifecycleEvidenceRow, GeoLifecycleErrorCode, GeoTemporalContainmentArtifact,
+    GeoTemporalContainmentCluster, GeoTemporalContainmentEdge, GeoTemporalContainmentInterval,
+    GeoTemporalContainmentRelation, GeoTemporalContainmentSourceReceipt,
+    GeoTemporalContainmentSummary, canonical_temporal_containment_bytes, containment_as_of,
+    entity_existence_as_of, entity_existence_intervals_from_lifecycle_evidence,
     validate_temporal_containment_artifact,
 };
 
@@ -212,6 +213,122 @@ fn entity_existence_as_of_reports_new_construction_cold_start_with_refresh_remed
     assert!(
         next.reason.contains("latest retained observation vintage"),
         "remedy should name the observation-window limit"
+    );
+}
+
+#[test]
+fn lifecycle_evidence_materializes_existence_intervals_without_source_specific_branches() {
+    let nyc_building = building_id(1);
+    let franklin_parcel = "cmdrvl:parcel:franklin:parcel:010-000101".to_string();
+    let intervals = entity_existence_intervals_from_lifecycle_evidence(&[
+        lifecycle_evidence(
+            "nyc-birth",
+            &nyc_building,
+            GeoEntityLevel::Building,
+            GeoEntityLifecycleEvidenceKind::AuthoritativeBirth,
+            "2020-01-01",
+            "NYC_DOB_CERTIFICATES_OF_OCCUPANCY",
+        ),
+        lifecycle_evidence(
+            "nyc-present",
+            &nyc_building,
+            GeoEntityLevel::Building,
+            GeoEntityLifecycleEvidenceKind::ObservedPresent,
+            "2021-05-31",
+            "MICROSOFT_GLOBALML_BUILDING_FOOTPRINTS_HOT",
+        ),
+        lifecycle_evidence(
+            "franklin-create",
+            &franklin_parcel,
+            GeoEntityLevel::Parcel,
+            GeoEntityLifecycleEvidenceKind::AuthoritativeBirth,
+            "2021-09-01",
+            "FRANKLIN_COUNTY_AUDITOR_DROPS_ADDS_HOT",
+        ),
+        lifecycle_evidence(
+            "franklin-retire",
+            &franklin_parcel,
+            GeoEntityLevel::Parcel,
+            GeoEntityLifecycleEvidenceKind::AuthoritativeDeath,
+            "2024-09-01",
+            "FRANKLIN_COUNTY_AUDITOR_DROPS_ADDS_HOT",
+        ),
+    ])
+    .expect("typed lifecycle evidence materializes");
+
+    assert_eq!(intervals.len(), 2);
+    let building = intervals
+        .iter()
+        .find(|interval| interval.cluster_id == nyc_building)
+        .expect("building interval exists");
+    assert_eq!(building.entity_level, GeoEntityLevel::Building);
+    assert_eq!(building.observed_interval.start_utc_day, "2020-01-01");
+    assert_eq!(building.observed_interval.end_utc_day, "2021-05-31");
+    assert_eq!(
+        building.authoritative_birth_utc_day.as_deref(),
+        Some("2020-01-01")
+    );
+    assert_eq!(building.authoritative_death_utc_day, None);
+    assert_eq!(building.source_receipts.len(), 2);
+
+    let parcel = intervals
+        .iter()
+        .find(|interval| interval.cluster_id == franklin_parcel)
+        .expect("Franklin parcel interval exists");
+    assert_eq!(parcel.entity_level, GeoEntityLevel::Parcel);
+    assert_eq!(parcel.observed_interval.start_utc_day, "2021-09-01");
+    assert_eq!(parcel.observed_interval.end_utc_day, "2024-09-01");
+    assert_eq!(
+        parcel.authoritative_birth_utc_day.as_deref(),
+        Some("2021-09-01")
+    );
+    assert_eq!(
+        parcel.authoritative_death_utc_day.as_deref(),
+        Some("2024-09-01")
+    );
+}
+
+#[test]
+fn lifecycle_evidence_materialization_rejects_duplicates_and_inverted_authoritative_life() {
+    let duplicate = lifecycle_evidence(
+        "duplicate",
+        &building_id(1),
+        GeoEntityLevel::Building,
+        GeoEntityLifecycleEvidenceKind::ObservedPresent,
+        "2020-01-01",
+        "fixture.lifecycle",
+    );
+    let error = entity_existence_intervals_from_lifecycle_evidence(&[duplicate.clone(), duplicate])
+        .expect_err("duplicate evidence ids are rejected");
+    assert_eq!(error.code, GeoLifecycleErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("evidence_id").map(String::as_str),
+        Some("duplicate")
+    );
+
+    let inverted = entity_existence_intervals_from_lifecycle_evidence(&[
+        lifecycle_evidence(
+            "birth-after-death",
+            &building_id(2),
+            GeoEntityLevel::Building,
+            GeoEntityLifecycleEvidenceKind::AuthoritativeBirth,
+            "2021-01-01",
+            "fixture.lifecycle",
+        ),
+        lifecycle_evidence(
+            "death-before-birth",
+            &building_id(2),
+            GeoEntityLevel::Building,
+            GeoEntityLifecycleEvidenceKind::AuthoritativeDeath,
+            "2020-01-01",
+            "fixture.lifecycle",
+        ),
+    ])
+    .expect_err("death before birth is rejected");
+    assert_eq!(inverted.code, GeoLifecycleErrorCode::InvalidInput);
+    assert_eq!(
+        inverted.detail.get("field").map(String::as_str),
+        Some("lifecycle_evidence_rows")
     );
 }
 
@@ -472,5 +589,30 @@ fn source_receipt(receipt_id: &str, source_record_id: &str) -> GeoTemporalContai
         source_record_blake3: blake3_uri(source_record_id),
         proof_class: "fixture".to_string(),
         rule_id: "geo_entity_existence_fixture.v1".to_string(),
+    }
+}
+
+fn lifecycle_evidence(
+    evidence_id: &str,
+    cluster_id: &str,
+    entity_level: GeoEntityLevel,
+    evidence_kind: GeoEntityLifecycleEvidenceKind,
+    observed_utc_day: &str,
+    source_dataset: &str,
+) -> GeoEntityLifecycleEvidenceRow {
+    GeoEntityLifecycleEvidenceRow {
+        evidence_id: evidence_id.to_string(),
+        cluster_id: cluster_id.to_string(),
+        entity_level,
+        evidence_kind,
+        observed_utc_day: observed_utc_day.to_string(),
+        source_receipt: GeoTemporalContainmentSourceReceipt {
+            receipt_id: format!("receipt-{evidence_id}"),
+            source_dataset: source_dataset.to_string(),
+            source_record_id: format!("{source_dataset}:{evidence_id}"),
+            source_record_blake3: blake3_uri(&format!("{source_dataset}:{evidence_id}")),
+            proof_class: "fixture".to_string(),
+            rule_id: "geo_entity_lifecycle_evidence_fixture.v1".to_string(),
+        },
     }
 }
