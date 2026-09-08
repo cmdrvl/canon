@@ -5527,6 +5527,10 @@ fn canonicalize_population_case_observation(observation: &mut GeoRhoObservation)
         GeoRhoObservationKind::ExistentialMembership { members } => {
             members.sort_by(compare_e4_entity_refs);
         }
+        GeoRhoObservationKind::AllOf { members } => {
+            members.sort_by(compare_e4_entity_refs);
+        }
+        GeoRhoObservationKind::ExactCardinality { .. } => {}
         GeoRhoObservationKind::IntegerSumBand { values, .. } => {
             values.sort_by(compare_e4_integer_values);
         }

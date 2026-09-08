@@ -677,6 +677,8 @@ fn observation_members(observation: &super::GeoRhoObservationKind) -> Vec<GeoEnt
         super::GeoRhoObservationKind::ExistentialMembership { members } => {
             sorted_unique(members.clone())
         }
+        super::GeoRhoObservationKind::AllOf { members } => sorted_unique(members.clone()),
+        super::GeoRhoObservationKind::ExactCardinality { .. } => Vec::new(),
         super::GeoRhoObservationKind::IntegerSumBand { level, values, .. } => sorted_unique(
             values
                 .iter()

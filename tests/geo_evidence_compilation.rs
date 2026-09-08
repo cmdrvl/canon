@@ -4,13 +4,14 @@ use canon::geo::{
     GeoCandidateReachStatus, GeoCompositionModel, GeoCompositionProfile, GeoCompositionRequest,
     GeoCompositionStatus, GeoCompositionUniverse, GeoEntityLevel, GeoEntityRef,
     GeoEvidenceClaimRole, GeoEvidenceCompilationRequest, GeoEvidenceCoverageStatus,
-    GeoEvidenceDisposition, GeoEvidenceRecordRef, GeoIntegerMeasure, GeoIntegerMemberValue,
-    GeoIntegerValueOrigin, GeoLabeledCompositionCase, GeoPopulationCaseStatus,
-    GeoPopulationErrorCode, GeoPopulationEvaluationArtifact, GeoPopulationEvaluationRequest,
-    GeoPopulationSummary, GeoPopulationTruthPlaneSummary, GeoResolvedClaimClass,
-    GeoRhoAdmissionFallback, GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoContract, GeoRhoObservation,
-    GeoRhoObservationKind, GeoRhoSoundness, GeoTruthPlane, GeoValidTimeInterval,
-    canonical_evidence_compilation_bytes, compile_evidence, evaluate_population, solve_composition,
+    GeoEvidenceDisposition, GeoEvidenceRecordRef, GeoHardConstraintKind, GeoIntegerMeasure,
+    GeoIntegerMemberValue, GeoIntegerValueOrigin, GeoLabeledCompositionCase,
+    GeoPopulationCaseStatus, GeoPopulationErrorCode, GeoPopulationEvaluationArtifact,
+    GeoPopulationEvaluationRequest, GeoPopulationSummary, GeoPopulationTruthPlaneSummary,
+    GeoResolvedClaimClass, GeoRhoAdmissionFallback, GeoRhoAdmissionPolicy, GeoRhoBasis,
+    GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoRhoSoundness, GeoTruthPlane,
+    GeoValidTimeInterval, canonical_evidence_compilation_bytes, compile_evidence,
+    evaluate_population, solve_composition, validate_evidence_compilation_artifact,
     validate_population_evaluation_artifact,
 };
 use serde::Deserialize;
@@ -104,6 +105,204 @@ fn source_record(id: &str) -> GeoEvidenceRecordRef {
         source_vintage: "fixture-v1".to_string(),
         record_blake3: blake3::hash(id.as_bytes()).to_hex().to_string(),
     }
+}
+
+#[test]
+fn completeness_observations_compile_to_all_of_and_exact_cardinality() {
+    let request = GeoEvidenceCompilationRequest {
+        version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
+        universe: universe(&["p1", "p2", "p3"]),
+        contracts: vec![contract(
+            "rho.collateral.schedule_complete.fixture",
+            GeoRhoSoundness::LogicallySound,
+        )],
+        observations: vec![
+            GeoRhoObservation {
+                id: "schedule-all-of".to_string(),
+                contract_id: "rho.collateral.schedule_complete.fixture".to_string(),
+                source_records: vec![source_record("schedule-all-of-row")],
+                valid_time: None,
+                observation: GeoRhoObservationKind::AllOf {
+                    members: vec![
+                        GeoEntityRef::new(GeoEntityLevel::Parcel, "p1"),
+                        GeoEntityRef::new(GeoEntityLevel::Parcel, "p2"),
+                    ],
+                },
+            },
+            GeoRhoObservation {
+                id: "schedule-exact-cardinality".to_string(),
+                contract_id: "rho.collateral.schedule_complete.fixture".to_string(),
+                source_records: vec![source_record("schedule-exact-cardinality-row")],
+                valid_time: None,
+                observation: GeoRhoObservationKind::ExactCardinality {
+                    level: GeoEntityLevel::Parcel,
+                    count: 2,
+                },
+            },
+        ],
+        max_assignments: 64,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    };
+
+    let evidence = compile_evidence(&request).expect("complete schedule evidence compiles");
+    validate_evidence_compilation_artifact(&evidence).expect("complete schedule evidence replays");
+    let composition =
+        solve_composition(&evidence.composition_request).expect("complete schedule solves");
+
+    assert_eq!(evidence.admissions.len(), 2);
+    assert!(evidence.admissions.iter().all(|admission| {
+        admission.disposition == GeoEvidenceDisposition::HardConstraint
+            && admission.admission_reason.is_none()
+            && admission.generated_ids.len() == 1
+    }));
+    assert!(
+        evidence
+            .composition_request
+            .hard_constraints
+            .iter()
+            .any(|constraint| matches!(constraint.constraint, GeoHardConstraintKind::AllOf { .. }))
+    );
+    assert!(
+        evidence
+            .composition_request
+            .hard_constraints
+            .iter()
+            .any(|constraint| {
+                matches!(
+                    constraint.constraint,
+                    GeoHardConstraintKind::Cardinality {
+                        level: GeoEntityLevel::Parcel,
+                        min: 2,
+                        max: 2
+                    }
+                )
+            })
+    );
+    assert_eq!(composition.status, GeoCompositionStatus::Resolved);
+    assert_eq!(
+        composition.residual_models,
+        vec![GeoCompositionModel {
+            parcels: parcels(&["p1", "p2"]),
+            buildings: Vec::new(),
+        }]
+    );
+}
+
+#[test]
+fn partial_or_unadmitted_completeness_does_not_exclude_supersets() {
+    let partial_request = GeoEvidenceCompilationRequest {
+        version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
+        universe: universe(&["p1", "p2", "p3"]),
+        contracts: vec![contract(
+            "rho.collateral.schedule_includes.fixture",
+            GeoRhoSoundness::LogicallySound,
+        )],
+        observations: vec![GeoRhoObservation {
+            id: "schedule-partial-all-of".to_string(),
+            contract_id: "rho.collateral.schedule_includes.fixture".to_string(),
+            source_records: vec![source_record("schedule-partial-all-of-row")],
+            valid_time: None,
+            observation: GeoRhoObservationKind::AllOf {
+                members: vec![
+                    GeoEntityRef::new(GeoEntityLevel::Parcel, "p1"),
+                    GeoEntityRef::new(GeoEntityLevel::Parcel, "p2"),
+                ],
+            },
+        }],
+        max_assignments: 64,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    };
+    let partial_evidence =
+        compile_evidence(&partial_request).expect("partial schedule evidence compiles");
+    let partial_composition = solve_composition(&partial_evidence.composition_request)
+        .expect("partial schedule evidence solves");
+    assert_eq!(partial_composition.status, GeoCompositionStatus::Ambiguous);
+    assert_eq!(partial_composition.summary.residual_model_count, 2);
+    assert!(
+        partial_composition
+            .residual_models
+            .iter()
+            .any(|model| model.parcels == parcels(&["p1", "p2", "p3"]))
+    );
+
+    let diagnostic_contract = GeoRhoContract {
+        id: "rho.collateral.schedule_complete.unasserted".to_string(),
+        version: "v1".to_string(),
+        source_dataset: "fixture:schedule".to_string(),
+        source_release: "fixture-v1".to_string(),
+        source_lineage_ids: vec!["fixture:schedule:lineage".to_string()],
+        method_id: "fixture:schedule-completeness".to_string(),
+        method_version: "v1".to_string(),
+        claim_role: GeoEvidenceClaimRole::AttributeObservation,
+        basis: GeoRhoBasis::EmpiricalCalibration {
+            population_id: "fixture:schedule:population".to_string(),
+            calibration_blake3: blake3::hash(b"unasserted completeness")
+                .to_hex()
+                .to_string(),
+            falsification_rule_id: "fixture:schedule:not-asserted".to_string(),
+            admissible_hard_band: false,
+            admission_policy: GeoRhoAdmissionPolicy::DiagnosticOnly {
+                reason: "fixture.completeness_not_asserted".to_string(),
+            },
+        },
+    };
+    let diagnostic_request = GeoEvidenceCompilationRequest {
+        contracts: vec![diagnostic_contract],
+        observations: vec![
+            GeoRhoObservation {
+                id: "unasserted-all-of".to_string(),
+                contract_id: "rho.collateral.schedule_complete.unasserted".to_string(),
+                source_records: vec![source_record("unasserted-all-of-row")],
+                valid_time: None,
+                observation: GeoRhoObservationKind::AllOf {
+                    members: vec![
+                        GeoEntityRef::new(GeoEntityLevel::Parcel, "p1"),
+                        GeoEntityRef::new(GeoEntityLevel::Parcel, "p2"),
+                    ],
+                },
+            },
+            GeoRhoObservation {
+                id: "unasserted-exact-cardinality".to_string(),
+                contract_id: "rho.collateral.schedule_complete.unasserted".to_string(),
+                source_records: vec![source_record("unasserted-exact-cardinality-row")],
+                valid_time: None,
+                observation: GeoRhoObservationKind::ExactCardinality {
+                    level: GeoEntityLevel::Parcel,
+                    count: 2,
+                },
+            },
+        ],
+        ..partial_request
+    };
+    let diagnostic_evidence =
+        compile_evidence(&diagnostic_request).expect("diagnostic schedule evidence compiles");
+    let diagnostic_composition = solve_composition(&diagnostic_evidence.composition_request)
+        .expect("diagnostic schedule evidence solves");
+
+    assert!(
+        diagnostic_evidence
+            .admissions
+            .iter()
+            .all(
+                |admission| admission.disposition == GeoEvidenceDisposition::DiagnosticOnly
+                    && admission.generated_ids.is_empty()
+                    && admission.admission_reason.as_deref()
+                        == Some("fixture.completeness_not_asserted")
+            )
+    );
+    assert!(
+        diagnostic_evidence
+            .composition_request
+            .hard_constraints
+            .is_empty()
+    );
+    assert_eq!(
+        diagnostic_composition.status,
+        GeoCompositionStatus::Ambiguous
+    );
+    assert_eq!(diagnostic_composition.summary.residual_model_count, 7);
 }
 
 fn building_universe(ids: &[&str]) -> GeoCompositionUniverse {

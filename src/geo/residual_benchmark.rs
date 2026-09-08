@@ -1196,6 +1196,13 @@ impl ObddBuilder {
                 self.or_nodes(alternatives)
             }
             GeoHardConstraintKind::AnyOf { members } => self.or_refs(members.iter().cloned()),
+            GeoHardConstraintKind::AllOf { members } => self.and_literals(
+                members
+                    .iter()
+                    .cloned()
+                    .map(|member| (member, true))
+                    .collect(),
+            ),
             GeoHardConstraintKind::IntegerSumBand {
                 level,
                 values,

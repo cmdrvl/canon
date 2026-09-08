@@ -3036,6 +3036,27 @@ fn composition_request_schema_matches_a_real_instance() {
 }
 
 #[test]
+fn composition_all_of_schema_matches_a_real_instance() {
+    let mut request = composition_request();
+    request.hard_constraints.push(GeoHardConstraint {
+        id: "schema-all-of-parcels".to_string(),
+        constraint: GeoHardConstraintKind::AllOf {
+            members: vec![
+                GeoEntityRef::new(GeoEntityLevel::Parcel, "parcel-a"),
+                GeoEntityRef::new(GeoEntityLevel::Parcel, "parcel-b"),
+            ],
+        },
+    });
+    let instance = serde_json::to_value(&request).expect("request must serialize");
+    assert_drift_free(
+        COMPOSITION_REQUEST_SCHEMA,
+        "canon.geo.composition_request.v0",
+        "canon_geo_composition_request.v0",
+        &instance,
+    );
+}
+
+#[test]
 fn propagation_schema_matches_a_real_instance() {
     let artifact = propagate(
         &propagation_request(),
@@ -4643,6 +4664,66 @@ fn evidence_request_schema_matches_a_real_instance() {
         "canon.geo.evidence_request.v0",
         "canon_geo_evidence_request.v0",
         &instance,
+    );
+}
+
+#[test]
+fn completeness_observation_schemas_match_real_instances() {
+    let request = GeoEvidenceCompilationRequest {
+        version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
+        universe: GeoCompositionUniverse {
+            parcels: vec![
+                "schema-parcel-a".to_string(),
+                "schema-parcel-b".to_string(),
+                "schema-parcel-c".to_string(),
+            ],
+            buildings: Vec::new(),
+        },
+        contracts: vec![schema_rho_contract("schema-complete-set")],
+        observations: vec![
+            GeoRhoObservation {
+                id: "schema-all-of".to_string(),
+                contract_id: "schema-complete-set".to_string(),
+                source_records: vec![schema_source_record("schema-all-of-row")],
+                valid_time: None,
+                observation: GeoRhoObservationKind::AllOf {
+                    members: vec![
+                        GeoEntityRef::new(GeoEntityLevel::Parcel, "schema-parcel-a"),
+                        GeoEntityRef::new(GeoEntityLevel::Parcel, "schema-parcel-b"),
+                    ],
+                },
+            },
+            GeoRhoObservation {
+                id: "schema-exact-cardinality".to_string(),
+                contract_id: "schema-complete-set".to_string(),
+                source_records: vec![schema_source_record("schema-exact-cardinality-row")],
+                valid_time: None,
+                observation: GeoRhoObservationKind::ExactCardinality {
+                    level: GeoEntityLevel::Parcel,
+                    count: 2,
+                },
+            },
+        ],
+        max_assignments: 64,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    };
+
+    let request_instance = serde_json::to_value(&request).expect("request must serialize");
+    assert_drift_free(
+        EVIDENCE_REQUEST_SCHEMA,
+        "canon.geo.evidence_request.v0",
+        "canon_geo_evidence_request.v0",
+        &request_instance,
+    );
+
+    let artifact = compile_evidence(&request).expect("completeness evidence compiles");
+    let artifact_instance = serde_json::to_value(&artifact).expect("artifact must serialize");
+    assert_drift_free(
+        EVIDENCE_COMPILATION_SCHEMA,
+        "canon.geo.evidence_compilation.v0",
+        "canon_geo_evidence_compilation.v0",
+        &artifact_instance,
     );
 }
 

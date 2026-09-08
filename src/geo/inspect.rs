@@ -536,6 +536,19 @@ fn admission_member_keys(admission: &Value) -> BTreeSet<String> {
                 }
             }
         }
+        Some("all_of") => {
+            for member in observation
+                .get("members")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                if let Some(member_key) = entity_ref_key(member) {
+                    out.insert(member_key);
+                }
+            }
+        }
+        Some("exact_cardinality") => {}
         Some("integer_sum_band") => {
             if let Some(level) = observation.get("level").and_then(Value::as_str) {
                 for member in observation

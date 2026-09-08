@@ -294,6 +294,46 @@
           "additionalProperties": false,
           "properties": {
             "kind": {
+              "const": "all_of"
+            },
+            "members": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/entity_ref"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "members"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "exact_cardinality"
+            },
+            "level": {
+              "$ref": "#/$defs/entity_level"
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "kind",
+            "level",
+            "count"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
               "const": "integer_sum_band"
             },
             "level": {

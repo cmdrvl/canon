@@ -1030,6 +1030,12 @@ pub enum GeoHardConstraintKind {
     AnyOf {
         members: Vec<GeoEntityRef>,
     },
+    /// Every declared member must be selected. This is an inclusion relation,
+    /// not by itself a complete-set assertion; pair it with cardinality when a
+    /// source asserts exact coverage.
+    AllOf {
+        members: Vec<GeoEntityRef>,
+    },
     /// Exact integer additive band over selected members. The measure identity,
     /// unit, and value origin travel with the constraint so source-asserted
     /// areas cannot silently be mixed with exact geometry-derived areas.
@@ -1645,6 +1651,7 @@ impl<'a> FactorizedSolver<'a> {
             GeoHardConstraintKind::Cardinality { level, .. }
             | GeoHardConstraintKind::AllowedSets { level, .. } => all_of_level(*level),
             GeoHardConstraintKind::AnyOf { members }
+            | GeoHardConstraintKind::AllOf { members }
             | GeoHardConstraintKind::AllOrNone { members } => {
                 members.iter().filter_map(|m| self.var_index(m)).collect()
             }
@@ -3067,6 +3074,10 @@ impl<'a, 'b> DfsSearch<'a, 'b> {
                         .all(|slot| slot.is_some_and(|slot| !is_set(slot)));
                     !(all_assigned && none_set)
                 }
+                GeoHardConstraintKind::AllOf { members } => members
+                    .iter()
+                    .map(|member| self.ctx.member_slot(member))
+                    .all(|slot| slot.is_none_or(|slot| !assigned(slot) || is_set(slot))),
                 GeoHardConstraintKind::AllOrNone { members } => {
                     let states: Vec<Option<bool>> = members
                         .iter()
@@ -3322,10 +3333,10 @@ fn normalize_constraint(
                 sets.iter().map(|set| format!("{set:?}")),
             )?;
         }
-        GeoHardConstraintKind::AnyOf { members } => {
+        GeoHardConstraintKind::AnyOf { members } | GeoHardConstraintKind::AllOf { members } => {
             if members.is_empty() {
                 return Err(GeoCompositionError::invalid_input(
-                    "AnyOf requires at least one member",
+                    "Membership constraints require at least one member",
                     [("constraint_id", constraint.id.as_str())],
                 ));
             }
@@ -3334,7 +3345,7 @@ fn normalize_constraint(
             }
             members.sort();
             reject_adjacent_duplicates(
-                "hard_constraints[].any_of",
+                "hard_constraints[].members",
                 members
                     .iter()
                     .map(|member| format!("{}:{}", level_name(member.level), member.id)),
@@ -3501,6 +3512,9 @@ fn constraint_holds(model: &GeoCompositionModel, constraint: &GeoHardConstraintK
             .is_some_and(|members| sets.iter().any(|allowed| allowed == members)),
         GeoHardConstraintKind::AnyOf { members } => {
             members.iter().any(|member| model.contains(member))
+        }
+        GeoHardConstraintKind::AllOf { members } => {
+            members.iter().all(|member| model.contains(member))
         }
         GeoHardConstraintKind::IntegerSumBand {
             level,

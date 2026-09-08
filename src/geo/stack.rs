@@ -717,6 +717,10 @@ fn canonicalize_observation(observation: &mut GeoRhoObservation) {
         GeoRhoObservationKind::ExistentialMembership { members } => {
             members.sort_by(compare_entity_refs);
         }
+        GeoRhoObservationKind::AllOf { members } => {
+            members.sort_by(compare_entity_refs);
+        }
+        GeoRhoObservationKind::ExactCardinality { .. } => {}
         GeoRhoObservationKind::IntegerSumBand { values, .. } => {
             values.sort_by(compare_integer_values);
         }

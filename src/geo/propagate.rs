@@ -525,6 +525,16 @@ fn base_counters(
             .count() as u64,
     );
     counters.insert(
+        "all_of_constraint_count".to_string(),
+        request
+            .hard_constraints
+            .iter()
+            .filter(|constraint| {
+                matches!(constraint.constraint, GeoHardConstraintKind::AllOf { .. })
+            })
+            .count() as u64,
+    );
+    counters.insert(
         "source_exclusivity_constraint_count".to_string(),
         request
             .hard_constraints
@@ -603,6 +613,12 @@ impl Domain {
                 GeoHardConstraintKind::Forbid { member } => {
                     let reason = evidence_index.reason_for_constraint(&constraint.id);
                     domain.seed(member, GeoPrunedValue::Excluded, reason)?;
+                }
+                GeoHardConstraintKind::AllOf { members } => {
+                    for member in members {
+                        let reason = evidence_index.reason_for_constraint(&constraint.id);
+                        domain.seed(member, GeoPrunedValue::Forced, reason)?;
+                    }
                 }
                 _ => {}
             }

@@ -180,6 +180,12 @@ pub enum GeoRhoObservationKind {
     },
     /// At least one declared member participates in the selected composition.
     ExistentialMembership { members: Vec<GeoEntityRef> },
+    /// Every declared member participates in the selected composition. This
+    /// proves inclusion only; exact collateral-set completeness requires an
+    /// accompanying exact-cardinality observation from the same asserted source.
+    AllOf { members: Vec<GeoEntityRef> },
+    /// The selected member count at one level equals the asserted count.
+    ExactCardinality { level: GeoEntityLevel, count: usize },
     /// Selected member values sum inside an exact integer band.
     IntegerSumBand {
         level: GeoEntityLevel,
@@ -372,6 +378,7 @@ pub fn compile_evidence(
                 [("observation_id", observation.id.as_str())],
             ));
         }
+        validate_observation_kind(&observation.observation, &request.universe)?;
     }
     observations.sort_by(|left, right| left.id.cmp(&right.id));
     reject_duplicate_ids(
@@ -1031,6 +1038,16 @@ fn push_hard_constraint(
         GeoRhoObservationKind::ExistentialMembership { members } => GeoHardConstraintKind::AnyOf {
             members: members.clone(),
         },
+        GeoRhoObservationKind::AllOf { members } => GeoHardConstraintKind::AllOf {
+            members: members.clone(),
+        },
+        GeoRhoObservationKind::ExactCardinality { level, count } => {
+            GeoHardConstraintKind::Cardinality {
+                level: *level,
+                min: *count,
+                max: *count,
+            }
+        }
         GeoRhoObservationKind::IntegerSumBand {
             level,
             measure,
@@ -1351,6 +1368,198 @@ fn expected_diagnostic_admission_reason(
             GeoRhoObservationKind::IntegerSumBand { .. },
         ) => Some(GEO_RHO_BAND_NOT_ADMISSIBLE_REASON.to_string()),
         _ => None,
+    }
+}
+
+fn validate_observation_kind(
+    observation: &GeoRhoObservationKind,
+    universe: &GeoCompositionUniverse,
+) -> Result<(), GeoEvidenceError> {
+    let parcel_set = universe
+        .parcels
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let building_set = universe
+        .buildings
+        .iter()
+        .map(|building| building.id.as_str())
+        .collect::<BTreeSet<_>>();
+    match observation {
+        GeoRhoObservationKind::ExactSets { level, sets } => {
+            validate_supported_level("observations[].exact_sets.level", *level)?;
+            if sets.is_empty() {
+                return Err(GeoEvidenceError::invalid(
+                    "Geo exact-set observations require at least one allowed set",
+                    [("field", "observations[].observation.sets")],
+                ));
+            }
+            for set in sets {
+                validate_distinct_ids("observations[].observation.sets[]", set)?;
+                for id in set {
+                    validate_observation_member(
+                        &GeoEntityRef::new(*level, id.clone()),
+                        &parcel_set,
+                        &building_set,
+                    )?;
+                }
+            }
+        }
+        GeoRhoObservationKind::ExistentialMembership { members }
+        | GeoRhoObservationKind::AllOf { members } => {
+            validate_distinct_members("observations[].observation.members", members)?;
+            for member in members {
+                validate_observation_member(member, &parcel_set, &building_set)?;
+            }
+        }
+        GeoRhoObservationKind::ExactCardinality { level, count } => {
+            validate_supported_level("observations[].exact_cardinality.level", *level)?;
+            let available = match level {
+                GeoEntityLevel::Parcel => universe.parcels.len(),
+                GeoEntityLevel::Building => universe.buildings.len(),
+                GeoEntityLevel::PoiUnit | GeoEntityLevel::Property => unreachable!(),
+            };
+            if *count == 0 || *count > available {
+                return Err(GeoEvidenceError::invalid(
+                    "Geo exact-cardinality observations require a positive reachable count",
+                    [
+                        (
+                            "field".to_string(),
+                            "observations[].observation.exact_cardinality.count".to_string(),
+                        ),
+                        ("available".to_string(), available.to_string()),
+                    ],
+                ));
+            }
+        }
+        GeoRhoObservationKind::IntegerSumBand {
+            level,
+            measure,
+            values,
+            min,
+            max,
+        } => {
+            validate_supported_level("observations[].integer_sum_band.level", *level)?;
+            validate_identifier(
+                "observations[].observation.integer_sum_band.measure.semantic_id",
+                &measure.semantic_id,
+            )?;
+            validate_identifier(
+                "observations[].observation.integer_sum_band.measure.unit",
+                &measure.unit,
+            )?;
+            if values.is_empty() || min > max {
+                return Err(GeoEvidenceError::invalid(
+                    "Geo integer-sum observations require values and an ordered band",
+                    [("field", "observations[].observation.integer_sum_band")],
+                ));
+            }
+            let mut seen = BTreeSet::new();
+            for value in values {
+                validate_identifier(
+                    "observations[].observation.integer_sum_band.values[].id",
+                    &value.id,
+                )?;
+                validate_observation_member(
+                    &GeoEntityRef::new(*level, value.id.clone()),
+                    &parcel_set,
+                    &building_set,
+                )?;
+                if !seen.insert(value.id.as_str()) {
+                    return Err(GeoEvidenceError::invalid(
+                        "Geo integer-sum observations require distinct values",
+                        [(
+                            "field",
+                            "observations[].observation.integer_sum_band.values",
+                        )],
+                    ));
+                }
+            }
+        }
+        GeoRhoObservationKind::PreferMember { member, .. } => {
+            validate_observation_member(member, &parcel_set, &building_set)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_supported_level(field: &str, level: GeoEntityLevel) -> Result<(), GeoEvidenceError> {
+    match level {
+        GeoEntityLevel::Parcel | GeoEntityLevel::Building => Ok(()),
+        GeoEntityLevel::PoiUnit | GeoEntityLevel::Property => Err(GeoEvidenceError::invalid(
+            "Geo evidence observations support only parcel and building levels",
+            [("field", field), ("level", evidence_level_name(level))],
+        )),
+    }
+}
+
+fn validate_distinct_ids(field: &str, values: &[String]) -> Result<(), GeoEvidenceError> {
+    let mut seen = BTreeSet::new();
+    for value in values {
+        validate_identifier(field, value)?;
+        if !seen.insert(value.as_str()) {
+            return Err(GeoEvidenceError::invalid(
+                "Geo evidence observation identifiers must be distinct",
+                [("field", field), ("value", value.as_str())],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_distinct_members(
+    field: &str,
+    members: &[GeoEntityRef],
+) -> Result<(), GeoEvidenceError> {
+    if members.is_empty() {
+        return Err(GeoEvidenceError::invalid(
+            "Geo evidence observations require at least one member",
+            [("field", field)],
+        ));
+    }
+    let mut seen = BTreeSet::new();
+    for member in members {
+        validate_identifier("observations[].observation.members[].id", &member.id)?;
+        validate_supported_level("observations[].observation.members[].level", member.level)?;
+        if !seen.insert(member) {
+            return Err(GeoEvidenceError::invalid(
+                "Geo evidence observation members must be distinct",
+                [("field", field), ("member_id", member.id.as_str())],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_observation_member(
+    member: &GeoEntityRef,
+    parcels: &BTreeSet<&str>,
+    buildings: &BTreeSet<&str>,
+) -> Result<(), GeoEvidenceError> {
+    let present = match member.level {
+        GeoEntityLevel::Parcel => parcels.contains(member.id.as_str()),
+        GeoEntityLevel::Building => buildings.contains(member.id.as_str()),
+        GeoEntityLevel::PoiUnit | GeoEntityLevel::Property => false,
+    };
+    if present {
+        Ok(())
+    } else {
+        Err(GeoEvidenceError::invalid(
+            "Geo evidence observation references an unknown member",
+            [
+                ("level", evidence_level_name(member.level)),
+                ("member_id", member.id.as_str()),
+            ],
+        ))
+    }
+}
+
+const fn evidence_level_name(level: GeoEntityLevel) -> &'static str {
+    match level {
+        GeoEntityLevel::PoiUnit => "poi_unit",
+        GeoEntityLevel::Building => "building",
+        GeoEntityLevel::Parcel => "parcel",
+        GeoEntityLevel::Property => "property",
     }
 }
 

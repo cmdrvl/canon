@@ -1159,6 +1159,17 @@ fn canonicalize_warehouse_observation_kind(
             members.sort();
             GeoRhoObservationKind::ExistentialMembership { members }
         }
+        GeoRhoObservationKind::AllOf { members } => {
+            let mut members = members.clone();
+            members.sort();
+            GeoRhoObservationKind::AllOf { members }
+        }
+        GeoRhoObservationKind::ExactCardinality { level, count } => {
+            GeoRhoObservationKind::ExactCardinality {
+                level: *level,
+                count: *count,
+            }
+        }
         GeoRhoObservationKind::IntegerSumBand {
             level,
             measure,

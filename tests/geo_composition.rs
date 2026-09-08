@@ -38,6 +38,10 @@ struct ExpectedOutcome {
     residual_building_sets: Vec<Vec<String>>,
 }
 
+fn parcel_ids(ids: &[&str]) -> Vec<String> {
+    ids.iter().map(|id| (*id).to_string()).collect()
+}
+
 fn corpus() -> WorkedCorpus {
     serde_json::from_str(include_str!("fixtures/geo/e4_worked_cases.json"))
         .expect("E4 worked-case fixture must parse")
@@ -372,6 +376,9 @@ fn oracle_holds(model: &GeoCompositionModel, kind: &GeoHardConstraintKind) -> bo
         GeoHardConstraintKind::AnyOf { members } => {
             members.iter().any(|member| member_in(model, member))
         }
+        GeoHardConstraintKind::AllOf { members } => {
+            members.iter().all(|member| member_in(model, member))
+        }
         GeoHardConstraintKind::IntegerSumBand {
             level,
             values,
@@ -458,6 +465,95 @@ fn oracle_residual(
     models
 }
 
+#[test]
+fn all_of_without_cardinality_does_not_claim_complete_set() {
+    let request = GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
+        universe: GeoCompositionUniverse {
+            parcels: parcel_ids(&["p1", "p2", "p3"]),
+            buildings: Vec::new(),
+        },
+        hard_constraints: vec![GeoHardConstraint {
+            id: "schedule-includes-p1-p2".to_string(),
+            constraint: GeoHardConstraintKind::AllOf {
+                members: vec![
+                    GeoEntityRef::new(GeoEntityLevel::Parcel, "p1"),
+                    GeoEntityRef::new(GeoEntityLevel::Parcel, "p2"),
+                ],
+            },
+        }],
+        soft_preferences: Vec::new(),
+        max_assignments: 64,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    };
+
+    let artifact = solve_composition(&request).expect("all-of request must solve");
+
+    assert_eq!(artifact.status, GeoCompositionStatus::Ambiguous);
+    assert_eq!(artifact.summary.residual_model_count, 2);
+    assert_eq!(
+        artifact.residual_models,
+        vec![
+            GeoCompositionModel {
+                parcels: parcel_ids(&["p1", "p2"]),
+                buildings: Vec::new(),
+            },
+            GeoCompositionModel {
+                parcels: parcel_ids(&["p1", "p2", "p3"]),
+                buildings: Vec::new(),
+            },
+        ]
+    );
+    assert_eq!(artifact.hard_forced.parcels, parcel_ids(&["p1", "p2"]));
+}
+
+#[test]
+fn all_of_plus_exact_cardinality_represents_complete_set() {
+    let request = GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
+        universe: GeoCompositionUniverse {
+            parcels: parcel_ids(&["p1", "p2", "p3"]),
+            buildings: Vec::new(),
+        },
+        hard_constraints: vec![
+            GeoHardConstraint {
+                id: "schedule-exact-cardinality".to_string(),
+                constraint: GeoHardConstraintKind::Cardinality {
+                    level: GeoEntityLevel::Parcel,
+                    min: 2,
+                    max: 2,
+                },
+            },
+            GeoHardConstraint {
+                id: "schedule-includes-p1-p2".to_string(),
+                constraint: GeoHardConstraintKind::AllOf {
+                    members: vec![
+                        GeoEntityRef::new(GeoEntityLevel::Parcel, "p1"),
+                        GeoEntityRef::new(GeoEntityLevel::Parcel, "p2"),
+                    ],
+                },
+            },
+        ],
+        soft_preferences: Vec::new(),
+        max_assignments: 64,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    };
+
+    let artifact = solve_composition(&request).expect("complete-set request must solve");
+
+    assert_eq!(artifact.status, GeoCompositionStatus::Resolved);
+    assert_eq!(
+        artifact.residual_models,
+        vec![GeoCompositionModel {
+            parcels: parcel_ids(&["p1", "p2"]),
+            buildings: Vec::new(),
+        }]
+    );
+    assert_eq!(artifact.hard_forced.parcels, parcel_ids(&["p1", "p2"]));
+}
+
 fn random_constraints(
     rng: &mut Lcg,
     parcels: &[String],
@@ -485,7 +581,7 @@ fn random_constraints(
     let count = rng.below(5);
     let mut constraints = Vec::new();
     for index in 0..count {
-        let kind = match rng.below(7) {
+        let kind = match rng.below(8) {
             0 => GeoHardConstraintKind::Require {
                 member: any_ref(rng),
             },
@@ -575,6 +671,20 @@ fn random_constraints(
                     min: 0,
                     max: total,
                 }
+            }
+            6 => {
+                let mut members = (0..1 + rng.below(3.min(parcels.len() + buildings.len())))
+                    .map(|_| any_ref(rng))
+                    .collect::<Vec<_>>();
+                members.sort_by(|left, right| {
+                    format!("{}:{}", left.level as u8, left.id)
+                        .cmp(&format!("{}:{}", right.level as u8, right.id))
+                });
+                members.dedup();
+                if members.is_empty() {
+                    continue;
+                }
+                GeoHardConstraintKind::AllOf { members }
             }
             _ => {
                 if buildings.is_empty() && parcels.len() < 2 {
