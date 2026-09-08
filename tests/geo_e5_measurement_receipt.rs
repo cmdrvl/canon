@@ -2,14 +2,14 @@
 
 use assert_cmd::Command;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
 use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
 };
-use tempfile::{tempdir, TempDir};
+use tempfile::{TempDir, tempdir};
 
 const MANIFEST: &str = include_str!("../scripts/geo_measurements/manifest.json");
 const E5_ID: &str = "e5_franklin_county_thin_tier_readiness_v0";
@@ -189,9 +189,10 @@ fn e5_sanity(rows: &[Value]) -> Value {
 
 fn shared_u64(rows: &[Value], field: &str) -> u64 {
     let first = rows[0][field].as_u64().expect("shared u64 field");
-    assert!(rows
-        .iter()
-        .all(|row| row[field].as_u64().expect("shared u64 field") == first));
+    assert!(
+        rows.iter()
+            .all(|row| row[field].as_u64().expect("shared u64 field") == first)
+    );
     first
 }
 
@@ -260,11 +261,13 @@ fn e5_fixture_is_receipt_consistent_but_not_live_attested() {
     assert_eq!(row["query_id"], E5_QUERY_ID);
     assert_eq!(row["declared_proof_class"], "contract_fixture");
     assert_eq!(row["row_count"], 4);
-    assert!(row["details"]
-        .as_array()
-        .expect("details")
-        .iter()
-        .any(|detail| detail == LIVENESS_NOT_ATTESTED));
+    assert!(
+        row["details"]
+            .as_array()
+            .expect("details")
+            .iter()
+            .any(|detail| detail == LIVENESS_NOT_ATTESTED)
+    );
     assert!(!report.to_string().contains("live_attested"));
     assert!(!report.to_string().contains("verified"));
 }

@@ -1,11 +1,11 @@
 #![forbid(unsafe_code)]
 
 use canon::geo::{
-    canonical_deed_truth_bytes, derive_deed_truth, derive_deed_truth_from_index,
-    evaluate_population, validate_deed_index_rows_request, validate_deed_truth_artifact,
-    validate_deed_truth_plane_scope, GeoDeedIndexRowsRequest, GeoDeedTruthArtifact,
-    GeoDeedTruthLoanMatch, GeoDeedTruthLoanRef, GeoDeedTruthMatchKind, GeoDeedTruthProofClass,
-    GeoPopulationErrorCode, GeoPopulationEvaluationRequest, GeoTruthPlane,
+    GeoDeedIndexRowsRequest, GeoDeedTruthArtifact, GeoDeedTruthLoanMatch, GeoDeedTruthLoanRef,
+    GeoDeedTruthMatchKind, GeoDeedTruthProofClass, GeoPopulationErrorCode,
+    GeoPopulationEvaluationRequest, GeoTruthPlane, canonical_deed_truth_bytes, derive_deed_truth,
+    derive_deed_truth_from_index, evaluate_population, validate_deed_index_rows_request,
+    validate_deed_truth_artifact, validate_deed_truth_plane_scope,
 };
 use std::process::Command;
 
@@ -291,10 +291,12 @@ fn t49_deed_truth_plane_is_not_pooled_with_other_truth_planes() {
     assert_eq!(plane.solver_truth_scored_cases, artifact.summary.unique);
     assert_eq!(plane.truth_members, 5);
     assert_eq!(plane.truth_members_in_universe, 5);
-    assert!(evaluation
-        .cases
-        .iter()
-        .all(|case| case.truth_plane == GeoTruthPlane::DeedGrainInstrument));
+    assert!(
+        evaluation
+            .cases
+            .iter()
+            .all(|case| case.truth_plane == GeoTruthPlane::DeedGrainInstrument)
+    );
 
     validate_deed_truth_plane_scope([GeoTruthPlane::DeedGrainInstrument])
         .expect("single deed plane is allowed");
