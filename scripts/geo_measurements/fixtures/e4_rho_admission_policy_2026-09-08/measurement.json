@@ -1,0 +1,134 @@
+{
+  "baseline": {
+    "ambiguous": 50,
+    "conflict": 4,
+    "exactly_correct": 6,
+    "false_merges": 5,
+    "name": "full_reach_representation_widened_exact_owner_gsf_band",
+    "reach_full_partial_none": [
+      70,
+      0,
+      0
+    ],
+    "resolved": 11,
+    "truth_exclusions": 24
+  },
+  "bead": "bd-2wby",
+  "boundary": "Admission policy changes rho disposition only. Candidate universe, truth labels, frozen denominator, and solver scoring rules are unchanged; this is not live proof.",
+  "frozen_denominator": 79,
+  "full_70_exploratory_note": "A local per-case exploratory pass completed 68 of 70 rows and cleared false_merge_cases to 0 on completed rows, but two rows timed out under the local limit; this artifact does not claim the full E4 score.",
+  "handoff_command": [
+    "gzip -dc scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/population_request_roll_universe_pluto_vintage_condo_representation_widened.json.gz > /tmp/canon-bd-2wby/full_reach_population.json",
+    "gzip -dc scripts/geo_measurements/fixtures/e4_rho_admission_policy_2026-09-08/overlay_request_roll_owner_threshold_mu_gsf.json.gz > /tmp/canon-bd-2wby/policy_overlay.json",
+    "target/debug/canon geo stack-evidence --population /tmp/canon-bd-2wby/full_reach_population.json --overlay /tmp/canon-bd-2wby/policy_overlay.json > /tmp/canon-bd-2wby/full_reach_policy_stack.json",
+    "target/debug/canon geo evaluate --population /tmp/canon-bd-2wby/full_reach_policy_stack.json --e4-assessment-out /tmp/canon-bd-2wby/full_reach_policy_assessment.json > /tmp/canon-bd-2wby/full_reach_policy_eval.json"
+  ],
+  "policy_handoff": {
+    "full_70_score_status": "handoff_to_bd_1g4x_not_scored_by_bd_2wby",
+    "max_overlay_cases": 70,
+    "max_overlay_observations": 3000,
+    "overlay_case_count": 70,
+    "policy_overlay_delta": {
+      "hard_observations_after": 112,
+      "hard_observations_before": 121,
+      "soft_observations_after": 411,
+      "soft_observations_before": 402
+    },
+    "policy_overlay_path": "scripts/geo_measurements/fixtures/e4_rho_admission_policy_2026-09-08/overlay_request_roll_owner_threshold_mu_gsf.json.gz",
+    "policy_overlay_sha256": "6ae0652efa6f58663befbc395a30075212a117be58e830f796f736375cc51fd3",
+    "policy_overlay_uncompressed_sha256": "ed7c6d5495c7f4dc0d2b18b4a5e472518a22ecc462fd960cabb0ba8fc788aa5a",
+    "population_path": "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/population_request_roll_universe_pluto_vintage_condo_representation_widened.json.gz",
+    "source_overlay_path": "scripts/geo_measurements/fixtures/d1_residuals/mcp_stack_2026-09-03/overlay_request_roll_exact_owner_gsf_band.json.gz"
+  },
+  "proof_class": "retained_population_measurement_not_live",
+  "retained_population_denominator": 70,
+  "target_falsification_cases": [
+    {
+      "after": {
+        "false_merge": false,
+        "status": "ambiguous",
+        "truth_model_in_residual": true
+      },
+      "before": {
+        "false_merge": true,
+        "status": "resolved",
+        "truth_model_in_residual": false
+      },
+      "case_id": "h7-subject:non-round:0e60eb66adadc21f4be4187e6ca87242d544bcce4ae57592bdc1f65cde1a8001",
+      "falsifying_contract_id": "rho.size.assessment_roll_gross_sqft_band",
+      "policy_change": "property_class_MU_gsf_band_0.7_to_3.2"
+    },
+    {
+      "after": {
+        "false_merge": false,
+        "status": "ambiguous",
+        "truth_model_in_residual": true
+      },
+      "before": {
+        "false_merge": true,
+        "status": "resolved",
+        "truth_model_in_residual": false
+      },
+      "case_id": "h7-subject:non-round:97ae3eeb8035a1914b178d2cf3a447b50735e954a33067d57d6e9a5e1c3e6d58",
+      "falsifying_contract_id": "rho.owner.assessment_roll_exact_match",
+      "policy_change": "hard_only_when_supported_members_at_least_2_else_soft_weight_1"
+    },
+    {
+      "after": {
+        "false_merge": false,
+        "status": "ambiguous",
+        "truth_model_in_residual": true
+      },
+      "before": {
+        "false_merge": true,
+        "status": "resolved",
+        "truth_model_in_residual": false
+      },
+      "case_id": "h7-subject:round-exact-lender:51eae762b75edfcd0d73a0e6de35dd3e29c36e8a207ca7d8c5a154ec6bcd7301",
+      "falsifying_contract_id": "rho.owner.assessment_roll_exact_match",
+      "policy_change": "hard_only_when_supported_members_at_least_2_else_soft_weight_1"
+    },
+    {
+      "after": {
+        "false_merge": false,
+        "status": "ambiguous",
+        "truth_model_in_residual": true
+      },
+      "before": {
+        "false_merge": true,
+        "status": "resolved",
+        "truth_model_in_residual": false
+      },
+      "case_id": "h7-subject:round-exact-lender:5605d0d3f0f90d8112d6f8cecfadd323843a99158ce337e981da62902fe8e5f1",
+      "falsifying_contract_id": "rho.owner.assessment_roll_exact_match",
+      "policy_change": "hard_only_when_supported_members_at_least_2_else_soft_weight_1"
+    },
+    {
+      "after": {
+        "false_merge": false,
+        "status": "ambiguous",
+        "truth_model_in_residual": true
+      },
+      "before": {
+        "false_merge": true,
+        "status": "resolved",
+        "truth_model_in_residual": false
+      },
+      "case_id": "h7-subject:round-exact-lender:7b694e770de8331827bf785d9303bf2d5d8857fdc235011fa2a9b0c2cf37dbf6",
+      "falsifying_contract_id": "rho.owner.assessment_roll_exact_match",
+      "policy_change": "hard_only_when_supported_members_at_least_2_else_soft_weight_1"
+    }
+  ],
+  "target_summary": {
+    "after_false_merges": 0,
+    "after_status": {
+      "ambiguous": 5,
+      "conflict": 0,
+      "resolved": 0
+    },
+    "before_false_merges": 5,
+    "cases": 5,
+    "truth_model_in_residual_after": 5
+  },
+  "version": "canon_geo_e4_rho_admission_policy_handoff.v0"
+}
