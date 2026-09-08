@@ -18,11 +18,11 @@
   "boundary": "Admission-only owner comparison overlay: candidate universe, truth labels, member ids, source records, and non-owner observations are unchanged. Only source-derived owner_not_exact values whose FY2026P3 roll-owner key matches a retained ACRIS party key under the explicit profile flip from 1 to 0.",
   "calibration_profile": {
     "bead": "bd-1fq2",
-    "profile": "regab_legal_suffix_numeric_ordinal",
+    "profile": "legal_suffix_numeric_ordinal",
     "rule": "owner-not-normalized-exact",
     "source": "canon-namekit-legal-form-v0"
   },
-  "calibration_profile_blake3": "76eac1e2105971ec35203f35d296f5c8d70eade22fdaf44d668ad736c05a7f1d",
+  "calibration_profile_blake3": "ef6b61a24925febec4c16235060d2e7b5c8fec19e31f4d7f6e7b17ef40b83c98",
   "classification": {
     "calibration_exclusions": [
       "3899edce",

@@ -21,6 +21,7 @@ use canon::geo::{
     GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
     calibration_receipt_blake3, evaluate_population, stack_population_evidence,
 };
+use canon::namekit::legal_suffix::LegalSuffixProfile;
 use serde::Deserialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -328,8 +329,9 @@ fn affiliate_only_match_never_emits_the_hard_exact_band() {
 
 #[test]
 fn owner_exact_normalization_splits_safe_variants_from_true_mismatches() {
-    let profile =
-        GeoAssessmentRollOwnerExactNormalizationProfile::regab_legal_suffix_numeric_ordinal();
+    let profile = GeoAssessmentRollOwnerExactNormalizationProfile::legal_suffix_numeric_ordinal(
+        LegalSuffixProfile::RegabFirmIdentity,
+    );
     let kingsbridge = BTreeSet::from([
         normalize_assessment_roll_owner_name("KINGSBRIDGE ASSOCIATES, LLC"),
         normalize_assessment_roll_owner_name("KINGSBRIDGE ASSOCIATES II, LLC"),
@@ -491,7 +493,9 @@ fn owner_exact_normalization_profile_is_consumed_by_owner_stage() {
 
     let mut normalized_request = request;
     normalized_request.calibration.exact_normalization_profile =
-        GeoAssessmentRollOwnerExactNormalizationProfile::regab_legal_suffix_numeric_ordinal();
+        GeoAssessmentRollOwnerExactNormalizationProfile::legal_suffix_numeric_ordinal(
+            LegalSuffixProfile::RegabFirmIdentity,
+        );
     let normalized_artifact = produce_assessment_roll_owner_evidence(&normalized_request)
         .expect("normalized owner request builds");
     assert_eq!(
@@ -509,7 +513,7 @@ fn owner_exact_normalization_profile_is_consumed_by_owner_stage() {
     assert!(
         contract
             .method_version
-            .ends_with("regab_legal_suffix_numeric_ordinal")
+            .ends_with("legal_suffix_numeric_ordinal")
     );
     let GeoRhoObservationKind::IntegerSumBand {
         measure, values, ..
@@ -519,7 +523,7 @@ fn owner_exact_normalization_profile_is_consumed_by_owner_stage() {
     };
     assert_eq!(
         measure.semantic_id,
-        "assessment_roll.owner_not_exact.regab_legal_suffix_numeric_ordinal"
+        "assessment_roll.owner_not_exact.legal_suffix_numeric_ordinal"
     );
     assert_eq!(
         values

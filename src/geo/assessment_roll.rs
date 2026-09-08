@@ -138,9 +138,9 @@ impl GeoAssessmentRollOwnerExactNormalizationProfile {
         }
     }
 
-    pub const fn regab_legal_suffix_numeric_ordinal() -> Self {
+    pub const fn legal_suffix_numeric_ordinal(legal_suffix_profile: LegalSuffixProfile) -> Self {
         Self {
-            legal_suffix_profile: Some(LegalSuffixProfile::RegabFirmIdentity),
+            legal_suffix_profile: Some(legal_suffix_profile),
             normalize_numeric_ordinals: true,
         }
     }
@@ -148,14 +148,8 @@ impl GeoAssessmentRollOwnerExactNormalizationProfile {
     pub fn method_suffix(self) -> &'static str {
         match (self.legal_suffix_profile, self.normalize_numeric_ordinals) {
             (None, false) => "source_norm",
-            (Some(LegalSuffixProfile::RegabFirmIdentity), true) => {
-                "regab_legal_suffix_numeric_ordinal"
-            }
-            (Some(LegalSuffixProfile::CmbsTenantLabel), true) => {
-                "cmbs_legal_suffix_numeric_ordinal"
-            }
-            (Some(LegalSuffixProfile::RegabFirmIdentity), false) => "regab_legal_suffix",
-            (Some(LegalSuffixProfile::CmbsTenantLabel), false) => "cmbs_legal_suffix",
+            (Some(_), true) => "legal_suffix_numeric_ordinal",
+            (Some(_), false) => "legal_suffix",
             (None, true) => "numeric_ordinal",
         }
     }
@@ -169,7 +163,21 @@ impl Default for GeoAssessmentRollOwnerExactNormalizationProfile {
 
 impl Ord for GeoAssessmentRollOwnerExactNormalizationProfile {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.method_suffix().cmp(other.method_suffix())
+        (
+            self.method_suffix(),
+            self.legal_suffix_profile
+                .map(LegalSuffixProfile::as_str)
+                .unwrap_or(""),
+            self.normalize_numeric_ordinals,
+        )
+            .cmp(&(
+                other.method_suffix(),
+                other
+                    .legal_suffix_profile
+                    .map(LegalSuffixProfile::as_str)
+                    .unwrap_or(""),
+                other.normalize_numeric_ordinals,
+            ))
     }
 }
 
