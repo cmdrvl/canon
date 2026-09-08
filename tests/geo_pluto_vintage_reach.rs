@@ -15,6 +15,10 @@ const ARTIFACT_PATH: &str =
     "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/pluto_vintage_reach_measurement.json";
 const POPULATION_PATH: &str = "scripts/geo_measurements/fixtures/d1_residuals/mcp_stack_2026-09-03/population_request_roll_universe.json.gz";
 const SQL_PATH: &str = "scripts/geo_measurements/e4_pluto_vintage_reach.sql";
+const CONDO_BILLING_GEOMETRY_PATH: &str =
+    "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/condo_billing_geometry_bridge_measurement.json";
+const CONDO_BILLING_GEOMETRY_SQL_PATH: &str =
+    "scripts/geo_measurements/e4_condo_billing_geometry_bridge.sql";
 const WIDENED_POPULATION_PATH: &str =
     "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/population_request_roll_universe_pluto_vintage_widened.json.gz";
 
@@ -162,6 +166,83 @@ fn pluto_vintage_reach_measurement_recomputes_frozen_70_delta() {
     assert_residual_cases(&artifact, &derived.residual_cases);
     assert_widened_population_artifact(&artifact, &population, &historical_bbls, &derived.after);
     assert_source_pins_and_sql_boundary(&artifact);
+}
+
+#[test]
+fn remaining_five_condo_billing_geometry_bridge_keeps_unit_absence_explicit() {
+    let artifact = read_json(CONDO_BILLING_GEOMETRY_PATH);
+    assert_eq!(
+        artifact["version"],
+        "canon_geo_e4_condo_billing_geometry_bridge_measurement.v0"
+    );
+    assert_eq!(artifact["bead"], "bd-1q5y");
+    assert_eq!(
+        artifact["proof_class"],
+        "retained_cmdrvl_data_warehouse_measurement_not_live"
+    );
+    let boundary = artifact["boundary"].as_str().expect("boundary string");
+    assert!(boundary.contains("Candidate-universe and representation-bridge measurement only"));
+    assert!(boundary.contains("not unit-lot geometry"));
+    assert!(boundary.contains("not collateral truth"));
+    assert!(boundary.contains("does not relax rho admission"));
+
+    assert_eq!(
+        artifact["input_artifacts"]["widened_population_sha256"]
+            .as_str()
+            .expect("widened population SHA256"),
+        sha256_hex(
+            &fs::read(WIDENED_POPULATION_PATH).expect("read widened population for bridge check")
+        )
+    );
+    assert_reach_counts(
+        &artifact["frozen_population"]["pluto_vintage_reach_after"],
+        &ReachCounts {
+            full: 65,
+            partial: 2,
+            none: 3,
+        },
+    );
+    assert_eq!(
+        required_u64(&artifact["frozen_population"]["residual_cases_after_pluto_vintage"]),
+        5
+    );
+    assert_eq!(
+        required_u64(&artifact["frozen_population"]["residual_unit_bbls_after_pluto_vintage"]),
+        331
+    );
+
+    assert_condo_pad_bridge_summary(&artifact);
+    assert_condo_geometry_summary(&artifact);
+    assert_condo_case_bridge_rows(&artifact);
+    assert_condo_geometry_row_pins(&artifact);
+    assert_condo_bridge_sql_boundary();
+
+    let interpretation = &artifact["reach_interpretation"];
+    assert_eq!(
+        interpretation["exact_unit_lot_geometry_status"]
+            .as_str()
+            .expect("exact unit status"),
+        "absent_from_landed_mappluto_geometry"
+    );
+    assert_eq!(
+        interpretation["bridgeable_candidate_geometry_status"]
+            .as_str()
+            .expect("bridgeable status"),
+        "pad_billing_bbl_crosswalk_supplies_mappluto_billing_lot_geometry_for_all_residual_unit_lots"
+    );
+    assert!(
+        interpretation["purchase_order_if_exact_unit_geometry_is_required"]
+            .as_str()
+            .expect("purchase-order text")
+            .contains("DTM/condo tax-map geometry source"),
+        "exact unit-lot geometry absence must name the acquisition needed"
+    );
+    assert_eq!(
+        artifact["e4_solver_rescore"]["status"]
+            .as_str()
+            .expect("rescore status"),
+        "not_scored_in_this_increment"
+    );
 }
 
 struct DerivedReach {
@@ -479,6 +560,269 @@ fn assert_source_pins_and_sql_boundary(artifact: &Value) {
     );
 }
 
+fn assert_condo_pad_bridge_summary(artifact: &Value) {
+    let pad = &artifact["pad_bridge_summary"];
+    assert_eq!(pad["release"].as_str().expect("PAD release"), "26B");
+    assert_eq!(
+        pad["release_dt"].as_str().expect("PAD release date"),
+        "2026-05-01"
+    );
+    assert_eq!(required_u64(&pad["residual_unit_bbls"]), 331);
+    assert_eq!(required_u64(&pad["distinct_residual_unit_bbls"]), 331);
+    assert_eq!(required_u64(&pad["units_with_pad_row"]), 331);
+    assert_eq!(required_u64(&pad["units_with_billing_bbl"]), 331);
+    assert_eq!(required_u64(&pad["units_matched_by_exact_key"]), 6);
+    assert_eq!(required_u64(&pad["units_matched_by_range"]), 325);
+    assert_eq!(required_u64(&pad["distinct_billing_bbls"]), 6);
+    assert_string_array(
+        &pad["billing_bbls"],
+        &[
+            "1000287502",
+            "1010297502",
+            "1012747504",
+            "1013267501",
+            "4050147502",
+            "4067977503",
+        ],
+    );
+    assert_eq!(
+        pad["source_zip_sha256"].as_str().expect("PAD source hash"),
+        "016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd"
+    );
+    assert_eq!(
+        pad["parser_version"].as_str().expect("PAD parser version"),
+        "2026-08-16"
+    );
+    assert!(pad["license_terms"]
+        .as_str()
+        .expect("PAD license terms")
+        .contains("DCP disclaims"));
+    assert_eq!(
+        pad["attribution_text"].as_str().expect("PAD attribution"),
+        "NYC Department of City Planning (DCP)"
+    );
+}
+
+fn assert_condo_geometry_summary(artifact: &Value) {
+    let geometry = &artifact["geometry_summary"];
+    assert_eq!(
+        required_u64(&geometry["unit_bbls_with_mappluto_geom_v3"]),
+        0
+    );
+    assert_eq!(required_u64(&geometry["unit_bbl_geom_v3_rows"]), 0);
+    assert_eq!(
+        required_u64(&geometry["billing_bbls_with_mappluto_geom_v3"]),
+        6
+    );
+    assert_eq!(required_u64(&geometry["mappluto_geom_v3_billing_rows"]), 12);
+    assert_string_array(
+        &geometry["mappluto_geom_v3_billing_releases"],
+        &["26v1", "26v2"],
+    );
+    assert_eq!(
+        required_u64(&geometry["mappluto_geom_v3_rows_with_source_archive_sha256"]),
+        12
+    );
+    assert_eq!(
+        required_u64(&geometry["mappluto_geom_v3_rows_with_geom_wgs84_sha256"]),
+        12
+    );
+    assert_eq!(
+        required_u64(&geometry["mappluto_geom_v3_rows_with_source_geom_wkb_sha256"]),
+        12
+    );
+    assert_eq!(
+        required_u64(&geometry["mappluto_geom_v3_rows_with_transform_execution_id"]),
+        12
+    );
+}
+
+fn assert_condo_case_bridge_rows(artifact: &Value) {
+    let rows = artifact["case_bridge_rows"]
+        .as_array()
+        .expect("case bridge rows");
+    assert_eq!(rows.len(), 5);
+    let mut expected = BTreeMap::new();
+    expected.insert(
+        "h7-subject:non-round:655a127dc453d12220696e0a0f76929d2ab8dd91ebd1dbe363173e50408fb34b",
+        (145_u64, "partial", vec!["4067977503"]),
+    );
+    expected.insert(
+        "h7-subject:non-round:68a1a4ced3f7c16edc483b877013238d0e2c26692c9ef0a5a721e6bb25872612",
+        (2_u64, "none", vec!["1012747504", "1013267501"]),
+    );
+    expected.insert(
+        "h7-subject:non-round:e3a5228d84bb6bf01ff03e2849e4a996f223cb1fcff79eff04a65d84dcfa8deb",
+        (10_u64, "none", vec!["4050147502"]),
+    );
+    expected.insert(
+        "h7-subject:round-exact-lender:0a6ff10eaf74e3ff8cde56399cf9297813f3833885064be70351eae286e6da9b",
+        (2_u64, "partial", vec!["1000287502"]),
+    );
+    expected.insert(
+        "h7-subject:round-exact-lender:91b2df274815b9997ac6ff6e772f2e142c7b3eac3ea61777131611896d6095a6",
+        (172_u64, "none", vec!["1010297502"]),
+    );
+
+    for row in rows {
+        let case_id = row["case_id"].as_str().expect("case id");
+        let (residual_unit_bbls, after_reach, billing_bbls) =
+            expected.get(case_id).expect("known remaining-five case");
+        assert_eq!(
+            required_u64(&row["residual_unit_bbls"]),
+            *residual_unit_bbls
+        );
+        assert_eq!(
+            row["after_pluto_vintage_reach"]
+                .as_str()
+                .expect("after reach"),
+            *after_reach
+        );
+        assert_eq!(required_u64(&row["unit_bbls_with_geometry"]), 0);
+        assert_eq!(
+            required_u64(&row["billing_truth_members_after_pad_bridge"]),
+            u64::try_from(billing_bbls.len()).expect("billing count fits")
+        );
+        assert_eq!(
+            required_u64(&row["billing_truth_members_with_mappluto_geometry"]),
+            u64::try_from(billing_bbls.len()).expect("billing count fits")
+        );
+        assert_string_array(&row["billing_bbls"], billing_bbls);
+        assert_string_array(&row["billing_bbls_with_geometry"], billing_bbls);
+    }
+}
+
+fn assert_condo_geometry_row_pins(artifact: &Value) {
+    let rows = artifact["mappluto_billing_geometry_rows"]
+        .as_array()
+        .expect("billing geometry rows");
+    assert_eq!(rows.len(), 12);
+
+    let mut bbls = BTreeSet::new();
+    let mut bbl_release_pairs = BTreeSet::new();
+    let mut source_archives = BTreeSet::new();
+    let mut transform_execution_ids = BTreeSet::new();
+    for row in rows {
+        let bbl = row["bbl"].as_str().expect("billing BBL");
+        let release = row["release"].as_str().expect("release");
+        assert!(matches!(release, "26v1" | "26v2"));
+        bbls.insert(bbl.to_string());
+        bbl_release_pairs.insert((bbl.to_string(), release.to_string()));
+        assert_eq!(
+            row["variant"].as_str().expect("variant"),
+            "shoreline_clipped"
+        );
+        assert!(required_u64(&row["source_row_number"]) > 0);
+        assert_eq!(
+            row["source_filename"].as_str().expect("source filename"),
+            "MapPLUTO.shp"
+        );
+        assert_sha256(row["source_archive_sha256"].as_str().expect("archive hash"));
+        assert!(row["source_archive_s3_key"]
+            .as_str()
+            .expect("archive s3 key")
+            .contains("/artifact=raw/"));
+        assert_sha256(row["geom_wgs84_sha256"].as_str().expect("WGS84 hash"));
+        assert_sha256(
+            row["source_geom_wkb_sha256"]
+                .as_str()
+                .expect("source WKB hash"),
+        );
+        assert_eq!(
+            row["geometry_evidence_contract_version"]
+                .as_str()
+                .expect("geometry evidence contract"),
+            "nyc_dcp_mappluto_geometry_evidence.v3"
+        );
+        let transform_execution_id = row["transform_execution_id"]
+            .as_str()
+            .expect("transform execution id");
+        assert!(transform_execution_id.starts_with("sha256-"));
+        transform_execution_ids.insert(transform_execution_id.to_string());
+        assert_eq!(
+            row["transform_definition_id"]
+                .as_str()
+                .expect("transform definition id"),
+            "sha256-ec1dc733d5f6e0ce38794baff7fa3d29d9d7369fd39b824550de7f8592bfac00"
+        );
+        assert_eq!(
+            row["source_geometry_validity"]
+                .as_str()
+                .expect("source geometry validity"),
+            "valid"
+        );
+        assert_eq!(row["geom_crs"].as_str().expect("geom CRS"), "EPSG:4326");
+        assert_eq!(
+            row["source_geom_crs"].as_str().expect("source geom CRS"),
+            "EPSG:2263"
+        );
+        assert_eq!(
+            row["source_crs_identifier"]
+                .as_str()
+                .expect("source CRS identifier"),
+            "EPSG:2263"
+        );
+        assert_sha256(
+            row["source_crs_wkt2_sha256"]
+                .as_str()
+                .expect("source CRS WKT hash"),
+        );
+        assert!(
+            required_u64(&row["source_vertex_count"]) >= 5,
+            "source polygon must have a nondegenerate exterior"
+        );
+        assert!(!row["is_current_release"].as_bool().expect("current flag"));
+        source_archives.insert(
+            row["source_archive_sha256"]
+                .as_str()
+                .expect("archive hash")
+                .to_string(),
+        );
+    }
+
+    assert_eq!(
+        bbls,
+        BTreeSet::from([
+            "1000287502".to_string(),
+            "1010297502".to_string(),
+            "1012747504".to_string(),
+            "1013267501".to_string(),
+            "4050147502".to_string(),
+            "4067977503".to_string(),
+        ])
+    );
+    assert_eq!(bbl_release_pairs.len(), 12);
+    assert_eq!(
+        source_archives,
+        BTreeSet::from([
+            "84b213b86745c7daa4c75749ce7e9181633c834d70811280dbd9ea2045971876".to_string(),
+            "e06eca9034731bc23f058bf532090e3c1ea6aed44a8128c6928f33872da34ab5".to_string(),
+        ])
+    );
+    assert_eq!(
+        transform_execution_ids,
+        BTreeSet::from([
+            "sha256-0416b2001f9c613b820c2a117840879f532b486379a99a9d4286bb41cf6f729f".to_string(),
+            "sha256-139be5d84880248055ba44ea94e76f4c7968ab28ea2991cafd3a3463bc6ad538".to_string(),
+        ])
+    );
+}
+
+fn assert_condo_bridge_sql_boundary() {
+    let sql = fs::read_to_string(CONDO_BILLING_GEOMETRY_SQL_PATH)
+        .expect("read condo billing geometry SQL");
+    assert!(sql.contains("SPLIT_PART(bbl, '.', 1)"));
+    assert!(sql.contains("p.release = '26B'"));
+    assert!(sql.contains("NYC_DCP_MAPPLUTO_GEOM_V3_EXT"));
+    assert!(sql.contains("NYC_DCP_MAPPLUTO_GEOMETRY_EVIDENCE_EXT"));
+    assert!(sql.contains("unit_bbls_with_mappluto_geom_v3"));
+    assert!(sql.contains("billing_bbls_with_mappluto_geom_v3"));
+    assert!(
+        !sql.contains("ST_INTERSECTS"),
+        "remaining-five bridge probe should classify row availability, not infer geometry truth"
+    );
+}
+
 fn pluto_hit_bbls(artifact: &Value) -> BTreeSet<String> {
     artifact["pluto_vintage_hits"]
         .as_array()
@@ -524,6 +868,11 @@ fn string_array(value: &Value) -> Vec<String> {
         .iter()
         .map(|entry| entry.as_str().expect("string entry").to_string())
         .collect()
+}
+
+fn assert_sha256(value: &str) {
+    assert_eq!(value.len(), 64);
+    assert!(value.chars().all(|ch| ch.is_ascii_hexdigit()));
 }
 
 fn read_json(path: &str) -> Value {
