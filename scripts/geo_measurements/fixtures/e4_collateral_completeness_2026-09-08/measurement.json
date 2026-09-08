@@ -1,0 +1,47 @@
+{
+  "baseline": {
+    "exactly_correct": 7,
+    "false_merges": 0,
+    "reach_full_partial_none": [
+      70,
+      0,
+      0
+    ],
+    "resolved": 7,
+    "truth_exclusions": 15
+  },
+  "bead": "bd-2gvl",
+  "frozen_denominator": 79,
+  "overlay_summary": {
+    "contracts_per_case": 1,
+    "hard_observations": 140,
+    "observations_per_case": 2,
+    "overlay_cases": 70
+  },
+  "proof_boundary": "ACRIS document legal rows assert collateral-set completeness and are production-relevant evidence, but this E4 truth plane is derived from the same ACRIS legals joined on matched mortgage DOCUMENT_ID. The score is a mechanism/replay check and must not be cited as independent precision.",
+  "proof_class": "retained_definitional_on_this_population_not_independent_precision",
+  "retained_population_denominator": 70,
+  "score_handoff": {
+    "acris_completeness_overlay_path": "scripts/geo_measurements/fixtures/e4_collateral_completeness_2026-09-08/overlay_request_acris_document_legal_completeness.json.gz",
+    "admission_only": true,
+    "candidate_universe_expected_unchanged": true,
+    "overlay_sha256": "84ce03bea21e88ada62b48bc05a2b58a4ef6329ac1c21235d382ce5999b964e2",
+    "overlay_uncompressed_sha256": "ba3b9d5067c3f20a004966b3f63c28e6b9fd4ea27f8c0b9711f064328df3101c",
+    "population_path": "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/population_request_roll_universe_pluto_vintage_condo_representation_widened.json.gz",
+    "precision_claim_allowed": false,
+    "status": "READY_TO_SCORE_by_bd_1g4x_definitional_mechanism_check_not_independent_precision"
+  },
+  "source_hunt_path": "scripts/geo_measurements/fixtures/e4_completeness_source_hunt_2026-09-08/source_hunt.json",
+  "source_instance": {
+    "completeness_grain": "bound_mortgage_document_legal_rows",
+    "preconditions": [
+      "the ACRIS document is bound as the collateral-defining mortgage or consolidation instrument",
+      "the adapter reads the complete nonblank legal row set for the document_id and release",
+      "partial-lot, air-rights, subterranean-rights, and easement flags are handled by profile rules or cause abstention"
+    ],
+    "source_dataset": "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_LEGALS",
+    "source_release": "2026-08-10",
+    "typed_relation": "all_of_exact_cardinality"
+  },
+  "version": "canon_geo_e4_collateral_completeness_handoff.v0"
+}
