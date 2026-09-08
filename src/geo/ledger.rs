@@ -333,6 +333,7 @@ pub fn build_ledger_row(
         composition_summary_fields(composition);
     let evidence_blake3 =
         validate_composition_evidence_chain(&loan.loan_id, composition, evidence)?;
+    validate_source_release_pins_cover_evidence(&loan.loan_id, pins, evidence)?;
     let parcel_set = sorted_unique(composition.hard_forced.parcels.clone());
     let building_set = sorted_unique(composition.hard_forced.buildings.clone());
     let (ambiguous_parcel_set, ambiguous_building_set) = ambiguous_members(composition);
@@ -933,6 +934,41 @@ fn validate_source_release_pins_for_proof_class(
     }
     if saw_fixture && saw_live {
         return Err(source_pin_proof_error(loan_id, "mixed fixture/live pins"));
+    }
+    Ok(())
+}
+
+fn validate_source_release_pins_cover_evidence(
+    loan_id: &str,
+    pins: &[GeoSourceReleasePin],
+    evidence: &GeoEvidenceCompilationArtifact,
+) -> Result<(), GeoLedgerError> {
+    let pinned_releases = pins
+        .iter()
+        .map(|pin| (pin.source_dataset.as_str(), pin.source_release.as_str()))
+        .collect::<BTreeSet<_>>();
+    let evidence_releases = evidence
+        .admissions
+        .iter()
+        .map(|admission| {
+            (
+                admission.contract.source_dataset.as_str(),
+                admission.contract.source_release.as_str(),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    for (source_dataset, source_release) in evidence_releases {
+        if !pinned_releases.contains(&(source_dataset, source_release)) {
+            return Err(GeoLedgerError::invalid(
+                "Geo collateral ledger source release pins do not cover bound evidence sources",
+                [
+                    ("field", "source_release_pins"),
+                    ("loan_id", loan_id),
+                    ("source_dataset", source_dataset),
+                    ("source_release", source_release),
+                ],
+            ));
+        }
     }
     Ok(())
 }

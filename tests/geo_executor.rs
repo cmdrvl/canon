@@ -1064,11 +1064,11 @@ fn ledger_stage_seed() -> GeoCollateralLedgerSeed {
 
 fn ledger_stage_pin() -> GeoSourceReleasePin {
     GeoSourceReleasePin {
-        source_dataset: "fixture.executor.geo_ledger_stage".to_string(),
-        source_release: "2026-09-07".to_string(),
+        source_dataset: "fixture.buildings".to_string(),
+        source_release: "2026-08-31".to_string(),
         blake3: format!(
             "blake3:{}",
-            blake3::hash(b"fixture-executor-geo-ledger-stage").to_hex()
+            blake3::hash(b"fixture-executor-geo-ledger-stage-buildings").to_hex()
         ),
     }
 }

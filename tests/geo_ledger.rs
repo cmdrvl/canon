@@ -11,13 +11,16 @@ mod geo {
 mod ledger;
 
 use canon::geo::{
-    CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION, GeoCandidateReachStatus,
+    CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION,
+    CANON_GEO_EVIDENCE_REQUEST_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoCandidateReachStatus,
     GeoCompositionArtifact, GeoCompositionBackbone, GeoCompositionFallback, GeoCompositionModel,
-    GeoCompositionProfile, GeoCompositionStatus, GeoCompositionSummary,
-    GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference, GeoEvidenceCompilationRequest,
-    GeoLabeledCompositionCase, GeoModelCountScope, GeoPopulationEvaluationRequest, GeoTruthPlane,
-    GeoValidTimeInterval, canonical_composition_bytes, canonical_evidence_compilation_bytes,
-    compile_evidence,
+    GeoCompositionProfile, GeoCompositionStatus, GeoCompositionSummary, GeoCompositionUniverse,
+    GeoEntityLevel, GeoEvidenceClaimRole, GeoEvidenceCompilationArtifact,
+    GeoEvidenceCompilationReference, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef,
+    GeoLabeledCompositionCase, GeoModelCountScope, GeoPopulationEvaluationRequest, GeoRhoBasis,
+    GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoTruthPlane, GeoValidTimeInterval,
+    canonical_composition_bytes, canonical_evidence_compilation_bytes, compile_evidence,
+    solve_composition,
 };
 use ledger::{
     CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION, CANON_GEO_COLLATERAL_LEDGER_VERSION,
@@ -50,6 +53,8 @@ const FORCED_REACH_NONE_CASE: &str = "3cf11e9a58e3b710";
 const FORCED_REACH_NONE_LOAN: &str = "073ad3a0862827c75501ac66570eb783";
 const FORCED_REACH_NONE_REASON: &str = "no_candidate_parcels";
 const GEO_LEDGER_VALIDATE_NEXT_COMMAND: &str = "canon geo ledger validate --ledger <LEDGER.json>";
+const LEDGER_BUILD_SOURCE_DATASET: &str = "fixture.geo_ledger_build";
+const LEDGER_BUILD_SOURCE_RELEASE: &str = "2026-09-07";
 
 #[test]
 fn t07_fixture_gate_rows_roll_up_per_truth_plane_without_total() {
@@ -279,12 +284,9 @@ fn t23_build_ledger_row_requires_matching_evidence_digest_chain() {
 
 #[test]
 fn t23_build_collateral_ledger_from_seed_consumes_bound_artifacts_and_keeps_reach_none() {
-    let evidence = compile_evidence(&sample_evidence_request()).expect("seed evidence compiles");
-    let composition = with_evidence_reference(
-        sample_composition(GeoCompositionStatus::Resolved, vec!["parcel:seed:1"], 1),
-        &evidence,
-    );
-    let seed = fixture_build_seed();
+    let (evidence, composition) = solved_ledger_build_artifacts();
+    let mut seed = fixture_build_seed();
+    seed.rows[0].source_release_pins = vec![ledger_build_source_pin()];
     let ledger = build_collateral_ledger_from_seed(
         &seed,
         &BTreeMap::from([("solve-a".to_string(), composition)]),
@@ -392,12 +394,9 @@ fn t07_geo_ledger_validate_cli_emits_canonical_ledger() {
 #[test]
 fn t23_geo_ledger_build_cli_emits_canonical_ledger_and_validate_replays_it() {
     let temp = tempdir().expect("tempdir");
-    let evidence = compile_evidence(&sample_evidence_request()).expect("seed evidence compiles");
-    let composition = with_evidence_reference(
-        sample_composition(GeoCompositionStatus::Resolved, vec!["parcel:seed:1"], 1),
-        &evidence,
-    );
-    let seed = fixture_build_seed();
+    let (evidence, composition) = solved_ledger_build_artifacts();
+    let mut seed = fixture_build_seed();
+    seed.rows[0].source_release_pins = vec![ledger_build_source_pin()];
     let seed_path = write_seed_fixture(temp.path(), "seed.json", &seed);
     let composition_path = write_composition_fixture(temp.path(), "solve.json", &composition);
     let evidence_path = write_evidence_fixture(temp.path(), "evidence.json", &evidence);
@@ -421,6 +420,14 @@ fn t23_geo_ledger_build_cli_emits_canonical_ledger_and_validate_replays_it() {
     let ledger: GeoCollateralLedger =
         serde_json::from_slice(&ledger_bytes).expect("built ledger parses");
     assert_eq!(ledger.rows.len(), 2);
+    let solved = ledger
+        .rows
+        .iter()
+        .find(|row| row.loan_id == "loan-build-a")
+        .expect("solved row");
+    assert_eq!(solved.composition_status, GeoCompositionStatus::Resolved);
+    assert_eq!(solved.parcel_set, Some(vec!["parcel:seed:1".to_string()]));
+    assert_eq!(solved.source_release_pins, vec![ledger_build_source_pin()]);
     assert_eq!(
         ledger
             .rows
@@ -446,6 +453,55 @@ fn t23_geo_ledger_build_cli_emits_canonical_ledger_and_validate_replays_it() {
     let mut expected = ledger_bytes;
     expected.push(b'\n');
     assert_eq!(replay.get_output().stdout, expected);
+}
+
+#[test]
+fn t23_geo_ledger_build_cli_refuses_unbound_source_release_pin() {
+    let temp = tempdir().expect("tempdir");
+    let (evidence, composition) = solved_ledger_build_artifacts();
+    let mut seed = fixture_build_seed();
+    seed.rows.truncate(1);
+    let seed_path = write_seed_fixture(temp.path(), "seed.json", &seed);
+    let composition_path = write_composition_fixture(temp.path(), "solve.json", &composition);
+    let evidence_path = write_evidence_fixture(temp.path(), "evidence.json", &evidence);
+
+    let assert = canon_command()
+        .arg("geo")
+        .arg("ledger")
+        .arg("build")
+        .arg("--seed")
+        .arg(&seed_path)
+        .arg("--composition")
+        .arg(format!("solve-a={}", composition_path.display()))
+        .arg("--evidence")
+        .arg(format!("evidence-a={}", evidence_path.display()))
+        .assert()
+        .failure();
+    assert!(assert.get_output().stderr.is_empty());
+    let output: Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("refusal JSON parses");
+    assert_eq!(output["outcome"], "REFUSAL");
+    assert_eq!(output["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(
+        output["refusal"]["detail"]["geo_ledger_error_code"],
+        "invalid_input"
+    );
+    assert_eq!(
+        output["refusal"]["detail"]["detail"]["field"],
+        "source_release_pins"
+    );
+    assert_eq!(
+        output["refusal"]["detail"]["detail"]["loan_id"],
+        "loan-build-a"
+    );
+    assert_eq!(
+        output["refusal"]["detail"]["detail"]["source_dataset"],
+        LEDGER_BUILD_SOURCE_DATASET
+    );
+    assert_eq!(
+        output["refusal"]["detail"]["detail"]["source_release"],
+        LEDGER_BUILD_SOURCE_RELEASE
+    );
 }
 
 #[test]
@@ -958,6 +1014,74 @@ fn sample_composition(
         conflict_core_complete: None,
         budget_fallback: None,
         entity_projection: None,
+    }
+}
+
+fn solved_ledger_build_artifacts() -> (GeoEvidenceCompilationArtifact, GeoCompositionArtifact) {
+    let evidence = compile_evidence(&solved_ledger_build_evidence_request())
+        .expect("ledger build evidence compiles");
+    let composition = with_evidence_reference(
+        solve_composition(&evidence.composition_request).expect("ledger build composition solves"),
+        &evidence,
+    );
+    assert_eq!(composition.status, GeoCompositionStatus::Resolved);
+    assert_eq!(
+        composition.hard_forced.parcels,
+        vec!["parcel:seed:1".to_string()]
+    );
+    (evidence, composition)
+}
+
+fn solved_ledger_build_evidence_request() -> GeoEvidenceCompilationRequest {
+    GeoEvidenceCompilationRequest {
+        version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: GeoCompositionProfile::parcel(),
+        universe: GeoCompositionUniverse {
+            parcels: vec!["parcel:seed:1".to_string()],
+            buildings: Vec::new(),
+        },
+        contracts: vec![GeoRhoContract {
+            id: "contract-ledger-build-source".to_string(),
+            version: "v1".to_string(),
+            source_dataset: LEDGER_BUILD_SOURCE_DATASET.to_string(),
+            source_release: LEDGER_BUILD_SOURCE_RELEASE.to_string(),
+            source_lineage_ids: vec!["fixture.geo_ledger_build.lineage".to_string()],
+            method_id: "fixture.geo_ledger_build.exact_set".to_string(),
+            method_version: "v1".to_string(),
+            claim_role: GeoEvidenceClaimRole::StableIdentityAnchor,
+            basis: GeoRhoBasis::LogicalRelaxation {
+                invariant_id: "fixture.geo_ledger_build.exact_set".to_string(),
+            },
+        }],
+        observations: vec![GeoRhoObservation {
+            id: "obs-ledger-build-source".to_string(),
+            contract_id: "contract-ledger-build-source".to_string(),
+            source_records: vec![GeoEvidenceRecordRef {
+                source_record_id: "row-ledger-build-source".to_string(),
+                source_vintage: LEDGER_BUILD_SOURCE_RELEASE.to_string(),
+                record_blake3: blake3::hash(b"ledger-build-source-row")
+                    .to_hex()
+                    .to_string(),
+            }],
+            valid_time: None,
+            observation: GeoRhoObservationKind::ExactSets {
+                level: GeoEntityLevel::Parcel,
+                sets: vec![vec!["parcel:seed:1".to_string()]],
+            },
+        }],
+        max_assignments: 64,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    }
+}
+
+fn ledger_build_source_pin() -> GeoSourceReleasePin {
+    GeoSourceReleasePin {
+        source_dataset: LEDGER_BUILD_SOURCE_DATASET.to_string(),
+        source_release: LEDGER_BUILD_SOURCE_RELEASE.to_string(),
+        blake3: format!(
+            "blake3:{}",
+            blake3::hash(b"ledger-build-source-release").to_hex()
+        ),
     }
 }
 
