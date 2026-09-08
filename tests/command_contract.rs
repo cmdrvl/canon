@@ -1340,6 +1340,7 @@ impl RuntimeHarness {
                 expected: RuntimeExpectation::json(2, "canon.v0", SchemaField::Version)
                     .assert_eq("outcome", json!("REFUSAL"))
                     .assert_eq("refusal.code", json!("E_ENTITY_ARTIFACT_CONTRACT"))
+                    .assert_ne("refusal.code", json!("E_GEO_COMMAND_UNAVAILABLE"))
                     .assert_eq(
                         "refusal.detail.geo_inspect_error_code",
                         json!("inspect_artifact_missing"),
