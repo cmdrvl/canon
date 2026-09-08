@@ -88,7 +88,7 @@ enum MeasurementCommand {
     #[command(name = "derive-deed-truth")]
     DeedTruth(DeedTruthArgs),
     #[command(name = "materialize-acquisition-receipt")]
-    AcquisitionReceipt(AcquisitionReceiptArgs),
+    AcquisitionReceipt(Box<AcquisitionReceiptArgs>),
     #[command(name = "measure-retry-recovery")]
     RetryRecovery(RetryRecoveryArgs),
     #[command(name = "materialize-h7-population")]
@@ -499,7 +499,7 @@ fn run_measurement_command(command: MeasurementCommand) -> Result<ExitCode, AppE
             write_canonical(&bytes)?;
         }
         MeasurementCommand::AcquisitionReceipt(args) => {
-            let receipt = materialize_acquisition_receipt(args)?;
+            let receipt = materialize_acquisition_receipt(*args)?;
             print_json(&receipt)?;
         }
         MeasurementCommand::RetryRecovery(args) => {
