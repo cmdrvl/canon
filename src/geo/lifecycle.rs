@@ -2158,8 +2158,7 @@ fn validate_existence_intervals(
     let mut previous_key: Option<String> = None;
     for interval in intervals {
         validate_existence_interval(interval, clusters)?;
-        let semantic_key = existence_interval_semantic_key(interval);
-        if !semantic_intervals.insert(semantic_key.clone()) {
+        if !semantic_intervals.insert(existence_interval_semantic_key(interval)) {
             return Err(GeoLifecycleError::invalid(
                 "Geo entity existence intervals must be unique by cluster, validity, and authoritative bounds",
                 [
@@ -2664,10 +2663,19 @@ fn existence_interval_sort_key(interval: &GeoEntityExistenceInterval) -> String 
 
 fn existence_interval_semantic_key(interval: &GeoEntityExistenceInterval) -> String {
     format!(
-        "{}\u{1f}{:?}\u{1f}{}",
+        "{}\u{1f}{:?}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
         interval.cluster_id,
         interval.entity_level,
-        existence_interval_sort_key(interval)
+        interval.observed_interval.start_utc_day,
+        interval.observed_interval.end_utc_day,
+        interval
+            .authoritative_birth_utc_day
+            .as_deref()
+            .unwrap_or(""),
+        interval
+            .authoritative_death_utc_day
+            .as_deref()
+            .unwrap_or("")
     )
 }
 

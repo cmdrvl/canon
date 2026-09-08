@@ -53,7 +53,7 @@ fn canonical_bytes_are_deterministic_under_edge_and_cluster_order_shuffle() {
     let mut shuffled = canonical.clone();
     shuffled.clusters.reverse();
     shuffled.existence_intervals.reverse();
-    if let Some(interval) = shuffled.existence_intervals.first_mut() {
+    for interval in &mut shuffled.existence_intervals {
         interval.source_receipts.reverse();
     }
     shuffled.edges.reverse();
