@@ -427,12 +427,15 @@ pub fn compile_evidence(
             GeoEvidenceClaimRole::TemporalOccupancy | GeoEvidenceClaimRole::LifecycleEvent
         );
         let temporally_scoped = temporal_claim_role || observation.valid_time.is_some();
-        let (disposition, generated_ids) = admit_observation(
+        let admission_request = GeoRhoAdmissionRequest {
             contract,
-            &observation.observation,
-            &generated_id,
+            observation: &observation.observation,
+            generated_id: &generated_id,
             temporally_scoped,
-            &admission_context,
+            context: &admission_context,
+        };
+        let (disposition, generated_ids) = admit_observation(
+            admission_request,
             &mut hard_constraints,
             &mut soft_preferences,
             &mut admission_reason,
@@ -844,16 +847,27 @@ struct GeoRhoAdmissionContext {
     observed_contract_ids: BTreeSet<String>,
 }
 
-fn admit_observation(
-    contract: &GeoRhoContract,
-    observation: &GeoRhoObservationKind,
-    generated_id: &str,
+struct GeoRhoAdmissionRequest<'a> {
+    contract: &'a GeoRhoContract,
+    observation: &'a GeoRhoObservationKind,
+    generated_id: &'a str,
     temporally_scoped: bool,
-    context: &GeoRhoAdmissionContext,
+    context: &'a GeoRhoAdmissionContext,
+}
+
+fn admit_observation(
+    request: GeoRhoAdmissionRequest<'_>,
     hard_constraints: &mut Vec<GeoHardConstraint>,
     soft_preferences: &mut Vec<GeoSoftPreference>,
     admission_reason: &mut Option<String>,
 ) -> (GeoEvidenceDisposition, Vec<String>) {
+    let GeoRhoAdmissionRequest {
+        contract,
+        observation,
+        generated_id,
+        temporally_scoped,
+        context,
+    } = request;
     if temporally_scoped {
         // The interval is preserved in the admission artifact, but v0
         // composition has no query-as-of domain. Applying this as either hard
