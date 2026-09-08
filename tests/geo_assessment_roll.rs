@@ -18,11 +18,12 @@ use canon::geo::{
     GeoEvidenceCompilationRequest, GeoEvidenceDisposition, GeoEvidenceRecordRef,
     GeoPopulationCaseEvidenceOverlay, GeoPopulationCaseStatus, GeoPopulationEvaluationArtifact,
     GeoPopulationEvaluationRequest, GeoPopulationEvidenceStackRequest, GeoRhoAdmissionFallback,
-    GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind, evaluate_population,
-    stack_population_evidence,
+    GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
+    calibration_receipt_blake3, evaluate_population, stack_population_evidence,
 };
 use serde::Deserialize;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::PathBuf,
@@ -31,6 +32,11 @@ use std::{
 
 const FIXTURE_DIR: &str = "scripts/geo_measurements/fixtures/d1_residuals";
 const MCP_STACK_DIR: &str = "scripts/geo_measurements/fixtures/d1_residuals/mcp_stack_2026-09-03";
+const FULL_REACH_POPULATION: &str = "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/population_request_roll_universe_pluto_vintage_condo_representation_widened.json.gz";
+const PROPERTY_TYPE_OVERLAY: &str = "scripts/geo_measurements/fixtures/e4_gsf_property_type_bands_2026-09-08/overlay_request_property_type_gsf_bands.json.gz";
+const OWNER_NORMALIZED_OVERLAY: &str = "scripts/geo_measurements/fixtures/e4_owner_normalization_2026-09-08/overlay_request_owner_normalized_exact.json.gz";
+const OWNER_NORMALIZATION_MEASUREMENT: &str =
+    "scripts/geo_measurements/fixtures/e4_owner_normalization_2026-09-08/measurement.json";
 const ROLL_SOURCE_DATASET: &str =
     "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.PROPERTY_VALUATION_FY2026P3_x_ACRIS_PARTIES";
 const ROLL_SOURCE_RELEASE: &str = "FY2026P3_acris-latest";
@@ -522,6 +528,169 @@ fn owner_exact_normalization_profile_is_consumed_by_owner_stage() {
             .collect::<BTreeMap<_, _>>(),
         BTreeMap::from([("1000000001", 0), ("1000000002", 1)])
     );
+}
+
+#[test]
+fn owner_exact_normalization_handoff_is_retained_and_ready_to_score() {
+    let measurement: Value = read_json(repo_path(OWNER_NORMALIZATION_MEASUREMENT));
+
+    assert_eq!(
+        measurement["version"],
+        "canon_geo_e4_owner_exact_normalization_handoff.v0"
+    );
+    assert_eq!(measurement["bead"], "bd-1fq2");
+    assert_eq!(
+        measurement["proof_class"],
+        "retained_population_measurement_not_live"
+    );
+    assert_eq!(measurement["frozen_denominator"], 79);
+    assert_eq!(measurement["retained_population_denominator"], 70);
+    assert_eq!(
+        measurement["baseline"]["reach_full_partial_none"],
+        serde_json::json!([70, 0, 0])
+    );
+    assert_eq!(measurement["baseline"]["resolved"], 7);
+    assert_eq!(measurement["baseline"]["exactly_correct"], 7);
+    assert_eq!(measurement["baseline"]["false_merges"], 0);
+    assert_eq!(measurement["baseline"]["truth_exclusions"], 15);
+    assert_eq!(
+        measurement["score_handoff"]["population_path"],
+        FULL_REACH_POPULATION
+    );
+    assert_eq!(
+        measurement["score_handoff"]["source_property_type_overlay_path"],
+        PROPERTY_TYPE_OVERLAY
+    );
+    assert_eq!(
+        measurement["score_handoff"]["owner_normalized_overlay_path"],
+        OWNER_NORMALIZED_OVERLAY
+    );
+    assert_eq!(
+        measurement["score_handoff"]["full_70_score_status"],
+        "READY_TO_SCORE_by_bd_1g4x_safe_normalization_subset_not_scored_by_bd_1fq2_69dbf5da_quarantined_until_bd_2rc0"
+    );
+    assert_eq!(
+        measurement["score_handoff"]["overlay_sha256"],
+        sha256_file(repo_path(OWNER_NORMALIZED_OVERLAY))
+    );
+    assert_eq!(
+        measurement["score_handoff"]["source_property_type_overlay_sha256"],
+        sha256_file(repo_path(PROPERTY_TYPE_OVERLAY))
+    );
+    assert_eq!(
+        calibration_receipt_blake3(&measurement["calibration_profile"])
+            .expect("calibration profile hashes"),
+        measurement["calibration_profile_blake3"]
+            .as_str()
+            .expect("calibration hash is a string")
+    );
+    assert_eq!(
+        measurement["classification"]["normalization_fixable_case_count"],
+        5
+    );
+    assert_eq!(measurement["classification"]["owner_exact_family_total"], 7);
+    let excluded = measurement["classification"]["calibration_exclusions"]
+        .as_array()
+        .expect("calibration exclusions")
+        .iter()
+        .map(|value| value.as_str().expect("case prefix").to_string())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        excluded,
+        BTreeSet::from(["3899edce".to_string(), "69dbf5da".to_string()])
+    );
+}
+
+#[test]
+fn owner_exact_normalization_handoff_changes_only_safe_source_derived_values() {
+    let measurement: Value = read_json(repo_path(OWNER_NORMALIZATION_MEASUREMENT));
+    let source_overlay = case_overlay_map(&read_json_gz::<Value>(repo_path(PROPERTY_TYPE_OVERLAY)));
+    let normalized_overlay =
+        case_overlay_map(&read_json_gz::<Value>(repo_path(OWNER_NORMALIZED_OVERLAY)));
+    let expected_flips = expected_owner_normalization_flips(&measurement);
+    let expected_changed = expected_flips.keys().cloned().collect::<BTreeSet<_>>();
+
+    assert_eq!(source_overlay.len(), 70);
+    assert_eq!(normalized_overlay.len(), 70);
+    assert_eq!(
+        expected_changed.len(),
+        measurement["score_handoff"]["changed_owner_case_count"]
+            .as_u64()
+            .expect("changed count") as usize
+    );
+
+    let mut actual_changed = BTreeSet::new();
+    for (case_id, source_case) in &source_overlay {
+        let normalized_case = normalized_overlay
+            .get(case_id)
+            .expect("normalized overlay preserves case ids");
+        if source_case != normalized_case {
+            actual_changed.insert(case_id.clone());
+            assert!(
+                expected_changed.contains(case_id),
+                "unexpected owner-normalization change in {case_id}"
+            );
+            assert_eq!(
+                owner_value_member_ids(source_case),
+                owner_value_member_ids(normalized_case),
+                "owner normalization must not add candidates for {case_id}"
+            );
+            assert_eq!(
+                owner_source_record_ids(source_case),
+                owner_source_record_ids(normalized_case),
+                "owner normalization must preserve source records for {case_id}"
+            );
+            let mut reverted = strip_owner_normalization_metadata_delta(normalized_case.clone());
+            revert_owner_value_flips(
+                &mut reverted,
+                expected_flips
+                    .get(case_id)
+                    .unwrap_or_else(|| panic!("expected flips for {case_id}")),
+            );
+            assert_eq!(
+                strip_owner_normalization_metadata_delta(source_case.clone()),
+                reverted,
+                "only declared owner_not_exact values and owner exact metadata may change for {case_id}"
+            );
+        }
+    }
+    assert_eq!(actual_changed, expected_changed);
+    assert!(
+        actual_changed
+            .iter()
+            .any(|case_id| case_id.contains("ae5fa9ee"))
+    );
+    assert!(
+        actual_changed
+            .iter()
+            .any(|case_id| case_id.contains("13ff4751"))
+    );
+    assert!(
+        actual_changed
+            .iter()
+            .any(|case_id| case_id.contains("3709a9d0"))
+    );
+    assert!(
+        actual_changed
+            .iter()
+            .any(|case_id| case_id.contains("3991a574"))
+    );
+    assert!(
+        actual_changed
+            .iter()
+            .any(|case_id| case_id.contains("f5588ba9"))
+    );
+    for quarantined in ["3899edce", "69dbf5da"] {
+        let case_id = source_overlay
+            .keys()
+            .find(|case_id| case_id.contains(quarantined))
+            .unwrap_or_else(|| panic!("missing quarantined case {quarantined}"));
+        assert_eq!(
+            source_overlay.get(case_id),
+            normalized_overlay.get(case_id),
+            "{quarantined} must remain unchanged until its source conflict is resolved"
+        );
+    }
 }
 
 #[test]
@@ -1631,12 +1800,149 @@ fn resolved_correct_cases(cases: &[canon::geo::GeoPopulationCaseEvaluation]) -> 
         .count() as u64
 }
 
+fn case_overlay_map(overlay: &Value) -> BTreeMap<String, Value> {
+    overlay["case_overlays"]
+        .as_array()
+        .expect("case overlays")
+        .iter()
+        .map(|case| {
+            (
+                case["case_id"].as_str().expect("case id").to_string(),
+                case.clone(),
+            )
+        })
+        .collect()
+}
+
+fn expected_owner_normalization_flips(
+    measurement: &Value,
+) -> BTreeMap<String, BTreeMap<String, u64>> {
+    measurement["score_handoff"]["changed_owner_cases"]
+        .as_array()
+        .expect("changed owner cases")
+        .iter()
+        .map(|case| {
+            let case_id = case["case_id"]
+                .as_str()
+                .expect("changed case id")
+                .to_string();
+            let flips = case["flipped_owner_not_exact_values"]
+                .as_array()
+                .expect("owner value flips")
+                .iter()
+                .map(|flip| {
+                    assert_eq!(flip["after"], 0);
+                    (
+                        flip["bbl"].as_str().expect("flipped bbl").to_string(),
+                        flip["before"].as_u64().expect("before value"),
+                    )
+                })
+                .collect::<BTreeMap<_, _>>();
+            (case_id, flips)
+        })
+        .collect()
+}
+
+fn strip_owner_normalization_metadata_delta(mut case: Value) -> Value {
+    for contract in case["contracts"]
+        .as_array_mut()
+        .expect("case contracts are an array")
+    {
+        if contract["id"] == GEO_ASSESSMENT_ROLL_OWNER_EXACT_CONTRACT_ID {
+            contract["method_version"] = serde_json::json!("owner-normalization-profile");
+            contract["basis"]["population_id"] =
+                serde_json::json!("owner-normalization-population");
+            contract["basis"]["calibration_blake3"] =
+                serde_json::json!("owner-normalization-calibration");
+            contract["basis"]["falsification_rule_id"] =
+                serde_json::json!("owner-normalization-falsification-rule");
+        }
+    }
+    for observation in case["observations"]
+        .as_array_mut()
+        .expect("case observations are an array")
+    {
+        if observation["contract_id"] == GEO_ASSESSMENT_ROLL_OWNER_EXACT_CONTRACT_ID {
+            observation["observation"]["measure"]["semantic_id"] =
+                serde_json::json!("owner-normalization-measure");
+        }
+    }
+    case
+}
+
+fn revert_owner_value_flips(case: &mut Value, flips: &BTreeMap<String, u64>) {
+    for value in owner_exact_observation_mut(case)["observation"]["values"]
+        .as_array_mut()
+        .expect("owner exact values")
+    {
+        let id = value["id"].as_str().expect("value id");
+        if let Some(before) = flips.get(id) {
+            value["value"] = serde_json::json!(before);
+        }
+    }
+}
+
+fn owner_value_member_ids(case: &Value) -> Vec<String> {
+    owner_exact_observation(case)["observation"]["values"]
+        .as_array()
+        .expect("owner exact values")
+        .iter()
+        .map(|value| value["id"].as_str().expect("value id").to_string())
+        .collect()
+}
+
+fn owner_source_record_ids(case: &Value) -> Vec<String> {
+    owner_exact_observation(case)["source_records"]
+        .as_array()
+        .expect("owner source records")
+        .iter()
+        .map(|record| {
+            record["source_record_id"]
+                .as_str()
+                .expect("source record id")
+                .to_string()
+        })
+        .collect()
+}
+
+fn owner_exact_observation(case: &Value) -> &Value {
+    case["observations"]
+        .as_array()
+        .expect("case observations")
+        .iter()
+        .find(|observation| {
+            observation["contract_id"] == GEO_ASSESSMENT_ROLL_OWNER_EXACT_CONTRACT_ID
+        })
+        .expect("owner exact observation")
+}
+
+fn owner_exact_observation_mut(case: &mut Value) -> &mut Value {
+    case["observations"]
+        .as_array_mut()
+        .expect("case observations")
+        .iter_mut()
+        .find(|observation| {
+            observation["contract_id"] == GEO_ASSESSMENT_ROLL_OWNER_EXACT_CONTRACT_ID
+        })
+        .expect("owner exact observation")
+}
+
+fn sha256_file(path: PathBuf) -> String {
+    let bytes = std::fs::read(&path)
+        .unwrap_or_else(|error| panic!("{} must be readable: {error}", path.display()));
+    format!("{:x}", Sha256::digest(&bytes))
+}
+
 fn rooted(parts: &[&str]) -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for part in parts {
         path.push(part);
     }
     path
+}
+
+fn repo_path(relative: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(relative)
 }
 
 fn read_json<T: for<'de> Deserialize<'de>>(path: PathBuf) -> T {

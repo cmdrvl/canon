@@ -1,0 +1,194 @@
+{
+  "baseline": {
+    "ambiguous": 53,
+    "component_fallbacks": 7,
+    "conflict": 3,
+    "exactly_correct": 7,
+    "false_merges": 0,
+    "name": "property_type_gsf_band_score",
+    "reach_full_partial_none": [
+      70,
+      0,
+      0
+    ],
+    "resolved": 7,
+    "truth_exclusions": 15
+  },
+  "bead": "bd-1fq2",
+  "boundary": "Admission-only owner comparison overlay: candidate universe, truth labels, member ids, source records, and non-owner observations are unchanged. Only source-derived owner_not_exact values whose FY2026P3 roll-owner key matches a retained ACRIS party key under the explicit profile flip from 1 to 0.",
+  "calibration_profile": {
+    "bead": "bd-1fq2",
+    "profile": "regab_legal_suffix_numeric_ordinal",
+    "rule": "owner-not-normalized-exact",
+    "source": "canon-namekit-legal-form-v0"
+  },
+  "calibration_profile_blake3": "76eac1e2105971ec35203f35d296f5c8d70eade22fdaf44d668ad736c05a7f1d",
+  "classification": {
+    "calibration_exclusions": [
+      "3899edce",
+      "69dbf5da"
+    ],
+    "normalization_fixable_case_count": 5,
+    "normalization_fixable_cases": [
+      "h7-subject:non-round:ae5fa9ee31b1670d1af89f8fd3632c4f207957a15486b4007a6776495f960309",
+      "h7-subject:round-exact-lender:13ff475129dbf3a8874ae7ab326c4ca40ef96552cb935aaf8435450c014a0d6a",
+      "h7-subject:round-exact-lender:3709a9d00478c8ed94c040f6cd950bec0ea503523b5cb8609d04cce3ce2d5d1a",
+      "h7-subject:round-exact-lender:3991a5741b4f55913b9dc7a66ad63b6a5d93b39bf7b30b82618163dfbcf09625",
+      "h7-subject:round-exact-lender:f5588ba9a55f697afea24ed55d8b34f58e1b544ad9bc5af07b6eaf49ae430ef7"
+    ],
+    "not_normalization_fixable_cases": [
+      {
+        "case_prefix": "3899edce",
+        "reason": "source spelling conflict PATCHEN/PARCHEN; not normalized"
+      },
+      {
+        "case_prefix": "69dbf5da",
+        "reason": "genuine different owner PATIN, MICHAEL; quarantined until bd-2rc0 PAD bridge fix is scored"
+      }
+    ],
+    "owner_exact_family_total": 7
+  },
+  "frozen_denominator": 79,
+  "normalization_profile": {
+    "legal_suffix_profile": "regab_firm_identity",
+    "normalize_numeric_ordinals": true
+  },
+  "proof_class": "retained_population_measurement_not_live",
+  "retained_population_denominator": 70,
+  "score_handoff": {
+    "changed_owner_case_count": 5,
+    "changed_owner_cases": [
+      {
+        "after_exact_truth_coverage": 4,
+        "before_exact_truth_coverage": 3,
+        "case_id": "h7-subject:non-round:ae5fa9ee31b1670d1af89f8fd3632c4f207957a15486b4007a6776495f960309",
+        "case_prefix": "ae5fa9ee",
+        "flipped_owner_not_exact_values": [
+          {
+            "after": 0,
+            "bbl": "1022150700",
+            "before": 1,
+            "normalized_owner_key": "KINGSBRIDGE ASSOCIATES",
+            "roll_owner": "KINGSBRIDGE ASSOCIATES"
+          }
+        ],
+        "source_party_normalized_keys": [
+          "KINGSBRIDGE ASSOCIATES",
+          "KINGSBRIDGE ASSOCIATES II"
+        ],
+        "truth_lot_count": 4
+      },
+      {
+        "after_exact_truth_coverage": 7,
+        "before_exact_truth_coverage": 5,
+        "case_id": "h7-subject:round-exact-lender:13ff475129dbf3a8874ae7ab326c4ca40ef96552cb935aaf8435450c014a0d6a",
+        "case_prefix": "13ff4751",
+        "flipped_owner_not_exact_values": [
+          {
+            "after": 0,
+            "bbl": "3026790023",
+            "before": 1,
+            "normalized_owner_key": "591 MANHATTAN AVE OWNER",
+            "roll_owner": "591 MANHATTAN AVE OWNER, LLC"
+          },
+          {
+            "after": 0,
+            "bbl": "3026790054",
+            "before": 1,
+            "normalized_owner_key": "872 LORIMER ST OWNER",
+            "roll_owner": "872 LORIMER ST OWNER, LLC"
+          }
+        ],
+        "source_party_normalized_keys": [
+          "574 MANHATTAN AVE OWNER",
+          "591 MANHATTAN AVE OWNER",
+          "592 MANHATTAN AVE OWNER",
+          "593 MANHATTAN AVE OWNER",
+          "595 MANHATTAN AVE OWNER",
+          "602 MANHATTAN AVE OWNER",
+          "872 LORIMER ST OWNER"
+        ],
+        "truth_lot_count": 7
+      },
+      {
+        "after_exact_truth_coverage": 6,
+        "before_exact_truth_coverage": 5,
+        "case_id": "h7-subject:round-exact-lender:3709a9d00478c8ed94c040f6cd950bec0ea503523b5cb8609d04cce3ce2d5d1a",
+        "case_prefix": "3709a9d0",
+        "flipped_owner_not_exact_values": [
+          {
+            "after": 0,
+            "bbl": "1000291102",
+            "before": 1,
+            "normalized_owner_key": "AHEAD REALTY",
+            "roll_owner": "AHEAD REALTY, LLC"
+          }
+        ],
+        "source_party_normalized_keys": [
+          "87 89 PEARL",
+          "AHEAD REALTY",
+          "PH WATER STREET"
+        ],
+        "truth_lot_count": 6
+      },
+      {
+        "after_exact_truth_coverage": 3,
+        "before_exact_truth_coverage": 2,
+        "case_id": "h7-subject:round-exact-lender:3991a5741b4f55913b9dc7a66ad63b6a5d93b39bf7b30b82618163dfbcf09625",
+        "case_prefix": "3991a574",
+        "flipped_owner_not_exact_values": [
+          {
+            "after": 0,
+            "bbl": "1007220020",
+            "before": 1,
+            "normalized_owner_key": "WEST 24 OWNERS CORP",
+            "roll_owner": "WEST 24 OWNERS CORP."
+          }
+        ],
+        "source_party_normalized_keys": [
+          "WEST 24 OWNERS CORP"
+        ],
+        "truth_lot_count": 3
+      },
+      {
+        "after_exact_truth_coverage": 4,
+        "before_exact_truth_coverage": 3,
+        "case_id": "h7-subject:round-exact-lender:f5588ba9a55f697afea24ed55d8b34f58e1b544ad9bc5af07b6eaf49ae430ef7",
+        "case_prefix": "f5588ba9",
+        "flipped_owner_not_exact_values": [
+          {
+            "after": 0,
+            "bbl": "3050870021",
+            "before": 1,
+            "normalized_owner_key": "104 LINDEN BLVD",
+            "roll_owner": "104 LINDEN BLVD LLC"
+          }
+        ],
+        "source_party_normalized_keys": [
+          "104 LINDEN BLVD",
+          "1416 ST MARKS AVE",
+          "4415 3 AVE",
+          "4417 3 AVE"
+        ],
+        "truth_lot_count": 4
+      }
+    ],
+    "full_70_score_status": "READY_TO_SCORE_by_bd_1g4x_safe_normalization_subset_not_scored_by_bd_1fq2_69dbf5da_quarantined_until_bd_2rc0",
+    "max_overlay_cases": 70,
+    "max_overlay_observations": 3000,
+    "overlay_case_count": 70,
+    "overlay_sha256": "5909119a810451fd161e17f90a442e4fbbb06e5130285846a460e8ca4e16375b",
+    "overlay_uncompressed_sha256": "391a0ef1f4082decd65a8c0d3602a86c25126c36d19ff469c023d9518d6498b6",
+    "owner_normalized_overlay_path": "scripts/geo_measurements/fixtures/e4_owner_normalization_2026-09-08/overlay_request_owner_normalized_exact.json.gz",
+    "population_path": "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/population_request_roll_universe_pluto_vintage_condo_representation_widened.json.gz",
+    "source_property_type_overlay_path": "scripts/geo_measurements/fixtures/e4_gsf_property_type_bands_2026-09-08/overlay_request_property_type_gsf_bands.json.gz",
+    "source_property_type_overlay_sha256": "6fc968202c67ae147956bae20b3b4c3cb4c2b78fa74b42cd336fb7e9f030dbc1"
+  },
+  "source_derivation": {
+    "comparison_rule": "normalize assessment roll owner and ACRIS PARTY_NAME_NORM; strip canon-curated RegAB legal suffixes; normalize numeric ordinal tokens; require exact key equality",
+    "party_source": "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES source_records retained in owner observations",
+    "roll_fixture_path": "scripts/geo_measurements/fixtures/d1_residuals/mcp_stack_2026-09-03/assessment_roll_fy2026p3_lots.json.gz",
+    "roll_source_vintage": "FY2026P3"
+  },
+  "version": "canon_geo_e4_owner_exact_normalization_handoff.v0"
+}
