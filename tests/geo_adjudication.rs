@@ -27,18 +27,21 @@ use canon::geo::{
     CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_E4_GATE_ASSESSMENT_VERSION,
     CANON_GEO_FROZEN_E4_H7_CANDIDATE_TRUTH_HANDOFF_REQUEST_VERSION, CANON_GEO_FROZEN_E4_H7_GATE_ID,
     CANON_GEO_FROZEN_E4_H7_RELEASE_26V1, CANON_GEO_FROZEN_E4_H7_RELEASE_26V2,
-    CANON_GEO_FROZEN_E4_H7_REQUIRED_SUBJECTS, DEFAULT_MAX_MATERIALIZED_MODELS,
-    GeoCandidateReachStatus, GeoCandidateTruthEvaluationArtifact,
+    CANON_GEO_FROZEN_E4_H7_REQUIRED_SUBJECTS, CANON_GEO_H7_POPULATION_VERSION,
+    CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
+    DEFAULT_MAX_MATERIALIZED_MODELS, GeoCandidateReachStatus, GeoCandidateTruthEvaluationArtifact,
     GeoCandidateTruthEvaluationRequest, GeoCandidateTruthGate, GeoCandidateTruthGateKind,
     GeoCandidateTruthHandoffRow, GeoCandidateTruthLogicalSubjectBinding,
     GeoCandidateTruthRowStatus, GeoCompositionModel, GeoCompositionRequest, GeoCompositionStatus,
     GeoCompositionUniverse, GeoE4GateAssessment, GeoE4GateBlockerCode, GeoE4GatePlane,
-    GeoE4GateProofClass, GeoE4GateStatus, GeoEntityLevel, GeoEntityRef, GeoHardConstraint,
+    GeoE4GateProofClass, GeoE4GateProofDerivation, GeoE4GateProofSource, GeoE4GateStatus,
+    GeoEntityLevel, GeoEntityRef, GeoH7PopulationScope, GeoH7ResultMode, GeoHardConstraint,
     GeoHardConstraintKind, GeoPopulationEvaluationArtifact, GeoTruthPlane, assess_e4_gate,
     canonical_candidate_truth_evaluation_bytes, canonical_e4_gate_assessment_bytes,
-    canonical_population_evaluation_bytes, evaluate_candidate_truth_handoff,
-    model_satisfies_request, solve_composition, validate_candidate_truth_evaluation_artifact,
-    validate_e4_gate_assessment,
+    canonical_population_evaluation_bytes, e4_proof_source_from_population_request,
+    evaluate_candidate_truth_handoff, model_satisfies_request, solve_composition,
+    validate_candidate_truth_evaluation_artifact, validate_e4_gate_assessment,
+    validate_e4_gate_proof_source,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -1359,11 +1362,52 @@ fn retained_roll_e4_evaluation() -> GeoPopulationEvaluationArtifact {
         .unwrap_or_else(|error| panic!("retained E4 evaluation must parse: {error}"))
 }
 
+fn proof_hash(label: &str) -> String {
+    blake3::hash(label.as_bytes()).to_hex().to_string()
+}
+
+fn retained_complete_stack_proof_source() -> GeoE4GateProofSource {
+    let proof_source = GeoE4GateProofSource {
+        derivation: GeoE4GateProofDerivation::PopulationEvidenceStackArtifact,
+        proof_class: GeoE4GateProofClass::RetainedComplete,
+        source_version: CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION.to_string(),
+        source_blake3: proof_hash("retained-roll-owner-gsf-band-stack"),
+        population_request_blake3: proof_hash("retained-roll-owner-gsf-band-population"),
+        inherited_source_version: Some(CANON_GEO_H7_POPULATION_VERSION.to_string()),
+        inherited_source_blake3: Some(proof_hash("retained-roll-owner-gsf-band-h7-source")),
+        h7_population_scope: Some(GeoH7PopulationScope::RetainedComplete),
+        h7_result_mode: Some(GeoH7ResultMode::Replay),
+        h7_materialized_unique_accepted_loans: Some(70),
+        h7_solver_population_subjects: Some(70),
+    };
+    validate_e4_gate_proof_source(&proof_source).expect("retained proof source validates");
+    proof_source
+}
+
+fn live_complete_stack_proof_source() -> GeoE4GateProofSource {
+    let proof_source = GeoE4GateProofSource {
+        derivation: GeoE4GateProofDerivation::PopulationEvidenceStackArtifact,
+        proof_class: GeoE4GateProofClass::LiveComplete,
+        source_version: CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION.to_string(),
+        source_blake3: proof_hash("live-roll-owner-gsf-band-stack"),
+        population_request_blake3: proof_hash("live-roll-owner-gsf-band-population"),
+        inherited_source_version: Some(CANON_GEO_H7_POPULATION_VERSION.to_string()),
+        inherited_source_blake3: Some(proof_hash("live-roll-owner-gsf-band-h7-source")),
+        h7_population_scope: Some(GeoH7PopulationScope::LiveComplete),
+        h7_result_mode: Some(GeoH7ResultMode::Live),
+        h7_materialized_unique_accepted_loans: Some(79),
+        h7_solver_population_subjects: Some(79),
+    };
+    validate_e4_gate_proof_source(&proof_source).expect("live proof source validates");
+    proof_source
+}
+
 #[test]
 fn e4_gate_assessment_scores_retained_roll_population_without_live_claim() {
     let artifact = retained_roll_e4_evaluation();
-    let assessment = assess_e4_gate(&artifact, GeoE4GateProofClass::RetainedComplete)
-        .expect("retained E4 assessment scores");
+    let proof_source = retained_complete_stack_proof_source();
+    let assessment =
+        assess_e4_gate(&artifact, &proof_source).expect("retained E4 assessment scores");
     validate_e4_gate_assessment(&assessment).expect("assessment validates");
 
     assert_eq!(assessment.version, CANON_GEO_E4_GATE_ASSESSMENT_VERSION);
@@ -1372,6 +1416,7 @@ fn e4_gate_assessment_scores_retained_roll_population_without_live_claim() {
         assessment.proof_class,
         GeoE4GateProofClass::RetainedComplete
     );
+    assert_eq!(assessment.proof_source, proof_source);
     assert_eq!(assessment.status, GeoE4GateStatus::Open);
     assert!(!assessment.release_claim_allowed);
     assert_eq!(assessment.required_subjects, 79);
@@ -1511,7 +1556,7 @@ fn e4_gate_assessment_scores_retained_roll_population_without_live_claim() {
     assert_eq!(round.truth_quality.false_merge_cases, 3);
     assert_eq!(round.solver_exactness.component_budget_fallback_cases, 2);
 
-    let assessment_again = assess_e4_gate(&artifact, GeoE4GateProofClass::RetainedComplete)
+    let assessment_again = assess_e4_gate(&artifact, &retained_complete_stack_proof_source())
         .expect("retained E4 assessment re-scores");
     assert_eq!(
         canonical_e4_gate_assessment_bytes(&assessment).expect("assessment serializes"),
@@ -1520,10 +1565,10 @@ fn e4_gate_assessment_scores_retained_roll_population_without_live_claim() {
 }
 
 #[test]
-fn e4_gate_assessment_does_not_pass_when_retained_artifact_is_called_live() {
+fn e4_gate_assessment_does_not_pass_when_live_source_has_failing_planes() {
     let artifact = retained_roll_e4_evaluation();
-    let assessment = assess_e4_gate(&artifact, GeoE4GateProofClass::LiveComplete)
-        .expect("live-class assertion still scores retained artifact");
+    let assessment = assess_e4_gate(&artifact, &live_complete_stack_proof_source())
+        .expect("live-class source still scores retained artifact");
 
     assert_eq!(assessment.status, GeoE4GateStatus::Open);
     assert!(!assessment.release_claim_allowed);
@@ -1562,7 +1607,7 @@ fn e4_gate_assessment_does_not_pass_when_retained_artifact_is_called_live() {
 #[test]
 fn e4_gate_assessment_validator_rejects_status_or_claim_forgery() {
     let artifact = retained_roll_e4_evaluation();
-    let mut assessment = assess_e4_gate(&artifact, GeoE4GateProofClass::RetainedComplete)
+    let mut assessment = assess_e4_gate(&artifact, &retained_complete_stack_proof_source())
         .expect("retained E4 assessment scores");
 
     assessment.status = GeoE4GateStatus::Passed;
@@ -1587,7 +1632,15 @@ fn e4_gate_assessment_validator_rejects_status_or_claim_forgery() {
     assert_eq!(error.code, canon::geo::GeoPopulationErrorCode::InvalidInput);
     assert!(error.to_string().contains("blockers"));
 
-    let mut assessment = assess_e4_gate(&artifact, GeoE4GateProofClass::RetainedComplete)
+    let mut assessment = assess_e4_gate(&artifact, &retained_complete_stack_proof_source())
+        .expect("retained E4 assessment scores");
+    assessment.proof_class = GeoE4GateProofClass::LiveComplete;
+    let error =
+        validate_e4_gate_assessment(&assessment).expect_err("forged proof class must be rejected");
+    assert_eq!(error.code, canon::geo::GeoPopulationErrorCode::InvalidInput);
+    assert!(error.to_string().contains("proof_class"));
+
+    let mut assessment = assess_e4_gate(&artifact, &retained_complete_stack_proof_source())
         .expect("retained E4 assessment scores");
     assessment.truth_planes[0]
         .planes
@@ -2176,8 +2229,6 @@ fn geo_evaluate_writes_e4_gate_assessment_sidecar_bound_to_stdout() {
         .arg(&population_path)
         .arg("--e4-assessment-out")
         .arg(&assessment_path)
-        .arg("--e4-proof-class")
-        .arg("retained-complete")
         .assert()
         .success()
         .get_output()
@@ -2187,15 +2238,30 @@ fn geo_evaluate_writes_e4_gate_assessment_sidecar_bound_to_stdout() {
         serde_json::from_slice(&stdout).expect("evaluation JSON parses");
     let evaluation_bytes =
         canonical_population_evaluation_bytes(&evaluation).expect("evaluation serializes");
+    let population_request =
+        serde_json::from_slice(&std::fs::read(&population_path).expect("population fixture reads"))
+            .expect("population fixture parses");
+    let expected_proof_source = e4_proof_source_from_population_request(&population_request)
+        .expect("population fixture proof source derives");
     let assessment_bytes = std::fs::read(&assessment_path).expect("assessment sidecar exists");
     let assessment: GeoE4GateAssessment =
         serde_json::from_slice(&assessment_bytes).expect("assessment JSON parses");
     validate_e4_gate_assessment(&assessment).expect("assessment validates");
 
+    assert_eq!(assessment.proof_class, GeoE4GateProofClass::FixtureSubset);
     assert_eq!(
-        assessment.proof_class,
-        GeoE4GateProofClass::RetainedComplete
+        assessment.proof_source.derivation,
+        GeoE4GateProofDerivation::BarePopulationRequest
     );
+    assert_eq!(
+        assessment.proof_source.source_version,
+        CANON_GEO_POPULATION_REQUEST_VERSION
+    );
+    assert_eq!(
+        assessment.proof_source.source_blake3,
+        assessment.proof_source.population_request_blake3
+    );
+    assert_eq!(assessment.proof_source, expected_proof_source);
     assert_eq!(assessment.status, GeoE4GateStatus::Open);
     assert!(!assessment.release_claim_allowed);
     assert_eq!(assessment.required_subjects, 79);
@@ -2212,8 +2278,6 @@ fn geo_evaluate_writes_e4_gate_assessment_sidecar_bound_to_stdout() {
         .arg(&population_path)
         .arg("--e4-assessment-out")
         .arg(&assessment_path)
-        .arg("--e4-proof-class")
-        .arg("retained-complete")
         .assert()
         .success();
     assert_eq!(
@@ -2227,8 +2291,6 @@ fn geo_evaluate_writes_e4_gate_assessment_sidecar_bound_to_stdout() {
         .arg(&population_path)
         .arg("--e4-assessment-out")
         .arg(&assessment_path)
-        .arg("--e4-proof-class")
-        .arg("retained-complete")
         .assert()
         .failure()
         .get_output()
@@ -2246,4 +2308,23 @@ fn geo_evaluate_writes_e4_gate_assessment_sidecar_bound_to_stdout() {
         std::fs::read(&assessment_path).expect("tampered assessment persists"),
         br#"{"tampered":true}"#
     );
+}
+
+#[test]
+fn geo_evaluate_rejects_removed_e4_proof_class_option() {
+    let population_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/geo/e4_gate_v2_population_request.json");
+
+    let stderr = assert_cmd::Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(["geo", "evaluate", "--population"])
+        .arg(&population_path)
+        .arg("--e4-proof-class")
+        .arg("retained-complete")
+        .assert()
+        .failure()
+        .get_output()
+        .stderr
+        .clone();
+    let stderr = String::from_utf8(stderr).expect("stderr is UTF-8");
+    assert!(stderr.contains("--e4-proof-class"));
 }

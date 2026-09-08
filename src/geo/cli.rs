@@ -10,11 +10,10 @@
 use crate::{
     CanonOutput, Refusal, RefusalCode,
     cli::{
-        GeoCapabilitiesCli, GeoCapabilitiesEmitMode, GeoCli, GeoCompileEvidenceCli,
-        GeoE4AssessmentProofClassCli, GeoEvaluateCli, GeoLedgerBuildCli, GeoLedgerCli,
-        GeoLedgerSubcommand, GeoLedgerValidateCli, GeoLinkSourcesCli,
-        GeoMaterializeAddressEvidenceCli, GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli,
-        GeoMaterializeH7PipBlockBatchCli, GeoMaterializeH7PopulationCli,
+        GeoCapabilitiesCli, GeoCapabilitiesEmitMode, GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli,
+        GeoLedgerBuildCli, GeoLedgerCli, GeoLedgerSubcommand, GeoLedgerValidateCli,
+        GeoLinkSourcesCli, GeoMaterializeAddressEvidenceCli, GeoMaterializeEvidenceCli,
+        GeoMaterializeGeometryCli, GeoMaterializeH7PipBlockBatchCli, GeoMaterializeH7PopulationCli,
         GeoMaterializeH7StagingBatchCli, GeoMaterializeHomeCellsCli,
         GeoMaterializeWarehouseGeometryCli, GeoPlanCli, GeoReconcileTilesCli,
         GeoReplanFromAcquisitionCli, GeoRunCli, GeoSolveCli, GeoStackEvidenceCli, GeoSubcommand,
@@ -53,10 +52,11 @@ use super::{
     discovery::{CANON_GEO_ACQUISITION_RECEIPT_VERSION, GeoAcquisitionReceipt, GeoDigestAlgorithm},
     evaluation::{
         CANON_GEO_E4_GATE_ASSESSMENT_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
-        GeoE4GateProofClass, GeoPopulationCaseArtifacts, GeoPopulationError,
+        GeoE4GateProofSource, GeoPopulationCaseArtifacts, GeoPopulationError,
         GeoPopulationEvaluationRequest, assess_e4_gate, canonical_e4_gate_assessment_bytes,
-        canonical_population_evaluation_bytes, evaluate_population_with_artifacts,
-        evaluate_population_with_run_artifacts,
+        canonical_population_evaluation_bytes, e4_proof_source_from_h7_population,
+        e4_proof_source_from_population_request, e4_proof_source_from_population_stack,
+        evaluate_population_with_artifacts, evaluate_population_with_run_artifacts,
     },
     evidence::{
         CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
@@ -84,8 +84,9 @@ use super::{
         CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
         CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
         CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoH7PipBlockPopulationBatchRequest,
-        GeoH7PopulationRowsRequest, GeoH7StagingSourceRecordBytesBatchRequest,
-        GeoMaterializationError, GeoWarehouseRowsRequest, canonical_h7_population_bytes,
+        GeoH7PopulationArtifact, GeoH7PopulationRowsRequest,
+        GeoH7StagingSourceRecordBytesBatchRequest, GeoMaterializationError,
+        GeoWarehouseRowsRequest, canonical_h7_population_bytes,
         canonical_materialized_evidence_request_bytes, materialize_h7_pip_block_population_batch,
         materialize_h7_population_rows, materialize_h7_staging_source_record_bytes_batch,
         materialize_warehouse_rows,
@@ -114,7 +115,8 @@ use super::{
         CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
         CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, GeoEvidenceStackError,
         GeoPopulationEvidenceStackArtifact, GeoPopulationEvidenceStackRequest,
-        canonical_population_evidence_stack_bytes, stack_population_evidence,
+        canonical_population_evidence_stack_bytes,
+        stack_population_evidence_with_source_provenance,
         validate_population_evidence_stack_artifact,
     },
     tile::{
@@ -895,13 +897,15 @@ fn run_compile_evidence(args: &GeoCompileEvidenceCli) -> Result<u8, Box<dyn Erro
 }
 
 fn run_evaluate(args: &GeoEvaluateCli) -> Result<u8, Box<dyn Error>> {
-    let request = match read_population_or_stack(
+    let population = match read_population_or_stack(
         &args.population,
         "canon geo evaluate --population <POPULATION.json>",
     ) {
-        Ok(request) => request,
+        Ok(population) => population,
         Err(exit_code) => return Ok(exit_code),
     };
+    let proof_source = population.proof_source;
+    let request = population.request;
     let evaluated = if let Some(artifact_dir) = &args.artifact_dir {
         let run_workspace = match evaluate_run_workspace(artifact_dir, &request) {
             Ok(workspace) => workspace,
@@ -923,10 +927,7 @@ fn run_evaluate(args: &GeoEvaluateCli) -> Result<u8, Box<dyn Error>> {
         }
     };
     if let Some(assessment_out) = &args.e4_assessment_out {
-        let assessment = match assess_e4_gate(
-            &evaluated.evaluation,
-            geo_e4_assessment_proof_class(args.e4_proof_class),
-        ) {
+        let assessment = match assess_e4_gate(&evaluated.evaluation, &proof_source) {
             Ok(assessment) => assessment,
             Err(error) => return emit_population_error(error),
         };
@@ -955,15 +956,6 @@ fn run_evaluate(args: &GeoEvaluateCli) -> Result<u8, Box<dyn Error>> {
     match canonical_population_evaluation_bytes(&evaluated.evaluation) {
         Ok(bytes) => write_canonical(&bytes),
         Err(error) => emit_serialization_refusal("canon_geo_population_evaluation.v0", &error),
-    }
-}
-
-fn geo_e4_assessment_proof_class(proof_class: GeoE4AssessmentProofClassCli) -> GeoE4GateProofClass {
-    match proof_class {
-        GeoE4AssessmentProofClassCli::FixtureSubset => GeoE4GateProofClass::FixtureSubset,
-        GeoE4AssessmentProofClassCli::ObservedSnapshot => GeoE4GateProofClass::ObservedSnapshot,
-        GeoE4AssessmentProofClassCli::RetainedComplete => GeoE4GateProofClass::RetainedComplete,
-        GeoE4AssessmentProofClassCli::LiveComplete => GeoE4GateProofClass::LiveComplete,
     }
 }
 
@@ -1284,7 +1276,7 @@ fn write_artifact_file(
 fn run_stack_evidence(args: &GeoStackEvidenceCli) -> Result<u8, Box<dyn Error>> {
     let next_command =
         "canon geo stack-evidence --population <POPULATION.json> --overlay <OVERLAY.json>";
-    let population = match read_population_or_stack(&args.population, next_command) {
+    let population_input = match read_population_or_stack(&args.population, next_command) {
         Ok(population) => population,
         Err(exit_code) => return Ok(exit_code),
     };
@@ -1297,7 +1289,11 @@ fn run_stack_evidence(args: &GeoStackEvidenceCli) -> Result<u8, Box<dyn Error>> 
         Ok(request) => request,
         Err(exit_code) => return Ok(exit_code),
     };
-    let artifact = match stack_population_evidence(&population, &request) {
+    let artifact = match stack_population_evidence_with_source_provenance(
+        &population_input.request,
+        Some(population_input.proof_source),
+        &request,
+    ) {
         Ok(artifact) => artifact,
         Err(error) => return emit_evidence_stack_error(error),
     };
@@ -1307,14 +1303,17 @@ fn run_stack_evidence(args: &GeoStackEvidenceCli) -> Result<u8, Box<dyn Error>> 
     }
 }
 
-fn read_population_or_stack(
-    path: &Path,
-    next_command: &str,
-) -> Result<GeoPopulationEvaluationRequest, u8> {
+#[derive(Debug, Clone)]
+struct GeoPopulationInput {
+    request: GeoPopulationEvaluationRequest,
+    proof_source: GeoE4GateProofSource,
+}
+
+fn read_population_or_stack(path: &Path, next_command: &str) -> Result<GeoPopulationInput, u8> {
     let value: Value = read_request(
         path,
         "population",
-        "canon_geo_population_request.v0 or canon_geo_population_evidence_stack.v0",
+        "canon_geo_population_request.v0, canon_geo_h7_population.v0, or canon_geo_population_evidence_stack.v0",
         next_command,
     )?;
     let version = value
@@ -1322,19 +1321,50 @@ fn read_population_or_stack(
         .and_then(Value::as_str)
         .unwrap_or_default();
     match version {
-        CANON_GEO_POPULATION_REQUEST_VERSION => serde_json::from_value(value).map_err(|error| {
-            emit_refusal(
-                RefusalCode::EParse,
-                "Could not parse the Geo --population request",
-                json!({
-                    "population": path_string(path),
-                    "expected_version": CANON_GEO_POPULATION_REQUEST_VERSION,
-                    "error": error.to_string(),
-                }),
-                Some(next_command.to_string()),
-            )
-            .unwrap_or(2)
-        }),
+        CANON_GEO_POPULATION_REQUEST_VERSION => {
+            let request: GeoPopulationEvaluationRequest =
+                serde_json::from_value(value).map_err(|error| {
+                    emit_refusal(
+                        RefusalCode::EParse,
+                        "Could not parse the Geo --population request",
+                        json!({
+                            "population": path_string(path),
+                            "expected_version": CANON_GEO_POPULATION_REQUEST_VERSION,
+                            "error": error.to_string(),
+                        }),
+                        Some(next_command.to_string()),
+                    )
+                    .unwrap_or(2)
+                })?;
+            let proof_source = e4_proof_source_from_population_request(&request)
+                .map_err(|error| emit_population_error(error).unwrap_or(2))?;
+            Ok(GeoPopulationInput {
+                request,
+                proof_source,
+            })
+        }
+        CANON_GEO_H7_POPULATION_VERSION => {
+            let artifact: GeoH7PopulationArtifact =
+                serde_json::from_value(value).map_err(|error| {
+                    emit_refusal(
+                        RefusalCode::EParse,
+                        "Could not parse the Geo --population H7 artifact",
+                        json!({
+                            "population": path_string(path),
+                            "expected_version": CANON_GEO_H7_POPULATION_VERSION,
+                            "error": error.to_string(),
+                        }),
+                        Some(next_command.to_string()),
+                    )
+                    .unwrap_or(2)
+                })?;
+            let proof_source = e4_proof_source_from_h7_population(&artifact)
+                .map_err(|error| emit_population_error(error).unwrap_or(2))?;
+            Ok(GeoPopulationInput {
+                request: artifact.population,
+                proof_source,
+            })
+        }
         CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION => {
             let artifact: GeoPopulationEvidenceStackArtifact = serde_json::from_value(value)
                 .map_err(|error| {
@@ -1352,7 +1382,24 @@ fn read_population_or_stack(
                 })?;
             validate_population_evidence_stack_artifact(&artifact)
                 .map_err(|error| emit_evidence_stack_error(error).unwrap_or(2))?;
-            Ok(artifact.population)
+            let stack_bytes = canonical_population_evidence_stack_bytes(&artifact)
+                .map_err(|error| emit_evidence_stack_error(error).unwrap_or(2))?;
+            let stack_blake3 = blake3::hash(&stack_bytes).to_hex().to_string();
+            let population_request_blake3 =
+                e4_proof_source_from_population_request(&artifact.population)
+                    .map_err(|error| emit_population_error(error).unwrap_or(2))?
+                    .population_request_blake3;
+            let proof_source = e4_proof_source_from_population_stack(
+                stack_blake3,
+                population_request_blake3,
+                artifact.base_population_blake3.clone(),
+                artifact.base_population_provenance.as_ref(),
+            )
+            .map_err(|error| emit_population_error(error).unwrap_or(2))?;
+            Ok(GeoPopulationInput {
+                request: artifact.population,
+                proof_source,
+            })
         }
         _ => Err(emit_refusal(
             RefusalCode::EEntityArtifactContract,
@@ -1362,6 +1409,7 @@ fn read_population_or_stack(
                 "actual_version": version,
                 "supported_versions": [
                     CANON_GEO_POPULATION_REQUEST_VERSION,
+                    CANON_GEO_H7_POPULATION_VERSION,
                     CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION,
                 ],
             }),

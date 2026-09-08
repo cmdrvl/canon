@@ -2,16 +2,20 @@
 
 use assert_cmd::Command;
 use canon::geo::{
-    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
-    CANON_GEO_POPULATION_REQUEST_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoCompositionModel,
-    GeoCompositionUniverse, GeoEntityLevel, GeoEntityRef, GeoEvidenceClaimRole,
-    GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoEvidenceStackErrorCode,
-    GeoIntegerMeasure, GeoIntegerMemberValue, GeoIntegerValueOrigin, GeoLabeledCompositionCase,
+    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_H7_POPULATION_VERSION,
+    CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
+    DEFAULT_MAX_MATERIALIZED_MODELS, GeoCompositionModel, GeoCompositionUniverse,
+    GeoE4GateProofClass, GeoE4GateProofDerivation, GeoE4GateProofSource, GeoEntityLevel,
+    GeoEntityRef, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef,
+    GeoEvidenceStackErrorCode, GeoH7PopulationScope, GeoH7ResultMode, GeoIntegerMeasure,
+    GeoIntegerMemberValue, GeoIntegerValueOrigin, GeoLabeledCompositionCase,
     GeoPopulationCaseEvidenceOverlay, GeoPopulationCaseStatus, GeoPopulationEvaluationRequest,
-    GeoPopulationEvidenceStackRequest, GeoRhoBasis, GeoRhoContract, GeoRhoObservation,
-    GeoRhoObservationKind, GeoTruthPlane, GeoValidTimeInterval,
-    canonical_population_evidence_stack_bytes, compile_evidence, evaluate_population,
-    stack_population_evidence, validate_population_evidence_stack_artifact,
+    GeoPopulationEvidenceStackArtifact, GeoPopulationEvidenceStackRequest, GeoRhoBasis,
+    GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoTruthPlane, GeoValidTimeInterval,
+    canonical_population_evidence_stack_bytes, compile_evidence,
+    e4_proof_source_from_population_request, evaluate_population, stack_population_evidence,
+    stack_population_evidence_with_source_provenance, validate_e4_gate_proof_source,
+    validate_population_evidence_stack_artifact,
 };
 use serde_json::{Value, json};
 use std::{fs, path::Path};
@@ -19,6 +23,10 @@ use tempfile::tempdir;
 
 fn canon_command() -> Command {
     Command::new(env!("CARGO_BIN_EXE_canon"))
+}
+
+fn proof_hash(label: &str) -> String {
+    blake3::hash(label.as_bytes()).to_hex().to_string()
 }
 
 fn record(id: &str) -> GeoEvidenceRecordRef {
@@ -235,6 +243,56 @@ fn truth_blind_stack_flows_directly_into_exact_evaluation() {
     assert_eq!(evaluation.cases[0].soft_preference_observations, 1);
     assert_eq!(evaluation.cases[0].diagnostic_observations, 1);
     assert_eq!(evaluation.cases[0].truth_model_in_residual, Some(true));
+}
+
+#[test]
+fn provenance_aware_stack_preserves_base_proof_source_through_replay() {
+    let base = base_population();
+    let base_digest = e4_proof_source_from_population_request(&base)
+        .expect("base population proof derives")
+        .population_request_blake3;
+    let proof_source = GeoE4GateProofSource {
+        derivation: GeoE4GateProofDerivation::H7PopulationArtifact,
+        proof_class: GeoE4GateProofClass::RetainedComplete,
+        source_version: CANON_GEO_H7_POPULATION_VERSION.to_string(),
+        source_blake3: proof_hash("retained-h7-population-source"),
+        population_request_blake3: base_digest,
+        inherited_source_version: None,
+        inherited_source_blake3: None,
+        h7_population_scope: Some(GeoH7PopulationScope::RetainedComplete),
+        h7_result_mode: Some(GeoH7ResultMode::Replay),
+        h7_materialized_unique_accepted_loans: Some(1),
+        h7_solver_population_subjects: Some(1),
+    };
+    validate_e4_gate_proof_source(&proof_source).expect("proof source validates");
+
+    let artifact = stack_population_evidence_with_source_provenance(
+        &base,
+        Some(proof_source.clone()),
+        &full_overlay(),
+    )
+    .expect("stack evidence with proof source");
+    assert_eq!(
+        artifact.base_population_provenance.as_ref(),
+        Some(&proof_source)
+    );
+    validate_population_evidence_stack_artifact(&artifact).expect("artifact replays");
+
+    let canonical =
+        canonical_population_evidence_stack_bytes(&artifact).expect("canonical stack bytes");
+    let reparsed: GeoPopulationEvidenceStackArtifact =
+        serde_json::from_slice(&canonical).expect("canonical stack reparses");
+    assert_eq!(reparsed.base_population_provenance, Some(proof_source));
+
+    let mut tampered = artifact;
+    tampered
+        .base_population_provenance
+        .as_mut()
+        .expect("proof source present")
+        .population_request_blake3 = "0".repeat(64);
+    let error = validate_population_evidence_stack_artifact(&tampered)
+        .expect_err("unbound proof source must break replay validation");
+    assert!(error.message.contains("base proof source"));
 }
 
 #[test]

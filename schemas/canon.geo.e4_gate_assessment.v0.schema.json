@@ -15,6 +15,9 @@
     "proof_class": {
       "$ref": "#/$defs/proof_class"
     },
+    "proof_source": {
+      "$ref": "#/$defs/proof_source"
+    },
     "status": {
       "$ref": "#/$defs/status"
     },
@@ -53,6 +56,7 @@
     "version",
     "gate_id",
     "proof_class",
+    "proof_source",
     "status",
     "release_claim_allowed",
     "required_subjects",
@@ -79,6 +83,70 @@
         "observed_snapshot",
         "retained_complete",
         "live_complete"
+      ]
+    },
+    "proof_derivation": {
+      "type": "string",
+      "enum": [
+        "bare_population_request",
+        "h7_population_artifact",
+        "population_evidence_stack_artifact"
+      ]
+    },
+    "h7_result_mode": {
+      "type": "string",
+      "enum": [
+        "live",
+        "observed",
+        "replay"
+      ]
+    },
+    "proof_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "derivation": {
+          "$ref": "#/$defs/proof_derivation"
+        },
+        "proof_class": {
+          "$ref": "#/$defs/proof_class"
+        },
+        "source_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_blake3": {
+          "$ref": "#/$defs/blake3"
+        },
+        "population_request_blake3": {
+          "$ref": "#/$defs/blake3"
+        },
+        "inherited_source_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inherited_source_blake3": {
+          "$ref": "#/$defs/blake3"
+        },
+        "h7_population_scope": {
+          "$ref": "#/$defs/proof_class"
+        },
+        "h7_result_mode": {
+          "$ref": "#/$defs/h7_result_mode"
+        },
+        "h7_materialized_unique_accepted_loans": {
+          "$ref": "#/$defs/count"
+        },
+        "h7_solver_population_subjects": {
+          "$ref": "#/$defs/count"
+        }
+      },
+      "required": [
+        "derivation",
+        "proof_class",
+        "source_version",
+        "source_blake3",
+        "population_request_blake3"
       ]
     },
     "status": {

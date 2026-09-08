@@ -10,7 +10,10 @@
 
 use super::{
     composition::{GeoCompositionModel, GeoEntityRef, GeoIntegerMemberValue},
-    evaluation::{CANON_GEO_POPULATION_REQUEST_VERSION, GeoPopulationEvaluationRequest},
+    evaluation::{
+        CANON_GEO_POPULATION_REQUEST_VERSION, GeoE4GateProofSource, GeoPopulationError,
+        GeoPopulationEvaluationRequest, validate_e4_gate_proof_source,
+    },
     evidence::{
         GeoEvidenceCompilationRequest, GeoEvidenceDisposition, GeoEvidenceError,
         GeoEvidenceRecordRef, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind,
@@ -95,6 +98,8 @@ pub struct GeoPopulationEvidenceStackArtifact {
     pub version: String,
     pub request_version: String,
     pub base_population_blake3: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_population_provenance: Option<GeoE4GateProofSource>,
     pub overlay_blake3: String,
     pub summary: GeoPopulationEvidenceStackSummary,
     /// Retained so the artifact can prove that truth and candidate universes
@@ -177,6 +182,14 @@ pub fn stack_population_evidence(
     base_population: &GeoPopulationEvaluationRequest,
     request: &GeoPopulationEvidenceStackRequest,
 ) -> Result<GeoPopulationEvidenceStackArtifact, GeoEvidenceStackError> {
+    stack_population_evidence_with_source_provenance(base_population, None, request)
+}
+
+pub fn stack_population_evidence_with_source_provenance(
+    base_population: &GeoPopulationEvaluationRequest,
+    base_population_provenance: Option<GeoE4GateProofSource>,
+    request: &GeoPopulationEvidenceStackRequest,
+) -> Result<GeoPopulationEvidenceStackArtifact, GeoEvidenceStackError> {
     if request.version != CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION {
         return Err(GeoEvidenceStackError::new(
             GeoEvidenceStackErrorCode::UnsupportedVersion,
@@ -216,6 +229,9 @@ pub fn stack_population_evidence(
 
     let base_population = canonicalize_population(base_population)?;
     let base_population_blake3 = digest_json(&base_population, "base_population")?;
+    if let Some(proof_source) = &base_population_provenance {
+        validate_stack_base_proof_source(proof_source, &base_population_blake3)?;
+    }
     let request = canonicalize_stack_request(request)?;
     let requested_observations =
         request
@@ -306,6 +322,7 @@ pub fn stack_population_evidence(
         version: CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION.to_string(),
         request_version: request.version.clone(),
         base_population_blake3,
+        base_population_provenance,
         overlay_blake3,
         summary,
         base_population,
@@ -329,7 +346,11 @@ pub fn validate_population_evidence_stack_artifact(
             ],
         ));
     }
-    let replay = stack_population_evidence(&artifact.base_population, &artifact.request)?;
+    let replay = stack_population_evidence_with_source_provenance(
+        &artifact.base_population,
+        artifact.base_population_provenance.clone(),
+        &artifact.request,
+    )?;
     if replay != *artifact {
         return Err(GeoEvidenceStackError::invalid(
             "Geo population evidence-stack artifact does not replay from its bound inputs",
@@ -337,6 +358,39 @@ pub fn validate_population_evidence_stack_artifact(
         ));
     }
     Ok(())
+}
+
+fn validate_stack_base_proof_source(
+    proof_source: &GeoE4GateProofSource,
+    base_population_blake3: &str,
+) -> Result<(), GeoEvidenceStackError> {
+    validate_e4_gate_proof_source(proof_source).map_err(map_population_error)?;
+    if proof_source.population_request_blake3 != base_population_blake3 {
+        return Err(GeoEvidenceStackError::invalid(
+            "Geo evidence-stack base proof source does not match the canonical base population",
+            [
+                (
+                    "proof_source.population_request_blake3",
+                    proof_source.population_request_blake3.as_str(),
+                ),
+                ("base_population_blake3", base_population_blake3),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn map_population_error(error: GeoPopulationError) -> GeoEvidenceStackError {
+    let mut detail = error.detail;
+    detail.insert(
+        "population_error_code".to_string(),
+        format!("{:?}", error.code),
+    );
+    GeoEvidenceStackError {
+        code: GeoEvidenceStackErrorCode::InvalidInput,
+        message: error.message,
+        detail,
+    }
 }
 
 pub fn canonical_population_evidence_stack_bytes(

@@ -10,9 +10,9 @@ use super::{
     composition::{
         CANON_GEO_COMPOSITION_VERSION, GeoCompositionArtifact, GeoCompositionBackbone,
         GeoCompositionError, GeoCompositionErrorCode, GeoCompositionModel, GeoCompositionRequest,
-        GeoCompositionStatus, GeoEntityLevel, GeoResolvedClaim, GeoResolvedClaimClass,
-        canonical_composition_bytes, canonicalize_composition_request, model_satisfies_request,
-        solve_composition,
+        GeoCompositionStatus, GeoEntityLevel, GeoEntityRef, GeoIntegerMemberValue,
+        GeoResolvedClaim, GeoResolvedClaimClass, canonical_composition_bytes,
+        canonicalize_composition_request, model_satisfies_request, solve_composition,
     },
     control::{
         GeoBudgetAction, GeoClaimClass, GeoControlEntityLevel, GeoEvidenceClass,
@@ -22,7 +22,8 @@ use super::{
     evidence::{
         CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
         GeoEvidenceCompilationArtifact, GeoEvidenceCompilationRequest, GeoEvidenceDisposition,
-        GeoEvidenceError, canonical_evidence_compilation_bytes, compile_evidence,
+        GeoEvidenceError, GeoRhoObservation, GeoRhoObservationKind,
+        canonical_evidence_compilation_bytes, compile_evidence,
     },
     executor::{
         GEO_COMPILE_EVIDENCE_COMMAND, GEO_MATERIALIZE_EVIDENCE_COMMAND,
@@ -30,9 +31,11 @@ use super::{
         GEO_REQUEST_BINDING_ID, GEO_ROWS_BINDING_ID, GEO_SOLVE_COMMAND, GEO_TILE_WORK_COMMAND,
     },
     materialize::{
-        CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoWarehouseBuildingParcelRow, GeoWarehouseEvidenceRow,
-        GeoWarehouseParcelRow, GeoWarehouseRowsRequest,
-        canonical_materialized_evidence_request_bytes,
+        CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoH7PopulationArtifact,
+        GeoH7PopulationScope, GeoH7ResultMode, GeoMaterializationError,
+        GeoWarehouseBuildingParcelRow, GeoWarehouseEvidenceRow, GeoWarehouseParcelRow,
+        GeoWarehouseRowsRequest, canonical_h7_population_bytes,
+        canonical_materialized_evidence_request_bytes, validate_h7_population_artifact,
     },
     plan::{
         CANON_GEO_PLAN_VERSION, GeoPlan, GeoPlanArtifactRef, GeoPlanBudgetRef, GeoPlanClaimEffect,
@@ -70,6 +73,8 @@ use std::{
 pub const CANON_GEO_POPULATION_REQUEST_VERSION: &str = "canon_geo_population_request.v0";
 pub const CANON_GEO_POPULATION_EVALUATION_VERSION: &str = "canon_geo_population_evaluation.v0";
 pub const CANON_GEO_E4_GATE_ASSESSMENT_VERSION: &str = "canon_geo_e4_gate_assessment.v0";
+const CANON_GEO_POPULATION_EVIDENCE_STACK_PROOF_VERSION: &str =
+    "canon_geo_population_evidence_stack.v0";
 pub const CANON_GEO_FROZEN_E4_H7_CANDIDATE_TRUTH_HANDOFF_REQUEST_VERSION: &str =
     "canon_geo_frozen_e4_h7_candidate_truth_handoff_request.v0";
 pub const CANON_GEO_FROZEN_E4_H7_CANDIDATE_TRUTH_EVALUATION_VERSION: &str =
@@ -621,6 +626,36 @@ pub enum GeoE4GateProofClass {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum GeoE4GateProofDerivation {
+    BarePopulationRequest,
+    H7PopulationArtifact,
+    PopulationEvidenceStackArtifact,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoE4GateProofSource {
+    pub derivation: GeoE4GateProofDerivation,
+    pub proof_class: GeoE4GateProofClass,
+    pub source_version: String,
+    pub source_blake3: String,
+    pub population_request_blake3: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inherited_source_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inherited_source_blake3: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub h7_population_scope: Option<GeoH7PopulationScope>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub h7_result_mode: Option<GeoH7ResultMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub h7_materialized_unique_accepted_loans: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub h7_solver_population_subjects: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum GeoE4GateStatus {
     Open,
     Passed,
@@ -763,6 +798,7 @@ pub struct GeoE4GateAssessment {
     pub version: String,
     pub gate_id: String,
     pub proof_class: GeoE4GateProofClass,
+    pub proof_source: GeoE4GateProofSource,
     pub status: GeoE4GateStatus,
     pub release_claim_allowed: bool,
     pub required_subjects: u64,
@@ -2252,17 +2288,137 @@ pub fn canonical_population_evaluation_bytes(
     serde_json::to_vec(artifact)
 }
 
+pub fn canonical_population_request_bytes(
+    request: &GeoPopulationEvaluationRequest,
+) -> Result<Vec<u8>, GeoPopulationError> {
+    let canonical = canonicalize_population_request(request)?;
+    serde_json::to_vec(&canonical).map_err(|error| {
+        GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo population request could not be serialized",
+            [("error", error.to_string())],
+        )
+    })
+}
+
 pub fn canonical_candidate_truth_evaluation_bytes(
     artifact: &GeoCandidateTruthEvaluationArtifact,
 ) -> Result<Vec<u8>, serde_json::Error> {
     serde_json::to_vec(artifact)
 }
 
+pub fn e4_proof_source_from_population_request(
+    request: &GeoPopulationEvaluationRequest,
+) -> Result<GeoE4GateProofSource, GeoPopulationError> {
+    let population_request_blake3 = digest_population_request(request)?;
+    let proof_source = GeoE4GateProofSource {
+        derivation: GeoE4GateProofDerivation::BarePopulationRequest,
+        proof_class: GeoE4GateProofClass::FixtureSubset,
+        source_version: CANON_GEO_POPULATION_REQUEST_VERSION.to_string(),
+        source_blake3: population_request_blake3.clone(),
+        population_request_blake3,
+        inherited_source_version: None,
+        inherited_source_blake3: None,
+        h7_population_scope: None,
+        h7_result_mode: None,
+        h7_materialized_unique_accepted_loans: None,
+        h7_solver_population_subjects: None,
+    };
+    validate_e4_gate_proof_source(&proof_source)?;
+    Ok(proof_source)
+}
+
+pub fn e4_proof_source_from_h7_population(
+    artifact: &GeoH7PopulationArtifact,
+) -> Result<GeoE4GateProofSource, GeoPopulationError> {
+    validate_h7_population_artifact(artifact).map_err(map_h7_population_error)?;
+    let source_bytes = canonical_h7_population_bytes(artifact).map_err(|error| {
+        GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo H.7 population artifact could not be serialized for E4 proof source",
+            [("error", error.to_string())],
+        )
+    })?;
+    let proof_source = GeoE4GateProofSource {
+        derivation: GeoE4GateProofDerivation::H7PopulationArtifact,
+        proof_class: h7_scope_to_e4_proof_class(artifact.summary.population_scope),
+        source_version: CANON_GEO_H7_POPULATION_VERSION.to_string(),
+        source_blake3: blake3::hash(&source_bytes).to_hex().to_string(),
+        population_request_blake3: digest_population_request(&artifact.population)?,
+        inherited_source_version: None,
+        inherited_source_blake3: None,
+        h7_population_scope: Some(artifact.summary.population_scope),
+        h7_result_mode: Some(artifact.provenance.result_mode),
+        h7_materialized_unique_accepted_loans: Some(
+            artifact.summary.materialized_unique_accepted_loans,
+        ),
+        h7_solver_population_subjects: Some(artifact.summary.solver_population_subjects),
+    };
+    validate_e4_gate_proof_source(&proof_source)?;
+    Ok(proof_source)
+}
+
+pub fn e4_proof_source_from_population_stack(
+    stack_source_blake3: String,
+    population_request_blake3: String,
+    base_population_blake3: String,
+    base_population_provenance: Option<&GeoE4GateProofSource>,
+) -> Result<GeoE4GateProofSource, GeoPopulationError> {
+    validate_lowercase_hex64("stack_source_blake3", &stack_source_blake3)?;
+    validate_lowercase_hex64("population_request_blake3", &population_request_blake3)?;
+    validate_lowercase_hex64("base_population_blake3", &base_population_blake3)?;
+    let proof_source = match base_population_provenance {
+        Some(base) => {
+            validate_e4_gate_proof_source(base)?;
+            if base.population_request_blake3 != base_population_blake3 {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::InvalidInput,
+                    "Geo E4 proof source does not match the stack base population",
+                    [
+                        ("expected", base_population_blake3.as_str()),
+                        ("actual", base.population_request_blake3.as_str()),
+                    ],
+                ));
+            }
+            GeoE4GateProofSource {
+                derivation: GeoE4GateProofDerivation::PopulationEvidenceStackArtifact,
+                proof_class: base.proof_class,
+                source_version: CANON_GEO_POPULATION_EVIDENCE_STACK_PROOF_VERSION.to_string(),
+                source_blake3: stack_source_blake3,
+                population_request_blake3,
+                inherited_source_version: Some(base.source_version.clone()),
+                inherited_source_blake3: Some(base.source_blake3.clone()),
+                h7_population_scope: base.h7_population_scope,
+                h7_result_mode: base.h7_result_mode,
+                h7_materialized_unique_accepted_loans: base.h7_materialized_unique_accepted_loans,
+                h7_solver_population_subjects: base.h7_solver_population_subjects,
+            }
+        }
+        None => GeoE4GateProofSource {
+            derivation: GeoE4GateProofDerivation::PopulationEvidenceStackArtifact,
+            proof_class: GeoE4GateProofClass::FixtureSubset,
+            source_version: CANON_GEO_POPULATION_EVIDENCE_STACK_PROOF_VERSION.to_string(),
+            source_blake3: stack_source_blake3,
+            population_request_blake3,
+            inherited_source_version: Some(CANON_GEO_POPULATION_REQUEST_VERSION.to_string()),
+            inherited_source_blake3: Some(base_population_blake3),
+            h7_population_scope: None,
+            h7_result_mode: None,
+            h7_materialized_unique_accepted_loans: None,
+            h7_solver_population_subjects: None,
+        },
+    };
+    validate_e4_gate_proof_source(&proof_source)?;
+    Ok(proof_source)
+}
+
 pub fn assess_e4_gate(
     artifact: &GeoPopulationEvaluationArtifact,
-    proof_class: GeoE4GateProofClass,
+    proof_source: &GeoE4GateProofSource,
 ) -> Result<GeoE4GateAssessment, GeoPopulationError> {
     validate_population_evaluation_artifact(artifact)?;
+    validate_e4_gate_proof_source(proof_source)?;
+    let proof_class = proof_source.proof_class;
     let source_evaluation_blake3 = blake3::hash(
         &canonical_population_evaluation_bytes(artifact).map_err(|error| {
             GeoPopulationError::new(
@@ -2303,6 +2459,7 @@ pub fn assess_e4_gate(
         version: CANON_GEO_E4_GATE_ASSESSMENT_VERSION.to_string(),
         gate_id: CANON_GEO_FROZEN_E4_H7_GATE_ID.to_string(),
         proof_class,
+        proof_source: proof_source.clone(),
         status,
         release_claim_allowed: status == GeoE4GateStatus::Passed
             && proof_class == GeoE4GateProofClass::LiveComplete,
@@ -2364,6 +2521,23 @@ pub fn validate_e4_gate_assessment(
         "source_evaluation_blake3",
         &assessment.source_evaluation_blake3,
     )?;
+    validate_e4_gate_proof_source(&assessment.proof_source)?;
+    if assessment.proof_class != assessment.proof_source.proof_class {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo E4 gate assessment proof_class must match its derived proof source",
+            [
+                (
+                    "proof_class",
+                    e4_proof_class_name(assessment.proof_class).to_string(),
+                ),
+                (
+                    "proof_source.proof_class",
+                    e4_proof_class_name(assessment.proof_source.proof_class).to_string(),
+                ),
+            ],
+        ));
+    }
     validate_e4_plane_scores("assessment.planes", &assessment.planes)?;
     if assessment.evaluated_cases != assessment.planes.coverage.cases {
         return Err(summary_invariant_error(
@@ -2400,7 +2574,7 @@ pub fn validate_e4_gate_assessment(
         ));
     }
     let expected_release_claim_allowed = assessment.status == GeoE4GateStatus::Passed
-        && assessment.proof_class == GeoE4GateProofClass::LiveComplete;
+        && assessment.proof_source.proof_class == GeoE4GateProofClass::LiveComplete;
     if assessment.release_claim_allowed != expected_release_claim_allowed {
         return Err(GeoPopulationError::new(
             GeoPopulationErrorCode::InvalidInput,
@@ -4496,6 +4670,321 @@ fn e4_add_count_blocker(
     }
 }
 
+fn canonicalize_population_request(
+    request: &GeoPopulationEvaluationRequest,
+) -> Result<GeoPopulationEvaluationRequest, GeoPopulationError> {
+    if request.version != CANON_GEO_POPULATION_REQUEST_VERSION {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::UnsupportedVersion,
+            "Unsupported Geo population request version",
+            [
+                ("actual", request.version.as_str()),
+                ("expected", CANON_GEO_POPULATION_REQUEST_VERSION),
+            ],
+        ));
+    }
+    if request.max_cases == 0 || request.cases.len() > request.max_cases {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::PopulationBudgetExceeded,
+            "Geo population exceeds the declared case budget",
+            [
+                ("cases", request.cases.len().to_string()),
+                ("max_cases", request.max_cases.to_string()),
+            ],
+        ));
+    }
+    let mut canonical = request.clone();
+    for case in &mut canonical.cases {
+        validate_case(case)?;
+        case.evidence = canonicalize_population_case_evidence(&case.evidence)?;
+    }
+    canonical
+        .cases
+        .sort_by(|left, right| left.id.cmp(&right.id));
+    for pair in canonical.cases.windows(2) {
+        if pair[0].id == pair[1].id {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo population contains a duplicate case identifier",
+                [("case_id", pair[0].id.as_str())],
+            ));
+        }
+    }
+    validate_deed_truth_plane_scope(canonical.cases.iter().map(|case| case.truth_plane))?;
+    Ok(canonical)
+}
+
+fn canonicalize_population_case_evidence(
+    request: &GeoEvidenceCompilationRequest,
+) -> Result<GeoEvidenceCompilationRequest, GeoPopulationError> {
+    let compilation = compile_evidence(request).map_err(map_evidence_error)?;
+    let mut canonical = request.clone();
+    canonical.profile = compilation.composition_request.profile;
+    canonical.universe = compilation.composition_request.universe;
+    canonical.max_assignments = compilation.composition_request.max_assignments;
+    canonical.max_materialized_models = compilation.composition_request.max_materialized_models;
+    canonical
+        .contracts
+        .sort_by(|left, right| left.id.cmp(&right.id));
+    for observation in &mut canonical.observations {
+        canonicalize_population_case_observation(observation);
+    }
+    canonical
+        .observations
+        .sort_by(|left, right| left.id.cmp(&right.id));
+    compile_evidence(&canonical).map_err(map_evidence_error)?;
+    Ok(canonical)
+}
+
+fn canonicalize_population_case_observation(observation: &mut GeoRhoObservation) {
+    observation.source_records.sort();
+    match &mut observation.observation {
+        GeoRhoObservationKind::ExactSets { sets, .. } => {
+            for set in sets.iter_mut() {
+                set.sort();
+            }
+            sets.sort();
+        }
+        GeoRhoObservationKind::ExistentialMembership { members } => {
+            members.sort_by(compare_e4_entity_refs);
+        }
+        GeoRhoObservationKind::IntegerSumBand { values, .. } => {
+            values.sort_by(compare_e4_integer_values);
+        }
+        GeoRhoObservationKind::PreferMember { .. } => {}
+    }
+}
+
+fn compare_e4_entity_refs(left: &GeoEntityRef, right: &GeoEntityRef) -> std::cmp::Ordering {
+    (left.level, left.id.as_str()).cmp(&(right.level, right.id.as_str()))
+}
+
+fn compare_e4_integer_values(
+    left: &GeoIntegerMemberValue,
+    right: &GeoIntegerMemberValue,
+) -> std::cmp::Ordering {
+    left.id.cmp(&right.id)
+}
+
+fn digest_population_request(
+    request: &GeoPopulationEvaluationRequest,
+) -> Result<String, GeoPopulationError> {
+    Ok(blake3::hash(&canonical_population_request_bytes(request)?)
+        .to_hex()
+        .to_string())
+}
+
+fn h7_scope_to_e4_proof_class(scope: GeoH7PopulationScope) -> GeoE4GateProofClass {
+    match scope {
+        GeoH7PopulationScope::FixtureSubset => GeoE4GateProofClass::FixtureSubset,
+        GeoH7PopulationScope::ObservedSnapshot => GeoE4GateProofClass::ObservedSnapshot,
+        GeoH7PopulationScope::RetainedComplete => GeoE4GateProofClass::RetainedComplete,
+        GeoH7PopulationScope::LiveComplete => GeoE4GateProofClass::LiveComplete,
+    }
+}
+
+fn h7_scope_result_mode_is_consistent(
+    scope: GeoH7PopulationScope,
+    result_mode: GeoH7ResultMode,
+) -> bool {
+    matches!(
+        (scope, result_mode),
+        (GeoH7PopulationScope::FixtureSubset, GeoH7ResultMode::Replay)
+            | (
+                GeoH7PopulationScope::ObservedSnapshot,
+                GeoH7ResultMode::Observed
+            )
+            | (
+                GeoH7PopulationScope::RetainedComplete,
+                GeoH7ResultMode::Replay
+            )
+            | (GeoH7PopulationScope::LiveComplete, GeoH7ResultMode::Live)
+    )
+}
+
+fn map_h7_population_error(error: GeoMaterializationError) -> GeoPopulationError {
+    let mut detail = error.detail;
+    detail.insert(
+        "materialization_code".to_string(),
+        format!("{:?}", error.code),
+    );
+    GeoPopulationError {
+        code: GeoPopulationErrorCode::InvalidInput,
+        message: error.message,
+        detail,
+    }
+}
+
+pub fn validate_e4_gate_proof_source(
+    source: &GeoE4GateProofSource,
+) -> Result<(), GeoPopulationError> {
+    validate_lowercase_hex64("proof_source.source_blake3", &source.source_blake3)?;
+    validate_lowercase_hex64(
+        "proof_source.population_request_blake3",
+        &source.population_request_blake3,
+    )?;
+    match (
+        source.inherited_source_version.as_ref(),
+        source.inherited_source_blake3.as_ref(),
+    ) {
+        (Some(version), Some(blake3)) => {
+            if version.is_empty() || version.trim() != version {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::InvalidInput,
+                    "Geo E4 proof source inherited source version must be canonical",
+                    [("field", "proof_source.inherited_source_version")],
+                ));
+            }
+            validate_lowercase_hex64("proof_source.inherited_source_blake3", blake3)?;
+        }
+        (None, None) => {}
+        _ => {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo E4 proof source inherited version and digest must appear together",
+                [("field", "proof_source.inherited_source")],
+            ));
+        }
+    }
+
+    let h7_field_count = [
+        source.h7_population_scope.is_some(),
+        source.h7_result_mode.is_some(),
+        source.h7_materialized_unique_accepted_loans.is_some(),
+        source.h7_solver_population_subjects.is_some(),
+    ]
+    .into_iter()
+    .filter(|present| *present)
+    .count();
+    if h7_field_count != 0 && h7_field_count != 4 {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo E4 proof source H7 provenance fields must be all present or all absent",
+            [("field", "proof_source.h7")],
+        ));
+    }
+    if let (Some(scope), Some(result_mode)) = (source.h7_population_scope, source.h7_result_mode) {
+        if source.proof_class != h7_scope_to_e4_proof_class(scope) {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo E4 proof source proof_class must match its H7 population scope",
+                [
+                    ("proof_class", e4_proof_class_name(source.proof_class)),
+                    ("h7_population_scope", h7_population_scope_name(scope)),
+                ],
+            ));
+        }
+        if !h7_scope_result_mode_is_consistent(scope, result_mode) {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo E4 proof source H7 scope and result mode are inconsistent",
+                [
+                    ("h7_population_scope", h7_population_scope_name(scope)),
+                    ("h7_result_mode", h7_result_mode_name(result_mode)),
+                ],
+            ));
+        }
+    }
+
+    match source.derivation {
+        GeoE4GateProofDerivation::BarePopulationRequest => {
+            if source.source_version != CANON_GEO_POPULATION_REQUEST_VERSION {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::InvalidInput,
+                    "Geo E4 bare population proof source must cite the population request version",
+                    [
+                        ("actual", source.source_version.as_str()),
+                        ("expected", CANON_GEO_POPULATION_REQUEST_VERSION),
+                    ],
+                ));
+            }
+            if source.proof_class != GeoE4GateProofClass::FixtureSubset {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::InvalidInput,
+                    "Geo E4 bare population proof source can only be fixture class",
+                    [("proof_class", e4_proof_class_name(source.proof_class))],
+                ));
+            }
+            if source.source_blake3 != source.population_request_blake3 {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::InvalidInput,
+                    "Geo E4 bare population proof source digest must equal the population request digest",
+                    [
+                        ("source_blake3", source.source_blake3.as_str()),
+                        (
+                            "population_request_blake3",
+                            source.population_request_blake3.as_str(),
+                        ),
+                    ],
+                ));
+            }
+            if source.inherited_source_version.is_some() || h7_field_count != 0 {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::InvalidInput,
+                    "Geo E4 bare population proof source cannot carry inherited provenance",
+                    [("derivation", "bare_population_request")],
+                ));
+            }
+        }
+        GeoE4GateProofDerivation::H7PopulationArtifact => {
+            if source.source_version != CANON_GEO_H7_POPULATION_VERSION {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::InvalidInput,
+                    "Geo E4 H7 proof source must cite the H7 population artifact version",
+                    [
+                        ("actual", source.source_version.as_str()),
+                        ("expected", CANON_GEO_H7_POPULATION_VERSION),
+                    ],
+                ));
+            }
+            if source.inherited_source_version.is_some() {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::InvalidInput,
+                    "Geo E4 H7 proof source cannot carry inherited source provenance",
+                    [("field", "proof_source.inherited_source_version")],
+                ));
+            }
+            if h7_field_count != 4 {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::InvalidInput,
+                    "Geo E4 H7 proof source must carry H7 provenance fields",
+                    [("field", "proof_source.h7")],
+                ));
+            }
+        }
+        GeoE4GateProofDerivation::PopulationEvidenceStackArtifact => {
+            if source.source_version != CANON_GEO_POPULATION_EVIDENCE_STACK_PROOF_VERSION {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::InvalidInput,
+                    "Geo E4 stack proof source must cite the population evidence-stack version",
+                    [
+                        ("actual", source.source_version.as_str()),
+                        (
+                            "expected",
+                            CANON_GEO_POPULATION_EVIDENCE_STACK_PROOF_VERSION,
+                        ),
+                    ],
+                ));
+            }
+            if source.inherited_source_version.is_none() {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::InvalidInput,
+                    "Geo E4 stack proof source must carry inherited source provenance",
+                    [("field", "proof_source.inherited_source_version")],
+                ));
+            }
+            if source.proof_class != GeoE4GateProofClass::FixtureSubset && h7_field_count != 4 {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::InvalidInput,
+                    "Geo E4 non-fixture stack proof must inherit H7 provenance",
+                    [("proof_class", e4_proof_class_name(source.proof_class))],
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn e4_gate_blockers(
     proof_class: GeoE4GateProofClass,
     required_subjects: u64,
@@ -4863,6 +5352,23 @@ fn e4_proof_class_name(proof_class: GeoE4GateProofClass) -> &'static str {
         GeoE4GateProofClass::ObservedSnapshot => "observed_snapshot",
         GeoE4GateProofClass::RetainedComplete => "retained_complete",
         GeoE4GateProofClass::LiveComplete => "live_complete",
+    }
+}
+
+fn h7_population_scope_name(scope: GeoH7PopulationScope) -> &'static str {
+    match scope {
+        GeoH7PopulationScope::FixtureSubset => "fixture_subset",
+        GeoH7PopulationScope::ObservedSnapshot => "observed_snapshot",
+        GeoH7PopulationScope::RetainedComplete => "retained_complete",
+        GeoH7PopulationScope::LiveComplete => "live_complete",
+    }
+}
+
+fn h7_result_mode_name(mode: GeoH7ResultMode) -> &'static str {
+    match mode {
+        GeoH7ResultMode::Live => "live",
+        GeoH7ResultMode::Observed => "observed",
+        GeoH7ResultMode::Replay => "replay",
     }
 }
 

@@ -95,8 +95,8 @@ use canon::geo::{
     GeoCollateralLedgerProofClass, GeoCollateralLedgerSeed, GeoCollateralLedgerSeedRow,
     GeoCompositionModel, GeoCompositionProfile, GeoCompositionRequest, GeoCompositionStatus,
     GeoCompositionUniverse, GeoControlEntityLevel, GeoCoveragePredicate, GeoDeedIndexRowsRequest,
-    GeoDeedTruthLoanRef, GeoE4GateProofClass, GeoEgressClass, GeoEntityLevel, GeoEntityRef,
-    GeoErrorPopulationArtifact, GeoErrorPopulationSubject, GeoEvidenceClaimRole, GeoEvidenceClass,
+    GeoDeedTruthLoanRef, GeoEgressClass, GeoEntityLevel, GeoEntityRef, GeoErrorPopulationArtifact,
+    GeoErrorPopulationSubject, GeoEvidenceClaimRole, GeoEvidenceClass,
     GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoExactSourceUnitMm,
     GeoExplanationBudget, GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoH7AssociationPlane,
     GeoH7BoroughEdge, GeoH7CandidateReachStatus, GeoH7FiledCountyMapping, GeoH7MapplutoReleasePin,
@@ -144,14 +144,15 @@ use canon::geo::{
     canonical_redacted_artifact_bytes, canonical_separation_bytes,
     canonical_separation_inputs_bytes, canonical_separation_request_bytes, compile_evidence,
     correction_sets, default_geo_capabilities, derive_deed_truth_from_index,
-    evaluate_pad_membership, evaluate_population, ingest_client_geometry_tile,
-    materialize_geo_multisource, materialize_geometry_tile, materialize_h7_population_rows,
-    materialize_home_cells, materialize_pre_resolution, materialize_tile_work_unit,
-    materialize_warehouse_geometry, minimal_core, parse_address_forest, propagate, recommend,
-    reconcile_tile_decisions, redact_geo_artifact, regional_inventory_semantic_hash, separate,
-    solve_composition, stack_population_evidence, validate_deed_index_rows_request,
-    validate_deed_truth_artifact, validate_e4_gate_assessment, validate_point_population_artifact,
-    validate_pre_resolution_artifact, validate_redacted_artifact,
+    e4_proof_source_from_population_request, evaluate_pad_membership, evaluate_population,
+    ingest_client_geometry_tile, materialize_geo_multisource, materialize_geometry_tile,
+    materialize_h7_population_rows, materialize_home_cells, materialize_pre_resolution,
+    materialize_tile_work_unit, materialize_warehouse_geometry, minimal_core, parse_address_forest,
+    propagate, recommend, reconcile_tile_decisions, redact_geo_artifact,
+    regional_inventory_semantic_hash, separate, solve_composition, stack_population_evidence,
+    validate_deed_index_rows_request, validate_deed_truth_artifact, validate_e4_gate_assessment,
+    validate_point_population_artifact, validate_pre_resolution_artifact,
+    validate_redacted_artifact,
 };
 use canon::geo::{
     CANON_GEO_TEMPORAL_CONTAINMENT_VERSION, GeoTemporalContainmentArtifact,
@@ -4424,8 +4425,10 @@ fn e4_gate_assessment_schema_matches_a_real_instance() {
         max_cases: 8,
     };
     let evaluation = evaluate_population(&request).expect("population must evaluate");
-    let assessment = assess_e4_gate(&evaluation, GeoE4GateProofClass::FixtureSubset)
-        .expect("E4 gate assessment must score");
+    let proof_source =
+        e4_proof_source_from_population_request(&request).expect("population proof source derives");
+    let assessment =
+        assess_e4_gate(&evaluation, &proof_source).expect("E4 gate assessment must score");
     validate_e4_gate_assessment(&assessment).expect("E4 gate assessment must validate");
     let bytes = canonical_e4_gate_assessment_bytes(&assessment).expect("assessment must serialize");
     let instance: Value = serde_json::from_slice(&bytes).expect("assessment JSON parses");

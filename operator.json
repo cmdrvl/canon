@@ -2462,7 +2462,7 @@
           "flag": "--population",
           "type": "file_path",
           "required": true,
-          "description": "JSON file holding canon_geo_population_request.v0 or a validated prior canon_geo_population_evidence_stack.v0 artifact"
+          "description": "JSON file holding canon_geo_population_request.v0, canon_geo_h7_population.v0, or a validated prior canon_geo_population_evidence_stack.v0 artifact"
         },
         {
           "name": "overlay",
@@ -2475,8 +2475,8 @@
     },
     {
       "name": "geo evaluate",
-      "usage": "canon geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>] [--e4-proof-class <CLASS>]",
-      "description": "Evaluate a labeled population request or replay-validated evidence-stack artifact without letting labels reach the compiler or solver, emit the canonical evaluation artifact on stdout, and optionally publish an E4 gate assessment sidecar",
+      "usage": "canon geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>]",
+      "description": "Evaluate a labeled population request, H7 population artifact, or replay-validated evidence-stack artifact without letting labels reach the compiler or solver, emit the canonical evaluation artifact on stdout, and optionally publish an E4 gate assessment sidecar whose proof class is derived from the input provenance",
       "surface": "primary",
       "output_mode": "json",
       "output_schema": "canon_geo_population_evaluation.v0",
@@ -2484,7 +2484,7 @@
       "read_only": false,
       "safety": {
         "owned_temp_fixtures_only": true,
-        "notes": "geo requests are answered on stdout; optional --artifact-dir and --e4-assessment-out publish create-or-identical owned output files; no registry, cache, work-dir, or network writes",
+        "notes": "geo requests are answered on stdout; optional --artifact-dir and --e4-assessment-out publish create-or-identical owned output files; E4 proof class is derived from the input contract provenance; no registry, cache, work-dir, or network writes",
         "mutation_class": "OwnedOutput",
         "network_class": "Offline",
         "concurrency_class": "StatelessRead",
@@ -2531,7 +2531,7 @@
           "flag": "--population",
           "type": "file_path",
           "required": true,
-          "description": "JSON file holding canon_geo_population_request.v0 or a replay-valid canon_geo_population_evidence_stack.v0 artifact"
+          "description": "JSON file holding canon_geo_population_request.v0, canon_geo_h7_population.v0, or a replay-valid canon_geo_population_evidence_stack.v0 artifact"
         },
         {
           "name": "artifact-dir",
@@ -2546,20 +2546,6 @@
           "type": "file_path",
           "required": false,
           "description": "Optional create-or-identical output path for canon_geo_e4_gate_assessment.v0"
-        },
-        {
-          "name": "e4-proof-class",
-          "flag": "--e4-proof-class",
-          "type": "enum",
-          "values": [
-            "fixture-subset",
-            "observed-snapshot",
-            "retained-complete",
-            "live-complete"
-          ],
-          "default": "fixture-subset",
-          "required": false,
-          "description": "Proof class asserted for the optional E4 gate assessment sidecar: fixture-subset, observed-snapshot, retained-complete, or live-complete"
         }
       ]
     },

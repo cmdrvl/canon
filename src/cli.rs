@@ -550,27 +550,6 @@ pub struct GeoEvaluateCli {
     /// Optional output path for the E4 gate assessment sidecar
     #[arg(long = "e4-assessment-out")]
     pub e4_assessment_out: Option<PathBuf>,
-
-    /// Proof class asserted for the E4 gate assessment sidecar
-    #[arg(long = "e4-proof-class", value_enum, default_value = "fixture-subset")]
-    pub e4_proof_class: GeoE4AssessmentProofClassCli,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
-pub enum GeoE4AssessmentProofClassCli {
-    /// Fixture subset; never a release claim
-    #[default]
-    #[value(name = "fixture-subset")]
-    FixtureSubset,
-    /// Observed warehouse snapshot without live-complete legal residual receipts
-    #[value(name = "observed-snapshot")]
-    ObservedSnapshot,
-    /// Retained complete artifact replay; not live proof
-    #[value(name = "retained-complete")]
-    RetainedComplete,
-    /// Live complete population with live acquisition receipts
-    #[value(name = "live-complete")]
-    LiveComplete,
 }
 
 #[derive(Args, Debug, Clone)]
