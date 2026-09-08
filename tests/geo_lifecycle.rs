@@ -1,8 +1,9 @@
 use canon::geo::{
     CANON_GEO_TEMPORAL_CONTAINMENT_VERSION, GeoContainmentAsOfQuery, GeoEntityExistenceAsOfQuery,
-    GeoEntityExistenceInterval, GeoEntityExistenceReason, GeoEntityExistenceStatus, GeoEntityLevel,
-    GeoLifecycleErrorCode, GeoTemporalContainmentArtifact, GeoTemporalContainmentCluster,
-    GeoTemporalContainmentEdge, GeoTemporalContainmentInterval, GeoTemporalContainmentRelation,
+    GeoEntityExistenceInterval, GeoEntityExistenceNextEvidenceKind, GeoEntityExistenceReason,
+    GeoEntityExistenceStatus, GeoEntityLevel, GeoLifecycleErrorCode,
+    GeoTemporalContainmentArtifact, GeoTemporalContainmentCluster, GeoTemporalContainmentEdge,
+    GeoTemporalContainmentInterval, GeoTemporalContainmentRelation,
     GeoTemporalContainmentSourceReceipt, GeoTemporalContainmentSummary,
     canonical_temporal_containment_bytes, containment_as_of, entity_existence_as_of,
     validate_temporal_containment_artifact,
@@ -78,6 +79,7 @@ fn entity_existence_as_of_keeps_observation_gaps_separate_from_absence() {
             &GeoEntityExistenceAsOfQuery {
                 as_of_utc_day: "2019-06-01".to_string(),
                 cluster_id: Some(building_id(1)),
+                observation_window: None,
             },
         )
         .expect("existence query succeeds"),
@@ -94,6 +96,7 @@ fn entity_existence_as_of_keeps_observation_gaps_separate_from_absence() {
             &GeoEntityExistenceAsOfQuery {
                 as_of_utc_day: "2020-06-01".to_string(),
                 cluster_id: Some(building_id(1)),
+                observation_window: None,
             },
         )
         .expect("existence query succeeds"),
@@ -110,6 +113,7 @@ fn entity_existence_as_of_keeps_observation_gaps_separate_from_absence() {
             &GeoEntityExistenceAsOfQuery {
                 as_of_utc_day: "2019-06-01".to_string(),
                 cluster_id: Some(building_id(2)),
+                observation_window: None,
             },
         )
         .expect("existence query succeeds"),
@@ -126,6 +130,7 @@ fn entity_existence_as_of_keeps_observation_gaps_separate_from_absence() {
             &GeoEntityExistenceAsOfQuery {
                 as_of_utc_day: "2021-06-01".to_string(),
                 cluster_id: Some(building_id(3)),
+                observation_window: None,
             },
         )
         .expect("existence query succeeds"),
@@ -142,6 +147,7 @@ fn entity_existence_as_of_keeps_observation_gaps_separate_from_absence() {
             &GeoEntityExistenceAsOfQuery {
                 as_of_utc_day: "2019-06-01".to_string(),
                 cluster_id: Some(building_id(4)),
+                observation_window: None,
             },
         )
         .expect("existence query succeeds"),
@@ -161,6 +167,7 @@ fn entity_existence_as_of_keeps_observation_gaps_separate_from_absence() {
             &GeoEntityExistenceAsOfQuery {
                 as_of_utc_day: "2020-06-01".to_string(),
                 cluster_id: Some(building_id(7)),
+                observation_window: None,
             },
         )
         .expect("existence query succeeds"),
@@ -169,6 +176,42 @@ fn entity_existence_as_of_keeps_observation_gaps_separate_from_absence() {
     assert_eq!(
         no_evidence.reason,
         GeoEntityExistenceReason::NoExistenceEvidence
+    );
+}
+
+#[test]
+fn entity_existence_as_of_reports_new_construction_cold_start_with_refresh_remedy() {
+    let artifact = temporal_containment_fixture();
+    let cold_start = only_existence_row(
+        entity_existence_as_of(
+            &artifact,
+            &GeoEntityExistenceAsOfQuery {
+                as_of_utc_day: "2024-06-01".to_string(),
+                cluster_id: Some(building_id(7)),
+                observation_window: Some(GeoTemporalContainmentInterval {
+                    start_utc_day: "2020-01-01".to_string(),
+                    end_utc_day: "2022-12-31".to_string(),
+                }),
+            },
+        )
+        .expect("existence query succeeds"),
+    );
+
+    assert_eq!(cold_start.status, GeoEntityExistenceStatus::Unverified);
+    assert_eq!(
+        cold_start.reason,
+        GeoEntityExistenceReason::AfterObservationWindow
+    );
+    let next = cold_start
+        .next_evidence
+        .expect("cold start carries a remedy");
+    assert_eq!(
+        next.kind,
+        GeoEntityExistenceNextEvidenceKind::RefreshTemporalEvidence
+    );
+    assert!(
+        next.reason.contains("latest retained observation vintage"),
+        "remedy should name the observation-window limit"
     );
 }
 

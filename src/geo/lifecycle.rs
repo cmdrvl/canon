@@ -576,6 +576,8 @@ pub struct GeoEntityExistenceAsOfQuery {
     pub as_of_utc_day: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cluster_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observation_window: Option<GeoTemporalContainmentInterval>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -593,8 +595,23 @@ pub enum GeoEntityExistenceReason {
     AuthoritativePresent,
     BeforeAuthoritativeBirth,
     AfterAuthoritativeDeath,
+    AfterObservationWindow,
     OutsideObservedWindow,
     NoExistenceEvidence,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoEntityExistenceNextEvidenceKind {
+    RefreshTemporalEvidence,
+    AcquireAuthoritativeLifecycleEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoEntityExistenceNextEvidence {
+    pub kind: GeoEntityExistenceNextEvidenceKind,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -608,6 +625,8 @@ pub struct GeoEntityExistenceAsOfRow {
     pub matched_interval: Option<GeoTemporalContainmentInterval>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub source_receipts: Vec<GeoTemporalContainmentSourceReceipt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_evidence: Option<GeoEntityExistenceNextEvidence>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -721,6 +740,9 @@ pub fn entity_existence_as_of(
 ) -> Result<GeoEntityExistenceAsOfArtifact, GeoLifecycleError> {
     let canonical = canonical_temporal_containment_artifact(artifact)?;
     validate_utc_day("as_of_utc_day", &query.as_of_utc_day)?;
+    if let Some(window) = &query.observation_window {
+        validate_interval(window)?;
+    }
     let clusters = canonical
         .clusters
         .iter()
@@ -755,6 +777,7 @@ pub fn entity_existence_as_of(
             *entity_level,
             &intervals,
             &query.as_of_utc_day,
+            query.observation_window.as_ref(),
         ));
     }
     rows.sort_by(|left, right| left.cluster_id.cmp(&right.cluster_id));
@@ -2467,15 +2490,19 @@ fn existence_row_as_of(
     entity_level: GeoEntityLevel,
     intervals: &[&GeoEntityExistenceInterval],
     as_of_utc_day: &str,
+    observation_window: Option<&GeoTemporalContainmentInterval>,
 ) -> GeoEntityExistenceAsOfRow {
     if intervals.is_empty() {
+        let (reason, next_evidence) =
+            unverified_existence_reason(as_of_utc_day, observation_window, true);
         return GeoEntityExistenceAsOfRow {
             cluster_id: cluster_id.to_string(),
             entity_level,
             status: GeoEntityExistenceStatus::Unverified,
-            reason: GeoEntityExistenceReason::NoExistenceEvidence,
+            reason,
             matched_interval: None,
             source_receipts: Vec::new(),
+            next_evidence: Some(next_evidence),
         };
     }
 
@@ -2528,13 +2555,16 @@ fn existence_row_as_of(
         );
     }
     let interval = intervals[0];
+    let (reason, next_evidence) =
+        unverified_existence_reason(as_of_utc_day, observation_window, false);
     GeoEntityExistenceAsOfRow {
         cluster_id: cluster_id.to_string(),
         entity_level,
         status: GeoEntityExistenceStatus::Unverified,
-        reason: GeoEntityExistenceReason::OutsideObservedWindow,
+        reason,
         matched_interval: Some(interval.observed_interval.clone()),
         source_receipts: interval.source_receipts.clone(),
+        next_evidence: Some(next_evidence),
     }
 }
 
@@ -2551,6 +2581,7 @@ fn existence_present_row(
         reason,
         matched_interval: Some(interval.observed_interval.clone()),
         source_receipts: interval.source_receipts.clone(),
+        next_evidence: None,
     }
 }
 
@@ -2567,7 +2598,44 @@ fn existence_absent_row(
         reason,
         matched_interval: Some(interval.observed_interval.clone()),
         source_receipts: interval.source_receipts.clone(),
+        next_evidence: None,
     }
+}
+
+fn unverified_existence_reason(
+    as_of_utc_day: &str,
+    observation_window: Option<&GeoTemporalContainmentInterval>,
+    has_no_existence_evidence: bool,
+) -> (GeoEntityExistenceReason, GeoEntityExistenceNextEvidence) {
+    if let Some(window) = observation_window
+        && as_of_utc_day > window.end_utc_day.as_str()
+    {
+        return (
+            GeoEntityExistenceReason::AfterObservationWindow,
+            GeoEntityExistenceNextEvidence {
+                kind: GeoEntityExistenceNextEvidenceKind::RefreshTemporalEvidence,
+                reason: "query date is after the latest retained observation vintage".to_string(),
+            },
+        );
+    }
+    if has_no_existence_evidence {
+        return (
+            GeoEntityExistenceReason::NoExistenceEvidence,
+            GeoEntityExistenceNextEvidence {
+                kind: GeoEntityExistenceNextEvidenceKind::AcquireAuthoritativeLifecycleEvidence,
+                reason: "no retained source row establishes this entity at the query date"
+                    .to_string(),
+            },
+        );
+    }
+    (
+        GeoEntityExistenceReason::OutsideObservedWindow,
+        GeoEntityExistenceNextEvidence {
+            kind: GeoEntityExistenceNextEvidenceKind::AcquireAuthoritativeLifecycleEvidence,
+            reason: "retained observations do not prove existence or absence at the query date"
+                .to_string(),
+        },
+    )
 }
 
 fn authoritative_interval_contains(
