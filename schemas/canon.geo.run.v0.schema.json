@@ -154,6 +154,7 @@
       "artifact_inputs.node_id",
       "artifact_inputs.binding_id",
       "output_refs",
+      "output_refs.home_cell_r9",
       "output_refs.resolved_claim",
       "grain_states.entity_level",
       "grain_states.status",
@@ -377,8 +378,13 @@
         "byte_count": { "$ref": "#/$defs/uint64" },
         "media_type": { "const": "application/json" },
         "contract_version": { "$ref": "#/$defs/contract_version" },
+        "home_cell_r9": { "$ref": "#/$defs/h3_r9" },
         "resolved_claim": { "$ref": "#/$defs/resolved_claim" }
       }
+    },
+    "h3_r9": {
+      "type": "string",
+      "pattern": "^89[0-9a-f]{13}$"
     },
     "resolved_claim_class": {
       "type": "string",

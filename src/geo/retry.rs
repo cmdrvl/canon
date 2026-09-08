@@ -1311,6 +1311,9 @@ fn final_home_cell_from_run(run: &GeoRun) -> Option<String> {
         .iter()
         .filter(|output| output.contract_version == CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION)
         .find_map(|output| {
+            if let Some(home_cell) = &output.home_cell_r9 {
+                return Some(home_cell.clone());
+            }
             if is_h3_r9(&output.output_id) {
                 return Some(output.output_id.clone());
             }

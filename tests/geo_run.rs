@@ -29,22 +29,22 @@ use canon::{
         CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_SATISFACTION_VERSION,
         CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION,
         CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_EXPLANATION_VERSION,
-        CANON_GEO_GEOMETRY_TILE_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
-        CANON_GEO_LOCAL_FRAME_VERSION, CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION,
-        CANON_GEO_NEXT_EVIDENCE_VERSION, CANON_GEO_OBSERVATION_ROWS_VERSION,
-        CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION, CANON_GEO_OBSERVER_VERSION,
-        CANON_GEO_QUESTION_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
-        CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_SEPARATION_INPUTS_VERSION,
-        CANON_GEO_SEPARATION_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
-        CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS,
-        GeoAbstentionDisposition, GeoAbstentionPolicy, GeoAcquisitionDenominator,
-        GeoAcquisitionProofClass, GeoAcquisitionTerminalState, GeoAffineProjectionMm, GeoAsOf,
-        GeoBoundedGeography, GeoBudgetAction, GeoBuildingCandidate, GeoClaimClass,
-        GeoClientTileCoverageExtent, GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest,
-        GeoClientTileSourceFormat, GeoClientTileVendorIdentifier, GeoCompositionProfile,
-        GeoCompositionUniverse, GeoControlEntityLevel, GeoCoveragePredicate, GeoDateInterval,
-        GeoDenominatorSource, GeoDigest, GeoDigestAlgorithm, GeoEgressClass, GeoEntityLevel,
-        GeoEntityRef, GeoEvidenceClaimRole, GeoEvidenceClass, GeoEvidenceRecordRef,
+        CANON_GEO_GEOMETRY_TILE_VERSION, CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
+        CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_LOCAL_FRAME_VERSION,
+        CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION,
+        CANON_GEO_OBSERVATION_ROWS_VERSION, CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION,
+        CANON_GEO_OBSERVER_VERSION, CANON_GEO_QUESTION_VERSION,
+        CANON_GEO_REGIONAL_INVENTORY_VERSION, CANON_GEO_RESOURCE_BUDGET_VERSION,
+        CANON_GEO_SEPARATION_INPUTS_VERSION, CANON_GEO_SEPARATION_VERSION,
+        CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
+        DEFAULT_MAX_MATERIALIZED_MODELS, GeoAbstentionDisposition, GeoAbstentionPolicy,
+        GeoAcquisitionDenominator, GeoAcquisitionProofClass, GeoAcquisitionTerminalState,
+        GeoAffineProjectionMm, GeoAsOf, GeoBoundedGeography, GeoBudgetAction, GeoBuildingCandidate,
+        GeoClaimClass, GeoClientTileCoverageExtent, GeoClientTileCoverageExtentKind,
+        GeoClientTileIngestRequest, GeoClientTileSourceFormat, GeoClientTileVendorIdentifier,
+        GeoCompositionProfile, GeoCompositionUniverse, GeoControlEntityLevel, GeoCoveragePredicate,
+        GeoDateInterval, GeoDenominatorSource, GeoDigest, GeoDigestAlgorithm, GeoEgressClass,
+        GeoEntityLevel, GeoEntityRef, GeoEvidenceClaimRole, GeoEvidenceClass, GeoEvidenceRecordRef,
         GeoGeometryTransformContract, GeoHardConstraintKind, GeoIdentityParticipation,
         GeoImageTilePin, GeoLicenseClass, GeoLocalAcquisitionState, GeoLocalArtifactRef,
         GeoLocalFrameContract, GeoNativeEntityScope, GeoNextActionClass, GeoNextActionKind,
@@ -78,8 +78,9 @@ use canon::{
 };
 use executor::{
     CANON_GEO_CLIENT_TILE_SOURCE_VERSION, GEO_CLIENT_TILE_INGEST_STAGE_COMMAND,
-    GEO_CLIENT_TILE_SOURCE_BINDING_ID, GEO_OBSERVATION_ROWS_OUTPUT_ID,
-    GEO_OBSERVE_ADMIT_STAGE_COMMAND, GEO_REQUEST_BINDING_ID, GEO_ROWS_BINDING_ID,
+    GEO_CLIENT_TILE_SOURCE_BINDING_ID, GEO_MATERIALIZE_HOME_CELLS_COMMAND,
+    GEO_OBSERVATION_ROWS_OUTPUT_ID, GEO_OBSERVE_ADMIT_STAGE_COMMAND, GEO_REQUEST_BINDING_ID,
+    GEO_ROWS_BINDING_ID,
 };
 use h3o::{CellIndex, LatLng, Resolution};
 use run::{
@@ -142,6 +143,13 @@ fn geo_run_executes_real_kernels_and_folds_input_hashes() {
     );
     assert_eq!(run.artifact_inputs.len(), 5);
     assert_eq!(run.output_refs.len(), 9);
+    let home_cell_output = run
+        .output_refs
+        .iter()
+        .find(|output| output.project_node_id == "geo.building.home_cells")
+        .expect("home-cell output ref");
+    assert_eq!(home_cell_output.output_id, "home_cells");
+    assert_eq!(home_cell_output.home_cell_r9, None);
 
     let solve = solve_output(temp.path());
     assert_eq!(solve["version"], CANON_GEO_COMPOSITION_VERSION);
@@ -164,6 +172,54 @@ fn geo_run_executes_real_kernels_and_folds_input_hashes() {
     assert!(receipt.content_hash_inputs.iter().any(|input| {
         input.ref_id == geo_run_input_hash_ref_id("geo.building.home_cells", GEO_ROWS_BINDING_ID)
     }));
+}
+
+#[test]
+fn geo_run_output_ref_carries_single_home_cell_r9_from_assignment_artifact() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = single_home_cell_plan();
+    let rows = single_home_cell_rows();
+
+    let run = run_geo_plan(GeoRunRequest::new(
+        plan,
+        policy(temp.path()),
+        vec![
+            GeoRunArtifactBinding::from_json(
+                "geo.building.home_cells",
+                GEO_ROWS_BINDING_ID,
+                CANON_GEO_HOME_CELL_ROWS_VERSION,
+                &rows,
+            )
+            .expect("home-cell rows binding"),
+        ],
+    ))
+    .expect("single home-cell stage runs");
+
+    assert_eq!(run.status, GeoRunStatus::Completed);
+    assert_eq!(run.output_refs.len(), 1);
+    let output = &run.output_refs[0];
+    assert_eq!(output.project_node_id, "geo.building.home_cells");
+    assert_eq!(output.output_id, "home_cells");
+    assert_eq!(
+        output.contract_version,
+        CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION
+    );
+    let expected_home_cell = center_cell().to_string();
+    assert_eq!(
+        output.home_cell_r9.as_deref(),
+        Some(expected_home_cell.as_str())
+    );
+
+    let artifact: Value = serde_json::from_slice(
+        &fs::read(temp.path().join("geo/building/home_cells.json")).expect("home-cell artifact"),
+    )
+    .expect("home-cell artifact parses");
+    assert_eq!(artifact["h3_resolution"], 9);
+    assert_eq!(artifact["features"].as_array().expect("features").len(), 1);
+    assert_eq!(
+        artifact["features"][0]["home_cell"],
+        center_cell().to_string()
+    );
 }
 
 #[test]
@@ -2561,6 +2617,104 @@ fn observe_admit_plan() -> GeoPlan {
     plan
 }
 
+fn single_home_cell_plan() -> GeoPlan {
+    let mut plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    let overlay = plan
+        .geo_nodes
+        .iter()
+        .find(|overlay| overlay.project_node_id == "geo.building.home_cells")
+        .expect("home-cell overlay")
+        .clone();
+    let home_cell_node = plan
+        .project_plan
+        .nodes
+        .iter()
+        .find(|node| node.node_id == "geo.building.home_cells")
+        .expect("home-cell project node")
+        .clone();
+
+    plan.project_plan =
+        compile_extension_project_plan(ProjectExtensionDagRequest::offline_read_only(
+            "geo-single-home-cell-stage-fixture",
+            digest_bytes(b"geo single home-cell stage manifest"),
+            digest_bytes(b"geo single home-cell stage lock"),
+            vec![single_home_cell_stage_node(
+                &home_cell_node,
+                &overlay.deterministic_bounds,
+            )],
+        ))
+        .expect("single home-cell project plan compiles");
+    plan.geo_nodes = vec![overlay];
+    let mut outcome = plan
+        .grain_outcomes
+        .first()
+        .expect("building outcome")
+        .clone();
+    outcome.missing_evidence_classes = Vec::new();
+    outcome.project_node_ids = vec!["geo.building.home_cells".to_string()];
+    outcome.claim_limitation =
+        "single-feature home-cell assignment is a run-output carrier, not a precision claim"
+            .to_string();
+    outcome.next_action = "score retry recovery from the pinned home-cell output".to_string();
+    plan.grain_outcomes = vec![outcome];
+    plan.external_requests = Vec::new();
+    plan.diagnostics = Vec::new();
+    plan.status = GeoPlanStatus::Planned;
+    plan.semantic_hash = geo_plan_semantic_hash(&plan).expect("single home-cell plan hash");
+    plan.plan_id = format!(
+        "canon_geo_plan.v0:{}",
+        plan.semantic_hash.trim_start_matches("blake3:")
+    );
+    canon::geo::validate_geo_plan(&plan).expect("single home-cell plan validates");
+    plan
+}
+
+fn single_home_cell_stage_node(
+    node: &ProjectPlanNode,
+    bounds: &[GeoNumericBound],
+) -> ProjectExtensionDagNode {
+    ProjectExtensionDagNode {
+        node_id: "geo.building.home_cells".to_string(),
+        kind: node.kind,
+        class: node.class,
+        command: GEO_MATERIALIZE_HOME_CELLS_COMMAND.to_string(),
+        dependencies: Vec::new(),
+        content_hash_inputs: vec![ProjectPlanHashRef {
+            ref_id: "geo.fixture.single_home_cell_inputs".to_string(),
+            content_hash: digest_bytes(b"geo single home-cell fixture inputs"),
+        }],
+        outputs: vec![ProjectExtensionDagOutput {
+            output_id: "home_cells".to_string(),
+            path: "geo/building/home_cells.json".to_string(),
+            materialization: ProjectPlanOutputMaterialization::PlannedArtifact,
+        }],
+        limits: bounds
+            .iter()
+            .map(|bound| (bound.semantic_id.clone(), bound.value))
+            .collect(),
+        cache_eligible: true,
+        side_effects: vec![
+            ProjectPlanSideEffect {
+                kind: ProjectPlanSideEffectKind::ReadsInput,
+                description: "reads declared local home-cell rows".to_string(),
+            },
+            ProjectPlanSideEffect {
+                kind: ProjectPlanSideEffectKind::WritesArtifact,
+                description: "publishes one canonical home-cell assignment".to_string(),
+            },
+        ],
+        refusal_conditions: vec![ProjectPlanRefusalCondition {
+            code: ProjectPlanErrorCode::ArtifactContract,
+            message: "refuse on home-cell rows or output contract mismatch".to_string(),
+            next_command: None,
+        }],
+    }
+}
+
 fn client_tile_stage_node(bounds: &[GeoNumericBound]) -> ProjectExtensionDagNode {
     ProjectExtensionDagNode {
         node_id: CLIENT_TILE_NODE_ID.to_string(),
@@ -3146,6 +3300,13 @@ fn home_cell_rows() -> canon::geo::GeoHomeCellRowsRequest {
         ],
         max_rows: 16,
     }
+}
+
+fn single_home_cell_rows() -> canon::geo::GeoHomeCellRowsRequest {
+    let mut rows = home_cell_rows();
+    rows.rows.truncate(1);
+    rows.max_rows = 1;
+    rows
 }
 
 fn home_cell_row(feature_id: &str, source_record_id: &str) -> canon::geo::GeoHomeCellRow {

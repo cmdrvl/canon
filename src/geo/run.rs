@@ -24,11 +24,11 @@ use crate::{
         CANON_GEO_TILE_WORK_UNIT_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
         GeoAcquisitionDenominator, GeoAcquisitionProofClass, GeoAcquisitionSatisfaction,
         GeoAcquisitionTerminalState, GeoCompositionArtifact, GeoCompositionStatus, GeoDigest,
-        GeoDigestAlgorithm, GeoPlan, GeoPlanError, GeoPlanExternalRequest, GeoPlanGrainStatus,
-        GeoPlanNodeOverlay, GeoPlanStage, GeoPlanStatus, GeoResolvedClaim, GeoResolvedClaimClass,
-        GeoSatisfactionExecutionRef, GeoSatisfactionFileAudit, GeoSatisfactionFinding,
-        GeoSatisfactionLocalInputBinding, GeoSatisfactionRunInputRef, GeoSatisfactionStatus,
-        GeoTileWorkUnitArtifact,
+        GeoDigestAlgorithm, GeoHomeCellAssignmentArtifact, GeoPlan, GeoPlanError,
+        GeoPlanExternalRequest, GeoPlanGrainStatus, GeoPlanNodeOverlay, GeoPlanStage,
+        GeoPlanStatus, GeoResolvedClaim, GeoResolvedClaimClass, GeoSatisfactionExecutionRef,
+        GeoSatisfactionFileAudit, GeoSatisfactionFinding, GeoSatisfactionLocalInputBinding,
+        GeoSatisfactionRunInputRef, GeoSatisfactionStatus, GeoTileWorkUnitArtifact,
         assessment_roll::{
             CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION,
             CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION,
@@ -89,6 +89,7 @@ use crate::{
         read_project_run_manifest_head, run_project_plan, validate_project_plan,
     },
 };
+use h3o::CellIndex;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -504,6 +505,8 @@ pub struct GeoRunOutputRef {
     pub byte_count: u64,
     pub media_type: String,
     pub contract_version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home_cell_r9: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved_claim: Option<GeoResolvedClaim>,
 }
@@ -1976,6 +1979,19 @@ pub fn validate_geo_run(run: &GeoRun) -> GeoRunResult<()> {
             &output.media_type,
             &output.contract_version,
         )?;
+        if let Some(home_cell) = &output.home_cell_r9 {
+            validate_h3_r9_output_ref("output_ref.home_cell_r9", home_cell)?;
+            if output.contract_version != CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION {
+                return Err(GeoRunError::new(
+                    GeoRunErrorCode::ArtifactContract,
+                    "Geo run output home_cell_r9 is only valid for home-cell assignment outputs",
+                    [
+                        ("contract_version", output.contract_version.as_str()),
+                        ("home_cell_r9", home_cell.as_str()),
+                    ],
+                ));
+            }
+        }
         if output.artifact_id
             != geo_run_declared_artifact_id(&output.project_node_id, &output.output_id)
         {
@@ -3339,10 +3355,12 @@ fn output_refs_from_project_report(
         validate_receipt_outputs_match_effective_node(node, receipt)?;
         for output in &receipt.outputs {
             let resolved_claim = resolved_claim_from_output_ref(policy, receipt, output, contract)?;
+            let home_cell_r9 = home_cell_r9_from_output_ref(policy, receipt, output, contract)?;
             refs.push(output_ref(
                 &receipt.node_id,
                 output,
                 contract,
+                home_cell_r9,
                 resolved_claim,
             ));
         }
@@ -3366,10 +3384,31 @@ fn resolved_claim_from_output_ref(
     Ok(artifact.resolved_claim)
 }
 
+fn home_cell_r9_from_output_ref(
+    policy: &ProjectRunPolicy,
+    receipt: &ProjectRunNodeReceipt,
+    output: &ProjectRunOutputReceipt,
+    contract_version: &str,
+) -> GeoRunResult<Option<String>> {
+    if contract_version != CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION {
+        return Ok(None);
+    }
+    let bytes = read_receipt_output_bytes(policy, receipt, output)?;
+    let artifact: GeoHomeCellAssignmentArtifact = serde_json::from_slice(&bytes)
+        .map_err(|error| output_parse_error(&receipt.node_id, "home-cell assignment", error))?;
+    if artifact.h3_resolution != 9 || artifact.features.len() != 1 {
+        return Ok(None);
+    }
+    let home_cell = artifact.features[0].home_cell.clone();
+    validate_h3_r9_output_ref("output_ref.home_cell_r9", &home_cell)?;
+    Ok(Some(home_cell))
+}
+
 fn output_ref(
     project_node_id: &str,
     output: &ProjectRunOutputReceipt,
     contract_version: &str,
+    home_cell_r9: Option<String>,
     resolved_claim: Option<GeoResolvedClaim>,
 ) -> GeoRunOutputRef {
     GeoRunOutputRef {
@@ -3380,6 +3419,7 @@ fn output_ref(
         byte_count: output.byte_count,
         media_type: GEO_RUN_JSON_MEDIA_TYPE.to_string(),
         contract_version: contract_version.to_string(),
+        home_cell_r9,
         resolved_claim,
     }
 }
@@ -5098,6 +5138,33 @@ fn validate_resolved_claim(field: &'static str, claim: &GeoResolvedClaim) -> Geo
         }
     }
     Ok(())
+}
+
+fn validate_h3_r9_output_ref(field: &'static str, value: &str) -> GeoRunResult<()> {
+    match value.parse::<CellIndex>() {
+        Ok(cell) if u8::from(cell.resolution()) == 9 => Ok(()),
+        Ok(cell) => Err(GeoRunError::new(
+            GeoRunErrorCode::ArtifactContract,
+            "Geo run output home_cell_r9 must be an H3 resolution-9 cell",
+            [
+                ("field".to_string(), field.to_string()),
+                ("value".to_string(), value.to_string()),
+                (
+                    "actual_resolution".to_string(),
+                    u8::from(cell.resolution()).to_string(),
+                ),
+            ],
+        )),
+        Err(error) => Err(GeoRunError::new(
+            GeoRunErrorCode::ArtifactContract,
+            "Geo run output home_cell_r9 must be a valid H3 cell",
+            [
+                ("field".to_string(), field.to_string()),
+                ("value".to_string(), value.to_string()),
+                ("error".to_string(), error.to_string()),
+            ],
+        )),
+    }
 }
 
 fn validate_canonical_run_order(run: &GeoRun) -> GeoRunResult<()> {

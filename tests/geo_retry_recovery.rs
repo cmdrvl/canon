@@ -1139,13 +1139,14 @@ fn completed_run(seed: &str, final_home_cell: &str) -> GeoRun {
     let mut run = base_run(seed, GeoRunStatus::Completed);
     run.phase = GeoRunPhase::Solved;
     run.output_refs = vec![GeoRunOutputRef {
-        artifact_id: geo_run_declared_artifact_id("geo.building.home_cells", final_home_cell),
+        artifact_id: geo_run_declared_artifact_id("geo.building.home_cells", "home_cells"),
         project_node_id: "geo.building.home_cells".to_string(),
-        output_id: final_home_cell.to_string(),
+        output_id: "home_cells".to_string(),
         content_digest: digest_label(&format!("{seed}:home-cell-assignment")),
         byte_count: 96,
         media_type: GEO_RUN_JSON_MEDIA_TYPE.to_string(),
         contract_version: CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION.to_string(),
+        home_cell_r9: Some(final_home_cell.to_string()),
         resolved_claim: None,
     }];
     run.grain_states = vec![GeoRunGrainState {

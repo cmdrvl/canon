@@ -521,6 +521,7 @@ fn completed_run(seed: &str) -> GeoRun {
         byte_count: 42,
         media_type: GEO_RUN_JSON_MEDIA_TYPE.to_string(),
         contract_version: CANON_GEO_COMPOSITION_VERSION.to_string(),
+        home_cell_r9: None,
         resolved_claim: None,
     }];
     run.grain_states = vec![GeoRunGrainState {
