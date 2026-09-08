@@ -3,14 +3,17 @@
 use canon::geo::{
     CANON_GEO_QUESTION_VERSION, CANON_GEO_RESOURCE_BUDGET_VERSION,
     E5_FRANKLIN_AUDITOR_PARCELS_ADMITTED_ROWS, E5_FRANKLIN_AUDITOR_PARCELS_H3_COVERAGE_ROWS,
-    E5_FRANKLIN_AUDITOR_PARCELS_SOURCE_INSTANCE_ID, E5_MICROSOFT_GLOBALML_FOOTPRINTS_ROWS,
-    E5_MICROSOFT_GLOBALML_FOOTPRINTS_SOURCE_INSTANCE_ID,
+    E5_FRANKLIN_AUDITOR_PARCELS_SOURCE_INSTANCE_ID, E5_FRANKLIN_CURRENT_SUBJECT_PROPERTIES,
+    E5_FRANKLIN_PARCEL_PIP_REACHED_PROPERTIES, E5_FRANKLIN_PARCEL_PIP_UNREACHED_PROPERTIES,
+    E5_MICROSOFT_GLOBALML_FOOTPRINTS_ROWS, E5_MICROSOFT_GLOBALML_FOOTPRINTS_SOURCE_INSTANCE_ID,
+    E5_MICROSOFT_GLOBALML_FRANKLIN_OCCUPIED_WORK_CELLS,
     E5_MICROSOFT_GLOBALML_FRANKLIN_THIN_TIER_FEATURES, GeoAbstentionDisposition,
-    GeoAbstentionPolicy, GeoBudgetAction, GeoClaimClass, GeoControlEntityLevel, GeoE5FuelSourcePin,
-    GeoEvidenceClass, GeoInventorySupportStatus, GeoNumericBound, GeoQuestion, GeoRequestedGrain,
-    GeoResourceBudget, GeoResourceCounter, GeoSubjectBinding, GeoSubjectBindingClass,
-    GeoValueOrigin, e5_franklin_county_inventory, evaluate_inventory_support,
-    franklin_county_region,
+    GeoAbstentionPolicy, GeoBudgetAction, GeoClaimClass, GeoControlEntityLevel,
+    GeoE5FuelPrecisionStatus, GeoE5FuelReachKind, GeoE5FuelSourcePin, GeoEvidenceClass,
+    GeoInventorySupportStatus, GeoNumericBound, GeoQuestion, GeoRequestedGrain, GeoResourceBudget,
+    GeoResourceCounter, GeoSubjectBinding, GeoSubjectBindingClass, GeoValueOrigin,
+    e5_franklin_county_inventory, e5_franklin_current_fuel_curve_report,
+    evaluate_inventory_support, franklin_county_region,
 };
 
 const REACH_SQL: &str =
@@ -325,6 +328,65 @@ fn e5_fuel_instances_carry_candidate_and_coverage_denominators() {
     assert_eq!(
         estimate(footprint_source, "source.franklin_thin_tier_features"),
         E5_MICROSOFT_GLOBALML_FRANKLIN_THIN_TIER_FEATURES
+    );
+}
+
+#[test]
+fn e5_fuel_curve_report_separates_reach_from_waiting_precision() {
+    let report = e5_franklin_current_fuel_curve_report();
+    assert_eq!(report.tiers.len(), 2);
+    assert!(report.required_core_dispatch_edits.is_empty());
+    assert_eq!(report.frozen_nyc_e4_delta.resolved, 0);
+    assert_eq!(report.frozen_nyc_e4_delta.correct, 0);
+    assert_eq!(report.frozen_nyc_e4_delta.reach, 0);
+    assert_eq!(report.frozen_nyc_e4_delta.false_merges, 0);
+
+    let parcel = report
+        .tiers
+        .iter()
+        .find(|tier| tier.tier_id == "franklin_parcel_candidate_reach")
+        .expect("parcel reach tier");
+    assert_eq!(parcel.evidence_class, GeoEvidenceClass::ParcelGeometry);
+    assert_eq!(parcel.reach.kind, GeoE5FuelReachKind::CandidateReach);
+    assert_eq!(
+        parcel.reach.denominator_value,
+        E5_FRANKLIN_CURRENT_SUBJECT_PROPERTIES
+    );
+    assert_eq!(
+        parcel.reach.reached_properties,
+        Some(E5_FRANKLIN_PARCEL_PIP_REACHED_PROPERTIES)
+    );
+    assert_eq!(
+        parcel.reach.unreached_properties,
+        Some(E5_FRANKLIN_PARCEL_PIP_UNREACHED_PROPERTIES)
+    );
+    assert_eq!(
+        parcel.precision.status,
+        GeoE5FuelPrecisionStatus::WaitingForTruthPlane
+    );
+
+    let footprint = report
+        .tiers
+        .iter()
+        .find(|tier| tier.tier_id == "microsoft_globalml_footprint_h3_coverage")
+        .expect("footprint source coverage tier");
+    assert_eq!(
+        footprint.evidence_class,
+        GeoEvidenceClass::BuildingFootprint
+    );
+    assert_eq!(footprint.reach.kind, GeoE5FuelReachKind::SourceCoverage);
+    assert_eq!(
+        footprint.reach.denominator_value,
+        E5_MICROSOFT_GLOBALML_FRANKLIN_THIN_TIER_FEATURES
+    );
+    assert_eq!(
+        footprint.reach.occupied_work_cells,
+        Some(E5_MICROSOFT_GLOBALML_FRANKLIN_OCCUPIED_WORK_CELLS)
+    );
+    assert_eq!(footprint.reach.reached_properties, None);
+    assert_eq!(
+        footprint.precision.status,
+        GeoE5FuelPrecisionStatus::WaitingForTruthPlane
     );
 }
 
