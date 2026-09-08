@@ -37,17 +37,23 @@ pub const GEO_ASSESSMENT_ROLL_OWNER_EXACT_CONTRACT_ID: &str =
     "rho.owner.assessment_roll_exact_match";
 pub const GEO_ASSESSMENT_ROLL_OWNER_AFFILIATE_CONTRACT_ID: &str =
     "rho.owner.assessment_roll_affiliate_preference";
+pub const GEO_ASSESSMENT_ROLL_OWNER_FAMILY_CONTRACT_ID: &str = "rho.owner.party_family_match";
 pub const GEO_ASSESSMENT_ROLL_OWNER_EXACT_OBSERVATION_PREFIX: &str =
     "obs.owner.assessment_roll_exact_match";
 pub const GEO_ASSESSMENT_ROLL_OWNER_AFFILIATE_OBSERVATION_PREFIX: &str =
     "obs.owner.assessment_roll_affiliate_preference";
+pub const GEO_ASSESSMENT_ROLL_OWNER_FAMILY_OBSERVATION_PREFIX: &str =
+    "obs.owner.party_family_match";
 
 const OWNER_NOT_EXACT_MEASURE_ID: &str = "assessment_roll.owner_not_exact";
+const OWNER_NOT_FAMILY_MEASURE_ID: &str = "assessment_roll.owner_not_party_family";
 const OWNER_NOT_EXACT_UNIT: &str = "lots";
 const EXACT_METHOD_ID: &str = "assessment-roll-owner-exact-exclusion";
 const AFFILIATE_METHOD_ID: &str = "assessment-roll-owner-token-preference";
+const FAMILY_METHOD_ID: &str = "party-family-owner-exclusion";
 const OWNER_METHOD_VERSION: &str = "1.0.0";
 const OWNER_CONTRACT_VERSION: &str = "1.0.0";
+const FAMILY_FALSIFICATION_RULE_ID: &str = "truth-lot-owner-not-party-family";
 
 fn is_default_admission_policy(value: &GeoRhoAdmissionPolicy) -> bool {
     matches!(value, GeoRhoAdmissionPolicy::Declared)
@@ -130,6 +136,19 @@ pub struct GeoAssessmentRollPartyRow {
     /// Must already be the `PARTY_NAME_NORM` value from
     /// `STG_GEO_NYC_ACRIS_PARTIES`.
     pub party_name_norm: String,
+    pub source_record_id: String,
+    pub source_vintage: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoAssessmentRollPartyFamilyRelationRow {
+    pub document_id: String,
+    pub family_id: String,
+    /// Normalized party/counterparty names that a source profile has tied to
+    /// one identity family. ACRIS can supply these for NYC; other counties can
+    /// supply equivalent rows without changing the rho kernel.
+    pub member_name_norms: Vec<String>,
     pub source_record_id: String,
     pub source_vintage: String,
 }
@@ -348,7 +367,9 @@ pub fn produce_assessment_roll_owner_evidence(
                     .unwrap_or(GeoAssessmentRollOwnerMatch::NoOwner);
                 match match_kind {
                     GeoAssessmentRollOwnerMatch::Exact => exact_lots.push(parcel_id.clone()),
-                    GeoAssessmentRollOwnerMatch::Token => affiliate_lots.push(parcel_id.clone()),
+                    GeoAssessmentRollOwnerMatch::Family | GeoAssessmentRollOwnerMatch::Token => {
+                        affiliate_lots.push(parcel_id.clone())
+                    }
                     GeoAssessmentRollOwnerMatch::NoOwner | GeoAssessmentRollOwnerMatch::None => {}
                 }
             }
@@ -452,6 +473,98 @@ pub fn produce_assessment_roll_owner_evidence(
     };
     validate_assessment_roll_owner_artifact(&artifact)?;
     Ok(artifact)
+}
+
+pub fn build_assessment_roll_owner_family_overlay(
+    request: &GeoAssessmentRollOwnerRequest,
+    party_family_relations: &[GeoAssessmentRollPartyFamilyRelationRow],
+) -> Result<GeoPopulationEvidenceStackRequest, GeoAssessmentRollOwnerError> {
+    let request = canonicalize_assessment_roll_owner_request(request)?;
+    let party_family_relations =
+        canonicalize_party_family_relations(party_family_relations.to_vec())?;
+    let roll_by_bbl = roll_rows_by_bbl(&request.roll_rows)?;
+    let roll_by_block = roll_rows_by_block(&request.roll_rows)?;
+    let parties_by_document = party_rows_by_document(&request.party_rows);
+    let families_by_document = party_family_relations_by_document(&party_family_relations);
+    let document_by_case = case_documents_by_case(&request)?;
+    let family_contract = family_contract(&request);
+    let mut overlays = Vec::new();
+
+    for case in &request.population.cases {
+        ensure_parcel_population_case(case)?;
+        let widened_parcels =
+            widened_parcel_universe(&case.evidence.universe.parcels, &roll_by_block)?;
+        let document_id = document_by_case
+            .get(case.id.as_str())
+            .ok_or_else(|| {
+                GeoAssessmentRollOwnerError::invalid(
+                    "Geo assessment-roll owner request is missing a case document binding",
+                    [("case_id", case.id.as_str())],
+                )
+            })?
+            .clone();
+        let party_rows = parties_by_document
+            .get(document_id.as_str())
+            .cloned()
+            .unwrap_or_default();
+        let family_rows = families_by_document
+            .get(document_id.as_str())
+            .cloned()
+            .unwrap_or_default();
+        let borrower_norms = party_rows
+            .iter()
+            .map(|party| party.party_name_norm.clone())
+            .collect::<BTreeSet<_>>();
+        if borrower_norms.is_empty() || family_rows.is_empty() {
+            continue;
+        }
+        let mut family_lots = Vec::new();
+        for parcel_id in &widened_parcels {
+            let Some(row) = roll_by_bbl.get(parcel_id) else {
+                continue;
+            };
+            if owner_matches_party_family(&row.owner, &borrower_norms, &family_rows) {
+                family_lots.push(parcel_id.clone());
+            }
+        }
+        if family_lots.is_empty() {
+            continue;
+        }
+        overlays.push(GeoPopulationCaseEvidenceOverlay {
+            case_id: case.id.clone(),
+            expected_base_evidence_blake3: None,
+            contracts: vec![family_contract.clone()],
+            observations: vec![family_observation(
+                &case.id,
+                &widened_parcels,
+                &family_lots,
+                &party_rows,
+                &family_rows,
+                &roll_by_bbl,
+            )?],
+        });
+    }
+
+    let overlay = GeoPopulationEvidenceStackRequest {
+        version: CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION.to_string(),
+        max_overlay_cases: request.population.cases.len(),
+        max_overlay_observations: request.max_overlay_observations,
+        case_overlays: overlays,
+    };
+    let produced_observations = overlay_observation_count(&overlay)?;
+    if produced_observations > request.max_overlay_observations {
+        return Err(GeoAssessmentRollOwnerError::budget(
+            "Geo assessment-roll owner family overlay exceeds its declared observation budget",
+            [
+                ("observations", produced_observations.to_string()),
+                (
+                    "max_overlay_observations",
+                    request.max_overlay_observations.to_string(),
+                ),
+            ],
+        ));
+    }
+    Ok(overlay)
 }
 
 pub fn canonicalize_assessment_roll_owner_request(
@@ -723,6 +836,7 @@ pub fn assessment_roll_owner_tokens(value: &str) -> Vec<String> {
 pub enum GeoAssessmentRollOwnerMatch {
     NoOwner,
     Exact,
+    Family,
     Token,
     None,
 }
@@ -731,12 +845,40 @@ pub fn assessment_roll_owner_match(
     owner: &str,
     borrower_party_name_norms: &BTreeSet<String>,
 ) -> GeoAssessmentRollOwnerMatch {
+    assessment_roll_owner_match_with_family_relations(owner, borrower_party_name_norms, &[])
+}
+
+pub fn assessment_roll_owner_match_with_family_relations(
+    owner: &str,
+    borrower_party_name_norms: &BTreeSet<String>,
+    party_family_relations: &[GeoAssessmentRollPartyFamilyRelationRow],
+) -> GeoAssessmentRollOwnerMatch {
+    let relation_refs = party_family_relations.iter().collect::<Vec<_>>();
+    assessment_roll_owner_match_with_family_relation_refs(
+        owner,
+        borrower_party_name_norms,
+        &relation_refs,
+    )
+}
+
+fn assessment_roll_owner_match_with_family_relation_refs(
+    owner: &str,
+    borrower_party_name_norms: &BTreeSet<String>,
+    party_family_relations: &[&GeoAssessmentRollPartyFamilyRelationRow],
+) -> GeoAssessmentRollOwnerMatch {
     let owner_norm = normalize_assessment_roll_owner_name(owner);
     if owner_norm.is_empty() {
         return GeoAssessmentRollOwnerMatch::NoOwner;
     }
     if borrower_party_name_norms.contains(&owner_norm) {
         return GeoAssessmentRollOwnerMatch::Exact;
+    }
+    if owner_matches_party_family_norm(
+        owner_norm.as_str(),
+        borrower_party_name_norms,
+        party_family_relations,
+    ) {
+        return GeoAssessmentRollOwnerMatch::Family;
     }
     let owner_tokens = assessment_roll_owner_tokens(owner)
         .into_iter()
@@ -757,6 +899,38 @@ pub fn assessment_roll_owner_match(
         }
     }
     GeoAssessmentRollOwnerMatch::None
+}
+
+fn owner_matches_party_family(
+    owner: &str,
+    borrower_party_name_norms: &BTreeSet<String>,
+    party_family_relations: &[&GeoAssessmentRollPartyFamilyRelationRow],
+) -> bool {
+    let owner_norm = normalize_assessment_roll_owner_name(owner);
+    !owner_norm.is_empty()
+        && (borrower_party_name_norms.contains(&owner_norm)
+            || owner_matches_party_family_norm(
+                owner_norm.as_str(),
+                borrower_party_name_norms,
+                party_family_relations,
+            ))
+}
+
+fn owner_matches_party_family_norm(
+    owner_norm: &str,
+    borrower_party_name_norms: &BTreeSet<String>,
+    party_family_relations: &[&GeoAssessmentRollPartyFamilyRelationRow],
+) -> bool {
+    party_family_relations.iter().any(|relation| {
+        relation
+            .member_name_norms
+            .iter()
+            .any(|member| member == owner_norm)
+            && relation
+                .member_name_norms
+                .iter()
+                .any(|member| borrower_party_name_norms.contains(member))
+    })
 }
 
 fn exact_contract(request: &GeoAssessmentRollOwnerRequest) -> GeoRhoContract {
@@ -799,6 +973,26 @@ fn affiliate_contract(request: &GeoAssessmentRollOwnerRequest) -> GeoRhoContract
     }
 }
 
+fn family_contract(request: &GeoAssessmentRollOwnerRequest) -> GeoRhoContract {
+    GeoRhoContract {
+        id: GEO_ASSESSMENT_ROLL_OWNER_FAMILY_CONTRACT_ID.to_string(),
+        version: OWNER_CONTRACT_VERSION.to_string(),
+        source_dataset: request.contract_source.source_dataset.clone(),
+        source_release: request.contract_source.source_release.clone(),
+        source_lineage_ids: request.contract_source.source_lineage_ids.clone(),
+        method_id: FAMILY_METHOD_ID.to_string(),
+        method_version: OWNER_METHOD_VERSION.to_string(),
+        claim_role: GeoEvidenceClaimRole::StableIdentityAnchor,
+        basis: GeoRhoBasis::EmpiricalCalibration {
+            population_id: request.calibration.population_id.clone(),
+            calibration_blake3: request.calibration.calibration_blake3.clone(),
+            falsification_rule_id: FAMILY_FALSIFICATION_RULE_ID.to_string(),
+            admissible_hard_band: true,
+            admission_policy: request.calibration.exact_admission_policy.clone(),
+        },
+    }
+}
+
 fn exact_observation(
     case_id: &str,
     parcels: &[String],
@@ -833,6 +1027,46 @@ fn exact_observation(
     })
 }
 
+fn family_observation(
+    case_id: &str,
+    parcels: &[String],
+    family_lots: &[String],
+    party_rows: &[&GeoAssessmentRollPartyRow],
+    party_family_relations: &[&GeoAssessmentRollPartyFamilyRelationRow],
+    roll_by_bbl: &BTreeMap<String, &GeoAssessmentRollLotRow>,
+) -> Result<GeoRhoObservation, GeoAssessmentRollOwnerError> {
+    let family = family_lots.iter().cloned().collect::<BTreeSet<_>>();
+    let values = parcels
+        .iter()
+        .map(|parcel| GeoIntegerMemberValue {
+            id: parcel.clone(),
+            value: if family.contains(parcel) { 0 } else { 1 },
+        })
+        .collect::<Vec<_>>();
+    Ok(GeoRhoObservation {
+        id: format!("{GEO_ASSESSMENT_ROLL_OWNER_FAMILY_OBSERVATION_PREFIX}:{case_id}"),
+        contract_id: GEO_ASSESSMENT_ROLL_OWNER_FAMILY_CONTRACT_ID.to_string(),
+        source_records: owner_family_source_records(
+            party_rows,
+            party_family_relations,
+            family_lots,
+            roll_by_bbl,
+        )?,
+        valid_time: None,
+        observation: GeoRhoObservationKind::IntegerSumBand {
+            level: GeoEntityLevel::Parcel,
+            measure: GeoIntegerMeasure {
+                semantic_id: OWNER_NOT_FAMILY_MEASURE_ID.to_string(),
+                unit: OWNER_NOT_EXACT_UNIT.to_string(),
+                value_origin: GeoIntegerValueOrigin::SourceAsserted,
+            },
+            values,
+            min: 0,
+            max: 0,
+        },
+    })
+}
+
 fn affiliate_observation(
     case_id: &str,
     lot: &str,
@@ -850,6 +1084,28 @@ fn affiliate_observation(
             cost_if_absent: 1,
         },
     })
+}
+
+fn owner_family_source_records(
+    party_rows: &[&GeoAssessmentRollPartyRow],
+    party_family_relations: &[&GeoAssessmentRollPartyFamilyRelationRow],
+    roll_bbls: &[String],
+    roll_by_bbl: &BTreeMap<String, &GeoAssessmentRollLotRow>,
+) -> Result<Vec<GeoEvidenceRecordRef>, GeoAssessmentRollOwnerError> {
+    let mut records = BTreeMap::<String, GeoEvidenceRecordRef>::new();
+    for party in party_rows {
+        insert_source_record(&mut records, party_source_record(party)?)?;
+    }
+    for relation in party_family_relations {
+        insert_source_record(&mut records, party_family_relation_source_record(relation)?)?;
+    }
+    for bbl in roll_bbls {
+        let Some(row) = roll_by_bbl.get(bbl) else {
+            continue;
+        };
+        insert_source_record(&mut records, roll_source_record(row)?)?;
+    }
+    Ok(records.into_values().collect())
 }
 
 fn owner_source_records(
@@ -906,6 +1162,16 @@ fn party_source_record(
     })
 }
 
+fn party_family_relation_source_record(
+    row: &GeoAssessmentRollPartyFamilyRelationRow,
+) -> Result<GeoEvidenceRecordRef, GeoAssessmentRollOwnerError> {
+    Ok(GeoEvidenceRecordRef {
+        source_record_id: row.source_record_id.clone(),
+        source_vintage: row.source_vintage.clone(),
+        record_blake3: digest_unprefixed(&party_family_relation_payload(row))?,
+    })
+}
+
 fn roll_row_payload(row: &GeoAssessmentRollLotRow) -> BTreeMap<&'static str, String> {
     BTreeMap::from([
         ("bbl", row.bbl.clone()),
@@ -921,6 +1187,31 @@ fn party_row_payload(row: &GeoAssessmentRollPartyRow) -> BTreeMap<&'static str, 
         ("document_id", row.document_id.clone()),
         ("party_name_norm", row.party_name_norm.clone()),
         ("party_type", row.party_type.clone()),
+    ])
+}
+
+fn party_family_relation_payload(
+    row: &GeoAssessmentRollPartyFamilyRelationRow,
+) -> BTreeMap<&'static str, serde_json::Value> {
+    BTreeMap::from([
+        (
+            "document_id",
+            serde_json::Value::String(row.document_id.clone()),
+        ),
+        (
+            "family_id",
+            serde_json::Value::String(row.family_id.clone()),
+        ),
+        (
+            "member_name_norms",
+            serde_json::Value::Array(
+                row.member_name_norms
+                    .iter()
+                    .cloned()
+                    .map(serde_json::Value::String)
+                    .collect(),
+            ),
+        ),
     ])
 }
 
@@ -975,6 +1266,19 @@ fn party_rows_by_document(
     rows: &[GeoAssessmentRollPartyRow],
 ) -> BTreeMap<&str, Vec<&GeoAssessmentRollPartyRow>> {
     let mut by_document = BTreeMap::<&str, Vec<&GeoAssessmentRollPartyRow>>::new();
+    for row in rows {
+        by_document
+            .entry(row.document_id.as_str())
+            .or_default()
+            .push(row);
+    }
+    by_document
+}
+
+fn party_family_relations_by_document(
+    rows: &[GeoAssessmentRollPartyFamilyRelationRow],
+) -> BTreeMap<&str, Vec<&GeoAssessmentRollPartyFamilyRelationRow>> {
+    let mut by_document = BTreeMap::<&str, Vec<&GeoAssessmentRollPartyFamilyRelationRow>>::new();
     for row in rows {
         by_document
             .entry(row.document_id.as_str())
@@ -1159,6 +1463,68 @@ fn sort_distinct_strings(
     }
     values.sort();
     reject_adjacent_duplicates(field, values.iter().map(String::as_str))
+}
+
+fn canonicalize_party_family_relations(
+    mut rows: Vec<GeoAssessmentRollPartyFamilyRelationRow>,
+) -> Result<Vec<GeoAssessmentRollPartyFamilyRelationRow>, GeoAssessmentRollOwnerError> {
+    for row in &mut rows {
+        validate_identifier("party_family_relations[].document_id", &row.document_id)?;
+        validate_identifier("party_family_relations[].family_id", &row.family_id)?;
+        validate_identifier(
+            "party_family_relations[].source_record_id",
+            &row.source_record_id,
+        )?;
+        validate_identifier(
+            "party_family_relations[].source_vintage",
+            &row.source_vintage,
+        )?;
+        for member in &row.member_name_norms {
+            validate_identifier("party_family_relations[].member_name_norms[]", member)?;
+            let normalized = normalize_assessment_roll_owner_name(member);
+            if normalized != *member {
+                return Err(GeoAssessmentRollOwnerError::invalid(
+                    "Geo assessment-roll owner family member names must be normalized",
+                    [
+                        ("field", "party_family_relations[].member_name_norms[]"),
+                        ("value", member.as_str()),
+                        ("normalized", normalized.as_str()),
+                    ],
+                ));
+            }
+        }
+        row.member_name_norms.sort();
+        reject_adjacent_duplicates(
+            "party_family_relations[].member_name_norms[]",
+            row.member_name_norms.iter().map(String::as_str),
+        )?;
+        if row.member_name_norms.len() < 2 {
+            return Err(GeoAssessmentRollOwnerError::invalid(
+                "Geo assessment-roll owner family relations require at least two members",
+                [
+                    ("field", "party_family_relations[].member_name_norms"),
+                    ("family_id", row.family_id.as_str()),
+                ],
+            ));
+        }
+    }
+    rows.sort_by(|left, right| {
+        (
+            left.document_id.as_str(),
+            left.family_id.as_str(),
+            left.source_record_id.as_str(),
+        )
+            .cmp(&(
+                right.document_id.as_str(),
+                right.family_id.as_str(),
+                right.source_record_id.as_str(),
+            ))
+    });
+    reject_adjacent_duplicates(
+        "party_family_relations[].source_record_id",
+        rows.iter().map(|row| row.source_record_id.as_str()),
+    )?;
+    Ok(rows)
 }
 
 fn reject_adjacent_duplicates<'a>(

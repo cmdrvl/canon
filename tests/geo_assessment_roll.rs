@@ -3,10 +3,14 @@
 use canon::geo::assessment_roll::{
     CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION,
     GEO_ASSESSMENT_ROLL_OWNER_AFFILIATE_CONTRACT_ID, GEO_ASSESSMENT_ROLL_OWNER_EXACT_CONTRACT_ID,
-    GeoAssessmentRollCaseDocument, GeoAssessmentRollLotRow, GeoAssessmentRollOwnerCalibration,
-    GeoAssessmentRollOwnerContractSource, GeoAssessmentRollOwnerProofClass,
-    GeoAssessmentRollOwnerRequest, GeoAssessmentRollPartyRow, assessment_roll_owner_match,
-    normalize_assessment_roll_owner_name, produce_assessment_roll_owner_evidence,
+    GEO_ASSESSMENT_ROLL_OWNER_FAMILY_CONTRACT_ID, GeoAssessmentRollCaseDocument,
+    GeoAssessmentRollLotRow, GeoAssessmentRollOwnerCalibration,
+    GeoAssessmentRollOwnerContractSource, GeoAssessmentRollOwnerMatch,
+    GeoAssessmentRollOwnerProofClass, GeoAssessmentRollOwnerRequest,
+    GeoAssessmentRollPartyFamilyRelationRow, GeoAssessmentRollPartyRow,
+    assessment_roll_owner_match, assessment_roll_owner_match_with_family_relations,
+    build_assessment_roll_owner_family_overlay, normalize_assessment_roll_owner_name,
+    produce_assessment_roll_owner_evidence,
 };
 use canon::geo::{
     GeoEvidenceCompilationRequest, GeoEvidenceDisposition, GeoEvidenceRecordRef,
@@ -420,6 +424,217 @@ fn exact_owner_policy_demotes_singleton_match_before_it_can_exclude_truth() {
     );
 }
 
+#[test]
+fn party_family_relation_identifies_recoverable_owner_falsification_variants() {
+    struct OwnerFalsification<'a> {
+        borrower_name_norm: &'a str,
+        truth_owner_names: &'a [&'a str],
+        family_member_name_norms: &'a [&'a str],
+        supported_truth_lots: u64,
+        truth_lots: u64,
+    }
+
+    let cases = [
+        OwnerFalsification {
+            borrower_name_norm: "KEW GARDENS OWNERS CORP",
+            truth_owner_names: &["KEW GARDENS OWNERS CORP", "KEW GRDNS OWNRS CP"],
+            family_member_name_norms: &["KEW GARDENS OWNERS CORP", "KEW GRDNS OWNRS CP"],
+            supported_truth_lots: 2,
+            truth_lots: 2,
+        },
+        OwnerFalsification {
+            borrower_name_norm: "82 HORATIO OWNERS LTD",
+            truth_owner_names: &[
+                "82 HORATIO OWNERS LTD",
+                "THE CITY OF NEW YORK",
+                "THE CITY OF NEW YORK",
+                "THE CITY OF NEW YORK",
+            ],
+            family_member_name_norms: &["82 HORATIO OWNERS LTD", "HORATIO OWNERS"],
+            supported_truth_lots: 1,
+            truth_lots: 4,
+        },
+        OwnerFalsification {
+            borrower_name_norm: "WEST 23RD STREET OWNERS CORP",
+            truth_owner_names: &["UNAVAILABLE OWNER", "WEST 23RD STREET OWNERS CORP"],
+            family_member_name_norms: &["WEST 23RD STREET OWNERS CORP", "WEST 23 STREET OWNERS"],
+            supported_truth_lots: 1,
+            truth_lots: 2,
+        },
+        OwnerFalsification {
+            borrower_name_norm: "TALBOT APARTMENTS INC",
+            truth_owner_names: &["TALBOT APARTMENTS INC", "TALBOT APARTMENT INC"],
+            family_member_name_norms: &["TALBOT APARTMENTS INC", "TALBOT APARTMENT INC"],
+            supported_truth_lots: 2,
+            truth_lots: 2,
+        },
+    ];
+
+    for (index, case) in cases.iter().enumerate() {
+        let borrowers = BTreeSet::from([case.borrower_name_norm.to_string()]);
+        let family_relations = [party_family_relation(
+            "doc-owner-falsification",
+            &format!("family-owner-falsification-{index}"),
+            case.family_member_name_norms,
+        )];
+        let supported = case
+            .truth_owner_names
+            .iter()
+            .filter(|owner| {
+                matches!(
+                    assessment_roll_owner_match_with_family_relations(
+                        owner,
+                        &borrowers,
+                        &family_relations,
+                    ),
+                    GeoAssessmentRollOwnerMatch::Exact | GeoAssessmentRollOwnerMatch::Family
+                )
+            })
+            .count() as u64;
+        assert_eq!(supported, case.supported_truth_lots);
+        assert_eq!(case.truth_owner_names.len() as u64, case.truth_lots);
+    }
+
+    let borrowers = BTreeSet::from(["KEW GARDENS OWNERS CORP".to_string()]);
+    assert_eq!(
+        assessment_roll_owner_match("KEW GRDNS OWNRS CP", &borrowers),
+        GeoAssessmentRollOwnerMatch::None,
+        "the legacy token predicate must not silently learn source-specific aliases"
+    );
+}
+
+#[test]
+fn party_family_overlay_hard_admits_when_relation_supports_two_members() {
+    let population = GeoPopulationEvaluationRequest {
+        version: canon::geo::CANON_GEO_POPULATION_REQUEST_VERSION.to_string(),
+        max_cases: 1,
+        cases: vec![canon::geo::GeoLabeledCompositionCase {
+            id: "case-owner-family".to_string(),
+            evidence: GeoEvidenceCompilationRequest {
+                version: canon::geo::CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+                profile: canon::geo::GeoCompositionProfile::parcel(),
+                universe: canon::geo::GeoCompositionUniverse {
+                    parcels: vec!["4066300015".to_string(), "4066300030".to_string()],
+                    buildings: Vec::new(),
+                },
+                contracts: Vec::new(),
+                observations: Vec::new(),
+                max_assignments: 64,
+                max_materialized_models: 64,
+            },
+            truth_plane: canon::geo::GeoTruthPlane::HumanAdjudication,
+            truth: canon::geo::GeoCompositionModel {
+                parcels: vec!["4066300015".to_string(), "4066300030".to_string()],
+                buildings: Vec::new(),
+            },
+        }],
+    };
+    let mut calibration = calibration_from_fixture_contracts(
+        &fixture_contract(GEO_ASSESSMENT_ROLL_OWNER_EXACT_CONTRACT_ID),
+        &fixture_contract(GEO_ASSESSMENT_ROLL_OWNER_AFFILIATE_CONTRACT_ID),
+    );
+    calibration.exact_admission_policy =
+        GeoRhoAdmissionPolicy::HardOnlyWhenSupportedMembersAtLeast {
+            minimum_supported_members: 2,
+            fallback: GeoRhoAdmissionFallback::SoftWithWeight { cost_if_absent: 1 },
+        };
+    let request = GeoAssessmentRollOwnerRequest {
+        version: CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION.to_string(),
+        proof_class: GeoAssessmentRollOwnerProofClass::Fixture,
+        population,
+        case_documents: vec![GeoAssessmentRollCaseDocument {
+            case_id: "case-owner-family".to_string(),
+            document_id: "2025120900884001".to_string(),
+        }],
+        contract_source: contract_source(),
+        calibration,
+        roll_rows: vec![
+            GeoAssessmentRollLotRow {
+                bbl: "4066300015".to_string(),
+                owner: "KEW GARDENS OWNERS CORP".to_string(),
+                gross_sqft: "45750".to_string(),
+                units: "60".to_string(),
+                condo_number: String::new(),
+                source_record_id:
+                    "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.PROPERTY_VALUATION:FY2026P3:4066300015"
+                        .to_string(),
+                source_vintage: "FY2026P3".to_string(),
+            },
+            GeoAssessmentRollLotRow {
+                bbl: "4066300030".to_string(),
+                owner: "KEW GRDNS OWNRS CP".to_string(),
+                gross_sqft: "34329".to_string(),
+                units: "45".to_string(),
+                condo_number: String::new(),
+                source_record_id:
+                    "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.PROPERTY_VALUATION:FY2026P3:4066300030"
+                        .to_string(),
+                source_vintage: "FY2026P3".to_string(),
+            },
+        ],
+        party_rows: vec![GeoAssessmentRollPartyRow {
+            document_id: "2025120900884001".to_string(),
+            party_type: "1".to_string(),
+            party_name_norm: "KEW GARDENS OWNERS CORP".to_string(),
+            source_record_id:
+                "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_PARTIES_EXT:2026-08-10:45997530"
+                    .to_string(),
+            source_vintage: "2026-08-10".to_string(),
+        }],
+        max_cases: 1,
+        max_roll_rows: 2,
+        max_party_rows: 1,
+        max_overlay_observations: 2,
+    };
+    let family_overlay = build_assessment_roll_owner_family_overlay(
+        &request,
+        &[party_family_relation(
+            "2025120900884001",
+            "family:kew-gardens-owner-name-variants",
+            &["KEW GARDENS OWNERS CORP", "KEW GRDNS OWNRS CP"],
+        )],
+    )
+    .expect("party-family overlay builds");
+
+    assert_eq!(family_overlay.case_overlays.len(), 1);
+    let overlay = &family_overlay.case_overlays[0];
+    assert_eq!(overlay.contracts.len(), 1);
+    assert_eq!(
+        overlay.contracts[0].id,
+        GEO_ASSESSMENT_ROLL_OWNER_FAMILY_CONTRACT_ID
+    );
+    let GeoRhoObservationKind::IntegerSumBand { values, .. } = &overlay.observations[0].observation
+    else {
+        panic!("family observation must be an integer sum band");
+    };
+    let supported = values
+        .iter()
+        .filter(|value| value.value == 0)
+        .map(|value| value.id.clone())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        supported,
+        BTreeSet::from(["4066300015".to_string(), "4066300030".to_string()])
+    );
+
+    let stacked = stack_population_evidence(&request.population, &family_overlay)
+        .expect("family overlay stacks");
+    let compilation = canon::geo::compile_evidence(&stacked.population.cases[0].evidence)
+        .expect("family overlay compiles");
+    let family_admission = compilation
+        .admissions
+        .iter()
+        .find(|admission| admission.contract.id == GEO_ASSESSMENT_ROLL_OWNER_FAMILY_CONTRACT_ID)
+        .expect("family admission");
+    assert_eq!(
+        family_admission.disposition,
+        GeoEvidenceDisposition::HardConstraint
+    );
+    assert!(family_admission.admission_reason.is_none());
+    assert_eq!(compilation.composition_request.hard_constraints.len(), 1);
+    assert!(compilation.composition_request.soft_preferences.is_empty());
+}
+
 fn assessment_roll_owner_fixture_request(
     population: &GeoPopulationEvaluationRequest,
     retained_overlay: &GeoPopulationEvidenceStackRequest,
@@ -591,6 +806,26 @@ fn contract_source() -> GeoAssessmentRollOwnerContractSource {
             "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.WRGL_NYC_OPENDATA_PROPERTY_VALUATION_AND_ASSESSMENT_DATA_TAX_CLASSES_1_2_3_4__STRUCTURED:FY2026P3"
                 .to_string(),
         ],
+    }
+}
+
+fn party_family_relation(
+    document_id: &str,
+    family_id: &str,
+    member_name_norms: &[&str],
+) -> GeoAssessmentRollPartyFamilyRelationRow {
+    GeoAssessmentRollPartyFamilyRelationRow {
+        document_id: document_id.to_string(),
+        family_id: family_id.to_string(),
+        member_name_norms: member_name_norms
+            .iter()
+            .map(|value| value.to_string())
+            .collect(),
+        source_record_id: format!(
+            "fixture:party_family_relation:{document_id}:{}",
+            family_id.replace(':', "_")
+        ),
+        source_vintage: "retained-2026-09-08".to_string(),
     }
 }
 
