@@ -153,6 +153,21 @@ fn command_leaf(command: &str, leafs: &BTreeSet<String>) -> Option<String> {
         .cloned()
 }
 
+fn command_leafs(command: &str, leafs: &BTreeSet<String>) -> Vec<String> {
+    let Some(without_binary) = command.strip_prefix("canon ") else {
+        return Vec::new();
+    };
+    if let Some(leaf) = command_leaf(command, leafs) {
+        return vec![leaf];
+    }
+    let prefix = format!("{without_binary} ");
+    leafs
+        .iter()
+        .filter(|leaf| leaf.starts_with(&prefix))
+        .cloned()
+        .collect()
+}
+
 fn required_command_surface(command: &GeoCommandCapability) -> GeoCommandSurface {
     command
         .surface
@@ -320,19 +335,11 @@ fn expected_implemented_commands() -> BTreeMap<&'static str, ExpectedGeoCommand>
         ),
         (
             "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>",
-            unsurfaced_command(
-                CANON_GEO_COLLATERAL_LEDGER_VERSION,
-                true,
-                false,
-            ),
+            unsurfaced_command(CANON_GEO_COLLATERAL_LEDGER_VERSION, true, false),
         ),
         (
             "canon geo ledger validate --ledger <LEDGER.json>",
-            unsurfaced_command(
-                CANON_GEO_COLLATERAL_LEDGER_VERSION,
-                true,
-                false,
-            ),
+            unsurfaced_command(CANON_GEO_COLLATERAL_LEDGER_VERSION, true, false),
         ),
         (
             "canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>",
@@ -417,19 +424,11 @@ fn expected_implemented_commands() -> BTreeMap<&'static str, ExpectedGeoCommand>
         ),
         (
             "canon.geo.stage.ledger.v0",
-            unsurfaced_command(
-                CANON_GEO_COLLATERAL_LEDGER_VERSION,
-                true,
-                false,
-            ),
+            unsurfaced_command(CANON_GEO_COLLATERAL_LEDGER_VERSION, true, false),
         ),
         (
             "canon.geo.stage.observe_admit.v0",
-            unsurfaced_command(
-                CANON_GEO_OBSERVATION_ROWS_VERSION,
-                true,
-                false,
-            ),
+            unsurfaced_command(CANON_GEO_OBSERVATION_ROWS_VERSION, true, false),
         ),
         (
             "canon.geo.stage.explain.v0",
@@ -996,7 +995,7 @@ fn geo_capabilities_cover_compiled_leaf_commands_and_public_contracts() {
                 command.command.as_str(),
                 (
                     command.output_contract.as_str(),
-                    required_command_surface(command),
+                    command.surface,
                     command.read_only,
                     command.uses_network,
                 ),
@@ -1014,9 +1013,14 @@ fn geo_capabilities_cover_compiled_leaf_commands_and_public_contracts() {
         // Run-stage executors (`canon.geo.stage.*`) are advertised so the planner
         // can bind them, but they have no Clap verb by design (plan §19.3).
         .filter(|command| command.command.starts_with("canon geo "))
-        .map(|command| {
-            command_leaf(&command.command, &clap_leafs)
-                .unwrap_or_else(|| panic!("{} is not a compiled Geo Clap leaf", command.command))
+        .flat_map(|command| {
+            let leafs = command_leafs(&command.command, &clap_leafs);
+            assert!(
+                !leafs.is_empty(),
+                "{} is not a compiled Geo Clap command or aggregate prefix",
+                command.command
+            );
+            leafs
         })
         .collect::<BTreeSet<_>>();
     assert_eq!(

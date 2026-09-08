@@ -1522,15 +1522,20 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
             false,
         ),
         command(
-            "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>",
+            "canon geo ledger",
             GeoCommandSurface::Primary,
             CANON_GEO_COLLATERAL_LEDGER_VERSION,
             true,
             false,
         ),
-        command(
+        unsurfaced_command(
+            "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>",
+            CANON_GEO_COLLATERAL_LEDGER_VERSION,
+            true,
+            false,
+        ),
+        unsurfaced_command(
             "canon geo ledger validate --ledger <LEDGER.json>",
-            GeoCommandSurface::Primary,
             CANON_GEO_COLLATERAL_LEDGER_VERSION,
             true,
             false,
@@ -1633,16 +1638,14 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
             true,
             false,
         ),
-        command(
+        unsurfaced_command(
             "canon.geo.stage.ledger.v0",
-            GeoCommandSurface::Leaf,
             CANON_GEO_COLLATERAL_LEDGER_VERSION,
             true,
             false,
         ),
-        command(
+        unsurfaced_command(
             "canon.geo.stage.observe_admit.v0",
-            GeoCommandSurface::Leaf,
             CANON_GEO_OBSERVATION_ROWS_VERSION,
             true,
             false,
@@ -2567,6 +2570,21 @@ fn command(
     GeoCommandCapability {
         command: command.to_string(),
         surface: Some(surface),
+        output_contract: output_contract.to_string(),
+        read_only,
+        uses_network,
+    }
+}
+
+fn unsurfaced_command(
+    command: &str,
+    output_contract: &str,
+    read_only: bool,
+    uses_network: bool,
+) -> GeoCommandCapability {
+    GeoCommandCapability {
+        command: command.to_string(),
+        surface: None,
         output_contract: output_contract.to_string(),
         read_only,
         uses_network,

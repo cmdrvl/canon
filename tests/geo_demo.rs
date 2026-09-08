@@ -2,7 +2,11 @@
 
 use assert_cmd::Command;
 use serde_json::{Value, json};
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::Path,
+};
 use tempfile::tempdir;
 
 fn run_demo(work_dir: &Path) -> Vec<u8> {
@@ -33,13 +37,32 @@ fn geo_capability_surface_counts(capabilities: &Value) -> BTreeMap<String, u64> 
         .expect("commands status sets");
     for bucket in ["implemented", "diagnostic_only", "unavailable"] {
         for command in commands[bucket].as_array().expect("command bucket array") {
-            let surface = command["surface"]
-                .as_str()
-                .unwrap_or_else(|| panic!("{bucket} command missing surface: {command}"));
-            *counts.entry(surface.to_string()).or_insert(0) += 1;
+            if let Some(surface) = command["surface"].as_str() {
+                *counts.entry(surface.to_string()).or_insert(0) += 1;
+            }
         }
     }
     counts
+}
+
+fn unsurfaced_geo_commands(capabilities: &Value) -> BTreeSet<String> {
+    let mut commands_without_surface = BTreeSet::new();
+    let commands = capabilities["commands"]
+        .as_object()
+        .expect("commands status sets");
+    for bucket in ["implemented", "diagnostic_only", "unavailable"] {
+        for command in commands[bucket].as_array().expect("command bucket array") {
+            if command.get("surface").is_none() {
+                commands_without_surface.insert(
+                    command["command"]
+                        .as_str()
+                        .unwrap_or_else(|| panic!("{bucket} command missing name: {command}"))
+                        .to_string(),
+                );
+            }
+        }
+    }
+    commands_without_surface
 }
 
 #[test]
@@ -69,6 +92,15 @@ fn geo_capabilities_report_exact_surface_tier_counts() {
             ("leaf".to_string(), 21),
             ("measurement".to_string(), 3),
             ("primary".to_string(), 7)
+        ])
+    );
+    assert_eq!(
+        unsurfaced_geo_commands(&capabilities),
+        BTreeSet::from([
+            "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>".to_string(),
+            "canon geo ledger validate --ledger <LEDGER.json>".to_string(),
+            "canon.geo.stage.ledger.v0".to_string(),
+            "canon.geo.stage.observe_admit.v0".to_string(),
         ])
     );
     assert_eq!(
