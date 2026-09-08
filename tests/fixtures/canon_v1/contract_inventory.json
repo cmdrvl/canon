@@ -243,6 +243,19 @@
       "action": "preserve"
     },
     {
+      "id": "canon geo ledger exposure",
+      "family": "geo",
+      "clap_path": "geo ledger exposure",
+      "operator_name": "geo ledger exposure",
+      "primary_contracts": [
+        "canon_geo_collateral_ledger.v0",
+        "canon_geo_advisory_pin.v0",
+        "canon_geo_advisory_archive.v0",
+        "canon_geo_event_exposure.v0"
+      ],
+      "action": "preserve"
+    },
+    {
       "id": "canon geo ledger validate",
       "family": "geo",
       "clap_path": "geo ledger validate",
