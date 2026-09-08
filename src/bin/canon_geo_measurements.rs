@@ -5,24 +5,38 @@ use canon::geo::{
     CANON_GEO_DEED_INDEX_ROWS_VERSION, CANON_GEO_DEED_TRUTH_VERSION,
     CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
     CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
-    CANON_GEO_POINT_POPULATION_VERSION, CANON_GEO_RETRY_LOOP_VERSION,
-    CANON_GEO_RETRY_RECOVERY_VERSION, CANON_GEO_RUN_VERSION, GeoAcquisitionCounts,
-    GeoAcquisitionDenominator, GeoAcquisitionProofClass, GeoAcquisitionReceipt,
-    GeoAcquisitionResumability, GeoAcquisitionTerminalState, GeoBoundedGeography, GeoBoundedSubset,
-    GeoDeedIndexRowsRequest, GeoDeedTruthLoanRef, GeoDenominatorSource, GeoDigest,
-    GeoDigestAlgorithm, GeoExecutorKind, GeoExecutorTrace, GeoFieldRole,
-    GeoH7PipBlockPopulationBatchRequest, GeoH7PopulationRowsRequest,
-    GeoH7StagingSourceRecordBytesBatchRequest, GeoLocalArtifactDigest, GeoNullOrdering,
-    GeoOrderDirection, GeoOrderingTerm, GeoPaginationReceipt, GeoPaginationRequest,
+    CANON_GEO_PLAN_VERSION, CANON_GEO_POINT_POPULATION_VERSION, CANON_GEO_RETRY_LOOP_VERSION,
+    CANON_GEO_RETRY_RECOVERY_VERSION, CANON_GEO_RUN_VERSION, GEO_RETRY_LOOP_BINDING_ID,
+    GEO_RETRY_LOOP_OUTPUT_ID, GEO_RETRY_PASS_STAGE_COMMAND, GEO_RETRY_RECEIPT_BINDING_ID,
+    GEO_RETRY_RUN_BINDING_ID, GeoAcquisitionCounts, GeoAcquisitionDenominator,
+    GeoAcquisitionProofClass, GeoAcquisitionReceipt, GeoAcquisitionResumability,
+    GeoAcquisitionTerminalState, GeoBoundedGeography, GeoBoundedSubset, GeoClaimClass,
+    GeoControlEntityLevel, GeoDeedIndexRowsRequest, GeoDeedTruthLoanRef, GeoDenominatorSource,
+    GeoDigest, GeoDigestAlgorithm, GeoEntityLevel, GeoEvidenceClass, GeoExecutorKind,
+    GeoExecutorTrace, GeoFieldRole, GeoH7PipBlockPopulationBatchRequest,
+    GeoH7PopulationRowsRequest, GeoH7StagingSourceRecordBytesBatchRequest, GeoLocalArtifactDigest,
+    GeoNullOrdering, GeoOrderDirection, GeoOrderingTerm, GeoPaginationReceipt,
+    GeoPaginationRequest, GeoPlan, GeoPlanArtifactRef, GeoPlanBudgetRef, GeoPlanClaimEffect,
+    GeoPlanGrainOutcome, GeoPlanGrainStatus, GeoPlanInventoryRef, GeoPlanNodeOverlay,
+    GeoPlanProfileRef, GeoPlanStage, GeoPlanStatus, GeoPlanTransitionSet,
     GeoPointPopulationArtifact, GeoPointPopulationPoint, GeoReleasePin, GeoRequestedField,
-    GeoRetryLoopArtifact, GeoRetryPolicy, GeoRowByteCeilings, GeoRun, GeoSubsetPredicate,
-    GeoSubsetPredicateKind, canonical_deed_truth_bytes, canonical_geo_acquisition_request_bytes,
+    GeoRetryLoopArtifact, GeoRetryPolicy, GeoRetryTerminal, GeoRowByteCeilings, GeoRun,
+    GeoRunArtifactBinding, GeoRunStatus, GeoSubsetPredicate, GeoSubsetPredicateKind,
+    canonical_deed_truth_bytes, canonical_geo_acquisition_request_bytes, canonical_geo_run_bytes,
     canonical_h7_population_bytes, canonical_retry_loop_bytes, canonical_retry_recovery_bytes,
     derive_deed_truth_from_index, geo_acquisition_request_id,
-    geo_acquisition_request_semantic_hash, materialize_h7_pip_block_population_batch,
-    materialize_h7_population_rows, materialize_h7_staging_source_record_bytes_batch,
-    measure_recovery, validate_geo_acquisition_receipt, validate_geo_acquisition_request,
-    validate_point_population_artifact, validate_retry_loop_artifact,
+    geo_acquisition_request_semantic_hash, geo_plan_semantic_hash,
+    materialize_h7_pip_block_population_batch, materialize_h7_population_rows,
+    materialize_h7_staging_source_record_bytes_batch, measure_recovery, run_geo_plan,
+    validate_geo_acquisition_receipt, validate_geo_acquisition_request, validate_geo_plan,
+    validate_geo_run, validate_point_population_artifact, validate_retry_loop_artifact,
+};
+use canon::project::{
+    ProjectExtensionDagNode, ProjectExtensionDagOutput, ProjectExtensionDagRequest,
+    ProjectPlanErrorCode, ProjectPlanNodeClass, ProjectPlanNodeKind,
+    ProjectPlanOutputMaterialization, ProjectPlanRefusalCondition, ProjectPlanSideEffect,
+    ProjectPlanSideEffectKind, ProjectRunFailurePolicy, ProjectRunNodeOutcome, ProjectRunPolicy,
+    compile_extension_project_plan, digest_bytes as project_digest_bytes,
 };
 use chrono::{DateTime, NaiveDate};
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum};
@@ -54,6 +68,7 @@ const PROVIDER_RESPONSE_BYTES_DIGEST_ID: &str = "provider_response_bytes";
 const GEOCODE_CANDIDATE_ROWS_ARTIFACT_ID: &str = "geocode_candidate_rows";
 const G4_RETRY_RECOVERY_DENOMINATOR: usize = 40;
 const DEFAULT_G4_RETRY_RECOVERY_MAX_BYTES: u64 = 131_072;
+const RETRY_RECOVERY_PASS_STAGE_NODE_ID: &str = "geo.retry_recovery.retry_pass";
 const REQUIRED_CORE_MEASUREMENT_IDS: &[&str] = &[
     "appendix_b_centroid_percolation",
     "appendix_c_r8_density",
@@ -98,6 +113,8 @@ enum MeasurementCommand {
     AcquisitionReceipt(Box<AcquisitionReceiptArgs>),
     #[command(name = "prepare-retry-recovery")]
     PrepareRetryRecovery(Box<PrepareRetryRecoveryArgs>),
+    #[command(name = "record-retry-recovery-pass")]
+    RecordRetryRecoveryPass(Box<RecordRetryRecoveryPassArgs>),
     #[command(name = "measure-retry-recovery")]
     RetryRecovery(RetryRecoveryArgs),
     #[command(name = "materialize-h7-population")]
@@ -135,6 +152,28 @@ struct RetryRecoveryArgs {
     /// Directory of canon_geo_acquisition_receipt.v0 files plus retained byte sidecars
     #[arg(long)]
     receipts: PathBuf,
+}
+
+#[derive(Debug, ClapArgs)]
+struct RecordRetryRecoveryPassArgs {
+    /// Current canon_geo_retry_loop.v0 artifact
+    #[arg(long = "loop")]
+    retry_loop: PathBuf,
+    /// Latest pinned canon_geo_run.v0 artifact to record into the retry loop
+    #[arg(long)]
+    latest_run: PathBuf,
+    /// Matching canon_geo_acquisition_receipt.v0 artifact for the emitted request
+    #[arg(long)]
+    receipt: PathBuf,
+    /// Workspace root for the internal geo run stage
+    #[arg(long)]
+    work_dir: PathBuf,
+    /// File to receive the updated canon_geo_retry_loop.v0 artifact
+    #[arg(long)]
+    out_loop: PathBuf,
+    /// File to receive the canon_geo_run.v0 manifest for the retry-pass stage
+    #[arg(long)]
+    out_run: PathBuf,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -379,6 +418,21 @@ struct RetryRecoveryPreparationReport {
 }
 
 #[derive(Debug, Serialize)]
+struct RetryRecoveryPassRecordReport {
+    subject_id: String,
+    pass_index: u8,
+    terminal: Option<GeoRetryTerminal>,
+    project_node_id: String,
+    stage_plan_id: String,
+    stage_plan_semantic_hash: String,
+    stage_run_id: String,
+    stage_run_semantic_hash: String,
+    retry_loop_output_path: String,
+    out_loop: String,
+    out_run: String,
+}
+
+#[derive(Debug, Serialize)]
 struct MeasurementPlan {
     version: String,
     scope: String,
@@ -567,6 +621,10 @@ fn run_measurement_command(command: MeasurementCommand) -> Result<ExitCode, AppE
         }
         MeasurementCommand::PrepareRetryRecovery(args) => {
             let report = prepare_retry_recovery(*args)?;
+            print_json(&report)?;
+        }
+        MeasurementCommand::RecordRetryRecoveryPass(args) => {
+            let report = record_retry_recovery_pass(*args)?;
             print_json(&report)?;
         }
         MeasurementCommand::RetryRecovery(args) => {
@@ -956,6 +1014,346 @@ fn prepare_retry_recovery(
     })
 }
 
+fn record_retry_recovery_pass(
+    args: RecordRetryRecoveryPassArgs,
+) -> Result<RetryRecoveryPassRecordReport, AppError> {
+    fs::create_dir_all(&args.work_dir).map_err(|error| {
+        AppError::new(format!(
+            "failed to create retry-pass work dir {}: {error}",
+            args.work_dir.display()
+        ))
+    })?;
+    let loop_bytes = read_file(&args.retry_loop, "retry loop")?;
+    let latest_run_bytes = read_file(&args.latest_run, "latest Geo run")?;
+    let receipt_bytes = read_file(&args.receipt, "acquisition receipt")?;
+    let loop_state: GeoRetryLoopArtifact = decode_versioned_json_bytes(
+        &loop_bytes,
+        CANON_GEO_RETRY_LOOP_VERSION,
+        "retry loop",
+        "canon_geo_measurements record-retry-recovery-pass --loop <LOOP.json>",
+    )?;
+    validate_retry_loop_artifact(&loop_state)
+        .map_err(|error| AppError::new(format!("invalid retry loop: {error}")))?;
+    let latest_run: GeoRun = decode_versioned_json_bytes(
+        &latest_run_bytes,
+        CANON_GEO_RUN_VERSION,
+        "latest Geo run",
+        "canon_geo_measurements record-retry-recovery-pass --latest-run <RUN.json>",
+    )?;
+    validate_geo_run(&latest_run)
+        .map_err(|error| AppError::new(format!("invalid latest Geo run: {error}")))?;
+    let _: GeoAcquisitionReceipt = decode_versioned_json_bytes(
+        &receipt_bytes,
+        CANON_GEO_ACQUISITION_RECEIPT_VERSION,
+        "acquisition receipt",
+        "canon_geo_measurements record-retry-recovery-pass --receipt <RECEIPT.json>",
+    )?;
+    let pass_index = next_retry_record_pass_index(&loop_state)?;
+    let retry_loop_output_path = retry_recovery_pass_output_path(&loop_state, pass_index);
+    let plan = retry_recovery_pass_plan(
+        &loop_state,
+        &loop_bytes,
+        &latest_run_bytes,
+        &receipt_bytes,
+        &retry_loop_output_path,
+    )?;
+    let input_bindings = vec![
+        GeoRunArtifactBinding::from_bytes(
+            RETRY_RECOVERY_PASS_STAGE_NODE_ID,
+            GEO_RETRY_LOOP_BINDING_ID,
+            CANON_GEO_RETRY_LOOP_VERSION,
+            loop_bytes,
+        ),
+        GeoRunArtifactBinding::from_bytes(
+            RETRY_RECOVERY_PASS_STAGE_NODE_ID,
+            GEO_RETRY_RUN_BINDING_ID,
+            CANON_GEO_RUN_VERSION,
+            latest_run_bytes,
+        ),
+        GeoRunArtifactBinding::from_bytes(
+            RETRY_RECOVERY_PASS_STAGE_NODE_ID,
+            GEO_RETRY_RECEIPT_BINDING_ID,
+            CANON_GEO_ACQUISITION_RECEIPT_VERSION,
+            receipt_bytes,
+        ),
+    ];
+    let mut policy = ProjectRunPolicy::new(&args.work_dir, "work");
+    policy.failure_policy = ProjectRunFailurePolicy::FailFast;
+    let stage_plan_id = plan.plan_id.clone();
+    let stage_plan_semantic_hash = plan.semantic_hash.clone();
+    let stage_run = run_geo_plan(canon::geo::GeoRunRequest::new(plan, policy, input_bindings))
+        .map_err(|error| AppError::new(format!("retry recovery pass stage failed: {error}")))?;
+    if stage_run.status != GeoRunStatus::Completed {
+        let reason = retry_pass_stage_failure_reason(&stage_run)
+            .unwrap_or_else(|| "no failed-node reason was recorded".to_string());
+        return Err(AppError::new(format!(
+            "retry recovery pass stage did not complete: {:?}: {reason}",
+            stage_run.status,
+        )));
+    }
+    let stage_output_path = retry_loop_output_path_from_stage_run(&stage_run)?;
+    let recorded_loop_bytes =
+        fs::read(args.work_dir.join(&stage_output_path)).map_err(|error| {
+            AppError::new(format!(
+                "failed to read retry-pass stage output {}: {error}",
+                stage_output_path
+            ))
+        })?;
+    let recorded_loop: GeoRetryLoopArtifact = decode_versioned_json_bytes(
+        &recorded_loop_bytes,
+        CANON_GEO_RETRY_LOOP_VERSION,
+        "recorded retry loop",
+        "canon_geo_measurements record-retry-recovery-pass --out-loop <LOOP.json>",
+    )?;
+    validate_retry_loop_artifact(&recorded_loop)
+        .map_err(|error| AppError::new(format!("invalid recorded retry loop: {error}")))?;
+    let canonical_loop_bytes = canonical_retry_loop_bytes(&recorded_loop).map_err(|error| {
+        AppError::new(format!(
+            "failed to serialize recorded {CANON_GEO_RETRY_LOOP_VERSION}: {error}"
+        ))
+    })?;
+    let canonical_run_bytes = canonical_geo_run_bytes(&stage_run).map_err(|error| {
+        AppError::new(format!(
+            "failed to serialize retry-pass {CANON_GEO_RUN_VERSION}: {error}"
+        ))
+    })?;
+    write_bytes_file(&args.out_loop, &canonical_loop_bytes, "recorded retry loop")?;
+    write_bytes_file(&args.out_run, &canonical_run_bytes, "retry-pass Geo run")?;
+    Ok(RetryRecoveryPassRecordReport {
+        subject_id: recorded_loop.subject_id,
+        pass_index,
+        terminal: recorded_loop.terminal,
+        project_node_id: RETRY_RECOVERY_PASS_STAGE_NODE_ID.to_string(),
+        stage_plan_id,
+        stage_plan_semantic_hash,
+        stage_run_id: stage_run.run_id,
+        stage_run_semantic_hash: stage_run.semantic_hash,
+        retry_loop_output_path: stage_output_path,
+        out_loop: args.out_loop.display().to_string(),
+        out_run: args.out_run.display().to_string(),
+    })
+}
+
+fn retry_recovery_pass_plan(
+    loop_state: &GeoRetryLoopArtifact,
+    loop_bytes: &[u8],
+    latest_run_bytes: &[u8],
+    receipt_bytes: &[u8],
+    output_path: &str,
+) -> Result<GeoPlan, AppError> {
+    let subject_digest = blake3::hash(loop_state.subject_id.as_bytes())
+        .to_hex()
+        .to_string();
+    let project_id = format!("geo.retry_recovery.record.{subject_digest}");
+    let manifest_digest = digest_labeled_parts(
+        "retry-recovery-pass-manifest",
+        &[
+            ("retry_loop", loop_bytes),
+            ("latest_run", latest_run_bytes),
+            ("receipt", receipt_bytes),
+        ],
+    );
+    let lock_digest = digest_labeled_parts(
+        "retry-recovery-pass-lock",
+        &[
+            ("project_id", project_id.as_bytes()),
+            ("stage_command", GEO_RETRY_PASS_STAGE_COMMAND.as_bytes()),
+            ("output_path", output_path.as_bytes()),
+        ],
+    );
+    let project_plan =
+        compile_extension_project_plan(ProjectExtensionDagRequest::offline_read_only(
+            project_id,
+            manifest_digest,
+            lock_digest,
+            vec![ProjectExtensionDagNode {
+                node_id: RETRY_RECOVERY_PASS_STAGE_NODE_ID.to_string(),
+                kind: ProjectPlanNodeKind::Evidence,
+                class: ProjectPlanNodeClass::Computation,
+                command: GEO_RETRY_PASS_STAGE_COMMAND.to_string(),
+                dependencies: Vec::new(),
+                content_hash_inputs: Vec::new(),
+                outputs: vec![ProjectExtensionDagOutput {
+                    output_id: GEO_RETRY_LOOP_OUTPUT_ID.to_string(),
+                    path: output_path.to_string(),
+                    materialization: ProjectPlanOutputMaterialization::PlannedArtifact,
+                }],
+                limits: BTreeMap::new(),
+                cache_eligible: true,
+                side_effects: vec![
+                    ProjectPlanSideEffect {
+                        kind: ProjectPlanSideEffectKind::ReadsInput,
+                        description: "reads a typed retry loop, Geo run, and acquisition receipt"
+                            .to_string(),
+                    },
+                    ProjectPlanSideEffect {
+                        kind: ProjectPlanSideEffectKind::WritesArtifact,
+                        description: "publishes one recorded retry-loop artifact".to_string(),
+                    },
+                ],
+                refusal_conditions: vec![ProjectPlanRefusalCondition {
+                    code: ProjectPlanErrorCode::ArtifactContract,
+                    message: "refuse on retry loop, run, receipt, or output contract mismatch"
+                        .to_string(),
+                    next_command: None,
+                }],
+            }],
+        ))
+        .map_err(|error| AppError::new(format!("failed to compile retry-pass DAG: {error}")))?;
+    let question_hash = digest_labeled_parts(
+        "retry-recovery-pass-question",
+        &[("subject_id", loop_state.subject_id.as_bytes())],
+    );
+    let capabilities_hash = digest_labeled_parts(
+        "retry-recovery-pass-capabilities",
+        &[("stage_command", GEO_RETRY_PASS_STAGE_COMMAND.as_bytes())],
+    );
+    let inventory_hash = digest_labeled_parts(
+        "retry-recovery-pass-inventory",
+        &[("retry_loop", loop_bytes), ("receipt", receipt_bytes)],
+    );
+    let profile_hash = digest_labeled_parts(
+        "retry-recovery-pass-profile",
+        &[("selection_level", b"building")],
+    );
+    let budget_hash = digest_labeled_parts(
+        "retry-recovery-pass-budget",
+        &[("policy", b"local-artifact-only")],
+    );
+    let mut plan = GeoPlan {
+        version: CANON_GEO_PLAN_VERSION.to_string(),
+        plan_id: String::new(),
+        semantic_hash: String::new(),
+        status: GeoPlanStatus::Planned,
+        question_ref: GeoPlanArtifactRef {
+            artifact_id: "geo.retry_recovery.record.question".to_string(),
+            semantic_hash: question_hash,
+        },
+        capabilities_ref: GeoPlanArtifactRef {
+            artifact_id: "geo.retry_recovery.record.capabilities".to_string(),
+            semantic_hash: capabilities_hash,
+        },
+        inventory_ref: GeoPlanInventoryRef {
+            inventory_id: "geo.retry_recovery.record.inventory".to_string(),
+            semantic_hash: inventory_hash.clone(),
+            planning_hash: inventory_hash,
+        },
+        profile_ref: GeoPlanProfileRef {
+            version: "geo.retry_recovery.stage_profile.v0".to_string(),
+            selection_level: GeoEntityLevel::Building,
+            semantic_hash: profile_hash,
+        },
+        budget_ref: GeoPlanBudgetRef {
+            budget_id: "geo.retry_recovery.record.budget".to_string(),
+            semantic_hash: budget_hash.clone(),
+            planning_hash: budget_hash,
+        },
+        project_plan,
+        geo_nodes: vec![GeoPlanNodeOverlay {
+            project_node_id: RETRY_RECOVERY_PASS_STAGE_NODE_ID.to_string(),
+            stage: GeoPlanStage::MaterializeEvidence,
+            entity_level: Some(GeoControlEntityLevel::Building),
+            evidence_classes: vec![GeoEvidenceClass::GeocodePoint],
+            claim_classes: vec![GeoClaimClass::CandidateReach],
+            expected_output_contract: CANON_GEO_RETRY_LOOP_VERSION.to_string(),
+            preconditions: Vec::new(),
+            claim_effect: GeoPlanClaimEffect::NamedAuditGate,
+            bounded_section_required: false,
+            incidence_factorization_required: false,
+            exact_solve_scope: None,
+            deterministic_bounds: Vec::new(),
+            cost_estimate_ranges: Vec::new(),
+            transitions: GeoPlanTransitionSet {
+                success: "recorded retry pass can enter retry-recovery measurement".to_string(),
+                abstention: "retry loop remains bounded by policy ceiling".to_string(),
+                contradiction: "receipt/run mismatch refuses before recovery scoring".to_string(),
+                budget_fallback: "retry pass has no internal budget fallback".to_string(),
+            },
+        }],
+        grain_outcomes: vec![GeoPlanGrainOutcome {
+            entity_level: GeoControlEntityLevel::Building,
+            status: GeoPlanGrainStatus::PlannedRelativeToDeclaredUniverse,
+            missing_evidence_classes: Vec::new(),
+            project_node_ids: vec![RETRY_RECOVERY_PASS_STAGE_NODE_ID.to_string()],
+            claim_limitation:
+                "retry-pass recording binds fresh acquisition receipts for reach only; precision remains unclaimed"
+                    .to_string(),
+            next_action:
+                "after all frozen 40 loops are terminal, run measure-retry-recovery".to_string(),
+        }],
+        external_requests: Vec::new(),
+        diagnostics: Vec::new(),
+    };
+    plan.semantic_hash = geo_plan_semantic_hash(&plan)
+        .map_err(|error| AppError::new(format!("failed to hash retry-pass Geo plan: {error}")))?;
+    plan.plan_id = format!(
+        "{CANON_GEO_PLAN_VERSION}:{}",
+        plan.semantic_hash.trim_start_matches("blake3:")
+    );
+    validate_geo_plan(&plan)
+        .map_err(|error| AppError::new(format!("invalid retry-pass Geo plan: {error}")))?;
+    Ok(plan)
+}
+
+fn next_retry_record_pass_index(loop_state: &GeoRetryLoopArtifact) -> Result<u8, AppError> {
+    let next = loop_state
+        .passes
+        .len()
+        .checked_add(1)
+        .ok_or_else(|| AppError::new("retry loop pass count overflowed"))?;
+    u8::try_from(next).map_err(|_| AppError::new("retry loop pass count exceeded u8 range"))
+}
+
+fn retry_recovery_pass_output_path(loop_state: &GeoRetryLoopArtifact, pass_index: u8) -> String {
+    let subject_digest = blake3::hash(loop_state.subject_id.as_bytes())
+        .to_hex()
+        .to_string();
+    format!("geo/retry_recovery/{subject_digest}/pass-{pass_index:02}/retry_loop.json")
+}
+
+fn retry_loop_output_path_from_stage_run(run: &GeoRun) -> Result<String, AppError> {
+    let report = run
+        .project_run_report
+        .as_ref()
+        .ok_or_else(|| AppError::new("retry-pass Geo run is missing project_run_report"))?;
+    let node_receipt = report
+        .receipt
+        .node_receipts
+        .iter()
+        .find(|receipt| {
+            receipt.node_id == RETRY_RECOVERY_PASS_STAGE_NODE_ID
+                && receipt.outcome == ProjectRunNodeOutcome::Completed
+        })
+        .ok_or_else(|| AppError::new("retry-pass Geo run is missing a completed node receipt"))?;
+    let output = node_receipt
+        .outputs
+        .iter()
+        .find(|output| output.output_id == GEO_RETRY_LOOP_OUTPUT_ID)
+        .ok_or_else(|| AppError::new("retry-pass node receipt is missing retry_loop output"))?;
+    Ok(output.path.clone())
+}
+
+fn retry_pass_stage_failure_reason(run: &GeoRun) -> Option<String> {
+    run.project_run_report
+        .as_ref()
+        .and_then(|report| {
+            report
+                .node_reports
+                .iter()
+                .find(|node| {
+                    node.node_id == RETRY_RECOVERY_PASS_STAGE_NODE_ID
+                        && node.outcome == ProjectRunNodeOutcome::Failed
+                })
+                .and_then(|node| node.reason.clone())
+        })
+        .or_else(|| {
+            run.blockers
+                .iter()
+                .find(|blocker| !blocker.reason.trim().is_empty())
+                .map(|blocker| blocker.reason.clone())
+        })
+}
+
 fn retry_address_rows(path: &Path) -> Result<BTreeMap<String, RetryRecoveryAddressRow>, AppError> {
     let rows: Vec<RetryRecoveryAddressRow> = load_unversioned_json(
         path,
@@ -1233,6 +1631,78 @@ fn load_unversioned_json<T: DeserializeOwned>(
     serde_json::from_slice(&bytes).map_err(|error| {
         AppError::new(format!(
             "failed to decode {} as {label} for {usage}: {error}",
+            path.display()
+        ))
+    })
+}
+
+fn read_file(path: &Path, label: &str) -> Result<Vec<u8>, AppError> {
+    fs::read(path).map_err(|error| {
+        AppError::new(format!(
+            "failed to read {label} {}: {error}",
+            path.display()
+        ))
+    })
+}
+
+fn decode_versioned_json_bytes<T: DeserializeOwned>(
+    bytes: &[u8],
+    expected_version: &str,
+    label: &str,
+    usage: &str,
+) -> Result<T, AppError> {
+    let value: Value = serde_json::from_slice(bytes).map_err(|error| {
+        AppError::new(format!("failed to parse {label} JSON for {usage}: {error}"))
+    })?;
+    match value.get("version").and_then(Value::as_str) {
+        Some(actual) if actual == expected_version => {}
+        Some(actual) => {
+            return Err(AppError::new(format!(
+                "unsupported {label} version {actual}; expected {expected_version}"
+            )));
+        }
+        None => {
+            return Err(AppError::new(format!(
+                "{usage} requires top-level version {expected_version}"
+            )));
+        }
+    }
+    serde_json::from_value(value).map_err(|error| {
+        AppError::new(format!(
+            "failed to decode {label} as {expected_version}: {error}"
+        ))
+    })
+}
+
+fn digest_labeled_parts(label: &str, parts: &[(&str, &[u8])]) -> String {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(label.as_bytes());
+    bytes.push(b'\n');
+    for (part_label, part_bytes) in parts {
+        bytes.extend_from_slice(part_label.as_bytes());
+        bytes.push(b'\0');
+        bytes.extend_from_slice(part_bytes.len().to_string().as_bytes());
+        bytes.push(b'\0');
+        bytes.extend_from_slice(part_bytes);
+        bytes.push(b'\n');
+    }
+    project_digest_bytes(&bytes)
+}
+
+fn write_bytes_file(path: &Path, bytes: &[u8], label: &str) -> Result<(), AppError> {
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent).map_err(|error| {
+            AppError::new(format!(
+                "failed to create parent dir for {label} {}: {error}",
+                path.display()
+            ))
+        })?;
+    }
+    fs::write(path, bytes).map_err(|error| {
+        AppError::new(format!(
+            "failed to write {label} {}: {error}",
             path.display()
         ))
     })

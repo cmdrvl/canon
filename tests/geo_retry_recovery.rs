@@ -529,6 +529,197 @@ fn measurement_binary_prepares_retry_recovery_requests_from_bound_address_rows()
 }
 
 #[test]
+fn measurement_binary_records_retry_pass_through_registered_stage() {
+    let mut fixture = recovery_fixture();
+    let final_home_cells = fixture
+        .population
+        .points
+        .iter()
+        .map(|point| point.home_cell_r9.clone())
+        .collect::<Vec<_>>();
+    let point = fixture.population.points[0].clone();
+    let loop_state = GeoRetryLoopArtifact {
+        version: CANON_GEO_RETRY_LOOP_VERSION.to_string(),
+        subject_id: point.subject_id.clone(),
+        policy: retry_policy(&point, 2),
+        passes: Vec::new(),
+        terminal: None,
+    };
+    let latest_run = completed_run(
+        "record-stage-cli-positive",
+        different_home_cell(0, &final_home_cells),
+    );
+    let receipt = receipt_for_request(&loop_state.policy.regeocode_request_template);
+    let temp = tempdir().expect("tempdir");
+    let loop_path = temp.path().join("input.loop.json");
+    let latest_run_path = temp.path().join("latest.run.json");
+    let receipt_path = temp.path().join("receipt.json");
+    let out_loop_path = temp.path().join("out").join("recorded.loop.json");
+    let out_run_path = temp.path().join("out").join("record-stage.run.json");
+    write_json(&loop_path, &loop_state);
+    write_json(&latest_run_path, &latest_run);
+    write_json(&receipt_path, &receipt);
+
+    let output = assert_cmd::cargo::cargo_bin_cmd!("canon_geo_measurements")
+        .arg("record-retry-recovery-pass")
+        .arg("--loop")
+        .arg(&loop_path)
+        .arg("--latest-run")
+        .arg(&latest_run_path)
+        .arg("--receipt")
+        .arg(&receipt_path)
+        .arg("--work-dir")
+        .arg(temp.path().join("work"))
+        .arg("--out-loop")
+        .arg(&out_loop_path)
+        .arg("--out-run")
+        .arg(&out_run_path)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let report: Value = serde_json::from_slice(&output).expect("record report parses");
+    assert_eq!(
+        report["subject_id"].as_str(),
+        Some(loop_state.subject_id.as_str())
+    );
+    assert_eq!(report["pass_index"], 1);
+    assert_eq!(report["terminal"], "resolved");
+    assert_eq!(report["project_node_id"], "geo.retry_recovery.retry_pass");
+    assert!(
+        report["stage_plan_semantic_hash"]
+            .as_str()
+            .is_some_and(|hash| hash.starts_with("blake3:")),
+        "record report must expose the retry-pass plan hash: {report:?}"
+    );
+    assert!(
+        report["stage_run_semantic_hash"]
+            .as_str()
+            .is_some_and(|hash| hash.starts_with("blake3:")),
+        "record report must expose the retry-pass run hash: {report:?}"
+    );
+
+    let recorded_loop: GeoRetryLoopArtifact =
+        serde_json::from_slice(&fs::read(&out_loop_path).expect("recorded loop"))
+            .expect("recorded loop parses");
+    assert_eq!(recorded_loop.subject_id, loop_state.subject_id);
+    assert_eq!(recorded_loop.terminal, Some(GeoRetryTerminal::Resolved));
+    assert_eq!(recorded_loop.passes.len(), 1);
+    assert_eq!(recorded_loop.passes[0].index, 1);
+    assert_eq!(recorded_loop.passes[0].run_blake3, latest_run.semantic_hash);
+    let expected_receipt_blake3 = receipt_content_blake3(&receipt);
+    assert_eq!(
+        recorded_loop.passes[0].receipt_blake3.as_deref(),
+        Some(expected_receipt_blake3.as_str())
+    );
+
+    let stage_run: GeoRun = serde_json::from_slice(&fs::read(&out_run_path).expect("stage run"))
+        .expect("stage run parses");
+    validate_geo_run(&stage_run).expect("retry-pass stage run validates");
+    assert_eq!(stage_run.status, GeoRunStatus::Completed);
+    assert!(stage_run.output_refs.iter().any(|output| {
+        output.project_node_id == "geo.retry_recovery.retry_pass"
+            && output.output_id == "retry_loop"
+            && output.contract_version == CANON_GEO_RETRY_LOOP_VERSION
+    }));
+    let stage_report = stage_run
+        .project_run_report
+        .as_ref()
+        .expect("stage run has project report");
+    assert_eq!(
+        stage_report.executed_nodes,
+        vec!["geo.retry_recovery.retry_pass".to_string()]
+    );
+
+    fixture.loops[0] = recorded_loop;
+    fixture
+        .runs
+        .insert(latest_run.semantic_hash.clone(), latest_run);
+    fixture
+        .receipts
+        .insert(receipt.request_semantic_hash.clone(), receipt);
+    let recovery = measure_recovery(
+        &fixture.population,
+        &fixture.loops,
+        &fixture.runs,
+        &fixture.receipts,
+    )
+    .expect("stage-recorded loop remains measurable");
+    assert_eq!(recovery.denominator, 40);
+    assert_eq!(recovery.recovered, 25);
+    assert!(!recovery.precision_claim);
+}
+
+#[test]
+fn measurement_binary_record_retry_pass_refuses_unrelated_receipt() {
+    let fixture = recovery_fixture();
+    let final_home_cells = fixture
+        .population
+        .points
+        .iter()
+        .map(|point| point.home_cell_r9.clone())
+        .collect::<Vec<_>>();
+    let point = fixture.population.points[0].clone();
+    let loop_state = GeoRetryLoopArtifact {
+        version: CANON_GEO_RETRY_LOOP_VERSION.to_string(),
+        subject_id: point.subject_id.clone(),
+        policy: retry_policy(&point, 2),
+        passes: Vec::new(),
+        terminal: None,
+    };
+    let latest_run = completed_run(
+        "record-stage-cli-negative",
+        different_home_cell(0, &final_home_cells),
+    );
+    let unrelated_request = acquisition_request(
+        "unrelated-receipt",
+        "fixture.retry.unrelated-receipt.subject",
+    );
+    let unrelated_receipt = receipt_for_request(&unrelated_request);
+    let temp = tempdir().expect("tempdir");
+    let loop_path = temp.path().join("input.loop.json");
+    let latest_run_path = temp.path().join("latest.run.json");
+    let receipt_path = temp.path().join("receipt.json");
+    write_json(&loop_path, &loop_state);
+    write_json(&latest_run_path, &latest_run);
+    write_json(&receipt_path, &unrelated_receipt);
+
+    let output = assert_cmd::cargo::cargo_bin_cmd!("canon_geo_measurements")
+        .arg("record-retry-recovery-pass")
+        .arg("--loop")
+        .arg(&loop_path)
+        .arg("--latest-run")
+        .arg(&latest_run_path)
+        .arg("--receipt")
+        .arg(&receipt_path)
+        .arg("--work-dir")
+        .arg(temp.path().join("work"))
+        .arg("--out-loop")
+        .arg(temp.path().join("out").join("recorded.loop.json"))
+        .arg("--out-run")
+        .arg(temp.path().join("out").join("record-stage.run.json"))
+        .output()
+        .expect("run record command");
+    assert!(
+        !output.status.success(),
+        "unrelated receipt must be refused\nstdout={}\nstderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("retry recovery pass stage did not complete"),
+        "stderr should identify the retry-pass wrapper failure: {stderr}"
+    );
+    assert!(
+        stderr.contains("retry-pass record") && stderr.contains("request_semantic_hash"),
+        "stderr should preserve the retry-pass project execution path: {stderr}"
+    );
+}
+
+#[test]
 fn measurement_binary_refuses_retry_recovery_address_hash_mismatch() {
     let fixture = recovery_fixture();
     let mut population = fixture.population.clone();
