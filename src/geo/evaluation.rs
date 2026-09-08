@@ -612,8 +612,27 @@ pub struct GeoPopulationTruthPlaneSummary {
 pub struct GeoPopulationEvaluationArtifact {
     pub version: String,
     pub request_version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub truth_binding: Option<GeoPopulationTruthBindingSummary>,
     pub summary: GeoPopulationSummary,
     pub cases: Vec<GeoPopulationCaseEvaluation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoPopulationTruthBindingSummary {
+    pub truth_plane: GeoTruthPlane,
+    pub source_version: String,
+    pub source_proof_class: GeoDeedTruthProofClass,
+    pub input_loans: u64,
+    pub unique_truth_rows: u64,
+    pub bound_unique_cases: u64,
+    pub unique_not_in_population_cases: u64,
+    pub non_unique_discarded: u64,
+    pub no_match: u64,
+    pub deed_truth_unbound_cases: u64,
+    pub round_amount_loans: u64,
+    pub round_amount_unique: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -1236,6 +1255,7 @@ where
         evaluation: GeoPopulationEvaluationArtifact {
             version: CANON_GEO_POPULATION_EVALUATION_VERSION.to_string(),
             request_version: request.version.clone(),
+            truth_binding: None,
             summary,
             cases: evaluations,
         },
@@ -2997,6 +3017,27 @@ pub fn validate_population_evaluation_artifact(
         validate_case_evaluation(case)?;
     }
     validate_deed_truth_plane_scope(artifact.cases.iter().map(|case| case.truth_plane))?;
+    if let Some(summary) = &artifact.truth_binding {
+        validate_population_truth_binding_summary(summary)?;
+        if artifact.summary.cases != summary.bound_unique_cases {
+            return Err(summary_invariant_error(
+                "truth_binding",
+                "bound_unique_cases",
+                artifact.summary.cases,
+                summary.bound_unique_cases,
+            ));
+        }
+        if artifact
+            .cases
+            .iter()
+            .any(|case| case.truth_plane != summary.truth_plane)
+        {
+            return Err(GeoPopulationError::invalid_input(
+                "Geo deed truth binding summary plane must match every evaluated case",
+                [("field", "truth_binding.truth_plane")],
+            ));
+        }
+    }
     validate_summary(&artifact.summary)?;
     let expected_summary = summarize(&artifact.cases)?;
     if artifact.summary != expected_summary {
@@ -3210,6 +3251,217 @@ pub fn validate_deed_truth_artifact(
         ));
     }
     Ok(())
+}
+
+pub fn bind_deed_truth_to_population(
+    request: &GeoPopulationEvaluationRequest,
+    artifact: &GeoDeedTruthArtifact,
+) -> Result<
+    (
+        GeoPopulationEvaluationRequest,
+        GeoPopulationTruthBindingSummary,
+    ),
+    GeoPopulationError,
+> {
+    validate_deed_truth_artifact(artifact)?;
+    validate_deed_truth_binding_population_envelope(request)?;
+
+    let unique_truth_by_loan = artifact
+        .per_loan
+        .iter()
+        .filter(|row| row.match_kind == GeoDeedTruthMatchKind::Unique)
+        .map(|row| (row.loan_id.as_str(), row))
+        .collect::<BTreeMap<_, _>>();
+    let mut bound_cases = Vec::new();
+    for case in &request.cases {
+        if let Some(row) = unique_truth_by_loan.get(case.id.as_str()) {
+            let mut bound_case = case.clone();
+            bound_case.truth_plane = GeoTruthPlane::DeedGrainInstrument;
+            bound_case.truth = GeoCompositionModel {
+                parcels: row.parcel_ids.clone(),
+                buildings: Vec::new(),
+            };
+            bound_cases.push(bound_case);
+        }
+    }
+    let bound_unique_cases =
+        checked_len(bound_cases.len(), "deed_truth_binding.bound_unique_cases")?;
+    if bound_unique_cases == 0 {
+        return Err(GeoPopulationError::invalid_input(
+            "Geo deed truth artifact has no Unique rows matching the population case ids",
+            [
+                ("field", "truth.per_loan"),
+                ("truth_plane", "deed_grain_instrument"),
+            ],
+        ));
+    }
+    let unique_not_in_population_cases = checked_deed_truth_binding_difference(
+        "deed_truth_binding.unique_not_in_population_cases",
+        artifact.summary.unique,
+        bound_unique_cases,
+    )?;
+    let deed_truth_unbound_cases = checked_deed_truth_binding_difference(
+        "deed_truth_binding.deed_truth_unbound_cases",
+        artifact.summary.loans,
+        bound_unique_cases,
+    )?;
+    let summary = GeoPopulationTruthBindingSummary {
+        truth_plane: GeoTruthPlane::DeedGrainInstrument,
+        source_version: artifact.version.clone(),
+        source_proof_class: artifact.proof_class,
+        input_loans: artifact.summary.loans,
+        unique_truth_rows: artifact.summary.unique,
+        bound_unique_cases,
+        unique_not_in_population_cases,
+        non_unique_discarded: artifact.summary.non_unique_discarded,
+        no_match: artifact.summary.no_match,
+        deed_truth_unbound_cases,
+        round_amount_loans: artifact.summary.round_amount_loans,
+        round_amount_unique: artifact.summary.round_amount_unique,
+    };
+    validate_population_truth_binding_summary(&summary)?;
+    Ok((
+        GeoPopulationEvaluationRequest {
+            version: request.version.clone(),
+            cases: bound_cases,
+            max_cases: request.max_cases,
+        },
+        summary,
+    ))
+}
+
+fn validate_deed_truth_binding_population_envelope(
+    request: &GeoPopulationEvaluationRequest,
+) -> Result<(), GeoPopulationError> {
+    if request.version != CANON_GEO_POPULATION_REQUEST_VERSION {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::UnsupportedVersion,
+            "Unsupported Geo population request version",
+            [
+                ("actual", request.version.as_str()),
+                ("expected", CANON_GEO_POPULATION_REQUEST_VERSION),
+            ],
+        ));
+    }
+    if request.max_cases == 0 || request.cases.len() > request.max_cases {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::PopulationBudgetExceeded,
+            "Geo population exceeds the declared case budget",
+            [
+                ("cases", request.cases.len().to_string()),
+                ("max_cases", request.max_cases.to_string()),
+            ],
+        ));
+    }
+
+    let mut seen = BTreeSet::new();
+    for case in &request.cases {
+        if case.id.is_empty() || case.id.trim() != case.id {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo population case identifiers must be non-empty and canonical",
+                [("case_id", case.id.as_str())],
+            ));
+        }
+        if !seen.insert(case.id.as_str()) {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo population contains a duplicate case identifier",
+                [("case_id", case.id.as_str())],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_population_truth_binding_summary(
+    summary: &GeoPopulationTruthBindingSummary,
+) -> Result<(), GeoPopulationError> {
+    if summary.truth_plane != GeoTruthPlane::DeedGrainInstrument {
+        return Err(GeoPopulationError::invalid_input(
+            "Geo deed truth binding summary must declare the deed-grain truth plane",
+            [("field", "truth_binding.truth_plane")],
+        ));
+    }
+    if summary.source_version != CANON_GEO_DEED_TRUTH_VERSION {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::UnsupportedVersion,
+            "Unsupported Geo deed truth binding source version",
+            [
+                ("actual", summary.source_version.as_str()),
+                ("expected", CANON_GEO_DEED_TRUTH_VERSION),
+            ],
+        ));
+    }
+    let observed_loans = sum_u64(
+        [
+            summary.unique_truth_rows,
+            summary.non_unique_discarded,
+            summary.no_match,
+        ],
+        "truth_binding.input_loans",
+    )?;
+    if observed_loans != summary.input_loans {
+        return Err(summary_invariant_error(
+            "truth_binding",
+            "input_loans",
+            summary.input_loans,
+            observed_loans,
+        ));
+    }
+    if summary.bound_unique_cases > summary.unique_truth_rows {
+        return Err(summary_invariant_error(
+            "truth_binding",
+            "bound_unique_cases",
+            summary.unique_truth_rows,
+            summary.bound_unique_cases,
+        ));
+    }
+    let expected_unique_not_in_population = checked_deed_truth_binding_difference(
+        "truth_binding.unique_not_in_population_cases",
+        summary.unique_truth_rows,
+        summary.bound_unique_cases,
+    )?;
+    if summary.unique_not_in_population_cases != expected_unique_not_in_population {
+        return Err(summary_invariant_error(
+            "truth_binding",
+            "unique_not_in_population_cases",
+            expected_unique_not_in_population,
+            summary.unique_not_in_population_cases,
+        ));
+    }
+    let expected_unbound = checked_deed_truth_binding_difference(
+        "truth_binding.deed_truth_unbound_cases",
+        summary.input_loans,
+        summary.bound_unique_cases,
+    )?;
+    if summary.deed_truth_unbound_cases != expected_unbound {
+        return Err(summary_invariant_error(
+            "truth_binding",
+            "deed_truth_unbound_cases",
+            expected_unbound,
+            summary.deed_truth_unbound_cases,
+        ));
+    }
+    if summary.round_amount_unique > summary.round_amount_loans {
+        return Err(summary_invariant_error(
+            "truth_binding",
+            "round_amount_unique",
+            summary.round_amount_loans,
+            summary.round_amount_unique,
+        ));
+    }
+    Ok(())
+}
+
+fn checked_deed_truth_binding_difference(
+    field: &'static str,
+    total: u64,
+    subset: u64,
+) -> Result<u64, GeoPopulationError> {
+    total
+        .checked_sub(subset)
+        .ok_or_else(|| summary_invariant_error("truth_binding", field, total, subset))
 }
 
 pub fn validate_deed_truth_plane_scope(

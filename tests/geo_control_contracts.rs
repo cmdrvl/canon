@@ -579,7 +579,7 @@ fn expected_implemented_commands() -> BTreeMap<&'static str, ExpectedGeoCommand>
             ),
         ),
         (
-            "canon geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>] [--e4-before-assessment <BEFORE.json> --e4-rescore-out <COMPARISON.json>]",
+            "canon geo evaluate --population <POPULATION.json> [--truth <DEED_TRUTH.json> --truth-plane deed_grain_instrument] [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>] [--e4-before-assessment <BEFORE.json> --e4-rescore-out <COMPARISON.json>]",
             surfaced_command(
                 CANON_GEO_POPULATION_EVALUATION_VERSION,
                 GeoCommandSurface::Primary,

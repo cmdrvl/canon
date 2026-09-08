@@ -3,11 +3,15 @@
 use canon::geo::{
     GeoDeedIndexRowsRequest, GeoDeedTruthArtifact, GeoDeedTruthLoanMatch, GeoDeedTruthLoanRef,
     GeoDeedTruthMatchKind, GeoDeedTruthProofClass, GeoPopulationErrorCode,
-    GeoPopulationEvaluationRequest, GeoTruthPlane, canonical_deed_truth_bytes, derive_deed_truth,
+    GeoPopulationEvaluationArtifact, GeoPopulationEvaluationRequest, GeoTruthPlane,
+    bind_deed_truth_to_population, canonical_deed_truth_bytes, derive_deed_truth,
     derive_deed_truth_from_index, evaluate_population, validate_deed_index_rows_request,
     validate_deed_truth_artifact, validate_deed_truth_plane_scope,
+    validate_population_evaluation_artifact,
 };
-use std::process::Command;
+use serde_json::Value;
+use std::{fs, process::Command};
+use tempfile::tempdir;
 
 const DEED_INDEX_FIXTURE: &str = include_str!("fixtures/geo/deed_index_fixture.json");
 const DEED_TRUTH_LOANS_FIXTURE: &str = include_str!("fixtures/geo/deed_truth_loans_fixture.json");
@@ -15,6 +19,8 @@ const FRANKLIN_POPULATION_FIXTURE: &str =
     include_str!("fixtures/geo/franklin_population_fixture.json");
 const E4_POPULATION_REQUEST_FIXTURE: &str =
     include_str!("fixtures/geo/e4_gate_v2_population_request.json");
+const POPULATION_EVALUATION_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.population_evaluation.v0.schema.json");
 const FRANKLIN_DEED_TRUTH_EXPORT_SQL: &str =
     include_str!("../scripts/geo_measurements/e5_franklin_deed_truth_export.sql");
 const E2E_DEED_TRUTH_SCRIPT: &str = include_str!("../scripts/geo_demo/e2e_deed_truth.sh");
@@ -339,6 +345,196 @@ fn t49_deed_truth_plane_is_not_pooled_with_other_truth_planes() {
 }
 
 #[test]
+fn t49_deed_truth_artifact_binds_only_unique_rows_to_population() {
+    let artifact = derive_fixture_truth();
+    let population = fixture_population();
+
+    let (bound, summary) = bind_deed_truth_to_population(&population, &artifact)
+        .expect("deed truth artifact binds to population");
+    assert_eq!(summary.truth_plane, GeoTruthPlane::DeedGrainInstrument);
+    assert_eq!(summary.source_version, "canon_geo_deed_truth.v0");
+    assert_eq!(summary.source_proof_class, GeoDeedTruthProofClass::Fixture);
+    assert_eq!(summary.input_loans, 6);
+    assert_eq!(summary.unique_truth_rows, 4);
+    assert_eq!(summary.bound_unique_cases, 4);
+    assert_eq!(summary.unique_not_in_population_cases, 0);
+    assert_eq!(summary.non_unique_discarded, 1);
+    assert_eq!(summary.no_match, 1);
+    assert_eq!(summary.deed_truth_unbound_cases, 2);
+    assert_eq!(summary.round_amount_loans, 1);
+    assert_eq!(summary.round_amount_unique, 1);
+
+    let scored_ids = bound
+        .cases
+        .iter()
+        .map(|case| case.id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        scored_ids,
+        vec!["loan-001", "loan-002", "loan-003", "loan-006"]
+    );
+    assert!(
+        bound
+            .cases
+            .iter()
+            .all(|case| case.truth_plane == GeoTruthPlane::DeedGrainInstrument),
+        "bound cases must all use the deed-grain truth plane"
+    );
+    assert!(
+        bound
+            .cases
+            .iter()
+            .all(|case| !case.truth.parcels.is_empty() && case.truth.buildings.is_empty()),
+        "bound deed truth cases must carry parcel truth only"
+    );
+
+    let mut no_overlap = population.clone();
+    for case in &mut no_overlap.cases {
+        case.id = format!("unmatched-{}", case.id);
+    }
+    let error = bind_deed_truth_to_population(&no_overlap, &artifact)
+        .expect_err("deed truth with no matching Unique rows must refuse");
+    assert_eq!(error.code, GeoPopulationErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("truth_plane").map(String::as_str),
+        Some("deed_grain_instrument")
+    );
+}
+
+#[test]
+fn t49_geo_evaluate_cli_binds_deed_truth_artifact_and_counts_unbound_rows() {
+    let temp = tempdir().expect("tempdir");
+    let deed_truth_path = temp.path().join("deed-truth.json");
+    let artifact_dir = temp.path().join("evaluation-artifacts");
+    fs::write(
+        &deed_truth_path,
+        canonical_deed_truth_bytes(&derive_fixture_truth()).expect("deed truth serializes"),
+    )
+    .expect("write deed truth artifact");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .args([
+            "geo",
+            "evaluate",
+            "--population",
+            "tests/fixtures/geo/franklin_population_fixture.json",
+            "--truth",
+            deed_truth_path.to_str().expect("utf8 truth path"),
+            "--truth-plane",
+            "deed_grain_instrument",
+            "--artifact-dir",
+            artifact_dir.to_str().expect("utf8 artifact dir"),
+        ])
+        .output()
+        .expect("run canon geo evaluate with deed truth");
+    assert!(
+        output.status.success(),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let value: Value =
+        serde_json::from_slice(&output.stdout).expect("stdout is evaluation artifact JSON");
+    assert_eq!(
+        value
+            .pointer("/truth_binding/truth_plane")
+            .and_then(Value::as_str),
+        Some("deed_grain_instrument")
+    );
+    assert_eq!(
+        value
+            .pointer("/truth_binding/source_proof_class")
+            .and_then(Value::as_str),
+        Some("fixture")
+    );
+    assert_eq!(
+        value
+            .pointer("/truth_binding/deed_truth_unbound_cases")
+            .and_then(Value::as_u64),
+        Some(2)
+    );
+    assert_eq!(
+        value
+            .pointer("/truth_binding/bound_unique_cases")
+            .and_then(Value::as_u64),
+        Some(4)
+    );
+    assert_eq!(
+        value.pointer("/summary/cases").and_then(Value::as_u64),
+        Some(4)
+    );
+    assert_eq!(
+        value
+            .pointer("/summary/truth_planes/0/solver_truth_scored_cases")
+            .and_then(Value::as_u64),
+        Some(3)
+    );
+    assert_eq!(
+        value
+            .pointer("/summary/truth_planes/0/candidate_reach_full_cases")
+            .and_then(Value::as_u64),
+        Some(3)
+    );
+    assert_eq!(
+        value
+            .pointer("/summary/truth_planes/0/candidate_reach_partial_cases")
+            .and_then(Value::as_u64),
+        Some(1)
+    );
+    assert_eq!(
+        value
+            .pointer("/summary/truth_planes/0/truth_members")
+            .and_then(Value::as_u64),
+        Some(7)
+    );
+    assert_eq!(
+        value
+            .pointer("/summary/truth_planes/0/truth_members_in_universe")
+            .and_then(Value::as_u64),
+        Some(5)
+    );
+    assert_eq!(
+        value
+            .pointer("/cases")
+            .and_then(Value::as_array)
+            .expect("cases array")
+            .iter()
+            .map(|case| case["case_id"].as_str().expect("case id"))
+            .collect::<Vec<_>>(),
+        vec!["loan-001", "loan-002", "loan-003", "loan-006"]
+    );
+    let evaluation: GeoPopulationEvaluationArtifact =
+        serde_json::from_value(value).expect("evaluation artifact parses");
+    validate_population_evaluation_artifact(&evaluation).expect("evaluation validates");
+
+    let refusal = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .args([
+            "geo",
+            "evaluate",
+            "--population",
+            "tests/fixtures/geo/franklin_population_fixture.json",
+            "--truth",
+            deed_truth_path.to_str().expect("utf8 truth path"),
+            "--truth-plane",
+            "address_derived_control",
+        ])
+        .output()
+        .expect("run canon geo evaluate with wrong truth plane");
+    assert!(
+        !refusal.status.success(),
+        "wrong truth plane must refuse stdout={} stderr={}",
+        String::from_utf8_lossy(&refusal.stdout),
+        String::from_utf8_lossy(&refusal.stderr)
+    );
+    let refusal_stdout = String::from_utf8_lossy(&refusal.stdout);
+    assert!(refusal_stdout.contains("deed_grain_instrument"));
+    assert!(refusal_stdout.contains("invalid_input"));
+}
+
+#[test]
 fn e5_franklin_deed_truth_export_is_pinned_truth_plane_input() {
     for required in [
         "'80d0ea39-a5aa-4c27-a8d7-f662a4507257'::TEXT AS bridge_build_id",
@@ -391,6 +587,23 @@ fn e5_franklin_deed_truth_export_is_pinned_truth_plane_input() {
 }
 
 #[test]
+fn t49_population_evaluation_schema_declares_deed_truth_binding_summary() {
+    for required in [
+        "\"truth_binding\"",
+        "\"truth_binding_summary\"",
+        "\"source_proof_class\"",
+        "\"unique_not_in_population_cases\"",
+        "\"deed_truth_unbound_cases\"",
+        "\"canon_geo_deed_truth.v0\"",
+    ] {
+        assert!(
+            POPULATION_EVALUATION_SCHEMA.contains(required),
+            "population evaluation schema must declare {required}"
+        );
+    }
+}
+
+#[test]
 fn e2e_deed_truth_script_uses_measurement_binary_and_public_evaluate() {
     for required in [
         "canon_geo_measurements",
@@ -400,7 +613,10 @@ fn e2e_deed_truth_script_uses_measurement_binary_and_public_evaluate() {
         "franklin_population_fixture.json",
         "geo evaluate",
         "--artifact-dir",
+        "--truth",
+        "--truth-plane",
         "deed_grain_instrument",
+        "deed_truth_unbound_cases",
         "artifact_blake3",
         "solver_digest",
         "compilation_digest",
@@ -417,8 +633,6 @@ fn e2e_deed_truth_script_uses_measurement_binary_and_public_evaluate() {
     for forbidden in [
         "geo truth derive-deed",
         "canon geo truth",
-        "--truth ",
-        "--truth-plane",
         "ST_CONTAINS",
         "st_contains",
         "BBL",

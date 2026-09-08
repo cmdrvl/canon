@@ -183,14 +183,28 @@ check_jq deed_truth "$deed_truth" '[.per_loan[] | select(.loan_id == "loan-005" 
 
 run_json "$evaluation" "$canon_bin" geo evaluate \
   --population "$population_fixture" \
+  --truth "$deed_truth" \
+  --truth-plane deed_grain_instrument \
   --artifact-dir "$artifact_dir"
 
 check_jq evaluation "$evaluation" '.version' canon_geo_population_evaluation.v0
+check_jq evaluation "$evaluation" '.truth_binding.truth_plane' deed_grain_instrument
+check_jq evaluation "$evaluation" '.truth_binding.source_proof_class' fixture
+check_jq evaluation "$evaluation" '.truth_binding.input_loans' 6
+check_jq evaluation "$evaluation" '.truth_binding.unique_truth_rows' 4
+check_jq evaluation "$evaluation" '.truth_binding.bound_unique_cases' 4
+check_jq evaluation "$evaluation" '.truth_binding.unique_not_in_population_cases' 0
+check_jq evaluation "$evaluation" '.truth_binding.non_unique_discarded' 1
+check_jq evaluation "$evaluation" '.truth_binding.no_match' 1
+check_jq evaluation "$evaluation" '.truth_binding.deed_truth_unbound_cases' 2
 check_jq evaluation "$evaluation" '.summary.cases' 4
 check_jq evaluation "$evaluation" '.summary.truth_planes | length' 1
 check_jq evaluation "$evaluation" '.summary.truth_planes[0].truth_plane' deed_grain_instrument
-check_jq evaluation "$evaluation" '.summary.truth_planes[0].solver_truth_scored_cases' 4
-check_jq evaluation "$evaluation" '.summary.truth_planes[0].truth_members' 5
+check_jq evaluation "$evaluation" '.summary.truth_planes[0].solver_truth_scored_cases' 3
+check_jq evaluation "$evaluation" '.summary.truth_planes[0].candidate_reach_full_cases' 3
+check_jq evaluation "$evaluation" '.summary.truth_planes[0].candidate_reach_partial_cases' 1
+check_jq evaluation "$evaluation" '.summary.truth_planes[0].truth_members' 7
+check_jq evaluation "$evaluation" '.summary.truth_planes[0].truth_members_in_universe' 5
 check_jq evaluation "$evaluation" '.summary.truth_planes[0].false_merge_cases' 0
 check_jq evaluation "$evaluation" '.summary.truth_planes[0].evidence_no_observation_cases' 4
 check_jq evaluation "$evaluation" '[.cases[].case_id] | sort | join(",")' loan-001,loan-002,loan-003,loan-006

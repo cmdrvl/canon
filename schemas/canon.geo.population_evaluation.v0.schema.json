@@ -12,6 +12,9 @@
     "request_version": {
       "type": "string"
     },
+    "truth_binding": {
+      "$ref": "#/$defs/truth_binding_summary"
+    },
     "summary": {
       "$ref": "#/$defs/population_summary"
     },
@@ -72,6 +75,15 @@
         "human_adjudication"
       ]
     },
+    "deed_truth_proof_class": {
+      "type": "string",
+      "enum": [
+        "fixture",
+        "retained_evidence",
+        "observed_warehouse_snapshot",
+        "live_complete"
+      ]
+    },
     "candidate_reach_status": {
       "type": "string",
       "enum": [
@@ -123,6 +135,44 @@
         "candidate_reach_full_cases",
         "candidate_reach_partial_cases",
         "candidate_reach_none_cases"
+      ]
+    },
+    "truth_binding_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "truth_plane": {
+          "const": "deed_grain_instrument",
+          "type": "string"
+        },
+        "source_version": {
+          "const": "canon_geo_deed_truth.v0",
+          "type": "string"
+        },
+        "source_proof_class": { "$ref": "#/$defs/deed_truth_proof_class" },
+        "input_loans": { "type": "integer", "minimum": 0 },
+        "unique_truth_rows": { "type": "integer", "minimum": 0 },
+        "bound_unique_cases": { "type": "integer", "minimum": 0 },
+        "unique_not_in_population_cases": { "type": "integer", "minimum": 0 },
+        "non_unique_discarded": { "type": "integer", "minimum": 0 },
+        "no_match": { "type": "integer", "minimum": 0 },
+        "deed_truth_unbound_cases": { "type": "integer", "minimum": 0 },
+        "round_amount_loans": { "type": "integer", "minimum": 0 },
+        "round_amount_unique": { "type": "integer", "minimum": 0 }
+      },
+      "required": [
+        "truth_plane",
+        "source_version",
+        "source_proof_class",
+        "input_loans",
+        "unique_truth_rows",
+        "bound_unique_cases",
+        "unique_not_in_population_cases",
+        "non_unique_discarded",
+        "no_match",
+        "deed_truth_unbound_cases",
+        "round_amount_loans",
+        "round_amount_unique"
       ]
     },
     "evidence_coverage_status": {

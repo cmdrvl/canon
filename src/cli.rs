@@ -566,6 +566,14 @@ pub struct GeoEvaluateCli {
     #[arg(long)]
     pub artifact_dir: Option<PathBuf>,
 
+    /// Optional deed-truth artifact to bind into matching population cases for scoring
+    #[arg(long, requires = "truth_plane")]
+    pub truth: Option<PathBuf>,
+
+    /// Truth plane for the optional --truth artifact
+    #[arg(long = "truth-plane", requires = "truth")]
+    pub truth_plane: Option<String>,
+
     /// Optional output path for the E4 gate assessment sidecar
     #[arg(long = "e4-assessment-out")]
     pub e4_assessment_out: Option<PathBuf>,

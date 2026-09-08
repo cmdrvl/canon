@@ -51,14 +51,16 @@ use super::{
     },
     discovery::{CANON_GEO_ACQUISITION_RECEIPT_VERSION, GeoAcquisitionReceipt, GeoDigestAlgorithm},
     evaluation::{
-        CANON_GEO_E4_GATE_ASSESSMENT_VERSION, CANON_GEO_E4_RESCORE_COMPARISON_VERSION,
-        CANON_GEO_POPULATION_REQUEST_VERSION, GeoE4GateAssessment, GeoE4GateProofSource,
+        CANON_GEO_DEED_TRUTH_VERSION, CANON_GEO_E4_GATE_ASSESSMENT_VERSION,
+        CANON_GEO_E4_RESCORE_COMPARISON_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
+        GeoDeedTruthArtifact, GeoE4GateAssessment, GeoE4GateProofSource,
         GeoPopulationCaseArtifacts, GeoPopulationError, GeoPopulationEvaluationRequest,
-        assess_e4_gate, canonical_e4_gate_assessment_bytes, canonical_e4_rescore_comparison_bytes,
-        canonical_population_evaluation_bytes, compare_e4_gate_assessments,
-        e4_proof_source_from_h7_population, e4_proof_source_from_population_request,
-        e4_proof_source_from_population_stack, evaluate_population_with_artifacts,
-        evaluate_population_with_run_artifacts, validate_e4_gate_assessment,
+        assess_e4_gate, bind_deed_truth_to_population, canonical_e4_gate_assessment_bytes,
+        canonical_e4_rescore_comparison_bytes, canonical_population_evaluation_bytes,
+        compare_e4_gate_assessments, e4_proof_source_from_h7_population,
+        e4_proof_source_from_population_request, e4_proof_source_from_population_stack,
+        evaluate_population_with_artifacts, evaluate_population_with_run_artifacts,
+        validate_e4_gate_assessment,
     },
     evidence::{
         CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
@@ -910,14 +912,21 @@ fn run_compile_evidence(args: &GeoCompileEvidenceCli) -> Result<u8, Box<dyn Erro
 }
 
 fn run_evaluate(args: &GeoEvaluateCli) -> Result<u8, Box<dyn Error>> {
-    let next_command = "canon geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>] [--e4-before-assessment <BEFORE.json> --e4-rescore-out <COMPARISON.json>]";
+    let next_command = "canon geo evaluate --population <POPULATION.json> [--truth <DEED_TRUTH.json> --truth-plane deed_grain_instrument] [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>] [--e4-before-assessment <BEFORE.json> --e4-rescore-out <COMPARISON.json>]";
     let population = match read_population_or_stack(&args.population, next_command) {
         Ok(population) => population,
         Err(exit_code) => return Ok(exit_code),
     };
     let proof_source = population.proof_source;
-    let request = population.request;
-    let evaluated = if let Some(artifact_dir) = &args.artifact_dir {
+    let mut request = population.request;
+    let truth_binding = match read_deed_truth_binding(args, &request, next_command) {
+        Ok(binding) => binding,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    if let Some((bound_request, _summary)) = &truth_binding {
+        request = bound_request.clone();
+    }
+    let mut evaluated = if let Some(artifact_dir) = &args.artifact_dir {
         let run_workspace = match evaluate_run_workspace(artifact_dir, &request) {
             Ok(workspace) => workspace,
             Err(exit_code) => return Ok(exit_code),
@@ -937,6 +946,9 @@ fn run_evaluate(args: &GeoEvaluateCli) -> Result<u8, Box<dyn Error>> {
             Err(error) => return emit_population_error(error),
         }
     };
+    if let Some((_bound_request, summary)) = truth_binding {
+        evaluated.evaluation.truth_binding = Some(summary);
+    }
     let assessment = if args.e4_assessment_out.is_some() || args.e4_rescore_out.is_some() {
         Some(match assess_e4_gate(&evaluated.evaluation, &proof_source) {
             Ok(assessment) => assessment,
@@ -1022,6 +1034,56 @@ fn run_evaluate(args: &GeoEvaluateCli) -> Result<u8, Box<dyn Error>> {
         Ok(bytes) => write_canonical(&bytes),
         Err(error) => emit_serialization_refusal("canon_geo_population_evaluation.v0", &error),
     }
+}
+
+fn read_deed_truth_binding(
+    args: &GeoEvaluateCli,
+    request: &GeoPopulationEvaluationRequest,
+    next_command: &str,
+) -> Result<
+    Option<(
+        GeoPopulationEvaluationRequest,
+        super::evaluation::GeoPopulationTruthBindingSummary,
+    )>,
+    u8,
+> {
+    let truth_path = match &args.truth {
+        Some(path) => path,
+        None => return Ok(None),
+    };
+    match args.truth_plane.as_deref() {
+        Some("deed_grain_instrument") => {}
+        Some(value) => {
+            return Err(emit_population_error(GeoPopulationError::invalid_input(
+                "Geo evaluate --truth currently supports only the deed-grain truth plane",
+                [
+                    ("truth_plane", value.to_string()),
+                    ("expected", "deed_grain_instrument".to_string()),
+                ],
+            ))
+            .unwrap_or(2));
+        }
+        None => {
+            return Err(emit_refusal(
+                RefusalCode::EParse,
+                "Geo evaluate --truth requires --truth-plane",
+                json!({
+                    "missing": "--truth-plane",
+                }),
+                Some(next_command.to_string()),
+            )
+            .unwrap_or(2));
+        }
+    }
+    let artifact: GeoDeedTruthArtifact = read_request(
+        truth_path,
+        "truth",
+        CANON_GEO_DEED_TRUTH_VERSION,
+        next_command,
+    )?;
+    bind_deed_truth_to_population(request, &artifact)
+        .map(Some)
+        .map_err(|error| emit_population_error(error).unwrap_or(2))
 }
 
 fn read_e4_gate_assessment(path: &Path, next_command: &str) -> Result<GeoE4GateAssessment, u8> {
