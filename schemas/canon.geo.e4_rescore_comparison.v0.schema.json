@@ -39,6 +39,9 @@
       "minItems": 10,
       "maxItems": 10
     },
+    "execution": {
+      "$ref": "#/$defs/execution"
+    },
     "interpretation": {
       "$ref": "#/$defs/interpretation"
     }
@@ -50,6 +53,7 @@
     "before",
     "after",
     "table",
+    "execution",
     "interpretation"
   ],
   "$defs": {
@@ -179,6 +183,60 @@
         "cases",
         "contracts",
         "observations"
+      ]
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "complete",
+            "timed_out"
+          ]
+        },
+        "timed_out_cases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/timed_out_case"
+          }
+        }
+      },
+      "required": [
+        "status",
+        "timed_out_cases"
+      ]
+    },
+    "timed_out_case": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "side": {
+          "type": "string",
+          "enum": [
+            "before",
+            "after"
+          ]
+        },
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "elapsed_ms": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "side",
+        "case_id",
+        "timeout_ms",
+        "elapsed_ms"
       ]
     },
     "row": {

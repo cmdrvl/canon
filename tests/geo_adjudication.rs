@@ -36,7 +36,8 @@ use canon::geo::{
     GeoCandidateTruthRowStatus, GeoCompositionModel, GeoCompositionRequest, GeoCompositionStatus,
     GeoCompositionUniverse, GeoE4GateAssessment, GeoE4GateBlockerCode, GeoE4GatePlane,
     GeoE4GateProofClass, GeoE4GateProofDerivation, GeoE4GateProofSource, GeoE4GateStatus,
-    GeoE4RescoreMetric, GeoEntityLevel, GeoEntityRef, GeoEvidenceClaimRole,
+    GeoE4RescoreComparisonSide, GeoE4RescoreExecutionStatus, GeoE4RescoreMetric,
+    GeoE4RescoreTimedOutCase, GeoEntityLevel, GeoEntityRef, GeoEvidenceClaimRole,
     GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoH7PopulationScope, GeoH7ResultMode,
     GeoHardConstraint, GeoHardConstraintKind, GeoPopulationCaseStatus,
     GeoPopulationEvaluationArtifact, GeoPopulationEvaluationRequest, GeoRhoBasis, GeoRhoContract,
@@ -1712,6 +1713,11 @@ fn e4_rescore_comparison_predeclares_before_after_measurement_table() {
     assert_eq!(comparison.gate_id, CANON_GEO_FROZEN_E4_H7_GATE_ID);
     assert_eq!(comparison.required_subjects, 79);
     assert_eq!(
+        comparison.execution.status,
+        GeoE4RescoreExecutionStatus::Complete
+    );
+    assert!(comparison.execution.timed_out_cases.is_empty());
+    assert_eq!(
         comparison.before.proof_class,
         GeoE4GateProofClass::RetainedComplete
     );
@@ -1890,6 +1896,34 @@ fn e4_rescore_comparison_carries_admission_projection_digests() {
             .contains("admission projection must be present for both"),
         "{error:?}"
     );
+}
+
+#[test]
+fn e4_rescore_comparison_rejects_timeout_disguised_as_complete_score() {
+    let before = fixture_subset_e4_assessment();
+    let after = fixture_subset_e4_assessment();
+    let mut comparison = compare_e4_gate_assessments(&before, &after).expect("comparison scores");
+    comparison.execution.status = GeoE4RescoreExecutionStatus::Complete;
+    comparison
+        .execution
+        .timed_out_cases
+        .push(GeoE4RescoreTimedOutCase {
+            side: GeoE4RescoreComparisonSide::After,
+            case_id: "h7-subject:slow-case".to_string(),
+            timeout_ms: 25_000,
+            elapsed_ms: 25_001,
+        });
+
+    let error = validate_e4_rescore_comparison_artifact(&comparison)
+        .expect_err("timeout rows cannot validate as a complete comparison");
+    assert!(
+        error.message.contains("complete with timed-out cases"),
+        "{error:?}"
+    );
+
+    comparison.execution.status = GeoE4RescoreExecutionStatus::TimedOut;
+    validate_e4_rescore_comparison_artifact(&comparison)
+        .expect("explicit timeout status keeps the timeout typed");
 }
 
 #[test]

@@ -897,6 +897,36 @@ pub struct GeoE4RescoreComparisonRow {
     pub delta: i64,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoE4RescoreComparisonSide {
+    #[default]
+    Before,
+    After,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoE4RescoreExecutionStatus {
+    #[default]
+    Complete,
+    TimedOut,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeoE4RescoreTimedOutCase {
+    pub side: GeoE4RescoreComparisonSide,
+    pub case_id: String,
+    pub timeout_ms: u64,
+    pub elapsed_ms: u64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoE4RescoreExecutionSummary {
+    pub status: GeoE4RescoreExecutionStatus,
+    pub timed_out_cases: Vec<GeoE4RescoreTimedOutCase>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeoE4RescoreInterpretation {
     pub denominator_frozen: bool,
@@ -913,6 +943,8 @@ pub struct GeoE4RescoreComparisonArtifact {
     pub before: GeoE4RescoreSnapshot,
     pub after: GeoE4RescoreSnapshot,
     pub table: Vec<GeoE4RescoreComparisonRow>,
+    #[serde(default)]
+    pub execution: GeoE4RescoreExecutionSummary,
     pub interpretation: GeoE4RescoreInterpretation,
 }
 
@@ -2682,6 +2714,10 @@ fn compare_e4_gate_assessments_with_optional_admission_projections(
         before: e4_rescore_snapshot(before, before_blake3, before_admission_projection),
         after: e4_rescore_snapshot(after, after_blake3, after_admission_projection),
         table,
+        execution: GeoE4RescoreExecutionSummary {
+            status: GeoE4RescoreExecutionStatus::Complete,
+            timed_out_cases: Vec::new(),
+        },
         interpretation: GeoE4RescoreInterpretation {
             denominator_frozen: true,
             failures_remain_in_denominator: true,
@@ -2821,6 +2857,7 @@ pub fn validate_e4_rescore_comparison_artifact(
     }
     validate_e4_rescore_snapshot("before", comparison.required_subjects, &comparison.before)?;
     validate_e4_rescore_snapshot("after", comparison.required_subjects, &comparison.after)?;
+    validate_e4_rescore_execution_summary(&comparison.execution)?;
     if !comparison.interpretation.denominator_frozen
         || !comparison.interpretation.failures_remain_in_denominator
         || !comparison
@@ -2893,6 +2930,80 @@ pub fn validate_e4_rescore_comparison_artifact(
                     ("metric", format!("{:?}", row.metric)),
                     ("expected", expected_delta.to_string()),
                     ("actual", row.delta.to_string()),
+                ],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_e4_rescore_execution_summary(
+    execution: &GeoE4RescoreExecutionSummary,
+) -> Result<(), GeoPopulationError> {
+    match execution.status {
+        GeoE4RescoreExecutionStatus::Complete => {
+            if !execution.timed_out_cases.is_empty() {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::InvalidInput,
+                    "Geo E4 rescore comparison cannot be complete with timed-out cases",
+                    [(
+                        "timed_out_cases",
+                        execution.timed_out_cases.len().to_string(),
+                    )],
+                ));
+            }
+        }
+        GeoE4RescoreExecutionStatus::TimedOut => {
+            if execution.timed_out_cases.is_empty() {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::InvalidInput,
+                    "Geo E4 rescore comparison timeout status requires typed timed-out cases",
+                    [("timed_out_cases", "0")],
+                ));
+            }
+        }
+    }
+    for timeout in &execution.timed_out_cases {
+        if timeout.case_id.trim().is_empty() {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo E4 rescore comparison timed-out case id is empty",
+                [("side", format!("{:?}", timeout.side))],
+            ));
+        }
+        if timeout.timeout_ms == 0 {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo E4 rescore comparison timed-out case must name a positive timeout_ms",
+                [
+                    ("side", format!("{:?}", timeout.side)),
+                    ("case_id", timeout.case_id.clone()),
+                ],
+            ));
+        }
+        if timeout.elapsed_ms < timeout.timeout_ms {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo E4 rescore comparison timed-out case elapsed_ms must meet or exceed timeout_ms",
+                [
+                    ("side", format!("{:?}", timeout.side)),
+                    ("case_id", timeout.case_id.clone()),
+                    ("elapsed_ms", timeout.elapsed_ms.to_string()),
+                    ("timeout_ms", timeout.timeout_ms.to_string()),
+                ],
+            ));
+        }
+    }
+    for pair in execution.timed_out_cases.windows(2) {
+        if pair[0] >= pair[1] {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo E4 rescore comparison timed-out cases must be sorted and unique",
+                [
+                    ("previous_side", format!("{:?}", pair[0].side)),
+                    ("previous_case_id", pair[0].case_id.clone()),
+                    ("current_side", format!("{:?}", pair[1].side)),
+                    ("current_case_id", pair[1].case_id.clone()),
                 ],
             ));
         }
