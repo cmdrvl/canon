@@ -59,11 +59,13 @@ use super::{
     evaluation::{
         CANON_GEO_DEED_TRUTH_VERSION, CANON_GEO_E4_GATE_ASSESSMENT_VERSION,
         CANON_GEO_E4_RESCORE_COMPARISON_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
-        GeoCandidateReachStatus, GeoDeedTruthArtifact, GeoE4GateAssessment, GeoE4GateProofSource,
-        GeoPopulationCaseArtifacts, GeoPopulationError, GeoPopulationEvaluationRequest,
-        assess_e4_gate, bind_deed_truth_to_population, canonical_e4_gate_assessment_bytes,
-        canonical_e4_rescore_comparison_bytes, canonical_population_evaluation_bytes,
-        compare_e4_gate_assessments, e4_proof_source_from_h7_population,
+        GeoCandidateReachStatus, GeoDeedTruthArtifact, GeoE4AdmissionProjectionDigest,
+        GeoE4GateAssessment, GeoE4GateProofSource, GeoPopulationCaseArtifacts, GeoPopulationError,
+        GeoPopulationEvaluationRequest, assess_e4_gate, bind_deed_truth_to_population,
+        canonical_e4_gate_assessment_bytes, canonical_e4_rescore_comparison_bytes,
+        canonical_population_evaluation_bytes, compare_e4_gate_assessments,
+        compare_e4_gate_assessments_with_admission_projections,
+        e4_admission_projection_digest_from_population_request, e4_proof_source_from_h7_population,
         e4_proof_source_from_population_request, e4_proof_source_from_population_stack,
         evaluate_population_with_artifacts, evaluate_population_with_run_artifacts,
         validate_e4_gate_assessment,
@@ -1179,7 +1181,7 @@ fn run_compile_evidence(args: &GeoCompileEvidenceCli) -> Result<u8, Box<dyn Erro
 }
 
 fn run_evaluate(args: &GeoEvaluateCli) -> Result<u8, Box<dyn Error>> {
-    let next_command = "canon geo evaluate --population <POPULATION.json> [--truth <DEED_TRUTH.json> --truth-plane deed_grain_instrument] [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>] [--e4-before-assessment <BEFORE.json> --e4-rescore-out <COMPARISON.json>]";
+    let next_command = "canon geo evaluate --population <POPULATION.json> [--truth <DEED_TRUTH.json> --truth-plane deed_grain_instrument] [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>] [--e4-before-assessment <BEFORE_ASSESSMENT_OR_POPULATION.json> --e4-rescore-out <COMPARISON.json>]";
     let population = match read_population_or_stack(&args.population, next_command) {
         Ok(population) => population,
         Err(exit_code) => return Ok(exit_code),
@@ -1264,14 +1266,33 @@ fn run_evaluate(args: &GeoEvaluateCli) -> Result<u8, Box<dyn Error>> {
                 );
             }
         };
-        let before = match read_e4_gate_assessment(before_path, next_command) {
-            Ok(assessment) => assessment,
+        let before = match read_e4_rescore_baseline(before_path, next_command) {
+            Ok(baseline) => baseline,
             Err(exit_code) => return Ok(exit_code),
         };
         let after = assessment
             .as_ref()
             .expect("assessment computed when --e4-rescore-out is set");
-        let comparison = match compare_e4_gate_assessments(&before, after) {
+        let comparison = match before {
+            GeoE4RescoreBaseline::Assessment(before) => compare_e4_gate_assessments(&before, after),
+            GeoE4RescoreBaseline::Population {
+                assessment: before,
+                admission_projection: before_admission_projection,
+            } => {
+                let after_admission_projection =
+                    match e4_admission_projection_digest_from_population_request(&request) {
+                        Ok(projection) => projection,
+                        Err(error) => return emit_population_error(error),
+                    };
+                compare_e4_gate_assessments_with_admission_projections(
+                    &before,
+                    before_admission_projection,
+                    after,
+                    after_admission_projection,
+                )
+            }
+        };
+        let comparison = match comparison {
             Ok(comparison) => comparison,
             Err(error) => return emit_population_error(error),
         };
@@ -1353,16 +1374,78 @@ fn read_deed_truth_binding(
         .map_err(|error| emit_population_error(error).unwrap_or(2))
 }
 
-fn read_e4_gate_assessment(path: &Path, next_command: &str) -> Result<GeoE4GateAssessment, u8> {
-    let assessment = read_request(
+enum GeoE4RescoreBaseline {
+    Assessment(GeoE4GateAssessment),
+    Population {
+        assessment: GeoE4GateAssessment,
+        admission_projection: GeoE4AdmissionProjectionDigest,
+    },
+}
+
+fn read_e4_rescore_baseline(path: &Path, next_command: &str) -> Result<GeoE4RescoreBaseline, u8> {
+    let value: Value = read_request(
         path,
         "e4-before-assessment",
-        CANON_GEO_E4_GATE_ASSESSMENT_VERSION,
+        "canon_geo_e4_gate_assessment.v0, canon_geo_population_request.v0, canon_geo_h7_population.v0, or canon_geo_population_evidence_stack.v0",
         next_command,
     )?;
-    validate_e4_gate_assessment(&assessment)
-        .map_err(|error| emit_population_error(error).unwrap_or(2))?;
-    Ok(assessment)
+    let version = value
+        .get("version")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    match version {
+        CANON_GEO_E4_GATE_ASSESSMENT_VERSION => {
+            let assessment: GeoE4GateAssessment =
+                serde_json::from_value(value).map_err(|error| {
+                    emit_refusal(
+                        RefusalCode::EParse,
+                        "Could not parse the Geo --e4-before-assessment file",
+                        json!({
+                            "e4-before-assessment": path_string(path),
+                            "expected_version": CANON_GEO_E4_GATE_ASSESSMENT_VERSION,
+                            "error": error.to_string(),
+                        }),
+                        Some(next_command.to_string()),
+                    )
+                    .unwrap_or(2)
+                })?;
+            validate_e4_gate_assessment(&assessment)
+                .map_err(|error| emit_population_error(error).unwrap_or(2))?;
+            Ok(GeoE4RescoreBaseline::Assessment(assessment))
+        }
+        CANON_GEO_POPULATION_REQUEST_VERSION
+        | CANON_GEO_H7_POPULATION_VERSION
+        | CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION => {
+            let population = read_population_or_stack(path, next_command)?;
+            let evaluated = evaluate_population_with_artifacts(&population.request)
+                .map_err(|error| emit_population_error(error).unwrap_or(2))?;
+            let assessment = assess_e4_gate(&evaluated.evaluation, &population.proof_source)
+                .map_err(|error| emit_population_error(error).unwrap_or(2))?;
+            let admission_projection =
+                e4_admission_projection_digest_from_population_request(&population.request)
+                    .map_err(|error| emit_population_error(error).unwrap_or(2))?;
+            Ok(GeoE4RescoreBaseline::Population {
+                assessment,
+                admission_projection,
+            })
+        }
+        _ => Err(emit_refusal(
+            RefusalCode::EEntityArtifactContract,
+            "Geo --e4-before-assessment has an unsupported contract version",
+            json!({
+                "e4-before-assessment": path_string(path),
+                "actual_version": version,
+                "supported_versions": [
+                    CANON_GEO_E4_GATE_ASSESSMENT_VERSION,
+                    CANON_GEO_POPULATION_REQUEST_VERSION,
+                    CANON_GEO_H7_POPULATION_VERSION,
+                    CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION,
+                ],
+            }),
+            Some(next_command.to_string()),
+        )
+        .unwrap_or(2)),
+    }
 }
 
 fn evaluate_run_workspace(

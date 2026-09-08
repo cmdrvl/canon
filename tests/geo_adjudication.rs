@@ -36,15 +36,19 @@ use canon::geo::{
     GeoCandidateTruthRowStatus, GeoCompositionModel, GeoCompositionRequest, GeoCompositionStatus,
     GeoCompositionUniverse, GeoE4GateAssessment, GeoE4GateBlockerCode, GeoE4GatePlane,
     GeoE4GateProofClass, GeoE4GateProofDerivation, GeoE4GateProofSource, GeoE4GateStatus,
-    GeoE4RescoreMetric, GeoEntityLevel, GeoEntityRef, GeoH7PopulationScope, GeoH7ResultMode,
+    GeoE4RescoreMetric, GeoEntityLevel, GeoEntityRef, GeoEvidenceClaimRole,
+    GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoH7PopulationScope, GeoH7ResultMode,
     GeoHardConstraint, GeoHardConstraintKind, GeoPopulationCaseStatus,
-    GeoPopulationEvaluationArtifact, GeoPopulationEvaluationRequest, GeoTruthPlane, assess_e4_gate,
+    GeoPopulationEvaluationArtifact, GeoPopulationEvaluationRequest, GeoRhoBasis, GeoRhoContract,
+    GeoRhoObservation, GeoRhoObservationKind, GeoTruthPlane, assess_e4_gate,
     canonical_candidate_truth_evaluation_bytes, canonical_e4_gate_assessment_bytes,
     canonical_e4_rescore_comparison_bytes, canonical_population_evaluation_bytes,
-    compare_e4_gate_assessments, e4_proof_source_from_population_request,
-    evaluate_candidate_truth_handoff, model_satisfies_request, solve_composition,
-    validate_candidate_truth_evaluation_artifact, validate_e4_gate_assessment,
-    validate_e4_gate_proof_source, validate_e4_rescore_comparison_artifact,
+    compare_e4_gate_assessments, compare_e4_gate_assessments_with_admission_projections,
+    e4_admission_projection_digest_from_population_request,
+    e4_proof_source_from_population_request, evaluate_candidate_truth_handoff,
+    model_satisfies_request, solve_composition, validate_candidate_truth_evaluation_artifact,
+    validate_e4_gate_assessment, validate_e4_gate_proof_source,
+    validate_e4_rescore_comparison_artifact,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -1417,6 +1421,59 @@ fn fixture_subset_e4_assessment() -> GeoE4GateAssessment {
     assess_e4_gate(&evaluation, &proof_source).expect("fixture assessment scores")
 }
 
+fn one_case_admission_population(observation_id: &str) -> GeoPopulationEvaluationRequest {
+    let contract_id = "rho.test.exact_set";
+    GeoPopulationEvaluationRequest {
+        version: CANON_GEO_POPULATION_REQUEST_VERSION.to_string(),
+        cases: vec![canon::geo::GeoLabeledCompositionCase {
+            id: "case-1".to_string(),
+            evidence: GeoEvidenceCompilationRequest {
+                version: canon::geo::CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+                profile: Default::default(),
+                universe: GeoCompositionUniverse {
+                    parcels: vec!["parcel-a".to_string(), "parcel-b".to_string()],
+                    buildings: Vec::new(),
+                },
+                contracts: vec![GeoRhoContract {
+                    id: contract_id.to_string(),
+                    version: "v0".to_string(),
+                    source_dataset: "fixture.admission".to_string(),
+                    source_release: "2026-09-08".to_string(),
+                    source_lineage_ids: vec!["fixture.admission.source".to_string()],
+                    method_id: "fixture.exact_set".to_string(),
+                    method_version: "v0".to_string(),
+                    claim_role: GeoEvidenceClaimRole::StableIdentityAnchor,
+                    basis: GeoRhoBasis::LogicalRelaxation {
+                        invariant_id: "fixture.exact_set.identity".to_string(),
+                    },
+                }],
+                observations: vec![GeoRhoObservation {
+                    id: observation_id.to_string(),
+                    contract_id: contract_id.to_string(),
+                    source_records: vec![GeoEvidenceRecordRef {
+                        source_record_id: format!("{observation_id}.row"),
+                        source_vintage: "2026-09-08".to_string(),
+                        record_blake3: proof_hash(observation_id),
+                    }],
+                    valid_time: None,
+                    observation: GeoRhoObservationKind::ExactSets {
+                        level: GeoEntityLevel::Parcel,
+                        sets: vec![vec!["parcel-a".to_string()]],
+                    },
+                }],
+                max_assignments: 1_024,
+                max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+            },
+            truth_plane: GeoTruthPlane::GateV2Historical,
+            truth: GeoCompositionModel {
+                parcels: vec!["parcel-a".to_string()],
+                buildings: Vec::new(),
+            },
+        }],
+        max_cases: 1,
+    }
+}
+
 #[test]
 fn e4_gate_assessment_scores_retained_roll_population_without_live_claim() {
     let artifact = retained_roll_e4_evaluation();
@@ -1751,6 +1808,87 @@ fn e4_rescore_comparison_predeclares_before_after_measurement_table() {
             &compare_e4_gate_assessments(&before, &after).expect("comparison re-scores")
         )
         .expect("comparison serializes again")
+    );
+}
+
+#[test]
+fn e4_rescore_comparison_carries_admission_projection_digests() {
+    let before_request = one_case_admission_population("obs-before");
+    let after_request = one_case_admission_population("obs-after");
+    let before_evaluation =
+        canon::geo::evaluate_population(&before_request).expect("before evaluates");
+    let after_evaluation =
+        canon::geo::evaluate_population(&after_request).expect("after evaluates");
+    let before_proof = e4_proof_source_from_population_request(&before_request)
+        .expect("before proof source derives");
+    let after_proof = e4_proof_source_from_population_request(&after_request)
+        .expect("after proof source derives");
+    let before_assessment =
+        assess_e4_gate(&before_evaluation, &before_proof).expect("before assessment scores");
+    let after_assessment =
+        assess_e4_gate(&after_evaluation, &after_proof).expect("after assessment scores");
+    let before_projection = e4_admission_projection_digest_from_population_request(&before_request)
+        .expect("before admission projection digests");
+    let after_projection = e4_admission_projection_digest_from_population_request(&after_request)
+        .expect("after admission projection digests");
+
+    assert_eq!(before_projection.cases, 1);
+    assert_eq!(before_projection.contracts, 1);
+    assert_eq!(before_projection.observations, 1);
+    assert_eq!(after_projection.cases, 1);
+    assert_eq!(after_projection.contracts, 1);
+    assert_eq!(after_projection.observations, 1);
+    assert_ne!(
+        before_projection.contracts_observations_blake3,
+        after_projection.contracts_observations_blake3
+    );
+
+    let comparison = compare_e4_gate_assessments_with_admission_projections(
+        &before_assessment,
+        before_projection.clone(),
+        &after_assessment,
+        after_projection.clone(),
+    )
+    .expect("comparison scores");
+    validate_e4_rescore_comparison_artifact(&comparison).expect("comparison validates");
+    assert_eq!(
+        comparison.before.admission_projection,
+        Some(before_projection)
+    );
+    assert_eq!(
+        comparison.after.admission_projection,
+        Some(after_projection)
+    );
+    assert_eq!(
+        comparison
+            .table
+            .iter()
+            .find(|row| row.metric == GeoE4RescoreMetric::ExactlyCorrect)
+            .expect("exactly-correct row present")
+            .before,
+        1
+    );
+    assert_eq!(
+        comparison
+            .table
+            .iter()
+            .find(|row| row.metric == GeoE4RescoreMetric::ExactlyCorrect)
+            .expect("exactly-correct row present")
+            .after,
+        1
+    );
+
+    let mut asymmetric = compare_e4_gate_assessments(&before_assessment, &after_assessment)
+        .expect("legacy comparison scores");
+    asymmetric.before.admission_projection =
+        comparison.before.admission_projection.as_ref().cloned();
+    let error = validate_e4_rescore_comparison_artifact(&asymmetric)
+        .expect_err("one-sided admission projection must fail closed");
+    assert!(
+        error
+            .message
+            .contains("admission projection must be present for both"),
+        "{error:?}"
     );
 }
 
@@ -2611,6 +2749,91 @@ fn geo_evaluate_writes_e4_rescore_comparison_against_typed_baseline() {
     assert_cmd::Command::new(env!("CARGO_BIN_EXE_canon"))
         .args(["geo", "evaluate", "--population"])
         .arg(&population_path)
+        .arg("--e4-before-assessment")
+        .arg(&before_path)
+        .arg("--e4-rescore-out")
+        .arg(&comparison_path)
+        .assert()
+        .success();
+    assert_eq!(
+        std::fs::read(&comparison_path).expect("comparison rereads"),
+        original_comparison_bytes
+    );
+}
+
+#[test]
+fn geo_evaluate_writes_e4_rescore_comparison_from_population_baseline() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let before_request = one_case_admission_population("obs-before");
+    let after_request = one_case_admission_population("obs-after");
+    let before_path = temp.path().join("before-population.json");
+    let after_path = temp.path().join("after-population.json");
+    let comparison_path = temp.path().join("rescore-comparison.json");
+    std::fs::write(
+        &before_path,
+        serde_json::to_vec(&before_request).expect("before population serializes"),
+    )
+    .expect("before population writes");
+    std::fs::write(
+        &after_path,
+        serde_json::to_vec(&after_request).expect("after population serializes"),
+    )
+    .expect("after population writes");
+
+    let stdout = assert_cmd::Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(["geo", "evaluate", "--population"])
+        .arg(&after_path)
+        .arg("--e4-before-assessment")
+        .arg(&before_path)
+        .arg("--e4-rescore-out")
+        .arg(&comparison_path)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let evaluation: GeoPopulationEvaluationArtifact =
+        serde_json::from_slice(&stdout).expect("evaluation JSON parses");
+    let comparison_bytes = std::fs::read(&comparison_path).expect("comparison sidecar exists");
+    let comparison: canon::geo::GeoE4RescoreComparisonArtifact =
+        serde_json::from_slice(&comparison_bytes).expect("comparison JSON parses");
+    validate_e4_rescore_comparison_artifact(&comparison).expect("comparison validates");
+
+    let before_projection = comparison
+        .before
+        .admission_projection
+        .as_ref()
+        .expect("before population projection is present");
+    let after_projection = comparison
+        .after
+        .admission_projection
+        .as_ref()
+        .expect("after population projection is present");
+    assert_eq!(before_projection.cases, 1);
+    assert_eq!(before_projection.contracts, 1);
+    assert_eq!(before_projection.observations, 1);
+    assert_eq!(after_projection.cases, 1);
+    assert_eq!(after_projection.contracts, 1);
+    assert_eq!(after_projection.observations, 1);
+    assert_ne!(
+        before_projection.contracts_observations_blake3,
+        after_projection.contracts_observations_blake3
+    );
+    assert_eq!(comparison.after.evaluated_cases, evaluation.summary.cases);
+    assert_eq!(
+        comparison
+            .table
+            .iter()
+            .find(|row| row.metric == GeoE4RescoreMetric::ExactlyCorrect)
+            .expect("exactly-correct row present")
+            .after,
+        1
+    );
+
+    let original_comparison_bytes = comparison_bytes.clone();
+    assert_cmd::Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(["geo", "evaluate", "--population"])
+        .arg(&after_path)
         .arg("--e4-before-assessment")
         .arg(&before_path)
         .arg("--e4-rescore-out")

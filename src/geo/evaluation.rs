@@ -22,7 +22,7 @@ use super::{
     evidence::{
         CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
         GeoEvidenceCompilationArtifact, GeoEvidenceCompilationRequest, GeoEvidenceDisposition,
-        GeoEvidenceError, GeoRhoObservation, GeoRhoObservationKind,
+        GeoEvidenceError, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind,
         canonical_evidence_compilation_bytes, compile_evidence,
     },
     executor::{
@@ -860,8 +860,18 @@ pub enum GeoE4RescoreMetric {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoE4AdmissionProjectionDigest {
+    pub contracts_observations_blake3: String,
+    pub cases: u64,
+    pub contracts: u64,
+    pub observations: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeoE4RescoreSnapshot {
     pub assessment_blake3: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub admission_projection: Option<GeoE4AdmissionProjectionDigest>,
     pub proof_class: GeoE4GateProofClass,
     pub status: GeoE4GateStatus,
     pub release_claim_allowed: bool,
@@ -2597,6 +2607,29 @@ pub fn compare_e4_gate_assessments(
     before: &GeoE4GateAssessment,
     after: &GeoE4GateAssessment,
 ) -> Result<GeoE4RescoreComparisonArtifact, GeoPopulationError> {
+    compare_e4_gate_assessments_with_optional_admission_projections(before, None, after, None)
+}
+
+pub fn compare_e4_gate_assessments_with_admission_projections(
+    before: &GeoE4GateAssessment,
+    before_admission_projection: GeoE4AdmissionProjectionDigest,
+    after: &GeoE4GateAssessment,
+    after_admission_projection: GeoE4AdmissionProjectionDigest,
+) -> Result<GeoE4RescoreComparisonArtifact, GeoPopulationError> {
+    compare_e4_gate_assessments_with_optional_admission_projections(
+        before,
+        Some(before_admission_projection),
+        after,
+        Some(after_admission_projection),
+    )
+}
+
+fn compare_e4_gate_assessments_with_optional_admission_projections(
+    before: &GeoE4GateAssessment,
+    before_admission_projection: Option<GeoE4AdmissionProjectionDigest>,
+    after: &GeoE4GateAssessment,
+    after_admission_projection: Option<GeoE4AdmissionProjectionDigest>,
+) -> Result<GeoE4RescoreComparisonArtifact, GeoPopulationError> {
     validate_e4_gate_assessment(before)?;
     validate_e4_gate_assessment(after)?;
     if before.gate_id != after.gate_id {
@@ -2646,8 +2679,8 @@ pub fn compare_e4_gate_assessments(
         version: CANON_GEO_E4_RESCORE_COMPARISON_VERSION.to_string(),
         gate_id: before.gate_id.clone(),
         required_subjects: before.required_subjects,
-        before: e4_rescore_snapshot(before, before_blake3),
-        after: e4_rescore_snapshot(after, after_blake3),
+        before: e4_rescore_snapshot(before, before_blake3, before_admission_projection),
+        after: e4_rescore_snapshot(after, after_blake3, after_admission_projection),
         table,
         interpretation: GeoE4RescoreInterpretation {
             denominator_frozen: true,
@@ -2658,6 +2691,72 @@ pub fn compare_e4_gate_assessments(
     };
     validate_e4_rescore_comparison_artifact(&artifact)?;
     Ok(artifact)
+}
+
+#[derive(Debug, Serialize)]
+struct GeoE4AdmissionProjection<'a> {
+    version: &'static str,
+    cases: Vec<GeoE4AdmissionProjectionCase<'a>>,
+}
+
+#[derive(Debug, Serialize)]
+struct GeoE4AdmissionProjectionCase<'a> {
+    case_id: &'a str,
+    contracts: &'a [GeoRhoContract],
+    observations: &'a [GeoRhoObservation],
+}
+
+pub fn e4_admission_projection_digest_from_population_request(
+    request: &GeoPopulationEvaluationRequest,
+) -> Result<GeoE4AdmissionProjectionDigest, GeoPopulationError> {
+    let canonical = canonicalize_population_request(request)?;
+    let cases = checked_len(
+        canonical.cases.len(),
+        "e4_admission_projection_digest.cases",
+    )?;
+    let mut contracts = 0;
+    let mut observations = 0;
+    let mut projection_cases = Vec::with_capacity(canonical.cases.len());
+    for case in &canonical.cases {
+        checked_add(
+            &mut contracts,
+            checked_len(
+                case.evidence.contracts.len(),
+                "e4_admission_projection_digest.contracts",
+            )?,
+            "e4_admission_projection_digest.contracts",
+        )?;
+        checked_add(
+            &mut observations,
+            checked_len(
+                case.evidence.observations.len(),
+                "e4_admission_projection_digest.observations",
+            )?,
+            "e4_admission_projection_digest.observations",
+        )?;
+        projection_cases.push(GeoE4AdmissionProjectionCase {
+            case_id: &case.id,
+            contracts: &case.evidence.contracts,
+            observations: &case.evidence.observations,
+        });
+    }
+    let projection = GeoE4AdmissionProjection {
+        version: CANON_GEO_E4_RESCORE_COMPARISON_VERSION,
+        cases: projection_cases,
+    };
+    let bytes = serde_json::to_vec(&projection).map_err(|error| {
+        GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo E4 admission projection could not be serialized",
+            [("error", error.to_string())],
+        )
+    })?;
+    Ok(GeoE4AdmissionProjectionDigest {
+        contracts_observations_blake3: blake3::hash(&bytes).to_hex().to_string(),
+        cases,
+        contracts,
+        observations,
+    })
 }
 
 pub fn canonical_e4_rescore_comparison_bytes(
@@ -2699,6 +2798,24 @@ pub fn validate_e4_rescore_comparison_artifact(
                     CANON_GEO_FROZEN_E4_H7_REQUIRED_SUBJECTS.to_string(),
                 ),
                 ("actual", comparison.required_subjects.to_string()),
+            ],
+        ));
+    }
+    if comparison.before.admission_projection.is_some()
+        != comparison.after.admission_projection.is_some()
+    {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo E4 rescore comparison admission projection must be present for both snapshots or neither",
+            [
+                (
+                    "before_has_admission_projection",
+                    comparison.before.admission_projection.is_some().to_string(),
+                ),
+                (
+                    "after_has_admission_projection",
+                    comparison.after.admission_projection.is_some().to_string(),
+                ),
             ],
         ));
     }
@@ -6032,9 +6149,11 @@ fn digest_e4_gate_assessment(
 fn e4_rescore_snapshot(
     assessment: &GeoE4GateAssessment,
     assessment_blake3: String,
+    admission_projection: Option<GeoE4AdmissionProjectionDigest>,
 ) -> GeoE4RescoreSnapshot {
     GeoE4RescoreSnapshot {
         assessment_blake3,
+        admission_projection,
         proof_class: assessment.proof_class,
         status: assessment.status,
         release_claim_allowed: assessment.release_claim_allowed,
@@ -6107,6 +6226,20 @@ fn validate_e4_rescore_snapshot(
         "e4_rescore_comparison.assessment_blake3",
         &snapshot.assessment_blake3,
     )?;
+    if let Some(projection) = &snapshot.admission_projection {
+        validate_lowercase_hex64(
+            "e4_rescore_comparison.admission_projection.contracts_observations_blake3",
+            &projection.contracts_observations_blake3,
+        )?;
+        if projection.cases != snapshot.evaluated_cases {
+            return Err(summary_invariant_error(
+                label,
+                "admission_projection.cases",
+                snapshot.evaluated_cases,
+                projection.cases,
+            ));
+        }
+    }
     let expected_deficit = required_subjects.saturating_sub(snapshot.evaluated_cases);
     if snapshot.subject_deficit != expected_deficit {
         return Err(summary_invariant_error(

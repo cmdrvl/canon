@@ -623,7 +623,8 @@ pub struct GeoEvaluateCli {
     #[arg(long = "e4-assessment-out")]
     pub e4_assessment_out: Option<PathBuf>,
 
-    /// Existing canon_geo_e4_gate_assessment.v0 sidecar to compare against
+    /// Existing E4 assessment, population request, H7 population, or stack baseline to compare
+    /// against
     #[arg(long = "e4-before-assessment", requires = "e4_rescore_out")]
     pub e4_before_assessment: Option<PathBuf>,
 

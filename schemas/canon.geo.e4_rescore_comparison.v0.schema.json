@@ -87,6 +87,9 @@
         "assessment_blake3": {
           "$ref": "#/$defs/blake3"
         },
+        "admission_projection": {
+          "$ref": "#/$defs/admission_projection"
+        },
         "proof_class": {
           "$ref": "#/$defs/proof_class"
         },
@@ -151,6 +154,31 @@
         "false_merge_cases",
         "truth_exclusion_cases",
         "component_fallback_cases"
+      ]
+    },
+    "admission_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contracts_observations_blake3": {
+          "description": "Canonical BLAKE3 digest over the per-case rho contracts and observations only. Candidate-universe widening must not change this digest unless admission inputs also changed.",
+          "$ref": "#/$defs/blake3"
+        },
+        "cases": {
+          "$ref": "#/$defs/count"
+        },
+        "contracts": {
+          "$ref": "#/$defs/count"
+        },
+        "observations": {
+          "$ref": "#/$defs/count"
+        }
+      },
+      "required": [
+        "contracts_observations_blake3",
+        "cases",
+        "contracts",
+        "observations"
       ]
     },
     "row": {

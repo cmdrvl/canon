@@ -2797,7 +2797,7 @@
           "flag": "--e4-before-assessment",
           "type": "file_path",
           "required": false,
-          "description": "Existing canon_geo_e4_gate_assessment.v0 sidecar to compare against when --e4-rescore-out is set"
+          "description": "Existing E4 assessment, population request, H7 population, or stack baseline to compare against when --e4-rescore-out is set"
         },
         {
           "name": "e4-rescore-out",
