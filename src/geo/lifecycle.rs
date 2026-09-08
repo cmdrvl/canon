@@ -470,6 +470,8 @@ pub struct GeoTemporalContainmentArtifact {
     pub version: String,
     pub mart_id: String,
     pub clusters: Vec<GeoTemporalContainmentCluster>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub existence_intervals: Vec<GeoEntityExistenceInterval>,
     pub edges: Vec<GeoTemporalContainmentEdge>,
     pub summary: GeoTemporalContainmentSummary,
 }
@@ -520,8 +522,23 @@ pub struct GeoTemporalContainmentSourceReceipt {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct GeoEntityExistenceInterval {
+    pub cluster_id: String,
+    pub entity_level: GeoEntityLevel,
+    pub observed_interval: GeoTemporalContainmentInterval,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authoritative_birth_utc_day: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authoritative_death_utc_day: Option<String>,
+    pub source_receipts: Vec<GeoTemporalContainmentSourceReceipt>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoTemporalContainmentSummary {
     pub clusters: u64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub existence_intervals: u64,
     pub edges: u64,
 }
 
@@ -553,6 +570,65 @@ pub struct GeoContainmentAsOfSummary {
     pub child_clusters: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoEntityExistenceAsOfQuery {
+    pub as_of_utc_day: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoEntityExistenceStatus {
+    Present,
+    Absent,
+    Unverified,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoEntityExistenceReason {
+    ObservedPresent,
+    AuthoritativePresent,
+    BeforeAuthoritativeBirth,
+    AfterAuthoritativeDeath,
+    OutsideObservedWindow,
+    NoExistenceEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoEntityExistenceAsOfRow {
+    pub cluster_id: String,
+    pub entity_level: GeoEntityLevel,
+    pub status: GeoEntityExistenceStatus,
+    pub reason: GeoEntityExistenceReason,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matched_interval: Option<GeoTemporalContainmentInterval>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_receipts: Vec<GeoTemporalContainmentSourceReceipt>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoEntityExistenceAsOfArtifact {
+    pub version: String,
+    pub mart_id: String,
+    pub as_of_utc_day: String,
+    pub rows: Vec<GeoEntityExistenceAsOfRow>,
+    pub summary: GeoEntityExistenceAsOfSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoEntityExistenceAsOfSummary {
+    pub rows: u64,
+    pub present: u64,
+    pub absent: u64,
+    pub unverified: u64,
+}
+
 pub fn validate_temporal_containment_artifact(
     artifact: &GeoTemporalContainmentArtifact,
 ) -> Result<(), GeoLifecycleError> {
@@ -567,9 +643,20 @@ pub fn canonical_temporal_containment_artifact(
     canonical
         .clusters
         .sort_by(|left, right| left.cluster_id.cmp(&right.cluster_id));
+    for interval in &mut canonical.existence_intervals {
+        interval.source_receipts.sort();
+        interval.source_receipts.dedup();
+    }
+    canonical
+        .existence_intervals
+        .sort_by(existence_interval_sort_order);
     canonical.edges.sort_by(edge_sort_order);
     canonical.summary = GeoTemporalContainmentSummary {
         clusters: usize_to_u64(canonical.clusters.len(), "summary.clusters")?,
+        existence_intervals: usize_to_u64(
+            canonical.existence_intervals.len(),
+            "summary.existence_intervals",
+        )?,
         edges: usize_to_u64(canonical.edges.len(), "summary.edges")?,
     };
     validate_temporal_containment_artifact(&canonical)?;
@@ -624,6 +711,59 @@ pub fn containment_as_of(
         mart_id: canonical.mart_id,
         as_of_utc_day: query.as_of_utc_day.clone(),
         edges,
+        summary,
+    })
+}
+
+pub fn entity_existence_as_of(
+    artifact: &GeoTemporalContainmentArtifact,
+    query: &GeoEntityExistenceAsOfQuery,
+) -> Result<GeoEntityExistenceAsOfArtifact, GeoLifecycleError> {
+    let canonical = canonical_temporal_containment_artifact(artifact)?;
+    validate_utc_day("as_of_utc_day", &query.as_of_utc_day)?;
+    let clusters = canonical
+        .clusters
+        .iter()
+        .map(|cluster| (cluster.cluster_id.as_str(), cluster.entity_level))
+        .collect::<BTreeMap<_, _>>();
+    if let Some(cluster_id) = &query.cluster_id {
+        validate_cluster_identifier("cluster_id", cluster_id)?;
+        if !clusters.contains_key(cluster_id.as_str()) {
+            return Err(GeoLifecycleError::invalid(
+                "Geo entity existence query references an unknown cluster",
+                [("cluster_id", cluster_id.as_str())],
+            ));
+        }
+    }
+
+    let mut rows = Vec::new();
+    for (cluster_id, entity_level) in &clusters {
+        if query
+            .cluster_id
+            .as_ref()
+            .is_some_and(|requested| requested.as_str() != *cluster_id)
+        {
+            continue;
+        }
+        let intervals = canonical
+            .existence_intervals
+            .iter()
+            .filter(|interval| interval.cluster_id == *cluster_id)
+            .collect::<Vec<_>>();
+        rows.push(existence_row_as_of(
+            cluster_id,
+            *entity_level,
+            &intervals,
+            &query.as_of_utc_day,
+        ));
+    }
+    rows.sort_by(|left, right| left.cluster_id.cmp(&right.cluster_id));
+    let summary = existence_as_of_summary(&rows)?;
+    Ok(GeoEntityExistenceAsOfArtifact {
+        version: canonical.version,
+        mart_id: canonical.mart_id,
+        as_of_utc_day: query.as_of_utc_day.clone(),
+        rows,
         summary,
     })
 }
@@ -1918,6 +2058,11 @@ fn validate_temporal_containment_artifact_inner(
     validate_summary(artifact)?;
 
     let clusters = validate_clusters(&artifact.clusters, require_canonical_order)?;
+    validate_existence_intervals(
+        &artifact.existence_intervals,
+        &clusters,
+        require_canonical_order,
+    )?;
     validate_edges(&artifact.edges, &clusters, require_canonical_order)
 }
 
@@ -1930,6 +2075,20 @@ fn validate_summary(artifact: &GeoTemporalContainmentArtifact) -> Result<(), Geo
                 ("field", "summary.clusters".to_string()),
                 ("actual", artifact.summary.clusters.to_string()),
                 ("expected", cluster_count.to_string()),
+            ],
+        ));
+    }
+    let existence_interval_count = usize_to_u64(
+        artifact.existence_intervals.len(),
+        "summary.existence_intervals",
+    )?;
+    if artifact.summary.existence_intervals != existence_interval_count {
+        return Err(GeoLifecycleError::invalid(
+            "Geo temporal-containment existence interval summary does not match intervals",
+            [
+                ("field", "summary.existence_intervals".to_string()),
+                ("actual", artifact.summary.existence_intervals.to_string()),
+                ("expected", existence_interval_count.to_string()),
             ],
         ));
     }
@@ -1988,6 +2147,100 @@ fn validate_clusters(
         }
     }
     Ok(out)
+}
+
+fn validate_existence_intervals(
+    intervals: &[GeoEntityExistenceInterval],
+    clusters: &BTreeMap<String, GeoEntityLevel>,
+    require_canonical_order: bool,
+) -> Result<(), GeoLifecycleError> {
+    let mut semantic_intervals = BTreeSet::new();
+    let mut previous_key: Option<String> = None;
+    for interval in intervals {
+        validate_existence_interval(interval, clusters)?;
+        let semantic_key = existence_interval_semantic_key(interval);
+        if !semantic_intervals.insert(semantic_key.clone()) {
+            return Err(GeoLifecycleError::invalid(
+                "Geo entity existence intervals must be unique by cluster, validity, and authoritative bounds",
+                [
+                    ("field", "existence_intervals".to_string()),
+                    ("cluster_id", interval.cluster_id.clone()),
+                ],
+            ));
+        }
+        if require_canonical_order {
+            let key = existence_interval_sort_key(interval);
+            if let Some(previous) = &previous_key
+                && previous >= &key
+            {
+                return Err(GeoLifecycleError::invalid(
+                    "Geo entity existence intervals must be in canonical order",
+                    [
+                        ("field", "existence_intervals".to_string()),
+                        ("previous_key", previous.clone()),
+                        ("interval_key", key.clone()),
+                    ],
+                ));
+            }
+            previous_key = Some(key);
+            validate_receipts_are_canonical(
+                "existence_intervals[].source_receipts",
+                &interval.source_receipts,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_existence_interval(
+    interval: &GeoEntityExistenceInterval,
+    clusters: &BTreeMap<String, GeoEntityLevel>,
+) -> Result<(), GeoLifecycleError> {
+    validate_cluster_id(
+        "existence_intervals[].cluster_id",
+        &interval.cluster_id,
+        interval.entity_level,
+    )?;
+    validate_endpoint_level(
+        "existence_intervals[].cluster_id",
+        &interval.cluster_id,
+        interval.entity_level,
+        clusters,
+    )?;
+    validate_interval(&interval.observed_interval)?;
+    if let Some(birth) = &interval.authoritative_birth_utc_day {
+        validate_utc_day("existence_intervals[].authoritative_birth_utc_day", birth)?;
+    }
+    if let Some(death) = &interval.authoritative_death_utc_day {
+        validate_utc_day("existence_intervals[].authoritative_death_utc_day", death)?;
+    }
+    if let (Some(birth), Some(death)) = (
+        &interval.authoritative_birth_utc_day,
+        &interval.authoritative_death_utc_day,
+    ) && birth > death
+    {
+        return Err(GeoLifecycleError::invalid(
+            "Geo entity existence authoritative interval start must not be after its end",
+            [
+                (
+                    "field",
+                    "existence_intervals[].authoritative_interval".to_string(),
+                ),
+                ("cluster_id", interval.cluster_id.clone()),
+            ],
+        ));
+    }
+    if interval.source_receipts.is_empty() {
+        return Err(invalid_field(
+            "existence_intervals[].source_receipts",
+            "Geo entity existence intervals require at least one source receipt",
+            "0",
+        ));
+    }
+    for receipt in &interval.source_receipts {
+        validate_source_receipt(receipt)?;
+    }
+    Ok(())
 }
 
 fn validate_edges(
@@ -2159,6 +2412,39 @@ fn validate_source_receipt(
     validate_string("source_receipt.rule_id", &receipt.rule_id)
 }
 
+fn validate_receipts_are_canonical(
+    field: &'static str,
+    receipts: &[GeoTemporalContainmentSourceReceipt],
+) -> Result<(), GeoLifecycleError> {
+    let mut seen = BTreeSet::new();
+    let mut previous: Option<&GeoTemporalContainmentSourceReceipt> = None;
+    for receipt in receipts {
+        if !seen.insert(receipt) {
+            return Err(GeoLifecycleError::invalid(
+                "Geo source receipt lists must not contain duplicates",
+                [
+                    ("field", field.to_string()),
+                    ("receipt_id", receipt.receipt_id.clone()),
+                ],
+            ));
+        }
+        if let Some(prior) = previous
+            && prior >= receipt
+        {
+            return Err(GeoLifecycleError::invalid(
+                "Geo source receipt lists must be in canonical order",
+                [
+                    ("field", field.to_string()),
+                    ("previous_receipt_id", prior.receipt_id.clone()),
+                    ("receipt_id", receipt.receipt_id.clone()),
+                ],
+            ));
+        }
+        previous = Some(receipt);
+    }
+    Ok(())
+}
+
 fn containment_summary(
     edges: &[GeoTemporalContainmentEdge],
 ) -> Result<GeoContainmentAsOfSummary, GeoLifecycleError> {
@@ -2177,6 +2463,163 @@ fn containment_summary(
     })
 }
 
+fn existence_row_as_of(
+    cluster_id: &str,
+    entity_level: GeoEntityLevel,
+    intervals: &[&GeoEntityExistenceInterval],
+    as_of_utc_day: &str,
+) -> GeoEntityExistenceAsOfRow {
+    if intervals.is_empty() {
+        return GeoEntityExistenceAsOfRow {
+            cluster_id: cluster_id.to_string(),
+            entity_level,
+            status: GeoEntityExistenceStatus::Unverified,
+            reason: GeoEntityExistenceReason::NoExistenceEvidence,
+            matched_interval: None,
+            source_receipts: Vec::new(),
+        };
+    }
+
+    if let Some(interval) = intervals
+        .iter()
+        .find(|interval| authoritative_interval_contains(interval, as_of_utc_day))
+    {
+        return existence_present_row(
+            cluster_id,
+            entity_level,
+            interval,
+            GeoEntityExistenceReason::AuthoritativePresent,
+        );
+    }
+    if let Some(interval) = intervals
+        .iter()
+        .find(|interval| observed_interval_contains(interval, as_of_utc_day))
+    {
+        return existence_present_row(
+            cluster_id,
+            entity_level,
+            interval,
+            GeoEntityExistenceReason::ObservedPresent,
+        );
+    }
+    if let Some(interval) = intervals.iter().find(|interval| {
+        interval
+            .authoritative_birth_utc_day
+            .as_deref()
+            .is_some_and(|birth| as_of_utc_day < birth)
+    }) {
+        return existence_absent_row(
+            cluster_id,
+            entity_level,
+            interval,
+            GeoEntityExistenceReason::BeforeAuthoritativeBirth,
+        );
+    }
+    if let Some(interval) = intervals.iter().find(|interval| {
+        interval
+            .authoritative_death_utc_day
+            .as_deref()
+            .is_some_and(|death| death < as_of_utc_day)
+    }) {
+        return existence_absent_row(
+            cluster_id,
+            entity_level,
+            interval,
+            GeoEntityExistenceReason::AfterAuthoritativeDeath,
+        );
+    }
+    let interval = intervals[0];
+    GeoEntityExistenceAsOfRow {
+        cluster_id: cluster_id.to_string(),
+        entity_level,
+        status: GeoEntityExistenceStatus::Unverified,
+        reason: GeoEntityExistenceReason::OutsideObservedWindow,
+        matched_interval: Some(interval.observed_interval.clone()),
+        source_receipts: interval.source_receipts.clone(),
+    }
+}
+
+fn existence_present_row(
+    cluster_id: &str,
+    entity_level: GeoEntityLevel,
+    interval: &GeoEntityExistenceInterval,
+    reason: GeoEntityExistenceReason,
+) -> GeoEntityExistenceAsOfRow {
+    GeoEntityExistenceAsOfRow {
+        cluster_id: cluster_id.to_string(),
+        entity_level,
+        status: GeoEntityExistenceStatus::Present,
+        reason,
+        matched_interval: Some(interval.observed_interval.clone()),
+        source_receipts: interval.source_receipts.clone(),
+    }
+}
+
+fn existence_absent_row(
+    cluster_id: &str,
+    entity_level: GeoEntityLevel,
+    interval: &GeoEntityExistenceInterval,
+    reason: GeoEntityExistenceReason,
+) -> GeoEntityExistenceAsOfRow {
+    GeoEntityExistenceAsOfRow {
+        cluster_id: cluster_id.to_string(),
+        entity_level,
+        status: GeoEntityExistenceStatus::Absent,
+        reason,
+        matched_interval: Some(interval.observed_interval.clone()),
+        source_receipts: interval.source_receipts.clone(),
+    }
+}
+
+fn authoritative_interval_contains(
+    interval: &GeoEntityExistenceInterval,
+    as_of_utc_day: &str,
+) -> bool {
+    interval
+        .authoritative_birth_utc_day
+        .as_deref()
+        .is_some_and(|birth| birth <= as_of_utc_day)
+        && interval
+            .authoritative_death_utc_day
+            .as_deref()
+            .is_none_or(|death| as_of_utc_day <= death)
+}
+
+fn observed_interval_contains(interval: &GeoEntityExistenceInterval, as_of_utc_day: &str) -> bool {
+    interval.observed_interval.start_utc_day.as_str() <= as_of_utc_day
+        && as_of_utc_day <= interval.observed_interval.end_utc_day.as_str()
+}
+
+fn existence_as_of_summary(
+    rows: &[GeoEntityExistenceAsOfRow],
+) -> Result<GeoEntityExistenceAsOfSummary, GeoLifecycleError> {
+    let present = rows
+        .iter()
+        .filter(|row| row.status == GeoEntityExistenceStatus::Present)
+        .count();
+    let absent = rows
+        .iter()
+        .filter(|row| row.status == GeoEntityExistenceStatus::Absent)
+        .count();
+    let unverified = rows
+        .len()
+        .checked_sub(present)
+        .and_then(|value| value.checked_sub(absent))
+        .ok_or_else(|| {
+            GeoLifecycleError::new(
+                GeoLifecycleErrorCode::ArithmeticOverflow,
+                "Geo entity existence summary count underflowed",
+                [("field", "summary.unverified")],
+            )
+        })?;
+    Ok(GeoEntityExistenceAsOfSummary {
+        rows: usize_to_u64(rows.len(), "summary.rows")?,
+        present: usize_to_u64(present, "summary.present")?,
+        absent: usize_to_u64(absent, "summary.absent")?,
+        unverified: usize_to_u64(unverified, "summary.unverified")?,
+    })
+}
+
 fn edge_sort_order(
     left: &GeoTemporalContainmentEdge,
     right: &GeoTemporalContainmentEdge,
@@ -2192,6 +2635,39 @@ fn edge_sort_key(edge: &GeoTemporalContainmentEdge) -> String {
         edge.valid_interval.start_utc_day,
         edge.valid_interval.end_utc_day,
         edge.edge_id
+    )
+}
+
+fn existence_interval_sort_order(
+    left: &GeoEntityExistenceInterval,
+    right: &GeoEntityExistenceInterval,
+) -> std::cmp::Ordering {
+    existence_interval_sort_key(left).cmp(&existence_interval_sort_key(right))
+}
+
+fn existence_interval_sort_key(interval: &GeoEntityExistenceInterval) -> String {
+    format!(
+        "{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
+        interval.cluster_id,
+        interval.observed_interval.start_utc_day,
+        interval.observed_interval.end_utc_day,
+        interval
+            .authoritative_birth_utc_day
+            .as_deref()
+            .unwrap_or(""),
+        interval
+            .authoritative_death_utc_day
+            .as_deref()
+            .unwrap_or("")
+    )
+}
+
+fn existence_interval_semantic_key(interval: &GeoEntityExistenceInterval) -> String {
+    format!(
+        "{}\u{1f}{:?}\u{1f}{}",
+        interval.cluster_id,
+        interval.entity_level,
+        existence_interval_sort_key(interval)
     )
 }
 

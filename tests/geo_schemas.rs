@@ -126,8 +126,8 @@ use canon::geo::{
     GeoProjectionProvenance, GeoPropagationBudget, GeoProspectiveObservation,
     GeoProspectiveOutcome, GeoQuestion, GeoRegionalInventory, GeoRegionalSourceInstance,
     GeoReliabilityOrder, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter, GeoRetryPolicy,
-    GeoRetryRecovery, GeoRetryRecoveryPoint, GeoRetryTerminal, GeoRhoBasis, GeoRhoContract,
-    GeoRhoObservation, GeoRhoObservationKind, GeoRunArtifactRef, GeoRunPlanRef,
+    GeoRetryRecovery, GeoRetryRecoveryPoint, GeoRetryTerminal, GeoRhoAdmissionPolicy, GeoRhoBasis,
+    GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoRunArtifactRef, GeoRunPlanRef,
     GeoSeparationInputs, GeoSeparationRequest, GeoSourceAvailability, GeoSourceAxisDomain,
     GeoSourceGeometry, GeoSourcePointDecimal, GeoSourcePointFixed, GeoSourceRelease,
     GeoSourceReleasePin, GeoStreetDirection, GeoStreetSuffix, GeoSubjectBinding,
@@ -164,11 +164,11 @@ use canon::geo::{
     validate_redacted_artifact, validate_retry_recovery_artifact,
 };
 use canon::geo::{
-    CANON_GEO_TEMPORAL_CONTAINMENT_VERSION, GeoTemporalContainmentArtifact,
-    GeoTemporalContainmentCluster, GeoTemporalContainmentEdge, GeoTemporalContainmentInterval,
-    GeoTemporalContainmentRelation, GeoTemporalContainmentSourceReceipt,
-    GeoTemporalContainmentSummary, canonical_temporal_containment_bytes,
-    validate_temporal_containment_artifact,
+    CANON_GEO_TEMPORAL_CONTAINMENT_VERSION, GeoEntityExistenceInterval,
+    GeoTemporalContainmentArtifact, GeoTemporalContainmentCluster, GeoTemporalContainmentEdge,
+    GeoTemporalContainmentInterval, GeoTemporalContainmentRelation,
+    GeoTemporalContainmentSourceReceipt, GeoTemporalContainmentSummary,
+    canonical_temporal_containment_bytes, validate_temporal_containment_artifact,
 };
 use h3o::{LatLng, Resolution};
 use serde_json::Value;
@@ -1101,6 +1101,7 @@ fn observer_rho_contract() -> GeoRhoContract {
                 .to_string(),
             falsification_rule_id: "structure_count_truth_outside_band".to_string(),
             admissible_hard_band: false,
+            admission_policy: GeoRhoAdmissionPolicy::Declared,
         },
     }
 }
@@ -4512,6 +4513,24 @@ fn temporal_containment_artifact() -> GeoTemporalContainmentArtifact {
                 entity_level: GeoEntityLevel::Parcel,
             },
         ],
+        existence_intervals: vec![GeoEntityExistenceInterval {
+            cluster_id: "cmdrvl:building:nyc:bin:fixture-schema-001".to_string(),
+            entity_level: GeoEntityLevel::Building,
+            observed_interval: GeoTemporalContainmentInterval {
+                start_utc_day: "2020-01-01".to_string(),
+                end_utc_day: "2020-12-31".to_string(),
+            },
+            authoritative_birth_utc_day: Some("2020-01-01".to_string()),
+            authoritative_death_utc_day: None,
+            source_receipts: vec![GeoTemporalContainmentSourceReceipt {
+                receipt_id: "receipt-fixture-schema-existence-001".to_string(),
+                source_dataset: "fixture.nyc.lifecycle".to_string(),
+                source_record_id: "co:fixture-schema-001".to_string(),
+                source_record_blake3: pre_resolution_blake3("co:fixture-schema-001"),
+                proof_class: "fixture".to_string(),
+                rule_id: "geo_entity_existence_fixture.v1".to_string(),
+            }],
+        }],
         edges: vec![GeoTemporalContainmentEdge {
             edge_id: "edge-fixture-schema-001".to_string(),
             parent_cluster_id: "cmdrvl:parcel:nyc:bbl:fixture-schema-001".to_string(),
@@ -4534,6 +4553,7 @@ fn temporal_containment_artifact() -> GeoTemporalContainmentArtifact {
         }],
         summary: GeoTemporalContainmentSummary {
             clusters: 2,
+            existence_intervals: 1,
             edges: 1,
         },
     }

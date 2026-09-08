@@ -1,9 +1,10 @@
 use canon::geo::{
-    CANON_GEO_TEMPORAL_CONTAINMENT_VERSION, GeoContainmentAsOfQuery, GeoEntityLevel,
+    CANON_GEO_TEMPORAL_CONTAINMENT_VERSION, GeoContainmentAsOfQuery, GeoEntityExistenceAsOfQuery,
+    GeoEntityExistenceInterval, GeoEntityExistenceReason, GeoEntityExistenceStatus, GeoEntityLevel,
     GeoLifecycleErrorCode, GeoTemporalContainmentArtifact, GeoTemporalContainmentCluster,
     GeoTemporalContainmentEdge, GeoTemporalContainmentInterval, GeoTemporalContainmentRelation,
     GeoTemporalContainmentSourceReceipt, GeoTemporalContainmentSummary,
-    canonical_temporal_containment_bytes, containment_as_of,
+    canonical_temporal_containment_bytes, containment_as_of, entity_existence_as_of,
     validate_temporal_containment_artifact,
 };
 
@@ -51,15 +52,124 @@ fn canonical_bytes_are_deterministic_under_edge_and_cluster_order_shuffle() {
     let canonical = temporal_containment_fixture();
     let mut shuffled = canonical.clone();
     shuffled.clusters.reverse();
+    shuffled.existence_intervals.reverse();
+    if let Some(interval) = shuffled.existence_intervals.first_mut() {
+        interval.source_receipts.reverse();
+    }
     shuffled.edges.reverse();
     shuffled.summary = GeoTemporalContainmentSummary {
         clusters: shuffled.clusters.len() as u64,
+        existence_intervals: shuffled.existence_intervals.len() as u64,
         edges: shuffled.edges.len() as u64,
     };
 
     let left = canonical_temporal_containment_bytes(&canonical).expect("canonical bytes");
     let right = canonical_temporal_containment_bytes(&shuffled).expect("shuffled canonical bytes");
     assert_eq!(left, right);
+}
+
+#[test]
+fn entity_existence_as_of_keeps_observation_gaps_separate_from_absence() {
+    let artifact = temporal_containment_fixture();
+
+    let observed_gap = only_existence_row(
+        entity_existence_as_of(
+            &artifact,
+            &GeoEntityExistenceAsOfQuery {
+                as_of_utc_day: "2019-06-01".to_string(),
+                cluster_id: Some(building_id(1)),
+            },
+        )
+        .expect("existence query succeeds"),
+    );
+    assert_eq!(observed_gap.status, GeoEntityExistenceStatus::Unverified);
+    assert_eq!(
+        observed_gap.reason,
+        GeoEntityExistenceReason::OutsideObservedWindow
+    );
+
+    let observed_present = only_existence_row(
+        entity_existence_as_of(
+            &artifact,
+            &GeoEntityExistenceAsOfQuery {
+                as_of_utc_day: "2020-06-01".to_string(),
+                cluster_id: Some(building_id(1)),
+            },
+        )
+        .expect("existence query succeeds"),
+    );
+    assert_eq!(observed_present.status, GeoEntityExistenceStatus::Present);
+    assert_eq!(
+        observed_present.reason,
+        GeoEntityExistenceReason::ObservedPresent
+    );
+
+    let before_birth = only_existence_row(
+        entity_existence_as_of(
+            &artifact,
+            &GeoEntityExistenceAsOfQuery {
+                as_of_utc_day: "2019-06-01".to_string(),
+                cluster_id: Some(building_id(2)),
+            },
+        )
+        .expect("existence query succeeds"),
+    );
+    assert_eq!(before_birth.status, GeoEntityExistenceStatus::Absent);
+    assert_eq!(
+        before_birth.reason,
+        GeoEntityExistenceReason::BeforeAuthoritativeBirth
+    );
+
+    let after_death = only_existence_row(
+        entity_existence_as_of(
+            &artifact,
+            &GeoEntityExistenceAsOfQuery {
+                as_of_utc_day: "2021-06-01".to_string(),
+                cluster_id: Some(building_id(3)),
+            },
+        )
+        .expect("existence query succeeds"),
+    );
+    assert_eq!(after_death.status, GeoEntityExistenceStatus::Absent);
+    assert_eq!(
+        after_death.reason,
+        GeoEntityExistenceReason::AfterAuthoritativeDeath
+    );
+
+    let death_only_before_observation = only_existence_row(
+        entity_existence_as_of(
+            &artifact,
+            &GeoEntityExistenceAsOfQuery {
+                as_of_utc_day: "2019-06-01".to_string(),
+                cluster_id: Some(building_id(4)),
+            },
+        )
+        .expect("existence query succeeds"),
+    );
+    assert_eq!(
+        death_only_before_observation.status,
+        GeoEntityExistenceStatus::Unverified
+    );
+    assert_eq!(
+        death_only_before_observation.reason,
+        GeoEntityExistenceReason::OutsideObservedWindow
+    );
+
+    let no_evidence = only_existence_row(
+        entity_existence_as_of(
+            &artifact,
+            &GeoEntityExistenceAsOfQuery {
+                as_of_utc_day: "2020-06-01".to_string(),
+                cluster_id: Some(building_id(7)),
+            },
+        )
+        .expect("existence query succeeds"),
+    );
+    assert_eq!(no_evidence.status, GeoEntityExistenceStatus::Unverified);
+    assert_eq!(
+        no_evidence.reason,
+        GeoEntityExistenceReason::NoExistenceEvidence
+    );
 }
 
 #[test]
@@ -78,6 +188,44 @@ fn validator_rejects_unsorted_and_duplicate_edges() {
         .expect_err("validator rejects duplicate semantic containment");
     assert_eq!(error.code, GeoLifecycleErrorCode::InvalidInput);
     assert_eq!(error.detail.get("field").map(String::as_str), Some("edges"));
+}
+
+#[test]
+fn validator_rejects_invalid_existence_intervals() {
+    let mut unsorted = temporal_containment_fixture();
+    unsorted.existence_intervals.swap(0, 1);
+    let error = validate_temporal_containment_artifact(&unsorted)
+        .expect_err("validator rejects non-canonical existence interval order");
+    assert_eq!(error.code, GeoLifecycleErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("existence_intervals")
+    );
+
+    let mut duplicate = temporal_containment_fixture();
+    duplicate
+        .existence_intervals
+        .push(duplicate.existence_intervals[0].clone());
+    duplicate.summary.existence_intervals = duplicate.existence_intervals.len() as u64;
+    let error = validate_temporal_containment_artifact(&duplicate)
+        .expect_err("validator rejects duplicate semantic existence intervals");
+    assert_eq!(error.code, GeoLifecycleErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("existence_intervals")
+    );
+
+    let mut missing_receipt = temporal_containment_fixture();
+    missing_receipt.existence_intervals[0]
+        .source_receipts
+        .clear();
+    let error = validate_temporal_containment_artifact(&missing_receipt)
+        .expect_err("validator rejects existence intervals without source receipts");
+    assert_eq!(error.code, GeoLifecycleErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("existence_intervals[].source_receipts")
+    );
 }
 
 #[test]
@@ -187,16 +335,78 @@ fn temporal_containment_fixture() -> GeoTemporalContainmentArtifact {
             .then_with(|| left.edge_id.cmp(&right.edge_id))
     });
 
+    let existence_intervals = vec![
+        GeoEntityExistenceInterval {
+            cluster_id: building_id(1),
+            entity_level: GeoEntityLevel::Building,
+            observed_interval: GeoTemporalContainmentInterval {
+                start_utc_day: "2020-01-01".to_string(),
+                end_utc_day: "2020-12-31".to_string(),
+            },
+            authoritative_birth_utc_day: None,
+            authoritative_death_utc_day: None,
+            source_receipts: vec![
+                source_receipt("existence-b01-a", "observer:fixture:201:b01:a"),
+                source_receipt("existence-b01-b", "observer:fixture:201:b01:b"),
+            ],
+        },
+        GeoEntityExistenceInterval {
+            cluster_id: building_id(2),
+            entity_level: GeoEntityLevel::Building,
+            observed_interval: GeoTemporalContainmentInterval {
+                start_utc_day: "2020-01-01".to_string(),
+                end_utc_day: "2020-12-31".to_string(),
+            },
+            authoritative_birth_utc_day: Some("2020-01-01".to_string()),
+            authoritative_death_utc_day: None,
+            source_receipts: vec![source_receipt("existence-b02", "dob:fixture:201:b02")],
+        },
+        GeoEntityExistenceInterval {
+            cluster_id: building_id(3),
+            entity_level: GeoEntityLevel::Building,
+            observed_interval: GeoTemporalContainmentInterval {
+                start_utc_day: "2020-01-01".to_string(),
+                end_utc_day: "2020-12-31".to_string(),
+            },
+            authoritative_birth_utc_day: Some("2020-01-01".to_string()),
+            authoritative_death_utc_day: Some("2020-12-31".to_string()),
+            source_receipts: vec![source_receipt("existence-b03", "co:fixture:201:b03")],
+        },
+        GeoEntityExistenceInterval {
+            cluster_id: building_id(4),
+            entity_level: GeoEntityLevel::Building,
+            observed_interval: GeoTemporalContainmentInterval {
+                start_utc_day: "2020-01-01".to_string(),
+                end_utc_day: "2020-12-31".to_string(),
+            },
+            authoritative_birth_utc_day: None,
+            authoritative_death_utc_day: Some("2020-12-31".to_string()),
+            source_receipts: vec![source_receipt(
+                "existence-b04",
+                "demolition:fixture:201:b04",
+            )],
+        },
+    ];
+
     GeoTemporalContainmentArtifact {
         version: CANON_GEO_TEMPORAL_CONTAINMENT_VERSION.to_string(),
         mart_id: "fixture.nyc.lifecycle.2019-2020".to_string(),
         summary: GeoTemporalContainmentSummary {
             clusters: clusters.len() as u64,
+            existence_intervals: existence_intervals.len() as u64,
             edges: edges.len() as u64,
         },
         clusters,
+        existence_intervals,
         edges,
     }
+}
+
+fn only_existence_row(
+    artifact: canon::geo::GeoEntityExistenceAsOfArtifact,
+) -> canon::geo::GeoEntityExistenceAsOfRow {
+    assert_eq!(artifact.summary.rows, 1);
+    artifact.rows.into_iter().next().expect("one existence row")
 }
 
 fn parcel_id() -> String {
@@ -209,4 +419,15 @@ fn building_id(number: u8) -> String {
 
 fn blake3_uri(input: &str) -> String {
     format!("blake3:{}", blake3::hash(input.as_bytes()).to_hex())
+}
+
+fn source_receipt(receipt_id: &str, source_record_id: &str) -> GeoTemporalContainmentSourceReceipt {
+    GeoTemporalContainmentSourceReceipt {
+        receipt_id: receipt_id.to_string(),
+        source_dataset: "fixture.nyc.lifecycle".to_string(),
+        source_record_id: source_record_id.to_string(),
+        source_record_blake3: blake3_uri(source_record_id),
+        proof_class: "fixture".to_string(),
+        rule_id: "geo_entity_existence_fixture.v1".to_string(),
+    }
 }
