@@ -26,6 +26,7 @@ use super::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
+    cmp::Ordering,
     collections::{BTreeMap, BTreeSet},
     error::Error,
     fmt,
@@ -59,6 +60,12 @@ const FAMILY_FALSIFICATION_RULE_ID: &str = "truth-lot-owner-not-party-family";
 
 fn is_default_admission_policy(value: &GeoRhoAdmissionPolicy) -> bool {
     matches!(value, GeoRhoAdmissionPolicy::Declared)
+}
+
+fn is_default_exact_normalization_profile(
+    value: &GeoAssessmentRollOwnerExactNormalizationProfile,
+) -> bool {
+    *value == GeoAssessmentRollOwnerExactNormalizationProfile::source_norm()
 }
 
 const STOP_WORDS: &[&str] = &[
@@ -107,11 +114,17 @@ pub struct GeoAssessmentRollOwnerCalibration {
     pub calibration_blake3: String,
     pub exact_falsification_rule_id: String,
     pub affiliate_falsification_rule_id: String,
+    #[serde(
+        default,
+        skip_serializing_if = "is_default_exact_normalization_profile"
+    )]
+    pub exact_normalization_profile: GeoAssessmentRollOwnerExactNormalizationProfile,
     #[serde(default, skip_serializing_if = "is_default_admission_policy")]
     pub exact_admission_policy: GeoRhoAdmissionPolicy,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoAssessmentRollOwnerExactNormalizationProfile {
     pub legal_suffix_profile: Option<LegalSuffixProfile>,
     pub normalize_numeric_ordinals: bool,
@@ -151,6 +164,18 @@ impl GeoAssessmentRollOwnerExactNormalizationProfile {
 impl Default for GeoAssessmentRollOwnerExactNormalizationProfile {
     fn default() -> Self {
         Self::source_norm()
+    }
+}
+
+impl Ord for GeoAssessmentRollOwnerExactNormalizationProfile {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.method_suffix().cmp(other.method_suffix())
+    }
+}
+
+impl PartialOrd for GeoAssessmentRollOwnerExactNormalizationProfile {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -408,7 +433,13 @@ pub fn produce_assessment_roll_owner_evidence(
             for parcel_id in &widened_parcels {
                 let match_kind = roll_by_bbl
                     .get(parcel_id)
-                    .map(|row| assessment_roll_owner_match(&row.owner, &borrower_norms))
+                    .map(|row| {
+                        assessment_roll_owner_match_with_exact_normalization(
+                            &row.owner,
+                            &borrower_norms,
+                            request.calibration.exact_normalization_profile,
+                        )
+                    })
                     .unwrap_or(GeoAssessmentRollOwnerMatch::NoOwner);
                 match match_kind {
                     GeoAssessmentRollOwnerMatch::Exact => exact_lots.push(parcel_id.clone()),
@@ -430,6 +461,7 @@ pub fn produce_assessment_roll_owner_evidence(
                 &exact_lots,
                 &party_rows,
                 &roll_by_bbl,
+                request.calibration.exact_normalization_profile,
             )?);
             summary.exact_hard_observations =
                 checked_inc(summary.exact_hard_observations, "exact_hard_observations")?;
@@ -997,29 +1029,48 @@ pub fn assessment_roll_owner_match(
     assessment_roll_owner_match_with_family_relations(owner, borrower_party_name_norms, &[])
 }
 
+pub fn assessment_roll_owner_match_with_exact_normalization(
+    owner: &str,
+    borrower_party_name_norms: &BTreeSet<String>,
+    exact_normalization_profile: GeoAssessmentRollOwnerExactNormalizationProfile,
+) -> GeoAssessmentRollOwnerMatch {
+    assessment_roll_owner_match_with_family_relation_refs_and_exact_normalization(
+        owner,
+        borrower_party_name_norms,
+        &[],
+        exact_normalization_profile,
+    )
+}
+
 pub fn assessment_roll_owner_match_with_family_relations(
     owner: &str,
     borrower_party_name_norms: &BTreeSet<String>,
     party_family_relations: &[GeoAssessmentRollPartyFamilyRelationRow],
 ) -> GeoAssessmentRollOwnerMatch {
     let relation_refs = party_family_relations.iter().collect::<Vec<_>>();
-    assessment_roll_owner_match_with_family_relation_refs(
+    assessment_roll_owner_match_with_family_relation_refs_and_exact_normalization(
         owner,
         borrower_party_name_norms,
         &relation_refs,
+        GeoAssessmentRollOwnerExactNormalizationProfile::source_norm(),
     )
 }
 
-fn assessment_roll_owner_match_with_family_relation_refs(
+fn assessment_roll_owner_match_with_family_relation_refs_and_exact_normalization(
     owner: &str,
     borrower_party_name_norms: &BTreeSet<String>,
     party_family_relations: &[&GeoAssessmentRollPartyFamilyRelationRow],
+    exact_normalization_profile: GeoAssessmentRollOwnerExactNormalizationProfile,
 ) -> GeoAssessmentRollOwnerMatch {
     let owner_norm = normalize_assessment_roll_owner_name(owner);
     if owner_norm.is_empty() {
         return GeoAssessmentRollOwnerMatch::NoOwner;
     }
-    if borrower_party_name_norms.contains(&owner_norm) {
+    if assessment_roll_owner_normalized_exact_matches(
+        owner,
+        borrower_party_name_norms,
+        exact_normalization_profile,
+    ) {
         return GeoAssessmentRollOwnerMatch::Exact;
     }
     if owner_matches_party_family_norm(
@@ -1114,7 +1165,7 @@ fn exact_contract(request: &GeoAssessmentRollOwnerRequest) -> GeoRhoContract {
         source_release: request.contract_source.source_release.clone(),
         source_lineage_ids: request.contract_source.source_lineage_ids.clone(),
         method_id: EXACT_METHOD_ID.to_string(),
-        method_version: OWNER_METHOD_VERSION.to_string(),
+        method_version: exact_owner_method_version(request.calibration.exact_normalization_profile),
         claim_role: GeoEvidenceClaimRole::StableIdentityAnchor,
         basis: GeoRhoBasis::EmpiricalCalibration {
             population_id: request.calibration.population_id.clone(),
@@ -1172,6 +1223,7 @@ fn exact_observation(
     exact_lots: &[String],
     party_rows: &[&GeoAssessmentRollPartyRow],
     roll_by_bbl: &BTreeMap<String, &GeoAssessmentRollLotRow>,
+    exact_normalization_profile: GeoAssessmentRollOwnerExactNormalizationProfile,
 ) -> Result<GeoRhoObservation, GeoAssessmentRollOwnerError> {
     let exact = exact_lots.iter().cloned().collect::<BTreeSet<_>>();
     let values = parcels
@@ -1189,7 +1241,7 @@ fn exact_observation(
         observation: GeoRhoObservationKind::IntegerSumBand {
             level: GeoEntityLevel::Parcel,
             measure: GeoIntegerMeasure {
-                semantic_id: OWNER_NOT_EXACT_MEASURE_ID.to_string(),
+                semantic_id: exact_owner_measure_id(exact_normalization_profile),
                 unit: OWNER_NOT_EXACT_UNIT.to_string(),
                 value_origin: GeoIntegerValueOrigin::SourceAsserted,
             },
@@ -1198,6 +1250,22 @@ fn exact_observation(
             max: 0,
         },
     })
+}
+
+fn exact_owner_method_version(profile: GeoAssessmentRollOwnerExactNormalizationProfile) -> String {
+    if profile == GeoAssessmentRollOwnerExactNormalizationProfile::source_norm() {
+        OWNER_METHOD_VERSION.to_string()
+    } else {
+        format!("{OWNER_METHOD_VERSION}_{}", profile.method_suffix())
+    }
+}
+
+fn exact_owner_measure_id(profile: GeoAssessmentRollOwnerExactNormalizationProfile) -> String {
+    if profile == GeoAssessmentRollOwnerExactNormalizationProfile::source_norm() {
+        OWNER_NOT_EXACT_MEASURE_ID.to_string()
+    } else {
+        format!("{}.{}", OWNER_NOT_EXACT_MEASURE_ID, profile.method_suffix())
+    }
 }
 
 fn family_observation(

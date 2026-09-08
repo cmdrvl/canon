@@ -15,8 +15,8 @@ use canon::geo::CANON_GEO_EXPLANATION_VERSION;
 use canon::geo::assessment_roll::{
     CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION, CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION,
     GeoAssessmentRollCaseDocument, GeoAssessmentRollLotRow, GeoAssessmentRollOwnerCalibration,
-    GeoAssessmentRollOwnerContractSource, GeoAssessmentRollOwnerProofClass,
-    GeoAssessmentRollOwnerRequest, GeoAssessmentRollPartyRow,
+    GeoAssessmentRollOwnerContractSource, GeoAssessmentRollOwnerExactNormalizationProfile,
+    GeoAssessmentRollOwnerProofClass, GeoAssessmentRollOwnerRequest, GeoAssessmentRollPartyRow,
     canonical_assessment_roll_owner_bytes, produce_assessment_roll_owner_evidence,
 };
 use canon::geo::condo::{
@@ -3346,6 +3346,8 @@ fn assessment_roll_owner_request() -> GeoAssessmentRollOwnerRequest {
                 .to_string(),
             exact_falsification_rule_id: "truth-lot-owner-not-exact".to_string(),
             affiliate_falsification_rule_id: "truth-lot-owner-mismatch".to_string(),
+            exact_normalization_profile:
+                GeoAssessmentRollOwnerExactNormalizationProfile::source_norm(),
             exact_admission_policy: GeoRhoAdmissionPolicy::HardOnlyWhenSupportedMembersAtLeast {
                 minimum_supported_members: 2,
                 fallback: GeoRhoAdmissionFallback::SoftWithWeight { cost_if_absent: 1 },

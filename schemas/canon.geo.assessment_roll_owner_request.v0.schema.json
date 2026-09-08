@@ -146,6 +146,9 @@
         "affiliate_falsification_rule_id": {
           "$ref": "#/$defs/identifier"
         },
+        "exact_normalization_profile": {
+          "$ref": "#/$defs/owner_exact_normalization_profile"
+        },
         "exact_admission_policy": {
           "$ref": "canon.geo.evidence_request.v0.schema.json#/$defs/rho_admission_policy"
         }
@@ -156,6 +159,25 @@
         "exact_falsification_rule_id",
         "affiliate_falsification_rule_id"
       ]
+    },
+    "owner_exact_normalization_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "legal_suffix_profile": {
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": ["cmbs_tenant_label", "regab_firm_identity"]
+            },
+            { "type": "null" }
+          ]
+        },
+        "normalize_numeric_ordinals": {
+          "type": "boolean"
+        }
+      },
+      "required": ["normalize_numeric_ordinals"]
     },
     "roll_row": {
       "type": "object",

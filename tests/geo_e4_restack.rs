@@ -3,8 +3,8 @@
 use canon::geo::assessment_roll::{
     CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION, GeoAssessmentRollCaseDocument,
     GeoAssessmentRollLotRow, GeoAssessmentRollOwnerCalibration,
-    GeoAssessmentRollOwnerContractSource, GeoAssessmentRollOwnerProofClass,
-    GeoAssessmentRollOwnerRequest, GeoAssessmentRollPartyRow,
+    GeoAssessmentRollOwnerContractSource, GeoAssessmentRollOwnerExactNormalizationProfile,
+    GeoAssessmentRollOwnerProofClass, GeoAssessmentRollOwnerRequest, GeoAssessmentRollPartyRow,
     produce_assessment_roll_owner_evidence,
 };
 use canon::geo::footprint_roll::GeoAssessmentRollGrossSqftRow;
@@ -330,6 +330,7 @@ fn build_measurement() -> MeasurementBundle {
             )),
             exact_falsification_rule_id: "truth-lot-owner-not-exact".to_string(),
             affiliate_falsification_rule_id: "truth-lot-owner-mismatch".to_string(),
+            exact_normalization_profile: GeoAssessmentRollOwnerExactNormalizationProfile::source_norm(),
             exact_admission_policy: GeoRhoAdmissionPolicy::Declared,
         },
         roll_rows: roll_stage_rows,

@@ -8,7 +8,8 @@ use canon::geo::assessment_roll::{
     GeoAssessmentRollOwnerContractSource, GeoAssessmentRollOwnerExactNormalizationProfile,
     GeoAssessmentRollOwnerMatch, GeoAssessmentRollOwnerProofClass, GeoAssessmentRollOwnerRequest,
     GeoAssessmentRollPartyFamilyRelationRow, GeoAssessmentRollPartyRow,
-    assessment_roll_owner_match, assessment_roll_owner_match_with_family_relations,
+    assessment_roll_owner_match, assessment_roll_owner_match_with_exact_normalization,
+    assessment_roll_owner_match_with_family_relations,
     assessment_roll_owner_normalized_exact_matches, build_assessment_roll_owner_family_overlay,
     derive_assessment_roll_party_family_relations, normalize_assessment_roll_owner_exact_key,
     normalize_assessment_roll_owner_name, produce_assessment_roll_owner_evidence,
@@ -367,6 +368,10 @@ fn owner_exact_normalization_splits_safe_variants_from_true_mismatches() {
         &ahead,
         profile
     ));
+    assert_eq!(
+        assessment_roll_owner_match_with_exact_normalization("AHEAD REALTY, LLC", &ahead, profile),
+        GeoAssessmentRollOwnerMatch::Exact
+    );
     assert!(assessment_roll_owner_normalized_exact_matches(
         "WEST 24 OWNERS CORP.",
         &west_24,
@@ -392,6 +397,130 @@ fn owner_exact_normalization_splits_safe_variants_from_true_mismatches() {
         assessment_roll_owner_match("AHEAD REALTY, LLC", &ahead),
         GeoAssessmentRollOwnerMatch::Exact,
         "legacy exact matching remains bound to the source-normalized predicate"
+    );
+}
+
+#[test]
+fn owner_exact_normalization_profile_is_consumed_by_owner_stage() {
+    let population = GeoPopulationEvaluationRequest {
+        version: canon::geo::CANON_GEO_POPULATION_REQUEST_VERSION.to_string(),
+        max_cases: 1,
+        cases: vec![canon::geo::GeoLabeledCompositionCase {
+            id: "case-owner-normalization".to_string(),
+            evidence: GeoEvidenceCompilationRequest {
+                version: canon::geo::CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+                profile: canon::geo::GeoCompositionProfile::parcel(),
+                universe: canon::geo::GeoCompositionUniverse {
+                    parcels: vec!["1000000001".to_string(), "1000000002".to_string()],
+                    buildings: Vec::new(),
+                },
+                contracts: Vec::new(),
+                observations: Vec::new(),
+                max_assignments: 64,
+                max_materialized_models: 64,
+            },
+            truth_plane: canon::geo::GeoTruthPlane::HumanAdjudication,
+            truth: canon::geo::GeoCompositionModel {
+                parcels: vec!["1000000001".to_string()],
+                buildings: Vec::new(),
+            },
+        }],
+    };
+    let request = GeoAssessmentRollOwnerRequest {
+        version: CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION.to_string(),
+        proof_class: GeoAssessmentRollOwnerProofClass::Fixture,
+        population,
+        case_documents: vec![GeoAssessmentRollCaseDocument {
+            case_id: "case-owner-normalization".to_string(),
+            document_id: "doc-owner-normalization".to_string(),
+        }],
+        contract_source: contract_source(),
+        calibration: calibration_from_fixture_contracts(
+            &fixture_contract(GEO_ASSESSMENT_ROLL_OWNER_EXACT_CONTRACT_ID),
+            &fixture_contract(GEO_ASSESSMENT_ROLL_OWNER_AFFILIATE_CONTRACT_ID),
+        ),
+        roll_rows: vec![
+            GeoAssessmentRollLotRow {
+                bbl: "1000000001".to_string(),
+                owner: "AHEAD REALTY, LLC".to_string(),
+                gross_sqft: "1000".to_string(),
+                units: "1".to_string(),
+                condo_number: String::new(),
+                source_record_id:
+                    "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.PROPERTY_VALUATION:FY2026P3:1000000001"
+                        .to_string(),
+                source_vintage: "FY2026P3".to_string(),
+            },
+            GeoAssessmentRollLotRow {
+                bbl: "1000000002".to_string(),
+                owner: "OTHER OWNER LLC".to_string(),
+                gross_sqft: "1000".to_string(),
+                units: "1".to_string(),
+                condo_number: String::new(),
+                source_record_id:
+                    "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.PROPERTY_VALUATION:FY2026P3:1000000002"
+                        .to_string(),
+                source_vintage: "FY2026P3".to_string(),
+            },
+        ],
+        party_rows: vec![GeoAssessmentRollPartyRow {
+            document_id: "doc-owner-normalization".to_string(),
+            party_type: "1".to_string(),
+            party_name_norm: "AHEAD REALTY LLC".to_string(),
+            source_record_id:
+                "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES:doc-owner-normalization:AHEAD_REALTY_LLC"
+                    .to_string(),
+            source_vintage: "latest".to_string(),
+        }],
+        max_cases: 1,
+        max_roll_rows: 2,
+        max_party_rows: 1,
+        max_overlay_observations: 4,
+    };
+
+    let default_artifact =
+        produce_assessment_roll_owner_evidence(&request).expect("default owner request builds");
+    assert_eq!(default_artifact.summary.exact_hard_observations, 0);
+    assert_eq!(default_artifact.summary.affiliate_soft_observations, 1);
+
+    let mut normalized_request = request;
+    normalized_request.calibration.exact_normalization_profile =
+        GeoAssessmentRollOwnerExactNormalizationProfile::regab_legal_suffix_numeric_ordinal();
+    let normalized_artifact = produce_assessment_roll_owner_evidence(&normalized_request)
+        .expect("normalized owner request builds");
+    assert_eq!(
+        normalized_artifact.summary.exact_hard_observations, 1,
+        "the explicit normalized profile must let the owner contract consume the safer exact key"
+    );
+    assert_eq!(normalized_artifact.summary.affiliate_soft_observations, 0);
+
+    let overlay = &normalized_artifact.overlay.case_overlays[0];
+    let contract = overlay
+        .contracts
+        .iter()
+        .find(|contract| contract.id == GEO_ASSESSMENT_ROLL_OWNER_EXACT_CONTRACT_ID)
+        .expect("normalized exact owner contract");
+    assert!(
+        contract
+            .method_version
+            .ends_with("regab_legal_suffix_numeric_ordinal")
+    );
+    let GeoRhoObservationKind::IntegerSumBand {
+        measure, values, ..
+    } = &overlay.observations[0].observation
+    else {
+        panic!("normalized exact owner observation is an integer band");
+    };
+    assert_eq!(
+        measure.semantic_id,
+        "assessment_roll.owner_not_exact.regab_legal_suffix_numeric_ordinal"
+    );
+    assert_eq!(
+        values
+            .iter()
+            .map(|value| (value.id.as_str(), value.value))
+            .collect::<BTreeMap<_, _>>(),
+        BTreeMap::from([("1000000001", 0), ("1000000002", 1)])
     );
 }
 
@@ -1029,6 +1158,7 @@ fn calibration_from_fixture_contracts(
         calibration_blake3: calibration_blake3.clone(),
         exact_falsification_rule_id: exact_falsification_rule_id.clone(),
         affiliate_falsification_rule_id: affiliate_falsification_rule_id.clone(),
+        exact_normalization_profile: GeoAssessmentRollOwnerExactNormalizationProfile::source_norm(),
         exact_admission_policy: GeoRhoAdmissionPolicy::Declared,
     }
 }
