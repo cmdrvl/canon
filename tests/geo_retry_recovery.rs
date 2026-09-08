@@ -1,10 +1,9 @@
 #![forbid(unsafe_code)]
 
 use canon::geo::{
-    canonical_retry_recovery_bytes, geo_acquisition_request_id,
-    geo_acquisition_request_semantic_hash, geo_run_declared_artifact_id, geo_run_semantic_hash,
-    measure_recovery, record_pass, validate_geo_acquisition_receipt,
-    validate_geo_acquisition_request, validate_geo_run, validate_retry_recovery_artifact,
+    CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
+    CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_PLAN_VERSION, CANON_GEO_RETRY_LOOP_VERSION,
+    CANON_GEO_RETRY_RECOVERY_VERSION, CANON_GEO_RUN_VERSION, GEO_RUN_JSON_MEDIA_TYPE,
     GeoAcquisitionCounts, GeoAcquisitionDenominator, GeoAcquisitionProofClass,
     GeoAcquisitionReceipt, GeoAcquisitionRequest, GeoAcquisitionResumability,
     GeoAcquisitionTerminalState, GeoBoundedGeography, GeoBoundedSubset, GeoDenominatorSource,
@@ -14,15 +13,16 @@ use canon::geo::{
     GeoRequestedField, GeoRetryErrorCode, GeoRetryLoopArtifact, GeoRetryPolicy, GeoRetryTerminal,
     GeoRowByteCeilings, GeoRun, GeoRunBlocker, GeoRunBlockerKind, GeoRunGrainState,
     GeoRunObservation, GeoRunOutputRef, GeoRunPhase, GeoRunPlanRef, GeoRunStatus,
-    GeoSubsetPredicate, GeoSubsetPredicateKind, CANON_GEO_ACQUISITION_RECEIPT_VERSION,
-    CANON_GEO_ACQUISITION_REQUEST_VERSION, CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
-    CANON_GEO_PLAN_VERSION, CANON_GEO_RETRY_LOOP_VERSION, CANON_GEO_RETRY_RECOVERY_VERSION,
-    CANON_GEO_RUN_VERSION, GEO_RUN_JSON_MEDIA_TYPE,
+    GeoSubsetPredicate, GeoSubsetPredicateKind, canonical_retry_recovery_bytes,
+    geo_acquisition_request_id, geo_acquisition_request_semantic_hash,
+    geo_run_declared_artifact_id, geo_run_semantic_hash, measure_recovery, record_pass,
+    validate_geo_acquisition_receipt, validate_geo_acquisition_request, validate_geo_run,
+    validate_retry_recovery_artifact,
 };
 use canon::project::{
-    ProjectRunHashRef, ProjectRunNextAction as ProjectNextAction, ProjectRunNodeOutcome,
-    ProjectRunNodeReceipt, ProjectRunOutputReceipt, ProjectRunReceipt, ProjectRunReport,
-    CANON_PROJECT_RUN_VERSION,
+    CANON_PROJECT_RUN_VERSION, ProjectRunHashRef, ProjectRunNextAction as ProjectNextAction,
+    ProjectRunNodeOutcome, ProjectRunNodeReceipt, ProjectRunOutputReceipt, ProjectRunReceipt,
+    ProjectRunReport,
 };
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
@@ -61,14 +61,16 @@ fn t46_measures_frozen_40_point_retry_recovery_denominator() {
     );
     assert!(!recovery.precision_claim);
     assert_eq!(recovery.per_point.len(), 40);
-    assert!(recovery
-        .per_point
-        .iter()
-        .take(25)
-        .all(|point| point.recovered
-            && point.terminal == GeoRetryTerminal::Resolved
-            && point.first_recovering_pass == Some(1)
-            && point.final_home_cell != point.landed_home_cell));
+    assert!(
+        recovery
+            .per_point
+            .iter()
+            .take(25)
+            .all(|point| point.recovered
+                && point.terminal == GeoRetryTerminal::Resolved
+                && point.first_recovering_pass == Some(1)
+                && point.final_home_cell != point.landed_home_cell)
+    );
 
     validate_retry_recovery_artifact(&recovery).expect("recovery validates");
     let canonical = canonical_retry_recovery_bytes(&recovery).expect("recovery serializes");

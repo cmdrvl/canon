@@ -11,16 +11,13 @@ use std::{
     io::BufReader,
 };
 
-const ARTIFACT_PATH: &str =
-    "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/pluto_vintage_reach_measurement.json";
+const ARTIFACT_PATH: &str = "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/pluto_vintage_reach_measurement.json";
 const POPULATION_PATH: &str = "scripts/geo_measurements/fixtures/d1_residuals/mcp_stack_2026-09-03/population_request_roll_universe.json.gz";
 const SQL_PATH: &str = "scripts/geo_measurements/e4_pluto_vintage_reach.sql";
-const CONDO_BILLING_GEOMETRY_PATH: &str =
-    "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/condo_billing_geometry_bridge_measurement.json";
+const CONDO_BILLING_GEOMETRY_PATH: &str = "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/condo_billing_geometry_bridge_measurement.json";
 const CONDO_BILLING_GEOMETRY_SQL_PATH: &str =
     "scripts/geo_measurements/e4_condo_billing_geometry_bridge.sql";
-const WIDENED_POPULATION_PATH: &str =
-    "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/population_request_roll_universe_pluto_vintage_widened.json.gz";
+const WIDENED_POPULATION_PATH: &str = "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/population_request_roll_universe_pluto_vintage_widened.json.gz";
 
 #[derive(Debug, Deserialize)]
 struct PopulationRequest {
@@ -534,10 +531,12 @@ fn assert_source_pins_and_sql_boundary(artifact: &Value) {
             "SOURCE_FILENAME",
         ],
     );
-    assert!(pluto["content_hash_source"]
-        .as_str()
-        .expect("content hash source")
-        .contains("NYC_DCP_PLUTO_MANIFEST_EXT"));
+    assert!(
+        pluto["content_hash_source"]
+            .as_str()
+            .expect("content hash source")
+            .contains("NYC_DCP_PLUTO_MANIFEST_EXT")
+    );
     let pad = tables
         .iter()
         .find(|row| row["table"] == "EDGAR_DB.SOURCE.NYC_DCP_PAD_BBL_HOT")
@@ -593,10 +592,12 @@ fn assert_condo_pad_bridge_summary(artifact: &Value) {
         pad["parser_version"].as_str().expect("PAD parser version"),
         "2026-08-16"
     );
-    assert!(pad["license_terms"]
-        .as_str()
-        .expect("PAD license terms")
-        .contains("DCP disclaims"));
+    assert!(
+        pad["license_terms"]
+            .as_str()
+            .expect("PAD license terms")
+            .contains("DCP disclaims")
+    );
     assert_eq!(
         pad["attribution_text"].as_str().expect("PAD attribution"),
         "NYC Department of City Planning (DCP)"
@@ -718,10 +719,12 @@ fn assert_condo_geometry_row_pins(artifact: &Value) {
             "MapPLUTO.shp"
         );
         assert_sha256(row["source_archive_sha256"].as_str().expect("archive hash"));
-        assert!(row["source_archive_s3_key"]
-            .as_str()
-            .expect("archive s3 key")
-            .contains("/artifact=raw/"));
+        assert!(
+            row["source_archive_s3_key"]
+                .as_str()
+                .expect("archive s3 key")
+                .contains("/artifact=raw/")
+        );
         assert_sha256(row["geom_wgs84_sha256"].as_str().expect("WGS84 hash"));
         assert_sha256(
             row["source_geom_wkb_sha256"]
