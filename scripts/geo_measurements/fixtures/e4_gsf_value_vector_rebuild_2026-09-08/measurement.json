@@ -1,0 +1,104 @@
+{
+  "bead": "bd-3frw",
+  "boundary": "Candidate universe, truth labels, and bands are unchanged. This artifact rebuilds only rho.size.assessment_roll_gross_sqft_band value vectors/source records for the named stale cases from the current bound universe.",
+  "frozen_denominator": 79,
+  "proof_class": "retained_population_measurement_not_live",
+  "retained_population_denominator": 70,
+  "score_handoff": {
+    "changed_case_count": 5,
+    "changed_cases": [
+      {
+        "band_max": 28218,
+        "band_min": 12345,
+        "case_fragment": "524efa30",
+        "corrected_truth_gsf_sum": 17872,
+        "corrected_truth_sum_inside_band": true,
+        "filed_size": 17636,
+        "property_class": "IN",
+        "property_key": "CREP-EA6E195092EF94B1",
+        "vector_count": 53
+      },
+      {
+        "band_max": 1703,
+        "band_min": 744,
+        "case_fragment": "68a1a4ce",
+        "corrected_truth_gsf_sum": 2134,
+        "corrected_truth_sum_inside_band": false,
+        "filed_size": 1064,
+        "property_class": "RT",
+        "property_key": "CREP-A2512F406EDBE52C",
+        "vector_count": 201
+      },
+      {
+        "band_max": 781859,
+        "band_min": 24877,
+        "case_fragment": "e3a5228d",
+        "corrected_truth_gsf_sum": 133295,
+        "corrected_truth_sum_inside_band": true,
+        "filed_size": 35539,
+        "property_class": "MU",
+        "property_key": "CREP-11B7C4F0999886E9",
+        "vector_count": 19
+      },
+      {
+        "band_max": 41418,
+        "band_min": 18120,
+        "case_fragment": "91b2df27",
+        "corrected_truth_gsf_sum": 584046,
+        "corrected_truth_sum_inside_band": false,
+        "filed_size": 25886,
+        "property_class": "RT",
+        "property_key": "CREP-5BA5855CC20797E5",
+        "vector_count": 791
+      },
+      {
+        "band_max": 292553,
+        "band_min": 127991,
+        "case_fragment": "e1ee0535",
+        "corrected_truth_gsf_sum": 455607,
+        "corrected_truth_sum_inside_band": false,
+        "filed_size": 182845,
+        "property_class": "OF",
+        "property_key": "CREP-5F8AE5E0FA6B5506",
+        "vector_count": 353
+      }
+    ],
+    "corrected_overlay_path": "scripts/geo_measurements/fixtures/e4_gsf_value_vector_rebuild_2026-09-08/overlay_request_current_universe_gsf_vectors.json.gz",
+    "overlay_sha256": "bdcfe1f54c622b878c90a5567a2bc58eda5eff27f74519c5ef48bb4a89184c13",
+    "overlay_uncompressed_sha256": "219e30e9860da991674609b8252ed4ae195610d3b3f72d0120216c6a172f8def",
+    "population_path": "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/population_request_roll_universe_pluto_vintage_condo_representation_widened.json.gz",
+    "source_overlay_path": "scripts/geo_measurements/fixtures/e4_gsf_property_type_bands_2026-09-08/overlay_request_property_type_gsf_bands.json.gz",
+    "status": "READY_TO_SCORE_by_bd_1g4x_not_scored_by_bd_3frw"
+  },
+  "source_audit": {
+    "finding": "not an external GSF acquisition gap; source rows and values are landed",
+    "measurement_name": "bd_1fq2_gsf_truth_source_vs_filed_size",
+    "predicate": "FY2026/PERIOD=3 assessment-roll rows joined by exact deed-truth BBL/PARID for the five GSF exclusion cases",
+    "source_tables_described": [
+      "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT",
+      "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.WRGL_NYC_OPENDATA_PROPERTY_VALUATION_AND_ASSESSMENT_DATA_TAX_CLASSES_1_2_3_4__STRUCTURED"
+    ],
+    "truth_bbls_with_non_null_gsf": 191,
+    "truth_bbls_with_source_rows": 191
+  },
+  "systemic_audit": {
+    "corrected_overlay_remaining_stale_gsf_cases": [
+      "0a6ff10e",
+      "4e262201",
+      "8fd55140"
+    ],
+    "finding": "staleness is visible in GSF vectors; footprint-count vectors in the same overlay match the current universe",
+    "source_overlay_stale_footprint_count_cases": [],
+    "source_overlay_stale_gsf_cases": [
+      "0a6ff10e",
+      "4e262201",
+      "524efa30",
+      "68a1a4ce",
+      "8fd55140",
+      "91b2df27",
+      "e1ee0535",
+      "e3a5228d"
+    ]
+  },
+  "version": "canon_geo_gsf_value_vector_rebuild_handoff.v0"
+}
