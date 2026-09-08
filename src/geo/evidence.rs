@@ -1453,13 +1453,6 @@ fn validate_observation_kind(
             }
             for set in sets {
                 validate_distinct_ids("observations[].observation.sets[]", set)?;
-                for id in set {
-                    validate_observation_member(
-                        &GeoEntityRef::new(*level, id.clone()),
-                        &parcel_set,
-                        &building_set,
-                    )?;
-                }
             }
         }
         GeoRhoObservationKind::ExistentialMembership { members }

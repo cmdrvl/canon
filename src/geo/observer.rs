@@ -1259,8 +1259,13 @@ fn validate_raw_count_matches_kind(row: &GeoObservationRow) -> Result<(), GeoObs
                 ("band".to_string(), format!("{min}..{max}")),
             ],
         )),
+        (
+            GeoObservationKind::PresentAtVintage | GeoObservationKind::AbsentAtVintage,
+            GeoObservationPayload::PresentAtVintage { .. }
+            | GeoObservationPayload::AbsentAtVintage { .. },
+        ) => Ok(()),
         _ => Err(GeoObserverError::invalid(
-            "Geo observation raw_count is only valid for structure-count rows",
+            "Geo observation raw_count is only valid for structure-count or temporal vintage rows",
             [
                 ("field".to_string(), "raw_count".to_string()),
                 ("observation_id".to_string(), row.id.clone()),
