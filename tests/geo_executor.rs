@@ -14,20 +14,24 @@ mod executor;
 
 use canon::{
     geo::{
+        CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION, CANON_GEO_COLLATERAL_LEDGER_VERSION,
         CANON_GEO_COMPOSITION_VERSION, CANON_GEO_EVIDENCE_COMPILATION_VERSION,
         CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
         CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
-        CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoCompositionProfile,
-        GeoControlEntityLevel, GeoEntityLevel, GeoEvidenceClaimRole,
+        CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoCandidateReachStatus,
+        GeoCollateralLedgerProofClass, GeoCollateralLedgerSeed, GeoCollateralLedgerSeedRow,
+        GeoCompositionProfile, GeoControlEntityLevel, GeoEntityLevel, GeoEvidenceClaimRole,
         GeoEvidenceCompilationArtifact, GeoEvidenceRecordRef, GeoHomeCellRow,
-        GeoHomeCellRowsRequest, GeoIdentityParticipation, GeoNativeEntityScope,
-        GeoPlanComponentScope, GeoPlanExactSolveScope, GeoPlanInventoryRef,
+        GeoHomeCellRowsRequest, GeoIdentityParticipation, GeoLedgerPropertyRef,
+        GeoNativeEntityScope, GeoPlanComponentScope, GeoPlanExactSolveScope, GeoPlanInventoryRef,
         GeoPlanProducedArtifactRef, GeoPropagationBudget, GeoRhoBasis, GeoRhoContract,
-        GeoRhoObservationKind, GeoSourceRelease, GeoTileFeatureRef, GeoTileSourceBinding,
-        GeoTileWorkRequest, GeoWarehouseBuildingParcelRow, GeoWarehouseEvidenceRow,
-        GeoWarehouseParcelRow, GeoWarehouseRowsRequest, canonical_evidence_compilation_bytes,
-        canonical_propagation_bytes, canonical_tile_work_unit_bytes, compile_evidence,
-        materialize_tile_work_unit, materialize_warehouse_rows, propagate,
+        GeoRhoObservationKind, GeoSourceRelease, GeoSourceReleasePin, GeoTileFeatureRef,
+        GeoTileSourceBinding, GeoTileWorkRequest, GeoTruthPlane, GeoValidTimeInterval,
+        GeoWarehouseBuildingParcelRow, GeoWarehouseEvidenceRow, GeoWarehouseParcelRow,
+        GeoWarehouseRowsRequest, canonical_collateral_ledger_seed_bytes,
+        canonical_evidence_compilation_bytes, canonical_propagation_bytes,
+        canonical_tile_work_unit_bytes, compile_evidence, materialize_tile_work_unit,
+        materialize_warehouse_rows, propagate,
     },
     project::{
         ProjectDependencyOutput, ProjectExtensionDagNode, ProjectExtensionDagOutput,
@@ -40,10 +44,11 @@ use canon::{
     },
 };
 use executor::{
-    GEO_COMPILE_EVIDENCE_COMMAND, GEO_MATERIALIZE_EVIDENCE_COMMAND,
-    GEO_MATERIALIZE_HOME_CELLS_COMMAND, GEO_PROPAGATE_STAGE_COMMAND, GEO_REQUEST_BINDING_ID,
-    GEO_ROWS_BINDING_ID, GEO_SOLVE_COMMAND, GEO_TILE_WORK_COMMAND, GeoExecutorDependencyOutput,
-    GeoExecutorInputBinding, GeoProjectNodeExecutor,
+    GEO_COLLATERAL_LEDGER_OUTPUT_ID, GEO_COMPILE_EVIDENCE_COMMAND, GEO_LEDGER_STAGE_COMMAND,
+    GEO_MATERIALIZE_EVIDENCE_COMMAND, GEO_MATERIALIZE_HOME_CELLS_COMMAND, GEO_PROPAGATE_OUTPUT_ID,
+    GEO_PROPAGATE_STAGE_COMMAND, GEO_REQUEST_BINDING_ID, GEO_ROWS_BINDING_ID, GEO_SOLVE_COMMAND,
+    GEO_TILE_WORK_COMMAND, GeoExecutorDependencyOutput, GeoExecutorInputBinding,
+    GeoProjectNodeExecutor,
 };
 use h3o::CellIndex;
 use serde_json::Value;
@@ -879,6 +884,121 @@ fn geo_executor_uses_fresh_direct_section_dependency_over_preloaded_stale_state(
     assert_eq!(solve["status"], "resolved");
 }
 
+#[test]
+fn geo_executor_runs_collateral_ledger_stage_from_seed_and_declared_outputs() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = ledger_stage_plan();
+    let mut executor = executor_with_fixture_inputs().with_input_binding(ledger_seed_binding(
+        "geo.building.ledger",
+        &ledger_stage_seed(),
+    ));
+
+    let report = run_project_plan(&plan, &policy(temp.path()), &mut executor).expect("ledger run");
+
+    assert!(report.failed_nodes.is_empty());
+    assert!(
+        report
+            .executed_nodes
+            .contains(&"geo.building.ledger".to_string()),
+        "ledger stage should execute through project run"
+    );
+
+    let ledger_path = temp.path().join("geo/building/collateral_ledger.json");
+    let ledger_bytes = fs::read(&ledger_path).expect("ledger output");
+    let ledger: Value = serde_json::from_slice(&ledger_bytes).expect("ledger json");
+    assert_eq!(ledger["version"], CANON_GEO_COLLATERAL_LEDGER_VERSION);
+    assert_eq!(ledger["proof_class"], "fixture");
+    assert_eq!(ledger["rows"].as_array().expect("rows").len(), 2);
+
+    let rows = ledger["rows"].as_array().expect("rows array");
+    let solved = rows
+        .iter()
+        .find(|row| row["loan_id"] == "loan-ledger-stage")
+        .expect("solved row");
+    assert_eq!(solved["reach"], "full");
+    assert_eq!(
+        solved["building_set"],
+        serde_json::json!(["building-a", "building-b"])
+    );
+    assert_eq!(
+        solved["property_refs"][0]["property_id"],
+        "property:building-set"
+    );
+    assert_eq!(solved["last_observed_present"]["start_day"], 20_970);
+    assert_eq!(solved["last_observed_present"]["end_day"], 20_970);
+    assert!(
+        solved["composition_blake3"]
+            .as_str()
+            .expect("composition digest")
+            .starts_with("blake3:")
+    );
+    assert!(
+        solved["evidence_blake3"]
+            .as_str()
+            .expect("evidence digest")
+            .starts_with("blake3:")
+    );
+
+    let no_reach = rows
+        .iter()
+        .find(|row| row["loan_id"] == "loan-ledger-no-reach")
+        .expect("no-reach row");
+    assert_eq!(no_reach["reach"], "none");
+    assert_eq!(no_reach["reach_none_reason"], "no_candidate_parcels");
+    assert!(no_reach.get("parcel_set").is_none());
+    assert!(no_reach.get("building_set").is_none());
+
+    assert_eq!(ledger["rollups"][0]["rows"], 2);
+    assert_eq!(
+        ledger["rollups"][0]["truth_planes"]["gate_v2_historical"]["resolved"],
+        1
+    );
+    assert_eq!(
+        ledger["rollups"][0]["truth_planes"]["gate_v2_historical"]["reach_none"],
+        1
+    );
+
+    let receipt =
+        read_node_receipt(&receipt_path(temp.path(), "geo.building.ledger")).expect("receipt");
+    assert_eq!(receipt.outcome, ProjectRunNodeOutcome::Completed);
+    assert_eq!(receipt.deterministic_usage["ledger_rows"], 2);
+    assert_eq!(receipt.deterministic_usage["ledger_reach_none_rows"], 1);
+    assert_eq!(
+        receipt
+            .outputs
+            .iter()
+            .map(|output| output.output_id.as_str())
+            .collect::<Vec<_>>(),
+        vec![GEO_COLLATERAL_LEDGER_OUTPUT_ID]
+    );
+}
+
+#[test]
+fn geo_executor_refuses_ledger_stage_without_solve_dependency_before_publication() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = ledger_stage_missing_solve_plan();
+    let mut executor = executor_with_fixture_inputs().with_input_binding(ledger_seed_binding(
+        "geo.building.ledger",
+        &ledger_stage_seed(),
+    ));
+
+    let report =
+        run_project_plan(&plan, &policy(temp.path()), &mut executor).expect("failure report");
+
+    assert_eq!(report.failed_nodes, vec!["geo.building.ledger".to_string()]);
+    assert!(
+        !temp
+            .path()
+            .join("geo/building/collateral_ledger.json")
+            .exists(),
+        "missing solve dependency must not publish a collateral ledger"
+    );
+    assert!(
+        node_report_reason(&report, "geo.building.ledger")
+            .contains("requires exactly one direct dependency output solve")
+    );
+}
+
 fn binding<T: serde::Serialize>(
     node_id: &str,
     binding_id: &str,
@@ -887,6 +1007,70 @@ fn binding<T: serde::Serialize>(
 ) -> GeoExecutorInputBinding {
     GeoExecutorInputBinding::from_json(node_id, binding_id, contract, value)
         .expect("binding serializes")
+}
+
+fn ledger_seed_binding(node_id: &str, seed: &GeoCollateralLedgerSeed) -> GeoExecutorInputBinding {
+    GeoExecutorInputBinding::from_bytes(
+        node_id,
+        GEO_REQUEST_BINDING_ID,
+        CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION,
+        canonical_collateral_ledger_seed_bytes(seed).expect("ledger seed canonicalizes"),
+    )
+}
+
+fn ledger_stage_seed() -> GeoCollateralLedgerSeed {
+    GeoCollateralLedgerSeed {
+        version: CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION.to_string(),
+        proof_class: GeoCollateralLedgerProofClass::Fixture,
+        rows: vec![
+            GeoCollateralLedgerSeedRow {
+                accession: "0000000000-26-000777".to_string(),
+                deal_id: "fixture-executor-ledger-deal".to_string(),
+                loan_id: "loan-ledger-stage".to_string(),
+                reach: GeoCandidateReachStatus::Full,
+                reach_none_reason: None,
+                deed_ids: vec!["deed:fixture:executor:1".to_string()],
+                truth_plane: Some(GeoTruthPlane::GateV2Historical),
+                source_release_pins: vec![ledger_stage_pin()],
+                composition_artifact_ref: Some("solve".to_string()),
+                evidence_artifact_ref: Some("compile_evidence".to_string()),
+                property_refs: vec![GeoLedgerPropertyRef {
+                    property_id: "property:building-set".to_string(),
+                    parcel_ids: Vec::new(),
+                    building_ids: vec!["building-a".to_string(), "building-b".to_string()],
+                }],
+                last_observed_present: Some(GeoValidTimeInterval {
+                    start_day: 20_970,
+                    end_day: 20_970,
+                }),
+            },
+            GeoCollateralLedgerSeedRow {
+                accession: "0000000000-26-000777".to_string(),
+                deal_id: "fixture-executor-ledger-deal".to_string(),
+                loan_id: "loan-ledger-no-reach".to_string(),
+                reach: GeoCandidateReachStatus::None,
+                reach_none_reason: Some("no_candidate_parcels".to_string()),
+                deed_ids: Vec::new(),
+                truth_plane: Some(GeoTruthPlane::GateV2Historical),
+                source_release_pins: vec![ledger_stage_pin()],
+                composition_artifact_ref: None,
+                evidence_artifact_ref: None,
+                property_refs: Vec::new(),
+                last_observed_present: None,
+            },
+        ],
+    }
+}
+
+fn ledger_stage_pin() -> GeoSourceReleasePin {
+    GeoSourceReleasePin {
+        source_dataset: "fixture.executor.geo_ledger_stage".to_string(),
+        source_release: "2026-09-07".to_string(),
+        blake3: format!(
+            "blake3:{}",
+            blake3::hash(b"fixture-executor-geo-ledger-stage").to_hex()
+        ),
+    }
 }
 
 fn executor_with_fixture_inputs() -> GeoProjectNodeExecutor {
@@ -1099,6 +1283,152 @@ fn five_node_plan() -> ProjectPlan {
         nodes,
     ))
     .expect("extension project plan compiles")
+}
+
+fn ledger_stage_plan() -> ProjectPlan {
+    let nodes = vec![
+        extension_node(
+            "geo.building.home_cells",
+            ProjectPlanNodeKind::Normalize,
+            GEO_MATERIALIZE_HOME_CELLS_COMMAND,
+            Vec::new(),
+            "home_cells",
+            "geo/building/home_cells.json",
+            vec![ProjectPlanHashRef {
+                ref_id: "geo.fixture.inputs".to_string(),
+                content_hash: digest_bytes(b"geo executor ledger fixture inputs"),
+            }],
+        ),
+        extension_node(
+            "geo.building.section",
+            ProjectPlanNodeKind::Block,
+            GEO_TILE_WORK_COMMAND,
+            vec!["geo.building.home_cells".to_string()],
+            "section",
+            "geo/building/section.json",
+            Vec::new(),
+        ),
+        extension_node(
+            "geo.building.materialize_evidence",
+            ProjectPlanNodeKind::Evidence,
+            GEO_MATERIALIZE_EVIDENCE_COMMAND,
+            vec!["geo.building.section".to_string()],
+            "materialize_evidence",
+            "geo/building/materialize_evidence.json",
+            Vec::new(),
+        ),
+        extension_node(
+            "geo.building.compile_evidence",
+            ProjectPlanNodeKind::Evidence,
+            GEO_COMPILE_EVIDENCE_COMMAND,
+            vec!["geo.building.materialize_evidence".to_string()],
+            "compile_evidence",
+            "geo/building/compile_evidence.json",
+            Vec::new(),
+        ),
+        extension_node(
+            "geo.building.propagate",
+            ProjectPlanNodeKind::Solve,
+            GEO_PROPAGATE_STAGE_COMMAND,
+            vec!["geo.building.compile_evidence".to_string()],
+            GEO_PROPAGATE_OUTPUT_ID,
+            "geo/building/propagation.json",
+            Vec::new(),
+        ),
+        extension_node(
+            "geo.building.solve",
+            ProjectPlanNodeKind::Solve,
+            GEO_SOLVE_COMMAND,
+            vec![
+                "geo.building.compile_evidence".to_string(),
+                "geo.building.propagate".to_string(),
+                "geo.building.section".to_string(),
+            ],
+            "solve",
+            "geo/building/solve.json",
+            Vec::new(),
+        ),
+        extension_node(
+            "geo.building.ledger",
+            ProjectPlanNodeKind::Evidence,
+            GEO_LEDGER_STAGE_COMMAND,
+            vec![
+                "geo.building.compile_evidence".to_string(),
+                "geo.building.propagate".to_string(),
+                "geo.building.solve".to_string(),
+            ],
+            GEO_COLLATERAL_LEDGER_OUTPUT_ID,
+            "geo/building/collateral_ledger.json",
+            Vec::new(),
+        ),
+    ];
+    compile_extension_project_plan(ProjectExtensionDagRequest::offline_read_only(
+        "geo-executor-ledger-fixture",
+        digest_bytes(b"geo executor ledger manifest"),
+        digest_bytes(b"geo executor ledger lock"),
+        nodes,
+    ))
+    .expect("ledger extension project plan compiles")
+}
+
+fn ledger_stage_missing_solve_plan() -> ProjectPlan {
+    let nodes = vec![
+        extension_node(
+            "geo.building.home_cells",
+            ProjectPlanNodeKind::Normalize,
+            GEO_MATERIALIZE_HOME_CELLS_COMMAND,
+            Vec::new(),
+            "home_cells",
+            "geo/building/home_cells.json",
+            vec![ProjectPlanHashRef {
+                ref_id: "geo.fixture.inputs".to_string(),
+                content_hash: digest_bytes(b"geo executor ledger missing solve inputs"),
+            }],
+        ),
+        extension_node(
+            "geo.building.section",
+            ProjectPlanNodeKind::Block,
+            GEO_TILE_WORK_COMMAND,
+            vec!["geo.building.home_cells".to_string()],
+            "section",
+            "geo/building/section.json",
+            Vec::new(),
+        ),
+        extension_node(
+            "geo.building.materialize_evidence",
+            ProjectPlanNodeKind::Evidence,
+            GEO_MATERIALIZE_EVIDENCE_COMMAND,
+            vec!["geo.building.section".to_string()],
+            "materialize_evidence",
+            "geo/building/materialize_evidence.json",
+            Vec::new(),
+        ),
+        extension_node(
+            "geo.building.compile_evidence",
+            ProjectPlanNodeKind::Evidence,
+            GEO_COMPILE_EVIDENCE_COMMAND,
+            vec!["geo.building.materialize_evidence".to_string()],
+            "compile_evidence",
+            "geo/building/compile_evidence.json",
+            Vec::new(),
+        ),
+        extension_node(
+            "geo.building.ledger",
+            ProjectPlanNodeKind::Evidence,
+            GEO_LEDGER_STAGE_COMMAND,
+            vec!["geo.building.compile_evidence".to_string()],
+            GEO_COLLATERAL_LEDGER_OUTPUT_ID,
+            "geo/building/collateral_ledger.json",
+            Vec::new(),
+        ),
+    ];
+    compile_extension_project_plan(ProjectExtensionDagRequest::offline_read_only(
+        "geo-executor-ledger-missing-solve",
+        digest_bytes(b"geo executor ledger missing solve manifest"),
+        digest_bytes(b"geo executor ledger missing solve lock"),
+        nodes,
+    ))
+    .expect("ledger missing-solve extension project plan compiles")
 }
 
 fn single_home_cell_plan() -> ProjectPlan {

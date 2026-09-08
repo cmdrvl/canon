@@ -11,6 +11,7 @@ use crate::{
     geo::{
         CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_AS_OF_RESOLUTION_REQUEST_VERSION,
         CANON_GEO_AS_OF_RESOLUTION_VERSION, CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION,
+        CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION, CANON_GEO_COLLATERAL_LEDGER_VERSION,
         CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION,
         CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
         CANON_GEO_EXPLANATION_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
@@ -23,8 +24,9 @@ use crate::{
         CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
         CANON_GEO_TILE_WORK_UNIT_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoAcquisitionReceipt,
         GeoAsOfResolutionArtifact, GeoAsOfResolutionRequest, GeoClientTileIngestRequest,
-        GeoCompositionArtifact, GeoCompositionRequest, GeoCompositionStatus, GeoControlEntityLevel,
-        GeoEntityLevel, GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
+        GeoCollateralLedger, GeoCollateralLedgerSeed, GeoCompositionArtifact,
+        GeoCompositionRequest, GeoCompositionStatus, GeoControlEntityLevel, GeoEntityLevel,
+        GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
         GeoEvidenceCompilationRequest, GeoExplanationArtifact, GeoExplanationBudget,
         GeoGeometryTileArtifact, GeoHomeCellAssignmentArtifact, GeoHomeCellRowsRequest,
         GeoNextEvidenceArtifact, GeoNextEvidenceInputs, GeoNextEvidenceRequest, GeoPlan,
@@ -40,14 +42,16 @@ use crate::{
             GeoAssessmentRollOwnerRequest, canonical_assessment_roll_owner_bytes,
             produce_assessment_roll_owner_evidence, validate_assessment_roll_owner_artifact,
         },
-        canonical_as_of_resolution_bytes, canonical_composition_bytes,
-        canonical_evidence_compilation_bytes, canonical_explanation_bytes,
-        canonical_geometry_tile_bytes, canonical_home_cell_assignment_bytes,
-        canonical_materialized_evidence_request_bytes, canonical_next_evidence_bytes,
-        canonical_next_evidence_inputs_bytes, canonical_next_evidence_request_bytes,
-        canonical_propagation_bytes, canonical_retry_loop_bytes, canonical_separation_bytes,
-        canonical_separation_inputs_bytes, canonical_tile_identifier_stability_bytes,
-        canonical_tile_work_unit_bytes, check_tile_identifier_stability, compile_evidence,
+        build_collateral_ledger_from_seed, canonical_as_of_resolution_bytes,
+        canonical_collateral_ledger_bytes, canonical_collateral_ledger_seed_bytes,
+        canonical_composition_bytes, canonical_evidence_compilation_bytes,
+        canonical_explanation_bytes, canonical_geometry_tile_bytes,
+        canonical_home_cell_assignment_bytes, canonical_materialized_evidence_request_bytes,
+        canonical_next_evidence_bytes, canonical_next_evidence_inputs_bytes,
+        canonical_next_evidence_request_bytes, canonical_propagation_bytes,
+        canonical_retry_loop_bytes, canonical_separation_bytes, canonical_separation_inputs_bytes,
+        canonical_tile_identifier_stability_bytes, canonical_tile_work_unit_bytes,
+        check_tile_identifier_stability, compile_evidence,
         condo::{
             CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION, CANON_GEO_CONDO_BRIDGE_VERSION,
             GeoCondoBridgeArtifact, GeoCondoBridgeRequest, build_condo_bridge,
@@ -62,6 +66,7 @@ use crate::{
         materialize_warehouse_rows, minimal_core, next_retry_pass, non_conflict_explanation,
         propagate, recommend_from_inputs, record_pass, reliability_order_from_evidence,
         resolve_geo_as_of, separate, solve_composition, validate_as_of_resolution_artifact,
+        validate_collateral_ledger_artifact, validate_collateral_ledger_seed_artifact,
         validate_evidence_compilation_artifact, validate_explanation_artifact,
         validate_next_evidence_artifact, validate_next_evidence_inputs,
         validate_next_evidence_request, validate_propagation_artifact,
@@ -115,6 +120,8 @@ pub const GEO_RETRY_LOOP_OUTPUT_ID: &str = "retry_loop";
 pub const GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND: &str =
     "canon.geo.stage.footprint_roll_evidence.v0";
 pub const GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID: &str = "footprint_roll_evidence";
+pub const GEO_LEDGER_STAGE_COMMAND: &str = "canon.geo.stage.ledger.v0";
+pub const GEO_COLLATERAL_LEDGER_OUTPUT_ID: &str = "collateral_ledger";
 pub const GEO_SOLVE_COMMAND: &str = "canon geo solve --request <REQUEST.json>";
 pub const GEO_CLIENT_TILE_INGEST_STAGE_COMMAND: &str = "canon.geo.stage.client_tile_ingest.v0";
 pub const CANON_GEO_CLIENT_TILE_SOURCE_VERSION: &str = "canon_geo_client_tile_source.v0";
@@ -334,6 +341,7 @@ impl GeoProjectNodeExecutor {
             GeoExecutorCommand::FootprintRollEvidence => {
                 self.execute_footprint_roll_evidence(node)?
             }
+            GeoExecutorCommand::Ledger => self.execute_ledger(node)?,
             GeoExecutorCommand::Propagate => self.execute_propagate(node)?,
             GeoExecutorCommand::Explain => self.execute_explain(node)?,
             GeoExecutorCommand::Separation => self.execute_separation(node)?,
@@ -877,6 +885,85 @@ impl GeoProjectNodeExecutor {
         Ok(GeoLeafExecution {
             output_id: GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID,
             output_contract: CANON_GEO_EVIDENCE_REQUEST_VERSION,
+            output_bytes: bytes,
+            deterministic_usage: usage,
+        })
+    }
+
+    fn execute_ledger(&self, node: &ProjectPlanNode) -> ProjectRunResult<GeoLeafExecution> {
+        let seed_binding = self.required_binding(
+            node,
+            GEO_REQUEST_BINDING_ID,
+            &[CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION],
+        )?;
+        ensure_canonical_artifact_bytes(
+            node,
+            CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION,
+            &seed_binding.bytes,
+        )?;
+        let seed: GeoCollateralLedgerSeed = parse_json(
+            node,
+            &seed_binding.bytes,
+            CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION,
+        )?;
+        validate_collateral_ledger_seed_artifact(&seed)
+            .map_err(|error| leaf_error(node, "collateral-ledger seed validation", error))?;
+
+        let evidence_dependency = self.required_unique_declared_dependency_artifact(
+            node,
+            "compile_evidence",
+            CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+        )?;
+        let compilation: GeoEvidenceCompilationArtifact = parse_json(
+            node,
+            &evidence_dependency.bytes,
+            CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+        )?;
+        validate_evidence_compilation_artifact(&compilation)
+            .map_err(|error| leaf_error(node, "collateral-ledger evidence", error))?;
+        let current_request = self.current_residual_request(node, &compilation)?;
+        let solve_dependency = self.required_unique_declared_dependency_artifact(
+            node,
+            "solve",
+            CANON_GEO_COMPOSITION_VERSION,
+        )?;
+        let composition = self.validate_solve_dependency_matches_request(
+            node,
+            &compilation,
+            &current_request,
+            solve_dependency,
+        )?;
+
+        let ledger = build_collateral_ledger_from_seed(
+            &seed,
+            &BTreeMap::from([(solve_dependency.output_id.clone(), composition)]),
+            &BTreeMap::from([(evidence_dependency.output_id.clone(), compilation)]),
+        )
+        .map_err(|error| leaf_error(node, "collateral-ledger build", error))?;
+        let bytes = canonical_collateral_ledger_bytes(&ledger)
+            .map_err(|error| leaf_error(node, "collateral-ledger serialization", error))?;
+        let mut usage = BTreeMap::new();
+        usage.insert("ledger_rows".to_string(), ledger.rows.len() as u64);
+        usage.insert("ledger_rollups".to_string(), ledger.rollups.len() as u64);
+        usage.insert(
+            "ledger_reach_none_rows".to_string(),
+            ledger
+                .rows
+                .iter()
+                .filter(|row| row.reach == crate::geo::GeoCandidateReachStatus::None)
+                .count() as u64,
+        );
+        usage.insert(
+            "ledger_source_release_pins".to_string(),
+            ledger
+                .rows
+                .iter()
+                .map(|row| row.source_release_pins.len() as u64)
+                .sum(),
+        );
+        Ok(GeoLeafExecution {
+            output_id: GEO_COLLATERAL_LEDGER_OUTPUT_ID,
+            output_contract: CANON_GEO_COLLATERAL_LEDGER_VERSION,
             output_bytes: bytes,
             deterministic_usage: usage,
         })
@@ -1990,6 +2077,7 @@ enum GeoExecutorCommand {
     AsOfResolution,
     TileIdentifierStability,
     FootprintRollEvidence,
+    Ledger,
     Propagate,
     Explain,
     Separation,
@@ -1998,7 +2086,7 @@ enum GeoExecutorCommand {
 }
 
 impl GeoExecutorCommand {
-    const SUPPORTED: [Self; 16] = [
+    const SUPPORTED: [Self; 17] = [
         Self::MaterializeHomeCells,
         Self::TileWork,
         Self::ClientTileIngest,
@@ -2010,6 +2098,7 @@ impl GeoExecutorCommand {
         Self::AsOfResolution,
         Self::TileIdentifierStability,
         Self::FootprintRollEvidence,
+        Self::Ledger,
         Self::Propagate,
         Self::Explain,
         Self::Separation,
@@ -2030,6 +2119,7 @@ impl GeoExecutorCommand {
             GEO_AS_OF_RESOLUTION_STAGE_COMMAND => Ok(Self::AsOfResolution),
             GEO_TILE_IDENTIFIER_STABILITY_STAGE_COMMAND => Ok(Self::TileIdentifierStability),
             GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND => Ok(Self::FootprintRollEvidence),
+            GEO_LEDGER_STAGE_COMMAND => Ok(Self::Ledger),
             GEO_PROPAGATE_STAGE_COMMAND => Ok(Self::Propagate),
             GEO_EXPLAIN_STAGE_COMMAND => Ok(Self::Explain),
             GEO_SEPARATION_STAGE_COMMAND => Ok(Self::Separation),
@@ -2055,7 +2145,8 @@ impl GeoExecutorCommand {
             | Self::RetryPass
             | Self::AsOfResolution
             | Self::TileIdentifierStability
-            | Self::FootprintRollEvidence => ProjectPlanNodeKind::Evidence,
+            | Self::FootprintRollEvidence
+            | Self::Ledger => ProjectPlanNodeKind::Evidence,
             Self::Propagate
             | Self::Explain
             | Self::Separation
@@ -2077,6 +2168,7 @@ impl GeoExecutorCommand {
             Self::AsOfResolution => GEO_AS_OF_RESOLUTION_OUTPUT_ID,
             Self::TileIdentifierStability => GEO_TILE_IDENTIFIER_STABILITY_OUTPUT_ID,
             Self::FootprintRollEvidence => GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID,
+            Self::Ledger => GEO_COLLATERAL_LEDGER_OUTPUT_ID,
             Self::Propagate => GEO_PROPAGATE_OUTPUT_ID,
             Self::Explain => GEO_EXPLAIN_OUTPUT_ID,
             Self::Separation => GEO_SEPARATION_OUTPUT_ID,
@@ -2100,6 +2192,10 @@ impl GeoExecutorCommand {
             Self::AsOfResolution => &[],
             Self::TileIdentifierStability => &[],
             Self::FootprintRollEvidence => &[],
+            Self::Ledger => &[
+                ("compile_evidence", CANON_GEO_EVIDENCE_COMPILATION_VERSION),
+                ("solve", CANON_GEO_COMPOSITION_VERSION),
+            ],
             Self::Propagate => &[("compile_evidence", CANON_GEO_EVIDENCE_COMPILATION_VERSION)],
             Self::Explain => &[
                 ("compile_evidence", CANON_GEO_EVIDENCE_COMPILATION_VERSION),
@@ -2119,11 +2215,12 @@ impl GeoExecutorCommand {
     }
 
     fn requires_exact_dependency_count(self) -> bool {
-        !matches!(self, Self::Explain | Self::Solve)
+        !matches!(self, Self::Explain | Self::Ledger | Self::Solve)
     }
 
     fn optional_dependencies(self) -> &'static [(&'static str, &'static str)] {
         match self {
+            Self::Ledger => &[(GEO_PROPAGATE_OUTPUT_ID, CANON_GEO_PROPAGATION_VERSION)],
             Self::Explain => &[(GEO_PROPAGATE_OUTPUT_ID, CANON_GEO_PROPAGATION_VERSION)],
             Self::Solve => &[
                 ("section", CANON_GEO_TILE_WORK_UNIT_VERSION),
@@ -2142,6 +2239,7 @@ impl GeoExecutorCommand {
             | Self::AsOfResolution
             | Self::TileIdentifierStability
             | Self::FootprintRollEvidence
+            | Self::Ledger
             | Self::Separation
             | Self::NextEvidence => &[GEO_REQUEST_BINDING_ID],
             Self::RetryPass => &[
@@ -2167,6 +2265,7 @@ impl GeoExecutorCommand {
             Self::AsOfResolution => "as-of-resolution",
             Self::TileIdentifierStability => "tile-identifier-stability",
             Self::FootprintRollEvidence => "footprint-roll-evidence",
+            Self::Ledger => "ledger",
             Self::Propagate => "propagate",
             Self::Explain => "explain",
             Self::Separation => "separation",
@@ -2374,6 +2473,7 @@ fn contract_for_output_id(output_id: &str) -> Option<&'static str> {
         GEO_CONDO_BRIDGE_OUTPUT_ID => Some(CANON_GEO_CONDO_BRIDGE_VERSION),
         GEO_RETRY_LOOP_OUTPUT_ID => Some(CANON_GEO_RETRY_LOOP_VERSION),
         GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID => Some(CANON_GEO_EVIDENCE_REQUEST_VERSION),
+        GEO_COLLATERAL_LEDGER_OUTPUT_ID => Some(CANON_GEO_COLLATERAL_LEDGER_VERSION),
         GEO_PROPAGATE_OUTPUT_ID => Some(CANON_GEO_PROPAGATION_VERSION),
         GEO_EXPLAIN_OUTPUT_ID => Some(CANON_GEO_EXPLANATION_VERSION),
         GEO_SEPARATION_OUTPUT_ID => Some(CANON_GEO_SEPARATION_VERSION),
@@ -2636,6 +2736,31 @@ fn ensure_canonical_artifact_bytes(
                 contract,
                 bytes,
                 canonical_retry_loop_bytes(&artifact),
+            )
+        }
+        CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION => {
+            let artifact: GeoCollateralLedgerSeed =
+                parse_json_target(&node, bytes, CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION)?;
+            validate_collateral_ledger_seed_artifact(&artifact).map_err(|error| {
+                leaf_error_target(&node, "collateral-ledger seed validation", error)
+            })?;
+            require_exact_bytes(
+                &node,
+                contract,
+                bytes,
+                canonical_collateral_ledger_seed_bytes(&artifact),
+            )
+        }
+        CANON_GEO_COLLATERAL_LEDGER_VERSION => {
+            let artifact: GeoCollateralLedger =
+                parse_json_target(&node, bytes, CANON_GEO_COLLATERAL_LEDGER_VERSION)?;
+            validate_collateral_ledger_artifact(&artifact)
+                .map_err(|error| leaf_error_target(&node, "collateral-ledger validation", error))?;
+            require_exact_bytes(
+                &node,
+                contract,
+                bytes,
+                canonical_collateral_ledger_bytes(&artifact),
             )
         }
         CANON_GEO_AS_OF_RESOLUTION_VERSION => {

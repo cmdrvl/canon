@@ -1605,6 +1605,13 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
             false,
         ),
         command(
+            "canon.geo.stage.ledger.v0",
+            GeoCommandSurface::Leaf,
+            CANON_GEO_COLLATERAL_LEDGER_VERSION,
+            true,
+            false,
+        ),
+        command(
             "canon.geo.stage.footprint_roll_evidence.v0",
             GeoCommandSurface::Leaf,
             CANON_GEO_EVIDENCE_REQUEST_VERSION,

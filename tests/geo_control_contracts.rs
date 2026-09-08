@@ -383,6 +383,15 @@ fn expected_implemented_commands()
             ),
         ),
         (
+            "canon.geo.stage.ledger.v0",
+            (
+                CANON_GEO_COLLATERAL_LEDGER_VERSION,
+                GeoCommandSurface::Leaf,
+                true,
+                false,
+            ),
+        ),
+        (
             "canon.geo.stage.explain.v0",
             (
                 CANON_GEO_EXPLANATION_VERSION,

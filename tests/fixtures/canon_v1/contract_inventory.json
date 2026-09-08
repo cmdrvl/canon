@@ -1701,6 +1701,13 @@
       "source_path": "src/geo/executor.rs"
     },
     {
+      "id": "canon.geo.stage.ledger.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/geo/executor.rs"
+    },
+    {
       "id": "canon.geo.stage.footprint_roll_evidence.v0",
       "family": "geo",
       "action": "preserve",
@@ -2277,6 +2284,14 @@
       "access_boundary": "public_crate_api",
       "crate_module": "canon::geo",
       "source_path": "schemas/canon.geo.observer.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_observer_admission_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.observer_admission_request.v0.schema.json"
     },
     {
       "id": "canon_geo_observation_rows.v0",
