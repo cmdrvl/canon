@@ -1,12 +1,15 @@
 use canon::geo::{
     CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_OBSERVATION_ROWS_VERSION,
-    CANON_GEO_OBSERVER_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoBuildingCandidate,
-    GeoCompositionProfile, GeoCompositionUniverse, GeoEvidenceClaimRole,
-    GeoEvidenceCompilationRequest, GeoEvidenceDisposition, GeoImageTilePin, GeoObservationKind,
-    GeoObservationPayload, GeoObservationRow, GeoObserverContract, GeoObserverErrorCode,
+    CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION, CANON_GEO_OBSERVER_VERSION,
+    DEFAULT_MAX_MATERIALIZED_MODELS, GeoBuildingCandidate, GeoCompositionProfile,
+    GeoCompositionUniverse, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest,
+    GeoEvidenceDisposition, GeoImageTilePin, GeoObservationKind, GeoObservationPayload,
+    GeoObservationRow, GeoObserverAdmissionRequest, GeoObserverContract, GeoObserverErrorCode,
     GeoObserverIdentity, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind, GeoValidTimeInterval,
-    admit_observations_with_universe, canonical_observation_rows_bytes, compile_evidence,
-    solve_composition, to_rho_observation, validate_observation_rows_artifact, verify_replay,
+    admit_observations_with_universe, admit_observer_request, canonical_observation_rows_bytes,
+    canonical_observer_admission_request_bytes, compile_evidence, solve_composition,
+    to_rho_observation, validate_observation_rows_artifact, validate_observer_admission_request,
+    verify_replay,
 };
 use std::collections::BTreeMap;
 
@@ -123,6 +126,20 @@ fn bytes_by_digest(
     ])
 }
 
+fn observer_admission_request(row: GeoObservationRow) -> GeoObserverAdmissionRequest {
+    GeoObserverAdmissionRequest {
+        version: CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION.to_string(),
+        contract: rule_based_contract(),
+        rows: vec![row],
+        rho_contracts: vec![rho_contract(
+            false,
+            GeoEvidenceClaimRole::AttributeObservation,
+        )],
+        forbidden_license_ids: vec!["commercial_basemap_tos".to_string()],
+        universe: universe(),
+    }
+}
+
 #[test]
 fn t13_observer_admission_refuses_missing_provenance_uncharacterized_error_and_forbidden_license() {
     let tile_bytes = b"fixture tile bytes";
@@ -216,6 +233,22 @@ fn t13_observer_admission_refuses_missing_provenance_uncharacterized_error_and_f
     assert_eq!(artifact.rho_observations.len(), 1);
     validate_observation_rows_artifact(&artifact).expect("admitted artifact validates");
     canonical_observation_rows_bytes(&artifact).expect("admitted artifact has canonical bytes");
+
+    let request = observer_admission_request(artifact.rows[0].clone());
+    validate_observer_admission_request(&request).expect("admission request validates");
+    canonical_observer_admission_request_bytes(&request).expect("admission request canonicalizes");
+    let from_request = admit_observer_request(&request).expect("request admits through rho");
+    assert_eq!(from_request.rho_observations, artifact.rho_observations);
+
+    let mut request_without_policy = request;
+    request_without_policy.forbidden_license_ids.clear();
+    let error = validate_observer_admission_request(&request_without_policy)
+        .expect_err("empty forbidden-license policy refuses at the request boundary");
+    assert_eq!(error.code, GeoObserverErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("forbidden_license_ids")
+    );
 }
 
 #[test]

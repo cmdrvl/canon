@@ -26,6 +26,8 @@ use std::{
 
 pub const CANON_GEO_IMAGE_TILE_PIN_VERSION: &str = "canon_geo_image_tile_pin.v0";
 pub const CANON_GEO_OBSERVER_VERSION: &str = "canon_geo_observer.v0";
+pub const CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION: &str =
+    "canon_geo_observer_admission_request.v0";
 pub const CANON_GEO_OBSERVATION_ROWS_VERSION: &str = "canon_geo_observation_rows.v0";
 pub const CANON_GEO_ERROR_POPULATION_VERSION: &str = "canon_geo_error_population.v0";
 
@@ -148,6 +150,17 @@ pub struct GeoObservationRowsArtifact {
     pub not_admitted_ids: Vec<String>,
     #[serde(default)]
     pub row_blake3s: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoObserverAdmissionRequest {
+    pub version: String,
+    pub contract: GeoObserverContract,
+    pub rows: Vec<GeoObservationRow>,
+    pub rho_contracts: Vec<GeoRhoContract>,
+    pub forbidden_license_ids: Vec<String>,
+    pub universe: GeoCompositionUniverse,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -395,6 +408,37 @@ pub fn canonical_observer_bytes(
             [("error", error.to_string())],
         )
     })
+}
+
+pub fn validate_observer_admission_request(
+    request: &GeoObserverAdmissionRequest,
+) -> Result<(), GeoObserverError> {
+    canonicalize_observer_admission_request(request).map(|_| ())
+}
+
+pub fn canonical_observer_admission_request_bytes(
+    request: &GeoObserverAdmissionRequest,
+) -> Result<Vec<u8>, GeoObserverError> {
+    let canonical = canonicalize_observer_admission_request(request)?;
+    serde_json::to_vec(&canonical).map_err(|error| {
+        GeoObserverError::invalid(
+            "Geo observer admission request could not be serialized",
+            [("error", error.to_string())],
+        )
+    })
+}
+
+pub fn admit_observer_request(
+    request: &GeoObserverAdmissionRequest,
+) -> Result<GeoObservationRowsArtifact, GeoObserverError> {
+    let canonical = canonicalize_observer_admission_request(request)?;
+    admit_observations_with_universe(
+        &canonical.contract,
+        &canonical.rows,
+        &canonical.rho_contracts,
+        &canonical.forbidden_license_ids,
+        &canonical.universe,
+    )
 }
 
 pub fn admit_observations(
@@ -724,6 +768,98 @@ pub fn select_error_population_subjects(
 
     selected.sort_by(|left, right| left.subject_id.cmp(&right.subject_id));
     Ok(selected)
+}
+
+fn canonicalize_observer_admission_request(
+    request: &GeoObserverAdmissionRequest,
+) -> Result<GeoObserverAdmissionRequest, GeoObserverError> {
+    if request.version != CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION {
+        return Err(GeoObserverError::new(
+            GeoObserverErrorCode::UnsupportedVersion,
+            "Unsupported Geo observer admission request version",
+            [
+                ("actual", request.version.as_str()),
+                ("expected", CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION),
+            ],
+        ));
+    }
+    validate_observer_contract(&request.contract)?;
+    validate_forbidden_license_ids(&request.forbidden_license_ids)?;
+    validate_rho_contracts_for_observer(&request.contract, &request.rho_contracts)?;
+
+    let mut canonical = request.clone();
+    canonical.universe = canonicalize_observer_universe(&request.universe)?;
+    canonical.rows.sort_by(|left, right| left.id.cmp(&right.id));
+    validate_observation_rows(
+        &canonical.contract,
+        &canonical.rows,
+        &canonical.forbidden_license_ids,
+    )?;
+    Ok(canonical)
+}
+
+fn canonicalize_observer_universe(
+    universe: &GeoCompositionUniverse,
+) -> Result<GeoCompositionUniverse, GeoObserverError> {
+    let parcels = canonicalize_sorted_strings("universe.parcels", &universe.parcels)?;
+    let parcel_set = parcels.iter().cloned().collect::<BTreeSet<_>>();
+    let mut buildings = universe.buildings.clone();
+    for building in &mut buildings {
+        validate_canonical_string("universe.buildings[].id", &building.id)?;
+        building.parcel_ids =
+            canonicalize_sorted_strings("universe.buildings[].parcel_ids", &building.parcel_ids)?;
+        for parcel_id in &building.parcel_ids {
+            if !parcel_set.contains(parcel_id) {
+                return Err(GeoObserverError::invalid(
+                    "Geo observer admission universe building parcel ids must reference declared parcels",
+                    [
+                        (
+                            "field".to_string(),
+                            "universe.buildings[].parcel_ids".to_string(),
+                        ),
+                        ("building_id".to_string(), building.id.clone()),
+                        ("parcel_id".to_string(), parcel_id.clone()),
+                    ],
+                ));
+            }
+        }
+    }
+    buildings.sort_by(|left, right| left.id.cmp(&right.id));
+    reject_duplicate_sorted_values(
+        "universe.buildings",
+        buildings.iter().map(|building| building.id.as_str()),
+    )?;
+    Ok(GeoCompositionUniverse { parcels, buildings })
+}
+
+fn canonicalize_sorted_strings(
+    field: &'static str,
+    values: &[String],
+) -> Result<Vec<String>, GeoObserverError> {
+    let mut sorted = values.to_vec();
+    for value in &sorted {
+        validate_canonical_string(field, value)?;
+    }
+    sorted.sort();
+    reject_duplicate_sorted_values(field, sorted.iter().map(String::as_str))?;
+    Ok(sorted)
+}
+
+fn reject_duplicate_sorted_values<'a>(
+    field: &'static str,
+    values: impl IntoIterator<Item = &'a str>,
+) -> Result<(), GeoObserverError> {
+    let mut previous: Option<&str> = None;
+    for value in values {
+        if previous == Some(value) {
+            return Err(GeoObserverError::invalid(
+                "Geo observer admission request values must be unique after canonical sorting",
+                [("field", field), ("value", value)],
+            ));
+        }
+        previous = Some(value);
+    }
+    Ok(())
 }
 
 fn validate_image_tile_pin(

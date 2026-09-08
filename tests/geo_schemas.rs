@@ -74,9 +74,10 @@ use canon::geo::{
     CANON_GEO_IMAGE_TILE_PIN_VERSION, CANON_GEO_LOCAL_FRAME_VERSION,
     CANON_GEO_MULTISOURCE_REQUEST_VERSION, CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION,
     CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION,
-    CANON_GEO_OBSERVATION_ROWS_VERSION, CANON_GEO_OBSERVER_VERSION,
-    CANON_GEO_PAD_ADDRESS_SET_VERSION, CANON_GEO_PAD_MEMBERSHIP_VERSION,
-    CANON_GEO_POINT_POPULATION_VERSION, CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
+    CANON_GEO_OBSERVATION_ROWS_VERSION, CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION,
+    CANON_GEO_OBSERVER_VERSION, CANON_GEO_PAD_ADDRESS_SET_VERSION,
+    CANON_GEO_PAD_MEMBERSHIP_VERSION, CANON_GEO_POINT_POPULATION_VERSION,
+    CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
     CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
     CANON_GEO_PRE_RESOLUTION_VERSION, CANON_GEO_PROPAGATION_VERSION, CANON_GEO_QUESTION_VERSION,
     CANON_GEO_REDACTED_ARTIFACT_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
@@ -112,9 +113,9 @@ use canon::geo::{
     GeoNextAction, GeoNextActionClass, GeoNextActionKind, GeoNextEvidenceCandidateInput,
     GeoNextEvidenceInputs, GeoNextEvidenceRequest, GeoNumericBound, GeoNumericMeasure,
     GeoNycBorough, GeoObservationKind, GeoObservationPayload, GeoObservationRow,
-    GeoObservationRowsArtifact, GeoObserverContract, GeoObserverIdentity, GeoPadAddressMember,
-    GeoPadAddressSet, GeoPlanInventoryRef, GeoPointPopulationArtifact,
-    GeoPopulationCaseEvidenceOverlay, GeoPopulationEvaluationRequest,
+    GeoObservationRowsArtifact, GeoObserverAdmissionRequest, GeoObserverContract,
+    GeoObserverIdentity, GeoPadAddressMember, GeoPadAddressSet, GeoPlanInventoryRef,
+    GeoPointPopulationArtifact, GeoPopulationCaseEvidenceOverlay, GeoPopulationEvaluationRequest,
     GeoPopulationEvidenceStackRequest, GeoPreResolutionArtifact, GeoPreResolutionBuildReceipt,
     GeoPreResolutionCorpusKind, GeoPreResolutionProofClass, GeoPreResolutionRequest,
     GeoPreResolutionRunStatus, GeoPreResolutionSourceCorpus, GeoPreResolutionSourceRow,
@@ -138,8 +139,9 @@ use canon::geo::{
     canonical_e4_gate_assessment_bytes, canonical_error_population_bytes,
     canonical_explanation_bytes, canonical_image_tile_pin_bytes, canonical_next_evidence_bytes,
     canonical_next_evidence_inputs_bytes, canonical_next_evidence_request_bytes,
-    canonical_observation_rows_bytes, canonical_observer_bytes, canonical_pre_resolution_bytes,
-    canonical_propagation_bytes, canonical_redacted_artifact_bytes, canonical_separation_bytes,
+    canonical_observation_rows_bytes, canonical_observer_admission_request_bytes,
+    canonical_observer_bytes, canonical_pre_resolution_bytes, canonical_propagation_bytes,
+    canonical_redacted_artifact_bytes, canonical_separation_bytes,
     canonical_separation_inputs_bytes, canonical_separation_request_bytes, compile_evidence,
     correction_sets, default_geo_capabilities, derive_deed_truth_from_index,
     evaluate_pad_membership, evaluate_population, ingest_client_geometry_tile,
@@ -289,6 +291,8 @@ const ERROR_POPULATION_SCHEMA: &str =
 const IMAGE_TILE_PIN_SCHEMA: &str =
     include_str!("../schemas/canon.geo.image_tile_pin.v0.schema.json");
 const OBSERVER_SCHEMA: &str = include_str!("../schemas/canon.geo.observer.v0.schema.json");
+const OBSERVER_ADMISSION_REQUEST_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.observer_admission_request.v0.schema.json");
 const OBSERVATION_ROWS_SCHEMA: &str =
     include_str!("../schemas/canon.geo.observation_rows.v0.schema.json");
 
@@ -1124,6 +1128,17 @@ fn observer_observation_rows_artifact() -> GeoObservationRowsArtifact {
         &observer_universe(),
     )
     .expect("schema observation rows admit")
+}
+
+fn observer_admission_request() -> GeoObserverAdmissionRequest {
+    GeoObserverAdmissionRequest {
+        version: CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION.to_string(),
+        contract: observer_contract_artifact(),
+        rows: vec![observer_observation_row()],
+        rho_contracts: vec![observer_rho_contract()],
+        forbidden_license_ids: vec!["commercial_basemap_tos".to_string()],
+        universe: observer_universe(),
+    }
 }
 
 fn acquisition_contract_receipt_for(request: GeoAcquisitionRequest) -> GeoAcquisitionReceipt {
@@ -2539,6 +2554,21 @@ fn observer_schema_matches_a_real_instance() {
         OBSERVER_SCHEMA,
         "canon.geo.observer.v0",
         CANON_GEO_OBSERVER_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn observer_admission_request_schema_matches_a_real_instance() {
+    let request = observer_admission_request();
+    let canonical_bytes = canonical_observer_admission_request_bytes(&request)
+        .expect("observer admission request canonicalizes");
+    let instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("canonical observer request parses");
+    assert_drift_free(
+        OBSERVER_ADMISSION_REQUEST_SCHEMA,
+        "canon.geo.observer_admission_request.v0",
+        CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION,
         &instance,
     );
 }
