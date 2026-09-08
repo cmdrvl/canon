@@ -223,6 +223,7 @@ fn franklin_instance_names_do_not_enter_the_generic_geo_engine() {
         include_str!("../src/geo/geometry_value.rs"),
         include_str!("../src/geo/evidence.rs"),
         include_str!("../src/geo/composition.rs"),
+        include_str!("../src/geo/observer_null.rs"),
         include_str!("../src/geo/tile.rs"),
     ] {
         let folded = source.to_ascii_lowercase();

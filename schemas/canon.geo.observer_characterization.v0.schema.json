@@ -1,0 +1,87 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.observer_characterization.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.observer_characterization.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_observer_characterization.v0",
+      "type": "string"
+    },
+    "observer_id": { "type": "string", "minLength": 1 },
+    "population_blake3": { "$ref": "#/$defs/blake3" },
+    "per_kind": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/kind_characterization" }
+    },
+    "method": { "type": "string", "minLength": 1 },
+    "is_null_baseline": { "type": "boolean" },
+    "non_redundant_case_ids": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "required": [
+    "version",
+    "observer_id",
+    "population_blake3",
+    "per_kind",
+    "method",
+    "is_null_baseline"
+  ],
+  "$defs": {
+    "blake3": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "kind_characterization": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "compared": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "exact_agreement": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "max_abs_error": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "error_band": { "$ref": "#/$defs/error_band" }
+      },
+      "required": ["compared", "exact_agreement", "max_abs_error", "error_band"]
+    },
+    "error_band": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lower_slack": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "upper_slack": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        }
+      },
+      "required": ["lower_slack", "upper_slack"]
+    }
+  },
+  "x-canon-contract": {
+    "runtime_only_invariants": [
+      "exact_agreement must not exceed compared for any observation kind",
+      "null baselines must carry zero max_abs_error and zero band slack",
+      "non_redundant_case_ids must be sorted and unique when present"
+    ]
+  }
+}

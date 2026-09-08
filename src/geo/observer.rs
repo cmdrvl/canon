@@ -196,6 +196,8 @@ pub enum GeoObserverErrorCode {
     InvalidInput,
     BudgetExceeded,
     ArithmeticOverflow,
+    ObserverNullRingMismatch,
+    ObserverNotRedundant,
     ObserverMissingProvenance,
     ObserverErrorUncharacterized,
     ObserverLicenseForbidden,

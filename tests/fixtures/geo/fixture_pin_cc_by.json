@@ -1,0 +1,13 @@
+{
+  "url": "fixture://ortho/case4.bin",
+  "byte_range": [0, 24],
+  "etag": "fixture-etag-2024",
+  "blake3": "1111111111111111111111111111111111111111111111111111111111111111",
+  "vintage": {
+    "start_day": 19800,
+    "end_day": 19830
+  },
+  "license_id": "cc_by_4_0",
+  "license_text_blake3": "2222222222222222222222222222222222222222222222222222222222222222",
+  "source_dataset": "fixture.ortho.2024"
+}

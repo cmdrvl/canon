@@ -69,6 +69,7 @@ use super::{
         CANON_GEO_IMAGE_TILE_PIN_VERSION, CANON_GEO_OBSERVATION_ROWS_VERSION,
         CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION, CANON_GEO_OBSERVER_VERSION,
     },
+    observer_null::CANON_GEO_OBSERVER_CHARACTERIZATION_VERSION,
     plan::CANON_GEO_PLAN_VERSION,
     propagate::CANON_GEO_PROPAGATION_VERSION,
     residual_benchmark::{CANON_GEO_RESIDUAL_BENCHMARK_VERSION, CANON_GEO_RESIDUAL_OBDD_VERSION},
@@ -1433,6 +1434,11 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             CANON_GEO_OBSERVER_VERSION,
             "schemas/canon.geo.observer.v0.schema.json",
             "deterministic imagery observer contract",
+        ),
+        contract(
+            CANON_GEO_OBSERVER_CHARACTERIZATION_VERSION,
+            "schemas/canon.geo.observer_characterization.v0.schema.json",
+            "observer error characterization and null-baseline artifact contract",
         ),
         contract(
             CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION,

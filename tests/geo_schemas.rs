@@ -79,9 +79,9 @@ use canon::geo::{
     CANON_GEO_MULTISOURCE_REQUEST_VERSION, CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION,
     CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION,
     CANON_GEO_OBSERVATION_ROWS_VERSION, CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION,
-    CANON_GEO_OBSERVER_VERSION, CANON_GEO_PAD_ADDRESS_SET_VERSION,
-    CANON_GEO_PAD_MEMBERSHIP_VERSION, CANON_GEO_POINT_POPULATION_VERSION,
-    CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
+    CANON_GEO_OBSERVER_CHARACTERIZATION_VERSION, CANON_GEO_OBSERVER_VERSION,
+    CANON_GEO_PAD_ADDRESS_SET_VERSION, CANON_GEO_PAD_MEMBERSHIP_VERSION,
+    CANON_GEO_POINT_POPULATION_VERSION, CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
     CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
     CANON_GEO_PRE_RESOLUTION_VERSION, CANON_GEO_PROPAGATION_VERSION, CANON_GEO_QUESTION_VERSION,
     CANON_GEO_REDACTED_ARTIFACT_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
@@ -124,24 +124,26 @@ use canon::geo::{
     GeoNativeEntityScope, GeoNextAction, GeoNextActionClass, GeoNextActionKind,
     GeoNextEvidenceCandidateInput, GeoNextEvidenceInputs, GeoNextEvidenceRequest, GeoNumericBound,
     GeoNumericMeasure, GeoNycBorough, GeoObservationKind, GeoObservationPayload, GeoObservationRow,
-    GeoObservationRowsArtifact, GeoObserverAdmissionRequest, GeoObserverContract,
-    GeoObserverIdentity, GeoPadAddressMember, GeoPadAddressSet, GeoPlanInventoryRef, GeoPointMm,
-    GeoPointPopulationArtifact, GeoPopulationCaseEvidenceOverlay, GeoPopulationEvaluationRequest,
-    GeoPopulationEvidenceStackRequest, GeoPreResolutionArtifact, GeoPreResolutionBuildReceipt,
-    GeoPreResolutionCorpusKind, GeoPreResolutionProofClass, GeoPreResolutionRequest,
-    GeoPreResolutionRunStatus, GeoPreResolutionSourceCorpus, GeoPreResolutionSourceRow,
-    GeoProjectionProvenance, GeoPropagationBudget, GeoProspectiveObservation,
-    GeoProspectiveOutcome, GeoQuantizationAudit, GeoQuestion, GeoRegionalInventory,
-    GeoRegionalSourceInstance, GeoReliabilityOrder, GeoRequestedGrain, GeoResourceBudget,
-    GeoResourceCounter, GeoRetryPolicy, GeoRetryRecovery, GeoRetryRecoveryPoint, GeoRetryTerminal,
-    GeoRhoAdmissionFallback, GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoContract, GeoRhoObservation,
-    GeoRhoObservationKind, GeoRunArtifactRef, GeoRunPlanRef, GeoSeparationInputs,
-    GeoSeparationRequest, GeoSourceAvailability, GeoSourceAxisDomain, GeoSourceGeometry,
-    GeoSourcePointDecimal, GeoSourcePointFixed, GeoSourceRelease, GeoSourceReleasePin,
-    GeoStreetDirection, GeoStreetSuffix, GeoSubjectBinding, GeoSubjectBindingClass,
-    GeoTelemetryDeclaration, GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
-    GeoTileCandidateReachReference, GeoTileCandidateReachReferenceKind, GeoTileDecisionBatch,
-    GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileFeatureRef,
+    GeoObservationRowsArtifact, GeoObserverAdmissionRequest, GeoObserverCharacterizationArtifact,
+    GeoObserverContract, GeoObserverErrorBand, GeoObserverIdentity,
+    GeoObserverKindCharacterization, GeoPadAddressMember, GeoPadAddressSet, GeoPlanInventoryRef,
+    GeoPointMm, GeoPointPopulationArtifact, GeoPopulationCaseEvidenceOverlay,
+    GeoPopulationEvaluationRequest, GeoPopulationEvidenceStackRequest, GeoPreResolutionArtifact,
+    GeoPreResolutionBuildReceipt, GeoPreResolutionCorpusKind, GeoPreResolutionProofClass,
+    GeoPreResolutionRequest, GeoPreResolutionRunStatus, GeoPreResolutionSourceCorpus,
+    GeoPreResolutionSourceRow, GeoProjectionProvenance, GeoPropagationBudget,
+    GeoProspectiveObservation, GeoProspectiveOutcome, GeoQuantizationAudit, GeoQuestion,
+    GeoRegionalInventory, GeoRegionalSourceInstance, GeoReliabilityOrder, GeoRequestedGrain,
+    GeoResourceBudget, GeoResourceCounter, GeoRetryPolicy, GeoRetryRecovery, GeoRetryRecoveryPoint,
+    GeoRetryTerminal, GeoRhoAdmissionFallback, GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoContract,
+    GeoRhoObservation, GeoRhoObservationKind, GeoRunArtifactRef, GeoRunPlanRef,
+    GeoSeparationInputs, GeoSeparationRequest, GeoSourceAvailability, GeoSourceAxisDomain,
+    GeoSourceGeometry, GeoSourcePointDecimal, GeoSourcePointFixed, GeoSourceRelease,
+    GeoSourceReleasePin, GeoStreetDirection, GeoStreetSuffix, GeoSubjectBinding,
+    GeoSubjectBindingClass, GeoTelemetryDeclaration, GeoTelemetryMetric,
+    GeoTelemetrySemanticEffect, GeoTemporalScope, GeoTileCandidateReachReference,
+    GeoTileCandidateReachReferenceKind, GeoTileDecisionBatch, GeoTileDecisionMember,
+    GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileFeatureRef,
     GeoTileReconciliationArtifact, GeoTileReconciliationRequest, GeoTileSourceBinding,
     GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoTruthPlane, GeoTruthRepresentationGrain,
     GeoTypedGeometry, GeoValidTimeInterval, GeoValueOrigin, GeoWarehouseEvidenceRow,
@@ -157,12 +159,13 @@ use canon::geo::{
     canonical_next_evidence_bytes, canonical_next_evidence_inputs_bytes,
     canonical_next_evidence_request_bytes, canonical_observation_rows_bytes,
     canonical_observer_admission_request_bytes, canonical_observer_bytes,
-    canonical_point_population_bytes, canonical_pre_resolution_bytes, canonical_propagation_bytes,
-    canonical_redacted_artifact_bytes, canonical_retry_recovery_bytes, canonical_separation_bytes,
-    canonical_separation_inputs_bytes, canonical_separation_request_bytes,
-    compare_e4_gate_assessments, compile_evidence, correction_sets, default_geo_capabilities,
-    derive_deed_truth_from_index, e4_proof_source_from_population_request, evaluate_pad_membership,
-    evaluate_population, ingest_client_geometry_tile, inspection_semantic_hash, join_exposure,
+    canonical_observer_characterization_bytes, canonical_point_population_bytes,
+    canonical_pre_resolution_bytes, canonical_propagation_bytes, canonical_redacted_artifact_bytes,
+    canonical_retry_recovery_bytes, canonical_separation_bytes, canonical_separation_inputs_bytes,
+    canonical_separation_request_bytes, compare_e4_gate_assessments, compile_evidence,
+    correction_sets, default_geo_capabilities, derive_deed_truth_from_index,
+    e4_proof_source_from_population_request, evaluate_pad_membership, evaluate_population,
+    ingest_client_geometry_tile, inspection_semantic_hash, join_exposure,
     materialize_geo_multisource, materialize_geometry_tile, materialize_h7_population_rows,
     materialize_home_cells, materialize_pre_resolution, materialize_tile_work_unit,
     materialize_warehouse_geometry, minimal_core, parse_address_forest, propagate, recommend,
@@ -321,6 +324,8 @@ const ERROR_POPULATION_SCHEMA: &str =
 const IMAGE_TILE_PIN_SCHEMA: &str =
     include_str!("../schemas/canon.geo.image_tile_pin.v0.schema.json");
 const OBSERVER_SCHEMA: &str = include_str!("../schemas/canon.geo.observer.v0.schema.json");
+const OBSERVER_CHARACTERIZATION_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.observer_characterization.v0.schema.json");
 const OBSERVER_ADMISSION_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.observer_admission_request.v0.schema.json");
 const OBSERVATION_ROWS_SCHEMA: &str =
@@ -1166,6 +1171,31 @@ fn observer_observation_rows_artifact() -> GeoObservationRowsArtifact {
         &observer_universe(),
     )
     .expect("schema observation rows admit")
+}
+
+fn observer_characterization_artifact() -> GeoObserverCharacterizationArtifact {
+    GeoObserverCharacterizationArtifact {
+        version: CANON_GEO_OBSERVER_CHARACTERIZATION_VERSION.to_string(),
+        observer_id: "observer.null_footprint".to_string(),
+        population_blake3: blake3::hash(b"schema observer population")
+            .to_hex()
+            .to_string(),
+        per_kind: BTreeMap::from([(
+            "footprint_outline".to_string(),
+            GeoObserverKindCharacterization {
+                compared: 6,
+                exact_agreement: 6,
+                max_abs_error: 0,
+                error_band: GeoObserverErrorBand {
+                    lower_slack: 0,
+                    upper_slack: 0,
+                },
+            },
+        )]),
+        method: "exact_ring_digest_agreement_from_landed_footprint_plane".to_string(),
+        is_null_baseline: true,
+        non_redundant_case_ids: Vec::new(),
+    }
 }
 
 fn observer_admission_request() -> GeoObserverAdmissionRequest {
@@ -2837,6 +2867,21 @@ fn observer_schema_matches_a_real_instance() {
         OBSERVER_SCHEMA,
         "canon.geo.observer.v0",
         CANON_GEO_OBSERVER_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn observer_characterization_schema_matches_a_real_instance() {
+    let artifact = observer_characterization_artifact();
+    let canonical_bytes = canonical_observer_characterization_bytes(&artifact)
+        .expect("observer characterization canonicalizes");
+    let instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("canonical characterization parses");
+    assert_drift_free(
+        OBSERVER_CHARACTERIZATION_SCHEMA,
+        "canon.geo.observer_characterization.v0",
+        CANON_GEO_OBSERVER_CHARACTERIZATION_VERSION,
         &instance,
     );
 }
