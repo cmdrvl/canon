@@ -185,6 +185,26 @@ fn rho_admission_policy_handoff_artifact_is_retained_not_live() {
         "handoff_to_bd_1g4x_not_scored_by_bd_2wby"
     );
     assert_eq!(
+        artifact["baseline"]["reach_full_partial_none"],
+        serde_json::json!([70, 0, 0])
+    );
+    assert_eq!(artifact["baseline"]["resolved"], serde_json::json!(11));
+    assert_eq!(
+        artifact["baseline"]["exactly_correct"],
+        serde_json::json!(6)
+    );
+    assert_eq!(artifact["baseline"]["ambiguous"], serde_json::json!(49));
+    assert_eq!(artifact["baseline"]["conflict"], serde_json::json!(4));
+    assert_eq!(
+        artifact["baseline"]["component_fallbacks"],
+        serde_json::json!(6)
+    );
+    assert_eq!(artifact["baseline"]["false_merges"], serde_json::json!(5));
+    assert_eq!(
+        artifact["baseline"]["truth_exclusions"],
+        serde_json::json!(24)
+    );
+    assert_eq!(
         artifact["policy_handoff"]["policy_overlay_sha256"],
         sha256_file(POLICY_OVERLAY)
     );

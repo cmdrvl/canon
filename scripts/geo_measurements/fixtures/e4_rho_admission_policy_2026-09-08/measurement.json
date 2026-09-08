@@ -1,6 +1,7 @@
 {
   "baseline": {
-    "ambiguous": 50,
+    "ambiguous": 49,
+    "component_fallbacks": 6,
     "conflict": 4,
     "exactly_correct": 6,
     "false_merges": 5,
