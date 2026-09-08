@@ -123,6 +123,15 @@ fn measurement_binary_measures_retry_recovery_from_fixture_sidecars() {
         )
         .expect("candidate rows sidecar");
     }
+    let stdout_copy = fixture
+        .receipts
+        .values()
+        .next()
+        .expect("fixture has at least one receipt");
+    write_json(
+        &receipts_dir.join("e1.gross_class.0001.receipt.stdout.json"),
+        stdout_copy,
+    );
 
     let output = assert_cmd::cargo::cargo_bin_cmd!("canon_geo_measurements")
         .arg("measure-retry-recovery")

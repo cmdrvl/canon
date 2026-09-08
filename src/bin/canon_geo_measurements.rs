@@ -1369,7 +1369,11 @@ fn sorted_json_files(
             .file_name()
             .and_then(|name| name.to_str())
             .is_some_and(|name| name.ends_with(".rows.json"));
-        if is_json && !(skip_candidate_rows && is_candidate_rows) {
+        let is_receipt_stdout_copy = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.ends_with(".receipt.stdout.json"));
+        if is_json && !(skip_candidate_rows && (is_candidate_rows || is_receipt_stdout_copy)) {
             files.push(path);
         }
     }
