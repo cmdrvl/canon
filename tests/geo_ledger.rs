@@ -663,7 +663,7 @@ fn t07_geo_ledger_cli_requires_a_subcommand() {
     assert_eq!(output["refusal"]["detail"]["command"], "canon geo ledger");
     assert_eq!(
         output["refusal"]["detail"]["subcommands"],
-        json!(["build", "validate"])
+        json!(["build", "exposure", "validate"])
     );
     assert_eq!(
         output["refusal"]["next_command"],
