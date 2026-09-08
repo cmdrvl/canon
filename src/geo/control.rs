@@ -59,6 +59,10 @@ use super::{
         CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION, CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION,
         CANON_GEO_NEXT_EVIDENCE_VERSION,
     },
+    observer::{
+        CANON_GEO_IMAGE_TILE_PIN_VERSION, CANON_GEO_OBSERVATION_ROWS_VERSION,
+        CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION, CANON_GEO_OBSERVER_VERSION,
+    },
     plan::CANON_GEO_PLAN_VERSION,
     propagate::CANON_GEO_PROPAGATION_VERSION,
     residual_benchmark::{CANON_GEO_RESIDUAL_BENCHMARK_VERSION, CANON_GEO_RESIDUAL_OBDD_VERSION},
@@ -1400,6 +1404,26 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "sound typed pre-search pruning artifact contract",
         ),
         contract(
+            CANON_GEO_IMAGE_TILE_PIN_VERSION,
+            "schemas/canon.geo.image_tile_pin.v0.schema.json",
+            "pinned licensed imagery tile contract",
+        ),
+        contract(
+            CANON_GEO_OBSERVER_VERSION,
+            "schemas/canon.geo.observer.v0.schema.json",
+            "deterministic imagery observer contract",
+        ),
+        contract(
+            CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION,
+            "schemas/canon.geo.observer_admission_request.v0.schema.json",
+            "local observer admission request with pinned tiles and rho contracts",
+        ),
+        contract(
+            CANON_GEO_OBSERVATION_ROWS_VERSION,
+            "schemas/canon.geo.observation_rows.v0.schema.json",
+            "rho-admitted imagery observation rows artifact contract",
+        ),
+        contract(
             CANON_GEO_WAREHOUSE_ROWS_VERSION,
             "schemas/canon.geo.warehouse_rows.v0.schema.json",
             "release-pinned offline evidence row contract",
@@ -1608,6 +1632,13 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
             "canon.geo.stage.ledger.v0",
             GeoCommandSurface::Leaf,
             CANON_GEO_COLLATERAL_LEDGER_VERSION,
+            true,
+            false,
+        ),
+        command(
+            "canon.geo.stage.observe_admit.v0",
+            GeoCommandSurface::Leaf,
+            CANON_GEO_OBSERVATION_ROWS_VERSION,
             true,
             false,
         ),

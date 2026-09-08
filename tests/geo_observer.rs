@@ -11,6 +11,7 @@ use canon::geo::{
     to_rho_observation, validate_observation_rows_artifact, validate_observer_admission_request,
     verify_replay,
 };
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 fn hex(bytes: &[u8]) -> String {
@@ -239,6 +240,21 @@ fn t13_observer_admission_refuses_missing_provenance_uncharacterized_error_and_f
     canonical_observer_admission_request_bytes(&request).expect("admission request canonicalizes");
     let from_request = admit_observer_request(&request).expect("request admits through rho");
     assert_eq!(from_request.rho_observations, artifact.rho_observations);
+
+    let mut unsorted_policy = request.clone();
+    unsorted_policy.forbidden_license_ids = vec![
+        "z_fixture_unused_license".to_string(),
+        "commercial_basemap_tos".to_string(),
+    ];
+    let sorted_policy: Value = serde_json::from_slice(
+        &canonical_observer_admission_request_bytes(&unsorted_policy)
+            .expect("request sorts forbidden license policy"),
+    )
+    .expect("canonical request parses");
+    assert_eq!(
+        sorted_policy["forbidden_license_ids"],
+        json!(["commercial_basemap_tos", "z_fixture_unused_license"])
+    );
 
     let mut request_without_policy = request;
     request_without_policy.forbidden_license_ids.clear();

@@ -17,7 +17,8 @@ use crate::{
         CANON_GEO_EXPLANATION_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
         CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
         CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION, CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION,
-        CANON_GEO_NEXT_EVIDENCE_VERSION, CANON_GEO_PROPAGATION_VERSION,
+        CANON_GEO_NEXT_EVIDENCE_VERSION, CANON_GEO_OBSERVATION_ROWS_VERSION,
+        CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION, CANON_GEO_PROPAGATION_VERSION,
         CANON_GEO_RETRY_LOOP_VERSION, CANON_GEO_RUN_VERSION, CANON_GEO_SEPARATION_INPUTS_VERSION,
         CANON_GEO_SEPARATION_REQUEST_VERSION, CANON_GEO_SEPARATION_VERSION,
         CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
@@ -29,13 +30,13 @@ use crate::{
         GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
         GeoEvidenceCompilationRequest, GeoExplanationArtifact, GeoExplanationBudget,
         GeoGeometryTileArtifact, GeoHomeCellAssignmentArtifact, GeoHomeCellRowsRequest,
-        GeoNextEvidenceArtifact, GeoNextEvidenceInputs, GeoNextEvidenceRequest, GeoPlan,
-        GeoPlanComponentScope, GeoPlanExactSolveScope, GeoPlanProducedArtifactRef,
-        GeoPropagationArtifact, GeoPropagationBudget, GeoRetryLoopArtifact, GeoRun,
-        GeoSeparationArtifact, GeoSeparationInputs, GeoSeparationRequest,
-        GeoTileCandidateReachStatus, GeoTileIdentifierStabilityArtifact,
-        GeoTileIdentifierStabilityRequest, GeoTileWorkRequest, GeoTileWorkUnitArtifact,
-        GeoWarehouseRowsRequest, apply_prunings,
+        GeoNextEvidenceArtifact, GeoNextEvidenceInputs, GeoNextEvidenceRequest,
+        GeoObservationRowsArtifact, GeoObserverAdmissionRequest, GeoPlan, GeoPlanComponentScope,
+        GeoPlanExactSolveScope, GeoPlanProducedArtifactRef, GeoPropagationArtifact,
+        GeoPropagationBudget, GeoRetryLoopArtifact, GeoRun, GeoSeparationArtifact,
+        GeoSeparationInputs, GeoSeparationRequest, GeoTileCandidateReachStatus,
+        GeoTileIdentifierStabilityArtifact, GeoTileIdentifierStabilityRequest, GeoTileWorkRequest,
+        GeoTileWorkUnitArtifact, GeoWarehouseRowsRequest, admit_observer_request, apply_prunings,
         assessment_roll::{
             CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION,
             CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION, GeoAssessmentRollOwnerArtifact,
@@ -48,7 +49,8 @@ use crate::{
         canonical_explanation_bytes, canonical_geometry_tile_bytes,
         canonical_home_cell_assignment_bytes, canonical_materialized_evidence_request_bytes,
         canonical_next_evidence_bytes, canonical_next_evidence_inputs_bytes,
-        canonical_next_evidence_request_bytes, canonical_propagation_bytes,
+        canonical_next_evidence_request_bytes, canonical_observation_rows_bytes,
+        canonical_observer_admission_request_bytes, canonical_propagation_bytes,
         canonical_retry_loop_bytes, canonical_separation_bytes, canonical_separation_inputs_bytes,
         canonical_tile_identifier_stability_bytes, canonical_tile_work_unit_bytes,
         check_tile_identifier_stability, compile_evidence,
@@ -69,7 +71,8 @@ use crate::{
         validate_collateral_ledger_artifact, validate_collateral_ledger_seed_artifact,
         validate_evidence_compilation_artifact, validate_explanation_artifact,
         validate_next_evidence_artifact, validate_next_evidence_inputs,
-        validate_next_evidence_request, validate_propagation_artifact,
+        validate_next_evidence_request, validate_observation_rows_artifact,
+        validate_observer_admission_request, validate_propagation_artifact,
         validate_retry_loop_artifact, validate_separation_artifact, validate_separation_inputs,
         validate_tile_identifier_stability_artifact,
     },
@@ -122,6 +125,8 @@ pub const GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND: &str =
 pub const GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID: &str = "footprint_roll_evidence";
 pub const GEO_LEDGER_STAGE_COMMAND: &str = "canon.geo.stage.ledger.v0";
 pub const GEO_COLLATERAL_LEDGER_OUTPUT_ID: &str = "collateral_ledger";
+pub const GEO_OBSERVE_ADMIT_STAGE_COMMAND: &str = "canon.geo.stage.observe_admit.v0";
+pub const GEO_OBSERVATION_ROWS_OUTPUT_ID: &str = "observation_rows";
 pub const GEO_SOLVE_COMMAND: &str = "canon geo solve --request <REQUEST.json>";
 pub const GEO_CLIENT_TILE_INGEST_STAGE_COMMAND: &str = "canon.geo.stage.client_tile_ingest.v0";
 pub const CANON_GEO_CLIENT_TILE_SOURCE_VERSION: &str = "canon_geo_client_tile_source.v0";
@@ -342,6 +347,7 @@ impl GeoProjectNodeExecutor {
                 self.execute_footprint_roll_evidence(node)?
             }
             GeoExecutorCommand::Ledger => self.execute_ledger(node)?,
+            GeoExecutorCommand::ObserveAdmit => self.execute_observe_admit(node)?,
             GeoExecutorCommand::Propagate => self.execute_propagate(node)?,
             GeoExecutorCommand::Explain => self.execute_explain(node)?,
             GeoExecutorCommand::Separation => self.execute_separation(node)?,
@@ -885,6 +891,68 @@ impl GeoProjectNodeExecutor {
         Ok(GeoLeafExecution {
             output_id: GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID,
             output_contract: CANON_GEO_EVIDENCE_REQUEST_VERSION,
+            output_bytes: bytes,
+            deterministic_usage: usage,
+        })
+    }
+
+    fn execute_observe_admit(&self, node: &ProjectPlanNode) -> ProjectRunResult<GeoLeafExecution> {
+        let request_binding = self.required_binding(
+            node,
+            GEO_REQUEST_BINDING_ID,
+            &[CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION],
+        )?;
+        ensure_canonical_artifact_bytes(
+            node,
+            CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION,
+            &request_binding.bytes,
+        )?;
+        let request: GeoObserverAdmissionRequest = parse_json(
+            node,
+            &request_binding.bytes,
+            CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION,
+        )?;
+        validate_observer_admission_request(&request)
+            .map_err(|error| leaf_error(node, "observe-admit request validation", error))?;
+        let artifact = admit_observer_request(&request)
+            .map_err(|error| leaf_error(node, "observe-admit", error))?;
+        validate_observation_rows_artifact(&artifact)
+            .map_err(|error| leaf_error(node, "observe-admit artifact validation", error))?;
+        let bytes = canonical_observation_rows_bytes(&artifact)
+            .map_err(|error| leaf_error(node, "observe-admit serialization", error))?;
+        let mut usage = BTreeMap::new();
+        usage.insert("observer_input_rows".to_string(), request.rows.len() as u64);
+        usage.insert(
+            "observer_tile_pins".to_string(),
+            request
+                .rows
+                .iter()
+                .map(|row| row.tile_pins.len() as u64)
+                .sum(),
+        );
+        usage.insert(
+            "observer_rho_contracts".to_string(),
+            request.rho_contracts.len() as u64,
+        );
+        usage.insert(
+            "observer_forbidden_license_ids".to_string(),
+            request.forbidden_license_ids.len() as u64,
+        );
+        usage.insert(
+            "observer_rho_observations".to_string(),
+            artifact.rho_observations.len() as u64,
+        );
+        usage.insert(
+            "observer_diagnostic_only".to_string(),
+            artifact.diagnostic_only_ids.len() as u64,
+        );
+        usage.insert(
+            "observer_not_admitted".to_string(),
+            artifact.not_admitted_ids.len() as u64,
+        );
+        Ok(GeoLeafExecution {
+            output_id: GEO_OBSERVATION_ROWS_OUTPUT_ID,
+            output_contract: CANON_GEO_OBSERVATION_ROWS_VERSION,
             output_bytes: bytes,
             deterministic_usage: usage,
         })
@@ -2078,6 +2146,7 @@ enum GeoExecutorCommand {
     TileIdentifierStability,
     FootprintRollEvidence,
     Ledger,
+    ObserveAdmit,
     Propagate,
     Explain,
     Separation,
@@ -2086,7 +2155,7 @@ enum GeoExecutorCommand {
 }
 
 impl GeoExecutorCommand {
-    const SUPPORTED: [Self; 17] = [
+    const SUPPORTED: [Self; 18] = [
         Self::MaterializeHomeCells,
         Self::TileWork,
         Self::ClientTileIngest,
@@ -2099,6 +2168,7 @@ impl GeoExecutorCommand {
         Self::TileIdentifierStability,
         Self::FootprintRollEvidence,
         Self::Ledger,
+        Self::ObserveAdmit,
         Self::Propagate,
         Self::Explain,
         Self::Separation,
@@ -2120,6 +2190,7 @@ impl GeoExecutorCommand {
             GEO_TILE_IDENTIFIER_STABILITY_STAGE_COMMAND => Ok(Self::TileIdentifierStability),
             GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND => Ok(Self::FootprintRollEvidence),
             GEO_LEDGER_STAGE_COMMAND => Ok(Self::Ledger),
+            GEO_OBSERVE_ADMIT_STAGE_COMMAND => Ok(Self::ObserveAdmit),
             GEO_PROPAGATE_STAGE_COMMAND => Ok(Self::Propagate),
             GEO_EXPLAIN_STAGE_COMMAND => Ok(Self::Explain),
             GEO_SEPARATION_STAGE_COMMAND => Ok(Self::Separation),
@@ -2146,7 +2217,8 @@ impl GeoExecutorCommand {
             | Self::AsOfResolution
             | Self::TileIdentifierStability
             | Self::FootprintRollEvidence
-            | Self::Ledger => ProjectPlanNodeKind::Evidence,
+            | Self::Ledger
+            | Self::ObserveAdmit => ProjectPlanNodeKind::Evidence,
             Self::Propagate
             | Self::Explain
             | Self::Separation
@@ -2169,6 +2241,7 @@ impl GeoExecutorCommand {
             Self::TileIdentifierStability => GEO_TILE_IDENTIFIER_STABILITY_OUTPUT_ID,
             Self::FootprintRollEvidence => GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID,
             Self::Ledger => GEO_COLLATERAL_LEDGER_OUTPUT_ID,
+            Self::ObserveAdmit => GEO_OBSERVATION_ROWS_OUTPUT_ID,
             Self::Propagate => GEO_PROPAGATE_OUTPUT_ID,
             Self::Explain => GEO_EXPLAIN_OUTPUT_ID,
             Self::Separation => GEO_SEPARATION_OUTPUT_ID,
@@ -2196,6 +2269,7 @@ impl GeoExecutorCommand {
                 ("compile_evidence", CANON_GEO_EVIDENCE_COMPILATION_VERSION),
                 ("solve", CANON_GEO_COMPOSITION_VERSION),
             ],
+            Self::ObserveAdmit => &[],
             Self::Propagate => &[("compile_evidence", CANON_GEO_EVIDENCE_COMPILATION_VERSION)],
             Self::Explain => &[
                 ("compile_evidence", CANON_GEO_EVIDENCE_COMPILATION_VERSION),
@@ -2240,6 +2314,7 @@ impl GeoExecutorCommand {
             | Self::TileIdentifierStability
             | Self::FootprintRollEvidence
             | Self::Ledger
+            | Self::ObserveAdmit
             | Self::Separation
             | Self::NextEvidence => &[GEO_REQUEST_BINDING_ID],
             Self::RetryPass => &[
@@ -2266,6 +2341,7 @@ impl GeoExecutorCommand {
             Self::TileIdentifierStability => "tile-identifier-stability",
             Self::FootprintRollEvidence => "footprint-roll-evidence",
             Self::Ledger => "ledger",
+            Self::ObserveAdmit => "observe-admit",
             Self::Propagate => "propagate",
             Self::Explain => "explain",
             Self::Separation => "separation",
@@ -2474,6 +2550,7 @@ fn contract_for_output_id(output_id: &str) -> Option<&'static str> {
         GEO_RETRY_LOOP_OUTPUT_ID => Some(CANON_GEO_RETRY_LOOP_VERSION),
         GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID => Some(CANON_GEO_EVIDENCE_REQUEST_VERSION),
         GEO_COLLATERAL_LEDGER_OUTPUT_ID => Some(CANON_GEO_COLLATERAL_LEDGER_VERSION),
+        GEO_OBSERVATION_ROWS_OUTPUT_ID => Some(CANON_GEO_OBSERVATION_ROWS_VERSION),
         GEO_PROPAGATE_OUTPUT_ID => Some(CANON_GEO_PROPAGATION_VERSION),
         GEO_EXPLAIN_OUTPUT_ID => Some(CANON_GEO_EXPLANATION_VERSION),
         GEO_SEPARATION_OUTPUT_ID => Some(CANON_GEO_SEPARATION_VERSION),
@@ -2848,6 +2925,31 @@ fn ensure_canonical_artifact_bytes(
                 contract,
                 bytes,
                 canonical_next_evidence_inputs_bytes(&inputs),
+            )
+        }
+        CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION => {
+            let request: GeoObserverAdmissionRequest =
+                parse_json_target(&node, bytes, CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION)?;
+            validate_observer_admission_request(&request).map_err(|error| {
+                leaf_error_target(&node, "observer admission request validation", error)
+            })?;
+            require_exact_bytes(
+                &node,
+                contract,
+                bytes,
+                canonical_observer_admission_request_bytes(&request),
+            )
+        }
+        CANON_GEO_OBSERVATION_ROWS_VERSION => {
+            let artifact: GeoObservationRowsArtifact =
+                parse_json_target(&node, bytes, CANON_GEO_OBSERVATION_ROWS_VERSION)?;
+            validate_observation_rows_artifact(&artifact)
+                .map_err(|error| leaf_error_target(&node, "observation rows validation", error))?;
+            require_exact_bytes(
+                &node,
+                contract,
+                bytes,
+                canonical_observation_rows_bytes(&artifact),
             )
         }
         CANON_GEO_NEXT_EVIDENCE_VERSION => {

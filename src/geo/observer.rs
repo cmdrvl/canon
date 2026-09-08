@@ -783,13 +783,41 @@ fn canonicalize_observer_admission_request(
             ],
         ));
     }
-    validate_observer_contract(&request.contract)?;
-    validate_forbidden_license_ids(&request.forbidden_license_ids)?;
-    validate_rho_contracts_for_observer(&request.contract, &request.rho_contracts)?;
-
     let mut canonical = request.clone();
+    canonical.contract.output_kinds.sort();
+    canonical.contract.rho_contract_ids =
+        canonicalize_sorted_strings("rho_contract_ids", &canonical.contract.rho_contract_ids)?;
+    canonical.forbidden_license_ids =
+        canonicalize_sorted_strings("forbidden_license_ids", &request.forbidden_license_ids)?;
+    canonical
+        .rho_contracts
+        .sort_by(|left, right| left.id.cmp(&right.id));
+    for rho_contract in &mut canonical.rho_contracts {
+        rho_contract.source_lineage_ids = canonicalize_sorted_strings(
+            "rho_contracts[].source_lineage_ids",
+            &rho_contract.source_lineage_ids,
+        )?;
+        if rho_contract.source_lineage_ids.is_empty() {
+            return Err(GeoObserverError::invalid_field(
+                "rho_contracts[].source_lineage_ids",
+                "Geo observer admission rho contracts require at least one source lineage id",
+                "0",
+            ));
+        }
+    }
+    reject_duplicate_sorted_values(
+        "rho_contracts",
+        canonical
+            .rho_contracts
+            .iter()
+            .map(|contract| contract.id.as_str()),
+    )?;
     canonical.universe = canonicalize_observer_universe(&request.universe)?;
     canonical.rows.sort_by(|left, right| left.id.cmp(&right.id));
+
+    validate_observer_contract(&canonical.contract)?;
+    validate_forbidden_license_ids(&canonical.forbidden_license_ids)?;
+    validate_rho_contracts_for_observer(&canonical.contract, &canonical.rho_contracts)?;
     validate_observation_rows(
         &canonical.contract,
         &canonical.rows,

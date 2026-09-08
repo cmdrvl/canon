@@ -31,34 +31,40 @@ use canon::{
         CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_EXPLANATION_VERSION,
         CANON_GEO_GEOMETRY_TILE_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
         CANON_GEO_LOCAL_FRAME_VERSION, CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION,
-        CANON_GEO_NEXT_EVIDENCE_VERSION, CANON_GEO_QUESTION_VERSION,
-        CANON_GEO_REGIONAL_INVENTORY_VERSION, CANON_GEO_RESOURCE_BUDGET_VERSION,
-        CANON_GEO_SEPARATION_INPUTS_VERSION, CANON_GEO_SEPARATION_VERSION,
-        CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
-        DEFAULT_MAX_MATERIALIZED_MODELS, GeoAbstentionDisposition, GeoAbstentionPolicy,
-        GeoAcquisitionDenominator, GeoAcquisitionProofClass, GeoAcquisitionTerminalState,
-        GeoAffineProjectionMm, GeoAsOf, GeoBoundedGeography, GeoBudgetAction, GeoClaimClass,
+        CANON_GEO_NEXT_EVIDENCE_VERSION, CANON_GEO_OBSERVATION_ROWS_VERSION,
+        CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION, CANON_GEO_OBSERVER_VERSION,
+        CANON_GEO_QUESTION_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
+        CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_SEPARATION_INPUTS_VERSION,
+        CANON_GEO_SEPARATION_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
+        CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS,
+        GeoAbstentionDisposition, GeoAbstentionPolicy, GeoAcquisitionDenominator,
+        GeoAcquisitionProofClass, GeoAcquisitionTerminalState, GeoAffineProjectionMm, GeoAsOf,
+        GeoBoundedGeography, GeoBudgetAction, GeoBuildingCandidate, GeoClaimClass,
         GeoClientTileCoverageExtent, GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest,
         GeoClientTileSourceFormat, GeoClientTileVendorIdentifier, GeoCompositionProfile,
-        GeoControlEntityLevel, GeoCoveragePredicate, GeoDateInterval, GeoDenominatorSource,
-        GeoDigest, GeoDigestAlgorithm, GeoEgressClass, GeoEntityLevel, GeoEntityRef,
-        GeoEvidenceClaimRole, GeoEvidenceClass, GeoEvidenceRecordRef, GeoGeometryTransformContract,
-        GeoHardConstraintKind, GeoIdentityParticipation, GeoLicenseClass, GeoLocalAcquisitionState,
-        GeoLocalArtifactRef, GeoLocalFrameContract, GeoNativeEntityScope, GeoNextActionClass,
-        GeoNextActionKind, GeoNextEvidenceCandidateInput, GeoNextEvidenceInputs, GeoNumericBound,
-        GeoNumericMeasure, GeoPlan, GeoPlanInventoryRef, GeoPlanRequest, GeoPlanStage,
-        GeoPlanStatus, GeoProjectionProvenance, GeoProspectiveObservation, GeoProspectiveOutcome,
-        GeoRegionalInventory, GeoRegionalSourceInstance, GeoRequestedGrain, GeoResourceBudget,
-        GeoResourceCounter, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
-        GeoSatisfactionExecutionRef, GeoSatisfactionFileAudit, GeoSatisfactionFinding,
-        GeoSatisfactionFindingCode, GeoSatisfactionLocalInputBinding, GeoSatisfactionRunInputRef,
-        GeoSatisfactionStatus, GeoSeparationInputs, GeoSourceAvailability, GeoSourceAxisDomain,
-        GeoSourcePointFixed, GeoSourceRelease, GeoSubjectBinding, GeoSubjectBindingClass,
-        GeoTelemetryDeclaration, GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
-        GeoTileFeatureRef, GeoTileSourceBinding, GeoTileWorkRequest, GeoValueOrigin,
+        GeoCompositionUniverse, GeoControlEntityLevel, GeoCoveragePredicate, GeoDateInterval,
+        GeoDenominatorSource, GeoDigest, GeoDigestAlgorithm, GeoEgressClass, GeoEntityLevel,
+        GeoEntityRef, GeoEvidenceClaimRole, GeoEvidenceClass, GeoEvidenceRecordRef,
+        GeoGeometryTransformContract, GeoHardConstraintKind, GeoIdentityParticipation,
+        GeoImageTilePin, GeoLicenseClass, GeoLocalAcquisitionState, GeoLocalArtifactRef,
+        GeoLocalFrameContract, GeoNativeEntityScope, GeoNextActionClass, GeoNextActionKind,
+        GeoNextEvidenceCandidateInput, GeoNextEvidenceInputs, GeoNumericBound, GeoNumericMeasure,
+        GeoObservationKind, GeoObservationPayload, GeoObservationRow, GeoObservationRowsArtifact,
+        GeoObserverAdmissionRequest, GeoObserverContract, GeoObserverIdentity, GeoPlan,
+        GeoPlanInventoryRef, GeoPlanRequest, GeoPlanStage, GeoPlanStatus, GeoProjectionProvenance,
+        GeoProspectiveObservation, GeoProspectiveOutcome, GeoRegionalInventory,
+        GeoRegionalSourceInstance, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter,
+        GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind, GeoSatisfactionExecutionRef,
+        GeoSatisfactionFileAudit, GeoSatisfactionFinding, GeoSatisfactionFindingCode,
+        GeoSatisfactionLocalInputBinding, GeoSatisfactionRunInputRef, GeoSatisfactionStatus,
+        GeoSeparationInputs, GeoSourceAvailability, GeoSourceAxisDomain, GeoSourcePointFixed,
+        GeoSourceRelease, GeoSubjectBinding, GeoSubjectBindingClass, GeoTelemetryDeclaration,
+        GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope, GeoTileFeatureRef,
+        GeoTileSourceBinding, GeoTileWorkRequest, GeoValidTimeInterval, GeoValueOrigin,
         GeoWarehouseBuildingParcelRow, GeoWarehouseEvidenceRow, GeoWarehouseRowsRequest,
-        compile_geo_plan, default_geo_capabilities, geo_plan_semantic_hash,
-        materialize_warehouse_rows,
+        admit_observer_request, canonical_observation_rows_bytes, compile_geo_plan,
+        default_geo_capabilities, geo_plan_semantic_hash, materialize_warehouse_rows,
+        validate_observation_rows_artifact, verify_replay,
     },
     project::{
         ProjectExtensionDagNode, ProjectExtensionDagOutput, ProjectExtensionDagRequest,
@@ -72,7 +78,8 @@ use canon::{
 };
 use executor::{
     CANON_GEO_CLIENT_TILE_SOURCE_VERSION, GEO_CLIENT_TILE_INGEST_STAGE_COMMAND,
-    GEO_CLIENT_TILE_SOURCE_BINDING_ID, GEO_REQUEST_BINDING_ID, GEO_ROWS_BINDING_ID,
+    GEO_CLIENT_TILE_SOURCE_BINDING_ID, GEO_OBSERVATION_ROWS_OUTPUT_ID,
+    GEO_OBSERVE_ADMIT_STAGE_COMMAND, GEO_REQUEST_BINDING_ID, GEO_ROWS_BINDING_ID,
 };
 use h3o::{CellIndex, LatLng, Resolution};
 use run::{
@@ -94,6 +101,8 @@ use std::{
 const CLIENT_TILE_NODE_ID: &str = "geo.client.tile_ingest";
 const CLIENT_TILE_OUTPUT_ID: &str = "client_tile";
 const CLIENT_TILE_OUTPUT_PATH: &str = "geo/client/client_tile.json";
+const OBSERVE_ADMIT_NODE_ID: &str = "geo.building.observe_admit";
+const OBSERVE_ADMIT_OUTPUT_PATH: &str = "geo/building/observation_rows.json";
 
 #[test]
 fn geo_run_executes_real_kernels_and_folds_input_hashes() {
@@ -203,6 +212,110 @@ fn geo_run_executes_client_tile_ingest_stage_from_raw_source_bytes() {
                     && membership["h3_cell"] == neighbor
                     && membership["rule"] == "declared_supplemental_coverage"
             })
+    );
+}
+
+#[test]
+fn geo_run_executes_observe_admit_stage_from_pinned_observer_request() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = observe_admit_plan();
+    let request = observer_admission_request_for_run();
+
+    let run = run_geo_plan(GeoRunRequest::new(
+        plan,
+        policy(temp.path()),
+        vec![
+            GeoRunArtifactBinding::from_json(
+                OBSERVE_ADMIT_NODE_ID,
+                GEO_REQUEST_BINDING_ID,
+                CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION,
+                &request,
+            )
+            .expect("observer request binding"),
+        ],
+    ))
+    .expect("observer admission stage runs through geo run");
+
+    assert_eq!(run.status, GeoRunStatus::Completed);
+    assert_eq!(run.artifact_inputs.len(), 1);
+    assert!(run.artifact_inputs.iter().any(|input| {
+        input.node_id == OBSERVE_ADMIT_NODE_ID
+            && input.binding_id == GEO_REQUEST_BINDING_ID
+            && input.contract_version == CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION
+    }));
+    let output_ref = run
+        .output_refs
+        .iter()
+        .find(|output| {
+            output.project_node_id == OBSERVE_ADMIT_NODE_ID
+                && output.output_id == GEO_OBSERVATION_ROWS_OUTPUT_ID
+        })
+        .expect("observer output ref is reported by geo run");
+    assert_eq!(
+        output_ref.contract_version,
+        CANON_GEO_OBSERVATION_ROWS_VERSION
+    );
+
+    let receipt =
+        read_node_receipt(&receipt_path(temp.path(), OBSERVE_ADMIT_NODE_ID)).expect("receipt");
+    let receipt_output = receipt
+        .outputs
+        .iter()
+        .find(|output| output.output_id == GEO_OBSERVATION_ROWS_OUTPUT_ID)
+        .expect("receipt reports observer output path");
+    assert_eq!(receipt_output.content_digest, output_ref.content_digest);
+    assert_eq!(receipt_output.byte_count, output_ref.byte_count);
+
+    let bytes = fs::read(temp.path().join(&receipt_output.path))
+        .expect("observer artifact is read from the receipt-reported path");
+    assert_eq!(digest_bytes(&bytes), output_ref.content_digest);
+    assert_eq!(bytes.len() as u64, output_ref.byte_count);
+    let artifact: GeoObservationRowsArtifact =
+        serde_json::from_slice(&bytes).expect("observer rows parse");
+    validate_observation_rows_artifact(&artifact).expect("observer rows validate");
+    assert_eq!(
+        canonical_observation_rows_bytes(&artifact).expect("observer rows canonicalize"),
+        bytes
+    );
+    assert_eq!(artifact.rows.len(), 1);
+    assert_eq!(artifact.rho_observations.len(), 1);
+    assert!(artifact.diagnostic_only_ids.is_empty());
+    assert!(artifact.not_admitted_ids.is_empty());
+    assert_eq!(
+        artifact.rows[0].tile_pins[0].source_dataset,
+        "fixture.ortho.2024"
+    );
+    verify_replay(&artifact, &observer_replay_bytes_for_run())
+        .expect("run output replays from pinned tile, crop, and label bytes");
+}
+
+#[test]
+fn geo_run_refuses_precomputed_observation_rows_as_observe_admit_input() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = observe_admit_plan();
+    let request = observer_admission_request_for_run();
+    let derived_output = admit_observer_request(&request).expect("valid observer output");
+
+    let error = run_geo_plan(GeoRunRequest::new(
+        plan,
+        policy(temp.path()),
+        vec![
+            GeoRunArtifactBinding::from_json(
+                OBSERVE_ADMIT_NODE_ID,
+                GEO_REQUEST_BINDING_ID,
+                CANON_GEO_OBSERVATION_ROWS_VERSION,
+                &derived_output,
+            )
+            .expect("derived output binding"),
+        ],
+    ))
+    .expect_err("precomputed observer output cannot replace the request binding");
+
+    assert_eq!(error.code, GeoRunErrorCode::ArtifactContract);
+    assert!(error.message.contains("contract does not match"));
+    assert!(
+        !temp.path().join(OBSERVE_ADMIT_OUTPUT_PATH).exists(),
+        "bad observer binding must refuse before publishing observation rows"
     );
 }
 
@@ -1981,6 +2094,116 @@ fn client_tile_source_and_request() -> (GeoClientTileIngestRequest, String, Stri
     (request, source, center, neighbor)
 }
 
+fn observer_admission_request_for_run() -> GeoObserverAdmissionRequest {
+    GeoObserverAdmissionRequest {
+        version: CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION.to_string(),
+        contract: observer_contract_for_run(),
+        rows: vec![observer_row_for_run()],
+        rho_contracts: vec![observer_rho_contract_for_run()],
+        forbidden_license_ids: vec!["commercial_basemap_tos".to_string()],
+        universe: observer_universe_for_run(),
+    }
+}
+
+fn observer_contract_for_run() -> GeoObserverContract {
+    GeoObserverContract {
+        id: "observer.structure_count.fixture".to_string(),
+        version: CANON_GEO_OBSERVER_VERSION.to_string(),
+        identity: GeoObserverIdentity::RuleBased {
+            rule_id: "rule.fixture.structure_count".to_string(),
+            rule_version: "v0".to_string(),
+        },
+        output_kinds: vec![GeoObservationKind::StructureCountInWindow],
+        error_population_id: "population.fixture.observer".to_string(),
+        characterization_blake3: digest_hex("fixture observer characterization"),
+        rho_contract_ids: vec!["rho.fixture.structure_count".to_string()],
+    }
+}
+
+fn observer_rho_contract_for_run() -> GeoRhoContract {
+    GeoRhoContract {
+        id: "rho.fixture.structure_count".to_string(),
+        version: "rho.fixture.v0".to_string(),
+        source_dataset: "fixture.ortho.2024".to_string(),
+        source_release: "2024".to_string(),
+        source_lineage_ids: vec![
+            "fixture.observer.characterization".to_string(),
+            "fixture.ortho.flight.2024".to_string(),
+        ],
+        method_id: "observer.structure_count.band".to_string(),
+        method_version: "v0".to_string(),
+        claim_role: GeoEvidenceClaimRole::AttributeObservation,
+        basis: GeoRhoBasis::EmpiricalCalibration {
+            population_id: "population.fixture.observer".to_string(),
+            calibration_blake3: digest_hex("fixture observer characterization"),
+            falsification_rule_id: "structure_count_truth_outside_band".to_string(),
+            admissible_hard_band: true,
+        },
+    }
+}
+
+fn observer_universe_for_run() -> GeoCompositionUniverse {
+    GeoCompositionUniverse {
+        parcels: vec!["parcel-a".to_string()],
+        buildings: vec![
+            GeoBuildingCandidate {
+                id: "building-a".to_string(),
+                parcel_ids: vec!["parcel-a".to_string()],
+            },
+            GeoBuildingCandidate {
+                id: "building-b".to_string(),
+                parcel_ids: vec!["parcel-a".to_string()],
+            },
+        ],
+    }
+}
+
+fn observer_row_for_run() -> GeoObservationRow {
+    GeoObservationRow {
+        id: "observation.fixture.structure_count".to_string(),
+        observer_id: "observer.structure_count.fixture".to_string(),
+        tile_pins: vec![observer_tile_pin_for_run()],
+        window_blake3: digest_hex("fixture observer window"),
+        kind: GeoObservationKind::StructureCountInWindow,
+        payload: GeoObservationPayload::StructureCountInWindow { min: 1, max: 1 },
+        crop_blake3: digest_hex("fixture observer crop"),
+        label_blake3: digest_hex("fixture observer label"),
+    }
+}
+
+fn observer_tile_pin_for_run() -> GeoImageTilePin {
+    GeoImageTilePin {
+        url: "s3://fixture/ortho/2024/tile.bin".to_string(),
+        byte_range: Some((0, 31)),
+        etag: Some("\"fixture-ortho-etag\"".to_string()),
+        blake3: digest_hex("fixture observer tile"),
+        vintage: GeoValidTimeInterval {
+            start_day: 19723,
+            end_day: 19723,
+        },
+        license_id: "cc_by_4_0".to_string(),
+        license_text_blake3: digest_hex("fixture cc by 4.0 license"),
+        source_dataset: "fixture.ortho.2024".to_string(),
+    }
+}
+
+fn observer_replay_bytes_for_run() -> BTreeMap<String, Vec<u8>> {
+    BTreeMap::from([
+        (
+            digest_hex("fixture observer tile"),
+            b"fixture observer tile".to_vec(),
+        ),
+        (
+            digest_hex("fixture observer crop"),
+            b"fixture observer crop".to_vec(),
+        ),
+        (
+            digest_hex("fixture observer label"),
+            b"fixture observer label".to_vec(),
+        ),
+    ])
+}
+
 fn wgs84_client_frame(tile_id: &str) -> GeoLocalFrameContract {
     GeoLocalFrameContract {
         version: CANON_GEO_LOCAL_FRAME_VERSION.to_string(),
@@ -2282,6 +2505,61 @@ fn client_tile_ingest_plan() -> GeoPlan {
     plan
 }
 
+fn observe_admit_plan() -> GeoPlan {
+    let mut plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    let mut overlay = plan
+        .geo_nodes
+        .iter()
+        .find(|overlay| overlay.project_node_id == "geo.building.home_cells")
+        .expect("home-cell overlay")
+        .clone();
+    overlay.project_node_id = OBSERVE_ADMIT_NODE_ID.to_string();
+    overlay.stage = GeoPlanStage::MaterializeEvidence;
+    overlay.entity_level = Some(GeoControlEntityLevel::Building);
+    overlay.evidence_classes = vec![GeoEvidenceClass::BuildingFootprint];
+    overlay.claim_classes = vec![GeoClaimClass::AttributeBand];
+    overlay.expected_output_contract = CANON_GEO_OBSERVATION_ROWS_VERSION.to_string();
+    overlay.bounded_section_required = false;
+    overlay.incidence_factorization_required = false;
+    overlay.exact_solve_scope = None;
+
+    plan.project_plan =
+        compile_extension_project_plan(ProjectExtensionDagRequest::offline_read_only(
+            "geo-observe-admit-stage-fixture",
+            digest_bytes(b"geo observe admit stage manifest"),
+            digest_bytes(b"geo observe admit stage lock"),
+            vec![observe_admit_stage_node(&overlay.deterministic_bounds)],
+        ))
+        .expect("observer stage project plan compiles");
+    plan.geo_nodes = vec![overlay];
+    let mut outcome = plan
+        .grain_outcomes
+        .first()
+        .expect("building outcome")
+        .clone();
+    outcome.missing_evidence_classes = Vec::new();
+    outcome.project_node_ids = vec![OBSERVE_ADMIT_NODE_ID.to_string()];
+    outcome.claim_limitation =
+        "observer admission stores pinned image observations and admits them only through rho"
+            .to_string();
+    outcome.next_action = "execute the observe-admit stage through geo run".to_string();
+    plan.grain_outcomes = vec![outcome];
+    plan.external_requests = Vec::new();
+    plan.diagnostics = Vec::new();
+    plan.status = GeoPlanStatus::Planned;
+    plan.semantic_hash = geo_plan_semantic_hash(&plan).expect("observer plan semantic hash");
+    plan.plan_id = format!(
+        "canon_geo_plan.v0:{}",
+        plan.semantic_hash.trim_start_matches("blake3:")
+    );
+    canon::geo::validate_geo_plan(&plan).expect("observer stage plan validates");
+    plan
+}
+
 fn client_tile_stage_node(bounds: &[GeoNumericBound]) -> ProjectExtensionDagNode {
     ProjectExtensionDagNode {
         node_id: CLIENT_TILE_NODE_ID.to_string(),
@@ -2317,6 +2595,46 @@ fn client_tile_stage_node(bounds: &[GeoNumericBound]) -> ProjectExtensionDagNode
             code: ProjectPlanErrorCode::ArtifactContract,
             message: "refuse on client tile request, source, or output contract mismatch"
                 .to_string(),
+            next_command: None,
+        }],
+    }
+}
+
+fn observe_admit_stage_node(bounds: &[GeoNumericBound]) -> ProjectExtensionDagNode {
+    ProjectExtensionDagNode {
+        node_id: OBSERVE_ADMIT_NODE_ID.to_string(),
+        kind: ProjectPlanNodeKind::Evidence,
+        class: ProjectPlanNodeClass::Computation,
+        command: GEO_OBSERVE_ADMIT_STAGE_COMMAND.to_string(),
+        dependencies: Vec::new(),
+        content_hash_inputs: vec![ProjectPlanHashRef {
+            ref_id: "geo.fixture.observe_admit_inputs".to_string(),
+            content_hash: digest_bytes(b"geo observe admit fixture inputs"),
+        }],
+        outputs: vec![ProjectExtensionDagOutput {
+            output_id: GEO_OBSERVATION_ROWS_OUTPUT_ID.to_string(),
+            path: OBSERVE_ADMIT_OUTPUT_PATH.to_string(),
+            materialization: ProjectPlanOutputMaterialization::PlannedArtifact,
+        }],
+        limits: bounds
+            .iter()
+            .map(|bound| (bound.semantic_id.clone(), bound.value))
+            .collect(),
+        cache_eligible: true,
+        side_effects: vec![
+            ProjectPlanSideEffect {
+                kind: ProjectPlanSideEffectKind::ReadsInput,
+                description: "reads a declared local observer admission request".to_string(),
+            },
+            ProjectPlanSideEffect {
+                kind: ProjectPlanSideEffectKind::WritesArtifact,
+                description: "publishes one canonical observer observation rows artifact"
+                    .to_string(),
+            },
+        ],
+        refusal_conditions: vec![ProjectPlanRefusalCondition {
+            code: ProjectPlanErrorCode::ArtifactContract,
+            message: "refuse on observer admission request or output contract mismatch".to_string(),
             next_command: None,
         }],
     }

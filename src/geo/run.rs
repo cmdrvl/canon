@@ -16,6 +16,7 @@ use crate::{
         CANON_GEO_EXPLANATION_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
         CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
         CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION,
+        CANON_GEO_OBSERVATION_ROWS_VERSION, CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION,
         CANON_GEO_PLAN_VERSION, CANON_GEO_PROPAGATION_VERSION, CANON_GEO_RETRY_LOOP_VERSION,
         CANON_GEO_SEPARATION_INPUTS_VERSION, CANON_GEO_SEPARATION_VERSION,
         CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
@@ -51,6 +52,8 @@ use crate::{
         executor::GEO_MATERIALIZE_HOME_CELLS_COMMAND,
         executor::GEO_NEXT_EVIDENCE_OUTPUT_ID,
         executor::GEO_NEXT_EVIDENCE_STAGE_COMMAND,
+        executor::GEO_OBSERVATION_ROWS_OUTPUT_ID,
+        executor::GEO_OBSERVE_ADMIT_STAGE_COMMAND,
         executor::GEO_PROPAGATE_OUTPUT_ID,
         executor::GEO_PROPAGATE_STAGE_COMMAND,
         executor::GEO_REQUEST_BINDING_ID,
@@ -2285,6 +2288,7 @@ fn output_contract_for_command(command: &str) -> Option<&'static str> {
         GEO_ASSESSMENT_ROLL_OWNER_STAGE_COMMAND => Some(CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION),
         GEO_CONDO_BRIDGE_STAGE_COMMAND => Some(CANON_GEO_CONDO_BRIDGE_VERSION),
         GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND => Some(CANON_GEO_EVIDENCE_REQUEST_VERSION),
+        GEO_OBSERVE_ADMIT_STAGE_COMMAND => Some(CANON_GEO_OBSERVATION_ROWS_VERSION),
         GEO_SOLVE_COMMAND => Some(CANON_GEO_COMPOSITION_VERSION),
         _ => None,
     }
@@ -2309,6 +2313,7 @@ fn output_id_for_command(command: &str) -> Option<&'static str> {
         GEO_ASSESSMENT_ROLL_OWNER_STAGE_COMMAND => Some(GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID),
         GEO_CONDO_BRIDGE_STAGE_COMMAND => Some(GEO_CONDO_BRIDGE_OUTPUT_ID),
         GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND => Some(GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID),
+        GEO_OBSERVE_ADMIT_STAGE_COMMAND => Some(GEO_OBSERVATION_ROWS_OUTPUT_ID),
         GEO_SOLVE_COMMAND => Some("solve"),
         _ => None,
     }
@@ -2333,6 +2338,7 @@ fn output_contract_for_output_id(output_id: &str) -> Option<&'static str> {
         GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID => Some(CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION),
         GEO_CONDO_BRIDGE_OUTPUT_ID => Some(CANON_GEO_CONDO_BRIDGE_VERSION),
         GEO_FOOTPRINT_ROLL_EVIDENCE_OUTPUT_ID => Some(CANON_GEO_EVIDENCE_REQUEST_VERSION),
+        GEO_OBSERVATION_ROWS_OUTPUT_ID => Some(CANON_GEO_OBSERVATION_ROWS_VERSION),
         "solve" => Some(CANON_GEO_COMPOSITION_VERSION),
         _ => None,
     }
@@ -2433,6 +2439,12 @@ fn input_specs_for_command(command: &str) -> Option<Vec<GeoInputSpec>> {
             required: true,
             accepted_contracts: &[CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION],
             reason: "footprint/roll evidence requires a local typed assessment-roll and footprint request",
+        }]),
+        GEO_OBSERVE_ADMIT_STAGE_COMMAND => Some(vec![GeoInputSpec {
+            binding_id: GEO_REQUEST_BINDING_ID,
+            required: true,
+            accepted_contracts: &[CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION],
+            reason: "observe-admit requires a local typed observer admission request with pinned tiles",
         }]),
         GEO_COMPILE_EVIDENCE_COMMAND
         | GEO_PROPAGATE_STAGE_COMMAND

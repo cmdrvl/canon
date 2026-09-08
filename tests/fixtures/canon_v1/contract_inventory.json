@@ -1708,6 +1708,13 @@
       "source_path": "src/geo/executor.rs"
     },
     {
+      "id": "canon.geo.stage.observe_admit.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/geo/executor.rs"
+    },
+    {
       "id": "canon.geo.stage.footprint_roll_evidence.v0",
       "family": "geo",
       "action": "preserve",
