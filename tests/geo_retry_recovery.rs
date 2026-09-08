@@ -1,30 +1,32 @@
 #![forbid(unsafe_code)]
 
 use canon::geo::{
-    CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
-    CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_PLAN_VERSION, CANON_GEO_RETRY_LOOP_VERSION,
-    CANON_GEO_RETRY_RECOVERY_VERSION, CANON_GEO_RUN_VERSION, GEO_RUN_JSON_MEDIA_TYPE,
-    GeoAcquisitionCounts, GeoAcquisitionDenominator, GeoAcquisitionProofClass,
-    GeoAcquisitionReceipt, GeoAcquisitionRequest, GeoAcquisitionResumability,
-    GeoAcquisitionTerminalState, GeoBoundedGeography, GeoBoundedSubset, GeoDenominatorSource,
-    GeoDigest, GeoDigestAlgorithm, GeoFieldRole, GeoLocalArtifactDigest, GeoOrderDirection,
-    GeoOrderingTerm, GeoPaginationReceipt, GeoPaginationRequest, GeoPlanGrainStatus,
-    GeoPointPopulationArtifact, GeoPointPopulationPoint, GeoReleasePin, GeoRequestedField,
-    GeoRetryErrorCode, GeoRetryLoopArtifact, GeoRetryPolicy, GeoRetryTerminal, GeoRowByteCeilings,
-    GeoRun, GeoRunBlocker, GeoRunBlockerKind, GeoRunGrainState, GeoRunObservation, GeoRunOutputRef,
-    GeoRunPhase, GeoRunPlanRef, GeoRunStatus, GeoSubsetPredicate, GeoSubsetPredicateKind,
     canonical_retry_recovery_bytes, geo_acquisition_request_id,
     geo_acquisition_request_semantic_hash, geo_run_declared_artifact_id, geo_run_semantic_hash,
     measure_recovery, record_pass, validate_geo_acquisition_receipt,
     validate_geo_acquisition_request, validate_geo_run, validate_retry_recovery_artifact,
+    GeoAcquisitionCounts, GeoAcquisitionDenominator, GeoAcquisitionProofClass,
+    GeoAcquisitionReceipt, GeoAcquisitionRequest, GeoAcquisitionResumability,
+    GeoAcquisitionTerminalState, GeoBoundedGeography, GeoBoundedSubset, GeoDenominatorSource,
+    GeoDigest, GeoDigestAlgorithm, GeoExecutorKind, GeoFieldRole, GeoLocalArtifactDigest,
+    GeoOrderDirection, GeoOrderingTerm, GeoPaginationReceipt, GeoPaginationRequest,
+    GeoPlanGrainStatus, GeoPointPopulationArtifact, GeoPointPopulationPoint, GeoReleasePin,
+    GeoRequestedField, GeoRetryErrorCode, GeoRetryLoopArtifact, GeoRetryPolicy, GeoRetryTerminal,
+    GeoRowByteCeilings, GeoRun, GeoRunBlocker, GeoRunBlockerKind, GeoRunGrainState,
+    GeoRunObservation, GeoRunOutputRef, GeoRunPhase, GeoRunPlanRef, GeoRunStatus,
+    GeoSubsetPredicate, GeoSubsetPredicateKind, CANON_GEO_ACQUISITION_RECEIPT_VERSION,
+    CANON_GEO_ACQUISITION_REQUEST_VERSION, CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
+    CANON_GEO_PLAN_VERSION, CANON_GEO_RETRY_LOOP_VERSION, CANON_GEO_RETRY_RECOVERY_VERSION,
+    CANON_GEO_RUN_VERSION, GEO_RUN_JSON_MEDIA_TYPE,
 };
 use canon::project::{
-    CANON_PROJECT_RUN_VERSION, ProjectRunHashRef, ProjectRunNextAction as ProjectNextAction,
-    ProjectRunNodeOutcome, ProjectRunNodeReceipt, ProjectRunOutputReceipt, ProjectRunReceipt,
-    ProjectRunReport,
+    ProjectRunHashRef, ProjectRunNextAction as ProjectNextAction, ProjectRunNodeOutcome,
+    ProjectRunNodeReceipt, ProjectRunOutputReceipt, ProjectRunReceipt, ProjectRunReport,
+    CANON_PROJECT_RUN_VERSION,
 };
 use serde_json::Value;
-use std::{collections::BTreeMap, fs, path::Path};
+use sha2::{Digest as _, Sha256};
+use std::{collections::BTreeMap, fs, path::Path, process::Command};
 use tempfile::tempdir;
 
 const RESPONSE_BYTES_DIGEST_ID: &str = "provider_response_bytes";
@@ -59,16 +61,14 @@ fn t46_measures_frozen_40_point_retry_recovery_denominator() {
     );
     assert!(!recovery.precision_claim);
     assert_eq!(recovery.per_point.len(), 40);
-    assert!(
-        recovery
-            .per_point
-            .iter()
-            .take(25)
-            .all(|point| point.recovered
-                && point.terminal == GeoRetryTerminal::Resolved
-                && point.first_recovering_pass == Some(1)
-                && point.final_home_cell != point.landed_home_cell)
-    );
+    assert!(recovery
+        .per_point
+        .iter()
+        .take(25)
+        .all(|point| point.recovered
+            && point.terminal == GeoRetryTerminal::Resolved
+            && point.first_recovering_pass == Some(1)
+            && point.final_home_cell != point.landed_home_cell));
 
     validate_retry_recovery_artifact(&recovery).expect("recovery validates");
     let canonical = canonical_retry_recovery_bytes(&recovery).expect("recovery serializes");
@@ -139,6 +139,236 @@ fn measurement_binary_measures_retry_recovery_from_fixture_sidecars() {
     assert_eq!(recovery["abstained_at_ceiling"], 10);
     assert_eq!(recovery["blocked"], 5);
     assert_eq!(recovery["precision_claim"], false);
+}
+
+#[test]
+fn measurement_binary_materializes_live_acquisition_receipt_sidecars() {
+    let request = acquisition_request("materialize-live", "fixture.retry.materialize-live.subject");
+    let temp = tempdir().expect("tempdir");
+    let request_path = temp.path().join("request.json");
+    let response_path = temp.path().join("provider-response.json");
+    let rows_path = temp.path().join("candidate-rows.json");
+    let out_dir = temp.path().join("receipts");
+    let response_bytes =
+        br#"{"provider":"fixture-geocoder","request_id":"materialize-live"}"#.to_vec();
+    let rows = serde_json::json!([
+        {
+            "point_id": "e1.gross_class.0001",
+            "candidate_rank": 1,
+            "lon_e7": -739648020,
+            "lat_e7": 405760240,
+            "accuracy_type": "fixture_rooftop",
+            "matched_address": "3111 BRIGHTON 2ND STREET, BROOKLYN, NY",
+            "provider_id": "fixture-geocoder",
+            "provider_version": "v1"
+        }
+    ]);
+    let rows_bytes = serde_json::to_vec(&rows).expect("rows serialize");
+    write_json(&request_path, &request);
+    fs::write(&response_path, &response_bytes).expect("write response bytes");
+    fs::write(&rows_path, &rows_bytes).expect("write candidate rows");
+
+    let output = assert_cmd::cargo::cargo_bin_cmd!("canon_geo_measurements")
+        .arg("materialize-acquisition-receipt")
+        .arg("--request")
+        .arg(&request_path)
+        .arg("--provider-response-bytes")
+        .arg(&response_path)
+        .arg("--candidate-rows")
+        .arg(&rows_path)
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--proof-class")
+        .arg("live")
+        .arg("--executor-kind")
+        .arg("http-service")
+        .arg("--executor-id")
+        .arg("fixture-geocoder")
+        .arg("--executor-version")
+        .arg("v1")
+        .arg("--tool-id")
+        .arg("scripts/geo_acquisition/regeocode.py")
+        .arg("--tool-version")
+        .arg("bd-3p8e.test")
+        .arg("--executor-request-id")
+        .arg("fixture-request-0001")
+        .arg("--executor-query-id")
+        .arg("fixture-query-0001")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let receipt: GeoAcquisitionReceipt =
+        serde_json::from_slice(&output).expect("receipt JSON parses");
+    assert_eq!(receipt.proof_class, GeoAcquisitionProofClass::Live);
+    assert_eq!(
+        receipt
+            .executor
+            .as_ref()
+            .expect("live receipt has executor")
+            .executor_kind,
+        GeoExecutorKind::HttpService
+    );
+    assert_eq!(receipt.counts.rows, 1);
+    validate_geo_acquisition_receipt(&request, &receipt).expect("materialized receipt validates");
+    let request_hash = geo_acquisition_request_semantic_hash(&request).expect("request hash");
+    assert_eq!(
+        fs::read(out_dir.join(format!("{request_hash}.bytes"))).expect("response sidecar"),
+        response_bytes
+    );
+    assert_eq!(
+        fs::read(out_dir.join(format!("{request_hash}.rows.json"))).expect("rows sidecar"),
+        rows_bytes
+    );
+    assert!(
+        out_dir
+            .join(format!("{}.receipt.json", request_hash.replace(':', "_")))
+            .exists(),
+        "receipt JSON should be written next to sidecars"
+    );
+    let response_digest = receipt
+        .result_digests
+        .iter()
+        .find(|digest| digest.digest_id == RESPONSE_BYTES_DIGEST_ID)
+        .expect("response digest present");
+    assert_eq!(
+        response_digest.hex_digest,
+        blake3::hash(&response_bytes).to_hex().to_string()
+    );
+}
+
+#[test]
+fn measurement_binary_refuses_retained_acquisition_receipt_without_retained_id() {
+    let request = acquisition_request("retained-missing", "fixture.retry.retained.subject");
+    let temp = tempdir().expect("tempdir");
+    let request_path = temp.path().join("request.json");
+    let response_path = temp.path().join("provider-response.json");
+    let rows_path = temp.path().join("candidate-rows.json");
+    write_json(&request_path, &request);
+    fs::write(&response_path, b"{\"provider\":\"fixture\"}").expect("write response bytes");
+    fs::write(&rows_path, b"[]").expect("write candidate rows");
+
+    assert_cmd::cargo::cargo_bin_cmd!("canon_geo_measurements")
+        .arg("materialize-acquisition-receipt")
+        .arg("--request")
+        .arg(&request_path)
+        .arg("--provider-response-bytes")
+        .arg(&response_path)
+        .arg("--candidate-rows")
+        .arg(&rows_path)
+        .arg("--out-dir")
+        .arg(temp.path().join("receipts"))
+        .arg("--proof-class")
+        .arg("retained")
+        .arg("--executor-id")
+        .arg("fixture-geocoder")
+        .arg("--executor-version")
+        .arg("v1")
+        .arg("--tool-id")
+        .arg("scripts/geo_acquisition/regeocode.py")
+        .arg("--tool-version")
+        .arg("bd-3p8e.test")
+        .arg("--executor-request-id")
+        .arg("fixture-request-0002")
+        .arg("--executor-query-id")
+        .arg("fixture-query-0002")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "retained proof requires --retained-receipt-id",
+        ));
+}
+
+#[test]
+fn regeocode_script_import_mode_materializes_retained_receipt_without_network() {
+    let request = acquisition_request("script-import", "fixture.retry.script-import.subject");
+    let temp = tempdir().expect("tempdir");
+    let request_path = temp.path().join("request.json");
+    let response_path = temp.path().join("provider-response.json");
+    let rows_path = temp.path().join("candidate-rows.json");
+    let out_dir = temp.path().join("receipts");
+    write_json(&request_path, &request);
+    let response_bytes = br#"{"provider":"fixture-geocoder","mode":"import"}"#;
+    let rows_bytes = br#"[{"candidate_rank":1,"lat_e7":405760240,"lon_e7":-739648020,"provider_id":"fixture-geocoder"}]"#;
+    fs::write(&response_path, response_bytes).expect("write response bytes");
+    fs::write(&rows_path, rows_bytes).expect("write candidate rows");
+
+    let output = Command::new("python3")
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/geo_acquisition/regeocode.py"))
+        .arg("--request")
+        .arg(&request_path)
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--provider-response-bytes")
+        .arg(&response_path)
+        .arg("--candidate-rows")
+        .arg(&rows_path)
+        .arg("--measurement-bin")
+        .arg(env!("CARGO_BIN_EXE_canon_geo_measurements"))
+        .output()
+        .expect("run regeocode script");
+    assert!(
+        output.status.success(),
+        "script failed\nstdout={}\nstderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let receipt: GeoAcquisitionReceipt =
+        serde_json::from_slice(&output.stdout).expect("receipt JSON parses");
+    assert_eq!(receipt.proof_class, GeoAcquisitionProofClass::Retained);
+    let expected_retained_id = format!("retained-provider-response:{}", sha2_hex(response_bytes));
+    assert_eq!(
+        receipt.retained_receipt_id.as_deref(),
+        Some(expected_retained_id.as_str())
+    );
+    validate_geo_acquisition_receipt(&request, &receipt).expect("script receipt validates");
+    let request_hash = geo_acquisition_request_semantic_hash(&request).expect("request hash");
+    assert_eq!(
+        fs::read(out_dir.join(format!("{request_hash}.bytes"))).expect("response sidecar"),
+        response_bytes
+    );
+    assert_eq!(
+        fs::read(out_dir.join(format!("{request_hash}.rows.json"))).expect("rows sidecar"),
+        rows_bytes
+    );
+}
+
+#[test]
+fn regeocode_script_import_mode_refuses_live_proof_label() {
+    let request = acquisition_request("script-live-refusal", "fixture.retry.script-live.subject");
+    let temp = tempdir().expect("tempdir");
+    let request_path = temp.path().join("request.json");
+    let response_path = temp.path().join("provider-response.json");
+    let rows_path = temp.path().join("candidate-rows.json");
+    write_json(&request_path, &request);
+    fs::write(&response_path, b"{\"provider\":\"fixture\"}").expect("write response bytes");
+    fs::write(&rows_path, b"[]").expect("write candidate rows");
+
+    let output = Command::new("python3")
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/geo_acquisition/regeocode.py"))
+        .arg("--request")
+        .arg(&request_path)
+        .arg("--out-dir")
+        .arg(temp.path().join("receipts"))
+        .arg("--provider-response-bytes")
+        .arg(&response_path)
+        .arg("--candidate-rows")
+        .arg(&rows_path)
+        .arg("--proof-class")
+        .arg("live")
+        .arg("--measurement-bin")
+        .arg(env!("CARGO_BIN_EXE_canon_geo_measurements"))
+        .output()
+        .expect("run regeocode script");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("retained response import cannot claim live proof"),
+        "unexpected stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]
@@ -707,6 +937,13 @@ fn digest_bytes(id: &str, bytes: &[u8]) -> GeoDigest {
 
 fn digest_label(seed: &str) -> String {
     format!("blake3:{}", blake3::hash(seed.as_bytes()).to_hex())
+}
+
+fn sha2_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn receipt_content_blake3(receipt: &GeoAcquisitionReceipt) -> String {

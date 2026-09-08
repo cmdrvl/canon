@@ -1,18 +1,23 @@
 #![forbid(unsafe_code)]
 
 use canon::geo::{
-    CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_DEED_INDEX_ROWS_VERSION,
-    CANON_GEO_DEED_TRUTH_VERSION, CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION,
-    CANON_GEO_H7_POPULATION_ROWS_VERSION, CANON_GEO_H7_POPULATION_VERSION,
-    CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION, CANON_GEO_POINT_POPULATION_VERSION,
-    CANON_GEO_RETRY_LOOP_VERSION, CANON_GEO_RETRY_RECOVERY_VERSION, CANON_GEO_RUN_VERSION,
-    GeoAcquisitionReceipt, GeoDeedIndexRowsRequest, GeoDeedTruthLoanRef, GeoDigestAlgorithm,
-    GeoH7PipBlockPopulationBatchRequest, GeoH7PopulationRowsRequest,
-    GeoH7StagingSourceRecordBytesBatchRequest, GeoPointPopulationArtifact, GeoRetryLoopArtifact,
-    GeoRun, canonical_deed_truth_bytes, canonical_h7_population_bytes,
-    canonical_retry_recovery_bytes, derive_deed_truth_from_index,
-    materialize_h7_pip_block_population_batch, materialize_h7_population_rows,
-    materialize_h7_staging_source_record_bytes_batch, measure_recovery,
+    canonical_deed_truth_bytes, canonical_geo_acquisition_request_bytes,
+    canonical_h7_population_bytes, canonical_retry_recovery_bytes, derive_deed_truth_from_index,
+    geo_acquisition_request_semantic_hash, materialize_h7_pip_block_population_batch,
+    materialize_h7_population_rows, materialize_h7_staging_source_record_bytes_batch,
+    measure_recovery, validate_geo_acquisition_receipt, validate_geo_acquisition_request,
+    GeoAcquisitionCounts, GeoAcquisitionDenominator, GeoAcquisitionProofClass,
+    GeoAcquisitionReceipt, GeoAcquisitionResumability, GeoAcquisitionTerminalState,
+    GeoDeedIndexRowsRequest, GeoDeedTruthLoanRef, GeoDenominatorSource, GeoDigest,
+    GeoDigestAlgorithm, GeoExecutorKind, GeoExecutorTrace, GeoH7PipBlockPopulationBatchRequest,
+    GeoH7PopulationRowsRequest, GeoH7StagingSourceRecordBytesBatchRequest, GeoLocalArtifactDigest,
+    GeoPaginationReceipt, GeoPointPopulationArtifact, GeoRetryLoopArtifact, GeoRun,
+    CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
+    CANON_GEO_DEED_INDEX_ROWS_VERSION, CANON_GEO_DEED_TRUTH_VERSION,
+    CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
+    CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
+    CANON_GEO_POINT_POPULATION_VERSION, CANON_GEO_RETRY_LOOP_VERSION,
+    CANON_GEO_RETRY_RECOVERY_VERSION, CANON_GEO_RUN_VERSION,
 };
 use chrono::{DateTime, NaiveDate};
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum};
@@ -82,6 +87,8 @@ enum EmitMode {
 enum MeasurementCommand {
     #[command(name = "derive-deed-truth")]
     DeedTruth(DeedTruthArgs),
+    #[command(name = "materialize-acquisition-receipt")]
+    AcquisitionReceipt(AcquisitionReceiptArgs),
     #[command(name = "measure-retry-recovery")]
     RetryRecovery(RetryRecoveryArgs),
     #[command(name = "materialize-h7-population")]
@@ -119,6 +126,64 @@ struct RetryRecoveryArgs {
     /// Directory of canon_geo_acquisition_receipt.v0 files plus retained byte sidecars
     #[arg(long)]
     receipts: PathBuf,
+}
+
+#[derive(Debug, ClapArgs)]
+struct AcquisitionReceiptArgs {
+    /// canon_geo_acquisition_request.v0 emitted by the retry loop
+    #[arg(long)]
+    request: PathBuf,
+    /// Raw provider response bytes retained by the external acquisition step
+    #[arg(long)]
+    provider_response_bytes: PathBuf,
+    /// JSON array or object containing per-candidate geocode rows
+    #[arg(long)]
+    candidate_rows: PathBuf,
+    /// Directory to receive the receipt JSON and retained sidecars
+    #[arg(long)]
+    out_dir: PathBuf,
+    /// Receipt proof class; live is for a fresh provider call, retained is replay
+    #[arg(long, value_enum, default_value = "live")]
+    proof_class: AcquisitionReceiptProofArg,
+    /// Required for retained proof, forbidden for live proof
+    #[arg(long)]
+    retained_receipt_id: Option<String>,
+    #[arg(long, value_enum, default_value = "http-service")]
+    executor_kind: AcquisitionExecutorKindArg,
+    #[arg(long)]
+    executor_id: String,
+    #[arg(long)]
+    executor_version: String,
+    #[arg(long)]
+    tool_id: String,
+    #[arg(long)]
+    tool_version: String,
+    #[arg(long)]
+    executor_request_id: String,
+    #[arg(long)]
+    executor_query_id: String,
+    #[arg(long)]
+    executor_attempt_id: Option<String>,
+    /// Optional denominator count for the requested bounded subset
+    #[arg(long)]
+    denominator_count: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum AcquisitionReceiptProofArg {
+    Retained,
+    Live,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum AcquisitionExecutorKindArg {
+    Catalog,
+    QueryEngine,
+    ObjectStore,
+    HttpService,
+    LocalFile,
+    ManualExport,
+    Other,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -433,6 +498,10 @@ fn run_measurement_command(command: MeasurementCommand) -> Result<ExitCode, AppE
             })?;
             write_canonical(&bytes)?;
         }
+        MeasurementCommand::AcquisitionReceipt(args) => {
+            let receipt = materialize_acquisition_receipt(args)?;
+            print_json(&receipt)?;
+        }
         MeasurementCommand::RetryRecovery(args) => {
             let population: GeoPointPopulationArtifact = load_json(
                 &args.population,
@@ -508,6 +577,265 @@ fn run_measurement_command(command: MeasurementCommand) -> Result<ExitCode, AppE
         }
     }
     Ok(ExitCode::SUCCESS)
+}
+
+fn materialize_acquisition_receipt(
+    args: AcquisitionReceiptArgs,
+) -> Result<GeoAcquisitionReceipt, AppError> {
+    let request: canon::geo::GeoAcquisitionRequest = load_json(
+        &args.request,
+        CANON_GEO_ACQUISITION_REQUEST_VERSION,
+        "request",
+        "canon_geo_measurements materialize-acquisition-receipt --request <REQUEST.json>",
+    )?;
+    validate_geo_acquisition_request(&request)
+        .map_err(|error| AppError::new(format!("invalid acquisition request: {error}")))?;
+
+    let response_bytes = fs::read(&args.provider_response_bytes).map_err(|error| {
+        AppError::new(format!(
+            "failed to read provider response bytes {}: {error}",
+            args.provider_response_bytes.display()
+        ))
+    })?;
+    let candidate_rows_bytes = fs::read(&args.candidate_rows).map_err(|error| {
+        AppError::new(format!(
+            "failed to read candidate rows {}: {error}",
+            args.candidate_rows.display()
+        ))
+    })?;
+    let candidate_rows: Value = serde_json::from_slice(&candidate_rows_bytes).map_err(|error| {
+        AppError::new(format!(
+            "failed to parse candidate rows JSON {}: {error}",
+            args.candidate_rows.display()
+        ))
+    })?;
+    let row_count = candidate_row_count(&candidate_rows)?;
+    let total_bytes = acquisition_byte_count(&response_bytes, &candidate_rows_bytes)?;
+    let request_semantic_hash = geo_acquisition_request_semantic_hash(&request)
+        .map_err(|error| AppError::new(format!("failed to hash acquisition request: {error}")))?;
+    let canonical_request_bytes = canonical_geo_acquisition_request_bytes(&request)
+        .map_err(|error| AppError::new(format!("failed to canonicalize request: {error}")))?;
+    let response_digest = blake3_digest(PROVIDER_RESPONSE_BYTES_DIGEST_ID, &response_bytes);
+    let candidate_rows_digest =
+        blake3_digest(GEOCODE_CANDIDATE_ROWS_ARTIFACT_ID, &candidate_rows_bytes);
+    let proof_class = proof_class(args.proof_class, args.retained_receipt_id.as_ref())?;
+    let retained_receipt_id = match proof_class {
+        GeoAcquisitionProofClass::Retained => args.retained_receipt_id,
+        GeoAcquisitionProofClass::Live => None,
+        GeoAcquisitionProofClass::Fixture => unreachable!("fixture is not a command option"),
+    };
+    let receipt = GeoAcquisitionReceipt {
+        version: CANON_GEO_ACQUISITION_RECEIPT_VERSION.to_string(),
+        request_id: request.request_id.clone(),
+        request_semantic_hash: request_semantic_hash.clone(),
+        terminal_state: if row_count == 0 {
+            GeoAcquisitionTerminalState::ZeroRows
+        } else {
+            GeoAcquisitionTerminalState::Complete
+        },
+        proof_class,
+        executor: Some(GeoExecutorTrace {
+            executor_kind: args.executor_kind.into(),
+            executor_id: args.executor_id,
+            executor_version: args.executor_version,
+            tool_id: args.tool_id,
+            tool_version: args.tool_version,
+            executor_request_id: args.executor_request_id,
+            executor_query_id: args.executor_query_id,
+            executor_attempt_id: args.executor_attempt_id,
+        }),
+        fixture_id: None,
+        retained_receipt_id,
+        bounded_geography: request.bounded_geography.clone(),
+        subset: request.subset.clone(),
+        releases: request.releases.clone(),
+        fields: request.fields.clone(),
+        projection: request.projection.clone(),
+        normalized_executed_request_digest: blake3_digest(
+            "executor.normalized_request",
+            &canonical_request_bytes,
+        ),
+        pagination: GeoPaginationReceipt {
+            requested_page: request.pagination.clone(),
+            next_page_token: None,
+            rows_truncated: false,
+            bytes_truncated: false,
+        },
+        counts: GeoAcquisitionCounts {
+            rows: row_count,
+            bytes: total_bytes,
+        },
+        denominators: vec![GeoAcquisitionDenominator {
+            denominator_id: "requested-subset".to_string(),
+            source: GeoDenominatorSource::RequestedSubset,
+            count: args
+                .denominator_count
+                .unwrap_or(request.positive_path_min_rows),
+            unit: "row".to_string(),
+            description: "bounded acquisition request subjects".to_string(),
+        }],
+        source_digests: source_release_digests(&request),
+        result_digests: vec![response_digest.clone(), candidate_rows_digest.clone()],
+        local_artifacts: vec![
+            GeoLocalArtifactDigest {
+                artifact_id: PROVIDER_RESPONSE_BYTES_DIGEST_ID.to_string(),
+                media_type: "application/octet-stream".to_string(),
+                byte_count: response_bytes.len() as u64,
+                digest: response_digest,
+            },
+            GeoLocalArtifactDigest {
+                artifact_id: GEOCODE_CANDIDATE_ROWS_ARTIFACT_ID.to_string(),
+                media_type: "application/json".to_string(),
+                byte_count: candidate_rows_bytes.len() as u64,
+                digest: candidate_rows_digest,
+            },
+        ],
+        artifact_release_relations: Vec::new(),
+        unreadable_columns: Vec::new(),
+        resumability: GeoAcquisitionResumability {
+            resumable: false,
+            resume_token: None,
+            resume_request_id: None,
+            retry_guidance:
+                "terminal acquisition receipt retained provider bytes and candidate rows"
+                    .to_string(),
+        },
+        terminal_detail: None,
+    };
+    validate_geo_acquisition_receipt(&request, &receipt)
+        .map_err(|error| AppError::new(format!("invalid acquisition receipt: {error}")))?;
+    write_acquisition_receipt_sidecars(
+        &args.out_dir,
+        &request_semantic_hash,
+        &response_bytes,
+        &candidate_rows_bytes,
+        &receipt,
+    )?;
+    Ok(receipt)
+}
+
+fn candidate_row_count(candidate_rows: &Value) -> Result<u64, AppError> {
+    if let Some(rows) = candidate_rows.as_array() {
+        return Ok(rows.len() as u64);
+    }
+    for field in ["rows", "candidates"] {
+        if let Some(rows) = candidate_rows.get(field).and_then(Value::as_array) {
+            return Ok(rows.len() as u64);
+        }
+    }
+    Err(AppError::new(
+        "candidate rows must be a JSON array or an object with rows[]/candidates[]",
+    ))
+}
+
+fn acquisition_byte_count(
+    response_bytes: &[u8],
+    candidate_rows_bytes: &[u8],
+) -> Result<u64, AppError> {
+    (response_bytes.len() as u64)
+        .checked_add(candidate_rows_bytes.len() as u64)
+        .ok_or_else(|| AppError::new("acquisition receipt byte count overflowed"))
+}
+
+fn proof_class(
+    proof: AcquisitionReceiptProofArg,
+    retained_receipt_id: Option<&String>,
+) -> Result<GeoAcquisitionProofClass, AppError> {
+    match proof {
+        AcquisitionReceiptProofArg::Retained => {
+            if retained_receipt_id
+                .map(|value| value.trim().is_empty())
+                .unwrap_or(true)
+            {
+                return Err(AppError::new(
+                    "retained proof requires --retained-receipt-id",
+                ));
+            }
+            Ok(GeoAcquisitionProofClass::Retained)
+        }
+        AcquisitionReceiptProofArg::Live => {
+            if retained_receipt_id.is_some() {
+                return Err(AppError::new(
+                    "live proof must not carry --retained-receipt-id",
+                ));
+            }
+            Ok(GeoAcquisitionProofClass::Live)
+        }
+    }
+}
+
+fn source_release_digests(request: &canon::geo::GeoAcquisitionRequest) -> Vec<GeoDigest> {
+    request
+        .releases
+        .iter()
+        .map(|release| GeoDigest {
+            digest_id: format!(
+                "source_release:{}:{}:{}",
+                release.source_instance_id, release.release_id, release.release_digest.hex_digest
+            ),
+            algorithm: release.release_digest.algorithm,
+            hex_digest: release.release_digest.hex_digest.clone(),
+        })
+        .collect()
+}
+
+fn blake3_digest(digest_id: &str, bytes: &[u8]) -> GeoDigest {
+    GeoDigest {
+        digest_id: digest_id.to_string(),
+        algorithm: GeoDigestAlgorithm::Blake3,
+        hex_digest: blake3::hash(bytes).to_hex().to_string(),
+    }
+}
+
+fn write_acquisition_receipt_sidecars(
+    out_dir: &Path,
+    request_semantic_hash: &str,
+    response_bytes: &[u8],
+    candidate_rows_bytes: &[u8],
+    receipt: &GeoAcquisitionReceipt,
+) -> Result<(), AppError> {
+    fs::create_dir_all(out_dir).map_err(|error| {
+        AppError::new(format!(
+            "failed to create acquisition receipt dir {}: {error}",
+            out_dir.display()
+        ))
+    })?;
+    fs::write(
+        out_dir.join(format!("{request_semantic_hash}.bytes")),
+        response_bytes,
+    )
+    .map_err(|error| AppError::new(format!("failed to write response sidecar: {error}")))?;
+    fs::write(
+        out_dir.join(format!("{request_semantic_hash}.rows.json")),
+        candidate_rows_bytes,
+    )
+    .map_err(|error| AppError::new(format!("failed to write candidate rows sidecar: {error}")))?;
+    let receipt_path = out_dir.join(format!(
+        "{}.receipt.json",
+        request_semantic_hash.replace(':', "_")
+    ));
+    let receipt_bytes = serde_json::to_vec_pretty(receipt)
+        .map_err(|error| AppError::new(format!("failed to serialize receipt: {error}")))?;
+    fs::write(&receipt_path, receipt_bytes).map_err(|error| {
+        AppError::new(format!(
+            "failed to write receipt {}: {error}",
+            receipt_path.display()
+        ))
+    })
+}
+
+impl From<AcquisitionExecutorKindArg> for GeoExecutorKind {
+    fn from(kind: AcquisitionExecutorKindArg) -> Self {
+        match kind {
+            AcquisitionExecutorKindArg::Catalog => GeoExecutorKind::Catalog,
+            AcquisitionExecutorKindArg::QueryEngine => GeoExecutorKind::QueryEngine,
+            AcquisitionExecutorKindArg::ObjectStore => GeoExecutorKind::ObjectStore,
+            AcquisitionExecutorKindArg::HttpService => GeoExecutorKind::HttpService,
+            AcquisitionExecutorKindArg::LocalFile => GeoExecutorKind::LocalFile,
+            AcquisitionExecutorKindArg::ManualExport => GeoExecutorKind::ManualExport,
+            AcquisitionExecutorKindArg::Other => GeoExecutorKind::Other,
+        }
+    }
 }
 
 fn load_unversioned_json<T: DeserializeOwned>(
