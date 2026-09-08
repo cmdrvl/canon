@@ -421,6 +421,130 @@ fn regeocode_script_refuses_provider_profile_version_drift() {
 }
 
 #[test]
+fn measurement_binary_prepares_retry_recovery_requests_from_bound_address_rows() {
+    let fixture = recovery_fixture();
+    let mut population = fixture.population.clone();
+    let address_rows = rewrite_population_address_hashes(&mut population);
+    let temp = tempdir().expect("tempdir");
+    let population_path = temp.path().join("population.json");
+    let address_rows_path = temp.path().join("address-rows.json");
+    let out_dir = temp.path().join("prepared");
+    write_json(&population_path, &population);
+    write_json(&address_rows_path, &address_rows);
+
+    let output = assert_cmd::cargo::cargo_bin_cmd!("canon_geo_measurements")
+        .arg("prepare-retry-recovery")
+        .arg("--population")
+        .arg(&population_path)
+        .arg("--address-rows")
+        .arg(&address_rows_path)
+        .arg("--provider-profile")
+        .arg(provider_profile_path())
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: Value = serde_json::from_slice(&output).expect("preparation report parses");
+    assert_eq!(report["population_id"], population.population_id);
+    assert_eq!(report["denominator"], 40);
+    assert_eq!(report["prepared"], 40);
+    assert_eq!(report["provider_id"], CENSUS_PROVIDER_ID);
+    assert_eq!(report["provider_version"], CENSUS_PROVIDER_VERSION);
+    let request_hashes = report["request_semantic_hashes"]
+        .as_object()
+        .expect("request hash map");
+    assert_eq!(request_hashes.len(), 40);
+    for point in &population.points {
+        assert!(
+            request_hashes
+                .get(&point.point_id)
+                .and_then(Value::as_str)
+                .is_some_and(|hash| hash.starts_with("blake3:")),
+            "prepared report must name the request hash for {}",
+            point.point_id
+        );
+    }
+
+    let first_point = &population.points[0];
+    let request_path = out_dir
+        .join("requests")
+        .join(format!("{}.request.json", first_point.point_id));
+    let loop_path = out_dir
+        .join("loops")
+        .join(format!("{}.loop.json", first_point.point_id));
+    let address_path = out_dir
+        .join("addresses")
+        .join(format!("{}.address.txt", first_point.point_id));
+    let request: GeoAcquisitionRequest =
+        serde_json::from_slice(&fs::read(&request_path).expect("request file"))
+            .expect("request parses");
+    validate_geo_acquisition_request(&request).expect("prepared request validates");
+    assert_eq!(request.version, CANON_GEO_ACQUISITION_REQUEST_VERSION);
+    assert_eq!(request.releases[0].source_instance_id, CENSUS_PROVIDER_ID);
+    assert_eq!(request.releases[0].release_id, CENSUS_PROVIDER_VERSION);
+    assert_eq!(
+        request.releases[0].release_digest.digest_id,
+        "provider_profile"
+    );
+    assert!(
+        request
+            .subset
+            .predicates
+            .iter()
+            .any(
+                |predicate| predicate.predicate_id == "asserted_address_blake3"
+                    && predicate
+                        .expression
+                        .contains(first_point.asserted_address_blake3.as_str())
+            ),
+        "prepared request must bind the point's asserted address hash: {request:#?}"
+    );
+    let loop_state: GeoRetryLoopArtifact =
+        serde_json::from_slice(&fs::read(&loop_path).expect("loop file")).expect("loop parses");
+    assert_eq!(loop_state.subject_id, first_point.subject_id);
+    assert_eq!(loop_state.policy.max_passes, 2);
+    assert_eq!(loop_state.passes.len(), 0);
+    assert_eq!(loop_state.terminal, None);
+    assert_eq!(loop_state.policy.regeocode_request_template, request);
+    validate_geo_acquisition_request(&loop_state.policy.regeocode_request_template)
+        .expect("loop request validates");
+    assert_eq!(
+        fs::read_to_string(address_path).expect("address file"),
+        format!("{}, New York, NY, 10000\n", first_point.point_id)
+    );
+}
+
+#[test]
+fn measurement_binary_refuses_retry_recovery_address_hash_mismatch() {
+    let fixture = recovery_fixture();
+    let mut population = fixture.population.clone();
+    let mut address_rows = rewrite_population_address_hashes(&mut population);
+    address_rows[0]["asserted_address"] = Value::String("wrong address".to_string());
+    let temp = tempdir().expect("tempdir");
+    let population_path = temp.path().join("population.json");
+    let address_rows_path = temp.path().join("address-rows.json");
+    write_json(&population_path, &population);
+    write_json(&address_rows_path, &address_rows);
+
+    assert_cmd::cargo::cargo_bin_cmd!("canon_geo_measurements")
+        .arg("prepare-retry-recovery")
+        .arg("--population")
+        .arg(&population_path)
+        .arg("--address-rows")
+        .arg(&address_rows_path)
+        .arg("--provider-profile")
+        .arg(provider_profile_path())
+        .arg("--out-dir")
+        .arg(temp.path().join("prepared"))
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("asserted_address_blake3"));
+}
+
+#[test]
 fn regeocode_script_import_mode_refuses_live_proof_label() {
     let request = acquisition_request("script-live-refusal", "fixture.retry.script-live.subject");
     let temp = tempdir().expect("tempdir");
@@ -459,6 +583,25 @@ fn regeocode_script_import_mode_refuses_live_proof_label() {
 fn provider_profile_path() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("scripts/geo_acquisition/providers/census_geocoder_current.json")
+}
+
+fn rewrite_population_address_hashes(population: &mut GeoPointPopulationArtifact) -> Vec<Value> {
+    population
+        .points
+        .iter_mut()
+        .map(|point| {
+            let asserted_address = point.point_id.to_ascii_uppercase();
+            point.asserted_address_blake3 = blake3::hash(asserted_address.as_bytes())
+                .to_hex()
+                .to_string();
+            serde_json::json!({
+                "point_id": point.point_id.clone(),
+                "subject_id": point.subject_id.clone(),
+                "asserted_address": asserted_address,
+                "one_line_address": format!("{}, New York, NY, 10000", point.point_id),
+            })
+        })
+        .collect()
 }
 
 #[test]

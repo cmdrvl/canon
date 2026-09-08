@@ -8,16 +8,21 @@ use canon::geo::{
     CANON_GEO_POINT_POPULATION_VERSION, CANON_GEO_RETRY_LOOP_VERSION,
     CANON_GEO_RETRY_RECOVERY_VERSION, CANON_GEO_RUN_VERSION, GeoAcquisitionCounts,
     GeoAcquisitionDenominator, GeoAcquisitionProofClass, GeoAcquisitionReceipt,
-    GeoAcquisitionResumability, GeoAcquisitionTerminalState, GeoDeedIndexRowsRequest,
-    GeoDeedTruthLoanRef, GeoDenominatorSource, GeoDigest, GeoDigestAlgorithm, GeoExecutorKind,
-    GeoExecutorTrace, GeoH7PipBlockPopulationBatchRequest, GeoH7PopulationRowsRequest,
-    GeoH7StagingSourceRecordBytesBatchRequest, GeoLocalArtifactDigest, GeoPaginationReceipt,
-    GeoPointPopulationArtifact, GeoRetryLoopArtifact, GeoRun, canonical_deed_truth_bytes,
-    canonical_geo_acquisition_request_bytes, canonical_h7_population_bytes,
-    canonical_retry_recovery_bytes, derive_deed_truth_from_index,
+    GeoAcquisitionResumability, GeoAcquisitionTerminalState, GeoBoundedGeography, GeoBoundedSubset,
+    GeoDeedIndexRowsRequest, GeoDeedTruthLoanRef, GeoDenominatorSource, GeoDigest,
+    GeoDigestAlgorithm, GeoExecutorKind, GeoExecutorTrace, GeoFieldRole,
+    GeoH7PipBlockPopulationBatchRequest, GeoH7PopulationRowsRequest,
+    GeoH7StagingSourceRecordBytesBatchRequest, GeoLocalArtifactDigest, GeoNullOrdering,
+    GeoOrderDirection, GeoOrderingTerm, GeoPaginationReceipt, GeoPaginationRequest,
+    GeoPointPopulationArtifact, GeoPointPopulationPoint, GeoReleasePin, GeoRequestedField,
+    GeoRetryLoopArtifact, GeoRetryPolicy, GeoRowByteCeilings, GeoRun, GeoSubsetPredicate,
+    GeoSubsetPredicateKind, canonical_deed_truth_bytes, canonical_geo_acquisition_request_bytes,
+    canonical_h7_population_bytes, canonical_retry_loop_bytes, canonical_retry_recovery_bytes,
+    derive_deed_truth_from_index, geo_acquisition_request_id,
     geo_acquisition_request_semantic_hash, materialize_h7_pip_block_population_batch,
     materialize_h7_population_rows, materialize_h7_staging_source_record_bytes_batch,
     measure_recovery, validate_geo_acquisition_receipt, validate_geo_acquisition_request,
+    validate_point_population_artifact, validate_retry_loop_artifact,
 };
 use chrono::{DateTime, NaiveDate};
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum};
@@ -47,6 +52,7 @@ const QUERY_HISTORY_BOUND: &str = "cmdrvl_data_live receipt query_id is bound to
 const CLAIM_BOUNDARY: &str = "Offline receipt consistency validation only. A receipt_consistent row means the receipt is bound to result artifact bytes and executed query text bytes, and matches the manifest's declared offline checks. source_sql_sha256 is the local file byte digest; executed_query_text_sha256 is recomputed from the supplied normalized query text artifact after the declared cmdrvl-data/Snowflake transform. result_set_sha256 is over an unordered canonical result set sorted deterministically by compact JSON row encoding. cmdrvl_data_live receipts require --query-history correspondence before LiveComplete attestation; missing history stays query_history_unattested and mismatched query text is malformed. This proves byte integrity and query correspondence, not authenticity or liveness. Integration-test positive JSON is a contract fixture, not live proof of cmdrvl-data execution.";
 const PROVIDER_RESPONSE_BYTES_DIGEST_ID: &str = "provider_response_bytes";
 const GEOCODE_CANDIDATE_ROWS_ARTIFACT_ID: &str = "geocode_candidate_rows";
+const G4_RETRY_RECOVERY_DENOMINATOR: usize = 40;
 const REQUIRED_CORE_MEASUREMENT_IDS: &[&str] = &[
     "appendix_b_centroid_percolation",
     "appendix_c_r8_density",
@@ -89,6 +95,8 @@ enum MeasurementCommand {
     DeedTruth(DeedTruthArgs),
     #[command(name = "materialize-acquisition-receipt")]
     AcquisitionReceipt(Box<AcquisitionReceiptArgs>),
+    #[command(name = "prepare-retry-recovery")]
+    PrepareRetryRecovery(Box<PrepareRetryRecoveryArgs>),
     #[command(name = "measure-retry-recovery")]
     RetryRecovery(RetryRecoveryArgs),
     #[command(name = "materialize-h7-population")]
@@ -167,6 +175,31 @@ struct AcquisitionReceiptArgs {
     /// Optional denominator count for the requested bounded subset
     #[arg(long)]
     denominator_count: Option<u64>,
+}
+
+#[derive(Debug, ClapArgs)]
+struct PrepareRetryRecoveryArgs {
+    /// canon_geo_point_population.v0 file with the frozen gross-class denominator
+    #[arg(long)]
+    population: PathBuf,
+    /// JSON array of recovered clear addresses keyed by point_id/subject_id
+    #[arg(long)]
+    address_rows: PathBuf,
+    /// Provider profile JSON used by the external acquisition helper
+    #[arg(
+        long,
+        default_value = "scripts/geo_acquisition/providers/census_geocoder_current.json"
+    )]
+    provider_profile: PathBuf,
+    /// Repository root for resolving the default provider profile
+    #[arg(long, default_value = ".")]
+    repo_root: PathBuf,
+    /// Directory to receive request JSON, empty loop seeds, and address files
+    #[arg(long)]
+    out_dir: PathBuf,
+    /// Maximum retry passes to encode in the emitted loop policy
+    #[arg(long, default_value_t = 2)]
+    max_passes: u8,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -313,6 +346,32 @@ struct CanonicalResultSet<'a> {
     source_sql_sha256: &'a str,
     executed_query_text_sha256: &'a str,
     rows: Vec<BTreeMap<String, Value>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RetryRecoveryAddressRow {
+    #[serde(alias = "POINT_ID")]
+    point_id: String,
+    #[serde(alias = "SUBJECT_ID", alias = "PROPERTY_KEY", alias = "property_key")]
+    subject_id: String,
+    #[serde(alias = "ASSERTED_ADDRESS")]
+    asserted_address: String,
+    #[serde(alias = "ONE_LINE_ADDRESS")]
+    one_line_address: String,
+}
+
+#[derive(Debug, Serialize)]
+struct RetryRecoveryPreparationReport {
+    population_id: String,
+    denominator: u64,
+    provider_id: String,
+    provider_version: String,
+    request_dir: String,
+    loop_dir: String,
+    address_dir: String,
+    prepared: u64,
+    request_semantic_hashes: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -501,6 +560,10 @@ fn run_measurement_command(command: MeasurementCommand) -> Result<ExitCode, AppE
         MeasurementCommand::AcquisitionReceipt(args) => {
             let receipt = materialize_acquisition_receipt(*args)?;
             print_json(&receipt)?;
+        }
+        MeasurementCommand::PrepareRetryRecovery(args) => {
+            let report = prepare_retry_recovery(*args)?;
+            print_json(&report)?;
         }
         MeasurementCommand::RetryRecovery(args) => {
             let population: GeoPointPopulationArtifact = load_json(
@@ -714,6 +777,322 @@ fn materialize_acquisition_receipt(
     Ok(receipt)
 }
 
+fn prepare_retry_recovery(
+    args: PrepareRetryRecoveryArgs,
+) -> Result<RetryRecoveryPreparationReport, AppError> {
+    let population: GeoPointPopulationArtifact = load_json(
+        &args.population,
+        CANON_GEO_POINT_POPULATION_VERSION,
+        "population",
+        "canon_geo_measurements prepare-retry-recovery --population <POPULATION.json>",
+    )?;
+    validate_point_population_artifact(&population)
+        .map_err(|error| AppError::new(format!("invalid point population: {error}")))?;
+    if population.points.len() != G4_RETRY_RECOVERY_DENOMINATOR {
+        return Err(AppError::new(format!(
+            "prepare-retry-recovery requires the frozen {G4_RETRY_RECOVERY_DENOMINATOR}-point gross-class denominator, got {}",
+            population.points.len()
+        )));
+    }
+    if args.max_passes == 0 {
+        return Err(AppError::new("--max-passes must be positive"));
+    }
+
+    let provider_profile_path = resolve_repo_relative(&args.repo_root, &args.provider_profile);
+    let provider_profile_bytes = fs::read(&provider_profile_path).map_err(|error| {
+        AppError::new(format!(
+            "failed to read provider profile {}: {error}",
+            provider_profile_path.display()
+        ))
+    })?;
+    let provider_profile: Value =
+        serde_json::from_slice(&provider_profile_bytes).map_err(|error| {
+            AppError::new(format!(
+                "failed to parse provider profile {}: {error}",
+                provider_profile_path.display()
+            ))
+        })?;
+    let provider_id = required_value_string(&provider_profile, "provider_id")?.to_string();
+    let provider_version =
+        required_value_string(&provider_profile, "provider_version")?.to_string();
+    let provider_profile_digest = blake3_digest("provider_profile", &provider_profile_bytes);
+    let address_rows = retry_address_rows(&args.address_rows)?;
+    let request_dir = args.out_dir.join("requests");
+    let loop_dir = args.out_dir.join("loops");
+    let address_dir = args.out_dir.join("addresses");
+    for dir in [&request_dir, &loop_dir, &address_dir] {
+        fs::create_dir_all(dir).map_err(|error| {
+            AppError::new(format!(
+                "failed to create retry recovery output dir {}: {error}",
+                dir.display()
+            ))
+        })?;
+    }
+
+    let mut request_semantic_hashes = BTreeMap::new();
+    for point in &population.points {
+        let address_row = address_rows.get(&point.point_id).ok_or_else(|| {
+            AppError::new(format!(
+                "address rows missing point_id {} for subject {}",
+                point.point_id, point.subject_id
+            ))
+        })?;
+        if address_row.subject_id != point.subject_id {
+            return Err(AppError::new(format!(
+                "address row subject mismatch for {}: expected {}, got {}",
+                point.point_id, point.subject_id, address_row.subject_id
+            )));
+        }
+        let address_hash = blake3::hash(address_row.asserted_address.trim().as_bytes())
+            .to_hex()
+            .to_string();
+        if address_hash != point.asserted_address_blake3 {
+            return Err(AppError::new(format!(
+                "address row {} does not match asserted_address_blake3: expected {}, got {}",
+                point.point_id, point.asserted_address_blake3, address_hash
+            )));
+        }
+        let request = retry_recovery_request_for_point(
+            point,
+            &provider_id,
+            &provider_version,
+            provider_profile_digest.clone(),
+        )?;
+        let request_hash = geo_acquisition_request_semantic_hash(&request).map_err(|error| {
+            AppError::new(format!(
+                "failed to hash acquisition request for {}: {error}",
+                point.point_id
+            ))
+        })?;
+        let loop_state = GeoRetryLoopArtifact {
+            version: CANON_GEO_RETRY_LOOP_VERSION.to_string(),
+            subject_id: point.subject_id.clone(),
+            policy: GeoRetryPolicy {
+                max_passes: args.max_passes,
+                regeocode_request_template: request.clone(),
+            },
+            passes: Vec::new(),
+            terminal: None,
+        };
+        validate_retry_loop_artifact(&loop_state).map_err(|error| {
+            AppError::new(format!(
+                "failed to validate retry loop seed for {}: {error}",
+                point.point_id
+            ))
+        })?;
+        fs::write(
+            request_dir.join(format!("{}.request.json", point.point_id)),
+            serde_json::to_vec_pretty(&request).map_err(|error| {
+                AppError::new(format!(
+                    "failed to serialize acquisition request for {}: {error}",
+                    point.point_id
+                ))
+            })?,
+        )
+        .map_err(|error| {
+            AppError::new(format!(
+                "failed to write acquisition request for {}: {error}",
+                point.point_id
+            ))
+        })?;
+        fs::write(
+            loop_dir.join(format!("{}.loop.json", point.point_id)),
+            canonical_retry_loop_bytes(&loop_state).map_err(|error| {
+                AppError::new(format!(
+                    "failed to serialize retry loop for {}: {error}",
+                    point.point_id
+                ))
+            })?,
+        )
+        .map_err(|error| {
+            AppError::new(format!(
+                "failed to write retry loop seed for {}: {error}",
+                point.point_id
+            ))
+        })?;
+        fs::write(
+            address_dir.join(format!("{}.address.txt", point.point_id)),
+            format!("{}\n", address_row.one_line_address.trim()),
+        )
+        .map_err(|error| {
+            AppError::new(format!(
+                "failed to write retry recovery address for {}: {error}",
+                point.point_id
+            ))
+        })?;
+        request_semantic_hashes.insert(point.point_id.clone(), request_hash);
+    }
+
+    if address_rows.len() != population.points.len() {
+        let population_point_ids = population
+            .points
+            .iter()
+            .map(|point| point.point_id.as_str())
+            .collect::<BTreeSet<_>>();
+        let extra = address_rows
+            .keys()
+            .find(|point_id| !population_point_ids.contains(point_id.as_str()))
+            .expect("length mismatch implies an extra address row");
+        return Err(AppError::new(format!(
+            "address rows contain point_id {extra} outside the frozen population"
+        )));
+    }
+
+    Ok(RetryRecoveryPreparationReport {
+        population_id: population.population_id,
+        denominator: G4_RETRY_RECOVERY_DENOMINATOR as u64,
+        provider_id,
+        provider_version,
+        request_dir: request_dir.display().to_string(),
+        loop_dir: loop_dir.display().to_string(),
+        address_dir: address_dir.display().to_string(),
+        prepared: request_semantic_hashes.len() as u64,
+        request_semantic_hashes,
+    })
+}
+
+fn retry_address_rows(path: &Path) -> Result<BTreeMap<String, RetryRecoveryAddressRow>, AppError> {
+    let rows: Vec<RetryRecoveryAddressRow> = load_unversioned_json(
+        path,
+        "retry-recovery address rows",
+        "canon_geo_measurements prepare-retry-recovery --address-rows <ROWS.json>",
+    )?;
+    let mut by_point_id = BTreeMap::new();
+    for row in rows {
+        if row.point_id.trim().is_empty() {
+            return Err(AppError::new(
+                "retry-recovery address rows require nonempty point_id",
+            ));
+        }
+        if row.subject_id.trim().is_empty() {
+            return Err(AppError::new(format!(
+                "retry-recovery address row {} requires nonempty subject_id/property_key",
+                row.point_id
+            )));
+        }
+        if row.asserted_address.trim().is_empty() {
+            return Err(AppError::new(format!(
+                "retry-recovery address row {} requires nonempty asserted_address",
+                row.point_id
+            )));
+        }
+        if row.one_line_address.trim().is_empty() {
+            return Err(AppError::new(format!(
+                "retry-recovery address row {} requires nonempty one_line_address",
+                row.point_id
+            )));
+        }
+        if by_point_id.insert(row.point_id.clone(), row).is_some() {
+            return Err(AppError::new(
+                "retry-recovery address rows must be unique by point_id",
+            ));
+        }
+    }
+    Ok(by_point_id)
+}
+
+fn retry_recovery_request_for_point(
+    point: &GeoPointPopulationPoint,
+    provider_id: &str,
+    provider_version: &str,
+    provider_profile_digest: GeoDigest,
+) -> Result<canon::geo::GeoAcquisitionRequest, AppError> {
+    let geography = GeoBoundedGeography {
+        geography_id: format!("geo.retry-recovery.{}.geography", point.point_id),
+        geography_kind: "gross_class_retry_recovery_point".to_string(),
+        description: "frozen G4 gross-class point requiring external re-geocode acquisition"
+            .to_string(),
+    };
+    let subset = GeoBoundedSubset {
+        subset_id: format!("geo.retry-recovery.{}.subset", point.point_id),
+        geography: geography.clone(),
+        h3_cells: vec![point.home_cell_r9.clone()],
+        predicates: vec![
+            GeoSubsetPredicate {
+                predicate_id: "point_id".to_string(),
+                kind: GeoSubsetPredicateKind::ExplicitIdentifiers,
+                expression: format!("point_id = '{}'", point.point_id),
+            },
+            GeoSubsetPredicate {
+                predicate_id: "subject_id".to_string(),
+                kind: GeoSubsetPredicateKind::ExplicitIdentifiers,
+                expression: format!("subject_id = '{}'", point.subject_id),
+            },
+            GeoSubsetPredicate {
+                predicate_id: "asserted_address_blake3".to_string(),
+                kind: GeoSubsetPredicateKind::ExplicitIdentifiers,
+                expression: format!(
+                    "asserted_address_blake3 = '{}'",
+                    point.asserted_address_blake3
+                ),
+            },
+        ],
+    };
+    let mut request = canon::geo::GeoAcquisitionRequest {
+        version: CANON_GEO_ACQUISITION_REQUEST_VERSION.to_string(),
+        request_id: String::new(),
+        discovery_request_id: None,
+        bounded_geography: geography,
+        subset,
+        releases: vec![GeoReleasePin {
+            source_instance_id: provider_id.to_string(),
+            release_id: provider_version.to_string(),
+            release_digest: provider_profile_digest,
+        }],
+        fields: vec![
+            GeoRequestedField {
+                field_id: "point_id".to_string(),
+                role: GeoFieldRole::Identifier,
+                required: true,
+            },
+            GeoRequestedField {
+                field_id: "subject_id".to_string(),
+                role: GeoFieldRole::Identifier,
+                required: true,
+            },
+            GeoRequestedField {
+                field_id: "address_text".to_string(),
+                role: GeoFieldRole::Identifier,
+                required: true,
+            },
+            GeoRequestedField {
+                field_id: "asserted_address_blake3".to_string(),
+                role: GeoFieldRole::Digest,
+                required: true,
+            },
+        ],
+        projection: None,
+        ordering: vec![GeoOrderingTerm {
+            position: 1,
+            field_id: "point_id".to_string(),
+            direction: GeoOrderDirection::Asc,
+            nulls: GeoNullOrdering::Last,
+        }],
+        pagination: GeoPaginationRequest {
+            page_size_rows: 10,
+            page_token: None,
+        },
+        ceilings: GeoRowByteCeilings {
+            max_rows: 10,
+            max_bytes: 4096,
+        },
+        positive_path_min_rows: 1,
+    };
+    request.request_id = geo_acquisition_request_id(&request).map_err(|error| {
+        AppError::new(format!(
+            "failed to derive acquisition request id for {}: {error}",
+            point.point_id
+        ))
+    })?;
+    validate_geo_acquisition_request(&request).map_err(|error| {
+        AppError::new(format!(
+            "invalid acquisition request for {}: {error}",
+            point.point_id
+        ))
+    })?;
+    Ok(request)
+}
+
 fn candidate_row_count(candidate_rows: &Value) -> Result<u64, AppError> {
     if let Some(rows) = candidate_rows.as_array() {
         return Ok(rows.len() as u64);
@@ -851,6 +1230,14 @@ fn load_unversioned_json<T: DeserializeOwned>(
             path.display()
         ))
     })
+}
+
+fn required_value_string<'a>(value: &'a Value, field: &str) -> Result<&'a str, AppError> {
+    value
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|text| !text.trim().is_empty())
+        .ok_or_else(|| AppError::new(format!("provider profile is missing nonempty {field}")))
 }
 
 fn load_json<T: DeserializeOwned>(
