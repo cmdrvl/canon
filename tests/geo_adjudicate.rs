@@ -208,7 +208,7 @@ fn t22_revalidates_retained_label_row_to_receipt_without_changing_label() {
     let pins = BTreeMap::from([("pin.alpha".to_string(), request.tile_pin.clone())]);
     let crop_bytes = BTreeMap::from([("case.alpha".to_string(), CROP_BYTES.to_vec())]);
 
-    let report = revalidate_adjudication_labels(&[row.clone()], &pins, &crop_bytes)
+    let report = revalidate_adjudication_labels(std::slice::from_ref(&row), &pins, &crop_bytes)
         .expect("retained label row revalidates");
 
     assert_eq!(report.labels_in, 1);
