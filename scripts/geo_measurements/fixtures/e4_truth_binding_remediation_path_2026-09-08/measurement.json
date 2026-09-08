@@ -1,0 +1,420 @@
+{
+  "version": "canon_geo_truth_binding_remediation_path.v0",
+  "bead": "bd-ptuo",
+  "source_audit_bead": "bd-1hvb",
+  "purpose": "Specify the independent evidence path required to settle the five retained E4 truth-row binding defects without editing truth fixtures, widening rho, or rescoring.",
+  "proof_class": "retained_measurement_remediation_spec_not_live",
+  "release_claim_allowed": false,
+  "is_rescore": false,
+  "is_truth_fixture_edit": false,
+  "is_rho_change": false,
+  "expected_direct_e4_movement": {
+    "truth_exclusions_delta": 0,
+    "resolved_delta": 0,
+    "exactly_correct_delta": 0,
+    "false_merges_delta": 0,
+    "conflict_delta": 0,
+    "ambiguous_delta": 0
+  },
+  "denominator": {
+    "previous_frozen_denominator": 79,
+    "current_frozen_denominator": 77,
+    "ruling_commit": "a0025b3",
+    "ruling_source": "bd-1g4x",
+    "evaluated_retained_subjects": 70,
+    "current_deficit": 7,
+    "rule": "Every restated ratio must show both 79 and 77; the denominator changed by Zac ruling, not by this artifact."
+  },
+  "truth_exclusion_basis": {
+    "reported_before_correction": 8,
+    "completed_classifications": 6,
+    "incomplete_classifications": 2,
+    "incomplete_case_fragments": [
+      "91b2df27",
+      "a7dac634"
+    ],
+    "this_artifact_scope": "The five bd-1hvb cases classified as truth_row_binding_defect."
+  },
+  "source_tables_described": [
+    {
+      "table": "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY",
+      "grain": "one row per loan_key and property_key",
+      "use": "Filed SEC loan-property schedule row; sufficient only at property-row grain until bd-3io8 supplies a total property-row-to-parcel bridge."
+    },
+    {
+      "table": "EDGAR_DB.PROPERTY_MART.PROPERTY_ANNEX_GEO",
+      "grain": "one row per parsed annex property address observation",
+      "use": "Filed annex property address and resolved property_key context; not a tax-lot all-of source by itself."
+    },
+    {
+      "table": "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_LEGALS_EXT",
+      "grain": "one legal row per ACRIS document parcel/legal entry",
+      "use": "Retained H7 truth source for these cases; production-relevant legal evidence but definitional on this E4 population and not independent precision."
+    }
+  ],
+  "candidate_sources": {
+    "sec_row_to_parcel_bridge": {
+      "bead": "bd-3io8",
+      "applicable": true,
+      "current_status": "open_required",
+      "required_before_score_change": true,
+      "settles_if_total_unambiguous": true,
+      "why": "The five defects are disagreements between filed SEC property rows and retained ACRIS truth rows. A source-pinned SEC property-row-to-parcel bridge is the independent filing-side evidence that can say which parcel set the filed loan-property row denotes."
+    },
+    "franklin_county_recorder_deeds": {
+      "bead": "bd-o3fy",
+      "applicable": false,
+      "why": "These five residuals are NYC H7 subjects. Franklin County recorder deeds are the analogous E5 source for Ohio and do not settle NYC filed-property versus ACRIS-truth divergence."
+    },
+    "acris_legal_rows": {
+      "applicable": true,
+      "independent_precision_on_this_population": false,
+      "why": "ACRIS mortgage legal rows state legal collateral parcels in production, but the retained H7 truth plane is derived from those rows, so using them to score these same cases would be definitional."
+    }
+  },
+  "summary": {
+    "case_count": 5,
+    "truth_row_binding_defect_count": 5,
+    "admission_gap_count": 0,
+    "canon_property_binding_defect_count": 0,
+    "unsettled_count": 0,
+    "cases_settleable_by_bd_3io8": 5,
+    "cases_settleable_by_franklin_recorder": 0,
+    "new_acquisition_bead_required_now": false,
+    "expected_direct_e4_movement": 0
+  },
+  "cases": [
+    {
+      "case_fragment": "5934bb93",
+      "case_id": "h7-subject:non-round:5934bb9370d31d9b1fa687544020e5e006512cb16d073ed3712ba0cf37a17c36",
+      "family": "pad_membership",
+      "current_classification": "truth_row_binding_defect",
+      "wrong_side": "truth_source_binding",
+      "filed_sec_property": {
+        "loan_key": "a89343223f12351e8cc666345560b9a8",
+        "property_key": "CREP-6AB181363BFF721C",
+        "property_name": "83-10 35TH AVENUE OWNERS CORP.",
+        "address": "83-10 35TH AVE",
+        "city": "JACKSON HEIGHTS",
+        "county": "QUEENS",
+        "source_table": "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY",
+        "source_record_id": "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY:d5ddd2d9-07dc-44d6-bf8b-b7bfc373dbc3:a89343223f12351e8cc666345560b9a8:CREP-6AB181363BFF721C:70fd303843624e59f9db34593c61b59f",
+        "record_blake3": "c95c15c9c34dcdbe79bb15e73dcc44087ec4589bffb0995dc0d9899c64837ef5"
+      },
+      "retained_acris_truth": {
+        "document_id": "2018032200347012",
+        "truth_plane": "non_round_amount_date_legal_borough",
+        "selector_basis": "amount/date/legal-borough unique document",
+        "legal_addresses": [
+          "3-11 BEACH 65 STREET",
+          "3-17 BEACH 65 STREET",
+          "3-29 BEACH 65 STREET"
+        ],
+        "legal_bbl_count": 3,
+        "sample_legal_source_row_number": 18810470,
+        "sample_legal_raw_csv_sha256": "80658ce56786f38ddf613ae6dccf6be40a94cbf14dd73f801824a46b83a6b6b0"
+      },
+      "current_evidence": [
+        "Filed SEC property row names 83-10 35TH AVE.",
+        "Retained PAD member 4014570001 matches the filed 35 Avenue property family.",
+        "Retained ACRIS truth document names Beach 65 Street parcels with no filed-property overlap."
+      ],
+      "settlement_path": {
+        "primary_source": "bd-3io8_sec_row_to_parcel_bridge",
+        "franklin_recorder_deeds": "not_applicable_nyc_subject",
+        "required_result": "Bridge the 83-10 35TH AVE SEC property row to its total parcel set from source-pinned annex/PAD rows. If that total bridge remains disjoint from document 2018032200347012 legal parcels, this case is settled as a retained truth-row binding defect.",
+        "required_fields": [
+          "loan_key",
+          "property_key",
+          "filing_id",
+          "loan_asset_key",
+          "property_ordinal",
+          "source_observation_key",
+          "property address/name/city/state/zip",
+          "source URL/block/row/value hashes",
+          "parcel_ids",
+          "bridge_status",
+          "refusal_reason"
+        ],
+        "if_bridge_cannot_be_total": "UNSETTLED; do not edit truth and do not widen rho."
+      },
+      "expected_direct_e4_movement": {
+        "truth_exclusions_delta": 0,
+        "resolved_delta": 0,
+        "exactly_correct_delta": 0,
+        "false_merges_delta": 0,
+        "conflict_delta": 0,
+        "ambiguous_delta": 0
+      }
+    },
+    {
+      "case_fragment": "e3a5228d",
+      "case_id": "h7-subject:non-round:e3a5228d84bb6bf01ff03e2849e4a996f223cb1fcff79eff04a65d84dcfa8deb",
+      "family": "pad_membership",
+      "current_classification": "truth_row_binding_defect",
+      "wrong_side": "truth_source_binding",
+      "filed_sec_property": {
+        "loan_key": "d709ee238f8a21b5452734d5fd8c2de5",
+        "property_key": "CREP-11B7C4F0999886E9",
+        "property_name": "47-01 Queens Boulevard",
+        "address": "47-01 Queens Boulevard",
+        "city": "Queens",
+        "county": "Queens",
+        "source_table": "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY",
+        "source_record_id": "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY:d5ddd2d9-07dc-44d6-bf8b-b7bfc373dbc3:d709ee238f8a21b5452734d5fd8c2de5:CREP-11B7C4F0999886E9:c82104d07f770869c71daeead548739e",
+        "record_blake3": "eb1f0a029415925dd43b28272505cde5b209387e13c9d29917d6fcbe7f1a71df"
+      },
+      "retained_acris_truth": {
+        "document_id": "2021082300874002",
+        "truth_plane": "non_round_amount_date_legal_borough",
+        "selector_basis": "amount/date/legal-borough unique document",
+        "legal_addresses": [
+          "144-74 NORTHERN BLVD",
+          "14474 NORTHERN BLVD"
+        ],
+        "legal_bbl_count": 10,
+        "sample_legal_source_row_number": 20456103,
+        "sample_legal_raw_csv_sha256": "ebbfb82941d5ba1484132707461e70e2384b5684654d041ff4cecd8885a43bc8"
+      },
+      "current_evidence": [
+        "Filed SEC property row names 47-01 Queens Boulevard.",
+        "Retained PAD member 4001400010 matches the filed Queens Boulevard property.",
+        "Retained ACRIS truth document names Northern Boulevard condo parcels with no filed-property overlap."
+      ],
+      "settlement_path": {
+        "primary_source": "bd-3io8_sec_row_to_parcel_bridge",
+        "franklin_recorder_deeds": "not_applicable_nyc_subject",
+        "required_result": "Bridge the 47-01 Queens Boulevard SEC row and all same-loan SEC property rows to parcel sets. If no total source-pinned row bridge connects the filed row to the Northern Boulevard ACRIS legal set, the retained truth binding is defective for this subject.",
+        "required_fields": [
+          "loan_key",
+          "property_key",
+          "filing_id",
+          "loan_asset_key",
+          "property_ordinal",
+          "source_observation_key",
+          "property address/name/city/state/zip",
+          "source URL/block/row/value hashes",
+          "parcel_ids",
+          "bridge_status",
+          "refusal_reason"
+        ],
+        "if_bridge_cannot_be_total": "UNSETTLED; route to truth-quality review, not admission tuning."
+      },
+      "expected_direct_e4_movement": {
+        "truth_exclusions_delta": 0,
+        "resolved_delta": 0,
+        "exactly_correct_delta": 0,
+        "false_merges_delta": 0,
+        "conflict_delta": 0,
+        "ambiguous_delta": 0
+      }
+    },
+    {
+      "case_fragment": "a7dac634",
+      "case_id": "h7-subject:round-exact-lender:a7dac634b44cc8175e7bde5b0a386f2ecda11361200f3b04bce5a3b84aa73ee3",
+      "family": "pad_membership",
+      "current_classification": "truth_row_binding_defect",
+      "wrong_side": "truth_source_binding",
+      "filed_sec_property": {
+        "loan_key": "9970d9136018599001e61f2ba8be3519",
+        "property_key": "CREP-2D511F8FD5A117D5",
+        "property_name": "DOUBLETREE NEW YORK TIMES SQUARE WEST LEASED FEE",
+        "address": "350 WEST 40TH STREET",
+        "city": "New York",
+        "county": "New York",
+        "source_table": "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY",
+        "source_record_id": "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY:d5ddd2d9-07dc-44d6-bf8b-b7bfc373dbc3:9970d9136018599001e61f2ba8be3519:CREP-2D511F8FD5A117D5:c84a649628639e9966cbe4a68263b5ed",
+        "record_blake3": "e5dd737948830a1aa1cb4f21c8de9b33deefab378eb98db43712afa5a328ee02"
+      },
+      "retained_acris_truth": {
+        "document_id": "2019112700560003",
+        "truth_plane": "round_exact_lender_party",
+        "selector_basis": "round amount/date/legal-borough unique document plus lender party_name_norm match",
+        "legal_addresses": [
+          "1097 1ST AVENUE",
+          "1099 1ST AVENUE",
+          "1101 1ST AVE",
+          "1103 1ST AVE",
+          "345 EAST 60TH ST",
+          "347 EAST 60TH ST",
+          "349 EAST 60TH ST"
+        ],
+        "legal_bbl_count": 7,
+        "sample_legal_source_row_number": 19588127,
+        "sample_legal_raw_csv_sha256": "8184482d1c0b81725b60e929d524e0103f93d62ce3c7f24490257fe85f3bafb7"
+      },
+      "current_evidence": [
+        "Filed SEC property row names 350 WEST 40TH STREET.",
+        "Retained PAD member 1007630067 matches the filed West 40 Street property.",
+        "Retained ACRIS truth document names East 60 Street and 1 Avenue parcels with no filed-property overlap."
+      ],
+      "settlement_path": {
+        "primary_source": "bd-3io8_sec_row_to_parcel_bridge",
+        "franklin_recorder_deeds": "not_applicable_nyc_subject",
+        "required_result": "Bridge each SEC property row on loan_key 9970d9136018599001e61f2ba8be3519 to parcels and preserve the loan/property row grouping. A total bridge must show whether the East 60/1 Avenue ACRIS set belongs to this loan, a sibling property row, or neither.",
+        "required_fields": [
+          "loan_key",
+          "property_key",
+          "filing_id",
+          "loan_asset_key",
+          "property_ordinal",
+          "source_observation_key",
+          "loan_property_count",
+          "loan_county_property_count",
+          "property address/name/city/state/zip",
+          "source URL/block/row/value hashes",
+          "parcel_ids",
+          "bridge_status",
+          "refusal_reason"
+        ],
+        "if_bridge_cannot_be_total": "UNSETTLED; the retained truth row cannot be corrected or defended from Canon evidence alone."
+      },
+      "expected_direct_e4_movement": {
+        "truth_exclusions_delta": 0,
+        "resolved_delta": 0,
+        "exactly_correct_delta": 0,
+        "false_merges_delta": 0,
+        "conflict_delta": 0,
+        "ambiguous_delta": 0
+      }
+    },
+    {
+      "case_fragment": "68a1a4ce",
+      "case_id": "h7-subject:non-round:68a1a4ced3f7c16edc483b877013238d0e2c26692c9ef0a5a721e6bb25872612",
+      "family": "gsf_band",
+      "current_classification": "truth_row_binding_defect",
+      "wrong_side": "truth_source_binding",
+      "filed_sec_property": {
+        "loan_key": "e134fd1ecaebbd36aa47a3c73acaaf59",
+        "property_key": "CREP-A2512F406EDBE52C",
+        "property_name": "Dunkin' Donuts East 14th Street",
+        "address": "208 East 14th Street",
+        "city": "New York",
+        "county": "New York",
+        "property_type_code": "RT",
+        "filed_size": 1064,
+        "source_table": "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY"
+      },
+      "retained_acris_truth": {
+        "document_id": "2019121000627002",
+        "truth_plane": "non_round_amount_date_legal_borough",
+        "selector_basis": "amount/date/legal-borough unique document",
+        "legal_addresses": [
+          "250 EAST 53RD STREET",
+          "768 5 AVENUE"
+        ],
+        "legal_bbl_count": 2,
+        "sample_legal_source_row_number": 19722508,
+        "sample_legal_raw_csv_sha256": "0800c8ba6da2d753ade1367478cbcc220a212647cda45a5b645bff71cb8d19b3"
+      },
+      "current_evidence": [
+        "Filed SEC property row names Dunkin' Donuts East 14th Street at 208 East 14th Street.",
+        "Retained ACRIS truth document names 250 East 53rd Street and 768 5 Avenue.",
+        "Property-mart context found no filed property rows matching those ACRIS legal addresses for this retained property key."
+      ],
+      "settlement_path": {
+        "primary_source": "bd-3io8_sec_row_to_parcel_bridge",
+        "franklin_recorder_deeds": "not_applicable_nyc_subject",
+        "required_result": "Bridge the 208 East 14th Street SEC row to its parcel set and search the same loan/property schedule for any source-pinned row that bridges to 250 East 53rd Street or 768 5 Avenue. Absence of such a row settles the retained ACRIS truth binding as wrong for the filed property.",
+        "required_fields": [
+          "loan_key",
+          "property_key",
+          "filing_id",
+          "loan_asset_key",
+          "property_ordinal",
+          "source_observation_key",
+          "property address/name/city/state/zip",
+          "property_type_code",
+          "filed size and size measure",
+          "source URL/block/row/value hashes",
+          "parcel_ids",
+          "bridge_status",
+          "refusal_reason"
+        ],
+        "if_bridge_cannot_be_total": "UNSETTLED; requires source filing row/block review or external legal collateral evidence not currently named."
+      },
+      "expected_direct_e4_movement": {
+        "truth_exclusions_delta": 0,
+        "resolved_delta": 0,
+        "exactly_correct_delta": 0,
+        "false_merges_delta": 0,
+        "conflict_delta": 0,
+        "ambiguous_delta": 0
+      }
+    },
+    {
+      "case_fragment": "91b2df27",
+      "case_id": "h7-subject:round-exact-lender:91b2df274815b9997ac6ff6e772f2e142c7b3eac3ea61777131611896d6095a6",
+      "family": "gsf_band",
+      "current_classification": "truth_row_binding_defect",
+      "wrong_side": "truth_source_binding",
+      "filed_sec_property": {
+        "loan_key": "9b01e88088f06c65fbd3123bb1ebf9e3",
+        "property_key": "CREP-5BA5855CC20797E5",
+        "property_name": "5 East 22nd Street",
+        "address": "5 East 22nd Street Units Garage, Commercial A and Commercial B",
+        "city": "New York",
+        "county": "New York",
+        "property_type_code": "RT",
+        "filed_size": 25886,
+        "source_table": "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY"
+      },
+      "retained_acris_truth": {
+        "document_id": "2021060701261001",
+        "truth_plane": "round_exact_lender_party",
+        "selector_basis": "round amount/date/legal-borough unique document plus lender party_name_norm match",
+        "legal_addresses": [
+          "217 WEST 57TH STREET"
+        ],
+        "legal_bbl_count": 172,
+        "sample_legal_source_row_number": 20325791,
+        "sample_legal_raw_csv_sha256": "0f96b54ab124071f3db94366d7d50103f2854cfeaa5b232a923d3f8684614e1a"
+      },
+      "current_evidence": [
+        "Filed SEC property row names 5 East 22nd Street garage/commercial units.",
+        "Retained ACRIS truth document names 217 West 57th Street and 172 condo BBLs.",
+        "Property-mart context found no filed property rows matching 217 West 57th Street for this retained property key."
+      ],
+      "settlement_path": {
+        "primary_source": "bd-3io8_sec_row_to_parcel_bridge",
+        "franklin_recorder_deeds": "not_applicable_nyc_subject",
+        "required_result": "Bridge the 5 East 22nd Street garage/commercial-unit SEC row to parcel/unit representation and search the same loan/property schedule for a source-pinned 217 West 57th Street row. A total bridge either supports the filed 5 East 22nd property or identifies an omitted same-loan row that explains the retained ACRIS document.",
+        "required_fields": [
+          "loan_key",
+          "property_key",
+          "filing_id",
+          "loan_asset_key",
+          "property_ordinal",
+          "source_observation_key",
+          "property address/name/city/state/zip",
+          "property_type_code",
+          "filed size and size measure",
+          "source URL/block/row/value hashes",
+          "parcel_ids",
+          "parcel grain",
+          "bridge_status",
+          "refusal_reason"
+        ],
+        "if_bridge_cannot_be_total": "UNSETTLED; likely needs source filing legal-description extraction or independent collateral schedule evidence beyond current retained artifacts."
+      },
+      "expected_direct_e4_movement": {
+        "truth_exclusions_delta": 0,
+        "resolved_delta": 0,
+        "exactly_correct_delta": 0,
+        "false_merges_delta": 0,
+        "conflict_delta": 0,
+        "ambiguous_delta": 0
+      }
+    }
+  ],
+  "handoff": {
+    "next_work": "bd-3io8",
+    "do_not_do": [
+      "Do not edit the retained truth fixture.",
+      "Do not rescore E4 from this artifact.",
+      "Do not widen rho admission to force agreement.",
+      "Do not cite ACRIS completeness on this population as independent precision."
+    ],
+    "score_relevance": "This artifact changes no E4 counter directly. It tells which independent evidence must land before the five truth-row binding defects can be adjudicated."
+  }
+}

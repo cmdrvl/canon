@@ -1,0 +1,300 @@
+{
+  "version": "canon_geo_e4_gate_report.v0",
+  "bead": "bd-1g4x",
+  "owner": "codex-geo-3",
+  "report_kind": "gate_report_not_closure",
+  "release_claim_allowed": false,
+  "proof_boundary": "All reported scores are retained/offline or definitional-on-this-population; none is live proof and none may be promoted as independent precision.",
+  "denominator": {
+    "current_frozen_e4_subjects": 77,
+    "previous_reported_frozen_e4_subjects": 79,
+    "evaluated_subjects": 70,
+    "deficit_subjects": 7,
+    "previous_reported_deficit_subjects": 9,
+    "blocked_on_us_subjects": 0,
+    "deficit_breakdown": {
+      "blocked_on_data_we_do_not_have": 6,
+      "blocked_on_identity_bridge": 1,
+      "excluded_by_denominator_ruling": 2
+    },
+    "ruling": {
+      "bead": "bd-1g4x",
+      "commit": "a0025b3",
+      "issued_by": "Zac",
+      "issued_on": "2026-09-08",
+      "excluded_case_fragments": [
+        "6eb465fd908bc59f",
+        "aacff3c254d36ae6"
+      ],
+      "kept_case_fragments": [
+        "ced7ad9f0d74abf7"
+      ],
+      "reason": "H4 extension duplicates with no H7 loan key are excluded under PLAN_CANON_GEO.md H.7; ced7ad9f0d74abf7 has a distinct loan key and remains in the denominator pending a cross-gate identity/grain bridge."
+    }
+  },
+  "restated_ratios": [
+    {
+      "metric": "evaluated_subjects",
+      "numerator": 70,
+      "current_denominator": 77,
+      "previous_denominator": 79,
+      "current_basis_points": 9091,
+      "previous_basis_points": 8861,
+      "denominator_change_note": "This ratio improves only because Zac's denominator ruling reduced the frozen denominator from 79 to 77."
+    },
+    {
+      "metric": "current_non_definitional_exactly_correct",
+      "numerator": 7,
+      "current_denominator": 77,
+      "previous_denominator": 79,
+      "current_basis_points": 909,
+      "previous_basis_points": 886,
+      "denominator_change_note": "This ratio improves only because Zac's denominator ruling reduced the frozen denominator from 79 to 77."
+    },
+    {
+      "metric": "completeness_mechanism_resolved_definitional",
+      "numerator": 54,
+      "current_denominator": 77,
+      "previous_denominator": 79,
+      "current_basis_points": 7013,
+      "previous_basis_points": 6835,
+      "denominator_change_note": "This ratio is a mechanism demonstration on an ACRIS-derived truth plane, not independent precision."
+    }
+  ],
+  "current_non_definitional_score": {
+    "name": "combined_pad_owner_gsf_repair_score_before_acris_completeness",
+    "proof_class": "retained_not_live",
+    "release_claim_allowed": false,
+    "entity_grain": "parcel_and_building_entity_grain_per_PLAN_CANON_GEO_L5_not_ledger_key_grain",
+    "planes": {
+      "coverage": {
+        "evaluated_cases": 70,
+        "evidence_no_observation_cases": 0,
+        "evidence_hard_constraint_cases": 70
+      },
+      "candidate_reach": {
+        "evaluated_cases": 70,
+        "full_cases": 70,
+        "partial_cases": 0,
+        "none_cases": 0,
+        "recall_failure_cases": 0
+      },
+      "rho_admission": {
+        "reported_truth_exclusions_before_bd_3cez": 8,
+        "completed_truth_exclusion_cases": 6,
+        "truth_classification_incomplete_cases": 2,
+        "truth_classification_incomplete_case_fragments": [
+          "91b2df27",
+          "a7dac634"
+        ],
+        "false_merge_cases": 0
+      },
+      "solver_exactness": {
+        "solver_artifact_cases": 70,
+        "component_budget_fallback_cases": 8,
+        "classification_complete_cases": 62
+      },
+      "reconciliation": {
+        "resolved_cases": 7,
+        "ambiguous_cases": 55,
+        "conflict_cases": 0,
+        "abstention_cases": 63
+      },
+      "truth_quality": {
+        "exactly_correct_cases": 7,
+        "false_merge_cases": 0,
+        "truth_quality_audit_cases": 8,
+        "truth_row_binding_defect_cases": 5,
+        "canon_property_row_binding_defect_cases": 1,
+        "independently_supported_truth_source_current_owner_divergence_cases": 2,
+        "admission_gap_cases": 0,
+        "unsettled_cases": 0
+      },
+      "cost": {
+        "component_budget_fallback_cases": 8,
+        "truth_classification_incomplete_cases": 2
+      }
+    }
+  },
+  "acris_completeness_mechanism_check": {
+    "name": "acris_document_legal_all_of_exact_cardinality",
+    "proof_class": "retained_definitional_on_this_population_not_independent_precision",
+    "release_claim_allowed": false,
+    "precision_claim_allowed": false,
+    "mechanism_claim": "The completeness relation collapses feasible sets and remains replayable, but the truth plane is derived from the same ACRIS legal rows, so resolved/exact counts are not independent precision.",
+    "source_evaluation_blake3": "f2afdaa84d3f2774727e29cd1b267ee5fc7ff92d12920776f6bd08f7fdc42811",
+    "subject_deficit": 7,
+    "planes": {
+      "coverage": {
+        "cases": 70,
+        "population_eligible_cases": 70,
+        "evidence_no_observation_cases": 0,
+        "evidence_diagnostic_only_cases": 0,
+        "evidence_soft_preference_only_cases": 0,
+        "evidence_soft_and_diagnostic_only_cases": 0,
+        "evidence_hard_constraint_cases": 70
+      },
+      "candidate_reach": {
+        "evaluated_cases": 70,
+        "full_cases": 70,
+        "partial_cases": 0,
+        "none_cases": 0,
+        "recall_failure_cases": 0
+      },
+      "rho_admission": {
+        "hard_constraint_cases": 70,
+        "soft_preference_only_cases": 0,
+        "diagnostic_only_cases": 0,
+        "soft_and_diagnostic_only_cases": 0,
+        "rho_falsification_cases": 6
+      },
+      "solver_exactness": {
+        "solver_artifact_cases": 70,
+        "residual_count_complete_cases": 60,
+        "residual_count_exact_cases": 60,
+        "residual_count_saturated_cases": 0,
+        "residual_count_unavailable_cases": 10,
+        "assignment_budget_exceeded_cases": 0,
+        "component_budget_fallback_cases": 10
+      },
+      "reconciliation": {
+        "resolved_cases": 54,
+        "evidentially_supported_resolved_cases": 54,
+        "structurally_forced_resolved_cases": 0,
+        "resolved_with_reach_not_full_cases": 0,
+        "ambiguous_cases": 0,
+        "conflict_cases": 6,
+        "abstention_cases": 16
+      },
+      "truth_quality": {
+        "full_truth_recall_cases": 70,
+        "solver_truth_scored_cases": 70,
+        "solver_truth_retained_cases": 54,
+        "solver_truth_exclusion_cases": 6,
+        "solver_truth_classification_incomplete_cases": 10,
+        "exactly_correct_cases": 54,
+        "false_merge_cases": 0,
+        "backbone_complete_cases": 54,
+        "truth_members": 623,
+        "truth_members_in_universe": 623,
+        "backbone_true_positive_members": 185,
+        "backbone_false_positive_members": 0
+      },
+      "cost": {
+        "candidate_members": 9794,
+        "max_candidate_members": 832,
+        "solver_artifact_cases": 70,
+        "residual_count_complete_cases": 60,
+        "residual_count_saturated_cases": 0,
+        "residual_count_unavailable_cases": 10,
+        "max_residual_model_count": 1,
+        "assignment_budget_exceeded_cases": 0,
+        "component_budget_fallback_cases": 10
+      }
+    },
+    "completed_truth_exclusion_case_fragments": [
+      "3899edce",
+      "5934bb93",
+      "68a1a4ce",
+      "69dbf5da",
+      "e1ee0535",
+      "e3a5228d"
+    ],
+    "truth_classification_incomplete_case_fragments": [
+      "0a6ff10e",
+      "1f301680",
+      "4bb51b76",
+      "607a641f",
+      "655a127d",
+      "7176a113",
+      "8ac12f0a",
+      "91b2df27",
+      "a7dac634",
+      "f970390c"
+    ],
+    "corrected_conflict_count": 6,
+    "corrected_conflict_count_note": "bd-3cez did not discover additional completed conflicts; it made the incomplete-classification bucket explicit so conflict=6 is no longer confused with cases the solver did not finish classifying."
+  },
+  "claim_classes": {
+    "requested_geo_claim_class": "collateral_composition",
+    "section_10_2": [
+      {
+        "claim_class": "HARD_FORCED",
+        "implementation_projection": "evidentially_supported_resolved_collateral_composition",
+        "current_non_definitional_count": 7,
+        "acris_completeness_mechanism_count": 54,
+        "promotion_allowed": false,
+        "reason": "Counts are retained/offline and the 54-case count is definitional on this population."
+      },
+      {
+        "claim_class": "SOFT_PREFERRED",
+        "current_non_definitional_count": 0,
+        "promotion_allowed": false,
+        "reason": "No policy-dependent optimum is promoted as a canonical identity fact."
+      },
+      {
+        "claim_class": "SOFT_RANKED",
+        "current_non_definitional_count": 55,
+        "promotion_allowed": false,
+        "reason": "Ambiguous residual alternatives are not facts; they are presentation/review material only where policy allows."
+      },
+      {
+        "claim_class": "FALLBACK",
+        "current_non_definitional_count": 8,
+        "acris_completeness_mechanism_count": 10,
+        "promotion_allowed": false,
+        "reason": "Component-budget fallback is a lower claim class and now carries incomplete truth-classification explicitly."
+      }
+    ]
+  },
+  "truth_quality_audit": {
+    "bead": "bd-1hvb",
+    "classification_counts": {
+      "admission_gap": 0,
+      "truth_row_binding_defect": 5,
+      "canon_property_row_binding_defect": 1,
+      "independently_supported_truth_source_current_owner_divergence": 2,
+      "unsettled": 0
+    },
+    "interpretation": "The E4 precision plane is bounded by truth quality: five of eight residual exclusions trace to truth-row binding defects, not admission or solver defects."
+  },
+  "what_closes_e4": [
+    {
+      "blocker": "truth_quality",
+      "required": "Independent remediation or replacement of the five truth-row binding defects without editing the retained truth fixture to match Canon output."
+    },
+    {
+      "blocker": "canon_property_row_binding",
+      "required": "Resolve the e1ee0535 same-loan property-row binding defect and rescore without widening rho."
+    },
+    {
+      "blocker": "denominator_deficit",
+      "required": "Recover or explicitly settle the seven remaining denominator slots: six data-blocked subjects plus ced7ad9f0d74abf7 pending identity/grain bridge."
+    },
+    {
+      "blocker": "independent_precision",
+      "required": "A non-circular truth source or adjudication path that can measure ACRIS-fed completeness as evidence rather than answer-key replay."
+    }
+  ],
+  "what_will_not_close_e4": [
+    "Changing the denominator without an explicit ruling showing both old and new numbers.",
+    "Editing retained truth rows to agree with Canon output.",
+    "Citing the ACRIS completeness 54/77 result as independent precision.",
+    "Raising component budgets to hide incomplete classification.",
+    "Widening rho admission contracts to recover a case.",
+    "More Canon-only solver or admission work against the same truth-quality defects."
+  ],
+  "source_notes": {
+    "plan_sections": [
+      "PLAN_CANON_GEO.md H.7",
+      "PLAN_CANON_GEO.md 10.2",
+      "PLAN_CANON_GEO.md 16.1",
+      "PLAN_CANON_GEO.md L.5"
+    ],
+    "bead_comments": [
+      "bd-1g4x denominator ruling at a0025b3",
+      "bd-3cez incomplete-classification re-report",
+      "bd-1hvb truth-quality audit"
+    ]
+  }
+}
