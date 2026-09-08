@@ -5,24 +5,27 @@ use canon::geo::{
     CANON_GEO_DEED_INDEX_ROWS_VERSION, CANON_GEO_DEED_TRUTH_VERSION,
     CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
     CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
+    CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
     CANON_GEO_PLAN_VERSION, CANON_GEO_POINT_POPULATION_VERSION, CANON_GEO_RETRY_LOOP_VERSION,
-    CANON_GEO_RETRY_RECOVERY_VERSION, CANON_GEO_RUN_VERSION, GEO_RETRY_LOOP_BINDING_ID,
-    GEO_RETRY_LOOP_OUTPUT_ID, GEO_RETRY_PASS_STAGE_COMMAND, GEO_RETRY_RECEIPT_BINDING_ID,
-    GEO_RETRY_RUN_BINDING_ID, GeoAcquisitionCounts, GeoAcquisitionDenominator,
-    GeoAcquisitionProofClass, GeoAcquisitionReceipt, GeoAcquisitionResumability,
-    GeoAcquisitionTerminalState, GeoBoundedGeography, GeoBoundedSubset, GeoClaimClass,
-    GeoControlEntityLevel, GeoDeedIndexRowsRequest, GeoDeedTruthLoanRef, GeoDenominatorSource,
-    GeoDigest, GeoDigestAlgorithm, GeoEntityLevel, GeoEvidenceClass, GeoExecutorKind,
-    GeoExecutorTrace, GeoFieldRole, GeoH7PipBlockPopulationBatchRequest,
-    GeoH7PopulationRowsRequest, GeoH7StagingSourceRecordBytesBatchRequest, GeoLocalArtifactDigest,
-    GeoNullOrdering, GeoOrderDirection, GeoOrderingTerm, GeoPaginationReceipt,
-    GeoPaginationRequest, GeoPlan, GeoPlanArtifactRef, GeoPlanBudgetRef, GeoPlanClaimEffect,
-    GeoPlanGrainOutcome, GeoPlanGrainStatus, GeoPlanInventoryRef, GeoPlanNodeOverlay,
-    GeoPlanProfileRef, GeoPlanStage, GeoPlanStatus, GeoPlanTransitionSet,
-    GeoPointPopulationArtifact, GeoPointPopulationPoint, GeoReleasePin, GeoRequestedField,
-    GeoRetryLoopArtifact, GeoRetryPolicy, GeoRetryTerminal, GeoRowByteCeilings, GeoRun,
-    GeoRunArtifactBinding, GeoRunStatus, GeoSubsetPredicate, GeoSubsetPredicateKind,
-    canonical_deed_truth_bytes, canonical_geo_acquisition_request_bytes, canonical_geo_run_bytes,
+    CANON_GEO_RETRY_RECOVERY_VERSION, CANON_GEO_RUN_VERSION, GEO_MATERIALIZE_HOME_CELLS_COMMAND,
+    GEO_RETRY_LOOP_BINDING_ID, GEO_RETRY_LOOP_OUTPUT_ID, GEO_RETRY_PASS_STAGE_COMMAND,
+    GEO_RETRY_RECEIPT_BINDING_ID, GEO_RETRY_RUN_BINDING_ID, GEO_ROWS_BINDING_ID,
+    GeoAcquisitionCounts, GeoAcquisitionDenominator, GeoAcquisitionProofClass,
+    GeoAcquisitionReceipt, GeoAcquisitionResumability, GeoAcquisitionTerminalState,
+    GeoBoundedGeography, GeoBoundedSubset, GeoClaimClass, GeoControlEntityLevel,
+    GeoDeedIndexRowsRequest, GeoDeedTruthLoanRef, GeoDenominatorSource, GeoDigest,
+    GeoDigestAlgorithm, GeoEntityLevel, GeoEvidenceClass, GeoExecutorKind, GeoExecutorTrace,
+    GeoFieldRole, GeoH7PipBlockPopulationBatchRequest, GeoH7PopulationRowsRequest,
+    GeoH7StagingSourceRecordBytesBatchRequest, GeoHomeCellRow, GeoHomeCellRowsRequest,
+    GeoIdentityParticipation, GeoLocalArtifactDigest, GeoNativeEntityScope, GeoNullOrdering,
+    GeoOrderDirection, GeoOrderingTerm, GeoPaginationReceipt, GeoPaginationRequest, GeoPlan,
+    GeoPlanArtifactRef, GeoPlanBudgetRef, GeoPlanClaimEffect, GeoPlanGrainOutcome,
+    GeoPlanGrainStatus, GeoPlanInventoryRef, GeoPlanNodeOverlay, GeoPlanProfileRef, GeoPlanStage,
+    GeoPlanStatus, GeoPlanTransitionSet, GeoPointPopulationArtifact, GeoPointPopulationPoint,
+    GeoReleasePin, GeoRequestedField, GeoRetryLoopArtifact, GeoRetryPolicy, GeoRetryTerminal,
+    GeoRowByteCeilings, GeoRun, GeoRunArtifactBinding, GeoRunStatus, GeoSourceRelease,
+    GeoSubsetPredicate, GeoSubsetPredicateKind, GeoTileSourceBinding, canonical_deed_truth_bytes,
+    canonical_geo_acquisition_request_bytes, canonical_geo_run_bytes,
     canonical_h7_population_bytes, canonical_retry_loop_bytes, canonical_retry_recovery_bytes,
     derive_deed_truth_from_index, geo_acquisition_request_id,
     geo_acquisition_request_semantic_hash, geo_plan_semantic_hash,
@@ -68,6 +71,7 @@ const PROVIDER_RESPONSE_BYTES_DIGEST_ID: &str = "provider_response_bytes";
 const GEOCODE_CANDIDATE_ROWS_ARTIFACT_ID: &str = "geocode_candidate_rows";
 const G4_RETRY_RECOVERY_DENOMINATOR: usize = 40;
 const DEFAULT_G4_RETRY_RECOVERY_MAX_BYTES: u64 = 131_072;
+const RETRY_RECOVERY_HOME_CELL_STAGE_NODE_ID: &str = "geo.retry_recovery.home_cells";
 const RETRY_RECOVERY_PASS_STAGE_NODE_ID: &str = "geo.retry_recovery.retry_pass";
 const REQUIRED_CORE_MEASUREMENT_IDS: &[&str] = &[
     "appendix_b_centroid_percolation",
@@ -115,6 +119,8 @@ enum MeasurementCommand {
     PrepareRetryRecovery(Box<PrepareRetryRecoveryArgs>),
     #[command(name = "record-retry-recovery-pass")]
     RecordRetryRecoveryPass(Box<RecordRetryRecoveryPassArgs>),
+    #[command(name = "materialize-retry-recovery-run")]
+    MaterializeRetryRecoveryRun(Box<MaterializeRetryRecoveryRunArgs>),
     #[command(name = "measure-retry-recovery")]
     RetryRecovery(RetryRecoveryArgs),
     #[command(name = "materialize-h7-population")]
@@ -174,6 +180,34 @@ struct RecordRetryRecoveryPassArgs {
     /// File to receive the canon_geo_run.v0 manifest for the retry-pass stage
     #[arg(long)]
     out_run: PathBuf,
+}
+
+#[derive(Debug, ClapArgs)]
+struct MaterializeRetryRecoveryRunArgs {
+    /// canon_geo_point_population.v0 file with the frozen gross-class denominator
+    #[arg(long)]
+    population: PathBuf,
+    /// Point id inside the frozen population to materialize
+    #[arg(long)]
+    point_id: String,
+    /// Current canon_geo_retry_loop.v0 artifact whose request emitted the receipt
+    #[arg(long = "loop")]
+    retry_loop: PathBuf,
+    /// Matching retained/live canon_geo_acquisition_receipt.v0 artifact
+    #[arg(long)]
+    receipt: PathBuf,
+    /// Retained geocode candidate rows pinned by the receipt
+    #[arg(long)]
+    candidate_rows: PathBuf,
+    /// Workspace root for the internal home-cell geo run stage
+    #[arg(long)]
+    work_dir: PathBuf,
+    /// File to receive the canon_geo_run.v0 home-cell run manifest
+    #[arg(long)]
+    out_run: PathBuf,
+    /// Optional file to receive the exact canon_geo_home_cell_rows.v1 input artifact
+    #[arg(long)]
+    out_home_cell_rows: Option<PathBuf>,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -433,6 +467,47 @@ struct RetryRecoveryPassRecordReport {
 }
 
 #[derive(Debug, Serialize)]
+struct RetryRecoveryRunMaterializationReport {
+    point_id: String,
+    subject_id: String,
+    candidate_count: u64,
+    project_node_id: String,
+    stage_plan_id: String,
+    stage_plan_semantic_hash: String,
+    stage_run_id: String,
+    stage_run_semantic_hash: String,
+    stage_run_status: GeoRunStatus,
+    singleton_home_cell_r9: Option<String>,
+    home_cell_rows_output_path: Option<String>,
+    out_run: String,
+    precision_claim: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RetryRecoveryCandidateRow {
+    #[serde(alias = "POINT_ID")]
+    point_id: String,
+    #[serde(default, alias = "SUBJECT_ID", alias = "subjectId")]
+    subject_id: Option<String>,
+    #[serde(alias = "CANDIDATE_RANK")]
+    candidate_rank: u64,
+    #[serde(alias = "LON_E7")]
+    lon_e7: i64,
+    #[serde(alias = "LAT_E7")]
+    lat_e7: i64,
+    #[serde(default, alias = "PROVIDER_ID")]
+    provider_id: Option<String>,
+    #[serde(default, alias = "PROVIDER_VERSION")]
+    provider_version: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct RetryRecoveryCandidate {
+    value: Value,
+    row: RetryRecoveryCandidateRow,
+}
+
+#[derive(Debug, Serialize)]
 struct MeasurementPlan {
     version: String,
     scope: String,
@@ -625,6 +700,10 @@ fn run_measurement_command(command: MeasurementCommand) -> Result<ExitCode, AppE
         }
         MeasurementCommand::RecordRetryRecoveryPass(args) => {
             let report = record_retry_recovery_pass(*args)?;
+            print_json(&report)?;
+        }
+        MeasurementCommand::MaterializeRetryRecoveryRun(args) => {
+            let report = materialize_retry_recovery_run(*args)?;
             print_json(&report)?;
         }
         MeasurementCommand::RetryRecovery(args) => {
@@ -1132,6 +1211,656 @@ fn record_retry_recovery_pass(
         out_loop: args.out_loop.display().to_string(),
         out_run: args.out_run.display().to_string(),
     })
+}
+
+fn materialize_retry_recovery_run(
+    args: MaterializeRetryRecoveryRunArgs,
+) -> Result<RetryRecoveryRunMaterializationReport, AppError> {
+    fs::create_dir_all(&args.work_dir).map_err(|error| {
+        AppError::new(format!(
+            "failed to create retry-recovery run work dir {}: {error}",
+            args.work_dir.display()
+        ))
+    })?;
+    let population: GeoPointPopulationArtifact = load_json(
+        &args.population,
+        CANON_GEO_POINT_POPULATION_VERSION,
+        "population",
+        "canon_geo_measurements materialize-retry-recovery-run --population <POPULATION.json>",
+    )?;
+    validate_point_population_artifact(&population)
+        .map_err(|error| AppError::new(format!("invalid point population: {error}")))?;
+    if population.points.len() != G4_RETRY_RECOVERY_DENOMINATOR {
+        return Err(AppError::new(format!(
+            "materialize-retry-recovery-run requires the frozen {G4_RETRY_RECOVERY_DENOMINATOR}-point gross-class denominator, got {}",
+            population.points.len()
+        )));
+    }
+    let point = population
+        .points
+        .iter()
+        .find(|point| point.point_id == args.point_id)
+        .ok_or_else(|| {
+            AppError::new(format!(
+                "point_id {} is outside the frozen retry-recovery population",
+                args.point_id
+            ))
+        })?;
+
+    let loop_bytes = read_file(&args.retry_loop, "retry loop")?;
+    let receipt_bytes = read_file(&args.receipt, "acquisition receipt")?;
+    let candidate_rows_bytes = read_file(&args.candidate_rows, "candidate rows")?;
+    let loop_state: GeoRetryLoopArtifact = decode_versioned_json_bytes(
+        &loop_bytes,
+        CANON_GEO_RETRY_LOOP_VERSION,
+        "retry loop",
+        "canon_geo_measurements materialize-retry-recovery-run --loop <LOOP.json>",
+    )?;
+    validate_retry_loop_artifact(&loop_state)
+        .map_err(|error| AppError::new(format!("invalid retry loop: {error}")))?;
+    if loop_state.subject_id != point.subject_id {
+        return Err(AppError::new(format!(
+            "retry loop subject mismatch for {}: expected {}, got {}",
+            point.point_id, point.subject_id, loop_state.subject_id
+        )));
+    }
+    let receipt: GeoAcquisitionReceipt = decode_versioned_json_bytes(
+        &receipt_bytes,
+        CANON_GEO_ACQUISITION_RECEIPT_VERSION,
+        "acquisition receipt",
+        "canon_geo_measurements materialize-retry-recovery-run --receipt <RECEIPT.json>",
+    )?;
+    if receipt.proof_class == GeoAcquisitionProofClass::Fixture {
+        return Err(AppError::new(
+            "materialize-retry-recovery-run requires retained or live acquisition receipts; fixture receipts cannot drive G4 recovery",
+        ));
+    }
+    validate_retry_run_receipt_binding(
+        point,
+        &loop_state.policy.regeocode_request_template,
+        &receipt,
+        &candidate_rows_bytes,
+    )?;
+    let candidate_values = retry_recovery_candidate_row_values(&candidate_rows_bytes)?;
+    let candidates = retry_recovery_candidates(point, &receipt, candidate_values)?;
+    if candidates.is_empty() {
+        return Err(AppError::new(format!(
+            "receipt {} has zero candidate rows for {}; record a blocked retry pass with reason no_candidates instead of a home-cell run",
+            receipt.request_semantic_hash, point.point_id
+        )));
+    }
+    if receipt.counts.rows != candidates.len() as u64 {
+        return Err(AppError::new(format!(
+            "receipt {} row count mismatch: expected {}, parsed {}",
+            receipt.request_semantic_hash,
+            receipt.counts.rows,
+            candidates.len()
+        )));
+    }
+
+    let home_cell_rows = retry_recovery_home_cell_rows_request(point, &receipt, &candidates)?;
+    let home_cell_rows_bytes = serde_json::to_vec(&home_cell_rows).map_err(|error| {
+        AppError::new(format!(
+            "failed to serialize {CANON_GEO_HOME_CELL_ROWS_VERSION}: {error}"
+        ))
+    })?;
+    let home_cell_output_path = retry_recovery_home_cell_output_path(point);
+    let plan = retry_recovery_home_cell_plan(
+        point,
+        &loop_bytes,
+        &receipt_bytes,
+        &candidate_rows_bytes,
+        &home_cell_rows_bytes,
+        &home_cell_output_path,
+    )?;
+    let stage_plan_id = plan.plan_id.clone();
+    let stage_plan_semantic_hash = plan.semantic_hash.clone();
+    let mut policy = ProjectRunPolicy::new(&args.work_dir, "work");
+    policy.failure_policy = ProjectRunFailurePolicy::FailFast;
+    let stage_run = run_geo_plan(canon::geo::GeoRunRequest::new(
+        plan,
+        policy,
+        vec![GeoRunArtifactBinding::from_bytes(
+            RETRY_RECOVERY_HOME_CELL_STAGE_NODE_ID,
+            GEO_ROWS_BINDING_ID,
+            CANON_GEO_HOME_CELL_ROWS_VERSION,
+            home_cell_rows_bytes.clone(),
+        )],
+    ))
+    .map_err(|error| AppError::new(format!("retry recovery home-cell stage failed: {error}")))?;
+    if stage_run.status != GeoRunStatus::Completed {
+        let reason = retry_home_cell_stage_failure_reason(&stage_run)
+            .unwrap_or_else(|| "no failed-node reason was recorded".to_string());
+        return Err(AppError::new(format!(
+            "retry recovery home-cell stage did not complete: {:?}: {reason}",
+            stage_run.status
+        )));
+    }
+    let canonical_run_bytes = canonical_geo_run_bytes(&stage_run).map_err(|error| {
+        AppError::new(format!(
+            "failed to serialize home-cell {CANON_GEO_RUN_VERSION}: {error}"
+        ))
+    })?;
+    write_bytes_file(&args.out_run, &canonical_run_bytes, "home-cell Geo run")?;
+    if let Some(path) = &args.out_home_cell_rows {
+        write_bytes_file(path, &home_cell_rows_bytes, "home-cell rows")?;
+    }
+
+    Ok(RetryRecoveryRunMaterializationReport {
+        point_id: point.point_id.clone(),
+        subject_id: point.subject_id.clone(),
+        candidate_count: candidates.len() as u64,
+        project_node_id: RETRY_RECOVERY_HOME_CELL_STAGE_NODE_ID.to_string(),
+        stage_plan_id,
+        stage_plan_semantic_hash,
+        stage_run_id: stage_run.run_id.clone(),
+        stage_run_semantic_hash: stage_run.semantic_hash.clone(),
+        stage_run_status: stage_run.status,
+        singleton_home_cell_r9: retry_recovery_singleton_home_cell(&stage_run),
+        home_cell_rows_output_path: args
+            .out_home_cell_rows
+            .as_ref()
+            .map(|path| path.display().to_string()),
+        out_run: args.out_run.display().to_string(),
+        precision_claim: false,
+    })
+}
+
+fn validate_retry_run_receipt_binding(
+    point: &GeoPointPopulationPoint,
+    request: &canon::geo::GeoAcquisitionRequest,
+    receipt: &GeoAcquisitionReceipt,
+    candidate_rows_bytes: &[u8],
+) -> Result<(), AppError> {
+    let expected_request_hash =
+        geo_acquisition_request_semantic_hash(request).map_err(|error| {
+            AppError::new(format!(
+                "failed to hash acquisition request for {}: {error}",
+                point.point_id
+            ))
+        })?;
+    if receipt.request_semantic_hash != expected_request_hash {
+        return Err(AppError::new(format!(
+            "receipt request_semantic_hash mismatch for {}: expected {}, got {}",
+            point.point_id, expected_request_hash, receipt.request_semantic_hash
+        )));
+    }
+    validate_geo_acquisition_receipt(request, receipt)
+        .map_err(|error| AppError::new(format!("invalid acquisition receipt: {error}")))?;
+    verify_candidate_rows_bytes_against_receipt(receipt, candidate_rows_bytes)?;
+    Ok(())
+}
+
+fn verify_candidate_rows_bytes_against_receipt(
+    receipt: &GeoAcquisitionReceipt,
+    candidate_rows_bytes: &[u8],
+) -> Result<(), AppError> {
+    let actual = blake3::hash(candidate_rows_bytes).to_hex().to_string();
+    let artifact = receipt
+        .local_artifacts
+        .iter()
+        .find(|artifact| artifact.artifact_id == GEOCODE_CANDIDATE_ROWS_ARTIFACT_ID)
+        .ok_or_else(|| {
+            AppError::new(format!(
+                "receipt {} is missing local artifact {GEOCODE_CANDIDATE_ROWS_ARTIFACT_ID}",
+                receipt.request_semantic_hash
+            ))
+        })?;
+    if artifact.digest.algorithm != GeoDigestAlgorithm::Blake3 {
+        return Err(AppError::new(format!(
+            "receipt {} local artifact {GEOCODE_CANDIDATE_ROWS_ARTIFACT_ID} must use Blake3",
+            receipt.request_semantic_hash
+        )));
+    }
+    if artifact.byte_count != candidate_rows_bytes.len() as u64 {
+        return Err(AppError::new(format!(
+            "candidate rows byte count mismatch for {}: expected {}, actual {}",
+            receipt.request_semantic_hash,
+            artifact.byte_count,
+            candidate_rows_bytes.len()
+        )));
+    }
+    if artifact.digest.hex_digest != actual {
+        return Err(AppError::new(format!(
+            "candidate rows digest mismatch for {}: expected {}, actual {}",
+            receipt.request_semantic_hash, artifact.digest.hex_digest, actual
+        )));
+    }
+    let result_digest = receipt
+        .result_digests
+        .iter()
+        .find(|digest| digest.digest_id == GEOCODE_CANDIDATE_ROWS_ARTIFACT_ID)
+        .ok_or_else(|| {
+            AppError::new(format!(
+                "receipt {} is missing result digest {GEOCODE_CANDIDATE_ROWS_ARTIFACT_ID}",
+                receipt.request_semantic_hash
+            ))
+        })?;
+    if result_digest.algorithm != GeoDigestAlgorithm::Blake3
+        || result_digest.hex_digest != artifact.digest.hex_digest
+    {
+        return Err(AppError::new(format!(
+            "receipt {} result digest {GEOCODE_CANDIDATE_ROWS_ARTIFACT_ID} is stale relative to the local artifact digest",
+            receipt.request_semantic_hash
+        )));
+    }
+    Ok(())
+}
+
+fn retry_recovery_candidate_row_values(
+    candidate_rows_bytes: &[u8],
+) -> Result<Vec<Value>, AppError> {
+    let value: Value = serde_json::from_slice(candidate_rows_bytes)
+        .map_err(|error| AppError::new(format!("failed to parse candidate rows JSON: {error}")))?;
+    if let Some(rows) = value.as_array() {
+        return Ok(rows.clone());
+    }
+    for field in ["rows", "candidates"] {
+        if let Some(rows) = value.get(field).and_then(Value::as_array) {
+            return Ok(rows.clone());
+        }
+    }
+    Err(AppError::new(
+        "candidate rows must be a JSON array or an object with rows[]/candidates[]",
+    ))
+}
+
+fn retry_recovery_candidates(
+    point: &GeoPointPopulationPoint,
+    receipt: &GeoAcquisitionReceipt,
+    values: Vec<Value>,
+) -> Result<Vec<RetryRecoveryCandidate>, AppError> {
+    let provider_id = receipt
+        .executor
+        .as_ref()
+        .map(|executor| executor.executor_id.as_str());
+    let provider_version = receipt
+        .executor
+        .as_ref()
+        .map(|executor| executor.executor_version.as_str());
+    let mut candidates = Vec::with_capacity(values.len());
+    let mut ranks = BTreeSet::new();
+    for value in values {
+        let row: RetryRecoveryCandidateRow =
+            serde_json::from_value(value.clone()).map_err(|error| {
+                AppError::new(format!(
+                    "failed to decode candidate row for {}: {error}",
+                    point.point_id
+                ))
+            })?;
+        if row.point_id != point.point_id {
+            return Err(AppError::new(format!(
+                "candidate row point_id mismatch: expected {}, got {}",
+                point.point_id, row.point_id
+            )));
+        }
+        if let Some(subject_id) = &row.subject_id
+            && subject_id != &point.subject_id
+        {
+            return Err(AppError::new(format!(
+                "candidate row subject_id mismatch for {}: expected {}, got {}",
+                point.point_id, point.subject_id, subject_id
+            )));
+        }
+        if row.candidate_rank == 0 {
+            return Err(AppError::new(format!(
+                "candidate row for {} must use one-based candidate_rank",
+                point.point_id
+            )));
+        }
+        if !ranks.insert(row.candidate_rank) {
+            return Err(AppError::new(format!(
+                "candidate rows for {} repeat candidate_rank {}",
+                point.point_id, row.candidate_rank
+            )));
+        }
+        if let (Some(actual), Some(expected)) = (row.provider_id.as_deref(), provider_id)
+            && actual != expected
+        {
+            return Err(AppError::new(format!(
+                "candidate row provider_id mismatch for {}: expected {}, got {}",
+                point.point_id, expected, actual
+            )));
+        }
+        if let (Some(actual), Some(expected)) = (row.provider_version.as_deref(), provider_version)
+            && actual != expected
+        {
+            return Err(AppError::new(format!(
+                "candidate row provider_version mismatch for {}: expected {}, got {}",
+                point.point_id, expected, actual
+            )));
+        }
+        candidates.push(RetryRecoveryCandidate { value, row });
+    }
+    candidates.sort_by_key(|candidate| candidate.row.candidate_rank);
+    Ok(candidates)
+}
+
+fn retry_recovery_home_cell_rows_request(
+    point: &GeoPointPopulationPoint,
+    receipt: &GeoAcquisitionReceipt,
+    candidates: &[RetryRecoveryCandidate],
+) -> Result<GeoHomeCellRowsRequest, AppError> {
+    let source = retry_recovery_candidate_source(receipt)?;
+    let mut rows = Vec::with_capacity(candidates.len());
+    for candidate in candidates {
+        let row_bytes = serde_json::to_vec(&candidate.value).map_err(|error| {
+            AppError::new(format!(
+                "failed to serialize candidate row {} rank {}: {error}",
+                point.point_id, candidate.row.candidate_rank
+            ))
+        })?;
+        rows.push(GeoHomeCellRow {
+            source: source.clone(),
+            feature_id: format!(
+                "geo.retry_recovery.{}.candidate.{:03}",
+                point.point_id, candidate.row.candidate_rank
+            ),
+            source_record_id: format!(
+                "geo.retry_recovery.{}.source_record.{:03}",
+                point.point_id, candidate.row.candidate_rank
+            ),
+            geometry_sha256: sha256_hex(&row_bytes),
+            representative_point_method: "provider_geocode_point_wgs84_e7".to_string(),
+            longitude: fixed_e7_decimal(candidate.row.lon_e7),
+            latitude: fixed_e7_decimal(candidate.row.lat_e7),
+            transform_execution_id: None,
+            transform_definition_id: None,
+            claimed_home_cell: Some(point.home_cell_r9.clone()),
+        });
+    }
+    Ok(GeoHomeCellRowsRequest {
+        version: CANON_GEO_HOME_CELL_ROWS_VERSION.to_string(),
+        coordinate_crs: "EPSG:4326".to_string(),
+        coordinate_decimal_places: 7,
+        h3_resolution: 9,
+        stability_radius_fixed: 1,
+        max_rows: rows.len() as u64,
+        rows,
+    })
+}
+
+fn retry_recovery_candidate_source(
+    receipt: &GeoAcquisitionReceipt,
+) -> Result<GeoTileSourceBinding, AppError> {
+    if receipt.releases.len() != 1 {
+        return Err(AppError::new(format!(
+            "receipt {} must carry exactly one provider release pin, got {}",
+            receipt.request_semantic_hash,
+            receipt.releases.len()
+        )));
+    }
+    let release = &receipt.releases[0];
+    if release.release_digest.algorithm != GeoDigestAlgorithm::Blake3 {
+        return Err(AppError::new(format!(
+            "receipt {} provider release digest must use Blake3",
+            receipt.request_semantic_hash
+        )));
+    }
+    let executor = receipt.executor.as_ref().ok_or_else(|| {
+        AppError::new(format!(
+            "receipt {} requires executor trace for retry-recovery run materialization",
+            receipt.request_semantic_hash
+        ))
+    })?;
+    let source_digest = format!("blake3:{}", release.release_digest.hex_digest);
+    let inventory_hash = digest_labeled_parts(
+        "retry-recovery-home-cell-inventory",
+        &[
+            (
+                "request_semantic_hash",
+                receipt.request_semantic_hash.as_bytes(),
+            ),
+            ("release_id", release.release_id.as_bytes()),
+            ("source_instance_id", release.source_instance_id.as_bytes()),
+        ],
+    );
+    Ok(GeoTileSourceBinding {
+        source_instance_id: executor.executor_id.clone(),
+        release: GeoSourceRelease {
+            release_id: release.release_id.clone(),
+            release_digest: source_digest,
+        },
+        native_scope: GeoNativeEntityScope::NativeEntity {
+            entity_level: GeoControlEntityLevel::Address,
+            identity_participation: GeoIdentityParticipation::EvidenceOnly,
+        },
+        inventory_ref: GeoPlanInventoryRef {
+            inventory_id: format!("geo.retry_recovery.acquisition.{}", executor.executor_id),
+            semantic_hash: inventory_hash.clone(),
+            planning_hash: inventory_hash,
+        },
+    })
+}
+
+fn retry_recovery_home_cell_plan(
+    point: &GeoPointPopulationPoint,
+    loop_bytes: &[u8],
+    receipt_bytes: &[u8],
+    candidate_rows_bytes: &[u8],
+    home_cell_rows_bytes: &[u8],
+    output_path: &str,
+) -> Result<GeoPlan, AppError> {
+    let point_digest = blake3::hash(point.point_id.as_bytes()).to_hex().to_string();
+    let project_id = format!("geo.retry_recovery.home_cells.{point_digest}");
+    let manifest_digest = digest_labeled_parts(
+        "retry-recovery-home-cell-manifest",
+        &[
+            ("point_id", point.point_id.as_bytes()),
+            ("subject_id", point.subject_id.as_bytes()),
+            ("retry_loop", loop_bytes),
+            ("receipt", receipt_bytes),
+            ("candidate_rows", candidate_rows_bytes),
+            ("home_cell_rows", home_cell_rows_bytes),
+        ],
+    );
+    let lock_digest = digest_labeled_parts(
+        "retry-recovery-home-cell-lock",
+        &[
+            ("project_id", project_id.as_bytes()),
+            (
+                "stage_command",
+                GEO_MATERIALIZE_HOME_CELLS_COMMAND.as_bytes(),
+            ),
+            ("output_path", output_path.as_bytes()),
+        ],
+    );
+    let project_plan =
+        compile_extension_project_plan(ProjectExtensionDagRequest::offline_read_only(
+            project_id,
+            manifest_digest,
+            lock_digest,
+            vec![ProjectExtensionDagNode {
+                node_id: RETRY_RECOVERY_HOME_CELL_STAGE_NODE_ID.to_string(),
+                kind: ProjectPlanNodeKind::Normalize,
+                class: ProjectPlanNodeClass::Computation,
+                command: GEO_MATERIALIZE_HOME_CELLS_COMMAND.to_string(),
+                dependencies: Vec::new(),
+                content_hash_inputs: Vec::new(),
+                outputs: vec![ProjectExtensionDagOutput {
+                    output_id: "home_cells".to_string(),
+                    path: output_path.to_string(),
+                    materialization: ProjectPlanOutputMaterialization::PlannedArtifact,
+                }],
+                limits: BTreeMap::new(),
+                cache_eligible: true,
+                side_effects: vec![
+                    ProjectPlanSideEffect {
+                        kind: ProjectPlanSideEffectKind::ReadsInput,
+                        description:
+                            "reads retained geocode candidate rows as typed home-cell rows"
+                                .to_string(),
+                    },
+                    ProjectPlanSideEffect {
+                        kind: ProjectPlanSideEffectKind::WritesArtifact,
+                        description: "publishes one home-cell assignment for retry recovery"
+                            .to_string(),
+                    },
+                ],
+                refusal_conditions: vec![ProjectPlanRefusalCondition {
+                    code: ProjectPlanErrorCode::ArtifactContract,
+                    message: "refuse on candidate-row or home-cell assignment contract mismatch"
+                        .to_string(),
+                    next_command: None,
+                }],
+            }],
+        ))
+        .map_err(|error| AppError::new(format!("failed to compile home-cell DAG: {error}")))?;
+    let question_hash = digest_labeled_parts(
+        "retry-recovery-home-cell-question",
+        &[
+            ("point_id", point.point_id.as_bytes()),
+            ("subject_id", point.subject_id.as_bytes()),
+        ],
+    );
+    let capabilities_hash = digest_labeled_parts(
+        "retry-recovery-home-cell-capabilities",
+        &[(
+            "stage_command",
+            GEO_MATERIALIZE_HOME_CELLS_COMMAND.as_bytes(),
+        )],
+    );
+    let inventory_hash = digest_labeled_parts(
+        "retry-recovery-home-cell-inventory-ref",
+        &[
+            ("candidate_rows", candidate_rows_bytes),
+            ("receipt", receipt_bytes),
+        ],
+    );
+    let profile_hash = digest_labeled_parts(
+        "retry-recovery-home-cell-profile",
+        &[("selection_level", b"address")],
+    );
+    let budget_hash = digest_labeled_parts(
+        "retry-recovery-home-cell-budget",
+        &[("policy", b"local-artifact-only")],
+    );
+    let mut plan = GeoPlan {
+        version: CANON_GEO_PLAN_VERSION.to_string(),
+        plan_id: String::new(),
+        semantic_hash: String::new(),
+        status: GeoPlanStatus::Planned,
+        question_ref: GeoPlanArtifactRef {
+            artifact_id: "geo.retry_recovery.home_cell.question".to_string(),
+            semantic_hash: question_hash,
+        },
+        capabilities_ref: GeoPlanArtifactRef {
+            artifact_id: "geo.retry_recovery.home_cell.capabilities".to_string(),
+            semantic_hash: capabilities_hash,
+        },
+        inventory_ref: GeoPlanInventoryRef {
+            inventory_id: "geo.retry_recovery.home_cell.inventory".to_string(),
+            semantic_hash: inventory_hash.clone(),
+            planning_hash: inventory_hash,
+        },
+        profile_ref: GeoPlanProfileRef {
+            version: "geo.retry_recovery.home_cell_profile.v0".to_string(),
+            selection_level: GeoEntityLevel::Building,
+            semantic_hash: profile_hash,
+        },
+        budget_ref: GeoPlanBudgetRef {
+            budget_id: "geo.retry_recovery.home_cell.budget".to_string(),
+            semantic_hash: budget_hash.clone(),
+            planning_hash: budget_hash,
+        },
+        project_plan,
+        geo_nodes: vec![GeoPlanNodeOverlay {
+            project_node_id: RETRY_RECOVERY_HOME_CELL_STAGE_NODE_ID.to_string(),
+            stage: GeoPlanStage::MaterializeHomeCells,
+            entity_level: Some(GeoControlEntityLevel::Address),
+            evidence_classes: vec![GeoEvidenceClass::GeocodePoint],
+            claim_classes: vec![GeoClaimClass::CandidateReach],
+            expected_output_contract: CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION.to_string(),
+            preconditions: Vec::new(),
+            claim_effect: GeoPlanClaimEffect::NamedAuditGate,
+            bounded_section_required: false,
+            incidence_factorization_required: false,
+            exact_solve_scope: None,
+            deterministic_bounds: Vec::new(),
+            cost_estimate_ranges: Vec::new(),
+            transitions: GeoPlanTransitionSet {
+                success: "retained geocode candidate rows materialized as H3 home-cell candidates"
+                    .to_string(),
+                abstention: "multiple candidate rows remain non-singleton for retry scoring"
+                    .to_string(),
+                contradiction: "receipt and retained candidate rows disagree".to_string(),
+                budget_fallback: "retry recovery home-cell stage has no internal fallback"
+                    .to_string(),
+            },
+        }],
+        grain_outcomes: vec![GeoPlanGrainOutcome {
+            entity_level: GeoControlEntityLevel::Address,
+            status: GeoPlanGrainStatus::PlannedRelativeToDeclaredUniverse,
+            missing_evidence_classes: Vec::new(),
+            project_node_ids: vec![RETRY_RECOVERY_HOME_CELL_STAGE_NODE_ID.to_string()],
+            claim_limitation:
+                "retry recovery home-cell materialization is reach-only; precision remains unclaimed"
+                    .to_string(),
+            next_action:
+                "record this run into the retry loop, then measure recovered/abstained/blocked"
+                    .to_string(),
+        }],
+        external_requests: Vec::new(),
+        diagnostics: Vec::new(),
+    };
+    plan.semantic_hash = geo_plan_semantic_hash(&plan).map_err(|error| {
+        AppError::new(format!(
+            "failed to hash retry-recovery home-cell Geo plan: {error}"
+        ))
+    })?;
+    plan.plan_id = format!(
+        "{CANON_GEO_PLAN_VERSION}:{}",
+        plan.semantic_hash.trim_start_matches("blake3:")
+    );
+    validate_geo_plan(&plan)
+        .map_err(|error| AppError::new(format!("invalid home-cell Geo plan: {error}")))?;
+    Ok(plan)
+}
+
+fn retry_recovery_home_cell_output_path(point: &GeoPointPopulationPoint) -> String {
+    let point_digest = blake3::hash(point.point_id.as_bytes()).to_hex().to_string();
+    format!("geo/retry_recovery/{point_digest}/home_cells.json")
+}
+
+fn retry_home_cell_stage_failure_reason(run: &GeoRun) -> Option<String> {
+    run.project_run_report
+        .as_ref()
+        .and_then(|report| {
+            report
+                .node_reports
+                .iter()
+                .find(|node| {
+                    node.node_id == RETRY_RECOVERY_HOME_CELL_STAGE_NODE_ID
+                        && node.outcome == ProjectRunNodeOutcome::Failed
+                })
+                .and_then(|node| node.reason.clone())
+        })
+        .or_else(|| {
+            run.blockers
+                .iter()
+                .find(|blocker| !blocker.reason.trim().is_empty())
+                .map(|blocker| blocker.reason.clone())
+        })
+}
+
+fn retry_recovery_singleton_home_cell(run: &GeoRun) -> Option<String> {
+    run.output_refs
+        .iter()
+        .find(|output| {
+            output.project_node_id == RETRY_RECOVERY_HOME_CELL_STAGE_NODE_ID
+                && output.output_id == "home_cells"
+        })
+        .and_then(|output| output.home_cell_r9.clone())
+}
+
+fn fixed_e7_decimal(value: i64) -> String {
+    let sign = if value.is_negative() { "-" } else { "" };
+    let absolute = value.unsigned_abs();
+    format!(
+        "{sign}{}.{:07}",
+        absolute / 10_000_000,
+        absolute % 10_000_000
+    )
 }
 
 fn retry_recovery_pass_plan(

@@ -653,6 +653,197 @@ fn measurement_binary_records_retry_pass_through_registered_stage() {
 }
 
 #[test]
+fn measurement_binary_materializes_retry_recovery_home_cell_run_from_retained_rows() {
+    let temp = tempdir().expect("tempdir");
+    let prepared = prepare_first_retry_recovery_input(temp.path());
+    let (receipt_path, rows_path) = retained_receipt_for_candidates(
+        temp.path(),
+        &prepared.request_path,
+        &[candidate_row(&prepared.point, 1, -739772640, 407534290)],
+    );
+    let out_run = temp.path().join("out").join("home-cell.run.json");
+    let out_rows = temp.path().join("out").join("home-cell.rows.json");
+
+    let output = assert_cmd::cargo::cargo_bin_cmd!("canon_geo_measurements")
+        .arg("materialize-retry-recovery-run")
+        .arg("--population")
+        .arg(&prepared.population_path)
+        .arg("--point-id")
+        .arg(&prepared.point.point_id)
+        .arg("--loop")
+        .arg(&prepared.loop_path)
+        .arg("--receipt")
+        .arg(&receipt_path)
+        .arg("--candidate-rows")
+        .arg(&rows_path)
+        .arg("--work-dir")
+        .arg(temp.path().join("work").join("home-cell"))
+        .arg("--out-run")
+        .arg(&out_run)
+        .arg("--out-home-cell-rows")
+        .arg(&out_rows)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let report: Value = serde_json::from_slice(&output).expect("materialization report parses");
+    assert_eq!(report["point_id"], prepared.point.point_id);
+    assert_eq!(report["subject_id"], prepared.point.subject_id);
+    assert_eq!(report["candidate_count"], 1);
+    assert_eq!(report["stage_run_status"], "COMPLETED");
+    assert_eq!(report["precision_claim"], false);
+    assert!(
+        report["singleton_home_cell_r9"]
+            .as_str()
+            .is_some_and(|cell| cell.starts_with("89")),
+        "singleton retained row should produce one H3 r9 carrier: {report:?}"
+    );
+
+    let stage_run: GeoRun = serde_json::from_slice(&fs::read(&out_run).expect("home-cell run"))
+        .expect("home-cell run parses");
+    validate_geo_run(&stage_run).expect("home-cell run validates");
+    let home_output = stage_run
+        .output_refs
+        .iter()
+        .find(|output| output.project_node_id == "geo.retry_recovery.home_cells")
+        .expect("home-cell output ref");
+    assert_eq!(home_output.output_id, "home_cells");
+    assert_eq!(
+        home_output.contract_version,
+        CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION
+    );
+    assert_eq!(
+        home_output.home_cell_r9.as_deref(),
+        report["singleton_home_cell_r9"].as_str()
+    );
+    let home_rows: Value = serde_json::from_slice(&fs::read(&out_rows).expect("home-cell rows"))
+        .expect("home-cell rows parse");
+    assert_eq!(home_rows["version"], "canon_geo_home_cell_rows.v1");
+    assert_eq!(home_rows["coordinate_decimal_places"], 7);
+    assert_eq!(
+        home_rows["rows"][0]["source"]["native_scope"]["entity_level"],
+        "address"
+    );
+    assert_eq!(
+        home_rows["rows"][0]["claimed_home_cell"],
+        prepared.point.home_cell_r9
+    );
+
+    let out_loop_path = temp.path().join("out").join("recorded.loop.json");
+    let out_pass_run = temp.path().join("out").join("record-pass.run.json");
+    assert_cmd::cargo::cargo_bin_cmd!("canon_geo_measurements")
+        .arg("record-retry-recovery-pass")
+        .arg("--loop")
+        .arg(&prepared.loop_path)
+        .arg("--latest-run")
+        .arg(&out_run)
+        .arg("--receipt")
+        .arg(&receipt_path)
+        .arg("--work-dir")
+        .arg(temp.path().join("work").join("record-pass"))
+        .arg("--out-loop")
+        .arg(&out_loop_path)
+        .arg("--out-run")
+        .arg(&out_pass_run)
+        .assert()
+        .success();
+    let recorded_loop: GeoRetryLoopArtifact =
+        serde_json::from_slice(&fs::read(out_loop_path).expect("recorded loop"))
+            .expect("recorded loop parses");
+    assert_eq!(recorded_loop.terminal, Some(GeoRetryTerminal::Resolved));
+    assert_eq!(recorded_loop.passes[0].run_blake3, stage_run.semantic_hash);
+}
+
+#[test]
+fn measurement_binary_materializes_multi_candidate_retry_run_without_singleton_carrier() {
+    let temp = tempdir().expect("tempdir");
+    let prepared = prepare_first_retry_recovery_input(temp.path());
+    let (receipt_path, rows_path) = retained_receipt_for_candidates(
+        temp.path(),
+        &prepared.request_path,
+        &[
+            candidate_row(&prepared.point, 1, -739772640, 407534290),
+            candidate_row(&prepared.point, 2, -739648020, 405760240),
+        ],
+    );
+    let out_run = temp.path().join("out").join("multi.run.json");
+
+    let output = assert_cmd::cargo::cargo_bin_cmd!("canon_geo_measurements")
+        .arg("materialize-retry-recovery-run")
+        .arg("--population")
+        .arg(&prepared.population_path)
+        .arg("--point-id")
+        .arg(&prepared.point.point_id)
+        .arg("--loop")
+        .arg(&prepared.loop_path)
+        .arg("--receipt")
+        .arg(&receipt_path)
+        .arg("--candidate-rows")
+        .arg(&rows_path)
+        .arg("--work-dir")
+        .arg(temp.path().join("work").join("multi"))
+        .arg("--out-run")
+        .arg(&out_run)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: Value = serde_json::from_slice(&output).expect("materialization report parses");
+    assert_eq!(report["candidate_count"], 2);
+    assert_eq!(report["singleton_home_cell_r9"], Value::Null);
+    let stage_run: GeoRun =
+        serde_json::from_slice(&fs::read(out_run).expect("multi run")).expect("run parses");
+    validate_geo_run(&stage_run).expect("multi run validates");
+    let home_output = stage_run
+        .output_refs
+        .iter()
+        .find(|output| output.project_node_id == "geo.retry_recovery.home_cells")
+        .expect("home-cell output ref");
+    assert_eq!(home_output.home_cell_r9, None);
+}
+
+#[test]
+fn measurement_binary_refuses_retry_recovery_run_when_candidate_rows_digest_is_stale() {
+    let temp = tempdir().expect("tempdir");
+    let prepared = prepare_first_retry_recovery_input(temp.path());
+    let (receipt_path, rows_path) = retained_receipt_for_candidates(
+        temp.path(),
+        &prepared.request_path,
+        &[candidate_row(&prepared.point, 1, -739772640, 407534290)],
+    );
+    let mut tampered = fs::read(&rows_path).expect("candidate rows");
+    let byte = tampered
+        .iter_mut()
+        .find(|byte| **byte == b'7')
+        .expect("fixture row has a digit to flip");
+    *byte = b'8';
+    fs::write(&rows_path, tampered).expect("tamper rows");
+
+    assert_cmd::cargo::cargo_bin_cmd!("canon_geo_measurements")
+        .arg("materialize-retry-recovery-run")
+        .arg("--population")
+        .arg(&prepared.population_path)
+        .arg("--point-id")
+        .arg(&prepared.point.point_id)
+        .arg("--loop")
+        .arg(&prepared.loop_path)
+        .arg("--receipt")
+        .arg(&receipt_path)
+        .arg("--candidate-rows")
+        .arg(&rows_path)
+        .arg("--work-dir")
+        .arg(temp.path().join("work").join("stale"))
+        .arg("--out-run")
+        .arg(temp.path().join("out").join("stale.run.json"))
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("candidate rows digest mismatch"));
+}
+
+#[test]
 fn measurement_binary_record_retry_pass_refuses_unrelated_receipt() {
     let fixture = recovery_fixture();
     let final_home_cells = fixture
@@ -785,6 +976,122 @@ fn regeocode_script_import_mode_refuses_live_proof_label() {
 fn provider_profile_path() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("scripts/geo_acquisition/providers/census_geocoder_current.json")
+}
+
+struct PreparedRetryRecoveryInput {
+    population_path: std::path::PathBuf,
+    request_path: std::path::PathBuf,
+    loop_path: std::path::PathBuf,
+    point: GeoPointPopulationPoint,
+}
+
+fn prepare_first_retry_recovery_input(temp: &Path) -> PreparedRetryRecoveryInput {
+    let mut population = recovery_fixture().population;
+    let address_rows = rewrite_population_address_hashes(&mut population);
+    let population_path = temp.join("prepared-population.json");
+    let address_rows_path = temp.join("prepared-address-rows.json");
+    let out_dir = temp.join("prepared");
+    write_json(&population_path, &population);
+    write_json(&address_rows_path, &address_rows);
+    assert_cmd::cargo::cargo_bin_cmd!("canon_geo_measurements")
+        .arg("prepare-retry-recovery")
+        .arg("--population")
+        .arg(&population_path)
+        .arg("--address-rows")
+        .arg(&address_rows_path)
+        .arg("--provider-profile")
+        .arg(provider_profile_path())
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .assert()
+        .success();
+    let point = population.points[0].clone();
+    PreparedRetryRecoveryInput {
+        population_path,
+        request_path: out_dir
+            .join("requests")
+            .join(format!("{}.request.json", point.point_id)),
+        loop_path: out_dir
+            .join("loops")
+            .join(format!("{}.loop.json", point.point_id)),
+        point,
+    }
+}
+
+fn retained_receipt_for_candidates(
+    temp: &Path,
+    request_path: &Path,
+    candidates: &[Value],
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    let response_path = temp.join("provider-response.json");
+    let rows_path = temp.join(format!("candidate-rows-{}.json", candidates.len()));
+    let receipt_path = temp.join(format!("receipt-{}.json", candidates.len()));
+    let out_dir = temp.join(format!("receipts-{}", candidates.len()));
+    fs::write(
+        &response_path,
+        format!(
+            r#"{{"provider":"fixture-geocoder","rows":{}}}"#,
+            candidates.len()
+        ),
+    )
+    .expect("write response bytes");
+    fs::write(
+        &rows_path,
+        serde_json::to_vec(candidates).expect("candidate rows serialize"),
+    )
+    .expect("write candidate rows");
+    let output = assert_cmd::cargo::cargo_bin_cmd!("canon_geo_measurements")
+        .arg("materialize-acquisition-receipt")
+        .arg("--request")
+        .arg(request_path)
+        .arg("--provider-response-bytes")
+        .arg(&response_path)
+        .arg("--candidate-rows")
+        .arg(&rows_path)
+        .arg("--out-dir")
+        .arg(&out_dir)
+        .arg("--proof-class")
+        .arg("retained")
+        .arg("--retained-receipt-id")
+        .arg(format!(
+            "retained-fixture-response:{}",
+            sha2_hex(&fs::read(&response_path).expect("response bytes"))
+        ))
+        .arg("--executor-kind")
+        .arg("local-file")
+        .arg("--executor-id")
+        .arg(CENSUS_PROVIDER_ID)
+        .arg("--executor-version")
+        .arg(CENSUS_PROVIDER_VERSION)
+        .arg("--tool-id")
+        .arg(REGEOCODE_TOOL_ID)
+        .arg("--tool-version")
+        .arg(REGEOCODE_TOOL_VERSION)
+        .arg("--executor-request-id")
+        .arg("retained-fixture-request")
+        .arg("--executor-query-id")
+        .arg("retained-fixture-query")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    fs::write(&receipt_path, output).expect("write receipt path");
+    (receipt_path, rows_path)
+}
+
+fn candidate_row(point: &GeoPointPopulationPoint, rank: u64, lon_e7: i64, lat_e7: i64) -> Value {
+    serde_json::json!({
+        "point_id": point.point_id,
+        "subject_id": point.subject_id,
+        "candidate_rank": rank,
+        "lon_e7": lon_e7,
+        "lat_e7": lat_e7,
+        "provider_id": CENSUS_PROVIDER_ID,
+        "provider_version": CENSUS_PROVIDER_VERSION,
+        "accuracy_type": "fixture_rooftop",
+        "source_attribution": "fixture retained Census geocoder rows",
+    })
 }
 
 fn rewrite_population_address_hashes(population: &mut GeoPointPopulationArtifact) -> Vec<Value> {
