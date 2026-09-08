@@ -248,6 +248,40 @@
       "f5588ba9",
       "f608ce46"
     ],
+    "live_xref_probe": {
+      "measurement_name": "bd_2gvl_sec_18_lip_xref_bridge_shape",
+      "loan_keys_checked": 18,
+      "lip_property_keys": 61,
+      "nyc_lip_property_keys": 48,
+      "non_nyc_or_null_property_rows": 13,
+      "all_lip_property_keys_have_xref": true,
+      "xref_property_keys": 61,
+      "xref_sources": [
+        {
+          "source": "abs_ee",
+          "subjects": 18,
+          "observations": 1964,
+          "property_keys": 61
+        },
+        {
+          "source": "annex",
+          "subjects": 8,
+          "observations": 43,
+          "property_keys": 25
+        }
+      ],
+      "annex_xref_subjects": [
+        "03ff08e7",
+        "13ff4751",
+        "56f3e4fa",
+        "8fd55140",
+        "c1803335",
+        "d2cfbf35",
+        "f5588ba9",
+        "f608ce46"
+      ],
+      "bridge_limit": "The landed SEC/xref chain bridges schedule observations to canonical CMBS property_key values, not to tax-lot parcel ids. That is property-grain completeness evidence; tax-lot all-of requires a separate total row-to-parcel bridge."
+    },
     "bridge_test_used": "For the 18 retained subjects where bridge_loan source-record count equals truth-lot count, compare the retained rho.address.pad.membership union to the truth set as an evaluation check. The PAD bridge is independent of ACRIS; the truth set is used only to score whether the bridge was total and exact.",
     "interpretation": "The independent SEC schedule is complete at property-row grain, but current retained artifacts only demonstrate a safe tax-lot all-of second instance for 6 of 70 subjects. The 18 count-equal subjects are an upper bound, not a ready denominator; reaching all 18 requires a row-level, source-pinned, total property-row-to-parcel bridge."
   },

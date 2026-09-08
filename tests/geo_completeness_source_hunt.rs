@@ -375,6 +375,41 @@ fn completeness_source_hunt_keeps_sec_schedule_as_bounded_second_instance() {
             .expect("interpretation")
             .contains("upper bound, not a ready denominator")
     );
+
+    let live_probe = &thread["live_xref_probe"];
+    assert_eq!(
+        live_probe["measurement_name"],
+        "bd_2gvl_sec_18_lip_xref_bridge_shape"
+    );
+    assert_eq!(live_probe["loan_keys_checked"], 18);
+    assert_eq!(live_probe["lip_property_keys"], 61);
+    assert_eq!(live_probe["nyc_lip_property_keys"], 48);
+    assert_eq!(live_probe["non_nyc_or_null_property_rows"], 13);
+    assert_eq!(live_probe["all_lip_property_keys_have_xref"], true);
+    assert_eq!(live_probe["xref_property_keys"], 61);
+    assert_eq!(
+        string_set(&live_probe["annex_xref_subjects"]),
+        [
+            "03ff08e7", "13ff4751", "56f3e4fa", "8fd55140", "c1803335", "d2cfbf35", "f5588ba9",
+            "f608ce46",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+    );
+    assert!(
+        live_probe["bridge_limit"]
+            .as_str()
+            .expect("bridge limit")
+            .contains("not to tax-lot parcel ids")
+    );
+
+    let xref_sources = xref_sources_by_name(live_probe);
+    assert_eq!(xref_sources.keys().count(), 2);
+    assert_eq!(xref_sources["abs_ee"]["subjects"], 18);
+    assert_eq!(xref_sources["abs_ee"]["property_keys"], 61);
+    assert_eq!(xref_sources["annex"]["subjects"], 8);
+    assert_eq!(xref_sources["annex"]["property_keys"], 25);
 }
 
 fn read_json(path: &str) -> Value {
@@ -426,6 +461,20 @@ fn retained_cases_by_subject(
         }
     }
     cases
+}
+
+fn xref_sources_by_name(live_probe: &Value) -> BTreeMap<String, Value> {
+    live_probe["xref_sources"]
+        .as_array()
+        .expect("xref sources")
+        .iter()
+        .map(|source| {
+            (
+                source["source"].as_str().expect("source name").to_string(),
+                source.clone(),
+            )
+        })
+        .collect()
 }
 
 fn pad_members(evidence: &Value) -> BTreeSet<String> {
