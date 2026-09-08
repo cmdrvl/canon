@@ -1429,7 +1429,7 @@
     {
       "name": "geo ledger",
       "usage": "canon geo ledger <SUBCOMMAND>",
-      "description": "Aggregate primary Geo ledger command for physical collateral ledger artifact operations; use build to construct a ledger from bound seed, solve, and evidence artifacts, or validate to replay canonical ledger bytes",
+      "description": "Aggregate primary Geo ledger command for physical collateral artifact operations; use build to construct a ledger from bound seed, solve, and evidence artifacts, card to export visual evidence-card data from stored artifacts, exposure for event joins, or validate to replay canonical ledger bytes",
       "surface": "primary",
       "output_mode": "mixed",
       "output_schema": "canon_geo_collateral_ledger.v0",
@@ -1485,6 +1485,7 @@
       "aggregate": true,
       "leaves": [
         "geo ledger build",
+        "geo ledger card",
         "geo ledger exposure",
         "geo ledger validate"
       ],
@@ -1564,6 +1565,109 @@
           "required": false,
           "repeatable": true,
           "description": "Bound evidence artifact as ARTIFACT_ID=EVIDENCE.json"
+        }
+      ]
+    },
+    {
+      "name": "geo ledger card",
+      "usage": "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> [--composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json>] [--explanation <EXPLANATION.json>]",
+      "description": "Build an offline visual evidence-card data artifact from stored composition, evidence, retained geometry, explanation, and one pinned ortho tile artifact",
+      "output_mode": "json",
+      "output_schema": "canon_geo_evidence_card.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads only explicit stored JSON artifacts and retained tile/geometry pins, validates the digest chain, and emits canonical evidence-card bytes on stdout; performs no catalog, project, registry, work-dir, image rendering, or network reads",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "geo read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "canonical canon_geo_evidence_card.v0 artifact emitted",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / stored artifact, digest-chain, geometry, pin, coverage, or representation contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> --composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json> [--explanation <EXPLANATION.json>]",
+      "recovery": {
+        "next_command": "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> --composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json> [--explanation <EXPLANATION.json>]",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "subject-id",
+          "flag": "--subject-id",
+          "type": "string",
+          "required": true,
+          "description": "Subject identifier to copy into the evidence-card artifact"
+        },
+        {
+          "name": "context",
+          "flag": "--context",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding a GeoEvidenceCardBuildContext"
+        },
+        {
+          "name": "ortho-pin",
+          "flag": "--ortho-pin",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding one canon_geo_image_tile_pin.v0 row artifact"
+        },
+        {
+          "name": "composition",
+          "flag": "--composition",
+          "type": "file_path",
+          "required": false,
+          "description": "JSON file holding a canon_geo_composition.v0 artifact; omitted only for reach-none cards"
+        },
+        {
+          "name": "evidence",
+          "flag": "--evidence",
+          "type": "file_path",
+          "required": false,
+          "description": "JSON file holding a canon_geo_evidence_compilation.v0 artifact; omitted only for reach-none cards"
+        },
+        {
+          "name": "geometry",
+          "flag": "--geometry",
+          "type": "file_path",
+          "required": false,
+          "description": "JSON object mapping candidate ids to canon_geo_geometry_value.v0 values; omitted only for reach-none cards"
+        },
+        {
+          "name": "explanation",
+          "flag": "--explanation",
+          "type": "file_path",
+          "required": false,
+          "description": "Optional canon_geo_explanation.v0 artifact chained to a conflict or not-conflict composition"
         }
       ]
     },

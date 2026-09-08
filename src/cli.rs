@@ -438,6 +438,8 @@ pub struct GeoLedgerCli {
 pub enum GeoLedgerSubcommand {
     /// Build a physical collateral ledger from seed rows and bound solve/evidence artifacts
     Build(GeoLedgerBuildCli),
+    /// Build an offline visual evidence-card data artifact from stored Geo artifacts
+    Card(GeoLedgerCardCli),
     /// Join a pinned wind-radii advisory to exact ledger building geometry
     Exposure(GeoLedgerExposureCli),
     /// Validate a physical collateral ledger artifact and emit canonical bytes
@@ -462,6 +464,31 @@ pub struct GeoLedgerValidateCli {
     /// JSON file holding a canon_geo_collateral_ledger.v0 artifact
     #[arg(long)]
     pub ledger: PathBuf,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoLedgerCardCli {
+    /// Subject identifier to copy into the evidence-card artifact
+    #[arg(long = "subject-id")]
+    pub subject_id: String,
+    /// JSON file holding a GeoEvidenceCardBuildContext
+    #[arg(long)]
+    pub context: PathBuf,
+    /// JSON file holding one canon_geo_image_tile_pin.v0 row artifact
+    #[arg(long = "ortho-pin")]
+    pub ortho_pin: PathBuf,
+    /// JSON file holding a canon_geo_composition.v0 artifact; omitted only for reach-none cards
+    #[arg(long)]
+    pub composition: Option<PathBuf>,
+    /// JSON file holding a canon_geo_evidence_compilation.v0 artifact; omitted only for reach-none cards
+    #[arg(long)]
+    pub evidence: Option<PathBuf>,
+    /// JSON object mapping candidate ids to canon_geo_geometry_value.v0 values; omitted only for reach-none cards
+    #[arg(long)]
+    pub geometry: Option<PathBuf>,
+    /// Optional canon_geo_explanation.v0 artifact chained to a conflict or not-conflict composition
+    #[arg(long)]
+    pub explanation: Option<PathBuf>,
 }
 
 #[derive(Args, Debug, Clone)]

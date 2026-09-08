@@ -1573,6 +1573,12 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
             false,
         ),
         unsurfaced_command(
+            "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> [--composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json>] [--explanation <EXPLANATION.json>]",
+            CANON_GEO_EVIDENCE_CARD_VERSION,
+            true,
+            false,
+        ),
+        unsurfaced_command(
             "canon geo ledger exposure --ledger <LEDGER.json> --advisory <ADVISORY.json> --geometry <GEOMETRY.json> --archive <ARCHIVE.json>",
             CANON_GEO_EVENT_EXPOSURE_VERSION,
             true,

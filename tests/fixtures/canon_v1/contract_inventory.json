@@ -243,6 +243,21 @@
       "action": "preserve"
     },
     {
+      "id": "canon geo ledger card",
+      "family": "geo",
+      "clap_path": "geo ledger card",
+      "operator_name": "geo ledger card",
+      "primary_contracts": [
+        "canon_geo_composition.v0",
+        "canon_geo_evidence_compilation.v0",
+        "canon_geo_explanation.v0",
+        "canon_geo_geometry_value.v0",
+        "canon_geo_image_tile_pin.v0",
+        "canon_geo_evidence_card.v0"
+      ],
+      "action": "preserve"
+    },
+    {
       "id": "canon geo ledger exposure",
       "family": "geo",
       "clap_path": "geo ledger exposure",

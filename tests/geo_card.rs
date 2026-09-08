@@ -1,20 +1,30 @@
+use assert_cmd::Command;
 use canon::geo::{
-    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_GEOMETRY_VALUE_VERSION,
+    CANON_GEO_EVIDENCE_CARD_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
+    CANON_GEO_GEOMETRY_VALUE_VERSION, CANON_GEO_IMAGE_TILE_PIN_VERSION,
     GeoArtifactFieldClassification, GeoArtifactFieldLicenseClass, GeoBoundingBoxMm,
     GeoCandidateReachStatus, GeoCanonicalGeometryMm, GeoCanonicalPolygonMm, GeoCanonicalRingMm,
     GeoCompositionArtifact, GeoCompositionStatus, GeoCompositionUniverse, GeoEntityLevel,
-    GeoEntityRef, GeoEvidenceCardBuildContext, GeoEvidenceCardCoverage,
+    GeoEntityRef, GeoEvidenceCard, GeoEvidenceCardBuildContext, GeoEvidenceCardCoverage,
     GeoEvidenceCardCoverageState, GeoEvidenceCardProofClass, GeoEvidenceCardSubjectRef,
     GeoEvidenceClaimRole, GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
-    GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoImageTilePin, GeoPointMm,
-    GeoQuantizationAudit, GeoRhoBasis, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind,
-    GeoSourceReleasePin, GeoTruthPlane, GeoTruthRepresentationGrain, GeoTypedGeometry,
-    GeoValidTimeInterval, build_evidence_card_with_context, build_reach_none_evidence_card,
-    canonical_evidence_card_bytes, canonical_evidence_compilation_bytes, compile_evidence,
-    minimal_core, reliability_order_from_evidence, solve_composition,
-    validate_evidence_card_artifact, verify_evidence_card_tile_replay,
+    GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoImageTilePin, GeoImageTilePinArtifact,
+    GeoPointMm, GeoQuantizationAudit, GeoRhoBasis, GeoRhoContract, GeoRhoObservation,
+    GeoRhoObservationKind, GeoSourceReleasePin, GeoTruthPlane, GeoTruthRepresentationGrain,
+    GeoTypedGeometry, GeoValidTimeInterval, build_evidence_card_with_context,
+    build_reach_none_evidence_card, canonical_evidence_card_bytes,
+    canonical_evidence_compilation_bytes, compile_evidence, minimal_core,
+    reliability_order_from_evidence, solve_composition, validate_evidence_card_artifact,
+    verify_evidence_card_tile_replay,
 };
-use std::collections::BTreeMap;
+use serde::Serialize;
+use serde_json::Value;
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
+use tempfile::tempdir;
 
 fn hex(bytes: &[u8]) -> String {
     blake3::hash(bytes).to_hex().to_string()
@@ -219,6 +229,28 @@ fn tile_pin(tile_bytes: &[u8]) -> GeoImageTilePin {
         license_text_blake3: hex(b"fixture license"),
         source_dataset: "fixture.ortho.2024".to_string(),
     }
+}
+
+fn tile_pin_artifact(pin: GeoImageTilePin) -> GeoImageTilePinArtifact {
+    GeoImageTilePinArtifact {
+        version: CANON_GEO_IMAGE_TILE_PIN_VERSION.to_string(),
+        source_profile_id: pin.source_dataset.clone(),
+        rows: vec![pin],
+    }
+}
+
+fn write_json<T: Serialize>(dir: &Path, name: &str, value: &T) -> PathBuf {
+    let path = dir.join(name);
+    fs::write(
+        &path,
+        serde_json::to_vec(value).expect("fixture serializes"),
+    )
+    .expect("fixture writes");
+    path
+}
+
+fn canon_command() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_canon"))
 }
 
 fn source_pin(id: &str) -> GeoSourceReleasePin {
@@ -543,4 +575,178 @@ fn evidence_card_module_has_no_decoder_or_fetch_dependency_literals() {
             "card module must stay data-only; found {forbidden}"
         );
     }
+}
+
+#[test]
+fn evidence_card_cli_exports_reached_card_from_stored_artifact_refs() {
+    let temp = tempdir().expect("tempdir");
+    let (evidence, composition) = resolved_evidence_and_composition();
+    let context = card_context();
+    let tile_bytes = b"cli retained fixture ortho tile bytes";
+    let pin_artifact = tile_pin_artifact(tile_pin(tile_bytes));
+    let geometry = geometry_by_id(&[
+        "bbl.1012920001",
+        "bbl.1012920026",
+        "bbl.1012930001",
+        "bbl.1012930026",
+    ]);
+    let context_path = write_json(temp.path(), "context.json", &context);
+    let pin_path = write_json(temp.path(), "ortho-pin.json", &pin_artifact);
+    let composition_path = write_json(temp.path(), "solve.json", &composition);
+    let evidence_path = write_json(temp.path(), "evidence.json", &evidence);
+    let geometry_path = write_json(temp.path(), "geometry.json", &geometry);
+
+    let assert = canon_command()
+        .args(["geo", "ledger", "card"])
+        .arg("--subject-id")
+        .arg("subject.237_park.cli")
+        .arg("--context")
+        .arg(&context_path)
+        .arg("--ortho-pin")
+        .arg(&pin_path)
+        .arg("--composition")
+        .arg(&composition_path)
+        .arg("--evidence")
+        .arg(&evidence_path)
+        .arg("--geometry")
+        .arg(&geometry_path)
+        .assert()
+        .success();
+    assert!(assert.get_output().stderr.is_empty());
+    let card: GeoEvidenceCard =
+        serde_json::from_slice(&assert.get_output().stdout).expect("card JSON parses");
+
+    validate_evidence_card_artifact(&card).expect("CLI card validates");
+    assert_eq!(card.version, CANON_GEO_EVIDENCE_CARD_VERSION);
+    assert_eq!(card.subject_id, "subject.237_park.cli");
+    assert_eq!(card.candidate_parcels.len(), 4);
+    assert_eq!(
+        card.forced.parcels,
+        vec!["bbl.1012920001".to_string(), "bbl.1012920026".to_string()]
+    );
+    assert!(
+        card.candidate_parcels
+            .iter()
+            .any(|candidate| candidate.id == "bbl.1012930001" && candidate.in_halo),
+        "public card command must carry retained losing halo candidates"
+    );
+    assert_eq!(
+        card.evidence_blake3,
+        format!(
+            "blake3:{}",
+            composition
+                .evidence_compilation
+                .as_ref()
+                .expect("composition binds evidence")
+                .blake3
+        )
+    );
+    assert!(card.explanation_blake3.is_none());
+}
+
+#[test]
+fn evidence_card_cli_exports_reach_none_coverage_card_without_fabricated_artifacts() {
+    let temp = tempdir().expect("tempdir");
+    let mut context = card_context();
+    context.reach = GeoCandidateReachStatus::None;
+    context.reach_none_reason = Some("client_layer_does_not_cover_tile".to_string());
+    context.coverage = GeoEvidenceCardCoverage {
+        state: GeoEvidenceCardCoverageState::Absent,
+        reason: Some("client_layer_does_not_cover_tile".to_string()),
+    };
+    context.halo_members.clear();
+    let context_path = write_json(temp.path(), "context.json", &context);
+    let pin_path = write_json(
+        temp.path(),
+        "ortho-pin.json",
+        &tile_pin_artifact(tile_pin(b"cli partial coverage tile bytes")),
+    );
+
+    let assert = canon_command()
+        .args(["geo", "ledger", "card"])
+        .arg("--subject-id")
+        .arg("subject.byop.partial_coverage.cli")
+        .arg("--context")
+        .arg(&context_path)
+        .arg("--ortho-pin")
+        .arg(&pin_path)
+        .assert()
+        .success();
+    assert!(assert.get_output().stderr.is_empty());
+    let card: GeoEvidenceCard =
+        serde_json::from_slice(&assert.get_output().stdout).expect("card JSON parses");
+
+    validate_evidence_card_artifact(&card).expect("reach-none CLI card validates");
+    assert_eq!(card.reach, GeoCandidateReachStatus::None);
+    assert_eq!(
+        card.reach_none_reason.as_deref(),
+        Some("client_layer_does_not_cover_tile")
+    );
+    assert_eq!(card.coverage.state, GeoEvidenceCardCoverageState::Absent);
+    assert!(card.candidate_parcels.is_empty());
+    assert!(card.evidence_admissions.is_empty());
+    assert!(card.composition_blake3.is_empty());
+}
+
+#[test]
+fn evidence_card_cli_refuses_mismatched_stored_artifact_chain_before_card_output() {
+    let temp = tempdir().expect("tempdir");
+    let (evidence, mut composition) = resolved_evidence_and_composition();
+    composition
+        .evidence_compilation
+        .as_mut()
+        .expect("composition binds evidence")
+        .blake3 = hex(b"wrong evidence");
+    let context_path = write_json(temp.path(), "context.json", &card_context());
+    let pin_path = write_json(
+        temp.path(),
+        "ortho-pin.json",
+        &tile_pin_artifact(tile_pin(b"cli chain mismatch tile bytes")),
+    );
+    let composition_path = write_json(temp.path(), "solve.json", &composition);
+    let evidence_path = write_json(temp.path(), "evidence.json", &evidence);
+    let geometry_path = write_json(
+        temp.path(),
+        "geometry.json",
+        &geometry_by_id(&[
+            "bbl.1012920001",
+            "bbl.1012920026",
+            "bbl.1012930001",
+            "bbl.1012930026",
+        ]),
+    );
+
+    let assert = canon_command()
+        .args(["geo", "ledger", "card"])
+        .arg("--subject-id")
+        .arg("subject.237_park.cli")
+        .arg("--context")
+        .arg(&context_path)
+        .arg("--ortho-pin")
+        .arg(&pin_path)
+        .arg("--composition")
+        .arg(&composition_path)
+        .arg("--evidence")
+        .arg(&evidence_path)
+        .arg("--geometry")
+        .arg(&geometry_path)
+        .assert()
+        .failure();
+    assert!(assert.get_output().stderr.is_empty());
+    let output: Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("refusal JSON parses");
+    assert_eq!(output["outcome"], "REFUSAL");
+    assert_eq!(output["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(
+        output["refusal"]["detail"]["geo_card_error_code"],
+        "card_artifact_mismatch"
+    );
+    assert_eq!(
+        output["refusal"]["detail"]["detail"]["field"],
+        "evidence_compilation.blake3"
+    );
+    assert_eq!(
+        output["refusal"]["next_command"],
+        "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> --composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json> [--explanation <EXPLANATION.json>]"
+    );
 }

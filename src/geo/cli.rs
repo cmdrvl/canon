@@ -11,10 +11,11 @@ use crate::{
     CanonOutput, Refusal, RefusalCode,
     cli::{
         GeoCapabilitiesCli, GeoCapabilitiesEmitMode, GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli,
-        GeoInspectCli, GeoLedgerBuildCli, GeoLedgerCli, GeoLedgerExposureCli, GeoLedgerSubcommand,
-        GeoLedgerValidateCli, GeoLinkSourcesCli, GeoMaterializeAddressEvidenceCli,
-        GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli, GeoMaterializeH7PipBlockBatchCli,
-        GeoMaterializeH7PopulationCli, GeoMaterializeH7StagingBatchCli, GeoMaterializeHomeCellsCli,
+        GeoInspectCli, GeoLedgerBuildCli, GeoLedgerCardCli, GeoLedgerCli, GeoLedgerExposureCli,
+        GeoLedgerSubcommand, GeoLedgerValidateCli, GeoLinkSourcesCli,
+        GeoMaterializeAddressEvidenceCli, GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli,
+        GeoMaterializeH7PipBlockBatchCli, GeoMaterializeH7PopulationCli,
+        GeoMaterializeH7StagingBatchCli, GeoMaterializeHomeCellsCli,
         GeoMaterializeWarehouseGeometryCli, GeoPlanCli, GeoReconcileTilesCli,
         GeoReplanFromAcquisitionCli, GeoRunCli, GeoSolveCli, GeoStackEvidenceCli, GeoSubcommand,
         GeoTileWorkCli, RegistryEmitMode,
@@ -38,10 +39,15 @@ use super::{
         GeoAddressParcelEvidenceRequest, build_address_parcel_evidence,
         canonical_address_parcel_evidence_bundle_bytes,
     },
+    card::{
+        GeoCardError, GeoCardErrorCode, GeoEvidenceCardBuildContext,
+        build_evidence_card_with_context, build_reach_none_evidence_card,
+        canonical_evidence_card_bytes,
+    },
     composition::{
-        CANON_GEO_COMPOSITION_PROFILE_VERSION, CANON_GEO_COMPOSITION_VERSION, GeoCompositionError,
-        GeoCompositionProfile, GeoCompositionRequest, GeoEvidenceCompilationReference,
-        canonical_composition_bytes, solve_composition,
+        CANON_GEO_COMPOSITION_PROFILE_VERSION, CANON_GEO_COMPOSITION_VERSION,
+        GeoCompositionArtifact, GeoCompositionError, GeoCompositionProfile, GeoCompositionRequest,
+        GeoEvidenceCompilationReference, canonical_composition_bytes, solve_composition,
     },
     control::{
         CANON_GEO_CAPABILITIES_VERSION, CANON_GEO_QUESTION_VERSION,
@@ -53,7 +59,7 @@ use super::{
     evaluation::{
         CANON_GEO_DEED_TRUTH_VERSION, CANON_GEO_E4_GATE_ASSESSMENT_VERSION,
         CANON_GEO_E4_RESCORE_COMPARISON_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
-        GeoDeedTruthArtifact, GeoE4GateAssessment, GeoE4GateProofSource,
+        GeoCandidateReachStatus, GeoDeedTruthArtifact, GeoE4GateAssessment, GeoE4GateProofSource,
         GeoPopulationCaseArtifacts, GeoPopulationError, GeoPopulationEvaluationRequest,
         assess_e4_gate, bind_deed_truth_to_population, canonical_e4_gate_assessment_bytes,
         canonical_e4_rescore_comparison_bytes, canonical_population_evaluation_bytes,
@@ -72,17 +78,18 @@ use super::{
         CANON_GEO_CLIENT_TILE_SOURCE_VERSION, GEO_CLIENT_TILE_INGEST_STAGE_COMMAND,
         GEO_CLIENT_TILE_SOURCE_BINDING_ID,
     },
+    explain::CANON_GEO_EXPLANATION_VERSION,
     exposure::{
         GeoAdvisoryArchive, GeoAdvisoryPin, GeoExposureError, GeoExposureGeometryInput,
         canonical_event_exposure_bytes, join_exposure_from_geometry_input,
     },
     geometry_value::{
         CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
-        CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_VERSION,
-        GeoCanonicalPolygonMm, GeoGeometryError, GeoGeometryTileRequest,
-        GeoWarehouseGeometryRowsRequest, canonical_geometry_tile_bytes,
-        canonical_warehouse_geometry_bytes, materialize_geometry_tile,
-        materialize_warehouse_geometry,
+        CANON_GEO_GEOMETRY_VALUE_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION,
+        CANON_GEO_WAREHOUSE_GEOMETRY_VERSION, GeoCanonicalPolygonMm, GeoGeometryError,
+        GeoGeometryTileRequest, GeoTypedGeometry, GeoWarehouseGeometryRowsRequest,
+        canonical_geometry_tile_bytes, canonical_warehouse_geometry_bytes,
+        materialize_geometry_tile, materialize_warehouse_geometry,
     },
     inspect::{
         GeoInspectError, GeoInspectOptions, canonical_inspection_bytes, inspect_with_compare,
@@ -107,6 +114,10 @@ use super::{
     multisource::{
         CANON_GEO_MULTISOURCE_REQUEST_VERSION, GeoMultisourceRequest,
         canonical_multisource_artifact_bytes, materialize_geo_multisource,
+    },
+    observer::{
+        CANON_GEO_IMAGE_TILE_PIN_VERSION, GeoImageTilePin, GeoImageTilePinArtifact,
+        validate_image_tile_pin_artifact,
     },
     plan::{
         CANON_GEO_PLAN_VERSION, GeoPlan, GeoPlanError, GeoPlanReplanRequest, GeoPlanRequest,
@@ -150,6 +161,7 @@ const GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND: &str = "canon geo replan-from-ac
 const GEO_INSPECT_NEXT_COMMAND: &str =
     "canon geo inspect --run <DIR> [--component <ID>] [--compare <OTHER_RUN>] [--recommend-next]";
 const GEO_LEDGER_BUILD_NEXT_COMMAND: &str = "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>";
+const GEO_LEDGER_CARD_NEXT_COMMAND: &str = "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> --composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json> [--explanation <EXPLANATION.json>]";
 const GEO_LEDGER_VALIDATE_NEXT_COMMAND: &str = "canon geo ledger validate --ledger <LEDGER.json>";
 const GEO_LEDGER_EXPOSURE_NEXT_COMMAND: &str = "canon geo ledger exposure --ledger <LEDGER.json> --advisory <ADVISORY.json> --geometry <GEOMETRY.json> --archive <ARCHIVE.json>";
 
@@ -497,6 +509,7 @@ fn run_replan_from_acquisition(args: &GeoReplanFromAcquisitionCli) -> Result<u8,
 fn run_ledger(args: &GeoLedgerCli) -> Result<u8, Box<dyn Error>> {
     match &args.command {
         Some(GeoLedgerSubcommand::Build(args)) => run_ledger_build(args),
+        Some(GeoLedgerSubcommand::Card(args)) => run_ledger_card(args),
         Some(GeoLedgerSubcommand::Exposure(args)) => run_ledger_exposure(args),
         Some(GeoLedgerSubcommand::Validate(args)) => run_ledger_validate(args),
         None => emit_refusal(
@@ -504,7 +517,7 @@ fn run_ledger(args: &GeoLedgerCli) -> Result<u8, Box<dyn Error>> {
             "Geo ledger requires a subcommand",
             json!({
                 "command": "canon geo ledger",
-                "subcommands": ["build", "exposure", "validate"],
+                "subcommands": ["build", "card", "exposure", "validate"],
                 "writes_performed": false,
             }),
             Some(GEO_LEDGER_BUILD_NEXT_COMMAND.to_string()),
@@ -547,6 +560,111 @@ fn run_ledger_build(args: &GeoLedgerBuildCli) -> Result<u8, Box<dyn Error>> {
     match canonical_collateral_ledger_bytes(&ledger) {
         Ok(bytes) => write_canonical(&bytes),
         Err(error) => emit_ledger_error(error, GEO_LEDGER_BUILD_NEXT_COMMAND),
+    }
+}
+
+fn run_ledger_card(args: &GeoLedgerCardCli) -> Result<u8, Box<dyn Error>> {
+    let context: GeoEvidenceCardBuildContext = match read_request(
+        &args.context,
+        "context",
+        "GeoEvidenceCardBuildContext",
+        GEO_LEDGER_CARD_NEXT_COMMAND,
+    ) {
+        Ok(context) => context,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let ortho = match read_card_ortho_pin(&args.ortho_pin) {
+        Ok(pin) => pin,
+        Err(exit_code) => return Ok(exit_code),
+    };
+
+    let card = if context.reach == GeoCandidateReachStatus::None {
+        if args.composition.is_some()
+            || args.evidence.is_some()
+            || args.geometry.is_some()
+            || args.explanation.is_some()
+        {
+            return emit_card_error(GeoCardError {
+                code: GeoCardErrorCode::InvalidInput,
+                message: "Geo ledger card reach-none inputs must not fabricate solve, evidence, geometry, or explanation artifacts".to_string(),
+                detail: BTreeMap::from([(
+                    "field".to_string(),
+                    "composition/evidence/geometry/explanation".to_string(),
+                )]),
+            });
+        }
+        match build_reach_none_evidence_card(&args.subject_id, &ortho, context) {
+            Ok(card) => card,
+            Err(error) => return emit_card_error(error),
+        }
+    } else {
+        let composition_path = match required_card_path(&args.composition, "composition") {
+            Ok(path) => path,
+            Err(exit_code) => return Ok(exit_code),
+        };
+        let evidence_path = match required_card_path(&args.evidence, "evidence") {
+            Ok(path) => path,
+            Err(exit_code) => return Ok(exit_code),
+        };
+        let geometry_path = match required_card_path(&args.geometry, "geometry") {
+            Ok(path) => path,
+            Err(exit_code) => return Ok(exit_code),
+        };
+        let composition: GeoCompositionArtifact = match read_request(
+            composition_path,
+            "composition",
+            CANON_GEO_COMPOSITION_VERSION,
+            GEO_LEDGER_CARD_NEXT_COMMAND,
+        ) {
+            Ok(composition) => composition,
+            Err(exit_code) => return Ok(exit_code),
+        };
+        let evidence: GeoEvidenceCompilationArtifact = match read_request(
+            evidence_path,
+            "evidence",
+            CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+            GEO_LEDGER_CARD_NEXT_COMMAND,
+        ) {
+            Ok(evidence) => evidence,
+            Err(exit_code) => return Ok(exit_code),
+        };
+        let geometry: BTreeMap<String, GeoTypedGeometry> = match read_request(
+            geometry_path,
+            "geometry",
+            CANON_GEO_GEOMETRY_VALUE_VERSION,
+            GEO_LEDGER_CARD_NEXT_COMMAND,
+        ) {
+            Ok(geometry) => geometry,
+            Err(exit_code) => return Ok(exit_code),
+        };
+        let explanation = match &args.explanation {
+            Some(path) => match read_request(
+                path,
+                "explanation",
+                CANON_GEO_EXPLANATION_VERSION,
+                GEO_LEDGER_CARD_NEXT_COMMAND,
+            ) {
+                Ok(explanation) => Some(explanation),
+                Err(exit_code) => return Ok(exit_code),
+            },
+            None => None,
+        };
+        match build_evidence_card_with_context(
+            &args.subject_id,
+            &composition,
+            &evidence,
+            explanation.as_ref(),
+            &ortho,
+            &geometry,
+            context,
+        ) {
+            Ok(card) => card,
+            Err(error) => return emit_card_error(error),
+        }
+    };
+    match canonical_evidence_card_bytes(&card) {
+        Ok(bytes) => write_canonical(&bytes),
+        Err(error) => emit_card_error(error),
     }
 }
 
@@ -658,6 +776,61 @@ fn read_ledger_artifact_map<T: DeserializeOwned>(
         artifacts.insert(artifact_id.to_string(), artifact);
     }
     Ok(artifacts)
+}
+
+fn required_card_path<'a>(path: &'a Option<PathBuf>, flag: &'static str) -> Result<&'a Path, u8> {
+    path.as_deref().ok_or_else(|| {
+        emit_refusal(
+            RefusalCode::EParse,
+            format!("Geo ledger card requires --{flag} unless context.reach is none"),
+            json!({
+                "command": "canon geo ledger card",
+                "flag": format!("--{flag}"),
+                "next_step": "supply the stored artifact path or use a reach-none context without solve/evidence geometry",
+            }),
+            Some(GEO_LEDGER_CARD_NEXT_COMMAND.to_string()),
+        )
+        .unwrap_or(2)
+    })
+}
+
+fn read_card_ortho_pin(path: &Path) -> Result<GeoImageTilePin, u8> {
+    let artifact: GeoImageTilePinArtifact = read_request(
+        path,
+        "ortho-pin",
+        CANON_GEO_IMAGE_TILE_PIN_VERSION,
+        GEO_LEDGER_CARD_NEXT_COMMAND,
+    )?;
+    if let Err(error) = validate_image_tile_pin_artifact(&artifact) {
+        return Err(emit_refusal(
+            RefusalCode::EEntityArtifactContract,
+            "Geo ledger card ortho pin artifact could not be validated",
+            json!({
+                "geo_observer_error_code": code_name(&error.code),
+                "message": error.message,
+                "detail": error.detail,
+            }),
+            Some(GEO_LEDGER_CARD_NEXT_COMMAND.to_string()),
+        )
+        .unwrap_or(2));
+    }
+    match artifact.rows.as_slice() {
+        [pin] => Ok(pin.clone()),
+        rows => Err(emit_refusal(
+            RefusalCode::EEntityArtifactContract,
+            "Geo ledger card requires exactly one ortho pin row",
+            json!({
+                "geo_card_error_code": "invalid_input",
+                "message": "Geo evidence card input has ambiguous ortho tile pins",
+                "detail": {
+                    "field": "ortho_pin.rows",
+                    "row_count": rows.len().to_string(),
+                },
+            }),
+            Some(GEO_LEDGER_CARD_NEXT_COMMAND.to_string()),
+        )
+        .unwrap_or(2)),
+    }
 }
 
 #[derive(Deserialize)]
@@ -2567,6 +2740,19 @@ fn emit_ledger_error(error: GeoLedgerError, next_command: &str) -> Result<u8, Bo
             "detail": error.detail,
         }),
         Some(next_command.to_string()),
+    )
+}
+
+fn emit_card_error(error: GeoCardError) -> Result<u8, Box<dyn Error>> {
+    emit_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Geo evidence card artifact could not be built or validated",
+        json!({
+            "geo_card_error_code": code_name(&error.code),
+            "message": error.message,
+            "detail": error.detail,
+        }),
+        Some(GEO_LEDGER_CARD_NEXT_COMMAND.to_string()),
     )
 }
 
