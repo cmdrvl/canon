@@ -9,7 +9,8 @@
 -- execution. The build and source release below are immutable measurement
 -- inputs. A later run is a new measurement, never an in-place substitution.
 --
--- Fresh cmdrvl-data MCP result on 2026-09-01 (success envelope query_id null):
+-- Fresh cmdrvl-data MCP result on 2026-09-08 (measurement
+-- bd-1wmw_franklin_parcel_candidate_reach_current_build):
 -- * 494,704 landed parcel rows / 494,043 geometrically admitted rows;
 -- * 151 property subjects / 202 associated loans / 0 coordinate conflicts;
 -- * 147 reached, 4 unreached; 146 unique PIP, 1 two-parcel PIP;
@@ -20,7 +21,7 @@
 WITH
 params AS (
   SELECT
-    'ce3953ac-c2d4-4b48-bf02-29f0cf341389'::TEXT AS bridge_build_id,
+    '80d0ea39-a5aa-4c27-a8d7-f662a4507257'::TEXT AS bridge_build_id,
     '39049'::TEXT AS county_fips,
     'hub-de09f99cce0bcae7142d6d2e26582fd3-25'::TEXT AS parcel_release,
     '2026-09-01'::DATE AS parcel_release_dt,
@@ -206,15 +207,13 @@ SELECT OBJECT_CONSTRUCT_KEEP_NULL(
   'min_containing_parcels', stats.min_containing_parcels,
   'max_containing_parcels', stats.max_containing_parcels,
   'pip_pairs', stats.pip_pairs,
-  'miss_diagnostic', OBJECT_CONSTRUCT_KEEP_NULL(
-    'diagnosed_misses', miss_stats.diagnosed_misses,
-    'invalid_geometry_rescues', miss_stats.invalid_geometry_rescues,
-    'min_nearest_distance_m', miss_stats.min_nearest_distance_m,
-    'max_nearest_distance_m', miss_stats.max_nearest_distance_m,
-    'within_10m', miss_stats.within_10m,
-    'within_100m', miss_stats.within_100m,
-    'over_500m', miss_stats.over_500m
-  ),
+  'diagnosed_misses', miss_stats.diagnosed_misses,
+  'invalid_geometry_rescues', miss_stats.invalid_geometry_rescues,
+  'min_nearest_distance_m', ROUND(miss_stats.min_nearest_distance_m, 3),
+  'max_nearest_distance_m', ROUND(miss_stats.max_nearest_distance_m, 3),
+  'within_10m', miss_stats.within_10m,
+  'within_100m', miss_stats.within_100m,
+  'over_500m', miss_stats.over_500m,
   'guard_status', IFF(
     stats.raw_subject_properties > 0
     AND stats.conflicting_coordinate_properties = 0

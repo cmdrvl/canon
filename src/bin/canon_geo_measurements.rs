@@ -1,23 +1,23 @@
 #![forbid(unsafe_code)]
 
 use canon::geo::{
-    canonical_deed_truth_bytes, canonical_geo_acquisition_request_bytes,
-    canonical_h7_population_bytes, canonical_retry_recovery_bytes, derive_deed_truth_from_index,
-    geo_acquisition_request_semantic_hash, materialize_h7_pip_block_population_batch,
-    materialize_h7_population_rows, materialize_h7_staging_source_record_bytes_batch,
-    measure_recovery, validate_geo_acquisition_receipt, validate_geo_acquisition_request,
-    GeoAcquisitionCounts, GeoAcquisitionDenominator, GeoAcquisitionProofClass,
-    GeoAcquisitionReceipt, GeoAcquisitionResumability, GeoAcquisitionTerminalState,
-    GeoDeedIndexRowsRequest, GeoDeedTruthLoanRef, GeoDenominatorSource, GeoDigest,
-    GeoDigestAlgorithm, GeoExecutorKind, GeoExecutorTrace, GeoH7PipBlockPopulationBatchRequest,
-    GeoH7PopulationRowsRequest, GeoH7StagingSourceRecordBytesBatchRequest, GeoLocalArtifactDigest,
-    GeoPaginationReceipt, GeoPointPopulationArtifact, GeoRetryLoopArtifact, GeoRun,
     CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
     CANON_GEO_DEED_INDEX_ROWS_VERSION, CANON_GEO_DEED_TRUTH_VERSION,
     CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
     CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
     CANON_GEO_POINT_POPULATION_VERSION, CANON_GEO_RETRY_LOOP_VERSION,
-    CANON_GEO_RETRY_RECOVERY_VERSION, CANON_GEO_RUN_VERSION,
+    CANON_GEO_RETRY_RECOVERY_VERSION, CANON_GEO_RUN_VERSION, GeoAcquisitionCounts,
+    GeoAcquisitionDenominator, GeoAcquisitionProofClass, GeoAcquisitionReceipt,
+    GeoAcquisitionResumability, GeoAcquisitionTerminalState, GeoDeedIndexRowsRequest,
+    GeoDeedTruthLoanRef, GeoDenominatorSource, GeoDigest, GeoDigestAlgorithm, GeoExecutorKind,
+    GeoExecutorTrace, GeoH7PipBlockPopulationBatchRequest, GeoH7PopulationRowsRequest,
+    GeoH7StagingSourceRecordBytesBatchRequest, GeoLocalArtifactDigest, GeoPaginationReceipt,
+    GeoPointPopulationArtifact, GeoRetryLoopArtifact, GeoRun, canonical_deed_truth_bytes,
+    canonical_geo_acquisition_request_bytes, canonical_h7_population_bytes,
+    canonical_retry_recovery_bytes, derive_deed_truth_from_index,
+    geo_acquisition_request_semantic_hash, materialize_h7_pip_block_population_batch,
+    materialize_h7_population_rows, materialize_h7_staging_source_record_bytes_batch,
+    measure_recovery, validate_geo_acquisition_receipt, validate_geo_acquisition_request,
 };
 use chrono::{DateTime, NaiveDate};
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum};
@@ -1362,12 +1362,22 @@ fn validate_measurement_claim_boundary(measurement: &ManifestMeasurement) -> Res
         measurement.limitations.join(" ")
     )
     .to_ascii_lowercase();
-    for phrase in [
-        "bounded source availability",
-        "not e5 accuracy",
-        "not parcel reach",
-        "not four independent votes",
-    ] {
+    let boundary_phrases = if boundary_text.contains("candidate-reach result") {
+        [
+            "candidate-reach result",
+            "not e5 accuracy",
+            "not precision",
+            "not four independent votes",
+        ]
+    } else {
+        [
+            "bounded source availability",
+            "not e5 accuracy",
+            "not parcel reach",
+            "not four independent votes",
+        ]
+    };
+    for phrase in boundary_phrases {
         if !boundary_text.contains(phrase) {
             return Err(AppError::new(format!(
                 "E5 measurement {} must state the {phrase} boundary",
@@ -2335,7 +2345,7 @@ fn derive_denominators(
                 denominators.insert(field.clone(), value);
             }
         }
-        "e5_franklin_deed_truth_export_v0" => {
+        "e5_franklin_county_parcel_candidate_reach_v0" | "e5_franklin_deed_truth_export_v0" => {
             let row = single_row(measurement, rows)?;
             for field in &measurement.denominator_fields {
                 denominators.insert(field.clone(), required_u64(row, field)?);

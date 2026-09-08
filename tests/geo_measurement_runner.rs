@@ -229,6 +229,9 @@ fn artifact_rows(measurement: &Value) -> Value {
         }
         "appendix_d_stratified_halo" => stratified_halo_rows(),
         "appendix_f_overture_three_source" => overture_rows(),
+        "e5_franklin_county_parcel_candidate_reach_v0" => {
+            measurement["expected_result_rows"].clone()
+        }
         "e5_franklin_county_thin_tier_readiness_v0" => measurement["expected_result_rows"].clone(),
         "e5_franklin_deed_truth_export_v0" => measurement["expected_result_rows"].clone(),
         other => panic!("unexpected measurement {other}"),
@@ -433,6 +436,27 @@ fn derive_denominators(measurement_id: &str, rows: &[Value]) -> Value {
             "total_center_observations": sum_rows(rows, "target_observations"),
             "overture_osm_lineage_observations": sum_rows_where(rows, "osm_lineage_observations", "source_name", &json!("overture_building"))
         }),
+        "e5_franklin_county_parcel_candidate_reach_v0" => single_row_denominators(
+            rows,
+            &[
+                "raw_subject_properties",
+                "raw_subject_loans",
+                "eligible_subject_properties",
+                "admitted_parcels",
+                "reached_properties",
+                "unreached_properties",
+                "unique_pip_properties",
+                "multi_pip_properties",
+                "min_blocked_candidates",
+                "max_blocked_candidates",
+                "blocked_candidate_pairs",
+                "max_containing_parcels",
+                "pip_pairs",
+                "diagnosed_misses",
+                "within_10m",
+                "within_100m",
+            ],
+        ),
         "e5_franklin_county_thin_tier_readiness_v0" => e5_denominators(rows),
         "e5_franklin_deed_truth_export_v0" => single_row_denominators(
             rows,
@@ -810,6 +834,7 @@ fn plan_is_ordered_offline_and_excludes_h7() {
             "appendix_d_stratified_halo_centers",
             "appendix_d_stratified_halo",
             "appendix_f_overture_three_source",
+            "e5_franklin_county_parcel_candidate_reach_v0",
             "e5_franklin_county_thin_tier_readiness_v0",
             "e5_franklin_deed_truth_export_v0"
         ]

@@ -122,7 +122,7 @@ cannot be inherited as a geography's source vintage. The four source counts
 are availability/provenance, never four independent votes. SQL SHA-256:
 `25ddd0d29095c583ac0478d6d228162667b8be62a15218c5acd5ef29d3326aab`.
 
-## 2026-09-01 E5 Franklin County parcel-backed successor
+## 2026-09-08 E5 Franklin County parcel-backed successor
 
 The Franklin Auditor parcel landing is now live and queryable. The pinned
 release is
@@ -133,9 +133,14 @@ plane is never used as a geometry denominator.
 
 `e5_franklin_county_parcel_candidate_reach.sql` is the file-exact successor.
 After list/describe-first discovery, it ran through cmdrvl-data with an `ok`
-guard; the MCP success envelope still omitted its Snowflake query id. Its
+guard as
+`bd-1wmw_franklin_parcel_candidate_reach_current_build`. The pinned
+`PROPERTY_MART` bridge build is
+`80d0ea39-a5aa-4c27-a8d7-f662a4507257`; the earlier
+`ce3953ac-c2d4-4b48-bf02-29f0cf341389` pin now returns zero Franklin subject
+rows in the mutable mart and is retained only as historical context. Its
 SHA-256 is
-`65215b2f53b4e2a462bca91e4470ab5b56fc96d1f80b98437fb8aa9dfa20a273`.
+`ba8e328d25105b988e469a59ea0069e7736c9fbdabf4873234d3730221067958`.
 Results:
 
 | Quantity | Result |
