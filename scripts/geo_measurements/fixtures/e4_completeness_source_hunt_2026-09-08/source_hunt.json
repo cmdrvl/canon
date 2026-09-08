@@ -1,0 +1,196 @@
+{
+  "version": "canon_geo_e4_completeness_source_hunt.v0",
+  "bead": "bd-2gvl",
+  "owner": "codex-geo-2",
+  "handoff": "SOURCE HUNT READY FOR MECHANISM",
+  "proof_class": "retained_cmdrvl_data_warehouse_source_hunt_not_live",
+  "frozen_denominator": 79,
+  "retained_population_denominator": 70,
+  "probe_denominator": 3,
+  "boundary": "Source hunt only. These findings name landed sources that can feed a typed all-of or exact-cardinality completeness relation, but they do not add candidates, do not relax rho admission, do not assert live proof, and do not allow a partial or unasserted schedule to exclude subsets.",
+  "retained_h7_coverage": {
+    "source_files": [
+      "scripts/geo_measurements/fixtures/d1_residuals/h7_population_request.json",
+      "scripts/geo_measurements/fixtures/d1_residuals/canon_geo_h7_population.v0.json"
+    ],
+    "request_subjects": 70,
+    "matched_population_subjects": 70,
+    "acris_master_present": 70,
+    "acris_legal_present": 70,
+    "acris_legal_parcel_set_equals_truth": 70,
+    "bridge_rows_present": 70,
+    "bridge_count_equals_truth_count": 18,
+    "total_truth_lots": 623,
+    "total_bridge_rows": 167
+  },
+  "source_terms": {
+    "loan_property_mart": {
+      "source_table": "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY",
+      "grain": "one row per loan_key/property_key bridge",
+      "license_terms": "Derived mart row; source licensing is carried by the underlying SEC and source pins.",
+      "attribution_text": "PROPERTY_MART loan/property bridge"
+    },
+    "acris": {
+      "source_tables": [
+        "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_MASTER",
+        "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_LEGALS",
+        "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES"
+      ],
+      "release_dt": "2026-08-10",
+      "license_terms": "NYC Open Data public dataset; Socrata metadata did not provide a license code. Use under NYC Open Data Terms of Use with source attribution to Department of Finance (DOF).",
+      "attribution_text": "Department of Finance (DOF)"
+    }
+  },
+  "source_queries": [
+    {
+      "measurement_name": "bd_2gvl_probe_loan_property_schedule_rows",
+      "source_table": "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY",
+      "predicate": "loan_key IN ('c88a233fbc140d00649dd966add4abb7', '49a1e6bbb9d36a905988b675721a3627', '913f619113b7ceec6118a4844f7e459c')",
+      "row_count": 17
+    },
+    {
+      "measurement_name": "bd_2gvl_probe_acris_document_sets",
+      "source_tables": [
+        "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_MASTER",
+        "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_LEGALS",
+        "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES"
+      ],
+      "predicate": "release_dt = '2026-08-10' AND document_id IN ('2024041000706002', '2017082200125001', '2021053100003008')",
+      "row_count": 32
+    },
+    {
+      "measurement_name": "bd_2gvl_retained_h7_source_record_coverage",
+      "source_files": [
+        "scripts/geo_measurements/fixtures/d1_residuals/h7_population_request.json",
+        "scripts/geo_measurements/fixtures/d1_residuals/canon_geo_h7_population.v0.json"
+      ],
+      "row_count": 70
+    }
+  ],
+  "candidate_sources": [
+    {
+      "id": "sec_annex_loan_property_schedule",
+      "source": "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY",
+      "exists_for_probe_subjects": 3,
+      "exists_for_retained_subjects": 70,
+      "asserts_completeness": true,
+      "completeness_grain": "loan_property_rows",
+      "assertion": "The mart bridge carries every latest property_key row attached to the loan_key and repeats LOAN_PROPERTY_COUNT on each row.",
+      "safe_as_tax_lot_all_of": false,
+      "safe_as_tax_lot_all_of_reason": "The source asserts the loan's filed property-row fan-out, not the exact tax-lot set. A parcel all-of relation must abstain unless each property row is bridged to parcel ids by a total, unambiguous, source-pinned bridge.",
+      "retained_coverage": {
+        "property_row_source_present": 70,
+        "property_row_count_equals_truth_lot_count": 18
+      }
+    },
+    {
+      "id": "acris_document_legal_rows",
+      "source": "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_LEGALS",
+      "exists_for_probe_subjects": 3,
+      "exists_for_retained_subjects": 70,
+      "asserts_completeness": true,
+      "completeness_grain": "acris_document_legal_rows",
+      "assertion": "The landed ACRIS legal-row source is document by legal property row; for a bound mortgage or mortgage-consolidation instrument, the full set of legal rows is the instrument's asserted parcel set.",
+      "safe_as_tax_lot_all_of": true,
+      "safe_as_tax_lot_all_of_preconditions": [
+        "the ACRIS document is independently bound as the collateral-defining instrument for the loan or truth-scoring plane",
+        "the relation reads all legal rows for that document_id and release_dt from the complete staged source, not a sampled retained subset",
+        "partial-lot, air-rights, subterranean-rights, and easement flags are either explicitly admitted by the profile or cause abstention"
+      ],
+      "not_independent_of_truth_when_used_on_h7_deed_truth": "The retained H7 truth plane is itself built from selected ACRIS legal rows. Using this source in E4 scoring is valid as a truth-plane completeness assertion; using it as production resolver evidence requires independent document binding to avoid truth leakage.",
+      "retained_coverage": {
+        "acris_master_present": 70,
+        "acris_legal_present": 70,
+        "acris_legal_parcel_set_equals_truth": 70
+      },
+      "warehouse_probe": {
+        "full_document_sets_equal_truth": 3,
+        "probe_subjects": 3
+      }
+    },
+    {
+      "id": "loan_to_property_row_grouping",
+      "source": "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY",
+      "exists_for_probe_subjects": 3,
+      "exists_for_retained_subjects": 70,
+      "asserts_completeness": true,
+      "completeness_grain": "loan_property_rows_grouped_by_loan_key",
+      "assertion": "Grouping by loan_key gives the complete filed property-row set at the mart bridge grain.",
+      "safe_as_tax_lot_all_of": false,
+      "safe_as_tax_lot_all_of_reason": "Grouping by loan_key preserves property-row completeness, but one property row can represent zero, one, or many tax lots. A tax-lot exact-cardinality relation needs a separate total property-row-to-parcel mapping proof."
+    }
+  ],
+  "probe_cases": [
+    {
+      "short_id": "13ff4751",
+      "case_id": "h7-subject:round-exact-lender:13ff475129dbf3a8874ae7ab326c4ca40ef96552cb935aaf8435450c014a0d6a",
+      "loan_key": "c88a233fbc140d00649dd966add4abb7",
+      "document_id": "2024041000706002",
+      "truth_lot_count": 7,
+      "truth_bbls": [
+        "3026790021",
+        "3026790022",
+        "3026790023",
+        "3026790054",
+        "3026800037",
+        "3026800043",
+        "3026800046"
+      ],
+      "loan_property_rows": 7,
+      "loan_property_count": 7,
+      "loan_county_property_count": 7,
+      "acris_doc_type": "M&CON",
+      "acris_legal_rows": 7,
+      "acris_legal_bbls_equal_truth": true,
+      "source_hunt_result": "ACRIS legal rows assert the exact seven-lot instrument set. The SEC loan-property schedule also has seven property rows, but the property-row equality is not itself a tax-lot completeness proof."
+    },
+    {
+      "short_id": "3991a574",
+      "case_id": "h7-subject:round-exact-lender:3991a5741b4f55913b9dc7a66ad63b6a5d93b39bf7b30b82618163dfbcf09625",
+      "loan_key": "49a1e6bbb9d36a905988b675721a3627",
+      "document_id": "2017082200125001",
+      "truth_lot_count": 3,
+      "truth_bbls": [
+        "1007220018",
+        "1007220020",
+        "1007220022"
+      ],
+      "loan_property_rows": 2,
+      "nyc_loan_property_rows": 1,
+      "loan_property_count": 2,
+      "loan_county_property_count": 1,
+      "acris_doc_type": "MTGE",
+      "acris_legal_rows": 3,
+      "acris_legal_bbls_equal_truth": true,
+      "source_hunt_result": "ACRIS legal rows assert the exact three-lot instrument set. The SEC schedule is a two-property loan with one NYC property row and one Texas row, so it cannot be used as direct three-lot cardinality evidence."
+    },
+    {
+      "short_id": "f5588ba9",
+      "case_id": "h7-subject:round-exact-lender:f5588ba9a55f697afea24ed55d8b34f58e1b544ad9bc5af07b6eaf49ae430ef7",
+      "loan_key": "913f619113b7ceec6118a4844f7e459c",
+      "document_id": "2021053100003008",
+      "truth_lot_count": 4,
+      "truth_bbls": [
+        "2030480050",
+        "2030480051",
+        "3014570021",
+        "3050870021"
+      ],
+      "loan_property_rows": 8,
+      "nyc_loan_property_rows": 4,
+      "loan_property_count": 8,
+      "acris_doc_type": "M&CON",
+      "acris_legal_rows": 4,
+      "acris_legal_bbls_equal_truth": true,
+      "source_hunt_result": "ACRIS legal rows assert the exact four-lot NYC instrument set. The loan-property schedule is complete at eight filed property rows across NY, MI, AZ, and IL; the NYC subset count happens to match truth but that is not a loan-grain all-of assertion."
+    }
+  ],
+  "mechanism_handoff": {
+    "recommended_positive_source": "acris_document_legal_rows",
+    "secondary_source": "sec_annex_loan_property_schedule_at_property_row_grain",
+    "typed_relation": "all_of_exact_cardinality",
+    "positive_rule": "Emit completeness only when a source asserts that the enumerated rows are the complete set at its declared grain and every member can be mapped into the selected entity grain without ambiguity.",
+    "negative_safety_rule": "If the source is a sample, primary-address field, partial extract, county subset, or has any unbridged row/member, the relation must abstain and exclude no subsets.",
+    "expected_use_in_bd_2gvl": "The generic mechanism can model ACRIS legal-row completeness for a bound document and loan-property schedule completeness at property-row grain. It must not infer tax-lot cardinality from LOAN_PROPERTY_COUNT alone."
+  }
+}
