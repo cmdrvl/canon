@@ -135,11 +135,20 @@ pub struct GeoAsOfResolutionRequest {
     pub tile_layer: GeoAsOfLayerWindow,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_layer: Option<GeoAsOfLayerWindow>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal_scope: Option<GeoTemporalCandidateUniverseScope>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lookups: Vec<GeoAsOfParcelLookup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub parcel_vintages: Vec<GeoMapPlutoParcelVintageRow>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub change_ledger: Vec<GeoBblChangeLedgerRow>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub entity_lookups: Vec<GeoTemporalEntityLookup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub entity_vintages: Vec<GeoTemporalEntityVintageRow>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lifecycle_events: Vec<GeoLifecycleTransitionRow>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -158,6 +167,79 @@ pub struct GeoAsOfLayerWindow {
 pub struct GeoAsOfParcelLookup {
     pub lookup_id: String,
     pub bbl_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTemporalCandidateUniverseScope {
+    pub mode: GeoTemporalCandidateUniverseMode,
+    pub start_utc_day: String,
+    pub end_utc_day: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoTemporalCandidateUniverseMode {
+    AsOf,
+    AcrossVintageRange,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoLifecycleEntityRef {
+    pub entity_level: GeoEntityLevel,
+    pub identifier_namespace: String,
+    pub identifier_value: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTemporalEntityLookup {
+    pub lookup_id: String,
+    pub entity_ref: GeoLifecycleEntityRef,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTemporalEntityVintageRow {
+    pub entity_ref: GeoLifecycleEntityRef,
+    pub source_dataset: String,
+    pub release: String,
+    pub release_dt: String,
+    pub valid_from_utc_day: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub valid_to_utc_day: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub geometry_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entity_cluster_id: Option<String>,
+    pub source_record_id: String,
+    pub source_record_blake3: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoLifecycleTransitionRow {
+    pub transition_id: String,
+    pub transition_type: GeoLifecycleTransitionType,
+    pub event_utc_day: String,
+    pub source_dataset: String,
+    pub source_record_id: String,
+    pub source_record_blake3: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub predecessor_entity_refs: Vec<GeoLifecycleEntityRef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub successor_entity_refs: Vec<GeoLifecycleEntityRef>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoLifecycleTransitionType {
+    Create,
+    Retire,
+    Split,
+    Merge,
+    Renumber,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -295,6 +377,59 @@ pub struct GeoAsOfParcelResolution {
     pub change_events: Vec<GeoBblChangeEventRef>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoTemporalCandidateResolutionStatus {
+    Resolved,
+    Abstained,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoTemporalCandidateResolutionReason {
+    ActiveAtAsOf,
+    ActiveWithinVintageRange,
+    AmbiguousVintageRows,
+    ChangedBeforeScopeEnd,
+    NotPresentInScope,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoLifecycleTransitionRef {
+    pub transition_id: String,
+    pub transition_type: GeoLifecycleTransitionType,
+    pub event_utc_day: String,
+    pub source_dataset: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub predecessor_entity_refs: Vec<GeoLifecycleEntityRef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub successor_entity_refs: Vec<GeoLifecycleEntityRef>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTemporalEntityResolution {
+    pub lookup_id: String,
+    pub entity_ref: GeoLifecycleEntityRef,
+    pub status: GeoTemporalCandidateResolutionStatus,
+    pub reason: GeoTemporalCandidateResolutionReason,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entity_cluster_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matched_source_dataset: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matched_release: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matched_release_dt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matched_valid_from_utc_day: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matched_valid_to_utc_day: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lifecycle_transitions: Vec<GeoLifecycleTransitionRef>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeoAsOfResolutionArtifact {
@@ -304,7 +439,11 @@ pub struct GeoAsOfResolutionArtifact {
     pub tile_layer: GeoAsOfLayerWindow,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_layer: Option<GeoAsOfLayerWindow>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal_scope: Option<GeoTemporalCandidateUniverseScope>,
     pub resolutions: Vec<GeoAsOfParcelResolution>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub entity_resolutions: Vec<GeoTemporalEntityResolution>,
     pub summary: GeoAsOfResolutionSummary,
 }
 
@@ -315,6 +454,14 @@ pub struct GeoAsOfResolutionSummary {
     pub resolved: u64,
     pub abstained: u64,
     pub change_events_used: u64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub entity_lookups: u64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub entity_resolved: u64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub entity_abstained: u64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub lifecycle_transitions_used: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -485,15 +632,19 @@ pub fn resolve_geo_as_of(
     request: &GeoAsOfResolutionRequest,
 ) -> Result<GeoAsOfResolutionArtifact, GeoAsOfResolutionError> {
     let canonical_request = canonical_as_of_resolution_request(request)?;
-    ensure_as_of_inside_layer(
+    let temporal_scope = canonical_request.temporal_scope.clone();
+    let (scope_start, scope_end) = resolution_layer_bounds(&canonical_request);
+    ensure_temporal_bounds_inside_layer(
         "tile_layer",
-        &canonical_request.as_of_utc_day,
+        &scope_start,
+        &scope_end,
         &canonical_request.tile_layer,
     )?;
     if let Some(client_layer) = &canonical_request.client_layer {
-        ensure_as_of_inside_layer(
+        ensure_temporal_bounds_inside_layer(
             "client_layer",
-            &canonical_request.as_of_utc_day,
+            &scope_start,
+            &scope_end,
             client_layer,
         )?;
     }
@@ -504,14 +655,27 @@ pub fn resolve_geo_as_of(
         resolutions.push(resolve_geo_as_of_lookup(&canonical_request, lookup)?);
     }
     resolutions.sort_by(|left, right| left.lookup_id.cmp(&right.lookup_id));
-    let summary = as_of_resolution_summary(&resolutions)?;
+    let mut entity_resolutions = Vec::with_capacity(canonical_request.entity_lookups.len());
+    if let Some(scope) = &canonical_request.temporal_scope {
+        for lookup in &canonical_request.entity_lookups {
+            entity_resolutions.push(resolve_temporal_entity_lookup(
+                &canonical_request,
+                scope,
+                lookup,
+            )?);
+        }
+    }
+    entity_resolutions.sort_by(|left, right| left.lookup_id.cmp(&right.lookup_id));
+    let summary = as_of_resolution_summary(&resolutions, &entity_resolutions)?;
     let artifact = GeoAsOfResolutionArtifact {
         version: CANON_GEO_AS_OF_RESOLUTION_VERSION.to_string(),
         request_blake3,
         as_of_utc_day: canonical_request.as_of_utc_day,
         tile_layer: canonical_request.tile_layer,
         client_layer: canonical_request.client_layer,
+        temporal_scope,
         resolutions,
+        entity_resolutions,
         summary,
     };
     validate_as_of_resolution_artifact(&artifact)?;
@@ -539,6 +703,27 @@ pub fn canonical_as_of_resolution_request(
             .cmp(&right.change_event_id)
             .then_with(|| left.current_release_dt.cmp(&right.current_release_dt))
     });
+    canonical.entity_lookups.sort_by(|left, right| {
+        left.lookup_id
+            .cmp(&right.lookup_id)
+            .then_with(|| left.entity_ref.cmp(&right.entity_ref))
+    });
+    canonical.entity_vintages.sort_by(|left, right| {
+        left.entity_ref
+            .cmp(&right.entity_ref)
+            .then_with(|| left.valid_from_utc_day.cmp(&right.valid_from_utc_day))
+            .then_with(|| left.valid_to_utc_day.cmp(&right.valid_to_utc_day))
+            .then_with(|| left.release_dt.cmp(&right.release_dt))
+            .then_with(|| left.release.cmp(&right.release))
+            .then_with(|| left.source_dataset.cmp(&right.source_dataset))
+            .then_with(|| left.source_record_id.cmp(&right.source_record_id))
+    });
+    canonical.lifecycle_events.sort_by(|left, right| {
+        left.transition_id
+            .cmp(&right.transition_id)
+            .then_with(|| left.event_utc_day.cmp(&right.event_utc_day))
+            .then_with(|| left.source_dataset.cmp(&right.source_dataset))
+    });
     Ok(canonical)
 }
 
@@ -557,7 +742,18 @@ pub fn canonical_as_of_resolution_bytes(
                 .then_with(|| left.current_release_dt.cmp(&right.current_release_dt))
         });
     }
-    canonical.summary = as_of_resolution_summary(&canonical.resolutions)?;
+    canonical
+        .entity_resolutions
+        .sort_by(|left, right| left.lookup_id.cmp(&right.lookup_id));
+    for resolution in &mut canonical.entity_resolutions {
+        resolution.lifecycle_transitions.sort_by(|left, right| {
+            left.transition_id
+                .cmp(&right.transition_id)
+                .then_with(|| left.event_utc_day.cmp(&right.event_utc_day))
+        });
+    }
+    canonical.summary =
+        as_of_resolution_summary(&canonical.resolutions, &canonical.entity_resolutions)?;
     serde_json::to_vec(&canonical).map_err(|error| {
         GeoAsOfResolutionError::invalid(
             "Geo as-of resolution artifact could not be serialized",
@@ -585,11 +781,25 @@ pub fn validate_as_of_resolution_artifact(
     if let Some(client_layer) = &artifact.client_layer {
         validate_as_of_layer("client_layer", client_layer)?;
     }
+    if let Some(scope) = &artifact.temporal_scope {
+        validate_temporal_candidate_scope(scope, &artifact.as_of_utc_day)?;
+    }
+    if !artifact.entity_resolutions.is_empty() && artifact.temporal_scope.is_none() {
+        return Err(as_of_invalid_field(
+            "temporal_scope",
+            "Geo temporal candidate-universe artifacts require the scope that produced them",
+            "missing",
+        ));
+    }
     validate_as_of_resolution_order(&artifact.resolutions)?;
     for resolution in &artifact.resolutions {
         validate_as_of_resolution_row(resolution)?;
     }
-    let summary = as_of_resolution_summary(&artifact.resolutions)?;
+    validate_temporal_entity_resolution_order(&artifact.entity_resolutions)?;
+    for resolution in &artifact.entity_resolutions {
+        validate_temporal_entity_resolution_row(resolution)?;
+    }
+    let summary = as_of_resolution_summary(&artifact.resolutions, &artifact.entity_resolutions)?;
     if artifact.summary != summary {
         return Err(GeoAsOfResolutionError::invalid(
             "Geo as-of resolution summary does not match resolutions",
@@ -621,11 +831,25 @@ fn validate_as_of_resolution_request(
     if let Some(client_layer) = &request.client_layer {
         validate_as_of_layer("client_layer", client_layer)?;
     }
-    if request.lookups.is_empty() {
+    if let Some(scope) = &request.temporal_scope {
+        validate_temporal_candidate_scope(scope, &request.as_of_utc_day)?;
+    }
+    if request.lookups.is_empty() && request.entity_lookups.is_empty() {
         return Err(as_of_invalid_field(
             "lookups",
-            "Geo as-of resolution requires at least one requested parcel identifier",
+            "Geo as-of resolution requires at least one requested parcel or temporal entity identifier",
             "0",
+        ));
+    }
+    if (!request.entity_lookups.is_empty()
+        || !request.entity_vintages.is_empty()
+        || !request.lifecycle_events.is_empty())
+        && request.temporal_scope.is_none()
+    {
+        return Err(as_of_invalid_field(
+            "temporal_scope",
+            "Geo temporal candidate-universe rows require an explicit as_of or across_vintage_range scope",
+            "missing",
         ));
     }
     let mut lookup_ids = BTreeSet::new();
@@ -644,6 +868,44 @@ fn validate_as_of_resolution_request(
     }
     for row in &request.change_ledger {
         validate_change_ledger_row(row)?;
+    }
+    let mut entity_lookup_ids = BTreeSet::new();
+    for lookup in &request.entity_lookups {
+        validate_as_of_string("entity_lookups[].lookup_id", &lookup.lookup_id)?;
+        validate_lifecycle_entity_ref(&lookup.entity_ref)?;
+        if !entity_lookup_ids.insert(lookup.lookup_id.clone()) {
+            return Err(GeoAsOfResolutionError::invalid(
+                "Geo temporal candidate-universe lookup ids must be unique",
+                [("lookup_id", lookup.lookup_id.clone())],
+            ));
+        }
+    }
+    let mut entity_vintage_keys = BTreeSet::new();
+    for row in &request.entity_vintages {
+        validate_temporal_entity_vintage_row(row)?;
+        if !entity_vintage_keys.insert(entity_vintage_semantic_key(row)) {
+            return Err(GeoAsOfResolutionError::invalid(
+                "Geo temporal entity vintage rows must be unique by entity, source, release, and interval",
+                [
+                    ("field", "entity_vintages".to_string()),
+                    (
+                        "identifier_namespace",
+                        row.entity_ref.identifier_namespace.clone(),
+                    ),
+                    ("identifier_value", row.entity_ref.identifier_value.clone()),
+                ],
+            ));
+        }
+    }
+    let mut transition_ids = BTreeSet::new();
+    for row in &request.lifecycle_events {
+        validate_lifecycle_transition_row(row)?;
+        if !transition_ids.insert(row.transition_id.clone()) {
+            return Err(GeoAsOfResolutionError::invalid(
+                "Geo lifecycle transition ids must be unique",
+                [("transition_id", row.transition_id.clone())],
+            ));
+        }
     }
     Ok(())
 }
@@ -766,8 +1028,159 @@ fn change_event_ref(
     })
 }
 
+fn resolve_temporal_entity_lookup(
+    request: &GeoAsOfResolutionRequest,
+    scope: &GeoTemporalCandidateUniverseScope,
+    lookup: &GeoTemporalEntityLookup,
+) -> Result<GeoTemporalEntityResolution, GeoAsOfResolutionError> {
+    let active_rows = request
+        .entity_vintages
+        .iter()
+        .filter(|row| row.entity_ref == lookup.entity_ref)
+        .filter(|row| temporal_entity_row_is_usable_for_scope(row, scope))
+        .collect::<Vec<_>>();
+
+    if active_rows.len() == 1 {
+        let row = active_rows[0];
+        let cluster_id = row.entity_cluster_id.clone().unwrap_or_else(|| {
+            format!(
+                "cmdrvl:{}:{}:{}",
+                entity_level_token(row.entity_ref.entity_level),
+                row.entity_ref.identifier_namespace,
+                row.entity_ref.identifier_value
+            )
+        });
+        validate_as_of_cluster_id(
+            "entity_vintages[].entity_cluster_id",
+            &cluster_id,
+            row.entity_ref.entity_level,
+        )?;
+        return Ok(GeoTemporalEntityResolution {
+            lookup_id: lookup.lookup_id.clone(),
+            entity_ref: lookup.entity_ref.clone(),
+            status: GeoTemporalCandidateResolutionStatus::Resolved,
+            reason: match scope.mode {
+                GeoTemporalCandidateUniverseMode::AsOf => {
+                    GeoTemporalCandidateResolutionReason::ActiveAtAsOf
+                }
+                GeoTemporalCandidateUniverseMode::AcrossVintageRange => {
+                    GeoTemporalCandidateResolutionReason::ActiveWithinVintageRange
+                }
+            },
+            entity_cluster_id: Some(cluster_id),
+            matched_source_dataset: Some(row.source_dataset.clone()),
+            matched_release: Some(row.release.clone()),
+            matched_release_dt: Some(row.release_dt.clone()),
+            matched_valid_from_utc_day: Some(row.valid_from_utc_day.clone()),
+            matched_valid_to_utc_day: row.valid_to_utc_day.clone(),
+            lifecycle_transitions: Vec::new(),
+        });
+    }
+
+    if active_rows.len() > 1 {
+        return Ok(GeoTemporalEntityResolution {
+            lookup_id: lookup.lookup_id.clone(),
+            entity_ref: lookup.entity_ref.clone(),
+            status: GeoTemporalCandidateResolutionStatus::Abstained,
+            reason: GeoTemporalCandidateResolutionReason::AmbiguousVintageRows,
+            entity_cluster_id: None,
+            matched_source_dataset: None,
+            matched_release: None,
+            matched_release_dt: None,
+            matched_valid_from_utc_day: None,
+            matched_valid_to_utc_day: None,
+            lifecycle_transitions: Vec::new(),
+        });
+    }
+
+    let mut transitions = request
+        .lifecycle_events
+        .iter()
+        .filter(|event| event.event_utc_day <= scope.end_utc_day)
+        .filter(|event| lifecycle_transition_mentions_entity(event, &lookup.entity_ref))
+        .map(lifecycle_transition_ref)
+        .collect::<Result<Vec<_>, _>>()?;
+    transitions.sort_by(|left, right| {
+        left.transition_id
+            .cmp(&right.transition_id)
+            .then_with(|| left.event_utc_day.cmp(&right.event_utc_day))
+    });
+    transitions.dedup_by(|left, right| {
+        left.transition_id == right.transition_id && left.event_utc_day == right.event_utc_day
+    });
+
+    Ok(GeoTemporalEntityResolution {
+        lookup_id: lookup.lookup_id.clone(),
+        entity_ref: lookup.entity_ref.clone(),
+        status: GeoTemporalCandidateResolutionStatus::Abstained,
+        reason: if transitions.is_empty() {
+            GeoTemporalCandidateResolutionReason::NotPresentInScope
+        } else {
+            GeoTemporalCandidateResolutionReason::ChangedBeforeScopeEnd
+        },
+        entity_cluster_id: None,
+        matched_source_dataset: None,
+        matched_release: None,
+        matched_release_dt: None,
+        matched_valid_from_utc_day: None,
+        matched_valid_to_utc_day: None,
+        lifecycle_transitions: transitions,
+    })
+}
+
+fn temporal_entity_row_is_usable_for_scope(
+    row: &GeoTemporalEntityVintageRow,
+    scope: &GeoTemporalCandidateUniverseScope,
+) -> bool {
+    row.release_dt.as_str() <= scope.end_utc_day.as_str()
+        && match scope.mode {
+            GeoTemporalCandidateUniverseMode::AsOf => {
+                row.valid_from_utc_day.as_str() <= scope.start_utc_day.as_str()
+                    && row
+                        .valid_to_utc_day
+                        .as_deref()
+                        .is_none_or(|valid_to| scope.start_utc_day.as_str() <= valid_to)
+            }
+            GeoTemporalCandidateUniverseMode::AcrossVintageRange => {
+                let row_end = row.valid_to_utc_day.as_deref().unwrap_or("9999-12-31");
+                row.valid_from_utc_day.as_str() <= scope.end_utc_day.as_str()
+                    && scope.start_utc_day.as_str() <= row_end
+            }
+        }
+}
+
+fn lifecycle_transition_mentions_entity(
+    row: &GeoLifecycleTransitionRow,
+    entity_ref: &GeoLifecycleEntityRef,
+) -> bool {
+    row.predecessor_entity_refs
+        .iter()
+        .chain(row.successor_entity_refs.iter())
+        .any(|candidate| candidate == entity_ref)
+}
+
+fn lifecycle_transition_ref(
+    row: &GeoLifecycleTransitionRow,
+) -> Result<GeoLifecycleTransitionRef, GeoAsOfResolutionError> {
+    let mut predecessor_entity_refs = row.predecessor_entity_refs.clone();
+    predecessor_entity_refs.sort();
+    predecessor_entity_refs.dedup();
+    let mut successor_entity_refs = row.successor_entity_refs.clone();
+    successor_entity_refs.sort();
+    successor_entity_refs.dedup();
+    Ok(GeoLifecycleTransitionRef {
+        transition_id: row.transition_id.clone(),
+        transition_type: row.transition_type,
+        event_utc_day: row.event_utc_day.clone(),
+        source_dataset: row.source_dataset.clone(),
+        predecessor_entity_refs,
+        successor_entity_refs,
+    })
+}
+
 fn as_of_resolution_summary(
     resolutions: &[GeoAsOfParcelResolution],
+    entity_resolutions: &[GeoTemporalEntityResolution],
 ) -> Result<GeoAsOfResolutionSummary, GeoAsOfResolutionError> {
     let resolved = resolutions
         .iter()
@@ -822,22 +1235,86 @@ fn as_of_resolution_summary(
             )
         })?,
         change_events_used,
+        entity_lookups: u64::try_from(entity_resolutions.len()).map_err(|_| {
+            GeoAsOfResolutionError::new(
+                GeoAsOfResolutionErrorCode::ArithmeticOverflow,
+                "Geo temporal candidate-universe lookup count does not fit in u64",
+                [("field", "summary.entity_lookups")],
+            )
+        })?,
+        entity_resolved: u64::try_from(
+            entity_resolutions
+                .iter()
+                .filter(|resolution| {
+                    resolution.status == GeoTemporalCandidateResolutionStatus::Resolved
+                })
+                .count(),
+        )
+        .map_err(|_| {
+            GeoAsOfResolutionError::new(
+                GeoAsOfResolutionErrorCode::ArithmeticOverflow,
+                "Geo temporal candidate-universe resolved count does not fit in u64",
+                [("field", "summary.entity_resolved")],
+            )
+        })?,
+        entity_abstained: u64::try_from(
+            entity_resolutions
+                .iter()
+                .filter(|resolution| {
+                    resolution.status == GeoTemporalCandidateResolutionStatus::Abstained
+                })
+                .count(),
+        )
+        .map_err(|_| {
+            GeoAsOfResolutionError::new(
+                GeoAsOfResolutionErrorCode::ArithmeticOverflow,
+                "Geo temporal candidate-universe abstained count does not fit in u64",
+                [("field", "summary.entity_abstained")],
+            )
+        })?,
+        lifecycle_transitions_used: entity_resolutions
+            .iter()
+            .map(|resolution| resolution.lifecycle_transitions.len())
+            .try_fold(0_u64, |sum, len| {
+                sum.checked_add(u64::try_from(len).map_err(|_| {
+                    GeoAsOfResolutionError::new(
+                        GeoAsOfResolutionErrorCode::ArithmeticOverflow,
+                        "Geo temporal candidate-universe transition count does not fit in u64",
+                        [("field", "summary.lifecycle_transitions_used")],
+                    )
+                })?)
+                .ok_or_else(|| {
+                    GeoAsOfResolutionError::new(
+                        GeoAsOfResolutionErrorCode::ArithmeticOverflow,
+                        "Geo temporal candidate-universe transition count overflowed",
+                        [("field", "summary.lifecycle_transitions_used")],
+                    )
+                })
+            })?,
     })
 }
 
-fn ensure_as_of_inside_layer(
+fn resolution_layer_bounds(request: &GeoAsOfResolutionRequest) -> (String, String) {
+    request.temporal_scope.as_ref().map_or_else(
+        || (request.as_of_utc_day.clone(), request.as_of_utc_day.clone()),
+        |scope| (scope.start_utc_day.clone(), scope.end_utc_day.clone()),
+    )
+}
+
+fn ensure_temporal_bounds_inside_layer(
     role: &'static str,
-    as_of_utc_day: &str,
+    start_utc_day: &str,
+    end_utc_day: &str,
     layer: &GeoAsOfLayerWindow,
 ) -> Result<(), GeoAsOfResolutionError> {
-    if as_of_utc_day < layer.valid_from_utc_day.as_str() {
+    if start_utc_day < layer.valid_from_utc_day.as_str() {
         return Err(GeoAsOfResolutionError::new(
             GeoAsOfResolutionErrorCode::OutsideAvailableVintage,
-            "Geo as-of request predates the earliest available layer vintage",
+            "Geo temporal candidate-universe request predates the earliest available layer vintage",
             [
                 ("layer_role", role.to_string()),
                 ("layer_id", layer.layer_id.clone()),
-                ("as_of_utc_day", as_of_utc_day.to_string()),
+                ("start_utc_day", start_utc_day.to_string()),
                 (
                     "earliest_available_utc_day",
                     layer.valid_from_utc_day.clone(),
@@ -845,14 +1322,14 @@ fn ensure_as_of_inside_layer(
             ],
         ));
     }
-    if as_of_utc_day > layer.valid_to_utc_day.as_str() {
+    if end_utc_day > layer.valid_to_utc_day.as_str() {
         return Err(GeoAsOfResolutionError::new(
             GeoAsOfResolutionErrorCode::OutsideAvailableVintage,
-            "Geo as-of request is after the latest available layer vintage",
+            "Geo temporal candidate-universe request is after the latest available layer vintage",
             [
                 ("layer_role", role.to_string()),
                 ("layer_id", layer.layer_id.clone()),
-                ("as_of_utc_day", as_of_utc_day.to_string()),
+                ("end_utc_day", end_utc_day.to_string()),
                 ("latest_available_utc_day", layer.valid_to_utc_day.clone()),
             ],
         ));
@@ -980,6 +1457,150 @@ fn validate_change_ledger_row(row: &GeoBblChangeLedgerRow) -> Result<(), GeoAsOf
     Ok(())
 }
 
+fn validate_temporal_candidate_scope(
+    scope: &GeoTemporalCandidateUniverseScope,
+    as_of_utc_day: &str,
+) -> Result<(), GeoAsOfResolutionError> {
+    validate_as_of_utc_day("temporal_scope.start_utc_day", &scope.start_utc_day)?;
+    validate_as_of_utc_day("temporal_scope.end_utc_day", &scope.end_utc_day)?;
+    if scope.start_utc_day > scope.end_utc_day {
+        return Err(GeoAsOfResolutionError::invalid(
+            "Geo temporal candidate-universe scope start must not be after its end",
+            [
+                ("field", "temporal_scope".to_string()),
+                ("start_utc_day", scope.start_utc_day.clone()),
+                ("end_utc_day", scope.end_utc_day.clone()),
+            ],
+        ));
+    }
+    if scope.mode == GeoTemporalCandidateUniverseMode::AsOf
+        && (scope.start_utc_day != as_of_utc_day || scope.end_utc_day != as_of_utc_day)
+    {
+        return Err(GeoAsOfResolutionError::invalid(
+            "Geo as_of temporal candidate-universe scope must equal as_of_utc_day",
+            [
+                ("field", "temporal_scope".to_string()),
+                ("as_of_utc_day", as_of_utc_day.to_string()),
+                ("start_utc_day", scope.start_utc_day.clone()),
+                ("end_utc_day", scope.end_utc_day.clone()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_lifecycle_entity_ref(
+    entity_ref: &GeoLifecycleEntityRef,
+) -> Result<(), GeoAsOfResolutionError> {
+    validate_as_of_string(
+        "entity_ref.identifier_namespace",
+        &entity_ref.identifier_namespace,
+    )?;
+    validate_as_of_string("entity_ref.identifier_value", &entity_ref.identifier_value)?;
+    validate_as_of_cluster_prefix_supported(entity_ref.entity_level)
+}
+
+fn validate_temporal_entity_vintage_row(
+    row: &GeoTemporalEntityVintageRow,
+) -> Result<(), GeoAsOfResolutionError> {
+    validate_lifecycle_entity_ref(&row.entity_ref)?;
+    validate_as_of_string("entity_vintages[].source_dataset", &row.source_dataset)?;
+    validate_as_of_string("entity_vintages[].release", &row.release)?;
+    validate_as_of_utc_day("entity_vintages[].release_dt", &row.release_dt)?;
+    validate_as_of_utc_day(
+        "entity_vintages[].valid_from_utc_day",
+        &row.valid_from_utc_day,
+    )?;
+    if let Some(valid_to) = &row.valid_to_utc_day {
+        validate_as_of_utc_day("entity_vintages[].valid_to_utc_day", valid_to)?;
+        if row.valid_from_utc_day.as_str() > valid_to.as_str() {
+            return Err(GeoAsOfResolutionError::invalid(
+                "Geo temporal entity vintage validity interval is inverted",
+                [
+                    ("field", "entity_vintages[].valid_interval".to_string()),
+                    ("identifier_value", row.entity_ref.identifier_value.clone()),
+                ],
+            ));
+        }
+    }
+    if let Some(geometry_digest) = &row.geometry_digest {
+        validate_as_of_string("entity_vintages[].geometry_digest", geometry_digest)?;
+    }
+    if let Some(cluster_id) = &row.entity_cluster_id {
+        validate_as_of_cluster_id(
+            "entity_vintages[].entity_cluster_id",
+            cluster_id,
+            row.entity_ref.entity_level,
+        )?;
+    }
+    validate_as_of_string("entity_vintages[].source_record_id", &row.source_record_id)?;
+    validate_as_of_blake3_uri(
+        "entity_vintages[].source_record_blake3",
+        &row.source_record_blake3,
+    )
+}
+
+fn validate_lifecycle_transition_row(
+    row: &GeoLifecycleTransitionRow,
+) -> Result<(), GeoAsOfResolutionError> {
+    validate_as_of_string("lifecycle_events[].transition_id", &row.transition_id)?;
+    validate_as_of_utc_day("lifecycle_events[].event_utc_day", &row.event_utc_day)?;
+    validate_as_of_string("lifecycle_events[].source_dataset", &row.source_dataset)?;
+    validate_as_of_string("lifecycle_events[].source_record_id", &row.source_record_id)?;
+    validate_as_of_blake3_uri(
+        "lifecycle_events[].source_record_blake3",
+        &row.source_record_blake3,
+    )?;
+    if row.predecessor_entity_refs.is_empty() && row.successor_entity_refs.is_empty() {
+        return Err(GeoAsOfResolutionError::invalid(
+            "Geo lifecycle transitions require at least one predecessor or successor entity",
+            [("field", "lifecycle_events".to_string())],
+        ));
+    }
+    validate_lifecycle_entity_ref_list(
+        "lifecycle_events[].predecessor_entity_refs",
+        &row.predecessor_entity_refs,
+    )?;
+    validate_lifecycle_entity_ref_list(
+        "lifecycle_events[].successor_entity_refs",
+        &row.successor_entity_refs,
+    )
+}
+
+fn validate_lifecycle_entity_ref_list(
+    field: &'static str,
+    values: &[GeoLifecycleEntityRef],
+) -> Result<(), GeoAsOfResolutionError> {
+    let mut seen = BTreeSet::new();
+    for value in values {
+        validate_lifecycle_entity_ref(value)?;
+        if !seen.insert(value.clone()) {
+            return Err(GeoAsOfResolutionError::invalid(
+                "Geo lifecycle entity reference list values must be unique",
+                [
+                    ("field", field.to_string()),
+                    ("identifier_namespace", value.identifier_namespace.clone()),
+                    ("identifier_value", value.identifier_value.clone()),
+                ],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn entity_vintage_semantic_key(row: &GeoTemporalEntityVintageRow) -> String {
+    format!(
+        "{}\u{1f}{}\u{1f}{:?}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
+        row.entity_ref.identifier_namespace,
+        row.entity_ref.identifier_value,
+        row.entity_ref.entity_level,
+        row.source_dataset,
+        row.release,
+        row.valid_from_utc_day,
+        row.valid_to_utc_day.as_deref().unwrap_or("")
+    )
+}
+
 fn validate_bbl_list(field: &'static str, values: &[String]) -> Result<(), GeoAsOfResolutionError> {
     let mut seen = BTreeSet::new();
     for value in values {
@@ -1085,6 +1706,106 @@ fn validate_as_of_resolution_row(
     Ok(())
 }
 
+fn validate_temporal_entity_resolution_order(
+    resolutions: &[GeoTemporalEntityResolution],
+) -> Result<(), GeoAsOfResolutionError> {
+    let mut previous: Option<&str> = None;
+    let mut seen = BTreeSet::new();
+    for resolution in resolutions {
+        if !seen.insert(resolution.lookup_id.as_str()) {
+            return Err(GeoAsOfResolutionError::invalid(
+                "Geo temporal candidate-universe artifact contains duplicate lookup ids",
+                [("lookup_id", resolution.lookup_id.clone())],
+            ));
+        }
+        if let Some(previous_lookup_id) = previous
+            && previous_lookup_id >= resolution.lookup_id.as_str()
+        {
+            return Err(GeoAsOfResolutionError::invalid(
+                "Geo temporal candidate-universe rows must be sorted by lookup_id",
+                [
+                    ("field", "entity_resolutions".to_string()),
+                    ("previous_lookup_id", previous_lookup_id.to_string()),
+                    ("lookup_id", resolution.lookup_id.clone()),
+                ],
+            ));
+        }
+        previous = Some(resolution.lookup_id.as_str());
+    }
+    Ok(())
+}
+
+fn validate_temporal_entity_resolution_row(
+    row: &GeoTemporalEntityResolution,
+) -> Result<(), GeoAsOfResolutionError> {
+    validate_as_of_string("entity_resolutions[].lookup_id", &row.lookup_id)?;
+    validate_lifecycle_entity_ref(&row.entity_ref)?;
+    if let Some(entity_cluster_id) = &row.entity_cluster_id {
+        validate_as_of_cluster_id(
+            "entity_resolutions[].entity_cluster_id",
+            entity_cluster_id,
+            row.entity_ref.entity_level,
+        )?;
+    }
+    for transition in &row.lifecycle_transitions {
+        validate_as_of_string(
+            "lifecycle_transitions[].transition_id",
+            &transition.transition_id,
+        )?;
+        validate_as_of_utc_day(
+            "lifecycle_transitions[].event_utc_day",
+            &transition.event_utc_day,
+        )?;
+        validate_as_of_string(
+            "lifecycle_transitions[].source_dataset",
+            &transition.source_dataset,
+        )?;
+        validate_lifecycle_entity_ref_list(
+            "lifecycle_transitions[].predecessor_entity_refs",
+            &transition.predecessor_entity_refs,
+        )?;
+        validate_lifecycle_entity_ref_list(
+            "lifecycle_transitions[].successor_entity_refs",
+            &transition.successor_entity_refs,
+        )?;
+    }
+    match row.status {
+        GeoTemporalCandidateResolutionStatus::Resolved => {
+            if !matches!(
+                row.reason,
+                GeoTemporalCandidateResolutionReason::ActiveAtAsOf
+                    | GeoTemporalCandidateResolutionReason::ActiveWithinVintageRange
+            ) || row.entity_cluster_id.is_none()
+                || row.matched_source_dataset.is_none()
+                || row.matched_release.is_none()
+                || row.matched_release_dt.is_none()
+                || row.matched_valid_from_utc_day.is_none()
+                || !row.lifecycle_transitions.is_empty()
+            {
+                return Err(GeoAsOfResolutionError::invalid(
+                    "Geo temporal candidate-universe resolved rows must cite exactly one active source vintage and no lifecycle transition",
+                    [("lookup_id", row.lookup_id.clone())],
+                ));
+            }
+        }
+        GeoTemporalCandidateResolutionStatus::Abstained => {
+            if row.entity_cluster_id.is_some()
+                || row.matched_source_dataset.is_some()
+                || row.matched_release.is_some()
+                || row.matched_release_dt.is_some()
+                || row.matched_valid_from_utc_day.is_some()
+                || row.matched_valid_to_utc_day.is_some()
+            {
+                return Err(GeoAsOfResolutionError::invalid(
+                    "Geo temporal candidate-universe abstentions must not fabricate a matched source vintage",
+                    [("lookup_id", row.lookup_id.clone())],
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn validate_as_of_cluster_id(
     field: &'static str,
     value: &str,
@@ -1114,6 +1835,21 @@ fn as_of_cluster_prefix(level: GeoEntityLevel) -> Result<&'static str, GeoAsOfRe
             "Geo as-of resolution does not support poi_unit identifiers",
             [("entity_level", "poi_unit")],
         )),
+    }
+}
+
+fn validate_as_of_cluster_prefix_supported(
+    level: GeoEntityLevel,
+) -> Result<(), GeoAsOfResolutionError> {
+    as_of_cluster_prefix(level).map(|_| ())
+}
+
+fn entity_level_token(level: GeoEntityLevel) -> &'static str {
+    match level {
+        GeoEntityLevel::Parcel => "parcel",
+        GeoEntityLevel::Building => "building",
+        GeoEntityLevel::Property => "property",
+        GeoEntityLevel::PoiUnit => "poi_unit",
     }
 }
 
@@ -1635,4 +2371,8 @@ fn usize_to_u64(value: usize, field: &'static str) -> Result<u64, GeoLifecycleEr
             [("field", field)],
         )
     })
+}
+
+fn is_zero(value: &u64) -> bool {
+    *value == 0
 }

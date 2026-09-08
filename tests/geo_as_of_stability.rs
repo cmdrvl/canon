@@ -7,8 +7,12 @@ use canon::geo::{
     GeoAsOfParcelResolutionReason, GeoAsOfParcelResolutionStatus, GeoAsOfResolutionErrorCode,
     GeoAsOfResolutionRequest, GeoBblChangeLedgerRow, GeoClientTileAliasBinding,
     GeoClientTileAliasImpactStatus, GeoEntityLevel, GeoIdentifierCluster, GeoIdentifierErrorCode,
-    GeoIdentifierTombstone, GeoMapPlutoParcelVintageRow, GeoTileIdentifierContractDisposition,
-    GeoTileIdentifierStabilityRequest, GeoTileIdentifierVintage, canonical_as_of_resolution_bytes,
+    GeoIdentifierTombstone, GeoLifecycleEntityRef, GeoLifecycleTransitionRow,
+    GeoLifecycleTransitionType, GeoMapPlutoParcelVintageRow, GeoTemporalCandidateResolutionReason,
+    GeoTemporalCandidateResolutionStatus, GeoTemporalCandidateUniverseMode,
+    GeoTemporalCandidateUniverseScope, GeoTemporalEntityLookup, GeoTemporalEntityVintageRow,
+    GeoTileIdentifierContractDisposition, GeoTileIdentifierStabilityRequest,
+    GeoTileIdentifierVintage, canonical_as_of_resolution_bytes,
     canonical_tile_identifier_stability_bytes, check_tile_identifier_stability, resolve_geo_as_of,
 };
 use serde_json::Value;
@@ -113,9 +117,92 @@ fn as_of_request(as_of_utc_day: &str) -> GeoAsOfResolutionRequest {
             "2015-01-01",
             "2020-12-31",
         )),
+        temporal_scope: None,
         lookups: vec![lookup("subject-a", "1000000001")],
         parcel_vintages: Vec::new(),
         change_ledger: Vec::new(),
+        entity_lookups: Vec::new(),
+        entity_vintages: Vec::new(),
+        lifecycle_events: Vec::new(),
+    }
+}
+
+fn temporal_scope(
+    mode: GeoTemporalCandidateUniverseMode,
+    start_utc_day: &str,
+    end_utc_day: &str,
+) -> GeoTemporalCandidateUniverseScope {
+    GeoTemporalCandidateUniverseScope {
+        mode,
+        start_utc_day: start_utc_day.to_string(),
+        end_utc_day: end_utc_day.to_string(),
+    }
+}
+
+fn entity_ref(
+    entity_level: GeoEntityLevel,
+    identifier_namespace: &str,
+    identifier_value: &str,
+) -> GeoLifecycleEntityRef {
+    GeoLifecycleEntityRef {
+        entity_level,
+        identifier_namespace: identifier_namespace.to_string(),
+        identifier_value: identifier_value.to_string(),
+    }
+}
+
+fn entity_lookup(
+    lookup_id: &str,
+    entity_level: GeoEntityLevel,
+    identifier_namespace: &str,
+    identifier_value: &str,
+) -> GeoTemporalEntityLookup {
+    GeoTemporalEntityLookup {
+        lookup_id: lookup_id.to_string(),
+        entity_ref: entity_ref(entity_level, identifier_namespace, identifier_value),
+    }
+}
+
+fn entity_vintage_row(
+    entity_ref: GeoLifecycleEntityRef,
+    source_dataset: &str,
+    release: &str,
+    release_dt: &str,
+    valid_from_utc_day: &str,
+    valid_to_utc_day: Option<&str>,
+    entity_cluster_id: &str,
+) -> GeoTemporalEntityVintageRow {
+    GeoTemporalEntityVintageRow {
+        entity_ref,
+        source_dataset: source_dataset.to_string(),
+        release: release.to_string(),
+        release_dt: release_dt.to_string(),
+        valid_from_utc_day: valid_from_utc_day.to_string(),
+        valid_to_utc_day: valid_to_utc_day.map(str::to_string),
+        geometry_digest: Some(digest('e')),
+        entity_cluster_id: Some(entity_cluster_id.to_string()),
+        source_record_id: format!("{source_dataset}:{release}:{entity_cluster_id}"),
+        source_record_blake3: digest('f'),
+    }
+}
+
+fn lifecycle_transition(
+    transition_id: &str,
+    transition_type: GeoLifecycleTransitionType,
+    event_utc_day: &str,
+    source_dataset: &str,
+    predecessors: Vec<GeoLifecycleEntityRef>,
+    successors: Vec<GeoLifecycleEntityRef>,
+) -> GeoLifecycleTransitionRow {
+    GeoLifecycleTransitionRow {
+        transition_id: transition_id.to_string(),
+        transition_type,
+        event_utc_day: event_utc_day.to_string(),
+        source_dataset: source_dataset.to_string(),
+        source_record_id: format!("{source_dataset}:{transition_id}"),
+        source_record_blake3: digest('9'),
+        predecessor_entity_refs: predecessors,
+        successor_entity_refs: successors,
     }
 }
 
@@ -229,6 +316,185 @@ fn as_of_resolution_surfaces_change_ledger_only_after_event_date() {
     let event = row.change_events.first().expect("change event surfaced");
     assert_eq!(event.change_event_id, "event-split-2021");
     assert_eq!(event.successor_bbl_keys, vec!["1000000002", "1000000003"]);
+}
+
+#[test]
+fn temporal_candidate_universe_range_uses_same_contract_for_nyc_vintages_and_franklin_lifecycle() {
+    let nyc_historical = entity_ref(GeoEntityLevel::Parcel, "nyc.dcp.bbl", "1000000001");
+    let franklin_current = entity_ref(
+        GeoEntityLevel::Parcel,
+        "franklin_county_auditor.provider_feature_id",
+        "010-000001",
+    );
+    let franklin_retired = entity_ref(
+        GeoEntityLevel::Parcel,
+        "franklin_county_auditor.provider_feature_id",
+        "010-000002",
+    );
+    let franklin_renumbered = entity_ref(
+        GeoEntityLevel::Parcel,
+        "franklin_county_auditor.provider_feature_id",
+        "010-000003",
+    );
+
+    let mut request = as_of_request("2026-09-01");
+    request.client_layer = None;
+    request.lookups = Vec::new();
+    request.temporal_scope = Some(temporal_scope(
+        GeoTemporalCandidateUniverseMode::AcrossVintageRange,
+        "2016-01-01",
+        "2026-09-01",
+    ));
+    request.entity_lookups = vec![
+        GeoTemporalEntityLookup {
+            lookup_id: "franklin-current".to_string(),
+            entity_ref: franklin_current.clone(),
+        },
+        GeoTemporalEntityLookup {
+            lookup_id: "franklin-renumbered".to_string(),
+            entity_ref: franklin_renumbered.clone(),
+        },
+        GeoTemporalEntityLookup {
+            lookup_id: "franklin-retired".to_string(),
+            entity_ref: franklin_retired.clone(),
+        },
+        GeoTemporalEntityLookup {
+            lookup_id: "nyc-historical".to_string(),
+            entity_ref: nyc_historical.clone(),
+        },
+    ];
+    request.entity_vintages = vec![
+        entity_vintage_row(
+            nyc_historical.clone(),
+            "NYC_DCP_PLUTO_LOT_VINTAGES",
+            "17v1",
+            "2017-02-01",
+            "2016-01-01",
+            Some("2018-12-31"),
+            "cmdrvl:parcel:nyc:bbl:1000000001",
+        ),
+        entity_vintage_row(
+            franklin_current.clone(),
+            "FRANKLIN_COUNTY_AUDITOR_PARCELS_HOT",
+            "hub-de09f99cce0bcae7142d6d2e26582fd3-25",
+            "2026-09-01",
+            "2026-09-01",
+            None,
+            "cmdrvl:parcel:oh:franklin:010-000001",
+        ),
+        entity_vintage_row(
+            franklin_retired.clone(),
+            "FRANKLIN_COUNTY_AUDITOR_PARCELS_HOT",
+            "hub-franklin-retired",
+            "2018-01-01",
+            "2018-01-01",
+            Some("2019-12-31"),
+            "cmdrvl:parcel:oh:franklin:010-000002",
+        ),
+    ];
+    request.lifecycle_events = vec![
+        lifecycle_transition(
+            "franklin-retire-010-000002",
+            GeoLifecycleTransitionType::Retire,
+            "2020-01-01",
+            "FRANKLIN_COUNTY_AUDITOR_DROPS_ADDS_HOT",
+            vec![franklin_retired.clone()],
+            Vec::new(),
+        ),
+        lifecycle_transition(
+            "franklin-renumber-010-000003",
+            GeoLifecycleTransitionType::Renumber,
+            "2021-05-01",
+            "FRANKLIN_COUNTY_AUDITOR_DROPS_ADDS_HOT",
+            vec![franklin_renumbered.clone()],
+            vec![entity_ref(
+                GeoEntityLevel::Parcel,
+                "franklin_county_auditor.provider_feature_id",
+                "010-000099",
+            )],
+        ),
+    ];
+
+    let artifact =
+        resolve_geo_as_of(&request).expect("generic temporal candidate universe resolves");
+    assert_eq!(artifact.summary.lookups, 0);
+    assert_eq!(artifact.summary.entity_lookups, 4);
+    assert_eq!(artifact.summary.entity_resolved, 3);
+    assert_eq!(artifact.summary.entity_abstained, 1);
+    assert_eq!(artifact.summary.lifecycle_transitions_used, 1);
+
+    let rows = artifact
+        .entity_resolutions
+        .iter()
+        .map(|row| (row.lookup_id.as_str(), row))
+        .collect::<BTreeMap<_, _>>();
+    for lookup_id in ["franklin-current", "franklin-retired", "nyc-historical"] {
+        assert_eq!(
+            rows[lookup_id].status,
+            GeoTemporalCandidateResolutionStatus::Resolved
+        );
+        assert_eq!(
+            rows[lookup_id].reason,
+            GeoTemporalCandidateResolutionReason::ActiveWithinVintageRange
+        );
+    }
+    assert_eq!(
+        rows["nyc-historical"].matched_source_dataset.as_deref(),
+        Some("NYC_DCP_PLUTO_LOT_VINTAGES")
+    );
+    assert_eq!(
+        rows["franklin-current"].matched_source_dataset.as_deref(),
+        Some("FRANKLIN_COUNTY_AUDITOR_PARCELS_HOT")
+    );
+    assert_eq!(
+        rows["franklin-renumbered"].status,
+        GeoTemporalCandidateResolutionStatus::Abstained
+    );
+    assert_eq!(
+        rows["franklin-renumbered"].reason,
+        GeoTemporalCandidateResolutionReason::ChangedBeforeScopeEnd
+    );
+    assert_eq!(rows["franklin-renumbered"].entity_cluster_id, None);
+    assert_eq!(rows["franklin-renumbered"].matched_release, None);
+    assert_eq!(
+        rows["franklin-renumbered"]
+            .lifecycle_transitions
+            .first()
+            .map(|event| event.source_dataset.as_str()),
+        Some("FRANKLIN_COUNTY_AUDITOR_DROPS_ADDS_HOT")
+    );
+}
+
+#[test]
+fn temporal_candidate_universe_requires_explicit_scope_and_as_of_scope_matches_query_day() {
+    let mut request = as_of_request("2026-09-01");
+    request.lookups = Vec::new();
+    request.entity_lookups = vec![entity_lookup(
+        "franklin-current",
+        GeoEntityLevel::Parcel,
+        "franklin_county_auditor.provider_feature_id",
+        "010-000001",
+    )];
+
+    let error = resolve_geo_as_of(&request).expect_err("generic temporal lookup requires scope");
+    assert_eq!(error.code, GeoAsOfResolutionErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("temporal_scope")
+    );
+
+    request.temporal_scope = Some(temporal_scope(
+        GeoTemporalCandidateUniverseMode::AsOf,
+        "2026-08-31",
+        "2026-08-31",
+    ));
+    let error = resolve_geo_as_of(&request)
+        .expect_err("as_of temporal scope must equal the query as_of day");
+    assert_eq!(error.code, GeoAsOfResolutionErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("temporal_scope")
+    );
 }
 
 fn cluster(cluster_id: &str, geometry_hex: char, aliases: &[&str]) -> GeoIdentifierCluster {
