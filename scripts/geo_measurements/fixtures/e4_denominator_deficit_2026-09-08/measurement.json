@@ -1,0 +1,331 @@
+{
+  "version": "canon_geo_e4_denominator_deficit_characterization.v0",
+  "bead": "bd-1g4x",
+  "owner": "codex-geo-2",
+  "measurement_date": "2026-09-08",
+  "proof_class": "retained_fixture_and_plan_evidence_not_live",
+  "release_claim_allowed": false,
+  "purpose": "Characterize the 9-subject gap between the frozen E4 denominator of 79 and the 70 retained H.7 subjects evaluated by the current E4 scorer.",
+  "boundary": "Characterization only: no denominator edit, no rho relaxation, no release-row duplication, no truth-plane replay counted as a new subject.",
+  "denominator": {
+    "frozen_e4_subjects": 79,
+    "evaluated_subjects": 70,
+    "deficit_subjects": 9,
+    "classified_deficit_subjects": 9,
+    "unclassified_deficit_subjects": 0
+  },
+  "summary": {
+    "classification_counts": {
+      "OUT_OF_SCOPE": 3,
+      "BLOCKED_ON_DATA_WE_DO_NOT_HAVE": 6,
+      "BLOCKED_ON_US": 0,
+      "UNCLASSIFIED": 0
+    },
+    "drop_stage_counts": {
+      "candidate_reach": 1,
+      "truth_binding": 3,
+      "universe_construction": 5
+    },
+    "max_denominator_movement_if_recovered": 6,
+    "max_exact_correct_movement_if_recovered_upper_bound": 6,
+    "immediate_exact_correct_movement_from_characterization": 0,
+    "winnable_if_followups_land": 6,
+    "requires_operator_denominator_ruling": true
+  },
+  "source_artifacts": [
+    {
+      "path": "scripts/geo_measurements/fixtures/d1_residuals/h7_excluded_zero_candidate_subject.json",
+      "sha256": "929ced00238890f1c2c15839226543fb2f58c8f138fe86ca9e8176a6110f8e4e",
+      "use": "one accepted H.7 subject excluded from solving because both pinned candidate releases are empty"
+    },
+    {
+      "path": "scripts/geo_measurements/fixtures/d1_residuals/canon_geo_h7_population.v0.json",
+      "sha256": "a8069f069d7ca96c2078f6de14767d78cb11cefd17893ec52f21274dbba3d41a",
+      "use": "70 retained H.7 solver subjects and duplicate truth-set joins"
+    },
+    {
+      "path": "tests/fixtures/geo/e4_gate_v2_population_request.json",
+      "sha256": "f5b876784755f27c2ffc07a37973d6d8d606a3805f2cddb512e5d582259f0a8a",
+      "use": "15 historical Gate V2 cases used only for overlap diagnosis"
+    },
+    {
+      "path": "tests/fixtures/geo/e4_gate_v2_evidence_enrichment.json",
+      "sha256": "33b5ee6810b8caef26915cdd989d26aa9ad2ee51a23ef3134c1a0dbf924f8ebf",
+      "use": "loan_key and property-row context for the duplicated Gate V2 case"
+    },
+    {
+      "path": "tests/fixtures/geo/e4_h4_extension.json",
+      "sha256": "8440ee1da4056c17a7d4c94858d6ada5dd68ea8f12390273040f9b6d3a8aa93b",
+      "use": "two H.4 extension diagnostic rows used only for overlap diagnosis"
+    },
+    {
+      "path": "scripts/geo_measurements/h7_e4_consensus_truth_extension.sql",
+      "sha256": "aed4df17a3f48070becc898f48c9f60ca401f9e2cc93ea98e749b6a41e6e72e4",
+      "use": "five-subject deficit probe that admitted zero new subjects while preserving denominator guards"
+    }
+  ],
+  "source_references": [
+    {
+      "path": "docs/PLAN_CANON_GEO.md",
+      "use": "H.7 controlling denominator notes and the no-duplication rule"
+    },
+    {
+      "path": "scripts/geo_measurements/README.md",
+      "use": "recorded absence of a Gate V2/H4 extension-key bridge and the zero-new-subject consensus result"
+    }
+  ],
+  "rows": [
+    {
+      "deficit_id": "h7_zero_candidate_6ed280773520fa75508c912ef4cc1ddb",
+      "subject_name": "accepted H.7 zero-candidate subject",
+      "subject_id": "h7-subject:non-round:1a5f267efdccdcc392c1474a1dfba058c5ecc8e5912700b80afe13e86e9c82f5",
+      "loan_key": "6ed280773520fa75508c912ef4cc1ddb",
+      "document_id": "2021040900545001",
+      "case_id": null,
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "association_plane": "single_property",
+      "drop_stage": "candidate_reach",
+      "classification": "BLOCKED_ON_DATA_WE_DO_NOT_HAVE",
+      "reason": "The subject is accepted into the H.7 denominator but has candidate_parcel_count=0 in both retained 26v1 and 26v2 release rows, so no sound input-side candidate anchor reaches the solver.",
+      "evidence": [
+        "h7_excluded_zero_candidate_subject.json records the subject, loan_key, document_id, truth parcels, and two release rows with reach_status=none and candidate_parcel_count=0.",
+        "e4_h4_extension.json records the same loan_key as all property points PIP to zero lots, with no sound input-side candidate anchor."
+      ],
+      "truth_parcels": [
+        "2029370001",
+        "2029370008",
+        "2029370025"
+      ],
+      "follow_up_bead": "bd-298d",
+      "max_denominator_movement_if_recovered": 1,
+      "max_exact_correct_movement_if_recovered_upper_bound": 1,
+      "immediate_exact_correct_movement": 0
+    },
+    {
+      "deficit_id": "gate_v2_duplicate_ced7ad9f0d74abf7",
+      "subject_name": "historical Gate V2 duplicate of 3cf11e9a58e3b710 by truth parcel set",
+      "subject_id": null,
+      "loan_key": "95eb110c0b25a795fb24c7d4af246aff",
+      "document_id": null,
+      "case_id": "ced7ad9f0d74abf7",
+      "truth_plane": "gate_v2_historical",
+      "association_plane": "historical_gate_v2",
+      "drop_stage": "truth_binding",
+      "classification": "OUT_OF_SCOPE",
+      "reason": "This retained Gate V2 diagnostic row has the same truth parcel set as 3cf11e9a58e3b710 and as a current H.7 subject. Counting it as a new denominator subject would be duplicate truth-plane replay without a cross-gate identity bridge.",
+      "evidence": [
+        "e4_gate_v2_population_request.json shows ced7ad9f0d74abf7 and 3cf11e9a58e3b710 share the same six truth BBLs.",
+        "canon_geo_h7_population.v0.json contains the same six-BBL truth set as h7-subject:non-round:1f301680cb0f2c88d43c40f0869779eca34a07dfaca12b657b4509486df60a46.",
+        "scripts/geo_measurements/README.md records that no Gate V2/H4 extension-key bridge exists."
+      ],
+      "truth_parcels": [
+        "1004060014",
+        "1004060015",
+        "1004510044",
+        "1004510045",
+        "1004510046",
+        "1004510047"
+      ],
+      "duplicate_of": {
+        "case_id": "3cf11e9a58e3b710",
+        "h7_subject_id": "h7-subject:non-round:1f301680cb0f2c88d43c40f0869779eca34a07dfaca12b657b4509486df60a46"
+      },
+      "follow_up_bead": null,
+      "max_denominator_movement_if_recovered": 0,
+      "max_exact_correct_movement_if_recovered_upper_bound": 0,
+      "immediate_exact_correct_movement": 0
+    },
+    {
+      "deficit_id": "h4_extension_duplicate_6eb465fd908bc59f",
+      "subject_name": "H.4 extension diagnostic duplicate by truth parcel set",
+      "subject_id": null,
+      "loan_key": null,
+      "document_id": null,
+      "case_id": "6eb465fd908bc59f",
+      "truth_plane": "h4_extension_historical",
+      "association_plane": "historical_h4_extension",
+      "drop_stage": "truth_binding",
+      "classification": "OUT_OF_SCOPE",
+      "reason": "This H.4 extension row has no H.7 loan key and duplicates a current H.7 truth parcel set. It can diagnose reach but cannot fill the frozen denominator as a new logical subject without an operator ruling and a cross-gate identity bridge.",
+      "evidence": [
+        "e4_h4_extension.json truth_parcels equal a current H.7 subject truth set.",
+        "PLAN_CANON_GEO.md H.7 states the two H.4 extension cases carry no H.7 loan key and the frozen 79-case gate remains five genuine nonduplicate cases short."
+      ],
+      "truth_parcels": [
+        "4066300015",
+        "4066300030"
+      ],
+      "duplicate_of": {
+        "case_id": null,
+        "h7_subject_id": "h7-subject:non-round:97ae3eeb8035a1914b178d2cf3a447b50735e954a33067d57d6e9a5e1c3e6d58"
+      },
+      "follow_up_bead": null,
+      "max_denominator_movement_if_recovered": 0,
+      "max_exact_correct_movement_if_recovered_upper_bound": 0,
+      "immediate_exact_correct_movement": 0
+    },
+    {
+      "deficit_id": "h4_extension_duplicate_aacff3c254d36ae6",
+      "subject_name": "H.4 extension diagnostic duplicate by truth parcel set",
+      "subject_id": null,
+      "loan_key": null,
+      "document_id": null,
+      "case_id": "aacff3c254d36ae6",
+      "truth_plane": "h4_extension_historical",
+      "association_plane": "historical_h4_extension",
+      "drop_stage": "truth_binding",
+      "classification": "OUT_OF_SCOPE",
+      "reason": "This H.4 extension row has no H.7 loan key and duplicates a current H.7 truth parcel set. It can diagnose reach but cannot fill the frozen denominator as a new logical subject without an operator ruling and a cross-gate identity bridge.",
+      "evidence": [
+        "e4_h4_extension.json truth_parcels equal a current H.7 subject truth set.",
+        "PLAN_CANON_GEO.md H.7 states the two H.4 extension cases carry no H.7 loan key and the frozen 79-case gate remains five genuine nonduplicate cases short."
+      ],
+      "truth_parcels": [
+        "3014840015",
+        "3014840047",
+        "3014860020",
+        "3014860025",
+        "3014860027",
+        "3015890047",
+        "3015940003",
+        "3015940039",
+        "3015940065",
+        "3016010050",
+        "3016010053",
+        "3016010055",
+        "3016010068",
+        "3016060074",
+        "3016070026",
+        "3016070067",
+        "3016070068",
+        "3016530059",
+        "3016630086",
+        "3016630088",
+        "3017600016",
+        "3017600053",
+        "3017600068",
+        "3017600069",
+        "3017600070",
+        "3017670038"
+      ],
+      "duplicate_of": {
+        "case_id": null,
+        "h7_subject_id": "h7-subject:non-round:8ac12f0a324a578c82b0016151b093c3304c8160711294554b01eaecf837bd7b"
+      },
+      "follow_up_bead": null,
+      "max_denominator_movement_if_recovered": 0,
+      "max_exact_correct_movement_if_recovered_upper_bound": 0,
+      "immediate_exact_correct_movement": 0
+    },
+    {
+      "deficit_id": "unmaterialized_nonduplicate_subject_slot_01",
+      "subject_name": "unmaterialized required E4 subject slot 1",
+      "subject_id": null,
+      "loan_key": null,
+      "document_id": null,
+      "case_id": null,
+      "truth_plane": "unknown_not_materialized",
+      "association_plane": "unknown_not_materialized",
+      "drop_stage": "universe_construction",
+      "classification": "BLOCKED_ON_DATA_WE_DO_NOT_HAVE",
+      "reason": "The consensus-extension probe admitted zero new genuine nonduplicate subjects; this required frozen-denominator slot has no subject row, loan key, document id, truth BBL set, or candidate release rows in the retained artifacts.",
+      "evidence": [
+        "scripts/geo_measurements/h7_e4_consensus_truth_extension.sql is the bounded five-subject deficit probe and records zero admitted new subjects in plan notes.",
+        "PLAN_CANON_GEO.md H.7 records that duplicate releases, duplicate truth planes, and retained/live replays cannot fill this slot."
+      ],
+      "truth_parcels": [],
+      "follow_up_bead": "bd-22t5",
+      "max_denominator_movement_if_recovered": 1,
+      "max_exact_correct_movement_if_recovered_upper_bound": 1,
+      "immediate_exact_correct_movement": 0
+    },
+    {
+      "deficit_id": "unmaterialized_nonduplicate_subject_slot_02",
+      "subject_name": "unmaterialized required E4 subject slot 2",
+      "subject_id": null,
+      "loan_key": null,
+      "document_id": null,
+      "case_id": null,
+      "truth_plane": "unknown_not_materialized",
+      "association_plane": "unknown_not_materialized",
+      "drop_stage": "universe_construction",
+      "classification": "BLOCKED_ON_DATA_WE_DO_NOT_HAVE",
+      "reason": "The consensus-extension probe admitted zero new genuine nonduplicate subjects; this required frozen-denominator slot has no subject row, loan key, document id, truth BBL set, or candidate release rows in the retained artifacts.",
+      "evidence": [
+        "scripts/geo_measurements/h7_e4_consensus_truth_extension.sql is the bounded five-subject deficit probe and records zero admitted new subjects in plan notes.",
+        "PLAN_CANON_GEO.md H.7 records that duplicate releases, duplicate truth planes, and retained/live replays cannot fill this slot."
+      ],
+      "truth_parcels": [],
+      "follow_up_bead": "bd-22t5",
+      "max_denominator_movement_if_recovered": 1,
+      "max_exact_correct_movement_if_recovered_upper_bound": 1,
+      "immediate_exact_correct_movement": 0
+    },
+    {
+      "deficit_id": "unmaterialized_nonduplicate_subject_slot_03",
+      "subject_name": "unmaterialized required E4 subject slot 3",
+      "subject_id": null,
+      "loan_key": null,
+      "document_id": null,
+      "case_id": null,
+      "truth_plane": "unknown_not_materialized",
+      "association_plane": "unknown_not_materialized",
+      "drop_stage": "universe_construction",
+      "classification": "BLOCKED_ON_DATA_WE_DO_NOT_HAVE",
+      "reason": "The consensus-extension probe admitted zero new genuine nonduplicate subjects; this required frozen-denominator slot has no subject row, loan key, document id, truth BBL set, or candidate release rows in the retained artifacts.",
+      "evidence": [
+        "scripts/geo_measurements/h7_e4_consensus_truth_extension.sql is the bounded five-subject deficit probe and records zero admitted new subjects in plan notes.",
+        "PLAN_CANON_GEO.md H.7 records that duplicate releases, duplicate truth planes, and retained/live replays cannot fill this slot."
+      ],
+      "truth_parcels": [],
+      "follow_up_bead": "bd-22t5",
+      "max_denominator_movement_if_recovered": 1,
+      "max_exact_correct_movement_if_recovered_upper_bound": 1,
+      "immediate_exact_correct_movement": 0
+    },
+    {
+      "deficit_id": "unmaterialized_nonduplicate_subject_slot_04",
+      "subject_name": "unmaterialized required E4 subject slot 4",
+      "subject_id": null,
+      "loan_key": null,
+      "document_id": null,
+      "case_id": null,
+      "truth_plane": "unknown_not_materialized",
+      "association_plane": "unknown_not_materialized",
+      "drop_stage": "universe_construction",
+      "classification": "BLOCKED_ON_DATA_WE_DO_NOT_HAVE",
+      "reason": "The consensus-extension probe admitted zero new genuine nonduplicate subjects; this required frozen-denominator slot has no subject row, loan key, document id, truth BBL set, or candidate release rows in the retained artifacts.",
+      "evidence": [
+        "scripts/geo_measurements/h7_e4_consensus_truth_extension.sql is the bounded five-subject deficit probe and records zero admitted new subjects in plan notes.",
+        "PLAN_CANON_GEO.md H.7 records that duplicate releases, duplicate truth planes, and retained/live replays cannot fill this slot."
+      ],
+      "truth_parcels": [],
+      "follow_up_bead": "bd-22t5",
+      "max_denominator_movement_if_recovered": 1,
+      "max_exact_correct_movement_if_recovered_upper_bound": 1,
+      "immediate_exact_correct_movement": 0
+    },
+    {
+      "deficit_id": "unmaterialized_nonduplicate_subject_slot_05",
+      "subject_name": "unmaterialized required E4 subject slot 5",
+      "subject_id": null,
+      "loan_key": null,
+      "document_id": null,
+      "case_id": null,
+      "truth_plane": "unknown_not_materialized",
+      "association_plane": "unknown_not_materialized",
+      "drop_stage": "universe_construction",
+      "classification": "BLOCKED_ON_DATA_WE_DO_NOT_HAVE",
+      "reason": "The consensus-extension probe admitted zero new genuine nonduplicate subjects; this required frozen-denominator slot has no subject row, loan key, document id, truth BBL set, or candidate release rows in the retained artifacts.",
+      "evidence": [
+        "scripts/geo_measurements/h7_e4_consensus_truth_extension.sql is the bounded five-subject deficit probe and records zero admitted new subjects in plan notes.",
+        "PLAN_CANON_GEO.md H.7 records that duplicate releases, duplicate truth planes, and retained/live replays cannot fill this slot."
+      ],
+      "truth_parcels": [],
+      "follow_up_bead": "bd-22t5",
+      "max_denominator_movement_if_recovered": 1,
+      "max_exact_correct_movement_if_recovered_upper_bound": 1,
+      "immediate_exact_correct_movement": 0
+    }
+  ]
+}
