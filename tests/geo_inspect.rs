@@ -849,6 +849,22 @@ fn t25_geo_inspection_validation_rejects_empty_answer_refs() {
 }
 
 #[test]
+fn geo_inspection_validation_rejects_unbounded_component_detail() {
+    let fixture = run_public_synthetic_chain();
+    let mut inspection = inspect(&fixture.work_dir).expect("inspection builds");
+    inspection.metrics.component_keys = (0..=inspection.bounds.max_component_refs)
+        .map(|index| format!("building:component-{index}"))
+        .collect();
+    let error = validate_inspection_artifact(&inspection)
+        .expect_err("component detail above the advertised bound must reject");
+    assert_eq!(error.code, GeoInspectErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("metrics.component_keys")
+    );
+}
+
+#[test]
 fn geo_inspect_compare_refuses_mismatched_question_hash() {
     let fixture = run_public_synthetic_chain();
     let base = inspect(&fixture.work_dir).expect("base inspection");

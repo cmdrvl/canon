@@ -371,7 +371,29 @@ pub fn validate_inspection_artifact(inspection: &GeoInspection) -> Result<(), Ge
             [("field", "bounds.max_component_refs")],
         ));
     }
+    if inspection.component_id != inspection.bounds.component_id {
+        return Err(GeoInspectError::invalid(
+            "Geo inspection component_id must match bounds.component_id",
+            [("field", "bounds.component_id")],
+        ));
+    }
     validate_nonempty("metrics.proof_class", &inspection.metrics.proof_class)?;
+    if inspection.metrics.component_keys.len() as u64 > inspection.bounds.max_component_refs {
+        return Err(GeoInspectError::invalid(
+            "Geo inspection component detail exceeds max_component_refs",
+            [
+                ("field", "metrics.component_keys".to_string()),
+                (
+                    "max_component_refs",
+                    inspection.bounds.max_component_refs.to_string(),
+                ),
+                (
+                    "component_keys",
+                    inspection.metrics.component_keys.len().to_string(),
+                ),
+            ],
+        ));
+    }
     for (artifact_id, digest) in &inspection.metrics.artifact_digests {
         validate_nonempty("metrics.artifact_digests.key", artifact_id)?;
         validate_digest("metrics.artifact_digests.value", digest)?;
@@ -532,9 +554,9 @@ fn build_inspection(
     let next_evidence = stored.first_by_contract(CANON_GEO_NEXT_EVIDENCE_VERSION);
     let propagation = stored.first_by_contract(CANON_GEO_PROPAGATION_VERSION);
 
-    let metrics = inspection_metrics(stored, composition, explanation);
     let planes = inspection_planes(stored, section, evidence, composition, explanation);
     let bounds = inspection_bounds(options.component_id.clone(), composition);
+    let metrics = inspection_metrics(stored, composition, explanation, &bounds);
     let answers = vec![
         answer_q1(stored),
         answer_q2(stored, evidence),
@@ -895,6 +917,7 @@ fn inspection_metrics(
     stored: &StoredRun,
     composition: Option<&StoredArtifact>,
     explanation: Option<&StoredArtifact>,
+    bounds: &GeoInspectionBounds,
 ) -> GeoInspectionMetrics {
     let mut artifact_digests = BTreeMap::from([(
         stored.manifest_ref.artifact_id.clone(),
@@ -909,7 +932,7 @@ fn inspection_metrics(
     let residual_model_count = composition
         .and_then(|artifact| artifact.value.pointer("/summary/residual_model_count"))
         .and_then(Value::as_u64);
-    let component_keys = composition
+    let mut component_keys = composition
         .and_then(|artifact| artifact.value.get("factorization"))
         .and_then(Value::as_array)
         .map(|components| {
@@ -920,6 +943,12 @@ fn inspection_metrics(
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
+    component_keys.sort();
+    component_keys.dedup();
+    if let Some(component_id) = &bounds.component_id {
+        component_keys.retain(|key| key == component_id);
+    }
+    component_keys.truncate(bounds.max_component_refs as usize);
     let backbone_members = composition
         .and_then(|artifact| artifact.value.get("hard_forced"))
         .map(string_leaves)
@@ -1445,7 +1474,7 @@ fn proof_class(stored: &StoredRun) -> String {
         .run
         .acquisition_satisfactions
         .iter()
-        .map(|satisfaction| format!("{:?}", satisfaction.proof_class))
+        .map(|satisfaction| serde_scalar_name(&satisfaction.proof_class))
         .collect::<BTreeSet<_>>();
     if !acquisition_classes.is_empty() {
         return acquisition_classes
@@ -1467,6 +1496,16 @@ fn proof_class(stored: &StoredRun) -> String {
     } else {
         "retained".to_string()
     }
+}
+
+fn serde_scalar_name<T>(value: &T) -> String
+where
+    T: Serialize + fmt::Debug,
+{
+    serde_json::to_value(value)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_string))
+        .unwrap_or_else(|| format!("{value:?}"))
 }
 
 fn collect_source_datasets(value: &Value) -> Vec<String> {
