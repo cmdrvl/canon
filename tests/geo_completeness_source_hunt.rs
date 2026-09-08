@@ -29,6 +29,10 @@ fn completeness_source_hunt_classifies_landed_sources_by_grain() {
         hunt["proof_class"],
         "retained_cmdrvl_data_warehouse_source_hunt_not_live"
     );
+    assert_eq!(
+        hunt["e4_score_label"],
+        "definitional_on_this_population_not_independent_precision"
+    );
     assert_eq!(hunt["frozen_denominator"], 79);
     assert_eq!(hunt["retained_population_denominator"], 70);
     assert_eq!(hunt["probe_denominator"], 3);
@@ -43,6 +47,16 @@ fn completeness_source_hunt_classifies_landed_sources_by_grain() {
             .as_str()
             .expect("proof class")
             .ends_with("_not_live")
+    );
+    assert_eq!(
+        hunt["operator_correction"]["decision"],
+        "ACRIS legal rows remain the first adapter instance for the source-agnostic completeness mechanism."
+    );
+    assert!(
+        hunt["operator_correction"]["forbidden_score_use"]
+            .as_str()
+            .expect("forbidden score use")
+            .contains("independent precision")
     );
 
     let sources = candidate_sources_by_id(&hunt);
@@ -69,6 +83,10 @@ fn completeness_source_hunt_classifies_landed_sources_by_grain() {
     assert_eq!(
         acris["retained_coverage"]["acris_legal_parcel_set_equals_truth"],
         70
+    );
+    assert_eq!(
+        acris["score_label_on_h7_population"],
+        "definitional_on_this_population_not_independent_precision"
     );
     assert!(
         acris["not_independent_of_truth_when_used_on_h7_deed_truth"]
@@ -106,6 +124,40 @@ fn completeness_source_hunt_classifies_landed_sources_by_grain() {
             .expect("negative safety rule")
             .contains("abstain")
     );
+}
+
+#[test]
+fn completeness_source_hunt_labels_acris_trace_as_definitional_for_h7() {
+    let hunt = read_json(SOURCE_HUNT);
+    let trace = &hunt["truth_derivation_trace"];
+    assert_eq!(trace["all_retained_truth_bbls_acris_derived"], true);
+    assert_eq!(trace["retained_subjects_checked"], 70);
+    assert_eq!(trace["acris_legal_parcel_set_equals_truth"], 70);
+    assert_eq!(trace["independent_acris_precision_subjects"], 0);
+
+    let scripts = trace["scripts"].as_array().expect("trace scripts");
+    assert_eq!(scripts.len(), 3);
+    assert!(scripts.iter().any(|script| {
+        script["path"] == "scripts/geo_measurements/e1_gross_class_points.sql"
+            && script["evidence"]
+                .as_str()
+                .expect("script evidence")
+                .contains("NYC_ACRIS_REAL_PROPERTY_LEGALS_EXT")
+    }));
+    assert!(scripts.iter().any(|script| {
+        script["path"] == "scripts/geo_measurements/h7_candidate_strategy_comparison.sql"
+            && script["evidence"]
+                .as_str()
+                .expect("script evidence")
+                .contains("truth_bbls")
+    }));
+    assert!(scripts.iter().any(|script| {
+        script["path"] == "scripts/geo_measurements/h7_staging_halo_reach_control.sql"
+            && script["evidence"]
+                .as_str()
+                .expect("script evidence")
+                .contains("accepted ACRIS truth BBLs")
+    }));
 }
 
 #[test]
@@ -257,6 +309,74 @@ fn completeness_source_hunt_retained_coverage_matches_h7_population_pins() {
     assert_eq!(coverage["total_bridge_rows"], total_bridge_rows);
 }
 
+#[test]
+fn completeness_source_hunt_keeps_sec_schedule_as_bounded_second_instance() {
+    let hunt = read_json(SOURCE_HUNT);
+    let request = read_json(H7_REQUEST);
+    let population = read_json(H7_POPULATION);
+    let request_ids = request["cases"]
+        .as_array()
+        .expect("request cases")
+        .iter()
+        .map(|case| case["id"].as_str().expect("request id").to_string())
+        .collect::<BTreeSet<_>>();
+    let retained_cases = retained_cases_by_subject(&population, &request_ids);
+
+    let mut count_equal = Vec::new();
+    let mut exact_pad_bridge = BTreeSet::new();
+    for case in retained_cases.values() {
+        let subject_id = case["subject_id"].as_str().expect("subject id");
+        let truth = string_set(&case["truth_parcels"]);
+        let bridge_count = case["source_records"]
+            .as_array()
+            .expect("source records")
+            .iter()
+            .filter(|record| record["role"] == "bridge_loan")
+            .count();
+        if bridge_count != truth.len() {
+            continue;
+        }
+        let short_id = short_subject_id(subject_id);
+        count_equal.push(short_id.clone());
+        let evidence = read_json(&format!(
+            "scripts/geo_measurements/fixtures/d1_residuals/{subject_id}.evidence.json"
+        ));
+        if pad_members(&evidence) == truth {
+            exact_pad_bridge.insert(short_id);
+        }
+    }
+
+    let thread = &hunt["sec_schedule_independent_thread"];
+    assert_eq!(
+        thread["source"],
+        "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY"
+    );
+    assert_eq!(thread["retained_subjects"], 70);
+    assert_eq!(thread["property_row_source_present"], 70);
+    assert_eq!(thread["property_row_count_equals_truth_lot_count"], 18);
+    assert_eq!(count_equal.len(), 18);
+    assert_eq!(thread["current_retained_pad_bridge_exact_union"], 6);
+    assert_eq!(exact_pad_bridge.len(), 6);
+    assert_eq!(thread["current_retained_pad_bridge_not_exact_union"], 12);
+    assert_eq!(
+        string_set(&thread["safe_current_second_instance_subjects"]),
+        exact_pad_bridge
+    );
+    assert_eq!(
+        thread["upper_bound_subjects"]
+            .as_array()
+            .expect("upper bound subjects")
+            .len(),
+        18
+    );
+    assert!(
+        thread["interpretation"]
+            .as_str()
+            .expect("interpretation")
+            .contains("upper bound, not a ready denominator")
+    );
+}
+
 fn read_json(path: &str) -> Value {
     serde_json::from_reader(BufReader::new(
         File::open(path).unwrap_or_else(|error| panic!("open {path}: {error}")),
@@ -306,6 +426,32 @@ fn retained_cases_by_subject(
         }
     }
     cases
+}
+
+fn pad_members(evidence: &Value) -> BTreeSet<String> {
+    evidence["admissions"]
+        .as_array()
+        .expect("admissions")
+        .iter()
+        .filter(|admission| admission["contract"]["id"] == "rho.address.pad.membership")
+        .flat_map(|admission| {
+            admission["observation"]["members"]
+                .as_array()
+                .expect("pad observation members")
+                .iter()
+                .map(|member| member["id"].as_str().expect("member id").to_string())
+        })
+        .collect()
+}
+
+fn short_subject_id(subject_id: &str) -> String {
+    subject_id
+        .rsplit_once(':')
+        .map(|(_, tail)| tail)
+        .unwrap_or(subject_id)
+        .chars()
+        .take(8)
+        .collect()
 }
 
 fn string_set(value: &Value) -> BTreeSet<String> {

@@ -4,10 +4,37 @@
   "owner": "codex-geo-2",
   "handoff": "SOURCE HUNT READY FOR MECHANISM",
   "proof_class": "retained_cmdrvl_data_warehouse_source_hunt_not_live",
+  "e4_score_label": "definitional_on_this_population_not_independent_precision",
   "frozen_denominator": 79,
   "retained_population_denominator": 70,
   "probe_denominator": 3,
   "boundary": "Source hunt only. These findings name landed sources that can feed a typed all-of or exact-cardinality completeness relation, but they do not add candidates, do not relax rho admission, do not assert live proof, and do not allow a partial or unasserted schedule to exclude subsets.",
+  "operator_correction": {
+    "decision": "ACRIS legal rows remain the first adapter instance for the source-agnostic completeness mechanism.",
+    "measurement_limit": "The retained E4 population cannot measure independent precision for ACRIS-fed completeness because its deed-truth BBL sets are derived from ACRIS legal rows joined on the matched mortgage document_id.",
+    "allowed_score_use": "A completeness score on this population is a mechanism check only: collapse of feasible sets, false_merge preservation, abstention behavior, determinism, and replay.",
+    "forbidden_score_use": "Do not cite resolved/exactly-correct movement from ACRIS-fed completeness on this population as independent precision."
+  },
+  "truth_derivation_trace": {
+    "all_retained_truth_bbls_acris_derived": true,
+    "retained_subjects_checked": 70,
+    "acris_legal_parcel_set_equals_truth": 70,
+    "scripts": [
+      {
+        "path": "scripts/geo_measurements/e1_gross_class_points.sql",
+        "evidence": "ab joins accepted document id to EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_LEGALS_EXT and constructs BBL from BOROUGH || BLOCK || LOT."
+      },
+      {
+        "path": "scripts/geo_measurements/h7_candidate_strategy_comparison.sql",
+        "evidence": "legal_documents aggregates ACRIS legal_edges into truth_bbls; accepted_subjects selects the single legal document per loan/truth plane."
+      },
+      {
+        "path": "scripts/geo_measurements/h7_staging_halo_reach_control.sql",
+        "evidence": "header states the reach control measures whether bounded sections contain the accepted ACRIS truth BBLs."
+      }
+    ],
+    "independent_acris_precision_subjects": 0
+  },
   "retained_h7_coverage": {
     "source_files": [
       "scripts/geo_measurements/fixtures/d1_residuals/h7_population_request.json",
@@ -98,6 +125,7 @@
         "partial-lot, air-rights, subterranean-rights, and easement flags are either explicitly admitted by the profile or cause abstention"
       ],
       "not_independent_of_truth_when_used_on_h7_deed_truth": "The retained H7 truth plane is itself built from selected ACRIS legal rows. Using this source in E4 scoring is valid as a truth-plane completeness assertion; using it as production resolver evidence requires independent document binding to avoid truth leakage.",
+      "score_label_on_h7_population": "definitional_on_this_population_not_independent_precision",
       "retained_coverage": {
         "acris_master_present": 70,
         "acris_legal_present": 70,
@@ -185,12 +213,50 @@
       "source_hunt_result": "ACRIS legal rows assert the exact four-lot NYC instrument set. The loan-property schedule is complete at eight filed property rows across NY, MI, AZ, and IL; the NYC subset count happens to match truth but that is not a loan-grain all-of assertion."
     }
   ],
+  "sec_schedule_independent_thread": {
+    "source": "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY",
+    "retained_subjects": 70,
+    "property_row_source_present": 70,
+    "property_row_count_equals_truth_lot_count": 18,
+    "current_retained_pad_bridge_exact_union": 6,
+    "current_retained_pad_bridge_not_exact_union": 12,
+    "safe_current_second_instance_subjects": [
+      "20869bd8",
+      "d2cfbf35",
+      "65067164",
+      "c1803335",
+      "f5588ba9",
+      "f608ce46"
+    ],
+    "upper_bound_subjects": [
+      "20869bd8",
+      "56f3e4fa",
+      "84b4195d",
+      "95ffa8e1",
+      "97ae3eeb",
+      "d2cfbf35",
+      "03ff08e7",
+      "0a8342fd",
+      "13ff4751",
+      "1fdc1350",
+      "65067164",
+      "7b694e77",
+      "865c66c6",
+      "8fd55140",
+      "9edc5d1a",
+      "c1803335",
+      "f5588ba9",
+      "f608ce46"
+    ],
+    "bridge_test_used": "For the 18 retained subjects where bridge_loan source-record count equals truth-lot count, compare the retained rho.address.pad.membership union to the truth set as an evaluation check. The PAD bridge is independent of ACRIS; the truth set is used only to score whether the bridge was total and exact.",
+    "interpretation": "The independent SEC schedule is complete at property-row grain, but current retained artifacts only demonstrate a safe tax-lot all-of second instance for 6 of 70 subjects. The 18 count-equal subjects are an upper bound, not a ready denominator; reaching all 18 requires a row-level, source-pinned, total property-row-to-parcel bridge."
+  },
   "mechanism_handoff": {
     "recommended_positive_source": "acris_document_legal_rows",
     "secondary_source": "sec_annex_loan_property_schedule_at_property_row_grain",
     "typed_relation": "all_of_exact_cardinality",
     "positive_rule": "Emit completeness only when a source asserts that the enumerated rows are the complete set at its declared grain and every member can be mapped into the selected entity grain without ambiguity.",
     "negative_safety_rule": "If the source is a sample, primary-address field, partial extract, county subset, or has any unbridged row/member, the relation must abstain and exclude no subsets.",
-    "expected_use_in_bd_2gvl": "The generic mechanism can model ACRIS legal-row completeness for a bound document and loan-property schedule completeness at property-row grain. It must not infer tax-lot cardinality from LOAN_PROPERTY_COUNT alone."
+    "expected_use_in_bd_2gvl": "The generic mechanism can model ACRIS legal-row completeness for a bound document and loan-property schedule completeness at property-row grain. On the retained H7 population, ACRIS-fed scores must be labeled definitional-on-this-population rather than independent precision. The mechanism must not infer tax-lot cardinality from LOAN_PROPERTY_COUNT alone."
   }
 }
