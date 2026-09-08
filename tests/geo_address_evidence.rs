@@ -7,16 +7,18 @@ use canon::geo::{
     DEFAULT_MAX_MATERIALIZED_MODELS, GeoAddressHouseNumber, GeoAddressJurisdiction,
     GeoAddressParcelBridgeRequest, GeoAddressParcelBridgeStatus, GeoAddressParcelDiagnosticCode,
     GeoAddressParcelEvidenceRequest, GeoAddressParseForest, GeoAddressParseRequest,
-    GeoAddressStreet, GeoAsOf, GeoCompositionStatus, GeoCompositionUniverse, GeoEntityLevel,
-    GeoEvidenceClaimRole, GeoEvidenceCompilationRequest, GeoEvidenceDisposition,
-    GeoEvidenceRecordRef, GeoNycBorough, GeoPadAddressMember, GeoPadAddressSet,
-    GeoPadMemberSourceRecord, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
+    GeoAddressPropertyInput, GeoAddressStreet, GeoAsOf, GeoCompositionStatus,
+    GeoCompositionUniverse, GeoEntityLevel, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest,
+    GeoEvidenceDisposition, GeoEvidenceRecordRef, GeoNycBorough, GeoPadAddressMember,
+    GeoPadAddressSet, GeoPadMemberSourceRecord, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
     GeoStreetDirection, GeoStreetSuffix, GeoValidTimeInterval, GeoValueOrigin,
     bridge_pad_membership_to_parcel_observation, build_address_parcel_compilation_request,
     build_address_parcel_evidence, canonical_address_parcel_bridge_bytes,
     canonical_address_parcel_evidence_bundle_bytes, compile_evidence, evaluate_pad_membership,
-    geo_pad_member_blake3, parse_address_forest, solve_composition,
+    geo_pad_member_blake3, parse_address_forest, select_address_property_inputs_for_jurisdiction,
+    solve_composition,
 };
+use std::collections::BTreeSet;
 
 fn request(input: &str, borough: GeoNycBorough) -> GeoAddressParseRequest {
     GeoAddressParseRequest {
@@ -32,9 +34,16 @@ fn forest(input: &str) -> GeoAddressParseForest {
 }
 
 fn pad_set(members: Vec<GeoPadAddressMember>) -> GeoPadAddressSet {
+    pad_set_for_borough(GeoNycBorough::Manhattan, members)
+}
+
+fn pad_set_for_borough(
+    borough: GeoNycBorough,
+    members: Vec<GeoPadAddressMember>,
+) -> GeoPadAddressSet {
     GeoPadAddressSet {
         version: CANON_GEO_PAD_ADDRESS_SET_VERSION.to_string(),
-        jurisdiction: GeoAddressJurisdiction::nyc_borough(GeoNycBorough::Manhattan),
+        jurisdiction: GeoAddressJurisdiction::nyc_borough(borough),
         members,
     }
 }
@@ -45,6 +54,10 @@ fn ordinal_street(
     suffix: GeoStreetSuffix,
 ) -> GeoAddressStreet {
     GeoAddressStreet::ordinal(direction, value, Some(suffix)).expect("street fixture is valid")
+}
+
+fn literal_street(name: &[&str], suffix: GeoStreetSuffix) -> GeoAddressStreet {
+    GeoAddressStreet::literal(None, name, Some(suffix)).expect("street fixture is valid")
 }
 
 fn member(
@@ -64,8 +77,10 @@ fn source_record(id: &str) -> GeoEvidenceRecordRef {
     }
 }
 
-fn source_binding(member_id: &str) -> GeoPadMemberSourceRecord {
-    let members = first_and_twelfth_members();
+fn source_binding_for_members(
+    member_id: &str,
+    members: &[GeoPadAddressMember],
+) -> GeoPadMemberSourceRecord {
     let member = members
         .iter()
         .find(|member| member.member_id == member_id)
@@ -78,6 +93,14 @@ fn source_binding(member_id: &str) -> GeoPadMemberSourceRecord {
 }
 
 fn bridge_request(member_ids: &[&str]) -> GeoAddressParcelBridgeRequest {
+    let members = first_and_twelfth_members();
+    bridge_request_for_members(member_ids, &members)
+}
+
+fn bridge_request_for_members(
+    member_ids: &[&str],
+    members: &[GeoPadAddressMember],
+) -> GeoAddressParcelBridgeRequest {
     GeoAddressParcelBridgeRequest {
         version: CANON_GEO_ADDRESS_PARCEL_BRIDGE_REQUEST_VERSION.to_string(),
         observation_id: "obs.address.pad.membership".to_string(),
@@ -86,7 +109,7 @@ fn bridge_request(member_ids: &[&str]) -> GeoAddressParcelBridgeRequest {
         valid_time: None,
         member_source_records: member_ids
             .iter()
-            .map(|member_id| source_binding(member_id))
+            .map(|member_id| source_binding_for_members(member_id, members))
             .collect(),
     }
 }
@@ -124,6 +147,41 @@ fn first_and_twelfth_members() -> Vec<GeoPadAddressMember> {
             east_12th,
         ),
     ]
+}
+
+fn string_set(values: &[&str]) -> BTreeSet<String> {
+    values.iter().map(|value| (*value).to_string()).collect()
+}
+
+fn bridged_observation_parcel_ids(
+    input: &str,
+    borough: GeoNycBorough,
+    members: Vec<GeoPadAddressMember>,
+) -> BTreeSet<String> {
+    let member_ids = members
+        .iter()
+        .map(|member| member.member_id.as_str())
+        .collect::<Vec<_>>();
+    let request = GeoAddressParcelEvidenceRequest {
+        version: CANON_GEO_ADDRESS_PARCEL_EVIDENCE_REQUEST_VERSION.to_string(),
+        parse_request: request(input, borough),
+        address_set: pad_set_for_borough(borough, members.clone()),
+        bridge_request: bridge_request_for_members(&member_ids, &members),
+        evidence_request: None,
+    };
+    let bundle = build_address_parcel_evidence(&request).expect("address bundle should build");
+    assert_eq!(
+        bundle.bridge.status,
+        GeoAddressParcelBridgeStatus::EvidenceObservation
+    );
+    let observation = bundle
+        .bridge
+        .observation
+        .expect("supported address bridge emits an observation");
+    let GeoRhoObservationKind::ExistentialMembership { members } = observation.observation else {
+        panic!("address bridge must emit existential membership");
+    };
+    members.into_iter().map(|member| member.id).collect()
 }
 
 fn evidence_template() -> GeoEvidenceCompilationRequest {
@@ -224,6 +282,177 @@ fn multiple_surviving_readings_union_into_one_existential_observation() {
         solved.hard_forced.parcels.is_empty(),
         "the union is an AnyOf, not a guessed singleton"
     );
+}
+
+#[test]
+fn bd_2rc0_524efa30_bridge_emits_truth_42_street_members_not_neighbor() {
+    let street = ordinal_street(None, 42, GeoStreetSuffix::Street);
+    let parcel_ids = bridged_observation_parcel_ids(
+        "18-27A; 18-29; 18-31; 18-33 42ND STREET",
+        GeoNycBorough::Queens,
+        vec![
+            member(
+                "4007910022",
+                "4007910022",
+                GeoAddressHouseNumber::queens_hyphenated_literal("18-33"),
+                street.clone(),
+            ),
+            member(
+                "4007910023",
+                "4007910023",
+                GeoAddressHouseNumber::queens_hyphenated_literal("18-29"),
+                street.clone(),
+            ),
+            member(
+                "4007910122",
+                "4007910122",
+                GeoAddressHouseNumber::queens_hyphenated_literal("18-31"),
+                street.clone(),
+            ),
+            member(
+                "4007910123",
+                "4007910123",
+                GeoAddressHouseNumber::queens_hyphenated_literal("18-27A"),
+                street.clone(),
+            ),
+            member(
+                "4008020060",
+                "4008020060",
+                GeoAddressHouseNumber::queens_hyphenated_literal("18-22"),
+                street,
+            ),
+        ],
+    );
+
+    assert_eq!(
+        parcel_ids,
+        string_set(&["4007910022", "4007910023", "4007910122", "4007910123"])
+    );
+    assert!(
+        !parcel_ids.contains("4008020060"),
+        "the hard PAD membership observation must not emit the neighboring 18-22 42 Street lot"
+    );
+}
+
+#[test]
+fn bd_2rc0_a6dd2e31_bridge_keeps_house_numbers_on_declared_street_segments() {
+    let east_60th = ordinal_street(Some(GeoStreetDirection::East), 60, GeoStreetSuffix::Street);
+    let first_ave = ordinal_street(None, 1, GeoStreetSuffix::Avenue);
+    let parcel_ids = bridged_observation_parcel_ids(
+        "345, 347, 349 EAST 60TH STREET AND 1097, 1099, 1101, 1103 1ST AVENUE",
+        GeoNycBorough::Manhattan,
+        vec![
+            member(
+                "1014350020",
+                "1014350020",
+                GeoAddressHouseNumber::discrete(345),
+                east_60th.clone(),
+            ),
+            member(
+                "1014350021",
+                "1014350021",
+                GeoAddressHouseNumber::discrete(347),
+                east_60th.clone(),
+            ),
+            member(
+                "1014350022",
+                "1014350022",
+                GeoAddressHouseNumber::discrete(349),
+                east_60th,
+            ),
+            member(
+                "1014350023",
+                "1014350023",
+                GeoAddressHouseNumber::discrete(1097),
+                first_ave.clone(),
+            ),
+            member(
+                "1014350024",
+                "1014350024",
+                GeoAddressHouseNumber::discrete(1099),
+                first_ave.clone(),
+            ),
+            member(
+                "1014350025",
+                "1014350025",
+                GeoAddressHouseNumber::discrete(1101),
+                first_ave.clone(),
+            ),
+            member(
+                "1014350026",
+                "1014350026",
+                GeoAddressHouseNumber::discrete(1103),
+                first_ave.clone(),
+            ),
+            member(
+                "1009260034",
+                "1009260034",
+                GeoAddressHouseNumber::discrete(345),
+                first_ave,
+            ),
+        ],
+    );
+
+    assert_eq!(
+        parcel_ids,
+        string_set(&[
+            "1014350020",
+            "1014350021",
+            "1014350022",
+            "1014350023",
+            "1014350024",
+            "1014350025",
+            "1014350026"
+        ])
+    );
+    assert!(
+        !parcel_ids.contains("1009260034"),
+        "the hard PAD membership observation must not emit the 345 1 Avenue chimera"
+    );
+}
+
+#[test]
+fn bd_2rc0_69dbf5da_multi_property_selection_uses_subject_jurisdiction_before_bridge() {
+    let property_rows = vec![
+        GeoAddressPropertyInput {
+            property_id: "property:manhattan:forsyth".to_string(),
+            input: "100-102 FORSYTH STREET".to_string(),
+            jurisdiction: GeoAddressJurisdiction::nyc_borough(GeoNycBorough::Manhattan),
+        },
+        GeoAddressPropertyInput {
+            property_id: "property:kings:the-vue".to_string(),
+            input: "1809 EMMONS AVENUE".to_string(),
+            jurisdiction: GeoAddressJurisdiction::nyc_borough(GeoNycBorough::Brooklyn),
+        },
+    ];
+    let target_jurisdiction = GeoAddressJurisdiction::nyc_borough(GeoNycBorough::Brooklyn);
+    let selected =
+        select_address_property_inputs_for_jurisdiction(&property_rows, &target_jurisdiction)
+            .expect("property rows should select by declared subject jurisdiction");
+
+    assert_eq!(
+        selected
+            .iter()
+            .map(|row| row.property_id.as_str())
+            .collect::<Vec<_>>(),
+        ["property:kings:the-vue"]
+    );
+    assert!(
+        selected.iter().all(|row| !row.input.contains("FORSYTH")),
+        "a Manhattan collateral property must not feed the Kings subject bridge"
+    );
+
+    let parcel_ids = bridged_observation_parcel_ids(
+        &selected[0].input,
+        GeoNycBorough::Brooklyn,
+        vec![member(
+            "3087731001",
+            "3087731001",
+            GeoAddressHouseNumber::discrete(1809),
+            literal_street(&["emmons"], GeoStreetSuffix::Avenue),
+        )],
+    );
+    assert_eq!(parcel_ids, string_set(&["3087731001"]));
 }
 
 #[test]

@@ -6,6 +6,7 @@ use canon::geo::{
     GeoStreetDirection, GeoStreetSuffix, canonical_pad_membership_bytes, evaluate_pad_membership,
     parse_address_forest,
 };
+use std::collections::BTreeSet;
 
 fn request(input: &str, borough: GeoNycBorough) -> GeoAddressParseRequest {
     GeoAddressParseRequest {
@@ -32,6 +33,19 @@ fn candidate_keys(forest: &GeoAddressParseForest) -> Vec<String> {
         .candidates
         .iter()
         .map(|candidate| candidate.canonical_key.clone())
+        .collect()
+}
+
+fn string_set(values: &[&str]) -> BTreeSet<String> {
+    values.iter().map(|value| (*value).to_string()).collect()
+}
+
+fn asserted_member_ids(membership: &canon::geo::GeoPadMembershipEvaluation) -> BTreeSet<String> {
+    membership
+        .results
+        .iter()
+        .filter(|result| result.asserted_member)
+        .flat_map(|result| result.matched_member_ids.iter().cloned())
         .collect()
 }
 
@@ -186,6 +200,170 @@ fn case_four_pad_membership_rejects_planted_chimera() {
     );
     assert!(!chimera_membership.results[0].asserted_member);
     assert!(!chimera_membership.results[0].compatible);
+}
+
+#[test]
+fn bd_2rc0_524efa30_semicolon_queens_addresses_assert_truth_rows_not_neighbor() {
+    let parsed = forest(
+        "18-27A; 18-29; 18-31; 18-33 42ND STREET",
+        GeoNycBorough::Queens,
+    );
+    assert_eq!(
+        displays(&parsed),
+        vec![
+            "18-27A 42nd Street",
+            "18-29 42nd Street",
+            "18-31 42nd Street",
+            "18-33 42nd Street"
+        ]
+    );
+
+    let street = ordinal_street(None, 42, GeoStreetSuffix::Street);
+    let pad = pad_set(
+        GeoNycBorough::Queens,
+        vec![
+            member(
+                "4007910022",
+                "4007910022",
+                GeoAddressHouseNumber::queens_hyphenated_literal("18-33"),
+                street.clone(),
+            ),
+            member(
+                "4007910023",
+                "4007910023",
+                GeoAddressHouseNumber::queens_hyphenated_literal("18-29"),
+                street.clone(),
+            ),
+            member(
+                "4007910122",
+                "4007910122",
+                GeoAddressHouseNumber::queens_hyphenated_literal("18-31"),
+                street.clone(),
+            ),
+            member(
+                "4007910123",
+                "4007910123",
+                GeoAddressHouseNumber::queens_hyphenated_literal("18-27A"),
+                street.clone(),
+            ),
+            member(
+                "4008020060",
+                "4008020060",
+                GeoAddressHouseNumber::queens_hyphenated_literal("18-22"),
+                street,
+            ),
+        ],
+    );
+
+    let membership = evaluate_pad_membership(&parsed, &pad).expect("membership evaluates");
+    assert_eq!(
+        asserted_member_ids(&membership),
+        string_set(&["4007910022", "4007910023", "4007910122", "4007910123"])
+    );
+    assert!(
+        !asserted_member_ids(&membership).contains("4008020060"),
+        "bridge input must not fall through to the neighboring 18-22 42 Street PAD row"
+    );
+}
+
+#[test]
+fn bd_2rc0_a6dd2e31_house_numbers_remain_bound_to_their_street_segment() {
+    let parsed = forest(
+        "345, 347, 349 EAST 60TH STREET AND 1097, 1099, 1101, 1103 1ST AVENUE",
+        GeoNycBorough::Manhattan,
+    );
+    assert_eq!(
+        displays(&parsed),
+        vec![
+            "345 East 60th Street",
+            "347 East 60th Street",
+            "349 East 60th Street",
+            "1097 1st Avenue",
+            "1099 1st Avenue",
+            "1101 1st Avenue",
+            "1103 1st Avenue"
+        ]
+    );
+    assert!(
+        !displays(&parsed)
+            .iter()
+            .any(|display| display == "345 1st Avenue"),
+        "the parser must not carry the 345 house number onto the 1 Avenue segment"
+    );
+
+    let east_60th = ordinal_street(Some(GeoStreetDirection::East), 60, GeoStreetSuffix::Street);
+    let first_ave = ordinal_street(None, 1, GeoStreetSuffix::Avenue);
+    let pad = pad_set(
+        GeoNycBorough::Manhattan,
+        vec![
+            member(
+                "1014350020",
+                "1014350020",
+                GeoAddressHouseNumber::discrete(345),
+                east_60th.clone(),
+            ),
+            member(
+                "1014350021",
+                "1014350021",
+                GeoAddressHouseNumber::discrete(347),
+                east_60th.clone(),
+            ),
+            member(
+                "1014350022",
+                "1014350022",
+                GeoAddressHouseNumber::discrete(349),
+                east_60th,
+            ),
+            member(
+                "1014350023",
+                "1014350023",
+                GeoAddressHouseNumber::discrete(1097),
+                first_ave.clone(),
+            ),
+            member(
+                "1014350024",
+                "1014350024",
+                GeoAddressHouseNumber::discrete(1099),
+                first_ave.clone(),
+            ),
+            member(
+                "1014350025",
+                "1014350025",
+                GeoAddressHouseNumber::discrete(1101),
+                first_ave.clone(),
+            ),
+            member(
+                "1014350026",
+                "1014350026",
+                GeoAddressHouseNumber::discrete(1103),
+                first_ave.clone(),
+            ),
+            member(
+                "1009260034",
+                "1009260034",
+                GeoAddressHouseNumber::discrete(345),
+                first_ave,
+            ),
+        ],
+    );
+
+    let membership = evaluate_pad_membership(&parsed, &pad).expect("membership evaluates");
+    assert_eq!(
+        asserted_member_ids(&membership),
+        string_set(&[
+            "1014350020",
+            "1014350021",
+            "1014350022",
+            "1014350023",
+            "1014350024",
+            "1014350025",
+            "1014350026"
+        ])
+    );
+    assert!(
+        !asserted_member_ids(&membership).contains("1009260034"),
+        "the 345 1 Avenue PAD row is a number/street chimera for this filing"
+    );
 }
 
 #[test]

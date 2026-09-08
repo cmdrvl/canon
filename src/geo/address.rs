@@ -91,6 +91,38 @@ pub struct GeoAddressParseRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct GeoAddressPropertyInput {
+    pub property_id: String,
+    pub input: String,
+    pub jurisdiction: GeoAddressJurisdiction,
+}
+
+pub fn select_address_property_inputs_for_jurisdiction(
+    inputs: &[GeoAddressPropertyInput],
+    jurisdiction: &GeoAddressJurisdiction,
+) -> Result<Vec<GeoAddressPropertyInput>, GeoAddressError> {
+    let target_borough = jurisdiction.required_borough()?;
+    let mut seen = BTreeSet::new();
+    let mut selected = Vec::new();
+    for input in inputs {
+        validate_address_property_input(input)?;
+        if input.jurisdiction.required_borough()? != target_borough {
+            continue;
+        }
+        if seen.insert((input.property_id.clone(), input.input.clone())) {
+            selected.push(input.clone());
+        }
+    }
+    selected.sort_by(|left, right| {
+        left.property_id
+            .cmp(&right.property_id)
+            .then_with(|| left.input.cmp(&right.input))
+    });
+    Ok(selected)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoAddressGrammarRef {
     pub id: String,
     pub version: String,
@@ -1554,6 +1586,23 @@ fn validate_bridge_identifier(field: &str, value: &str) -> Result<(), GeoAddress
     Ok(())
 }
 
+fn validate_address_property_input(input: &GeoAddressPropertyInput) -> Result<(), GeoAddressError> {
+    input.jurisdiction.required_borough()?;
+    if input.property_id.trim().is_empty() {
+        return Err(GeoAddressError::invalid_input(
+            "address property input ids must be non-empty",
+            [("field", "property_id")],
+        ));
+    }
+    if input.input.trim().is_empty() {
+        return Err(GeoAddressError::invalid_input(
+            "address property inputs must be non-empty",
+            [("field", "input")],
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone)]
 struct PendingCandidate {
     canonical_key: String,
@@ -1623,7 +1672,7 @@ fn parse_segment(
             if cursor >= tokens.len() {
                 break;
             }
-            if !looks_like_house_token(&tokens[cursor]) {
+            if !looks_like_house_token(&tokens[cursor], borough) {
                 return Err(GeoAddressError::unsupported_pattern(
                     "expected a house number at the start of an address group",
                     [
@@ -1642,7 +1691,7 @@ fn parse_segment(
             }
             if consumed_separator
                 && cursor < tokens.len()
-                && looks_like_house_token(&tokens[cursor])
+                && looks_like_house_token(&tokens[cursor], borough)
             {
                 saw_house_separator = true;
                 continue;
@@ -1662,7 +1711,7 @@ fn parse_segment(
                 while next < tokens.len() && is_group_separator(&tokens[next]) {
                     next += 1;
                 }
-                if next < tokens.len() && looks_like_house_token(&tokens[next]) {
+                if next < tokens.len() && looks_like_house_token(&tokens[next], borough) {
                     street_end = cursor;
                     break;
                 }
@@ -1738,6 +1787,12 @@ fn parse_house_token(token: &str, borough: GeoNycBorough) -> Result<ParsedHouse,
     }
 
     if token.contains('-') {
+        if borough == GeoNycBorough::Queens && is_queens_hyphenated_literal_token(token) {
+            return Ok(ParsedHouse {
+                house: GeoAddressHouseNumber::queens_hyphenated_literal(token),
+                annotations: vec![GeoAddressAnnotation::QueensHyphenateLiteral],
+            });
+        }
         let parts = parse_numeric_parts(token, '-')?;
         if parts.len() == 2 && borough == GeoNycBorough::Queens {
             return Ok(ParsedHouse {
@@ -2096,12 +2151,12 @@ fn normalize_input(input: &str) -> String {
             '\u{2010}' | '\u{2011}' | '\u{2012}' | '\u{2013}' | '\u{2014}' | '\u{2212}' => {
                 normalized.push('-')
             }
-            ',' | '&' | '+' => {
+            ',' | '&' | '+' | ';' => {
                 normalized.push(' ');
                 normalized.push(ch);
                 normalized.push(' ');
             }
-            '.' | ';' | ':' | '(' | ')' | '[' | ']' => normalized.push(' '),
+            '.' | ':' | '(' | ')' | '[' | ']' => normalized.push(' '),
             _ if ch.is_whitespace() => normalized.push(' '),
             _ => normalized.push(ch.to_ascii_lowercase()),
         }
@@ -2165,14 +2220,47 @@ fn detect_placeholder(normalized: &str) -> Option<GeoAddressPlaceholder> {
 }
 
 fn is_group_separator(token: &str) -> bool {
-    matches!(token, "," | "&" | "+" | "and")
+    matches!(token, "," | "&" | "+" | ";" | "and")
 }
 
-fn looks_like_house_token(token: &str) -> bool {
-    token
+fn looks_like_house_token(token: &str, borough: GeoNycBorough) -> bool {
+    (token
         .chars()
         .all(|ch| ch.is_ascii_digit() || ch == '-' || ch == '/')
-        && token.chars().any(|ch| ch.is_ascii_digit())
+        && token.chars().any(|ch| ch.is_ascii_digit()))
+        || (borough == GeoNycBorough::Queens && is_queens_hyphenated_literal_token(token))
+}
+
+fn is_queens_hyphenated_literal_token(token: &str) -> bool {
+    let Some((left, right)) = token.split_once('-') else {
+        return false;
+    };
+    if left.is_empty() || right.is_empty() || right.contains('-') {
+        return false;
+    }
+    if !left.chars().all(|ch| ch.is_ascii_digit()) {
+        return false;
+    }
+    let mut saw_digit = false;
+    let mut saw_letter = false;
+    for ch in right.chars() {
+        if ch.is_ascii_digit() {
+            if saw_letter {
+                return false;
+            }
+            saw_digit = true;
+            continue;
+        }
+        if ch.is_ascii_alphabetic() {
+            if saw_letter || !saw_digit {
+                return false;
+            }
+            saw_letter = true;
+            continue;
+        }
+        return false;
+    }
+    saw_digit
 }
 
 fn parse_numeric_parts(token: &str, separator: char) -> Result<Vec<u32>, GeoAddressError> {
