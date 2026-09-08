@@ -2347,6 +2347,22 @@
       "source_path": "schemas/canon.geo.adjudication_receipt.v0.schema.json"
     },
     {
+      "id": "canon_geo_d0_adjudication_labels.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "measurement_fixture",
+      "crate_module": "canon_geo_measurements",
+      "source_path": "scripts/geo_measurements/fixtures/d0_adjudication/labels.json"
+    },
+    {
+      "id": "canon_geo_d0_adjudication_pins.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "measurement_fixture",
+      "crate_module": "canon_geo_measurements",
+      "source_path": "scripts/geo_measurements/fixtures/d0_adjudication/pins.json"
+    },
+    {
       "id": "canon_geo_observer.v0",
       "family": "geo",
       "action": "preserve",
