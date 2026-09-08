@@ -3,11 +3,12 @@
 use canon::geo::{
     CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS,
     GEO_ASSESSMENT_ROLL_GROSS_SQFT_BAND_CONTRACT_ID, GeoAssessmentRollGrossSqftBandCalibration,
-    GeoAssessmentRollGrossSqftPropertyBand, GeoAssessmentRollGrossSqftRow, GeoEvidenceRecordRef,
-    GeoFootprintRollCalibration, GeoFootprintRollEvidenceRequest, GeoFootprintRollLoanFields,
-    GeoFootprintRollSourceConfig, GeoLabeledCompositionCase, GeoPopulationCaseEvidenceOverlay,
-    GeoPopulationEvaluationRequest, GeoPopulationEvidenceStackRequest, GeoRhoAdmissionPolicy,
-    GeoRhoObservation, GeoRhoObservationKind, materialize_footprint_roll_evidence,
+    GeoAssessmentRollGrossSqftPropertyBand, GeoAssessmentRollGrossSqftRow,
+    GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoFootprintRollCalibration,
+    GeoFootprintRollEvidenceRequest, GeoFootprintRollLoanFields, GeoFootprintRollSourceConfig,
+    GeoLabeledCompositionCase, GeoPopulationCaseEvidenceOverlay, GeoPopulationEvaluationRequest,
+    GeoPopulationEvidenceStackRequest, GeoRhoAdmissionPolicy, GeoRhoObservation,
+    GeoRhoObservationKind, materialize_footprint_roll_evidence,
 };
 use flate2::{Compression, GzBuilder, read::GzDecoder};
 use serde::Deserialize;
@@ -92,6 +93,36 @@ const TARGETS: [GsfCase; 5] = [
     },
 ];
 
+const OUT_OF_FAMILY_STALE_TARGETS: [OutOfFamilyGsfCase; 3] = [
+    OutOfFamilyGsfCase {
+        fragment: "0a6ff10e",
+        filed_size: 62_969,
+        size_source_record_id: "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT:CREP-FA7183316782A0F2",
+        expected_missing_roll_rows: &["1000281301", "1000281302"],
+        expected_rebuilt_value_count: None,
+        expected_rebuilt_truth_sum: None,
+        expected_rebuilt_member: None,
+    },
+    OutOfFamilyGsfCase {
+        fragment: "4e262201",
+        filed_size: 80_169,
+        size_source_record_id: "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT:CREP-4779BBC4A8976D26",
+        expected_missing_roll_rows: &["2023270012"],
+        expected_rebuilt_value_count: None,
+        expected_rebuilt_truth_sum: None,
+        expected_rebuilt_member: None,
+    },
+    OutOfFamilyGsfCase {
+        fragment: "8fd55140",
+        filed_size: 33_006,
+        size_source_record_id: "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT:CREP-186AFA04D41DFF77",
+        expected_missing_roll_rows: &[],
+        expected_rebuilt_value_count: Some(185),
+        expected_rebuilt_truth_sum: Some(44_844),
+        expected_rebuilt_member: Some(("2026030007", 18_000)),
+    },
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct GsfCase {
     fragment: &'static str,
@@ -103,6 +134,17 @@ struct GsfCase {
     expected_min: u64,
     expected_max: u64,
     expected_inside_band: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct OutOfFamilyGsfCase {
+    fragment: &'static str,
+    filed_size: u64,
+    size_source_record_id: &'static str,
+    expected_missing_roll_rows: &'static [&'static str],
+    expected_rebuilt_value_count: Option<usize>,
+    expected_rebuilt_truth_sum: Option<u64>,
+    expected_rebuilt_member: Option<(&'static str, u64)>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -251,6 +293,110 @@ fn gsf_vector_staleness_is_confined_to_roll_gsf_observations() {
         .is_empty(),
         "the stale current-universe defect is not present in footprint-count vectors"
     );
+}
+
+#[test]
+fn out_of_family_stale_gsf_vectors_rebind_or_abstain_under_current_universe() {
+    let population = read_json_gz::<GeoPopulationEvaluationRequest>(POPULATION);
+    let roll_rows = read_json_gz::<BTreeMap<String, RollFixtureRow>>(ROLL_ROWS);
+    let corrected_overlay = read_json_gz::<GeoPopulationEvidenceStackRequest>(CORRECTED_OVERLAY);
+
+    for target in OUT_OF_FAMILY_STALE_TARGETS {
+        let case = population_case(&population, target.fragment);
+        let overlay_case = overlay_case(&corrected_overlay, &case.id);
+        let retained_values =
+            integer_sum_band_value_ids(gsf_observation(overlay_case)).expect("retained GSF vector");
+        let universe = parcel_universe(case);
+        assert_ne!(
+            retained_values, universe,
+            "{} remains outside bd-3frw's five-case scoring handoff",
+            target.fragment
+        );
+
+        assert_eq!(
+            missing_roll_rows(case, &roll_rows),
+            target
+                .expected_missing_roll_rows
+                .iter()
+                .copied()
+                .collect::<BTreeSet<_>>(),
+            "{} missing roll-row diagnosis changed",
+            target.fragment
+        );
+
+        let current_bound =
+            materialize_current_bound_out_of_family_gsf_evidence(case, target, &roll_rows);
+        let rebuilt = current_bound.observations.iter().find(|observation| {
+            observation.contract_id == GEO_ASSESSMENT_ROLL_GROSS_SQFT_BAND_CONTRACT_ID
+        });
+
+        if let Some(expected_count) = target.expected_rebuilt_value_count {
+            let observation = rebuilt.expect("rebuildable stale case emits a GSF observation");
+            let GeoRhoObservationKind::IntegerSumBand {
+                values, min, max, ..
+            } = &observation.observation
+            else {
+                panic!(
+                    "{} rebuilt GSF observation must be an integer sum band",
+                    target.fragment
+                );
+            };
+            let values_by_id = values
+                .iter()
+                .map(|value| (value.id.as_str(), value.value))
+                .collect::<BTreeMap<_, _>>();
+            assert_eq!(values.len(), expected_count);
+            assert_eq!(
+                values_by_id.keys().copied().collect::<BTreeSet<_>>(),
+                universe,
+                "{} rebuilt vector must equal the current bound universe",
+                target.fragment
+            );
+
+            if let Some((parcel, expected_value)) = target.expected_rebuilt_member {
+                assert_eq!(values_by_id.get(parcel).copied(), Some(expected_value));
+            }
+
+            if let Some(expected_truth_sum) = target.expected_rebuilt_truth_sum {
+                let truth_sum = case
+                    .truth
+                    .parcels
+                    .iter()
+                    .map(|parcel| {
+                        values_by_id
+                            .get(parcel.as_str())
+                            .copied()
+                            .unwrap_or_else(|| {
+                                panic!(
+                                    "{} truth parcel {parcel} must have a rebuilt GSF value",
+                                    target.fragment
+                                )
+                            })
+                    })
+                    .sum::<u64>();
+                assert_eq!(truth_sum, expected_truth_sum);
+                assert!(
+                    *min <= truth_sum && truth_sum <= *max,
+                    "{} rebuilt truth sum should remain inside the retained band",
+                    target.fragment
+                );
+            }
+        } else {
+            assert!(
+                rebuilt.is_none(),
+                "{} must abstain instead of publishing a partial stale vector",
+                target.fragment
+            );
+            assert!(
+                current_bound
+                    .contracts
+                    .iter()
+                    .all(|contract| contract.id != GEO_ASSESSMENT_ROLL_GROSS_SQFT_BAND_CONTRACT_ID),
+                "{} must not publish a GSF contract without a complete current-bound vector",
+                target.fragment
+            );
+        }
+    }
 }
 
 #[test]
@@ -569,6 +715,76 @@ fn stale_vector_case_fragments(
                 .collect::<BTreeSet<_>>();
             (values != universe).then(|| case_fragment(&overlay_case.case_id))
         })
+        .collect()
+}
+
+fn materialize_current_bound_out_of_family_gsf_evidence(
+    case: &GeoLabeledCompositionCase,
+    target: OutOfFamilyGsfCase,
+    roll_rows: &BTreeMap<String, RollFixtureRow>,
+) -> GeoEvidenceCompilationRequest {
+    let assessment_roll_rows = case
+        .evidence
+        .universe
+        .parcels
+        .iter()
+        .filter_map(|parcel| {
+            roll_rows
+                .get(parcel)
+                .map(|row| GeoAssessmentRollGrossSqftRow {
+                    bbl: parcel.clone(),
+                    gross_sqft: parse_optional_u64(&row.gross_sqft),
+                    units: parse_optional_u64(&row.units),
+                })
+        })
+        .collect::<Vec<_>>();
+
+    let request = GeoFootprintRollEvidenceRequest {
+        version: CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: case.evidence.profile.clone(),
+        case_id: case.id.clone(),
+        universe: case.evidence.universe.clone(),
+        loan: GeoFootprintRollLoanFields {
+            loan_key: target.fragment.to_string(),
+            filed_size: Some(target.filed_size),
+            size_measure: "SQFT".to_string(),
+            property_class: None,
+            loan_county_property_count: None,
+            size_source_record_id: target.size_source_record_id.to_string(),
+            size_source_vintage: "latest_reporting_period".to_string(),
+            county_property_count_source_record_id:
+                "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY:unused:county_count".to_string(),
+            county_property_count_source_vintage: "current".to_string(),
+        },
+        source_config: GeoFootprintRollSourceConfig::default(),
+        calibration: property_type_gsf_calibration(),
+        assessment_roll_rows,
+        footprint_rows: Vec::new(),
+        max_assignments: case.evidence.max_assignments,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    };
+    materialize_footprint_roll_evidence(&request).expect("current-bound GSF replay materializes")
+}
+
+fn parcel_universe(case: &GeoLabeledCompositionCase) -> BTreeSet<&str> {
+    case.evidence
+        .universe
+        .parcels
+        .iter()
+        .map(String::as_str)
+        .collect()
+}
+
+fn missing_roll_rows<'a>(
+    case: &'a GeoLabeledCompositionCase,
+    roll_rows: &BTreeMap<String, RollFixtureRow>,
+) -> BTreeSet<&'a str> {
+    case.evidence
+        .universe
+        .parcels
+        .iter()
+        .filter(|parcel| !roll_rows.contains_key(parcel.as_str()))
+        .map(String::as_str)
         .collect()
 }
 
