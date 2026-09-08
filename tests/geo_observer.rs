@@ -1,15 +1,17 @@
 use canon::geo::{
-    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_OBSERVATION_ROWS_VERSION,
-    CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION, CANON_GEO_OBSERVER_VERSION,
-    DEFAULT_MAX_MATERIALIZED_MODELS, GeoBuildingCandidate, GeoCompositionProfile,
-    GeoCompositionUniverse, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest,
-    GeoEvidenceDisposition, GeoImageTilePin, GeoObservationKind, GeoObservationPayload,
-    GeoObservationRow, GeoObserverAdmissionRequest, GeoObserverContract, GeoObserverErrorCode,
-    GeoObserverIdentity, GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
+    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_IMAGE_TILE_PIN_VERSION,
+    CANON_GEO_OBSERVATION_ROWS_VERSION, CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION,
+    CANON_GEO_OBSERVER_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoBuildingCandidate,
+    GeoCompositionProfile, GeoCompositionUniverse, GeoEvidenceClaimRole,
+    GeoEvidenceCompilationRequest, GeoEvidenceDisposition, GeoImageTilePin,
+    GeoImageTilePinArtifact, GeoObservationKind, GeoObservationPayload, GeoObservationRow,
+    GeoObserverAdmissionRequest, GeoObserverContract, GeoObserverErrorCode, GeoObserverIdentity,
+    GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
     GeoValidTimeInterval, admit_observations_with_universe, admit_observer_request,
-    canonical_observation_rows_bytes, canonical_observer_admission_request_bytes, compile_evidence,
-    solve_composition, to_rho_observation, validate_observation_rows_artifact,
-    validate_observer_admission_request, verify_replay,
+    canonical_image_tile_pin_bytes, canonical_observation_rows_bytes,
+    canonical_observer_admission_request_bytes, compile_evidence, solve_composition,
+    to_rho_observation, validate_image_tile_pin_artifact, validate_observation_rows_artifact,
+    validate_observer_admission_request, verify_image_tile_pin_replay, verify_replay,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -373,6 +375,51 @@ fn t14_observer_replay_verifies_pinned_tile_crop_and_label_without_regeneration(
             "observer replay path must not invoke or smuggle {forbidden}"
         );
     }
+}
+
+#[test]
+fn t14_image_tile_pin_artifact_replays_from_pinned_bytes_without_acquisition() {
+    let tile_bytes = b"fixture tile bytes";
+    let pin = tile_pin(tile_bytes);
+    let artifact = GeoImageTilePinArtifact {
+        version: CANON_GEO_IMAGE_TILE_PIN_VERSION.to_string(),
+        source_profile_id: "fixture.ortho".to_string(),
+        rows: vec![pin.clone()],
+    };
+    validate_image_tile_pin_artifact(&artifact).expect("pin artifact validates");
+    canonical_image_tile_pin_bytes(&artifact).expect("pin artifact canonicalizes");
+
+    let bytes_by_blake3 = BTreeMap::from([(pin.blake3.clone(), tile_bytes.to_vec())]);
+    verify_image_tile_pin_replay(&artifact, &bytes_by_blake3)
+        .expect("pin artifact replays from retained bytes");
+
+    let missing_bytes = BTreeMap::new();
+    let error = verify_image_tile_pin_replay(&artifact, &missing_bytes)
+        .expect_err("pin replay refuses when retained tile bytes are missing");
+    assert_eq!(error.code, GeoObserverErrorCode::ImageTileDigestMismatch);
+    assert_eq!(
+        error.detail.get("tile").map(String::as_str),
+        Some(pin.blake3.as_str())
+    );
+    assert_eq!(
+        error.detail.get("actual").map(String::as_str),
+        Some("<missing>")
+    );
+
+    let mut changed = tile_bytes.to_vec();
+    changed[0] ^= 1;
+    let error =
+        verify_image_tile_pin_replay(&artifact, &BTreeMap::from([(pin.blake3.clone(), changed)]))
+            .expect_err("pin replay refuses when retained tile bytes drift");
+    assert_eq!(error.code, GeoObserverErrorCode::ImageTileDigestMismatch);
+    assert_eq!(
+        error.detail.get("tile").map(String::as_str),
+        Some(pin.blake3.as_str())
+    );
+    assert_ne!(
+        error.detail.get("actual").map(String::as_str),
+        Some(pin.blake3.as_str())
+    );
 }
 
 #[test]

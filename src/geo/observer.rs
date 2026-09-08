@@ -363,6 +363,22 @@ pub fn canonical_image_tile_pin_bytes(
     })
 }
 
+pub fn verify_image_tile_pin_replay(
+    artifact: &GeoImageTilePinArtifact,
+    bytes_by_blake3: &BTreeMap<String, Vec<u8>>,
+) -> Result<(), GeoObserverError> {
+    validate_image_tile_pin_artifact(artifact)?;
+    for (index, pin) in artifact.rows.iter().enumerate() {
+        verify_replay_digest(
+            "tile",
+            &format!("{}:{index}", pin.source_dataset),
+            &pin.blake3,
+            bytes_by_blake3,
+        )?;
+    }
+    Ok(())
+}
+
 pub fn validate_observer_contract(contract: &GeoObserverContract) -> Result<(), GeoObserverError> {
     if contract.version != CANON_GEO_OBSERVER_VERSION {
         return Err(GeoObserverError::new(
