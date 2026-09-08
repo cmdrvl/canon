@@ -9,9 +9,11 @@ use canon::geo::{
     GEO_FOOTPRINT_BUILDING_COUNT_FLOOR_CONTRACT_ID, GEO_FOOTPRINT_BUILDING_COUNT_FLOOR_MAX,
     GeoAssessmentRollGrossSqftRow, GeoBuildingCandidate, GeoBuildingFootprintRow,
     GeoCompositionModel, GeoCompositionProfile, GeoCompositionStatus, GeoCompositionUniverse,
-    GeoEvidenceDisposition, GeoFootprintRollCalibration, GeoFootprintRollEvidenceRequest,
-    GeoFootprintRollLoanFields, GeoFootprintRollSourceConfig, GeoIntegerValueOrigin,
-    GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoObservationKind, calibration_receipt_blake3,
+    GeoEvidenceDisposition, GeoFootprintRollCalibration, GeoFootprintRollEvidenceErrorCode,
+    GeoFootprintRollEvidenceRequest, GeoFootprintRollLoanFieldBindingDisposition,
+    GeoFootprintRollLoanFields, GeoFootprintRollPropertyRow, GeoFootprintRollSourceConfig,
+    GeoIntegerValueOrigin, GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoObservationKind,
+    bind_footprint_roll_loan_fields_to_document_addresses, calibration_receipt_blake3,
     canonical_footprint_roll_evidence_request_bytes, compile_evidence,
     materialize_footprint_roll_evidence, solve_composition,
 };
@@ -151,6 +153,28 @@ fn request_with(
             .collect(),
         max_assignments: 1_000,
         max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    }
+}
+
+fn same_loan_property_row(
+    loan_key: &str,
+    property_key: &str,
+    address: &str,
+    filed_size: Option<u64>,
+    size_measure: &str,
+    property_class: Option<&str>,
+) -> GeoFootprintRollPropertyRow {
+    GeoFootprintRollPropertyRow {
+        loan_key: loan_key.to_string(),
+        property_key: property_key.to_string(),
+        address: address.to_string(),
+        filed_size,
+        size_measure: size_measure.to_string(),
+        property_class: property_class.map(str::to_string),
+        size_source_record_id: format!(
+            "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT:{property_key}"
+        ),
+        size_source_vintage: "latest_reporting_period".to_string(),
     }
 }
 
@@ -693,6 +717,195 @@ fn retail_only_312_97th_falsification_keeps_units_1_2_and_rejects_unit_3() {
         }),
         "adding unit 3 is the recorded falsification outcome"
     );
+}
+
+#[test]
+fn same_loan_document_address_binding_selects_covering_property_row_before_gsf_band() {
+    let loan_key = "6bfe47de21ff7d7e24bf6464871dea9f";
+    let current = GeoFootprintRollLoanFields {
+        loan_key: loan_key.to_string(),
+        filed_size: Some(182_845),
+        size_measure: "SQFT".to_string(),
+        property_class: Some("OF".to_string()),
+        loan_county_property_count: None,
+        size_source_record_id: "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT:CREP-5F8AE5E0FA6B5506"
+            .to_string(),
+        size_source_vintage: "latest_reporting_period".to_string(),
+        county_property_count_source_record_id:
+            "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY:unused:county_count".to_string(),
+        county_property_count_source_vintage: "current".to_string(),
+    };
+    let legal_addresses = vec![
+        "141-02 79TH AVENUE".to_string(),
+        "141-24 78TH AVENUE".to_string(),
+        "141-48 78TH ROAD".to_string(),
+    ];
+    let property_rows = vec![
+        same_loan_property_row(
+            loan_key,
+            "CREP-5F8AE5E0FA6B5506",
+            "450-460 PARK AVENUE SOUTH",
+            Some(182_845),
+            "SQFT",
+            Some("OF"),
+        ),
+        same_loan_property_row(
+            loan_key,
+            "CREP-5F29F9FB87795B4A",
+            "141-41 UNION TPKE",
+            Some(0),
+            "SQFT",
+            Some("AP"),
+        ),
+        same_loan_property_row(
+            loan_key,
+            "CREP-72177B208235E832",
+            "141-24 78th Avenue, 141-48 78th Road, & 141-02 79th Avenue",
+            Some(544),
+            "UNITS",
+            Some("AP"),
+        ),
+    ];
+
+    let binding = bind_footprint_roll_loan_fields_to_document_addresses(
+        &current,
+        &legal_addresses,
+        &property_rows,
+    )
+    .expect("one same-loan property row covers all document addresses");
+
+    assert_eq!(
+        binding.disposition,
+        GeoFootprintRollLoanFieldBindingDisposition::ReboundToDocumentAddressMatch
+    );
+    assert_eq!(
+        binding.selected_property_key.as_deref(),
+        Some("CREP-72177B208235E832")
+    );
+    assert_eq!(binding.required_legal_address_count, 3);
+    assert_eq!(binding.matched_legal_address_count, 3);
+    assert_eq!(binding.loan.size_measure, "UNITS");
+    assert_eq!(binding.loan.filed_size, Some(544));
+    assert_eq!(
+        binding.loan.size_source_record_id,
+        "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT:CREP-72177B208235E832"
+    );
+
+    let mut request = request_with(
+        "SQFT",
+        Some(182_845),
+        None,
+        &["4066310001", "4066320001", "4066330001"],
+    );
+    request.case_id =
+        "h7-subject:non-round:e1ee05351a5b681c0dcda44e19dd575c686c3c630809c137bd64cc3232bc256c"
+            .to_string();
+    request.loan = binding.loan;
+    request.assessment_roll_rows = vec![
+        GeoAssessmentRollGrossSqftRow {
+            bbl: "4066310001".to_string(),
+            gross_sqft: Some(151_869),
+            units: Some(181),
+        },
+        GeoAssessmentRollGrossSqftRow {
+            bbl: "4066320001".to_string(),
+            gross_sqft: Some(151_869),
+            units: Some(180),
+        },
+        GeoAssessmentRollGrossSqftRow {
+            bbl: "4066330001".to_string(),
+            gross_sqft: Some(151_869),
+            units: Some(183),
+        },
+    ];
+    let evidence =
+        materialize_footprint_roll_evidence(&request).expect("UNITS property row materializes");
+
+    assert!(
+        evidence
+            .contracts
+            .iter()
+            .all(|contract| contract.id != GEO_ASSESSMENT_ROLL_GROSS_SQFT_BAND_CONTRACT_ID),
+        "rebinding to the same-loan UNITS row suppresses the unrelated Park Avenue GSF hard band"
+    );
+    assert!(
+        evidence.observations.iter().all(|observation| {
+            observation.contract_id != GEO_ASSESSMENT_ROLL_GROSS_SQFT_BAND_CONTRACT_ID
+        }),
+        "the fix changes property-row binding, not the rho GSF band"
+    );
+}
+
+#[test]
+fn same_loan_document_address_binding_refuses_ambiguous_full_coverage_rows() {
+    let current = request_with("SQFT", Some(10_000), None, &["p1"]).loan;
+    let legal_addresses = vec!["10 MAIN STREET".to_string(), "12 MAIN STREET".to_string()];
+    let property_rows = vec![
+        same_loan_property_row(
+            "loan-fixture",
+            "CREP-COVER-A",
+            "10 Main Street and 12 Main Street",
+            Some(10_000),
+            "SQFT",
+            Some("RT"),
+        ),
+        same_loan_property_row(
+            "loan-fixture",
+            "CREP-COVER-B",
+            "12 Main St, 10 Main St",
+            Some(12_000),
+            "SQFT",
+            Some("RT"),
+        ),
+    ];
+
+    let error = bind_footprint_roll_loan_fields_to_document_addresses(
+        &current,
+        &legal_addresses,
+        &property_rows,
+    )
+    .expect_err("two full-coverage rows must refuse instead of choosing one");
+
+    assert_eq!(error.code, GeoFootprintRollEvidenceErrorCode::InvalidInput);
+    assert!(
+        error.message.contains("ambiguous"),
+        "unexpected error: {error:?}"
+    );
+    assert_eq!(
+        error.detail.get("property_keys").map(String::as_str),
+        Some("CREP-COVER-A,CREP-COVER-B")
+    );
+}
+
+#[test]
+fn same_loan_document_address_binding_keeps_current_when_coverage_is_partial() {
+    let current = request_with("SQFT", Some(10_000), None, &["p1"]).loan;
+    let legal_addresses = vec!["10 MAIN STREET".to_string(), "12 MAIN STREET".to_string()];
+    let property_rows = vec![same_loan_property_row(
+        "loan-fixture",
+        "CREP-PARTIAL",
+        "10 Main Street",
+        Some(500),
+        "UNITS",
+        Some("AP"),
+    )];
+
+    let binding = bind_footprint_roll_loan_fields_to_document_addresses(
+        &current,
+        &legal_addresses,
+        &property_rows,
+    )
+    .expect("partial coverage is not a rebinding assertion");
+
+    assert_eq!(
+        binding.disposition,
+        GeoFootprintRollLoanFieldBindingDisposition::RetainedCurrent
+    );
+    assert_eq!(binding.selected_property_key, None);
+    assert_eq!(binding.required_legal_address_count, 2);
+    assert_eq!(binding.matched_legal_address_count, 0);
+    assert_eq!(binding.loan.size_measure, "SQFT");
+    assert_eq!(binding.loan.filed_size, Some(10_000));
 }
 
 #[test]

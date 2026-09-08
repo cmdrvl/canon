@@ -1,0 +1,154 @@
+{
+  "version": "canon_geo_gsf_property_row_binding_fix_handoff.v0",
+  "bead": "bd-35t1",
+  "scope": "Fix the one retained GSF exclusion where Canon bound the subject to an unrelated same-loan property row even though a document-address-covering row was available.",
+  "proof_class": "retained_population_measurement_not_live",
+  "release_claim_allowed": false,
+  "is_rescore": false,
+  "frozen_denominator": 77,
+  "denominator_ruling": {
+    "previous_frozen_denominator": 79,
+    "ruling_commit": "a0025b3",
+    "excluded_subjects": [
+      "6eb465fd908bc59f",
+      "aacff3c254d36ae6"
+    ],
+    "reason": "H4 extension duplicates with no H7 loan key cannot fill the frozen denominator by truth-plane replay under PLAN_CANON_GEO.md H.7.",
+    "kept_subjects": [
+      "ced7ad9f0d74abf7"
+    ],
+    "kept_reason": "Distinct loan key sharing collateral remains in the denominator; E4 measures loans, not collateral-composition uniqueness."
+  },
+  "retained_population_denominator": 70,
+  "retained_population_deficit": 7,
+  "baseline": {
+    "name": "combined_pad_owner_gsf_repair_score",
+    "reach_full_partial_none": [
+      70,
+      0,
+      0
+    ],
+    "resolved": 7,
+    "exactly_correct": 7,
+    "ambiguous": 55,
+    "conflict": 0,
+    "false_merges": 0,
+    "truth_exclusions": {
+      "previously_reported_total_against_79": 8,
+      "completed": 6,
+      "incomplete": 2
+    },
+    "component_fallbacks": 8
+  },
+  "retained_inputs": {
+    "hash_policy": "The denominator restatement sweep owns these prior measurement artifacts after ruling a0025b3, so this handoff guards path and semantic case facts instead of pinning hashes that would churn under that authorized restatement.",
+    "gsf_conflict_adjudication_path": "scripts/geo_measurements/fixtures/e4_gsf_conflict_adjudication_2026-09-08/measurement.json",
+    "gsf_value_vector_rebuild_path": "scripts/geo_measurements/fixtures/e4_gsf_value_vector_rebuild_2026-09-08/measurement.json",
+    "gsf_residual_measurement_path": "scripts/geo_measurements/fixtures/e4_gsf_residuals_2026-09-08/measurement.json",
+    "gate_v2_cases_path": "scripts/geo_measurements/fixtures/e4_gate_v2/cases.json"
+  },
+  "predeclared_expected_e4_movement": {
+    "completed_truth_exclusions_delta": -1,
+    "previously_reported_truth_exclusions_total_delta": -1,
+    "resolved_delta": 0,
+    "exactly_correct_delta": 0,
+    "false_merges_delta": 0,
+    "conflict_delta": 0,
+    "ambiguous_delta": 1,
+    "expected_after": {
+      "truth_exclusions": {
+        "completed": 5,
+        "incomplete": 2,
+        "previously_reported_total_if_restated_for_comparison": 7
+      }
+    },
+    "reason": "The same-loan Regency Gardens property row uses size_measure UNITS, so the GSF hard band should abstain for e1ee0535 instead of refusing truth with the unrelated Park Avenue OF/SQFT row. This removes a wrongful completed exclusion but does not add completeness or other discriminating evidence."
+  },
+  "defect": {
+    "case_fragment": "e1ee0535",
+    "case_id": "h7-subject:non-round:e1ee05351a5b681c0dcda44e19dd575c686c3c630809c137bd64cc3232bc256c",
+    "loan_key": "6bfe47de21ff7d7e24bf6464871dea9f",
+    "acris_document_id": "2019050100411003",
+    "legal_addresses": [
+      "141-02 79TH AVENUE",
+      "141-24 78TH AVENUE",
+      "141-48 78TH ROAD"
+    ],
+    "wrongly_bound_property_row": {
+      "property_key": "CREP-5F8AE5E0FA6B5506",
+      "address": "450-460 PARK AVENUE SOUTH",
+      "name": "450-460 PARK AVENUE SOUTH",
+      "filed_size": 182845,
+      "size_measure": "SQFT",
+      "property_class": "OF",
+      "document_address_coverage": "0/3",
+      "effect": "publishes rho.size.assessment_roll_gross_sqft_band with truth sum 455607 outside 127991..292553"
+    },
+    "selected_property_row": {
+      "property_key": "CREP-72177B208235E832",
+      "address": "141-24 78th Avenue, 141-48 78th Road, & 141-02 79th Avenue",
+      "name": "Regency Gardens Apartment Corp.",
+      "filed_size": 544,
+      "size_measure": "UNITS",
+      "property_class": "AP",
+      "document_address_coverage": "3/3",
+      "effect": "suppresses the GSF band because UNITS is not SQFT"
+    },
+    "binding_rule": "Within already same-loan property rows, select the unique row whose filed address covers every bound document legal address. Refuse if more than one row covers the full set. Retain the current row when the document address claim is absent or only partially covered."
+  },
+  "other_seven_binding_path_check": {
+    "result": "e1ee0535 is the only remaining exclusion affected by this GSF property-row rebinding path",
+    "cases": [
+      {
+        "case_fragment": "3899edce",
+        "family": "owner_exact",
+        "affects_binding_path": false,
+        "reason": "owner-source spelling conflict, not a GSF property-row binding defect"
+      },
+      {
+        "case_fragment": "5934bb93",
+        "family": "pad_membership",
+        "affects_binding_path": false,
+        "reason": "PAD/truth binding divergence; no GSF property-row rebinding trigger"
+      },
+      {
+        "case_fragment": "68a1a4ce",
+        "family": "gsf_band",
+        "affects_binding_path": false,
+        "reason": "retained truth-document binding conflict; source audit found no same-loan filed property row matching the ACRIS legal addresses"
+      },
+      {
+        "case_fragment": "69dbf5da",
+        "family": "owner_exact",
+        "affects_binding_path": false,
+        "reason": "genuine different-owner case on one truth lot, not a GSF property-row binding defect"
+      },
+      {
+        "case_fragment": "91b2df27",
+        "family": "gsf_band",
+        "affects_binding_path": false,
+        "reason": "retained truth-document binding conflict; source audit found no same-loan filed property row matching 217 West 57th Street"
+      },
+      {
+        "case_fragment": "a7dac634",
+        "family": "pad_membership",
+        "affects_binding_path": false,
+        "reason": "PAD/truth binding divergence; no GSF property-row rebinding trigger"
+      },
+      {
+        "case_fragment": "e3a5228d",
+        "family": "pad_membership",
+        "affects_binding_path": false,
+        "reason": "PAD/truth binding divergence after the GSF vector rebuild made the GSF side pass"
+      }
+    ]
+  },
+  "score_handoff": {
+    "status": "READY_TO_SCORE_by_bd_1g4x_not_scored_by_bd_35t1",
+    "changed_cases": [
+      "e1ee0535"
+    ],
+    "expected_effect": "replace the bound Park Avenue SQFT source row with the same-loan Regency Gardens UNITS source row before footprint-roll evidence materialization; candidate universe, truth labels, rho contracts, and denominator stay unchanged",
+    "release_claim_allowed": false
+  }
+}

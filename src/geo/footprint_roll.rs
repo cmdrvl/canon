@@ -118,6 +118,39 @@ pub struct GeoFootprintRollLoanFields {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct GeoFootprintRollPropertyRow {
+    pub loan_key: String,
+    pub property_key: String,
+    pub address: String,
+    pub filed_size: Option<u64>,
+    pub size_measure: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub property_class: Option<String>,
+    pub size_source_record_id: String,
+    pub size_source_vintage: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoFootprintRollLoanFieldBindingDisposition {
+    RetainedCurrent,
+    ReboundToDocumentAddressMatch,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoFootprintRollLoanFieldBinding {
+    pub loan: GeoFootprintRollLoanFields,
+    pub selected_property_key: Option<String>,
+    pub disposition: GeoFootprintRollLoanFieldBindingDisposition,
+    pub matched_legal_address_count: u64,
+    pub required_legal_address_count: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub candidate_property_keys: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoFootprintRollSourceConfig {
     pub assessment_roll_contract_source_dataset: String,
     pub assessment_roll_contract_source_release: String,
@@ -484,6 +517,111 @@ pub fn canonical_footprint_roll_evidence_request_bytes(
 pub fn calibration_receipt_blake3(value: &Value) -> Result<String, GeoFootprintRollEvidenceError> {
     let bytes = canonical_json_value_bytes(value)?;
     Ok(blake3::hash(&bytes).to_hex().to_string())
+}
+
+pub fn bind_footprint_roll_loan_fields_to_document_addresses(
+    current: &GeoFootprintRollLoanFields,
+    legal_addresses: &[String],
+    same_loan_property_rows: &[GeoFootprintRollPropertyRow],
+) -> Result<GeoFootprintRollLoanFieldBinding, GeoFootprintRollEvidenceError> {
+    validate_loan_fields(current)?;
+    let legal_address_terms = legal_addresses
+        .iter()
+        .map(|address| normalized_address_terms(address))
+        .filter(|terms| !terms.is_empty())
+        .collect::<Vec<_>>();
+    let required_legal_address_count = legal_address_terms.len() as u64;
+    if legal_address_terms.is_empty() || same_loan_property_rows.is_empty() {
+        return Ok(retained_loan_field_binding(
+            current,
+            required_legal_address_count,
+        ));
+    }
+
+    let mut full_matches = Vec::new();
+    let same_loan_key = same_loan_property_rows
+        .first()
+        .map(|row| row.loan_key.as_str())
+        .expect("same-loan rows are non-empty");
+    for row in same_loan_property_rows {
+        validate_footprint_roll_property_row(row)?;
+        if row.loan_key != same_loan_key {
+            return Err(GeoFootprintRollEvidenceError::invalid(
+                "Geo footprint/roll property-row binding requires one loan_key",
+                [
+                    ("expected_loan_key", same_loan_key),
+                    ("actual_loan_key", row.loan_key.as_str()),
+                ],
+            ));
+        }
+        let row_terms = normalized_address_terms(&row.address);
+        let matched_count = legal_address_terms
+            .iter()
+            .filter(|legal_terms| address_terms_contain(&row_terms, legal_terms))
+            .count() as u64;
+        if matched_count == required_legal_address_count {
+            full_matches.push((row, matched_count));
+        }
+    }
+
+    if full_matches.is_empty() {
+        return Ok(retained_loan_field_binding(
+            current,
+            required_legal_address_count,
+        ));
+    }
+    if full_matches.len() > 1 {
+        let mut property_keys = full_matches
+            .iter()
+            .map(|(row, _)| row.property_key.as_str())
+            .collect::<Vec<_>>();
+        property_keys.sort_unstable();
+        return Err(GeoFootprintRollEvidenceError::invalid(
+            "Geo footprint/roll property-row binding is ambiguous",
+            [
+                ("property_keys", property_keys.join(",")),
+                (
+                    "required_legal_address_count",
+                    required_legal_address_count.to_string(),
+                ),
+            ],
+        ));
+    }
+
+    let (selected, matched_legal_address_count) = full_matches
+        .pop()
+        .expect("one full document-address property-row match");
+    let loan = GeoFootprintRollLoanFields {
+        loan_key: selected.loan_key.clone(),
+        filed_size: selected.filed_size,
+        size_measure: selected.size_measure.clone(),
+        property_class: selected.property_class.clone(),
+        loan_county_property_count: current.loan_county_property_count,
+        size_source_record_id: selected.size_source_record_id.clone(),
+        size_source_vintage: selected.size_source_vintage.clone(),
+        county_property_count_source_record_id: current
+            .county_property_count_source_record_id
+            .clone(),
+        county_property_count_source_vintage: current.county_property_count_source_vintage.clone(),
+    };
+    let disposition = if same_loan_fields(current, &loan) {
+        GeoFootprintRollLoanFieldBindingDisposition::RetainedCurrent
+    } else {
+        GeoFootprintRollLoanFieldBindingDisposition::ReboundToDocumentAddressMatch
+    };
+    let mut candidate_property_keys = same_loan_property_rows
+        .iter()
+        .map(|row| row.property_key.clone())
+        .collect::<Vec<_>>();
+    candidate_property_keys.sort();
+    Ok(GeoFootprintRollLoanFieldBinding {
+        loan,
+        selected_property_key: Some(selected.property_key.clone()),
+        disposition,
+        matched_legal_address_count,
+        required_legal_address_count,
+        candidate_property_keys,
+    })
 }
 
 fn roll_gross_sqft_band_observation(
@@ -893,6 +1031,115 @@ struct LoanCountSourcePayload<'a> {
     loan_key: &'a str,
     field: &'static str,
     value: u64,
+}
+
+fn retained_loan_field_binding(
+    current: &GeoFootprintRollLoanFields,
+    required_legal_address_count: u64,
+) -> GeoFootprintRollLoanFieldBinding {
+    GeoFootprintRollLoanFieldBinding {
+        loan: current.clone(),
+        selected_property_key: source_record_property_key(&current.size_source_record_id),
+        disposition: GeoFootprintRollLoanFieldBindingDisposition::RetainedCurrent,
+        matched_legal_address_count: 0,
+        required_legal_address_count,
+        candidate_property_keys: Vec::new(),
+    }
+}
+
+fn same_loan_fields(left: &GeoFootprintRollLoanFields, right: &GeoFootprintRollLoanFields) -> bool {
+    left.loan_key == right.loan_key
+        && left.filed_size == right.filed_size
+        && left.size_measure == right.size_measure
+        && left.property_class == right.property_class
+        && left.size_source_record_id == right.size_source_record_id
+        && left.size_source_vintage == right.size_source_vintage
+}
+
+fn source_record_property_key(source_record_id: &str) -> Option<String> {
+    source_record_id
+        .strip_prefix("EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT:")
+        .filter(|property_key| !property_key.is_empty() && !property_key.contains(':'))
+        .map(str::to_string)
+}
+
+fn address_terms_contain(row_terms: &BTreeSet<String>, legal_terms: &BTreeSet<String>) -> bool {
+    legal_terms.iter().all(|term| row_terms.contains(term))
+}
+
+fn normalized_address_terms(value: &str) -> BTreeSet<String> {
+    let mut terms = BTreeSet::new();
+    let mut token = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() {
+            token.push(byte.to_ascii_uppercase() as char);
+        } else {
+            insert_address_term(&mut terms, &mut token);
+        }
+    }
+    insert_address_term(&mut terms, &mut token);
+    terms
+}
+
+fn insert_address_term(terms: &mut BTreeSet<String>, token: &mut String) {
+    if token.is_empty() {
+        return;
+    }
+    if let Some(canonical) = canonical_address_token(token) {
+        terms.insert(canonical);
+    }
+    token.clear();
+}
+
+fn canonical_address_token(token: &str) -> Option<String> {
+    match token {
+        "AND" | "AT" | "THE" | "UNIT" | "UNITS" | "BLDG" | "BUILDING" => None,
+        "AVENUE" | "AVE" => Some("AV".to_string()),
+        "BOULEVARD" | "BLVD" => Some("BLVD".to_string()),
+        "COURT" | "CT" => Some("CT".to_string()),
+        "DRIVE" | "DR" => Some("DR".to_string()),
+        "EAST" => Some("E".to_string()),
+        "NORTH" => Some("N".to_string()),
+        "PLACE" | "PL" => Some("PL".to_string()),
+        "ROAD" | "RD" => Some("RD".to_string()),
+        "SOUTH" => Some("S".to_string()),
+        "STREET" | "ST" => Some("ST".to_string()),
+        "TERRACE" | "TER" => Some("TER".to_string()),
+        "TURNPIKE" | "TPK" | "TPKE" => Some("TPKE".to_string()),
+        "WEST" => Some("W".to_string()),
+        _ => Some(strip_ordinal_suffix(token).unwrap_or(token).to_string()),
+    }
+}
+
+fn strip_ordinal_suffix(token: &str) -> Option<&str> {
+    for suffix in ["ST", "ND", "RD", "TH"] {
+        if let Some(prefix) = token.strip_suffix(suffix)
+            && !prefix.is_empty()
+            && prefix.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return Some(prefix);
+        }
+    }
+    None
+}
+
+fn validate_footprint_roll_property_row(
+    row: &GeoFootprintRollPropertyRow,
+) -> Result<(), GeoFootprintRollEvidenceError> {
+    validate_identifier("same_loan_property_rows[].loan_key", &row.loan_key)?;
+    validate_identifier("same_loan_property_rows[].property_key", &row.property_key)?;
+    validate_identifier("same_loan_property_rows[].size_measure", &row.size_measure)?;
+    if let Some(property_class) = &row.property_class {
+        validate_identifier("same_loan_property_rows[].property_class", property_class)?;
+    }
+    validate_identifier(
+        "same_loan_property_rows[].size_source_record_id",
+        &row.size_source_record_id,
+    )?;
+    validate_identifier(
+        "same_loan_property_rows[].size_source_vintage",
+        &row.size_source_vintage,
+    )
 }
 
 fn validate_loan_fields(
