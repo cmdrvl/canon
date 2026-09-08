@@ -53,6 +53,7 @@ const CLAIM_BOUNDARY: &str = "Offline receipt consistency validation only. A rec
 const PROVIDER_RESPONSE_BYTES_DIGEST_ID: &str = "provider_response_bytes";
 const GEOCODE_CANDIDATE_ROWS_ARTIFACT_ID: &str = "geocode_candidate_rows";
 const G4_RETRY_RECOVERY_DENOMINATOR: usize = 40;
+const DEFAULT_G4_RETRY_RECOVERY_MAX_BYTES: u64 = 131_072;
 const REQUIRED_CORE_MEASUREMENT_IDS: &[&str] = &[
     "appendix_b_centroid_percolation",
     "appendix_c_r8_density",
@@ -200,6 +201,9 @@ struct PrepareRetryRecoveryArgs {
     /// Maximum retry passes to encode in the emitted loop policy
     #[arg(long, default_value_t = 2)]
     max_passes: u8,
+    /// Maximum retained provider-response plus candidate-row bytes per request
+    #[arg(long, default_value_t = DEFAULT_G4_RETRY_RECOVERY_MAX_BYTES)]
+    max_bytes: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -857,6 +861,7 @@ fn prepare_retry_recovery(
             &provider_id,
             &provider_version,
             provider_profile_digest.clone(),
+            args.max_bytes,
         )?;
         let request_hash = geo_acquisition_request_semantic_hash(&request).map_err(|error| {
             AppError::new(format!(
@@ -996,6 +1001,7 @@ fn retry_recovery_request_for_point(
     provider_id: &str,
     provider_version: &str,
     provider_profile_digest: GeoDigest,
+    max_bytes: u64,
 ) -> Result<canon::geo::GeoAcquisitionRequest, AppError> {
     let geography = GeoBoundedGeography {
         geography_id: format!("geo.retry-recovery.{}.geography", point.point_id),
@@ -1074,7 +1080,7 @@ fn retry_recovery_request_for_point(
         },
         ceilings: GeoRowByteCeilings {
             max_rows: 10,
-            max_bytes: 4096,
+            max_bytes,
         },
         positive_path_min_rows: 1,
     };

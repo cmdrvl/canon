@@ -489,6 +489,8 @@ fn measurement_binary_prepares_retry_recovery_requests_from_bound_address_rows()
         request.releases[0].release_digest.digest_id,
         "provider_profile"
     );
+    assert_eq!(request.ceilings.max_rows, 10);
+    assert_eq!(request.ceilings.max_bytes, 131_072);
     assert!(
         request
             .subset
