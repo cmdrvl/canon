@@ -1,0 +1,234 @@
+{
+  "baseline": {
+    "ambiguous": 55,
+    "component_fallbacks": 8,
+    "conflict": 0,
+    "exactly_correct": 7,
+    "false_merges": 0,
+    "name": "combined_pad_owner_gsf_repair_score",
+    "reach_full_partial_none": [
+      70,
+      0,
+      0
+    ],
+    "resolved": 7,
+    "truth_exclusions": 8
+  },
+  "bead": "bd-22eo",
+  "boundary": "Classification-only retained measurement. No overlay is produced, no GSF band is widened, and candidate universe, truth labels, rho contracts, and solver scoring are unchanged.",
+  "cases": [
+    {
+      "band_max": 1703,
+      "band_min": 744,
+      "case_fragment": "68a1a4ce",
+      "case_id": "h7-subject:non-round:68a1a4ced3f7c16edc483b877013238d0e2c26692c9ef0a5a721e6bb25872612",
+      "classification": "source_truth_binding_issue",
+      "corrected_truth_gsf_sum": 2134,
+      "corrected_truth_sum_inside_band": false,
+      "evidence_present": true,
+      "filed_property": {
+        "address": "208 East 14th Street",
+        "city": "New York",
+        "county": "New York",
+        "filing_date": "2026-08-31",
+        "filing_id": "0001888524-26-016250",
+        "loan_asset_key": "31",
+        "name": "Dunkin' Donuts East 14th Street",
+        "property_key": "CREP-A2512F406EDBE52C",
+        "property_type_code": "RT",
+        "reporting_period": "2026-08-11",
+        "size": 1064,
+        "size_measure": "SQFT"
+      },
+      "finding": "The current GSF vector is populated and correctly rejects the retained truth set, but the retained truth parcels describe residential condo units at 768 5 Avenue and 250 East 53 Street, not the filed 208 East 14th Street retail property.",
+      "recommended_action": "Audit the source-to-truth document binding for this subject; do not widen RT GSF admission.",
+      "truth_roll_summary": {
+        "class_counts": {
+          "R4": 1,
+          "RH": 1
+        },
+        "distinct_owner_count": 2,
+        "sample_rows": [
+          {
+            "apt": "1126",
+            "bbl": "1012741304",
+            "building_class": "RH",
+            "condo_number": "101508",
+            "gross_sqft": 556,
+            "owner": "BLUE HORSESHOE FUNDING LLC",
+            "street": "768 5 AVENUE",
+            "units": 1
+          },
+          {
+            "apt": "1901",
+            "bbl": "1013261075",
+            "building_class": "R4",
+            "condo_number": "101840",
+            "gross_sqft": 1578,
+            "owner": "ZHEN-ZHOU TENG, KEVIN",
+            "street": "250 EAST 53 STREET",
+            "units": 1
+          }
+        ],
+        "truth_parcel_count": 2,
+        "truth_unit_count": 2
+      },
+      "vector_count": 201
+    },
+    {
+      "band_max": 41418,
+      "band_min": 18120,
+      "case_fragment": "91b2df27",
+      "case_id": "h7-subject:round-exact-lender:91b2df274815b9997ac6ff6e772f2e142c7b3eac3ea61777131611896d6095a6",
+      "classification": "source_truth_binding_issue",
+      "corrected_truth_gsf_sum": 584046,
+      "corrected_truth_sum_inside_band": false,
+      "evidence_present": true,
+      "filed_property": {
+        "address": "5 East 22nd Street Units Garage, Commercial A and Commercial B",
+        "city": "New York",
+        "county": "New York",
+        "filing_date": "2026-08-31",
+        "filing_id": "0001888524-26-016188",
+        "loan_asset_key": "18",
+        "name": "5 East 22nd Street",
+        "property_key": "CREP-5BA5855CC20797E5",
+        "property_type_code": "RT",
+        "reporting_period": "2026-08-11",
+        "size": 25886,
+        "size_measure": "SQFT"
+      },
+      "finding": "The filed property is a 5 East 22nd Street garage/commercial-unit collateral row, while the retained truth set is 172 residential condo lots in condo 102967 at 217 West 57th Street. The over-band result reflects different property/grain binding, not absent GSF data.",
+      "recommended_action": "Audit the retained truth/document binding before any GSF admission change; a direct GSF lever would admit a different fact than the filed property size asks.",
+      "truth_roll_summary": {
+        "class_counts": {
+          "R4": 172
+        },
+        "condo_number": "102967",
+        "distinct_owner_count": 114,
+        "representative_street": "217 WEST 57TH STREET",
+        "truth_parcel_count": 172,
+        "truth_unit_count": 172
+      },
+      "vector_count": 791
+    },
+    {
+      "band_max": 292553,
+      "band_min": 127991,
+      "case_fragment": "e1ee0535",
+      "case_id": "h7-subject:non-round:e1ee05351a5b681c0dcda44e19dd575c686c3c630809c137bd64cc3232bc256c",
+      "classification": "source_truth_binding_issue",
+      "corrected_truth_gsf_sum": 455607,
+      "corrected_truth_sum_inside_band": false,
+      "evidence_present": true,
+      "filed_property": {
+        "address": "450-460 PARK AVENUE SOUTH",
+        "city": "New York",
+        "county": "New York",
+        "filing_date": "2026-08-27",
+        "filing_id": "0001888524-26-015948",
+        "loan_asset_key": "15",
+        "name": "450-460 PARK AVENUE SOUTH",
+        "property_key": "CREP-5F8AE5E0FA6B5506",
+        "property_type_code": "OF",
+        "reporting_period": "2026-08-11",
+        "size": 182845,
+        "size_measure": "SQFT"
+      },
+      "finding": "The filed property is a Manhattan office property, while the retained truth parcels are three Queens C6 apartment-building lots owned by Regency Gardens Apartment Corp. The current vector now includes all three truth GSF values, and their sum remains outside the filed office band.",
+      "recommended_action": "Audit the source-to-truth binding for this subject; do not treat the over-band condition as an office-band calibration case.",
+      "truth_roll_summary": {
+        "class_counts": {
+          "C6": 3
+        },
+        "distinct_owner_count": 1,
+        "sample_rows": [
+          {
+            "bbl": "4066310001",
+            "building_class": "C6",
+            "gross_sqft": 151869,
+            "owner": "REGENCY GARDENS APARTMENT CORP",
+            "street": "141-24/141-45 78 AVENUE",
+            "units": 181
+          },
+          {
+            "bbl": "4066320001",
+            "building_class": "C6",
+            "gross_sqft": 151869,
+            "owner": "REGENCY GARDENS APARTMENT CORP",
+            "street": "141-48 78 ROAD",
+            "units": 180
+          },
+          {
+            "bbl": "4066330001",
+            "building_class": "C6",
+            "gross_sqft": 151869,
+            "owner": "REGENCY GARDENS APARTMENT CORP",
+            "street": "141-02 79 AVENUE",
+            "units": 181
+          }
+        ],
+        "truth_parcel_count": 3,
+        "truth_unit_count": 542
+      },
+      "vector_count": 353
+    }
+  ],
+  "expected_direct_e4_movement": {
+    "ambiguous_delta": 0,
+    "exactly_correct_delta": 0,
+    "false_merges_delta": 0,
+    "resolved_delta": 0,
+    "truth_exclusions_delta": 0
+  },
+  "excluded_from_scope": [
+    {
+      "case_fragment": "e3a5228d",
+      "reason": "The current-universe GSF vector puts the retained truth sum inside the admitted MU band; its remaining exclusion belongs to the PAD/truth binding different_property path, not this GSF residual classification."
+    },
+    {
+      "case_fragment": "524efa30",
+      "reason": "The current-universe GSF vector puts the retained truth sum inside band, and the combined PAD+GSF run already showed this dual-refused case clears only when the PAD bridge fix is composed."
+    }
+  ],
+  "frozen_denominator": 79,
+  "measurement": {
+    "case_count": 3,
+    "classification_counts": {
+      "source_truth_binding_issue": 3
+    },
+    "direct_gsf_admission_lever": "none",
+    "measurement_name": "bd_22eo_gsf_residual_classification",
+    "truth_bbls_with_non_null_gsf": 177,
+    "truth_bbls_with_source_rows": 177
+  },
+  "proof_class": "retained_population_measurement_not_live",
+  "release_claim_allowed": false,
+  "retained_inputs": {
+    "gsf_value_vector_rebuild_measurement_path": "scripts/geo_measurements/fixtures/e4_gsf_value_vector_rebuild_2026-09-08/measurement.json",
+    "gsf_value_vector_rebuild_measurement_sha256": "f9a321d3db91411fa255e146405918d886a7c04a6aa1ef64d5c158fc0fdaad0b",
+    "overlay_path": "scripts/geo_measurements/fixtures/e4_gsf_value_vector_rebuild_2026-09-08/overlay_request_current_universe_gsf_vectors.json.gz",
+    "overlay_sha256": "bdcfe1f54c622b878c90a5567a2bc58eda5eff27f74519c5ef48bb4a89184c13",
+    "population_path": "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/population_request_roll_universe_pluto_vintage_condo_representation_widened.json.gz",
+    "population_sha256": "04816dcf5d2f73fc9eb7661d11ef93209da623d3f9be0173109fc55558433405"
+  },
+  "source_verification": {
+    "described_tables": [
+      "EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT",
+      "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.WRGL_NYC_OPENDATA_PROPERTY_VALUATION_AND_ASSESSMENT_DATA_TAX_CLASSES_1_2_3_4__STRUCTURED"
+    ],
+    "queries": [
+      {
+        "measurement_name": "bd_22eo_gsf_residual_property_period_context",
+        "predicate": "latest PROPERTY_PERIOD_FACT row by PROPERTY_KEY for the three retained GSF residual property keys",
+        "row_count": 3
+      },
+      {
+        "measurement_name": "bd_22eo_gsf_residual_truth_roll_context",
+        "predicate": "FY2026 PERIOD=3 assessment-roll rows by exact retained truth BBL/PARID for the three residual cases",
+        "row_count": 177
+      }
+    ]
+  },
+  "version": "canon_geo_gsf_residual_classification.v0"
+}
