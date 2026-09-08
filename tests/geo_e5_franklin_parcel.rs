@@ -17,6 +17,8 @@ const REACH_SQL: &str =
     include_str!("../scripts/geo_measurements/e5_franklin_county_parcel_candidate_reach.sql");
 const GEOMETRY_SQL: &str =
     include_str!("../scripts/geo_measurements/e5_franklin_county_live_geometry_probe.sql");
+const MICROSOFT_COVERAGE_SQL: &str =
+    include_str!("../scripts/geo_measurements/e5_microsoft_globalml_franklin_h3_coverage.sql");
 const MANIFEST: &str = include_str!("../scripts/geo_measurements/manifest.json");
 
 #[test]
@@ -84,6 +86,87 @@ fn franklin_parcel_reach_is_manifest_registered_as_exact_candidate_reach() {
     assert_eq!(
         measurement["expected_sanity"]["row_contract"],
         "canon_geo_e5_franklin_parcel_candidate_reach.v0"
+    );
+}
+
+#[test]
+fn microsoft_globalml_coverage_is_current_bridge_bounded_and_source_only() {
+    for required in [
+        "'80d0ea39-a5aa-4c27-a8d7-f662a4507257'::TEXT AS bridge_build_id",
+        "'OH'::TEXT AS state",
+        "'2026-07-24'::DATE AS release_dt",
+        "MICROSOFT_GLOBALML_BUILDING_FOOTPRINTS_H3_COVERAGE_HOT",
+        "MICROSOFT_GLOBALML_BUILDING_FOOTPRINTS_HOT",
+        "w.h3_cell = c.h3_cell",
+        "c.state = (SELECT state FROM params)",
+        "COUNT(DISTINCT coverage_rows.provider_feature_id)",
+        "features_without_hot_geometry",
+        "COUNT(DISTINCT property_key) FROM subjects",
+        "'canon_geo_e5_microsoft_globalml_franklin_h3_coverage.v0'",
+    ] {
+        assert!(
+            MICROSOFT_COVERAGE_SQL.contains(required),
+            "Microsoft coverage SQL must contain {required:?}"
+        );
+    }
+
+    let folded = MICROSOFT_COVERAGE_SQL.to_ascii_lowercase();
+    for forbidden in [
+        "truth_bbl",
+        "st_contains",
+        "propertyaddress",
+        "siteaddres",
+        "result_scan",
+        "limit 1",
+        "precision as",
+        "accuracy as",
+    ] {
+        assert!(
+            !folded.contains(forbidden),
+            "Microsoft coverage SQL must not use {forbidden:?}"
+        );
+    }
+}
+
+#[test]
+fn microsoft_globalml_coverage_is_manifest_registered_as_exact_source_availability() {
+    let manifest: serde_json::Value = serde_json::from_str(MANIFEST).expect("manifest json");
+    let measurement = manifest["measurements"]
+        .as_array()
+        .expect("measurements")
+        .iter()
+        .find(|measurement| measurement["id"] == "e5_microsoft_globalml_franklin_h3_coverage_v0")
+        .expect("Microsoft coverage measurement");
+    assert_eq!(measurement["result_row_validation"], "exact_manifest_rows");
+    assert_eq!(
+        measurement["release_pins"]["bridge_build_id"],
+        "80d0ea39-a5aa-4c27-a8d7-f662a4507257"
+    );
+    assert_eq!(measurement["release_pins"]["state"], "OH");
+    assert_eq!(
+        measurement["release_pins"]["microsoft_globalml.release_dt"],
+        "2026-07-24"
+    );
+    assert_eq!(
+        measurement["expected_denominators"]["subject_properties"],
+        151
+    );
+    assert_eq!(measurement["expected_denominators"]["work_cells"], 585);
+    assert_eq!(
+        measurement["expected_denominators"]["coverage_rows"],
+        168778
+    );
+    assert_eq!(
+        measurement["expected_denominators"]["occupied_work_cells"],
+        581
+    );
+    assert_eq!(
+        measurement["expected_sanity"]["row_contract"],
+        "canon_geo_e5_microsoft_globalml_franklin_h3_coverage.v0"
+    );
+    assert_eq!(
+        measurement["expected_sanity"]["features_without_hot_geometry"],
+        0
     );
 }
 

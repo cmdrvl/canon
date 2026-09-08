@@ -12,7 +12,8 @@
     "appendix_f_overture_three_source",
     "e5_franklin_county_parcel_candidate_reach_v0",
     "e5_franklin_county_thin_tier_readiness_v0",
-    "e5_franklin_deed_truth_export_v0"
+    "e5_franklin_deed_truth_export_v0",
+    "e5_microsoft_globalml_franklin_h3_coverage_v0"
   ],
   "measurements": [
     {
@@ -976,6 +977,113 @@
         "Bounded source availability guard only: not E5 accuracy, not parcel reach, and not four independent votes.",
         "The Franklin recorder deed/mortgage index is not present in EDGAR source/staging/property schemas at this measurement, so no live deed-grain precision is claimed.",
         "Canon consumes only canon_geo_deed_index_rows.v0 after an external recorder landing supplies SOURCE_SHA256, SOURCE_RELEASE, RELEASE_DT, PARSER_VERSION, LICENSE_TERMS, and ATTRIBUTION_TEXT."
+      ]
+    },
+    {
+      "id": "e5_microsoft_globalml_franklin_h3_coverage_v0",
+      "section": "E5.preflight",
+      "gate": "G7",
+      "geography": "franklin_county_oh",
+      "tier": "global_footprint_h3_coverage",
+      "declared_grain": "building_footprint_source",
+      "description": "Microsoft GlobalML footprint bounded source availability over the current Franklin County bridge work cells.",
+      "sql_path": "scripts/geo_measurements/e5_microsoft_globalml_franklin_h3_coverage.sql",
+      "as_of": "2026-09-08",
+      "expected_row_count": 1,
+      "release_pins": {
+        "bridge_build_id": "80d0ea39-a5aa-4c27-a8d7-f662a4507257",
+        "county_fips": "39049",
+        "geography": "Franklin County, Ohio",
+        "h3.resolution": "8",
+        "halo_k": "1",
+        "measurement_scope": "h3_r8_center_plus_k1_coverage_denominator",
+        "microsoft_globalml.release_dt": "2026-07-24",
+        "microsoft_globalml.source_table": "microsoft_globalml_building_footprints_hot",
+        "microsoft_globalml_h3.source_table": "microsoft_globalml_building_footprints_h3_coverage_hot",
+        "state": "OH"
+      },
+      "denominator_fields": [
+        "subject_properties",
+        "subject_loans",
+        "subject_center_cells",
+        "work_cells",
+        "coverage_rows",
+        "distinct_coverage_features",
+        "occupied_work_cells",
+        "features_with_hot_geometry",
+        "coverage_methods"
+      ],
+      "expected_denominators": {
+        "subject_properties": 151,
+        "subject_loans": 202,
+        "subject_center_cells": 114,
+        "work_cells": 585,
+        "coverage_rows": 168778,
+        "distinct_coverage_features": 168778,
+        "occupied_work_cells": 581,
+        "features_with_hot_geometry": 168778,
+        "coverage_methods": 1
+      },
+      "expected_sanity": {
+        "artifact_row_count_matches_expected": true,
+        "county_fips": "39049",
+        "features_without_hot_geometry": 0,
+        "guard_status": "ok",
+        "proof_scope": "h3_r8_center_plus_k1_coverage_denominator",
+        "row_contract": "canon_geo_e5_microsoft_globalml_franklin_h3_coverage.v0",
+        "state": "OH"
+      },
+      "result_fields": [
+        "row_contract",
+        "proof_scope",
+        "bridge_build_id",
+        "county_fips",
+        "state",
+        "release_dt",
+        "h3_resolution",
+        "halo_k",
+        "subject_properties",
+        "subject_loans",
+        "subject_center_cells",
+        "work_cells",
+        "coverage_rows",
+        "distinct_coverage_features",
+        "occupied_work_cells",
+        "features_with_hot_geometry",
+        "features_without_hot_geometry",
+        "coverage_methods",
+        "guard_status"
+      ],
+      "expected_result_rows": [
+        {
+          "row_contract": "canon_geo_e5_microsoft_globalml_franklin_h3_coverage.v0",
+          "proof_scope": "h3_r8_center_plus_k1_coverage_denominator",
+          "bridge_build_id": "80d0ea39-a5aa-4c27-a8d7-f662a4507257",
+          "county_fips": "39049",
+          "state": "OH",
+          "release_dt": "2026-07-24",
+          "h3_resolution": 8,
+          "halo_k": 1,
+          "subject_properties": 151,
+          "subject_loans": 202,
+          "subject_center_cells": 114,
+          "work_cells": 585,
+          "coverage_rows": 168778,
+          "distinct_coverage_features": 168778,
+          "occupied_work_cells": 581,
+          "features_with_hot_geometry": 168778,
+          "features_without_hot_geometry": 0,
+          "coverage_methods": 1,
+          "guard_status": "ok"
+        }
+      ],
+      "source_sql_sha256": "8d3021403a8a73bcec5f8e3d40fcc80d60146779376fb0acca986222d1ae61ae",
+      "execution_transform": "cmdrvl_data_sqlglot_normalized_plus_tool_row_limit",
+      "result_row_validation": "exact_manifest_rows",
+      "limitations": [
+        "Bounded source availability only: not E5 accuracy, not parcel reach, and not four independent votes.",
+        "The footprint count is H3 blocking coverage for a building-footprint evidence source, not a parcel candidate universe, solver result, or precision operating point.",
+        "This offline harness reports receipt_consistent with liveness not attested; query-history authenticity and source authenticity remain outside this fixture."
       ]
     }
   ]

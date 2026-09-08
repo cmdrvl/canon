@@ -160,6 +160,19 @@ That is a candidate-reach result, not accuracy: there is not yet an admitted
 Franklin deed/truth score, and Snowflake GEOGRAPHY remains an empirical oracle
 rather than Canon's quantized exact-local predicate.
 
+`e5_microsoft_globalml_franklin_h3_coverage.sql` is the current-bridge
+Microsoft GlobalML source-availability denominator. It uses the same
+`80d0ea39-a5aa-4c27-a8d7-f662a4507257` Franklin subject build, forms the
+center+k1 r8 work-cell set, filters the Microsoft H3 coverage bridge by
+`state = OH`, release date `2026-07-24`, and exact work cells, then checks that
+every covered feature joins back to the HOT geometry table. Its SHA-256 is
+`8d3021403a8a73bcec5f8e3d40fcc80d60146779376fb0acca986222d1ae61ae`.
+The result is 151 property subjects / 202 loans, 114 center cells, 585 work
+cells, 168,778 coverage rows / distinct footprint features in 581 occupied
+work cells, and zero HOT-geometry misses. This is a building-footprint source
+coverage denominator only; it is not parcel reach, solver output, precision, or
+E5 closure.
+
 `e5_franklin_county_live_geometry_probe.sql` closes one concrete transport
 seam without hard-coding a subject. A recorded selection seed ranks the 148
 live PIP rows, verifies the selected source-WKB digest in Snowflake, and emits

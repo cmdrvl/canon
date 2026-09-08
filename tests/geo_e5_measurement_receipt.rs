@@ -254,7 +254,7 @@ fn e5_fixture_is_receipt_consistent_but_not_live_attested() {
     let (ok, report) = run_report(&fixture);
     assert!(!ok, "E5-only fixture should leave core receipts missing");
     assert_eq!(report["summary"]["receipt_consistent"], 1);
-    assert_eq!(report["summary"]["missing"], 9);
+    assert_eq!(report["summary"]["missing"], 10);
     assert!(report["summary"].get("verified").is_none());
     let row = status_for(&report, E5_ID);
     assert_eq!(row["status"], "receipt_consistent");

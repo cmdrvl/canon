@@ -234,6 +234,9 @@ fn artifact_rows(measurement: &Value) -> Value {
         }
         "e5_franklin_county_thin_tier_readiness_v0" => measurement["expected_result_rows"].clone(),
         "e5_franklin_deed_truth_export_v0" => measurement["expected_result_rows"].clone(),
+        "e5_microsoft_globalml_franklin_h3_coverage_v0" => {
+            measurement["expected_result_rows"].clone()
+        }
         other => panic!("unexpected measurement {other}"),
     }
 }
@@ -464,6 +467,20 @@ fn derive_denominators(measurement_id: &str, rows: &[Value]) -> Value {
                 "measurement_guard_rows",
                 "required_column_count",
                 "source_pin_field_count",
+            ],
+        ),
+        "e5_microsoft_globalml_franklin_h3_coverage_v0" => single_row_denominators(
+            rows,
+            &[
+                "subject_properties",
+                "subject_loans",
+                "subject_center_cells",
+                "work_cells",
+                "coverage_rows",
+                "distinct_coverage_features",
+                "occupied_work_cells",
+                "features_with_hot_geometry",
+                "coverage_methods",
             ],
         ),
         other => panic!("unexpected measurement {other}"),
@@ -836,7 +853,8 @@ fn plan_is_ordered_offline_and_excludes_h7() {
             "appendix_f_overture_three_source",
             "e5_franklin_county_parcel_candidate_reach_v0",
             "e5_franklin_county_thin_tier_readiness_v0",
-            "e5_franklin_deed_truth_export_v0"
+            "e5_franklin_deed_truth_export_v0",
+            "e5_microsoft_globalml_franklin_h3_coverage_v0"
         ]
     );
     assert!(!ids.iter().any(|id| id.to_ascii_lowercase().contains("h7")));

@@ -2345,7 +2345,9 @@ fn derive_denominators(
                 denominators.insert(field.clone(), value);
             }
         }
-        "e5_franklin_county_parcel_candidate_reach_v0" | "e5_franklin_deed_truth_export_v0" => {
+        "e5_franklin_county_parcel_candidate_reach_v0"
+        | "e5_franklin_deed_truth_export_v0"
+        | "e5_microsoft_globalml_franklin_h3_coverage_v0" => {
             let row = single_row(measurement, rows)?;
             for field in &measurement.denominator_fields {
                 denominators.insert(field.clone(), required_u64(row, field)?);
