@@ -19,9 +19,11 @@
     "status": "dtm_condo_tax_map_geometry_required_for_exact_unit_lot_geometry"
   },
   "answer": {
+    "answer_grain": "billing_lot_representation_grain",
     "can_pad_crosswalk_plus_mappluto_supply_usable_candidate_geometry": "yes_with_declared_condo_unit_to_billing_lot_representation",
     "candidate_geometry": "six_pad_billing_bbls_have_pinned_mappluto_geom_v3_rows_covering_all_331_unit_bbl_identities",
-    "exact_unit_lot_geometry": "no_landed_mappluto_geometry_rows_for_the_331_unit_bbls"
+    "exact_unit_lot_geometry": "no_landed_mappluto_geometry_rows_for_the_331_unit_bbls",
+    "grain_caveat": "Any downstream resolved answer using these candidates is answered at billing-lot representation grain, not condo unit-lot grain."
   },
   "bead": "bd-1q6h",
   "boundary": "Candidate-universe-only recovery. The 331 condo unit BBL identities are added as candidates only when accompanied by a typed representation bridge to PAD 26B billing-lot MapPLUTO geometry. Billing-lot geometry is not unit-lot geometry, not collateral truth, and does not relax rho admission.",
@@ -156,6 +158,7 @@
   "proof_class": "retained_cmdrvl_data_warehouse_measurement_with_bounded_mcp_replay_not_live_receipt",
   "recorded_on": "2026-09-08",
   "representation_bridge": {
+    "answer_grain": "billing_lot_representation_grain",
     "billing_bbls": [
       "1000287502",
       "1010297502",
@@ -167,6 +170,7 @@
     "bridgeable_candidate_geometry_status": "all_331_residual_unit_bbl_identities_have_pad_26b_billing_bbls_with_mappluto_geom_v3_geometry",
     "exact_unit_lot_geometry_status": "absent_from_landed_mappluto_geometry",
     "geometry_grain": "pad_billing_bbl_mappluto_geometry",
+    "grain_caveat": "331 condo unit BBL identities collapse onto 6 billing-lot geometries; this representation supplies candidate geometry only and does not assert unit-level collateral geometry.",
     "identity_grain": "condo_unit_bbl",
     "mappluto_releases": [
       "26v1",

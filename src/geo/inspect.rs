@@ -356,10 +356,8 @@ fn compare_stored_runs(
     let mut delta = compare(base, other)?;
     let stored_components = stored_components_invalidated(base_stored, other_stored);
     if !stored_components.is_empty() {
-        delta.components_invalidated = union_sorted(
-            delta.components_invalidated.into_iter(),
-            stored_components.into_iter(),
-        );
+        delta.components_invalidated =
+            union_sorted(delta.components_invalidated, stored_components);
     }
     Ok(delta)
 }

@@ -270,6 +270,19 @@ fn remaining_five_condo_representation_widening_recovers_reach_without_claiming_
         "yes_with_declared_condo_unit_to_billing_lot_representation"
     );
     assert_eq!(
+        artifact["answer"]["answer_grain"]
+            .as_str()
+            .expect("answer grain"),
+        "billing_lot_representation_grain"
+    );
+    assert!(
+        artifact["answer"]["grain_caveat"]
+            .as_str()
+            .expect("grain caveat")
+            .contains("not condo unit-lot grain"),
+        "billing-lot representation must not be projected as unit-lot truth"
+    );
+    assert_eq!(
         artifact["answer"]["exact_unit_lot_geometry"]
             .as_str()
             .expect("exact unit-lot answer"),
@@ -651,10 +664,12 @@ fn assert_source_pins_and_sql_boundary(artifact: &Value) {
             "SOURCE_FILENAME",
         ],
     );
-    assert!(pluto["content_hash_source"]
-        .as_str()
-        .expect("content hash source")
-        .contains("NYC_DCP_PLUTO_MANIFEST_EXT"));
+    assert!(
+        pluto["content_hash_source"]
+            .as_str()
+            .expect("content hash source")
+            .contains("NYC_DCP_PLUTO_MANIFEST_EXT")
+    );
     let pad = tables
         .iter()
         .find(|row| row["table"] == "EDGAR_DB.SOURCE.NYC_DCP_PAD_BBL_HOT")
@@ -710,10 +725,12 @@ fn assert_condo_pad_bridge_summary(artifact: &Value) {
         pad["parser_version"].as_str().expect("PAD parser version"),
         "2026-08-16"
     );
-    assert!(pad["license_terms"]
-        .as_str()
-        .expect("PAD license terms")
-        .contains("DCP disclaims"));
+    assert!(
+        pad["license_terms"]
+            .as_str()
+            .expect("PAD license terms")
+            .contains("DCP disclaims")
+    );
     assert_eq!(
         pad["attribution_text"].as_str().expect("PAD attribution"),
         "NYC Department of City Planning (DCP)"
@@ -835,10 +852,12 @@ fn assert_condo_geometry_row_pins(artifact: &Value) {
             "MapPLUTO.shp"
         );
         assert_sha256(row["source_archive_sha256"].as_str().expect("archive hash"));
-        assert!(row["source_archive_s3_key"]
-            .as_str()
-            .expect("archive s3 key")
-            .contains("/artifact=raw/"));
+        assert!(
+            row["source_archive_s3_key"]
+                .as_str()
+                .expect("archive s3 key")
+                .contains("/artifact=raw/")
+        );
         assert_sha256(row["geom_wgs84_sha256"].as_str().expect("WGS84 hash"));
         assert_sha256(
             row["source_geom_wkb_sha256"]
@@ -1156,6 +1175,10 @@ fn assert_condo_representation_bridge_replay(artifact: &Value) {
 
     let bridge = &artifact["representation_bridge"];
     assert_eq!(
+        bridge["answer_grain"].as_str().expect("answer grain"),
+        "billing_lot_representation_grain"
+    );
+    assert_eq!(
         bridge["identity_grain"].as_str().expect("identity grain"),
         "condo_unit_bbl"
     );
@@ -1168,6 +1191,12 @@ fn assert_condo_representation_bridge_replay(artifact: &Value) {
             .as_str()
             .expect("exact unit geometry status"),
         "absent_from_landed_mappluto_geometry"
+    );
+    assert!(
+        bridge["grain_caveat"]
+            .as_str()
+            .expect("bridge grain caveat")
+            .contains("331 condo unit BBL identities collapse onto 6 billing-lot geometries")
     );
 }
 
