@@ -385,7 +385,7 @@ pub struct GeoDeedTruthArtifact {
     pub per_loan: Vec<GeoDeedTruthLoanMatch>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GeoPopulationCaseStatus {
     Resolved,
@@ -697,6 +697,17 @@ pub struct GeoE4GateBlocker {
     pub required: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeoE4GateCaseFinding {
+    pub plane: GeoE4GatePlane,
+    pub code: GeoE4GateBlockerCode,
+    pub case_id: String,
+    pub truth_plane: GeoTruthPlane,
+    pub case_status: GeoPopulationCaseStatus,
+    pub observed: String,
+    pub required: String,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeoE4CoveragePlaneScore {
     pub cases: u64,
@@ -806,6 +817,7 @@ pub struct GeoE4GateAssessment {
     pub subject_deficit: u64,
     pub source_evaluation_blake3: String,
     pub blockers: Vec<GeoE4GateBlocker>,
+    pub case_findings: Vec<GeoE4GateCaseFinding>,
     pub planes: GeoE4GatePlaneScores,
     pub truth_planes: Vec<GeoE4TruthPlaneGateAssessment>,
 }
@@ -2450,6 +2462,7 @@ pub fn assess_e4_gate(
     let evaluated_cases = planes.coverage.cases;
     let subject_deficit = required_subjects.saturating_sub(evaluated_cases);
     let blockers = e4_gate_blockers(proof_class, required_subjects, evaluated_cases, &planes)?;
+    let case_findings = e4_gate_case_findings(artifact.cases.iter());
     let status = if blockers.is_empty() {
         GeoE4GateStatus::Passed
     } else {
@@ -2468,6 +2481,7 @@ pub fn assess_e4_gate(
         subject_deficit,
         source_evaluation_blake3,
         blockers,
+        case_findings,
         planes,
         truth_planes,
     };
@@ -2635,6 +2649,7 @@ pub fn validate_e4_gate_assessment(
             ],
         ));
     }
+    validate_e4_gate_case_findings(assessment)?;
     let mut previous_truth_plane = None;
     let mut truth_plane_cases = 0_u64;
     for plane in &assessment.truth_planes {
@@ -4138,6 +4153,16 @@ fn candidate_reach_name(status: GeoCandidateReachStatus) -> &'static str {
     }
 }
 
+fn evidence_coverage_name(status: GeoEvidenceCoverageStatus) -> &'static str {
+    match status {
+        GeoEvidenceCoverageStatus::NoObservations => "no_observations",
+        GeoEvidenceCoverageStatus::DiagnosticOnly => "diagnostic_only",
+        GeoEvidenceCoverageStatus::SoftPreferenceOnly => "soft_preference_only",
+        GeoEvidenceCoverageStatus::SoftAndDiagnosticOnly => "soft_and_diagnostic_only",
+        GeoEvidenceCoverageStatus::HardConstraintPresent => "hard_constraint_present",
+    }
+}
+
 fn reject_duplicates(field: &str, values: &[String]) -> Result<(), GeoPopulationError> {
     for pair in values.windows(2) {
         if pair[0] == pair[1] {
@@ -5083,6 +5108,120 @@ fn e4_gate_blockers(
     Ok(blockers)
 }
 
+fn e4_gate_case_findings<'a>(
+    cases: impl IntoIterator<Item = &'a GeoPopulationCaseEvaluation>,
+) -> Vec<GeoE4GateCaseFinding> {
+    let mut findings = Vec::new();
+    for case in cases {
+        if case.evidence_coverage == GeoEvidenceCoverageStatus::NoObservations {
+            push_e4_case_finding(
+                &mut findings,
+                case,
+                GeoE4GatePlane::Coverage,
+                GeoE4GateBlockerCode::EvidenceNoObservation,
+                evidence_coverage_name(case.evidence_coverage),
+                "hard_soft_or_diagnostic_observation",
+            );
+        }
+        if case.candidate_reach != GeoCandidateReachStatus::Full {
+            push_e4_case_finding(
+                &mut findings,
+                case,
+                GeoE4GatePlane::CandidateReach,
+                GeoE4GateBlockerCode::CandidateReachIncomplete,
+                candidate_reach_name(case.candidate_reach),
+                "full",
+            );
+        }
+        if case.solver_digest.is_none() {
+            push_e4_case_finding(
+                &mut findings,
+                case,
+                GeoE4GatePlane::SolverExactness,
+                GeoE4GateBlockerCode::SolverArtifactMissing,
+                "missing",
+                "present",
+            );
+        }
+        if case.residual_count_saturated || !case.residual_count_complete {
+            let observed = if !case.residual_count_complete {
+                "unavailable"
+            } else {
+                "saturated"
+            };
+            push_e4_case_finding(
+                &mut findings,
+                case,
+                GeoE4GatePlane::SolverExactness,
+                GeoE4GateBlockerCode::ResidualCountInexact,
+                observed,
+                "exact",
+            );
+        }
+        if case.truth_model_in_residual == Some(false) {
+            push_e4_case_finding(
+                &mut findings,
+                case,
+                GeoE4GatePlane::Admission,
+                GeoE4GateBlockerCode::RhoFalsification,
+                "truth_excluded",
+                "truth_retained",
+            );
+        }
+        if case.false_merge {
+            push_e4_case_finding(
+                &mut findings,
+                case,
+                GeoE4GatePlane::TruthQuality,
+                GeoE4GateBlockerCode::FalseMerge,
+                "resolved_truth_excluded",
+                "truth_retained_or_abstain",
+            );
+        }
+        if case.status == GeoPopulationCaseStatus::AssignmentBudgetExceeded {
+            push_e4_case_finding(
+                &mut findings,
+                case,
+                GeoE4GatePlane::Cost,
+                GeoE4GateBlockerCode::AssignmentBudgetExceeded,
+                "assignment_budget_exceeded",
+                "within_assignment_budget",
+            );
+        }
+        if case.status == GeoPopulationCaseStatus::ComponentBudgetFallback {
+            push_e4_case_finding(
+                &mut findings,
+                case,
+                GeoE4GatePlane::Cost,
+                GeoE4GateBlockerCode::ComponentBudgetFallback,
+                "component_budget_fallback",
+                "exact_component_solve",
+            );
+        }
+    }
+    findings.sort();
+    findings
+}
+
+fn push_e4_case_finding(
+    findings: &mut Vec<GeoE4GateCaseFinding>,
+    case: &GeoPopulationCaseEvaluation,
+    plane: GeoE4GatePlane,
+    code: GeoE4GateBlockerCode,
+    observed: &'static str,
+    required: &'static str,
+) {
+    findings.push(GeoE4GateCaseFinding {
+        plane,
+        code,
+        case_id: case.case_id.clone(),
+        truth_plane: case.truth_plane,
+        case_status: case.status,
+        observed: observed.to_string(),
+        required: required.to_string(),
+    });
+}
+
 fn e4_sum_plane_scores<'a>(
     planes: impl IntoIterator<Item = &'a GeoE4GatePlaneScores>,
 ) -> Result<GeoE4GatePlaneScores, GeoPopulationError> {
@@ -5621,6 +5760,230 @@ fn validate_e4_plane_scores(
         ));
     }
     Ok(())
+}
+
+fn validate_e4_gate_case_findings(
+    assessment: &GeoE4GateAssessment,
+) -> Result<(), GeoPopulationError> {
+    for pair in assessment.case_findings.windows(2) {
+        if pair[0] >= pair[1] {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo E4 gate assessment case findings must be sorted and unique",
+                [
+                    ("previous", pair[0].case_id.as_str()),
+                    ("current", pair[1].case_id.as_str()),
+                ],
+            ));
+        }
+    }
+
+    let mut evidence_no_observation = 0;
+    let mut candidate_reach_incomplete = 0;
+    let mut solver_artifact_missing = 0;
+    let mut residual_count_inexact = 0;
+    let mut rho_falsification = 0;
+    let mut false_merge = 0;
+    let mut assignment_budget_exceeded = 0;
+    let mut component_budget_fallback = 0;
+    let mut finding_keys = BTreeSet::<(GeoE4GateBlockerCode, String)>::new();
+    for finding in &assessment.case_findings {
+        validate_nonempty_canonical("case_findings.case_id", &finding.case_id)?;
+        validate_nonempty_trimmed_finding_text("case_findings.observed", &finding.observed)?;
+        validate_nonempty_trimmed_finding_text("case_findings.required", &finding.required)?;
+        if !finding_keys.insert((finding.code, finding.case_id.clone())) {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo E4 gate assessment case findings must be unique per blocker and case",
+                [
+                    ("case_id", finding.case_id.clone()),
+                    ("code", format!("{:?}", finding.code)),
+                ],
+            ));
+        }
+        let expected_plane = e4_case_finding_plane(finding.code).ok_or_else(|| {
+            GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo E4 gate assessment case finding uses a non-case blocker code",
+                [("code", format!("{:?}", finding.code))],
+            )
+        })?;
+        if finding.plane != expected_plane {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo E4 gate assessment case finding plane does not match its blocker code",
+                [
+                    ("case_id", finding.case_id.clone()),
+                    ("code", format!("{:?}", finding.code)),
+                ],
+            ));
+        }
+        match finding.code {
+            GeoE4GateBlockerCode::EvidenceNoObservation => checked_inc(
+                &mut evidence_no_observation,
+                "e4.case_findings.evidence_no_observation",
+            )?,
+            GeoE4GateBlockerCode::CandidateReachIncomplete => checked_inc(
+                &mut candidate_reach_incomplete,
+                "e4.case_findings.candidate_reach_incomplete",
+            )?,
+            GeoE4GateBlockerCode::SolverArtifactMissing => checked_inc(
+                &mut solver_artifact_missing,
+                "e4.case_findings.solver_artifact_missing",
+            )?,
+            GeoE4GateBlockerCode::ResidualCountInexact => checked_inc(
+                &mut residual_count_inexact,
+                "e4.case_findings.residual_count_inexact",
+            )?,
+            GeoE4GateBlockerCode::RhoFalsification => {
+                checked_inc(&mut rho_falsification, "e4.case_findings.rho_falsification")?
+            }
+            GeoE4GateBlockerCode::FalseMerge => {
+                checked_inc(&mut false_merge, "e4.case_findings.false_merge")?
+            }
+            GeoE4GateBlockerCode::AssignmentBudgetExceeded => checked_inc(
+                &mut assignment_budget_exceeded,
+                "e4.case_findings.assignment_budget_exceeded",
+            )?,
+            GeoE4GateBlockerCode::ComponentBudgetFallback => checked_inc(
+                &mut component_budget_fallback,
+                "e4.case_findings.component_budget_fallback",
+            )?,
+            GeoE4GateBlockerCode::ProofClassNotLiveComplete
+            | GeoE4GateBlockerCode::PopulationDenominatorMismatch => {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::InvalidInput,
+                    "Geo E4 gate assessment case finding uses a non-case blocker code",
+                    [("code", format!("{:?}", finding.code))],
+                ));
+            }
+        }
+    }
+
+    let planes = &assessment.planes;
+    let solver_artifact_missing_expected = checked_difference(
+        "e4.case_findings.solver_artifact_missing",
+        planes.coverage.cases,
+        planes.solver_exactness.solver_artifact_cases,
+    )?;
+    let residual_count_inexact_expected = sum_u64(
+        [
+            planes.solver_exactness.residual_count_saturated_cases,
+            planes.solver_exactness.residual_count_unavailable_cases,
+        ],
+        "e4.case_findings.residual_count_inexact",
+    )?;
+    validate_e4_case_finding_count(
+        GeoE4GateBlockerCode::EvidenceNoObservation,
+        planes.coverage.evidence_no_observation_cases,
+        evidence_no_observation,
+    )?;
+    validate_e4_case_finding_count(
+        GeoE4GateBlockerCode::CandidateReachIncomplete,
+        planes.candidate_reach.recall_failure_cases,
+        candidate_reach_incomplete,
+    )?;
+    validate_e4_case_finding_count(
+        GeoE4GateBlockerCode::SolverArtifactMissing,
+        solver_artifact_missing_expected,
+        solver_artifact_missing,
+    )?;
+    validate_e4_case_finding_count(
+        GeoE4GateBlockerCode::ResidualCountInexact,
+        residual_count_inexact_expected,
+        residual_count_inexact,
+    )?;
+    validate_e4_case_finding_count(
+        GeoE4GateBlockerCode::RhoFalsification,
+        planes.admission.rho_falsification_cases,
+        rho_falsification,
+    )?;
+    validate_e4_case_finding_count(
+        GeoE4GateBlockerCode::FalseMerge,
+        planes.truth_quality.false_merge_cases,
+        false_merge,
+    )?;
+    validate_e4_case_finding_count(
+        GeoE4GateBlockerCode::AssignmentBudgetExceeded,
+        planes.solver_exactness.assignment_budget_exceeded_cases,
+        assignment_budget_exceeded,
+    )?;
+    validate_e4_case_finding_count(
+        GeoE4GateBlockerCode::ComponentBudgetFallback,
+        planes.solver_exactness.component_budget_fallback_cases,
+        component_budget_fallback,
+    )?;
+    Ok(())
+}
+
+fn validate_nonempty_trimmed_finding_text(
+    field: &'static str,
+    value: &str,
+) -> Result<(), GeoPopulationError> {
+    if value.is_empty() || value.trim() != value {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo E4 gate assessment case finding text must be non-empty and trimmed",
+            [(field, value)],
+        ));
+    }
+    Ok(())
+}
+
+fn e4_case_finding_plane(code: GeoE4GateBlockerCode) -> Option<GeoE4GatePlane> {
+    match code {
+        GeoE4GateBlockerCode::EvidenceNoObservation => Some(GeoE4GatePlane::Coverage),
+        GeoE4GateBlockerCode::CandidateReachIncomplete => Some(GeoE4GatePlane::CandidateReach),
+        GeoE4GateBlockerCode::SolverArtifactMissing
+        | GeoE4GateBlockerCode::ResidualCountInexact => Some(GeoE4GatePlane::SolverExactness),
+        GeoE4GateBlockerCode::RhoFalsification => Some(GeoE4GatePlane::Admission),
+        GeoE4GateBlockerCode::FalseMerge => Some(GeoE4GatePlane::TruthQuality),
+        GeoE4GateBlockerCode::AssignmentBudgetExceeded
+        | GeoE4GateBlockerCode::ComponentBudgetFallback => Some(GeoE4GatePlane::Cost),
+        GeoE4GateBlockerCode::ProofClassNotLiveComplete
+        | GeoE4GateBlockerCode::PopulationDenominatorMismatch => None,
+    }
+}
+
+fn checked_difference(
+    field: &'static str,
+    total: u64,
+    subset: u64,
+) -> Result<u64, GeoPopulationError> {
+    total
+        .checked_sub(subset)
+        .ok_or_else(|| summary_invariant_error("e4_gate_assessment", field, total, subset))
+}
+
+fn validate_e4_case_finding_count(
+    code: GeoE4GateBlockerCode,
+    expected: u64,
+    actual: u64,
+) -> Result<(), GeoPopulationError> {
+    if actual != expected {
+        return Err(summary_invariant_error(
+            "e4_gate_assessment.case_findings",
+            e4_case_finding_count_field(code),
+            expected,
+            actual,
+        ));
+    }
+    Ok(())
+}
+
+fn e4_case_finding_count_field(code: GeoE4GateBlockerCode) -> &'static str {
+    match code {
+        GeoE4GateBlockerCode::EvidenceNoObservation => "evidence_no_observation",
+        GeoE4GateBlockerCode::CandidateReachIncomplete => "candidate_reach_incomplete",
+        GeoE4GateBlockerCode::SolverArtifactMissing => "solver_artifact_missing",
+        GeoE4GateBlockerCode::ResidualCountInexact => "residual_count_inexact",
+        GeoE4GateBlockerCode::RhoFalsification => "rho_falsification",
+        GeoE4GateBlockerCode::FalseMerge => "false_merge",
+        GeoE4GateBlockerCode::AssignmentBudgetExceeded => "assignment_budget_exceeded",
+        GeoE4GateBlockerCode::ComponentBudgetFallback => "component_budget_fallback",
+        GeoE4GateBlockerCode::ProofClassNotLiveComplete => "proof_class_not_live_complete",
+        GeoE4GateBlockerCode::PopulationDenominatorMismatch => "population_denominator_mismatch",
+    }
 }
 
 fn scored_false_merge(

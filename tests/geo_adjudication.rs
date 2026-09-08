@@ -36,8 +36,8 @@ use canon::geo::{
     GeoCompositionUniverse, GeoE4GateAssessment, GeoE4GateBlockerCode, GeoE4GatePlane,
     GeoE4GateProofClass, GeoE4GateProofDerivation, GeoE4GateProofSource, GeoE4GateStatus,
     GeoEntityLevel, GeoEntityRef, GeoH7PopulationScope, GeoH7ResultMode, GeoHardConstraint,
-    GeoHardConstraintKind, GeoPopulationEvaluationArtifact, GeoTruthPlane, assess_e4_gate,
-    canonical_candidate_truth_evaluation_bytes, canonical_e4_gate_assessment_bytes,
+    GeoHardConstraintKind, GeoPopulationCaseStatus, GeoPopulationEvaluationArtifact, GeoTruthPlane,
+    assess_e4_gate, canonical_candidate_truth_evaluation_bytes, canonical_e4_gate_assessment_bytes,
     canonical_population_evaluation_bytes, e4_proof_source_from_population_request,
     evaluate_candidate_truth_handoff, model_satisfies_request, solve_composition,
     validate_candidate_truth_evaluation_artifact, validate_e4_gate_assessment,
@@ -1531,6 +1531,66 @@ fn e4_gate_assessment_scores_retained_roll_population_without_live_claim() {
             .any(|blocker| blocker.code == GeoE4GateBlockerCode::EvidenceNoObservation)
     );
 
+    let mut case_finding_counts = BTreeMap::<GeoE4GateBlockerCode, u64>::new();
+    for finding in &assessment.case_findings {
+        *case_finding_counts.entry(finding.code).or_default() += 1;
+    }
+    assert_eq!(
+        case_finding_counts.get(&GeoE4GateBlockerCode::EvidenceNoObservation),
+        None
+    );
+    assert_eq!(
+        case_finding_counts
+            .get(&GeoE4GateBlockerCode::CandidateReachIncomplete)
+            .copied(),
+        Some(23)
+    );
+    assert_eq!(
+        case_finding_counts
+            .get(&GeoE4GateBlockerCode::ResidualCountInexact)
+            .copied(),
+        Some(20)
+    );
+    assert_eq!(
+        case_finding_counts
+            .get(&GeoE4GateBlockerCode::RhoFalsification)
+            .copied(),
+        Some(15)
+    );
+    assert_eq!(
+        case_finding_counts
+            .get(&GeoE4GateBlockerCode::FalseMerge)
+            .copied(),
+        Some(5)
+    );
+    assert_eq!(
+        case_finding_counts
+            .get(&GeoE4GateBlockerCode::ComponentBudgetFallback)
+            .copied(),
+        Some(6)
+    );
+    let false_merge_case_ids = assessment
+        .case_findings
+        .iter()
+        .filter(|finding| finding.code == GeoE4GateBlockerCode::FalseMerge)
+        .map(|finding| {
+            assert_eq!(finding.plane, GeoE4GatePlane::TruthQuality);
+            assert_eq!(finding.case_status, GeoPopulationCaseStatus::Resolved);
+            assert_eq!(finding.observed, "resolved_truth_excluded");
+            finding.case_id.as_str()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        false_merge_case_ids,
+        vec![
+            "h7-subject:non-round:0e60eb66adadc21f4be4187e6ca87242d544bcce4ae57592bdc1f65cde1a8001",
+            "h7-subject:non-round:97ae3eeb8035a1914b178d2cf3a447b50735e954a33067d57d6e9a5e1c3e6d58",
+            "h7-subject:round-exact-lender:51eae762b75edfcd0d73a0e6de35dd3e29c36e8a207ca7d8c5a154ec6bcd7301",
+            "h7-subject:round-exact-lender:5605d0d3f0f90d8112d6f8cecfadd323843a99158ce337e981da62902fe8e5f1",
+            "h7-subject:round-exact-lender:7b694e770de8331827bf785d9303bf2d5d8857fdc235011fa2a9b0c2cf37dbf6",
+        ]
+    );
+
     let by_plane = assessment
         .truth_planes
         .iter()
@@ -1650,6 +1710,23 @@ fn e4_gate_assessment_validator_rejects_status_or_claim_forgery() {
         .expect_err("truth-plane counter tamper must be rejected");
     assert_eq!(error.code, canon::geo::GeoPopulationErrorCode::InvalidInput);
     assert!(error.to_string().contains("truth planes"));
+
+    let mut assessment = assess_e4_gate(&artifact, &retained_complete_stack_proof_source())
+        .expect("retained E4 assessment scores");
+    assessment
+        .case_findings
+        .retain(|finding| finding.code != GeoE4GateBlockerCode::FalseMerge);
+    let error = validate_e4_gate_assessment(&assessment)
+        .expect_err("case-finding underreporting must be rejected");
+    assert_eq!(error.code, canon::geo::GeoPopulationErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("scope").map(String::as_str),
+        Some("e4_gate_assessment.case_findings")
+    );
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("false_merge")
+    );
 }
 
 const D0_ADJUDICATION_LABELS_JSON: &str =

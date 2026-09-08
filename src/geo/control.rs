@@ -47,6 +47,7 @@ use super::{
         CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
         CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION,
     },
+    inspect::CANON_GEO_INSPECTION_VERSION,
     ledger::{CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION, CANON_GEO_COLLATERAL_LEDGER_VERSION},
     lifecycle::{CANON_GEO_AS_OF_RESOLUTION_REQUEST_VERSION, CANON_GEO_AS_OF_RESOLUTION_VERSION},
     materialize::{
@@ -1134,6 +1135,11 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "bounded resumable Geo run artifact contract",
         ),
         contract(
+            CANON_GEO_INSPECTION_VERSION,
+            "schemas/canon.geo.inspection.v0.schema.json",
+            "read-only Geo run inspection artifact contract",
+        ),
+        contract(
             CANON_GEO_DISCOVERY_REQUEST_VERSION,
             "schemas/canon.geo.discovery_request.v0.schema.json",
             "protocol-neutral bounded catalog discovery request contract",
@@ -1522,6 +1528,13 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
             false,
         ),
         command(
+            "canon geo inspect --run <DIR> [--component <ID>] [--compare <OTHER_RUN>] [--recommend-next]",
+            GeoCommandSurface::Primary,
+            CANON_GEO_INSPECTION_VERSION,
+            true,
+            false,
+        ),
+        command(
             "canon geo ledger",
             GeoCommandSurface::Primary,
             CANON_GEO_COLLATERAL_LEDGER_VERSION,
@@ -1731,13 +1744,7 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
 }
 
 fn unavailable_geo_commands() -> Vec<GeoCommandCapability> {
-    vec![command(
-        "canon geo inspect",
-        GeoCommandSurface::Primary,
-        "planned_not_implemented",
-        true,
-        false,
-    )]
+    Vec::new()
 }
 
 pub fn canonicalize_capabilities(

@@ -977,7 +977,7 @@
     {
       "name": "geo capabilities",
       "usage": "canon geo capabilities --emit json",
-      "description": "Emit the compiled offline Canon Geo control capability contract, including source-generic contract versions, vocabularies, deterministic ceilings, property scope, implemented planning/run/ledger validation, and the planned unavailable inspect command",
+      "description": "Emit the compiled offline Canon Geo control capability contract, including source-generic contract versions, vocabularies, deterministic ceilings, property scope, and implemented planning/run/inspect/ledger validation commands",
       "surface": "primary",
       "output_mode": "json",
       "output_schema": "canon_geo_capabilities.v0",
@@ -1338,16 +1338,16 @@
     },
     {
       "name": "geo inspect",
-      "usage": "canon geo inspect",
-      "description": "Planned primary Geo inspection command for sections, receipts, and residual state; unavailable in this build",
+      "usage": "canon geo inspect --run <DIR> [--component <ID>] [--compare <OTHER_RUN>] [--recommend-next]",
+      "description": "Inspect a completed Geo run from stored run manifests, project receipts, and content-addressed output artifacts without rerunning acquisition, materialization, compilation, solving, or evaluation",
       "surface": "primary",
       "output_mode": "json",
-      "output_schema": "canon.v0",
-      "status": "unavailable",
+      "output_schema": "canon_geo_inspection.v0",
+      "status": "implemented",
       "read_only": true,
       "safety": {
         "owned_temp_fixtures_only": true,
-        "notes": "planned primary command only; emits a refusal envelope and performs no input, catalog, project, registry, work-dir, or network reads",
+        "notes": "reads only the declared --run work directory's .canon/geo-run manifest, receipts, and content-addressed artifacts by digest; never acquires data, reruns plan nodes, solves, evaluates, or writes project/output files",
         "mutation_class": "ReadOnly",
         "network_class": "Offline",
         "concurrency_class": "StatelessRead",
@@ -1358,7 +1358,7 @@
       },
       "side_effects": {
         "reads_stdin": false,
-        "reads_input_files": false,
+        "reads_input_files": true,
         "reads_registry_files": false,
         "reads_strategy_files": false,
         "loads_sqlite": false,
@@ -1374,17 +1374,57 @@
         "uses_network": false
       },
       "exit_codes": {
+        "0": {
+          "meaning": "canonical canon_geo_inspection.v0 artifact emitted",
+          "domain": "positive"
+        },
         "2": {
-          "meaning": "REFUSAL / planned primary Geo command is not implemented in this build",
+          "meaning": "REFUSAL / missing, corrupt, mismatched, or semantically invalid stored Geo run artifact",
           "domain": "error"
         }
       },
-      "next_command": "canon geo capabilities --emit json",
+      "next_command": "canon geo inspect --run <DIR> [--component <ID>] [--compare <OTHER_RUN>] [--recommend-next]",
       "recovery": {
-        "next_command": "canon geo capabilities --emit json",
+        "next_command": "canon geo inspect --run <DIR> [--component <ID>] [--compare <OTHER_RUN>] [--recommend-next]",
         "refusal_exit_code": 2
       },
-      "options": []
+      "options": [
+        {
+          "name": "run",
+          "flag": "--run",
+          "type": "directory_path",
+          "required": true,
+          "description": "Geo run workspace root holding .canon/geo-run"
+        },
+        {
+          "name": "component",
+          "flag": "--component",
+          "type": "string",
+          "required": false,
+          "description": "Optional incidence component identifier for bounded component-focused detail"
+        },
+        {
+          "name": "compare",
+          "flag": "--compare",
+          "type": "directory_path",
+          "required": false,
+          "description": "Optional second Geo run workspace to compare against by stored inspection artifacts"
+        },
+        {
+          "name": "recommend_next",
+          "flag": "--recommend-next",
+          "type": "boolean",
+          "default": false,
+          "description": "Project stored next-evidence state when the run published it"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json or summary"
+        }
+      ]
     },
     {
       "name": "geo ledger",

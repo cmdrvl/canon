@@ -279,8 +279,8 @@ pub enum GeoSubcommand {
     /// Satisfy one acquisition request, publish an inventory advancement, and replan
     #[command(name = "replan-from-acquisition")]
     ReplanFromAcquisition(GeoReplanFromAcquisitionCli),
-    /// Inspect a Geo run's sections, receipts, and residual state
-    Inspect,
+    /// Inspect a Geo run's sections, receipts, and residual state from stored artifacts
+    Inspect(GeoInspectCli),
     /// Validate Geo physical collateral ledger artifacts
     Ledger(GeoLedgerCli),
     /// Evaluate labeled composition cases without exposing labels to composition logic
@@ -369,6 +369,25 @@ pub struct GeoRunCli {
     /// Acquisition satisfaction as REQUEST_ID=RECEIPT.json; repeatable
     #[arg(long = "satisfy", value_name = "REQUEST_ID=RECEIPT.json")]
     pub satisfy: Vec<String>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoInspectCli {
+    /// Geo run workspace root holding .canon/geo-run
+    #[arg(long = "run")]
+    pub run: PathBuf,
+    /// Optional bounded component identifier to focus detail refs
+    #[arg(long)]
+    pub component: Option<String>,
+    /// Optional second Geo run workspace to compare against
+    #[arg(long)]
+    pub compare: Option<PathBuf>,
+    /// Include stored next-evidence recommendation state when available
+    #[arg(long = "recommend-next")]
+    pub recommend_next: bool,
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
 }
 
 #[derive(Args, Debug, Clone)]

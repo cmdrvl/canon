@@ -103,18 +103,7 @@ fn geo_capabilities_report_exact_surface_tier_counts() {
             "canon.geo.stage.observe_admit.v0".to_string(),
         ])
     );
-    assert_eq!(
-        capabilities["commands"]["unavailable"],
-        json!([
-            {
-                "command": "canon geo inspect",
-                "surface": "primary",
-                "output_contract": "planned_not_implemented",
-                "read_only": true,
-                "uses_network": false
-            }
-        ])
-    );
+    assert_eq!(capabilities["commands"]["unavailable"], json!([]));
 }
 
 #[test]
@@ -217,7 +206,7 @@ fn demo0_case4_public_cli_journey_is_byte_deterministic_and_honest() {
     );
     assert_eq!(
         summary["capabilities"]["unavailable_control_plane"],
-        json!(["canon geo inspect"])
+        json!([])
     );
     assert_eq!(
         summary["commands_exercised"],

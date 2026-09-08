@@ -42,6 +42,12 @@
         "$ref": "#/$defs/blocker"
       }
     },
+    "case_findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/case_finding"
+      }
+    },
     "planes": {
       "$ref": "#/$defs/plane_scores"
     },
@@ -64,6 +70,7 @@
     "subject_deficit",
     "source_evaluation_blake3",
     "blockers",
+    "case_findings",
     "planes",
     "truth_planes"
   ],
@@ -217,6 +224,55 @@
         "address_derived_control",
         "deed_grain_instrument",
         "human_adjudication"
+      ]
+    },
+    "population_case_status": {
+      "type": "string",
+      "enum": [
+        "resolved",
+        "ambiguous",
+        "conflict",
+        "assignment_budget_exceeded",
+        "component_budget_fallback"
+      ]
+    },
+    "case_finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "plane": {
+          "$ref": "#/$defs/gate_plane"
+        },
+        "code": {
+          "$ref": "#/$defs/blocker_code"
+        },
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "truth_plane": {
+          "$ref": "#/$defs/truth_plane"
+        },
+        "case_status": {
+          "$ref": "#/$defs/population_case_status"
+        },
+        "observed": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "plane",
+        "code",
+        "case_id",
+        "truth_plane",
+        "case_status",
+        "observed",
+        "required"
       ]
     },
     "coverage_plane_score": {

@@ -11,13 +11,13 @@ use crate::{
     CanonOutput, Refusal, RefusalCode,
     cli::{
         GeoCapabilitiesCli, GeoCapabilitiesEmitMode, GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli,
-        GeoLedgerBuildCli, GeoLedgerCli, GeoLedgerSubcommand, GeoLedgerValidateCli,
+        GeoInspectCli, GeoLedgerBuildCli, GeoLedgerCli, GeoLedgerSubcommand, GeoLedgerValidateCli,
         GeoLinkSourcesCli, GeoMaterializeAddressEvidenceCli, GeoMaterializeEvidenceCli,
         GeoMaterializeGeometryCli, GeoMaterializeH7PipBlockBatchCli, GeoMaterializeH7PopulationCli,
         GeoMaterializeH7StagingBatchCli, GeoMaterializeHomeCellsCli,
         GeoMaterializeWarehouseGeometryCli, GeoPlanCli, GeoReconcileTilesCli,
         GeoReplanFromAcquisitionCli, GeoRunCli, GeoSolveCli, GeoStackEvidenceCli, GeoSubcommand,
-        GeoTileWorkCli,
+        GeoTileWorkCli, RegistryEmitMode,
     },
     project::ProjectRunPolicy,
     refusal,
@@ -74,6 +74,10 @@ use super::{
         GeoGeometryError, GeoGeometryTileRequest, GeoWarehouseGeometryRowsRequest,
         canonical_geometry_tile_bytes, canonical_warehouse_geometry_bytes,
         materialize_geometry_tile, materialize_warehouse_geometry,
+    },
+    inspect::{
+        GeoInspectError, GeoInspectOptions, canonical_inspection_bytes, inspect_with_compare,
+        inspect_with_options, inspection_summary,
     },
     ledger::{
         CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION, CANON_GEO_COLLATERAL_LEDGER_VERSION,
@@ -134,6 +138,8 @@ const GEO_PLAN_NEXT_COMMAND: &str = "canon geo plan --question <QUESTION.json> -
 const GEO_RUN_NEXT_COMMAND: &str =
     "canon geo run --plan <PLAN.json> --work-dir <DIR> --input <NODE_ID:BINDING_ID=PATH>";
 const GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND: &str = "canon geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVENTORY.json> --question <QUESTION.json> --capabilities <CAPABILITIES.json> --profile <PROFILE.json> --budget <BUDGET.json> --satisfy <REQUEST_ID=RECEIPT.json> --local-artifact <LOCAL_ARTIFACT_ID=PATH> --advancement-out <ADVANCEMENT.json>";
+const GEO_INSPECT_NEXT_COMMAND: &str =
+    "canon geo inspect --run <DIR> [--component <ID>] [--compare <OTHER_RUN>] [--recommend-next]";
 const GEO_LEDGER_BUILD_NEXT_COMMAND: &str = "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>";
 const GEO_LEDGER_VALIDATE_NEXT_COMMAND: &str = "canon geo ledger validate --ledger <LEDGER.json>";
 
@@ -143,7 +149,7 @@ pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
         GeoSubcommand::Plan(args) => run_plan(args),
         GeoSubcommand::Run(args) => run_geo_run(args),
         GeoSubcommand::ReplanFromAcquisition(args) => run_replan_from_acquisition(args),
-        GeoSubcommand::Inspect => run_unavailable_primary("geo inspect"),
+        GeoSubcommand::Inspect(args) => run_inspect(args),
         GeoSubcommand::Ledger(args) => run_ledger(args),
         GeoSubcommand::LinkSources(args) => run_link_sources(args),
         GeoSubcommand::MaterializeHomeCells(args) => run_materialize_home_cells(args),
@@ -163,26 +169,6 @@ pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
         GeoSubcommand::StackEvidence(args) => run_stack_evidence(args),
         GeoSubcommand::Evaluate(args) => run_evaluate(args),
     }
-}
-
-fn run_unavailable_primary(command: &str) -> Result<u8, Box<dyn Error>> {
-    emit_refusal(
-        RefusalCode::EGeoCommandUnavailable,
-        "Geo primary command is planned but not implemented in this build",
-        json!({
-            "command": format!("canon {command}"),
-            "status": "planned_not_implemented",
-            "implemented_primary_commands": [
-                "canon geo capabilities --emit json",
-                GEO_PLAN_NEXT_COMMAND,
-                "canon geo run --plan <PLAN.json> --work-dir <DIR> --input <NODE_ID:BINDING_ID=PATH>",
-                GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND,
-                GEO_LEDGER_VALIDATE_NEXT_COMMAND,
-                "canon geo evaluate --population <POPULATION.json>"
-            ]
-        }),
-        Some("canon geo capabilities --emit json".to_string()),
-    )
 }
 
 fn run_capabilities(args: &GeoCapabilitiesCli) -> Result<u8, Box<dyn Error>> {
@@ -338,6 +324,31 @@ fn run_geo_run(args: &GeoRunCli) -> Result<u8, Box<dyn Error>> {
     match canonical_geo_run_bytes(&run) {
         Ok(bytes) => write_canonical(&bytes),
         Err(error) => emit_run_error(error),
+    }
+}
+
+fn run_inspect(args: &GeoInspectCli) -> Result<u8, Box<dyn Error>> {
+    let options = GeoInspectOptions {
+        component_id: args.component.clone(),
+        recommend_next: args.recommend_next,
+    };
+    let inspection = match &args.compare {
+        Some(other_run) => inspect_with_compare(&args.run, other_run, options),
+        None => inspect_with_options(&args.run, options),
+    };
+    let inspection = match inspection {
+        Ok(inspection) => inspection,
+        Err(error) => return emit_inspect_error(error),
+    };
+    match args.emit {
+        RegistryEmitMode::Json => match canonical_inspection_bytes(&inspection) {
+            Ok(bytes) => write_canonical(&bytes),
+            Err(error) => emit_inspect_error(error),
+        },
+        RegistryEmitMode::Summary => {
+            println!("{}", inspection_summary(&inspection));
+            Ok(0)
+        }
     }
 }
 
@@ -2334,6 +2345,19 @@ fn emit_ledger_error(error: GeoLedgerError, next_command: &str) -> Result<u8, Bo
             "detail": error.detail,
         }),
         Some(next_command.to_string()),
+    )
+}
+
+fn emit_inspect_error(error: GeoInspectError) -> Result<u8, Box<dyn Error>> {
+    emit_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Geo inspection could not be emitted from stored run artifacts",
+        json!({
+            "geo_inspect_error_code": code_name(&error.code),
+            "message": error.message,
+            "detail": error.detail,
+        }),
+        Some(GEO_INSPECT_NEXT_COMMAND.to_string()),
     )
 }
 

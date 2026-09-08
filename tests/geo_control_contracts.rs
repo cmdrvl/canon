@@ -25,7 +25,7 @@ use canon::geo::{
     CANON_GEO_H7_POPULATION_ROWS_VERSION, CANON_GEO_H7_POPULATION_VERSION,
     CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION, CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
     CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_IMAGE_TILE_PIN_VERSION,
-    CANON_GEO_LEDGER_BRIDGE_VERSION, CANON_GEO_LOCAL_FRAME_VERSION,
+    CANON_GEO_INSPECTION_VERSION, CANON_GEO_LEDGER_BRIDGE_VERSION, CANON_GEO_LOCAL_FRAME_VERSION,
     CANON_GEO_MULTISOURCE_REQUEST_VERSION, CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION,
     CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION,
     CANON_GEO_OBSERVATION_ROWS_VERSION, CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION,
@@ -212,6 +212,7 @@ fn expected_implemented_contracts() -> BTreeSet<&'static str> {
         CANON_GEO_RESOURCE_BUDGET_VERSION,
         CANON_GEO_PLAN_VERSION,
         CANON_GEO_RUN_VERSION,
+        CANON_GEO_INSPECTION_VERSION,
         CANON_GEO_DISCOVERY_REQUEST_VERSION,
         CANON_GEO_ACQUISITION_REQUEST_VERSION,
         CANON_GEO_ACQUISITION_RECEIPT_VERSION,
@@ -321,6 +322,15 @@ fn expected_implemented_commands() -> BTreeMap<&'static str, ExpectedGeoCommand>
                 CANON_GEO_PLAN_VERSION,
                 GeoCommandSurface::Primary,
                 false,
+                false,
+            ),
+        ),
+        (
+            "canon geo inspect --run <DIR> [--component <ID>] [--compare <OTHER_RUN>] [--recommend-next]",
+            surfaced_command(
+                CANON_GEO_INSPECTION_VERSION,
+                GeoCommandSurface::Primary,
+                true,
                 false,
             ),
         ),
@@ -1059,18 +1069,7 @@ fn geo_capabilities_cover_compiled_leaf_commands_and_public_contracts() {
             )
         })
         .collect::<BTreeMap<_, _>>();
-    assert_eq!(
-        unavailable_commands,
-        BTreeMap::from([(
-            "canon geo inspect",
-            (
-                "planned_not_implemented",
-                GeoCommandSurface::Primary,
-                true,
-                false,
-            ),
-        )])
-    );
+    assert_eq!(unavailable_commands, BTreeMap::new());
     for command in &artifact.commands.unavailable {
         assert!(
             command_leaf(&command.command, &clap_leafs).is_some(),

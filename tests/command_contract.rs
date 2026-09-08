@@ -1039,6 +1039,7 @@ impl RuntimeHarness {
             .root
             .join("tests/fixtures/geo/e4_gate_v2_population_request.json");
         let geo_evaluate_assessment = self.work.join("geo-e4-assessment.json");
+        let geo_inspect_missing_run = self.work.join("geo-inspect-missing-run");
         fs::write(
             &calibrate_result,
             concat!(
@@ -1328,18 +1329,30 @@ impl RuntimeHarness {
                 .with_mutation(MutationExpectation::Exists(geo_evaluate_assessment)),
             },
             RuntimeCase {
-                id: "geo_inspect_planned_refusal",
+                id: "geo_inspect_missing_run_refusal",
                 command_name: "geo inspect",
-                args: args(["geo", "inspect"]),
+                args: vec![
+                    "geo".to_string(),
+                    "inspect".to_string(),
+                    "--run".to_string(),
+                    path_arg(&geo_inspect_missing_run),
+                ],
                 expected: RuntimeExpectation::json(2, "canon.v0", SchemaField::Version)
                     .assert_eq("outcome", json!("REFUSAL"))
-                    .assert_eq("refusal.code", json!("E_GEO_COMMAND_UNAVAILABLE"))
-                    .assert_ne("refusal.code", json!("E_ENTITY_ARTIFACT_CONTRACT"))
-                    .assert_eq("refusal.detail.command", json!("canon geo inspect"))
-                    .assert_eq("refusal.detail.status", json!("planned_not_implemented"))
+                    .assert_eq("refusal.code", json!("E_ENTITY_ARTIFACT_CONTRACT"))
+                    .assert_eq(
+                        "refusal.detail.geo_inspect_error_code",
+                        json!("inspect_artifact_missing"),
+                    )
+                    .assert_eq(
+                        "refusal.detail.detail.artifact",
+                        json!("geo-run-manifest/head.json"),
+                    )
                     .assert_eq(
                         "refusal.next_command",
-                        json!("canon geo capabilities --emit json"),
+                        json!(
+                            "canon geo inspect --run <DIR> [--component <ID>] [--compare <OTHER_RUN>] [--recommend-next]"
+                        ),
                     )
                     .with_stderr(StderrExpectation::Empty),
             },

@@ -218,7 +218,7 @@
       "family": "geo",
       "clap_path": "geo inspect",
       "operator_name": "geo inspect",
-      "primary_contracts": ["canon.v0"],
+      "primary_contracts": ["canon_geo_inspection.v0"],
       "action": "preserve"
     },
     {
@@ -1517,6 +1517,14 @@
       "access_boundary": "public_crate_api",
       "crate_module": "canon::geo",
       "source_path": "schemas/canon.geo.next_evidence.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_inspection.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.inspection.v0.schema.json"
     },
     {
       "id": "canon_geo_as_of_resolution_request.v0",
