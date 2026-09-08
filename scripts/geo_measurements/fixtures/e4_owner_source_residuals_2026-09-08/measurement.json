@@ -1,0 +1,335 @@
+{
+  "version": "canon_geo_owner_source_residual_classification.v0",
+  "bead": "bd-1u3x",
+  "proof_class": "retained_cmdrvl_data_warehouse_verification_not_live",
+  "release_claim_allowed": false,
+  "frozen_denominator": 79,
+  "retained_population_denominator": 70,
+  "baseline": {
+    "name": "combined_pad_owner_gsf_repairs",
+    "reach_full_partial_none": [
+      70,
+      0,
+      0
+    ],
+    "resolved": 7,
+    "exactly_correct": 7,
+    "ambiguous": 55,
+    "conflict": 0,
+    "false_merges": 0,
+    "truth_exclusions": 8,
+    "component_fallbacks": 8
+  },
+  "scope": {
+    "remaining_truth_exclusion_count": 8,
+    "family": "owner_exact",
+    "case_count": 2,
+    "case_fragments": [
+      "3899edce",
+      "69dbf5da"
+    ],
+    "excluded_from_normalization_calibration": true,
+    "normalization_exclusion_reason": "PATCHEN/PARCHEN is a spelling/source conflict and PATIN, MICHAEL is a different owner; neither is a legal-suffix or ordinal variant."
+  },
+  "measurement": {
+    "owner_contract_id": "rho.owner.assessment_roll_exact_match",
+    "owner_observation_kind": "integer_sum_band",
+    "owner_band_min": 0,
+    "owner_band_max": 0,
+    "owner_truth_sum_total": 2,
+    "canon_binding_defect_count": 0,
+    "source_conflict_or_temporal_divergence_count": 2,
+    "recoverable_admission_lever": "none",
+    "why_not_partial_threshold": "A threshold would accept known mismatching owner values. The retained rows show source conflict or temporal current-owner divergence, not a missing comparison."
+  },
+  "expected_direct_e4_movement": {
+    "truth_exclusions_delta": 0,
+    "resolved_delta": 0,
+    "exactly_correct_delta": 0,
+    "false_merges_delta": 0,
+    "conflict_delta": 0,
+    "ambiguous_delta": 0
+  },
+  "retained_inputs": {
+    "population_path": "scripts/geo_measurements/fixtures/e4_reach_pluto_vintages_2026-09-08/population_request_roll_universe_pluto_vintage_condo_representation_widened.json.gz",
+    "population_sha256": "04816dcf5d2f73fc9eb7661d11ef93209da623d3f9be0173109fc55558433405",
+    "owner_overlay_path": "scripts/geo_measurements/fixtures/e4_gsf_property_type_bands_2026-09-08/overlay_request_property_type_gsf_bands.json.gz",
+    "owner_overlay_sha256": "6fc968202c67ae147956bae20b3b4c3cb4c2b78fa74b42cd336fb7e9f030dbc1",
+    "completeness_overlay_path": "scripts/geo_measurements/fixtures/e4_collateral_completeness_2026-09-08/overlay_request_acris_document_legal_completeness.json.gz",
+    "completeness_overlay_sha256": "84ce03bea21e88ada62b48bc05a2b58a4ef6329ac1c21235d382ce5999b964e2",
+    "assessment_roll_rows_path": "scripts/geo_measurements/fixtures/d1_residuals/mcp_stack_2026-09-03/assessment_roll_fy2026p3_lots.json.gz",
+    "assessment_roll_rows_sha256": "a922721ca26c485f63b00cf648f1c4db38d279bcee2c7d9724c5869de5cd47c3"
+  },
+  "warehouse_verification": [
+    {
+      "measurement_name": "bd_1u3x_owner_residual_roll_truth_rows",
+      "table": "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.WRGL_NYC_OPENDATA_PROPERTY_VALUATION_AND_ASSESSMENT_DATA_TAX_CLASSES_1_2_3_4__STRUCTURED",
+      "predicate": "PARID IN the 29 truth BBLs for the two owner residuals, YEAR = '2026', PERIOD = '3'",
+      "row_count": 29,
+      "columns_verified": [
+        "PARID",
+        "OWNER",
+        "BLDG_CLASS",
+        "CONDO_NUMBER",
+        "APTNO",
+        "GROSS_SQFT",
+        "UNITS"
+      ]
+    },
+    {
+      "measurement_name": "bd_1u3x_owner_residual_acris_party_rows",
+      "table": "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES",
+      "predicate": "RELEASE_DT = '2026-08-10' and DOCUMENT_ID in ('2026033000800004', '2017112100174001')",
+      "row_count": 6,
+      "cluster_contract_honored": "LINEAR(document_id)",
+      "columns_verified": [
+        "DOCUMENT_ID",
+        "PARTY_TYPE",
+        "NAME",
+        "PARTY_NAME_NORM",
+        "SOURCE_ROW_NUMBER",
+        "RAW_CSV_SHA256",
+        "PARSER_VERSION",
+        "FILENAME"
+      ]
+    },
+    {
+      "measurement_name": "bd_1u3x_owner_residual_acris_legal_rows",
+      "table": "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_LEGALS_EXT",
+      "predicate": "RELEASE_DT = '2026-08-10' and DOCUMENT_ID in ('2026033000800004', '2017112100174001')",
+      "row_count": 29,
+      "columns_verified": [
+        "DOCUMENT_ID",
+        "SOURCE_ROW_NUMBER",
+        "BBL",
+        "PROPERTY_TYPE",
+        "STREET_NUMBER",
+        "STREET_NAME",
+        "UNIT",
+        "RAW_CSV_SHA256",
+        "PARSER_VERSION",
+        "LICENSE_TERMS",
+        "ATTRIBUTION_TEXT"
+      ]
+    },
+    {
+      "measurement_name": "bd_1u3x_owner_residual_acris_master_rows",
+      "table": "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_MASTER_EXT",
+      "predicate": "RELEASE_DT = '2026-08-10' and DOCUMENT_ID in ('2026033000800004', '2017112100174001')",
+      "row_count": 2,
+      "columns_verified": [
+        "DOCUMENT_ID",
+        "DOC_TYPE",
+        "DOCUMENT_DATE",
+        "DOCUMENT_AMT",
+        "RECORDED_DATETIME",
+        "CRFN",
+        "RAW_CSV_SHA256",
+        "PARSER_VERSION"
+      ]
+    },
+    {
+      "measurement_name": "bd_1u3x_owner_residual_3087731066_acris_history_probe",
+      "table": "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_LEGALS_EXT + MASTER_EXT + STG_GEO_NYC_ACRIS_PARTIES",
+      "predicate": "RELEASE_DT = '2026-08-10', BBL = '3087731066', mortgage and later deed documents",
+      "row_count": 14,
+      "finding": "PS7 was mortgaged by 1809 EMMONS AVENUE RETAIL LLC in 2017 and later deeded to PATIN, MICHAEL in 2021."
+    },
+    {
+      "measurement_name": "bd_1u3x_owner_residual_3016950031_acris_history_probe",
+      "table": "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_LEGALS_EXT + MASTER_EXT + STG_GEO_NYC_ACRIS_PARTIES",
+      "predicate": "RELEASE_DT = '2026-08-10', BBL = '3016950031', recent mortgage/deed history",
+      "row_count": 50,
+      "finding": "The same BBL and street are PATCHEN in legal rows and in prior owner-party history; the target 2026 M&CON party row alone says PARCHEN."
+    }
+  ],
+  "cases": [
+    {
+      "case_fragment": "3899edce",
+      "case_id": "h7-subject:non-round:3899edce2a164eda4fdfae93de6203c73c09477b1dfe6520e97fa734307c25c3",
+      "classification": "source_owner_spelling_conflict",
+      "evidence_present": true,
+      "canon_binding_defect": false,
+      "expected_direct_e4_movement": {
+        "truth_exclusions_delta": 0,
+        "resolved_delta": 0,
+        "exactly_correct_delta": 0,
+        "false_merges_delta": 0,
+        "conflict_delta": 0,
+        "ambiguous_delta": 0
+      },
+      "truth_lot_count": 4,
+      "truth_owner_sum": 1,
+      "owner_band": {
+        "min": 0,
+        "max": 0
+      },
+      "failing_truth_lots": [
+        "3016950031"
+      ],
+      "passing_truth_owner_count": 3,
+      "completeness": {
+        "document_id": "2026033000800004",
+        "doc_type": "M&CON",
+        "document_date": "2026-03-26",
+        "document_amount": 10450000,
+        "crfn": "2026000089952",
+        "all_of_equals_truth": true,
+        "exact_cardinality": 4,
+        "proof_label": "definitional_on_this_population_not_independent_precision"
+      },
+      "failing_owner_evidence": {
+        "bbl": "3016950031",
+        "assessment_roll": {
+          "table": "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.WRGL_NYC_OPENDATA_PROPERTY_VALUATION_AND_ASSESSMENT_DATA_TAX_CLASSES_1_2_3_4__STRUCTURED",
+          "source_record_id": "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.PROPERTY_VALUATION:FY2026P3:3016950031",
+          "source_vintage": "FY2026P3",
+          "record_blake3": "73bd0d87bf66930495d9556cfb9191a6326a8c522e75389a8b7a07b76944d972",
+          "year": "2026",
+          "period": "3",
+          "owner": "316 PATCHEN LLC",
+          "bldg_class": "C1",
+          "units": 8,
+          "gross_sqft": 5800
+        },
+        "acris_party": {
+          "table": "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES",
+          "source_record_id": "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES:2026033000800004:316_PARCHEN_LLC",
+          "source_vintage": "2026-08-10",
+          "record_blake3": "5b7bf28f035b6b9234ef3e9c1dba11dff2279b0678ffcc1bb769de621ecae3bc",
+          "source_row_number": 46161675,
+          "raw_csv_sha256": "5d6dda85499501907239f8c88373c7f7fb005c1f77cbd9467ef838ddeed43642",
+          "parser_version": "2026-08-14",
+          "filename": "nyc/acris_real_property/dataset=real_property_parties/release_dt=2026-08-10/artifact=normalized/page=000462/nyc_acris_real_property_parties_2026-08-10_page_000462.parquet",
+          "name": "316 PARCHEN LLC",
+          "party_name_norm": "316 PARCHEN LLC"
+        },
+        "acris_legal": {
+          "table": "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_LEGALS_EXT",
+          "source_row_number": 22564491,
+          "raw_csv_sha256": "3b508b9ea22074c1e2c5b70fa4ba34bfb2ed23e042181a56a5d6f06db954f8e4",
+          "parser_version": "2026-08-14",
+          "license_terms": "NYC Open Data public dataset; Socrata metadata did not provide a license code. Use under NYC Open Data Terms of Use with source attribution to Department of Finance (DOF).",
+          "attribution_text": "Department of Finance (DOF)",
+          "street_number": "316",
+          "street_name": "PATCHEN AVENUE",
+          "property_type": "AP"
+        },
+        "supporting_history": [
+          {
+            "document_id": "2020111100589004",
+            "doc_type": "MTGE",
+            "document_date": "2020-11-10",
+            "recorded_datetime": "2020-11-12 00:00:00",
+            "party_type": "1",
+            "name": "316 PATCHEN LLC"
+          },
+          {
+            "document_id": "2016082900629002",
+            "doc_type": "MTGE",
+            "document_date": "2016-08-23",
+            "recorded_datetime": "2016-09-06 00:00:00",
+            "party_type": "1",
+            "name": "316 PATCHEN LLC"
+          },
+          {
+            "document_id": "2015061501503001",
+            "doc_type": "DEED",
+            "document_date": "2015-06-06",
+            "recorded_datetime": "2015-06-18 00:00:00",
+            "party_type": "2",
+            "name": "316 PATCHEN LLC"
+          }
+        ]
+      },
+      "settlement_required": "Independent party-name adjudication or source correction for PATCHEN/PARCHEN. Do not normalize edit-distance spelling variants."
+    },
+    {
+      "case_fragment": "69dbf5da",
+      "case_id": "h7-subject:round-exact-lender:69dbf5dad6b0ea938a91beeff6e9efb3edd9b090b7bc857b1a2646244c3ba394",
+      "classification": "current_owner_temporal_divergence_inside_complete_acris_truth",
+      "evidence_present": true,
+      "canon_binding_defect": false,
+      "expected_direct_e4_movement": {
+        "truth_exclusions_delta": 0,
+        "resolved_delta": 0,
+        "exactly_correct_delta": 0,
+        "false_merges_delta": 0,
+        "conflict_delta": 0,
+        "ambiguous_delta": 0
+      },
+      "truth_lot_count": 25,
+      "truth_owner_sum": 1,
+      "owner_band": {
+        "min": 0,
+        "max": 0
+      },
+      "failing_truth_lots": [
+        "3087731066"
+      ],
+      "passing_truth_owner_count": 24,
+      "completeness": {
+        "document_id": "2017112100174001",
+        "doc_type": "MTGE",
+        "document_date": "2017-11-14",
+        "document_amount": 16000000,
+        "crfn": "2017000442092",
+        "all_of_equals_truth": true,
+        "exact_cardinality": 25,
+        "proof_label": "definitional_on_this_population_not_independent_precision"
+      },
+      "failing_owner_evidence": {
+        "bbl": "3087731066",
+        "assessment_roll": {
+          "table": "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.WRGL_NYC_OPENDATA_PROPERTY_VALUATION_AND_ASSESSMENT_DATA_TAX_CLASSES_1_2_3_4__STRUCTURED",
+          "source_record_id": "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.PROPERTY_VALUATION:FY2026P3:3087731066",
+          "source_vintage": "FY2026P3",
+          "record_blake3": "fd08152a12ae7c32dc799eca9768a938e0f2b659bd691b2be19d41d952171434",
+          "year": "2026",
+          "period": "3",
+          "owner": "PATIN, MICHAEL",
+          "bldg_class": "RG",
+          "condo_number": "303818",
+          "aptno": "PS7",
+          "units": 1,
+          "gross_sqft": 153
+        },
+        "acris_party": {
+          "table": "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES",
+          "source_record_id": "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES:2017112100174001:1809_EMMONS_AVENUE_RETAIL_LLC",
+          "source_vintage": "2026-08-10",
+          "record_blake3": "9b42fd3e634659279139b241bef9d81425c3c4ceb6cb5e82229b1b06a05cd5a2",
+          "source_row_number": 20970073,
+          "raw_csv_sha256": "1ca7ae73f44cee91c108c0429b4d2a36c0d1547a043a8b10e0447fde2e5715f5",
+          "parser_version": "2026-08-14",
+          "filename": "nyc/acris_real_property/dataset=real_property_parties/release_dt=2026-08-10/artifact=normalized/page=000210/nyc_acris_real_property_parties_2026-08-10_page_000210.parquet",
+          "name": "1809 EMMONS AVENUE RETAIL LLC",
+          "party_name_norm": "1809 EMMONS AVENUE RETAIL LLC"
+        },
+        "acris_legal": {
+          "table": "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_LEGALS_EXT",
+          "source_row_number": 18698650,
+          "raw_csv_sha256": "77d8660242371d2f371468bf81f0bd87c8bdc49c0ee84b0d87ad86135b36ed4e",
+          "parser_version": "2026-08-14",
+          "license_terms": "NYC Open Data public dataset; Socrata metadata did not provide a license code. Use under NYC Open Data Terms of Use with source attribution to Department of Finance (DOF).",
+          "attribution_text": "Department of Finance (DOF)",
+          "street_number": "1809",
+          "street_name": "EMMONS AVENUE",
+          "property_type": "PS",
+          "unit": "PS7"
+        },
+        "later_owner_history": {
+          "document_id": "2021111000987001",
+          "doc_type": "DEED",
+          "document_date": "2021-10-28",
+          "recorded_datetime": "2021-11-17 00:00:00",
+          "document_amount": 1150000,
+          "party_type": "2",
+          "name": "PATIN, MICHAEL",
+          "party_name_norm": "PATIN  MICHAEL"
+        }
+      },
+      "settlement_required": "Dated owner evidence as of the mortgage/collateral date or an independent collateral schedule/current-ownership rule. Do not accept 24-of-25 as complete owner equality."
+    }
+  ]
+}
