@@ -5,11 +5,12 @@ use canon::geo::assessment_roll::{
     GEO_ASSESSMENT_ROLL_OWNER_AFFILIATE_CONTRACT_ID, GEO_ASSESSMENT_ROLL_OWNER_EXACT_CONTRACT_ID,
     GEO_ASSESSMENT_ROLL_OWNER_FAMILY_CONTRACT_ID, GeoAssessmentRollCaseDocument,
     GeoAssessmentRollLotRow, GeoAssessmentRollOwnerCalibration,
-    GeoAssessmentRollOwnerContractSource, GeoAssessmentRollOwnerMatch,
-    GeoAssessmentRollOwnerProofClass, GeoAssessmentRollOwnerRequest,
+    GeoAssessmentRollOwnerContractSource, GeoAssessmentRollOwnerExactNormalizationProfile,
+    GeoAssessmentRollOwnerMatch, GeoAssessmentRollOwnerProofClass, GeoAssessmentRollOwnerRequest,
     GeoAssessmentRollPartyFamilyRelationRow, GeoAssessmentRollPartyRow,
     assessment_roll_owner_match, assessment_roll_owner_match_with_family_relations,
-    build_assessment_roll_owner_family_overlay, derive_assessment_roll_party_family_relations,
+    assessment_roll_owner_normalized_exact_matches, build_assessment_roll_owner_family_overlay,
+    derive_assessment_roll_party_family_relations, normalize_assessment_roll_owner_exact_key,
     normalize_assessment_roll_owner_name, produce_assessment_roll_owner_evidence,
 };
 use canon::geo::{
@@ -315,6 +316,82 @@ fn affiliate_only_match_never_emits_the_hard_exact_band() {
     assert_eq!(
         normalize_assessment_roll_owner_name("Alpha Realty LLC"),
         "ALPHA REALTY LLC"
+    );
+}
+
+#[test]
+fn owner_exact_normalization_splits_safe_variants_from_true_mismatches() {
+    let profile =
+        GeoAssessmentRollOwnerExactNormalizationProfile::regab_legal_suffix_numeric_ordinal();
+    let kingsbridge = BTreeSet::from([
+        normalize_assessment_roll_owner_name("KINGSBRIDGE ASSOCIATES, LLC"),
+        normalize_assessment_roll_owner_name("KINGSBRIDGE ASSOCIATES II, LLC"),
+    ]);
+    let manhattan_owner = BTreeSet::from([normalize_assessment_roll_owner_name(
+        "591 MANHATTAN AVE OWNER LLC",
+    )]);
+    let ahead = BTreeSet::from([normalize_assessment_roll_owner_name("AHEAD REALTY LLC")]);
+    let west_24 = BTreeSet::from([normalize_assessment_roll_owner_name(
+        "WEST 24TH OWNERS CORP.",
+    )]);
+    let linden = BTreeSet::from([normalize_assessment_roll_owner_name("104 LINDEN BLVD, LLC")]);
+    let parchen = BTreeSet::from([normalize_assessment_roll_owner_name("316 PARCHEN LLC")]);
+    let emmons = BTreeSet::from([normalize_assessment_roll_owner_name(
+        "1809 EMMONS AVENUE RETAIL LLC",
+    )]);
+
+    assert_eq!(
+        normalize_assessment_roll_owner_exact_key("WEST 24 OWNERS CORP.", profile),
+        normalize_assessment_roll_owner_exact_key("WEST 24TH OWNERS CORP.", profile)
+    );
+    assert_eq!(
+        normalize_assessment_roll_owner_exact_key(
+            "AHEAD REALTY, LLC",
+            GeoAssessmentRollOwnerExactNormalizationProfile::source_norm(),
+        ),
+        normalize_assessment_roll_owner_name("AHEAD REALTY, LLC"),
+        "the default profile must preserve the legacy source-normalized exact predicate"
+    );
+    assert!(assessment_roll_owner_normalized_exact_matches(
+        "KINGSBRIDGE ASSOCIATES",
+        &kingsbridge,
+        profile
+    ));
+    assert!(assessment_roll_owner_normalized_exact_matches(
+        "591 MANHATTAN AVE OWNER, LLC",
+        &manhattan_owner,
+        profile
+    ));
+    assert!(assessment_roll_owner_normalized_exact_matches(
+        "AHEAD REALTY, LLC",
+        &ahead,
+        profile
+    ));
+    assert!(assessment_roll_owner_normalized_exact_matches(
+        "WEST 24 OWNERS CORP.",
+        &west_24,
+        profile
+    ));
+    assert!(assessment_roll_owner_normalized_exact_matches(
+        "104 LINDEN BLVD LLC",
+        &linden,
+        profile
+    ));
+
+    assert!(!assessment_roll_owner_normalized_exact_matches(
+        "316 PATCHEN LLC",
+        &parchen,
+        profile
+    ));
+    assert!(!assessment_roll_owner_normalized_exact_matches(
+        "PATIN, MICHAEL",
+        &emmons,
+        profile
+    ));
+    assert_ne!(
+        assessment_roll_owner_match("AHEAD REALTY, LLC", &ahead),
+        GeoAssessmentRollOwnerMatch::Exact,
+        "legacy exact matching remains bound to the source-normalized predicate"
     );
 }
 

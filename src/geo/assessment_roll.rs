@@ -6,6 +6,8 @@
 //! roll rows and ACRIS party rows. It widens parcel universes by BBL block and
 //! emits owner exact-match exclusions plus affiliate token preferences.
 
+use crate::namekit::legal_suffix::{LegalSuffixProfile, analyze_legal_suffixes};
+
 use super::{
     composition::{
         GeoCompositionModel, GeoCompositionProfile, GeoCompositionUniverse, GeoEntityLevel,
@@ -107,6 +109,49 @@ pub struct GeoAssessmentRollOwnerCalibration {
     pub affiliate_falsification_rule_id: String,
     #[serde(default, skip_serializing_if = "is_default_admission_policy")]
     pub exact_admission_policy: GeoRhoAdmissionPolicy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GeoAssessmentRollOwnerExactNormalizationProfile {
+    pub legal_suffix_profile: Option<LegalSuffixProfile>,
+    pub normalize_numeric_ordinals: bool,
+}
+
+impl GeoAssessmentRollOwnerExactNormalizationProfile {
+    pub const fn source_norm() -> Self {
+        Self {
+            legal_suffix_profile: None,
+            normalize_numeric_ordinals: false,
+        }
+    }
+
+    pub const fn regab_legal_suffix_numeric_ordinal() -> Self {
+        Self {
+            legal_suffix_profile: Some(LegalSuffixProfile::RegabFirmIdentity),
+            normalize_numeric_ordinals: true,
+        }
+    }
+
+    pub fn method_suffix(self) -> &'static str {
+        match (self.legal_suffix_profile, self.normalize_numeric_ordinals) {
+            (None, false) => "source_norm",
+            (Some(LegalSuffixProfile::RegabFirmIdentity), true) => {
+                "regab_legal_suffix_numeric_ordinal"
+            }
+            (Some(LegalSuffixProfile::CmbsTenantLabel), true) => {
+                "cmbs_legal_suffix_numeric_ordinal"
+            }
+            (Some(LegalSuffixProfile::RegabFirmIdentity), false) => "regab_legal_suffix",
+            (Some(LegalSuffixProfile::CmbsTenantLabel), false) => "cmbs_legal_suffix",
+            (None, true) => "numeric_ordinal",
+        }
+    }
+}
+
+impl Default for GeoAssessmentRollOwnerExactNormalizationProfile {
+    fn default() -> Self {
+        Self::source_norm()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -881,6 +926,52 @@ pub fn normalize_assessment_roll_owner_name(value: &str) -> String {
         .to_string()
 }
 
+pub fn normalize_assessment_roll_owner_exact_key(
+    value: &str,
+    profile: GeoAssessmentRollOwnerExactNormalizationProfile,
+) -> String {
+    if profile == GeoAssessmentRollOwnerExactNormalizationProfile::source_norm() {
+        return normalize_assessment_roll_owner_name(value);
+    }
+
+    let mut tokens = normalize_assessment_roll_owner_name(value)
+        .split_whitespace()
+        .map(|token| {
+            if profile.normalize_numeric_ordinals {
+                normalize_numeric_ordinal_token(token)
+            } else {
+                token.to_string()
+            }
+        })
+        .collect::<Vec<_>>();
+    if tokens.is_empty() {
+        return String::new();
+    }
+
+    let normalized = tokens.join(" ");
+    if let Some(legal_suffix_profile) = profile.legal_suffix_profile {
+        let analysis = analyze_legal_suffixes(&normalized, legal_suffix_profile);
+        tokens = analysis
+            .basename
+            .split_whitespace()
+            .map(|token| token.to_ascii_uppercase())
+            .collect();
+    }
+    tokens.join(" ")
+}
+
+pub fn assessment_roll_owner_normalized_exact_matches(
+    owner: &str,
+    borrower_party_name_norms: &BTreeSet<String>,
+    profile: GeoAssessmentRollOwnerExactNormalizationProfile,
+) -> bool {
+    let owner_key = normalize_assessment_roll_owner_exact_key(owner, profile);
+    !owner_key.is_empty()
+        && borrower_party_name_norms.iter().any(|borrower| {
+            normalize_assessment_roll_owner_exact_key(borrower, profile) == owner_key
+        })
+}
+
 pub fn assessment_roll_owner_tokens(value: &str) -> Vec<String> {
     let stop_words = STOP_WORDS.iter().copied().collect::<BTreeSet<_>>();
     normalize_assessment_roll_owner_name(value)
@@ -1001,6 +1092,18 @@ fn assessment_roll_owner_family_key(value: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn normalize_numeric_ordinal_token(token: &str) -> String {
+    for suffix in ["ST", "ND", "RD", "TH"] {
+        if let Some(number) = token.strip_suffix(suffix)
+            && !number.is_empty()
+            && number.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return number.to_string();
+        }
+    }
+    token.to_string()
 }
 
 fn exact_contract(request: &GeoAssessmentRollOwnerRequest) -> GeoRhoContract {
