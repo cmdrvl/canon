@@ -4296,34 +4296,84 @@ fn evidence_policy_schemas_match_real_corrobored_admission_instances() {
                 },
             },
         },
+        GeoRhoContract {
+            id: "contract-supported-owner-mask".to_string(),
+            version: "v1".to_string(),
+            source_dataset: "fixture:dataset".to_string(),
+            source_release: "fixture-v1".to_string(),
+            source_lineage_ids: vec!["fixture:upstream-dataset".to_string()],
+            method_id: "fixture:owner-mask-supported-members".to_string(),
+            method_version: "v1".to_string(),
+            claim_role: GeoEvidenceClaimRole::AttributeObservation,
+            basis: GeoRhoBasis::EmpiricalCalibration {
+                population_id: "fixture:population".to_string(),
+                calibration_blake3: blake3::hash(b"schema member support policy calibration")
+                    .to_hex()
+                    .to_string(),
+                falsification_rule_id: "fixture:falsification".to_string(),
+                admissible_hard_band: true,
+                admission_policy: GeoRhoAdmissionPolicy::HardOnlyWhenSupportedMembersAtLeast {
+                    minimum_supported_members: 2,
+                    fallback: GeoRhoAdmissionFallback::SoftWithWeight { cost_if_absent: 1 },
+                },
+            },
+        },
         schema_rho_contract("contract-family"),
     ];
-    request.observations = vec![GeoRhoObservation {
-        id: "owner-mask".to_string(),
-        contract_id: "contract-owner-mask".to_string(),
-        source_records: vec![schema_source_record("owner-mask-row")],
-        valid_time: None,
-        observation: GeoRhoObservationKind::IntegerSumBand {
-            level: GeoEntityLevel::Parcel,
-            measure: GeoIntegerMeasure {
-                semantic_id: "schema.owner_not_exact".to_string(),
-                unit: "lots".to_string(),
-                value_origin: GeoIntegerValueOrigin::SourceAsserted,
+    request.observations = vec![
+        GeoRhoObservation {
+            id: "owner-mask".to_string(),
+            contract_id: "contract-owner-mask".to_string(),
+            source_records: vec![schema_source_record("owner-mask-row")],
+            valid_time: None,
+            observation: GeoRhoObservationKind::IntegerSumBand {
+                level: GeoEntityLevel::Parcel,
+                measure: GeoIntegerMeasure {
+                    semantic_id: "schema.owner_not_exact".to_string(),
+                    unit: "lots".to_string(),
+                    value_origin: GeoIntegerValueOrigin::SourceAsserted,
+                },
+                values: vec![
+                    GeoIntegerMemberValue {
+                        id: "parcel-a".to_string(),
+                        value: 0,
+                    },
+                    GeoIntegerMemberValue {
+                        id: "parcel-b".to_string(),
+                        value: 1,
+                    },
+                ],
+                min: 0,
+                max: 0,
             },
-            values: vec![
-                GeoIntegerMemberValue {
-                    id: "parcel-a".to_string(),
-                    value: 0,
-                },
-                GeoIntegerMemberValue {
-                    id: "parcel-b".to_string(),
-                    value: 1,
-                },
-            ],
-            min: 0,
-            max: 0,
         },
-    }];
+        GeoRhoObservation {
+            id: "supported-owner-mask".to_string(),
+            contract_id: "contract-supported-owner-mask".to_string(),
+            source_records: vec![schema_source_record("supported-owner-mask-row")],
+            valid_time: None,
+            observation: GeoRhoObservationKind::IntegerSumBand {
+                level: GeoEntityLevel::Parcel,
+                measure: GeoIntegerMeasure {
+                    semantic_id: "schema.owner_not_exact".to_string(),
+                    unit: "lots".to_string(),
+                    value_origin: GeoIntegerValueOrigin::SourceAsserted,
+                },
+                values: vec![
+                    GeoIntegerMemberValue {
+                        id: "parcel-a".to_string(),
+                        value: 0,
+                    },
+                    GeoIntegerMemberValue {
+                        id: "parcel-b".to_string(),
+                        value: 1,
+                    },
+                ],
+                min: 0,
+                max: 0,
+            },
+        },
+    ];
 
     let request_instance = serde_json::to_value(&request).expect("request must serialize");
     assert_drift_free(

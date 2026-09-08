@@ -24,6 +24,7 @@ pub const CANON_GEO_EVIDENCE_REQUEST_VERSION: &str = "canon_geo_evidence_request
 pub const CANON_GEO_EVIDENCE_COMPILATION_VERSION: &str = "canon_geo_evidence_compilation.v0";
 pub const GEO_RHO_BAND_NOT_ADMISSIBLE_REASON: &str = "rho_band_not_admissible";
 pub const GEO_RHO_CORROBORATION_NOT_MET_REASON: &str = "rho_corroboration_not_met";
+pub const GEO_RHO_MEMBER_SUPPORT_NOT_MET_REASON: &str = "rho_member_support_not_met";
 pub const GEO_RHO_SOFT_FALLBACK_NOT_REPRESENTABLE_REASON: &str =
     "rho_soft_fallback_not_representable";
 
@@ -85,6 +86,13 @@ pub enum GeoRhoAdmissionPolicy {
     HardOnlyWhenCorroborated {
         minimum_distinct_contracts: u64,
         corroborating_contract_ids: Vec<String>,
+        fallback: GeoRhoAdmissionFallback,
+    },
+    /// Admit a member-support mask as hard only when enough members are
+    /// supported by the observation itself. This is for empirically partial
+    /// identity sources whose singleton matches are too brittle to prune with.
+    HardOnlyWhenSupportedMembersAtLeast {
+        minimum_supported_members: u64,
         fallback: GeoRhoAdmissionFallback,
     },
     /// Emit solver preferences when the observation can be represented as
@@ -800,6 +808,21 @@ fn validate_admission_policy(policy: &GeoRhoAdmissionPolicy) -> Result<(), GeoEv
             }
             validate_admission_fallback(fallback)?;
         }
+        GeoRhoAdmissionPolicy::HardOnlyWhenSupportedMembersAtLeast {
+            minimum_supported_members,
+            fallback,
+        } => {
+            if *minimum_supported_members == 0 {
+                return Err(GeoEvidenceError::invalid(
+                    "Geo rho member-support admission policies require a positive minimum",
+                    [(
+                        "field",
+                        "contracts[].basis.admission_policy.minimum_supported_members",
+                    )],
+                ));
+            }
+            validate_admission_fallback(fallback)?;
+        }
         GeoRhoAdmissionPolicy::SoftWithWeight { .. } => {}
         GeoRhoAdmissionPolicy::DiagnosticOnly { reason } => {
             validate_identifier("contracts[].basis.admission_policy.reason", reason)?;
@@ -870,6 +893,26 @@ fn admit_observation(
                 fallback,
                 observation,
                 generated_id,
+                GEO_RHO_CORROBORATION_NOT_MET_REASON,
+                soft_preferences,
+                admission_reason,
+            )
+        }
+        Some(GeoRhoAdmissionPolicy::HardOnlyWhenSupportedMembersAtLeast { fallback, .. }) => {
+            if base_hard_admission_allowed(contract, observation)
+                && member_support_threshold_met(contract, observation)
+            {
+                push_hard_constraint(hard_constraints, generated_id, observation);
+                return (
+                    GeoEvidenceDisposition::HardConstraint,
+                    vec![generated_id.to_string()],
+                );
+            }
+            apply_policy_fallback(
+                fallback,
+                observation,
+                generated_id,
+                GEO_RHO_MEMBER_SUPPORT_NOT_MET_REASON,
                 soft_preferences,
                 admission_reason,
             )
@@ -929,12 +972,13 @@ fn apply_policy_fallback(
     fallback: &GeoRhoAdmissionFallback,
     observation: &GeoRhoObservationKind,
     generated_id: &str,
+    fallback_reason: &str,
     soft_preferences: &mut Vec<GeoSoftPreference>,
     admission_reason: &mut Option<String>,
 ) -> (GeoEvidenceDisposition, Vec<String>) {
     match fallback {
         GeoRhoAdmissionFallback::DiagnosticOnly => {
-            *admission_reason = Some(GEO_RHO_CORROBORATION_NOT_MET_REASON.to_string());
+            *admission_reason = Some(fallback_reason.to_string());
             (GeoEvidenceDisposition::DiagnosticOnly, Vec::new())
         }
         GeoRhoAdmissionFallback::SoftWithWeight { cost_if_absent } => {
@@ -945,7 +989,7 @@ fn apply_policy_fallback(
                 *cost_if_absent,
             ) {
                 Some(generated_ids) => {
-                    *admission_reason = Some(GEO_RHO_CORROBORATION_NOT_MET_REASON.to_string());
+                    *admission_reason = Some(fallback_reason.to_string());
                     (GeoEvidenceDisposition::SoftPreference, generated_ids)
                 }
                 None => {
@@ -1089,6 +1133,26 @@ fn corroboration_met(contract: &GeoRhoContract, context: &GeoRhoAdmissionContext
     observed >= *minimum_distinct_contracts
 }
 
+fn member_support_threshold_met(
+    contract: &GeoRhoContract,
+    observation: &GeoRhoObservationKind,
+) -> bool {
+    let GeoRhoBasis::EmpiricalCalibration {
+        admission_policy:
+            GeoRhoAdmissionPolicy::HardOnlyWhenSupportedMembersAtLeast {
+                minimum_supported_members,
+                ..
+            },
+        ..
+    } = &contract.basis
+    else {
+        return true;
+    };
+    soft_generated_ids(observation, "")
+        .map(|ids| ids.len() as u64 >= *minimum_supported_members)
+        .unwrap_or(false)
+}
+
 fn is_logical_relaxation(contract: &GeoRhoContract) -> bool {
     matches!(&contract.basis, GeoRhoBasis::LogicalRelaxation { .. })
 }
@@ -1128,6 +1192,9 @@ fn hard_admission_allowed(
         Some(GeoRhoAdmissionPolicy::HardOnlyWhenCorroborated { .. }) => {
             corroboration_met(contract, context)
         }
+        Some(GeoRhoAdmissionPolicy::HardOnlyWhenSupportedMembersAtLeast { .. }) => {
+            member_support_threshold_met(contract, observation)
+        }
         Some(GeoRhoAdmissionPolicy::SoftWithWeight { .. })
         | Some(GeoRhoAdmissionPolicy::DiagnosticOnly { .. }) => false,
     }
@@ -1160,6 +1227,17 @@ fn soft_admission_expected(
                 GeoRhoAdmissionFallback::SoftWithWeight { .. } => {
                     soft_generated_ids(observation, generated_id)
                         .map(|ids| (ids, Some(GEO_RHO_CORROBORATION_NOT_MET_REASON.to_string())))
+                }
+            }
+        }
+        Some(GeoRhoAdmissionPolicy::HardOnlyWhenSupportedMembersAtLeast { fallback, .. })
+            if !hard_admission_allowed(contract, observation, context) =>
+        {
+            match fallback {
+                GeoRhoAdmissionFallback::DiagnosticOnly => None,
+                GeoRhoAdmissionFallback::SoftWithWeight { .. } => {
+                    soft_generated_ids(observation, generated_id)
+                        .map(|ids| (ids, Some(GEO_RHO_MEMBER_SUPPORT_NOT_MET_REASON.to_string())))
                 }
             }
         }
@@ -1220,6 +1298,22 @@ fn expected_diagnostic_admission_reason(
             return match fallback {
                 GeoRhoAdmissionFallback::DiagnosticOnly => {
                     Some(GEO_RHO_CORROBORATION_NOT_MET_REASON.to_string())
+                }
+                GeoRhoAdmissionFallback::SoftWithWeight { .. } => {
+                    if soft_generated_ids(observation, "").is_some() {
+                        None
+                    } else {
+                        Some(GEO_RHO_SOFT_FALLBACK_NOT_REPRESENTABLE_REASON.to_string())
+                    }
+                }
+            };
+        }
+        Some(GeoRhoAdmissionPolicy::HardOnlyWhenSupportedMembersAtLeast { fallback, .. })
+            if !hard_admission_allowed(contract, observation, context) =>
+        {
+            return match fallback {
+                GeoRhoAdmissionFallback::DiagnosticOnly => {
+                    Some(GEO_RHO_MEMBER_SUPPORT_NOT_MET_REASON.to_string())
                 }
                 GeoRhoAdmissionFallback::SoftWithWeight { .. } => {
                     if soft_generated_ids(observation, "").is_some() {

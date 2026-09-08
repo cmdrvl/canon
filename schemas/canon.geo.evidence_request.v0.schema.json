@@ -227,6 +227,25 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "kind": {
+              "const": "hard_only_when_supported_members_at_least"
+            },
+            "minimum_supported_members": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "fallback": { "$ref": "#/$defs/rho_admission_fallback" }
+          },
+          "required": [
+            "kind",
+            "minimum_supported_members",
+            "fallback"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
             "kind": { "const": "soft_with_weight" },
             "cost_if_absent": {
               "type": "integer",

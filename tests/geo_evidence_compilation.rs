@@ -725,6 +725,79 @@ fn corroborated_hard_policy_demotes_truth_falsifying_mask_until_corroborated() {
 }
 
 #[test]
+fn supported_member_threshold_demotes_singleton_owner_mask_to_soft() {
+    let mut exact_owner = flagged_empirical_contract("rho.owner.partial.v0");
+    if let GeoRhoBasis::EmpiricalCalibration {
+        admission_policy, ..
+    } = &mut exact_owner.basis
+    {
+        *admission_policy = GeoRhoAdmissionPolicy::HardOnlyWhenSupportedMembersAtLeast {
+            minimum_supported_members: 2,
+            fallback: GeoRhoAdmissionFallback::SoftWithWeight { cost_if_absent: 1 },
+        };
+    }
+    let owner_mask = GeoRhoObservation {
+        id: "owner-mask".to_string(),
+        contract_id: exact_owner.id.clone(),
+        source_records: vec![source_record("owner-mask-row")],
+        valid_time: None,
+        observation: GeoRhoObservationKind::IntegerSumBand {
+            level: GeoEntityLevel::Parcel,
+            measure: GeoIntegerMeasure {
+                semantic_id: "fixture.owner_not_exact".to_string(),
+                unit: "lots".to_string(),
+                value_origin: GeoIntegerValueOrigin::SourceAsserted,
+            },
+            values: vec![
+                GeoIntegerMemberValue {
+                    id: "p1".to_string(),
+                    value: 0,
+                },
+                GeoIntegerMemberValue {
+                    id: "p2".to_string(),
+                    value: 1,
+                },
+            ],
+            min: 0,
+            max: 0,
+        },
+    };
+    let compiled = compile_evidence(&GeoEvidenceCompilationRequest {
+        version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
+        universe: universe(&["p1", "p2"]),
+        contracts: vec![exact_owner],
+        observations: vec![owner_mask],
+        max_assignments: 4,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    })
+    .expect("singleton owner support demotes to soft");
+
+    assert!(compiled.composition_request.hard_constraints.is_empty());
+    assert_eq!(
+        compiled.admissions[0].disposition,
+        GeoEvidenceDisposition::SoftPreference
+    );
+    assert_eq!(
+        compiled.admissions[0].admission_reason.as_deref(),
+        Some("rho_member_support_not_met")
+    );
+    assert_eq!(
+        compiled.admissions[0].generated_ids,
+        vec!["rho:rho.owner.partial.v0@v1:owner-mask:soft:0000".to_string()]
+    );
+    let solved = solve_composition(&compiled.composition_request).expect("demoted request solves");
+    assert_eq!(solved.status, GeoCompositionStatus::Ambiguous);
+    assert!(
+        solved.residual_models.contains(&GeoCompositionModel {
+            parcels: parcels(&["p1", "p2"]),
+            buildings: Vec::new(),
+        }),
+        "the known-truth pair stays in the residual when singleton owner support is demoted"
+    );
+}
+
+#[test]
 fn soft_policy_keeps_non_membership_numeric_bands_diagnostic() {
     let mut size_band = flagged_empirical_contract("rho.size.gsf.v0");
     if let GeoRhoBasis::EmpiricalCalibration {
