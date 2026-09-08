@@ -11,9 +11,26 @@
     },
     "observer_id": { "type": "string", "minLength": 1 },
     "population_blake3": { "$ref": "#/$defs/blake3" },
+    "rows_total": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 18446744073709551615
+    },
+    "missing_subject_ids": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "rows_outside_population": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
     "per_kind": {
       "type": "object",
       "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/kind_characterization" }
+    },
+    "per_truth_plane": {
+      "type": "object",
       "additionalProperties": { "$ref": "#/$defs/kind_characterization" }
     },
     "method": { "type": "string", "minLength": 1 },
@@ -81,6 +98,7 @@
     "runtime_only_invariants": [
       "exact_agreement must not exceed compared for any observation kind",
       "null baselines must carry zero max_abs_error and zero band slack",
+      "missing_subject_ids and rows_outside_population must be sorted and unique when present",
       "non_redundant_case_ids must be sorted and unique when present"
     ]
   }

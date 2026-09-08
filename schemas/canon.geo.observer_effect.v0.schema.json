@@ -1,0 +1,166 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.observer_effect.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.observer_effect.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_observer_effect.v0",
+      "type": "string"
+    },
+    "observer_id": { "type": "string", "minLength": 1 },
+    "characterization_blake3": { "$ref": "#/$defs/blake3" },
+    "denominator": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 18446744073709551615
+    },
+    "cases": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/effect_case" }
+    },
+    "totals": { "$ref": "#/$defs/effect_totals" }
+  },
+  "required": [
+    "version",
+    "observer_id",
+    "characterization_blake3",
+    "denominator",
+    "cases",
+    "totals"
+  ],
+  "$defs": {
+    "blake3": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "composition_status": {
+      "type": "string",
+      "enum": ["resolved", "ambiguous", "conflict", "budget_fallback"]
+    },
+    "entity_level": {
+      "type": "string",
+      "enum": ["poi_unit", "building", "parcel", "property"]
+    },
+    "entity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": { "$ref": "#/$defs/entity_level" },
+        "id": { "type": "string", "minLength": 1 }
+      },
+      "required": ["level", "id"]
+    },
+    "effect_case": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "case_id": { "type": "string", "minLength": 1 },
+        "model_count_before": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "model_count_after": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "backbone_gained": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/entity_ref" }
+        },
+        "backbone_lost": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/entity_ref" }
+        },
+        "status_before": { "$ref": "#/$defs/composition_status" },
+        "status_after": { "$ref": "#/$defs/composition_status" },
+        "redundant": { "type": "boolean" }
+      },
+      "required": [
+        "case_id",
+        "model_count_before",
+        "model_count_after",
+        "backbone_gained",
+        "backbone_lost",
+        "status_before",
+        "status_after",
+        "redundant"
+      ]
+    },
+    "effect_totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cases": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "changed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "redundant": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "conflict_introduced": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "per_truth_plane": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/effect_truth_plane_totals" }
+        }
+      },
+      "required": [
+        "cases",
+        "changed",
+        "redundant",
+        "conflict_introduced",
+        "per_truth_plane"
+      ]
+    },
+    "effect_truth_plane_totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cases": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "changed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "redundant": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "conflict_introduced": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        }
+      },
+      "required": ["cases", "changed", "redundant", "conflict_introduced"]
+    }
+  },
+  "x-canon-contract": {
+    "runtime_only_invariants": [
+      "denominator must equal cases length and totals.cases",
+      "changed plus redundant must equal cases",
+      "model_count_after cannot exceed model_count_before",
+      "backbone_lost must remain empty because observer hard evidence only narrows"
+    ]
+  }
+}

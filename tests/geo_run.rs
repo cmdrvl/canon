@@ -2223,6 +2223,7 @@ fn observer_row_for_run() -> GeoObservationRow {
         window_blake3: digest_hex("fixture observer window"),
         kind: GeoObservationKind::StructureCountInWindow,
         payload: GeoObservationPayload::StructureCountInWindow { min: 1, max: 1 },
+        raw_count: Some(1),
         crop_blake3: digest_hex("fixture observer crop"),
         label_blake3: digest_hex("fixture observer label"),
     }

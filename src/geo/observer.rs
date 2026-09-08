@@ -135,6 +135,8 @@ pub struct GeoObservationRow {
     pub window_blake3: String,
     pub kind: GeoObservationKind,
     pub payload: GeoObservationPayload,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_count: Option<u64>,
     pub crop_blake3: String,
     pub label_blake3: String,
 }
@@ -198,6 +200,9 @@ pub enum GeoObserverErrorCode {
     ArithmeticOverflow,
     ObserverNullRingMismatch,
     ObserverNotRedundant,
+    ObserverBandNotFromCharacterization,
+    ObserverEffectWidened,
+    ObserverRuntimeInvoked,
     ObserverMissingProvenance,
     ObserverErrorUncharacterized,
     ObserverLicenseForbidden,
@@ -1176,6 +1181,7 @@ fn validate_observation_row(
         ));
     }
     validate_payload_matches_kind(row)?;
+    validate_raw_count_matches_kind(row)?;
     Ok(())
 }
 
@@ -1230,6 +1236,37 @@ fn validate_payload_matches_kind(row: &GeoObservationRow) -> Result<(), GeoObser
         }
     }
     Ok(())
+}
+
+fn validate_raw_count_matches_kind(row: &GeoObservationRow) -> Result<(), GeoObserverError> {
+    let Some(raw_count) = row.raw_count else {
+        return Ok(());
+    };
+    match (&row.kind, &row.payload) {
+        (
+            GeoObservationKind::StructureCountInWindow,
+            GeoObservationPayload::StructureCountInWindow { min, max },
+        ) if raw_count >= *min && raw_count <= *max => Ok(()),
+        (
+            GeoObservationKind::StructureCountInWindow,
+            GeoObservationPayload::StructureCountInWindow { min, max },
+        ) => Err(GeoObserverError::invalid(
+            "Geo observation raw_count must fall inside the structure-count band",
+            [
+                ("field".to_string(), "raw_count".to_string()),
+                ("observation_id".to_string(), row.id.clone()),
+                ("raw_count".to_string(), raw_count.to_string()),
+                ("band".to_string(), format!("{min}..{max}")),
+            ],
+        )),
+        _ => Err(GeoObserverError::invalid(
+            "Geo observation raw_count is only valid for structure-count rows",
+            [
+                ("field".to_string(), "raw_count".to_string()),
+                ("observation_id".to_string(), row.id.clone()),
+            ],
+        )),
+    }
 }
 
 fn validate_row_blake3s(

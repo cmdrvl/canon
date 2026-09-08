@@ -51,7 +51,15 @@ pub struct GeoObserverCharacterizationArtifact {
     pub version: String,
     pub observer_id: String,
     pub population_blake3: String,
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub rows_total: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub missing_subject_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rows_outside_population: Vec<String>,
     pub per_kind: BTreeMap<String, GeoObserverKindCharacterization>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub per_truth_plane: BTreeMap<String, GeoObserverKindCharacterization>,
     pub method: String,
     pub is_null_baseline: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -250,6 +258,7 @@ pub fn emit_null_footprint_observations(
                 payload: GeoObservationPayload::FootprintOutline {
                     ring_blake3: ring_blake3.clone(),
                 },
+                raw_count: None,
                 crop_blake3: deterministic_crop_blake3(&tile_pin.blake3, window_blake3),
                 label_blake3: ring_blake3,
             };
@@ -295,6 +304,9 @@ pub fn characterize_null(
         version: CANON_GEO_OBSERVER_CHARACTERIZATION_VERSION.to_string(),
         observer_id: artifact.contract.id.clone(),
         population_blake3: population_blake3.to_string(),
+        rows_total: compared,
+        missing_subject_ids: Vec::new(),
+        rows_outside_population: Vec::new(),
         per_kind: BTreeMap::from([(
             observation_kind_key(GeoObservationKind::FootprintOutline).to_string(),
             GeoObserverKindCharacterization {
@@ -307,6 +319,7 @@ pub fn characterize_null(
                 },
             },
         )]),
+        per_truth_plane: BTreeMap::new(),
         method: "exact_ring_digest_agreement_from_landed_footprint_plane".to_string(),
         is_null_baseline: true,
         non_redundant_case_ids: Vec::new(),
@@ -496,37 +509,52 @@ pub fn validate_observer_characterization_artifact(
             [("per_kind", "0".to_string())],
         ));
     }
+    validate_sorted_distinct_ids("missing_subject_ids", &artifact.missing_subject_ids)?;
+    validate_sorted_distinct_ids("rows_outside_population", &artifact.rows_outside_population)?;
     for (kind, characterization) in &artifact.per_kind {
         validate_nonempty("per_kind.kind", kind)?;
-        if characterization.exact_agreement > characterization.compared {
-            return Err(observer_invalid(
-                "Geo observer characterization exact agreement cannot exceed compared rows",
-                [
-                    ("kind", kind.clone()),
-                    ("compared", characterization.compared.to_string()),
-                    (
-                        "exact_agreement",
-                        characterization.exact_agreement.to_string(),
-                    ),
-                ],
-            ));
-        }
-        if artifact.is_null_baseline
-            && (characterization.max_abs_error != 0
-                || characterization.error_band.lower_slack != 0
-                || characterization.error_band.upper_slack != 0)
-        {
-            return Err(observer_error(
-                GeoObserverErrorCode::ObserverNullRingMismatch,
-                "Geo null observer baseline must have zero error",
-                [
-                    ("kind", kind.clone()),
-                    ("max_abs_error", characterization.max_abs_error.to_string()),
-                ],
-            ));
-        }
+        validate_kind_characterization(kind, characterization, artifact.is_null_baseline)?;
+    }
+    for (truth_plane, characterization) in &artifact.per_truth_plane {
+        validate_nonempty("per_truth_plane.truth_plane", truth_plane)?;
+        validate_kind_characterization(truth_plane, characterization, artifact.is_null_baseline)?;
     }
     validate_sorted_distinct_ids("non_redundant_case_ids", &artifact.non_redundant_case_ids)
+}
+
+fn validate_kind_characterization(
+    key: &str,
+    characterization: &GeoObserverKindCharacterization,
+    is_null_baseline: bool,
+) -> Result<(), GeoObserverError> {
+    if characterization.exact_agreement > characterization.compared {
+        return Err(observer_invalid(
+            "Geo observer characterization exact agreement cannot exceed compared rows",
+            [
+                ("kind", key.to_string()),
+                ("compared", characterization.compared.to_string()),
+                (
+                    "exact_agreement",
+                    characterization.exact_agreement.to_string(),
+                ),
+            ],
+        ));
+    }
+    if is_null_baseline
+        && (characterization.max_abs_error != 0
+            || characterization.error_band.lower_slack != 0
+            || characterization.error_band.upper_slack != 0)
+    {
+        return Err(observer_error(
+            GeoObserverErrorCode::ObserverNullRingMismatch,
+            "Geo null observer baseline must have zero error",
+            [
+                ("kind", key.to_string()),
+                ("max_abs_error", characterization.max_abs_error.to_string()),
+            ],
+        ));
+    }
+    Ok(())
 }
 
 pub fn canonical_observer_characterization_bytes(
@@ -705,6 +733,10 @@ fn composition_redundant(before: &GeoCompositionArtifact, after: &GeoComposition
 
 fn same_status(left: GeoCompositionStatus, right: GeoCompositionStatus) -> bool {
     left == right
+}
+
+fn is_zero_u64(value: &u64) -> bool {
+    *value == 0
 }
 
 fn observation_kind_key(kind: GeoObservationKind) -> &'static str {

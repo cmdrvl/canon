@@ -325,6 +325,11 @@
         "window_blake3": { "$ref": "#/$defs/blake3" },
         "kind": { "$ref": "#/$defs/observation_kind" },
         "payload": { "$ref": "#/$defs/observation_payload" },
+        "raw_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
         "crop_blake3": { "$ref": "#/$defs/blake3" },
         "label_blake3": { "$ref": "#/$defs/blake3" }
       },

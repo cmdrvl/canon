@@ -113,6 +113,7 @@ fn count_row(tile_bytes: &[u8], crop_bytes: &[u8], label_bytes: &[u8]) -> GeoObs
         window_blake3: hex(b"window geometry"),
         kind: GeoObservationKind::StructureCountInWindow,
         payload: GeoObservationPayload::StructureCountInWindow { min: 1, max: 1 },
+        raw_count: Some(1),
         crop_blake3: hex(crop_bytes),
         label_blake3: hex(label_bytes),
     }

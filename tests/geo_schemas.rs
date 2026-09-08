@@ -79,9 +79,10 @@ use canon::geo::{
     CANON_GEO_MULTISOURCE_REQUEST_VERSION, CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION,
     CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION,
     CANON_GEO_OBSERVATION_ROWS_VERSION, CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION,
-    CANON_GEO_OBSERVER_CHARACTERIZATION_VERSION, CANON_GEO_OBSERVER_VERSION,
-    CANON_GEO_PAD_ADDRESS_SET_VERSION, CANON_GEO_PAD_MEMBERSHIP_VERSION,
-    CANON_GEO_POINT_POPULATION_VERSION, CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
+    CANON_GEO_OBSERVER_CHARACTERIZATION_VERSION, CANON_GEO_OBSERVER_EFFECT_VERSION,
+    CANON_GEO_OBSERVER_VERSION, CANON_GEO_PAD_ADDRESS_SET_VERSION,
+    CANON_GEO_PAD_MEMBERSHIP_VERSION, CANON_GEO_POINT_POPULATION_VERSION,
+    CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
     CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
     CANON_GEO_PRE_RESOLUTION_VERSION, CANON_GEO_PROPAGATION_VERSION, CANON_GEO_QUESTION_VERSION,
     CANON_GEO_REDACTED_ARTIFACT_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
@@ -125,7 +126,8 @@ use canon::geo::{
     GeoNextEvidenceCandidateInput, GeoNextEvidenceInputs, GeoNextEvidenceRequest, GeoNumericBound,
     GeoNumericMeasure, GeoNycBorough, GeoObservationKind, GeoObservationPayload, GeoObservationRow,
     GeoObservationRowsArtifact, GeoObserverAdmissionRequest, GeoObserverCharacterizationArtifact,
-    GeoObserverContract, GeoObserverErrorBand, GeoObserverIdentity,
+    GeoObserverContract, GeoObserverEffectArtifact, GeoObserverEffectCase, GeoObserverEffectTotals,
+    GeoObserverEffectTruthPlaneTotals, GeoObserverErrorBand, GeoObserverIdentity,
     GeoObserverKindCharacterization, GeoPadAddressMember, GeoPadAddressSet, GeoPlanInventoryRef,
     GeoPointMm, GeoPointPopulationArtifact, GeoPopulationCaseEvidenceOverlay,
     GeoPopulationEvaluationRequest, GeoPopulationEvidenceStackRequest, GeoPreResolutionArtifact,
@@ -159,13 +161,13 @@ use canon::geo::{
     canonical_next_evidence_bytes, canonical_next_evidence_inputs_bytes,
     canonical_next_evidence_request_bytes, canonical_observation_rows_bytes,
     canonical_observer_admission_request_bytes, canonical_observer_bytes,
-    canonical_observer_characterization_bytes, canonical_point_population_bytes,
-    canonical_pre_resolution_bytes, canonical_propagation_bytes, canonical_redacted_artifact_bytes,
-    canonical_retry_recovery_bytes, canonical_separation_bytes, canonical_separation_inputs_bytes,
-    canonical_separation_request_bytes, compare_e4_gate_assessments, compile_evidence,
-    correction_sets, default_geo_capabilities, derive_deed_truth_from_index,
-    e4_proof_source_from_population_request, evaluate_pad_membership, evaluate_population,
-    ingest_client_geometry_tile, inspection_semantic_hash, join_exposure,
+    canonical_observer_characterization_bytes, canonical_observer_effect_bytes,
+    canonical_point_population_bytes, canonical_pre_resolution_bytes, canonical_propagation_bytes,
+    canonical_redacted_artifact_bytes, canonical_retry_recovery_bytes, canonical_separation_bytes,
+    canonical_separation_inputs_bytes, canonical_separation_request_bytes,
+    compare_e4_gate_assessments, compile_evidence, correction_sets, default_geo_capabilities,
+    derive_deed_truth_from_index, e4_proof_source_from_population_request, evaluate_pad_membership,
+    evaluate_population, ingest_client_geometry_tile, inspection_semantic_hash, join_exposure,
     materialize_geo_multisource, materialize_geometry_tile, materialize_h7_population_rows,
     materialize_home_cells, materialize_pre_resolution, materialize_tile_work_unit,
     materialize_warehouse_geometry, minimal_core, parse_address_forest, propagate, recommend,
@@ -326,6 +328,8 @@ const IMAGE_TILE_PIN_SCHEMA: &str =
 const OBSERVER_SCHEMA: &str = include_str!("../schemas/canon.geo.observer.v0.schema.json");
 const OBSERVER_CHARACTERIZATION_SCHEMA: &str =
     include_str!("../schemas/canon.geo.observer_characterization.v0.schema.json");
+const OBSERVER_EFFECT_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.observer_effect.v0.schema.json");
 const OBSERVER_ADMISSION_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.observer_admission_request.v0.schema.json");
 const OBSERVATION_ROWS_SCHEMA: &str =
@@ -1157,6 +1161,7 @@ fn observer_observation_row() -> GeoObservationRow {
         window_blake3: blake3::hash(b"schema window").to_hex().to_string(),
         kind: GeoObservationKind::StructureCountInWindow,
         payload: GeoObservationPayload::StructureCountInWindow { min: 1, max: 1 },
+        raw_count: Some(1),
         crop_blake3: blake3::hash(b"schema crop").to_hex().to_string(),
         label_blake3: blake3::hash(b"{\"count\":1}").to_hex().to_string(),
     }
@@ -1180,6 +1185,9 @@ fn observer_characterization_artifact() -> GeoObserverCharacterizationArtifact {
         population_blake3: blake3::hash(b"schema observer population")
             .to_hex()
             .to_string(),
+        rows_total: 6,
+        missing_subject_ids: Vec::new(),
+        rows_outside_population: Vec::new(),
         per_kind: BTreeMap::from([(
             "footprint_outline".to_string(),
             GeoObserverKindCharacterization {
@@ -1192,9 +1200,49 @@ fn observer_characterization_artifact() -> GeoObserverCharacterizationArtifact {
                 },
             },
         )]),
+        per_truth_plane: BTreeMap::new(),
         method: "exact_ring_digest_agreement_from_landed_footprint_plane".to_string(),
         is_null_baseline: true,
         non_redundant_case_ids: Vec::new(),
+    }
+}
+
+fn observer_effect_artifact() -> GeoObserverEffectArtifact {
+    GeoObserverEffectArtifact {
+        version: CANON_GEO_OBSERVER_EFFECT_VERSION.to_string(),
+        observer_id: "observer.count.frozen".to_string(),
+        characterization_blake3: blake3::hash(b"schema count characterization")
+            .to_hex()
+            .to_string(),
+        denominator: 1,
+        cases: vec![GeoObserverEffectCase {
+            case_id: "schema-count-case".to_string(),
+            model_count_before: 4,
+            model_count_after: 3,
+            backbone_gained: vec![GeoEntityRef::new(
+                GeoEntityLevel::Building,
+                "schema-building-1",
+            )],
+            backbone_lost: Vec::new(),
+            status_before: GeoCompositionStatus::Ambiguous,
+            status_after: GeoCompositionStatus::Ambiguous,
+            redundant: false,
+        }],
+        totals: GeoObserverEffectTotals {
+            cases: 1,
+            changed: 1,
+            redundant: 0,
+            conflict_introduced: 0,
+            per_truth_plane: BTreeMap::from([(
+                "non_round_amount_date_legal_borough".to_string(),
+                GeoObserverEffectTruthPlaneTotals {
+                    cases: 1,
+                    changed: 1,
+                    redundant: 0,
+                    conflict_introduced: 0,
+                },
+            )]),
+        },
     }
 }
 
@@ -2882,6 +2930,21 @@ fn observer_characterization_schema_matches_a_real_instance() {
         OBSERVER_CHARACTERIZATION_SCHEMA,
         "canon.geo.observer_characterization.v0",
         CANON_GEO_OBSERVER_CHARACTERIZATION_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn observer_effect_schema_matches_a_real_instance() {
+    let artifact = observer_effect_artifact();
+    let canonical_bytes =
+        canonical_observer_effect_bytes(&artifact).expect("observer effect canonicalizes");
+    let instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("canonical observer effect parses");
+    assert_drift_free(
+        OBSERVER_EFFECT_SCHEMA,
+        "canon.geo.observer_effect.v0",
+        CANON_GEO_OBSERVER_EFFECT_VERSION,
         &instance,
     );
 }
