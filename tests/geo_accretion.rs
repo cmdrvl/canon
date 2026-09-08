@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use assert_cmd::Command;
 use canon::{
     geo::{
         CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION,
@@ -26,10 +27,12 @@ use canon::{
     project::{ProjectRunFailurePolicy, ProjectRunPolicy, digest_bytes, read_node_receipt},
 };
 use h3o::CellIndex;
+use serde::Serialize;
+use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    path::Path,
+    path::{Path, PathBuf},
     str::FromStr,
 };
 
@@ -108,6 +111,81 @@ fn t76_geo_run_added_evidence_reuses_bounded_prefix_and_revises_manifest() {
     assert_eq!(
         first_section.outputs[0].content_digest,
         second_section.outputs[0].content_digest
+    );
+}
+
+#[test]
+fn t76_public_geo_cli_rerun_reuses_prefix_and_compare_reports_stored_delta() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let input_dir = temp.path().join("inputs");
+    fs::create_dir(&input_dir).expect("create public input dir");
+    let plan = write_public_geo_plan(&input_dir);
+    let first_inputs = write_public_run_inputs(&input_dir, "warehouse-rows.json", warehouse_rows());
+    let work_dir = temp.path().join("public-work");
+    fs::create_dir(&work_dir).expect("create public work dir");
+
+    let first = run_public_geo_run(&plan, &work_dir, &first_inputs);
+    assert_eq!(first["status"], "COMPLETED");
+    assert_eq!(geo_public_run_manifest_revision_count(&work_dir), 1);
+    let first_work_snapshot = temp.path().join("public-work-run-1");
+    copy_dir_all(&work_dir, &first_work_snapshot);
+
+    let second_inputs = write_public_run_inputs(
+        &input_dir,
+        "warehouse-rows-plus-one.json",
+        warehouse_rows_plus_one_evidence_row(),
+    );
+    let second = run_public_geo_run(&plan, &work_dir, &second_inputs);
+    assert_eq!(second["status"], "COMPLETED");
+    assert_eq!(
+        geo_public_run_manifest_revision_count(&work_dir),
+        2,
+        "public T76 rerun must publish a second immutable Geo run revision"
+    );
+
+    let report = second
+        .get("project_run_report")
+        .expect("public Geo run embeds project report");
+    assert_eq!(
+        string_values(report.get("resumed_nodes").expect("resumed nodes")),
+        vec![
+            "geo.building.home_cells".to_string(),
+            "geo.building.section".to_string()
+        ],
+        "public rerun must reuse only the local bounded prefix"
+    );
+    assert_eq!(
+        json_string_set(report.get("executed_nodes").expect("executed nodes")),
+        string_set_from([
+            "geo.building.materialize_evidence",
+            "geo.building.compile_evidence",
+            "geo.building.propagate",
+            "geo.building.solve",
+            "geo.building.explain",
+            "geo.building.separation",
+            "geo.building.next_evidence",
+        ]),
+        "public rerun must recompute the evidence and solver suffix"
+    );
+    assert_eq!(report["resource_reuse"]["saved_nodes"], 2);
+    assert!(
+        report["resource_reuse"]["estimated_national_extrapolation"].is_null(),
+        "public T76 resource report must not turn local saved work into a national extrapolation"
+    );
+
+    let inspection = run_public_geo_inspect_compare(&first_work_snapshot, &work_dir);
+    let delta = inspection.get("compare").expect("compare delta");
+    let evidence_added = string_values(delta.get("evidence_added").expect("evidence added"));
+    assert!(
+        evidence_added
+            .iter()
+            .any(|entry| entry
+                .starts_with("geo.building.materialize_evidence/materialize_evidence@")),
+        "inspect compare must read stored artifact digests and expose the changed materialized evidence"
+    );
+    assert_eq!(
+        delta["model_count_before"], delta["model_count_after"],
+        "the extra duplicate evidence row changes receipts without changing the exact residual"
     );
 }
 
@@ -517,6 +595,166 @@ fn digest(label: &str) -> String {
     digest_bytes(label.as_bytes())
 }
 
+fn canon_command() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+}
+
+fn write_public_geo_plan(dir: &Path) -> PathBuf {
+    let question_path = write_json(dir, "question.json", &question());
+    let inventory_path = write_json(dir, "inventory.json", &inventory());
+    let profile_path = write_json(dir, "profile.json", &GeoCompositionProfile::building());
+    let budget_path = write_json(dir, "budget.json", &budget());
+    let capabilities_path = dir.join("capabilities.json");
+    let capabilities = canon_command()
+        .arg("geo")
+        .arg("capabilities")
+        .arg("--emit")
+        .arg("json")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    fs::write(&capabilities_path, capabilities).expect("write public capabilities");
+
+    let output = canon_command()
+        .arg("geo")
+        .arg("plan")
+        .arg("--question")
+        .arg(&question_path)
+        .arg("--capabilities")
+        .arg(&capabilities_path)
+        .arg("--inventory")
+        .arg(&inventory_path)
+        .arg("--profile")
+        .arg(&profile_path)
+        .arg("--budget")
+        .arg(&budget_path)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let plan: Value = serde_json::from_slice(&output).expect("public Geo plan stdout parses");
+    assert_eq!(plan["status"], "planned");
+    assert_eq!(plan["project_plan"]["nodes"].as_array().unwrap().len(), 9);
+    let plan_path = dir.join("plan.json");
+    fs::write(&plan_path, output).expect("write public Geo plan");
+    plan_path
+}
+
+struct PublicRunInputs {
+    home_cells: PathBuf,
+    tile_work: PathBuf,
+    warehouse: PathBuf,
+    separation: PathBuf,
+    next_evidence: PathBuf,
+}
+
+fn write_public_run_inputs(
+    dir: &Path,
+    warehouse_file_name: &str,
+    warehouse: GeoWarehouseRowsRequest,
+) -> PublicRunInputs {
+    PublicRunInputs {
+        home_cells: write_json(dir, "home-cell-rows.json", &home_cell_rows()),
+        tile_work: write_json(dir, "tile-work-request.json", &tile_work_request()),
+        warehouse: write_json(dir, warehouse_file_name, &warehouse),
+        separation: write_json(dir, "separation-inputs.json", &separation_inputs()),
+        next_evidence: write_json(dir, "next-evidence-inputs.json", &next_evidence_inputs()),
+    }
+}
+
+fn run_public_geo_run(plan: &Path, work_dir: &Path, inputs: &PublicRunInputs) -> Value {
+    let bindings = [
+        format!(
+            "geo.building.home_cells:{}={}",
+            GEO_ROWS_BINDING_ID,
+            inputs.home_cells.display()
+        ),
+        format!(
+            "geo.building.section:{}={}",
+            GEO_REQUEST_BINDING_ID,
+            inputs.tile_work.display()
+        ),
+        format!(
+            "geo.building.materialize_evidence:{}={}",
+            GEO_ROWS_BINDING_ID,
+            inputs.warehouse.display()
+        ),
+        format!(
+            "geo.building.separation:{}={}",
+            GEO_REQUEST_BINDING_ID,
+            inputs.separation.display()
+        ),
+        format!(
+            "geo.building.next_evidence:{}={}",
+            GEO_REQUEST_BINDING_ID,
+            inputs.next_evidence.display()
+        ),
+    ];
+    let assert = canon_command()
+        .arg("geo")
+        .arg("run")
+        .arg("--plan")
+        .arg(plan)
+        .arg("--work-dir")
+        .arg(work_dir)
+        .arg("--input")
+        .arg(&bindings[0])
+        .arg("--input")
+        .arg(&bindings[1])
+        .arg("--input")
+        .arg(&bindings[2])
+        .arg("--input")
+        .arg(&bindings[3])
+        .arg("--input")
+        .arg(&bindings[4])
+        .assert()
+        .success();
+    assert!(assert.get_output().stderr.is_empty());
+    serde_json::from_slice(&assert.get_output().stdout).expect("public Geo run stdout parses")
+}
+
+fn run_public_geo_inspect_compare(work_dir: &Path, other_work_dir: &Path) -> Value {
+    let assert = canon_command()
+        .arg("geo")
+        .arg("inspect")
+        .arg("--run")
+        .arg(work_dir)
+        .arg("--compare")
+        .arg(other_work_dir)
+        .arg("--emit")
+        .arg("json")
+        .assert()
+        .success();
+    assert!(assert.get_output().stderr.is_empty());
+    serde_json::from_slice(&assert.get_output().stdout).expect("public Geo inspect stdout parses")
+}
+
+fn write_json<T: Serialize>(dir: &Path, name: &str, value: &T) -> PathBuf {
+    let path = dir.join(name);
+    fs::write(
+        &path,
+        serde_json::to_vec_pretty(value).expect("serialize public fixture JSON"),
+    )
+    .expect("write public fixture JSON");
+    path
+}
+
+fn string_values(value: &Value) -> Vec<String> {
+    value
+        .as_array()
+        .expect("string array")
+        .iter()
+        .map(|entry| entry.as_str().expect("array entry is string").to_string())
+        .collect()
+}
+
+fn json_string_set(value: &Value) -> BTreeSet<String> {
+    string_values(value).into_iter().collect()
+}
+
 fn string_set(values: &[String]) -> BTreeSet<String> {
     values.iter().cloned().collect()
 }
@@ -553,4 +791,29 @@ fn geo_run_manifest_revision_count(workspace: &Path) -> usize {
     fs::read_dir(path)
         .expect("Geo run manifest revisions directory")
         .count()
+}
+
+fn geo_public_run_manifest_revision_count(work_dir: &Path) -> usize {
+    let path = work_dir.join(".canon/geo-run/geo-run-manifest/revisions");
+    fs::read_dir(path)
+        .expect("public Geo run manifest revisions directory")
+        .count()
+}
+
+fn copy_dir_all(source: &Path, destination: &Path) {
+    fs::create_dir_all(destination).expect("create copied directory");
+    let mut entries = fs::read_dir(source)
+        .expect("read copied directory")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect copied directory entries");
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        if entry.file_type().expect("copied entry type").is_dir() {
+            copy_dir_all(&source_path, &destination_path);
+        } else {
+            fs::copy(&source_path, &destination_path).expect("copy file");
+        }
+    }
 }
