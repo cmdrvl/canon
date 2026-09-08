@@ -637,6 +637,7 @@ run_json "$inspection" "$canon_bin" geo inspect \
 
 assert_jq '
   any(.compare.evidence_added[]; startswith("geo.building.materialize_evidence/materialize_evidence@"))
+  and .compare.components_invalidated == ["building:building-a"]
   and .compare.model_count_before == .compare.model_count_after
 ' "$inspection"
 
@@ -650,6 +651,7 @@ jq -r '
 ' "$run2" >>"$log"
 jq -r '
   "inspect_compare.evidence_added=" + (.compare.evidence_added | join(",")),
+  "inspect_compare.components_invalidated=" + (.compare.components_invalidated | join(",")),
   "inspect_compare.model_count_before=" + (.compare.model_count_before | tostring),
   "inspect_compare.model_count_after=" + (.compare.model_count_after | tostring)
 ' "$inspection" >>"$log"

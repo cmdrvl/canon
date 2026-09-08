@@ -184,6 +184,15 @@ fn t76_public_geo_cli_rerun_reuses_prefix_and_compare_reports_stored_delta() {
         "inspect compare must read stored artifact digests and expose the changed materialized evidence"
     );
     assert_eq!(
+        string_values(
+            delta
+                .get("components_invalidated")
+                .expect("components invalidated")
+        ),
+        vec!["building:building-a".to_string()],
+        "inspect compare must identify the affected component from stored evidence, not by rerunning solve"
+    );
+    assert_eq!(
         delta["model_count_before"], delta["model_count_after"],
         "the extra duplicate evidence row changes receipts without changing the exact residual"
     );

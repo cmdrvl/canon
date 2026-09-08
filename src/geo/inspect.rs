@@ -252,9 +252,16 @@ pub fn inspect_with_compare(
     other_work_dir: &Path,
     options: GeoInspectOptions,
 ) -> Result<GeoInspection, GeoInspectError> {
-    let mut base = inspect_with_options(work_dir, options)?;
-    let other = inspect(other_work_dir)?;
-    base.compare = Some(compare(&base, &other)?);
+    let base_stored = read_stored_run(work_dir)?;
+    let other_stored = read_stored_run(other_work_dir)?;
+    let mut base = build_inspection(&base_stored, options)?;
+    let other = build_inspection(&other_stored, GeoInspectOptions::default())?;
+    base.compare = Some(compare_stored_runs(
+        &base_stored,
+        &base,
+        &other_stored,
+        &other,
+    )?);
     stamp_inspection(base)
 }
 
@@ -338,6 +345,238 @@ pub fn compare(
         contradictions_resolved,
         claim_class_changes,
     })
+}
+
+fn compare_stored_runs(
+    base_stored: &StoredRun,
+    base: &GeoInspection,
+    other_stored: &StoredRun,
+    other: &GeoInspection,
+) -> Result<GeoInspectionDelta, GeoInspectError> {
+    let mut delta = compare(base, other)?;
+    let stored_components = stored_components_invalidated(base_stored, other_stored);
+    if !stored_components.is_empty() {
+        delta.components_invalidated = union_sorted(
+            delta.components_invalidated.into_iter(),
+            stored_components.into_iter(),
+        );
+    }
+    Ok(delta)
+}
+
+fn stored_components_invalidated(base: &StoredRun, other: &StoredRun) -> Vec<String> {
+    let base_composition = base.first_by_contract(CANON_GEO_COMPOSITION_VERSION);
+    let other_composition = other.first_by_contract(CANON_GEO_COMPOSITION_VERSION);
+    let base_evidence = base.first_by_contract(CANON_GEO_EVIDENCE_COMPILATION_VERSION);
+    let other_evidence = other.first_by_contract(CANON_GEO_EVIDENCE_COMPILATION_VERSION);
+    let mut out = BTreeSet::new();
+    out.extend(changed_component_summaries(
+        base_composition,
+        other_composition,
+    ));
+    out.extend(changed_evidence_components(
+        base_composition,
+        base_evidence,
+        other_composition,
+        other_evidence,
+    ));
+    out.into_iter().collect()
+}
+
+fn changed_component_summaries(
+    base_composition: Option<&StoredArtifact>,
+    other_composition: Option<&StoredArtifact>,
+) -> Vec<String> {
+    let base = component_summary_hashes(base_composition);
+    let other = component_summary_hashes(other_composition);
+    union_sorted(base.keys().cloned(), other.keys().cloned())
+        .into_iter()
+        .filter(|component| base.get(component) != other.get(component))
+        .collect()
+}
+
+fn component_summary_hashes(composition: Option<&StoredArtifact>) -> BTreeMap<String, String> {
+    composition
+        .and_then(|artifact| artifact.value.get("factorization"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|component| {
+            let key = component.get("key").and_then(Value::as_str)?;
+            let bytes = serde_json::to_vec(component).ok()?;
+            Some((key.to_string(), digest_bytes(&bytes)))
+        })
+        .collect()
+}
+
+fn changed_evidence_components(
+    base_composition: Option<&StoredArtifact>,
+    base_evidence: Option<&StoredArtifact>,
+    other_composition: Option<&StoredArtifact>,
+    other_evidence: Option<&StoredArtifact>,
+) -> Vec<String> {
+    let base_members = component_members(base_composition);
+    let other_members = component_members(other_composition);
+    let base_admissions = admission_hashes(base_evidence);
+    let other_admissions = admission_hashes(other_evidence);
+    let mut out = BTreeSet::new();
+
+    for observation_id in union_sorted(
+        base_admissions.keys().cloned(),
+        other_admissions.keys().cloned(),
+    ) {
+        if base_admissions.get(&observation_id) == other_admissions.get(&observation_id) {
+            continue;
+        }
+        if let Some(admission) = admission_by_id(base_evidence, &observation_id) {
+            out.extend(admission_components(admission, &base_members));
+        }
+        if let Some(admission) = admission_by_id(other_evidence, &observation_id) {
+            out.extend(admission_components(admission, &other_members));
+        }
+    }
+
+    out.into_iter().collect()
+}
+
+fn component_members(composition: Option<&StoredArtifact>) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    for component in composition
+        .and_then(|artifact| artifact.value.get("factorization"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let Some(component_key) = component.get("key").and_then(Value::as_str) else {
+            continue;
+        };
+        for variable in component
+            .get("variables")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            if let Some(member_key) = entity_ref_key(variable) {
+                out.insert(member_key, component_key.to_string());
+            }
+        }
+    }
+    out
+}
+
+fn admission_hashes(evidence: Option<&StoredArtifact>) -> BTreeMap<String, String> {
+    evidence
+        .and_then(|artifact| artifact.value.get("admissions"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|admission| {
+            let observation_id = admission.get("observation_id").and_then(Value::as_str)?;
+            let bytes = serde_json::to_vec(admission).ok()?;
+            Some((observation_id.to_string(), digest_bytes(&bytes)))
+        })
+        .collect()
+}
+
+fn admission_by_id<'a>(
+    evidence: Option<&'a StoredArtifact>,
+    observation_id: &str,
+) -> Option<&'a Value> {
+    evidence
+        .and_then(|artifact| artifact.value.get("admissions"))
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|admission| {
+            admission
+                .get("observation_id")
+                .and_then(Value::as_str)
+                .is_some_and(|candidate| candidate == observation_id)
+        })
+}
+
+fn admission_components(
+    admission: &Value,
+    component_members: &BTreeMap<String, String>,
+) -> Vec<String> {
+    admission_member_keys(admission)
+        .into_iter()
+        .filter_map(|member| component_members.get(&member).cloned())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn admission_member_keys(admission: &Value) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let Some(observation) = admission.get("observation") else {
+        return out;
+    };
+    match observation.get("kind").and_then(Value::as_str) {
+        Some("exact_sets") => {
+            if let Some(level) = observation.get("level").and_then(Value::as_str) {
+                for member in observation
+                    .get("sets")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .flat_map(|set| set.as_array().into_iter().flatten())
+                    .filter_map(Value::as_str)
+                {
+                    out.insert(format!("{level}:{member}"));
+                }
+            }
+        }
+        Some("existential_membership") => {
+            for member in observation
+                .get("members")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                if let Some(member_key) = entity_ref_key(member) {
+                    out.insert(member_key);
+                }
+            }
+        }
+        Some("integer_sum_band") => {
+            if let Some(level) = observation.get("level").and_then(Value::as_str) {
+                for member in observation
+                    .get("values")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|value| value.get("id").and_then(Value::as_str))
+                {
+                    out.insert(format!("{level}:{member}"));
+                }
+            }
+        }
+        Some("prefer_member") => {
+            if let Some(member) = observation.get("member").and_then(entity_ref_key) {
+                out.insert(member);
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+fn entity_ref_key(value: &Value) -> Option<String> {
+    let level = value.get("level").and_then(Value::as_str)?;
+    let id = value.get("id").and_then(Value::as_str)?;
+    Some(format!("{level}:{id}"))
+}
+
+fn union_sorted<I, J>(left: I, right: J) -> Vec<String>
+where
+    I: IntoIterator<Item = String>,
+    J: IntoIterator<Item = String>,
+{
+    left.into_iter()
+        .chain(right)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 pub fn validate_inspection_artifact(inspection: &GeoInspection) -> Result<(), GeoInspectError> {
