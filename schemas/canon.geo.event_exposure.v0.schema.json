@@ -1,0 +1,293 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.event_exposure.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "proof_class",
+    "advisory",
+    "ledger_blake3",
+    "exposed",
+    "not_exposed",
+    "buildings_without_geometry",
+    "holes_ignored",
+    "per_accession"
+  ],
+  "properties": {
+    "version": {
+      "const": "canon_geo_event_exposure.v0"
+    },
+    "proof_class": {
+      "$ref": "#/$defs/proof_class"
+    },
+    "advisory": {
+      "$ref": "#/$defs/advisory_pin"
+    },
+    "ledger_blake3": {
+      "$ref": "#/$defs/blake3_uri"
+    },
+    "exposed": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/exposed_building"
+      }
+    },
+    "not_exposed": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/unexposed_building"
+      }
+    },
+    "buildings_without_geometry": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "holes_ignored": {
+      "type": "boolean"
+    },
+    "per_accession": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/accession_summary"
+      }
+    }
+  },
+  "$defs": {
+    "proof_class": {
+      "type": "string",
+      "enum": ["fixture", "retained_artifact", "observed_warehouse_snapshot"]
+    },
+    "claim_class": {
+      "type": "string",
+      "enum": [
+        "candidate_reach",
+        "stable_identity",
+        "collateral_composition",
+        "temporal_occupancy",
+        "lifecycle_state",
+        "attribute_band"
+      ]
+    },
+    "blake3_uri": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "valid_time_interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start_day", "end_day"],
+      "properties": {
+        "start_day": {
+          "type": "integer"
+        },
+        "end_day": {
+          "type": "integer"
+        }
+      }
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": {
+          "type": "integer"
+        },
+        "y": {
+          "type": "integer"
+        }
+      }
+    },
+    "ring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vertices"],
+      "properties": {
+        "vertices": {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "$ref": "#/$defs/point"
+          }
+        }
+      }
+    },
+    "polygon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exterior"],
+      "properties": {
+        "exterior": {
+          "$ref": "#/$defs/ring"
+        },
+        "holes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ring"
+          }
+        }
+      }
+    },
+    "wind_radius": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["knots", "ring"],
+      "properties": {
+        "knots": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ring": {
+          "$ref": "#/$defs/polygon"
+        }
+      }
+    },
+    "advisory_pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "advisory_id",
+        "storm_id",
+        "advisory_number",
+        "issued",
+        "source_blake3s",
+        "frame_id",
+        "wind_radii"
+      ],
+      "properties": {
+        "advisory_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storm_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "advisory_number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "issued": {
+          "$ref": "#/$defs/valid_time_interval"
+        },
+        "source_blake3s": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/blake3_uri"
+          }
+        },
+        "frame_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "wind_radii": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/wind_radius"
+          }
+        }
+      }
+    },
+    "exposed_building": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accession",
+        "loan_id",
+        "building_id",
+        "knots_band",
+        "backbone_member",
+        "claim_class"
+      ],
+      "properties": {
+        "accession": {
+          "type": "string",
+          "minLength": 1
+        },
+        "loan_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "building_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "knots_band": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "backbone_member": {
+          "type": "boolean"
+        },
+        "claim_class": {
+          "$ref": "#/$defs/claim_class"
+        }
+      }
+    },
+    "unexposed_building": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accession",
+        "loan_id",
+        "building_id",
+        "backbone_member",
+        "claim_class"
+      ],
+      "properties": {
+        "accession": {
+          "type": "string",
+          "minLength": 1
+        },
+        "loan_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "building_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "backbone_member": {
+          "type": "boolean"
+        },
+        "claim_class": {
+          "$ref": "#/$defs/claim_class"
+        }
+      }
+    },
+    "accession_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accession",
+        "loans_exposed",
+        "buildings_exposed",
+        "max_knots_band"
+      ],
+      "properties": {
+        "accession": {
+          "type": "string",
+          "minLength": 1
+        },
+        "loans_exposed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "buildings_exposed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_knots_band": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "advisory_id": "fixture.nhc.synthetic.al012026.adv12",
+  "storm_id": "fixture.nhc.synthetic.al012026",
+  "advisory_number": 12,
+  "issued": {
+    "start_day": 20705,
+    "end_day": 20705
+  },
+  "source_blake3s": [
+    "blake3:2f3ab8c0d13e4b579c4a6d8091e2f3a4b5c6d7e8f90123456789abcdeffedcba"
+  ],
+  "frame_id": "fixture.case4.frame",
+  "wind_radii": [
+    {
+      "knots": 34,
+      "ring": {
+        "exterior": {
+          "vertices": [
+            { "x": 0, "y": 0 },
+            { "x": 60000, "y": 0 },
+            { "x": 60000, "y": 30000 },
+            { "x": 0, "y": 30000 }
+          ]
+        },
+        "holes": []
+      }
+    },
+    {
+      "knots": 50,
+      "ring": {
+        "exterior": {
+          "vertices": [
+            { "x": 5000, "y": 5000 },
+            { "x": 35000, "y": 5000 },
+            { "x": 35000, "y": 15000 },
+            { "x": 5000, "y": 15000 }
+          ]
+        },
+        "holes": []
+      }
+    },
+    {
+      "knots": 64,
+      "ring": {
+        "exterior": {
+          "vertices": [
+            { "x": 5000, "y": 5000 },
+            { "x": 15000, "y": 5000 },
+            { "x": 15000, "y": 15000 },
+            { "x": 5000, "y": 15000 }
+          ]
+        },
+        "holes": []
+      }
+    }
+  ]
+}
