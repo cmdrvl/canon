@@ -12,27 +12,29 @@ use canon::geo::{
     GEO_RETRY_RECEIPT_BINDING_ID, GEO_RETRY_RUN_BINDING_ID, GEO_ROWS_BINDING_ID,
     GeoAcquisitionCounts, GeoAcquisitionDenominator, GeoAcquisitionProofClass,
     GeoAcquisitionReceipt, GeoAcquisitionResumability, GeoAcquisitionTerminalState,
-    GeoBoundedGeography, GeoBoundedSubset, GeoClaimClass, GeoControlEntityLevel,
-    GeoDeedIndexRowsRequest, GeoDeedTruthLoanRef, GeoDenominatorSource, GeoDigest,
-    GeoDigestAlgorithm, GeoEntityLevel, GeoEvidenceClass, GeoExecutorKind, GeoExecutorTrace,
-    GeoFieldRole, GeoH7PipBlockPopulationBatchRequest, GeoH7PopulationRowsRequest,
-    GeoH7StagingSourceRecordBytesBatchRequest, GeoHomeCellRow, GeoHomeCellRowsRequest,
-    GeoIdentityParticipation, GeoLocalArtifactDigest, GeoNativeEntityScope, GeoNullOrdering,
-    GeoOrderDirection, GeoOrderingTerm, GeoPaginationReceipt, GeoPaginationRequest, GeoPlan,
-    GeoPlanArtifactRef, GeoPlanBudgetRef, GeoPlanClaimEffect, GeoPlanGrainOutcome,
-    GeoPlanGrainStatus, GeoPlanInventoryRef, GeoPlanNodeOverlay, GeoPlanProfileRef, GeoPlanStage,
-    GeoPlanStatus, GeoPlanTransitionSet, GeoPointPopulationArtifact, GeoPointPopulationPoint,
-    GeoReleasePin, GeoRequestedField, GeoRetryLoopArtifact, GeoRetryPolicy, GeoRetryTerminal,
-    GeoRowByteCeilings, GeoRun, GeoRunArtifactBinding, GeoRunStatus, GeoSourceRelease,
-    GeoSubsetPredicate, GeoSubsetPredicateKind, GeoTileSourceBinding, canonical_deed_truth_bytes,
-    canonical_geo_acquisition_request_bytes, canonical_geo_run_bytes,
+    GeoAdjudicationLabel, GeoAdjudicationRetainedLabelRow, GeoBoundedGeography, GeoBoundedSubset,
+    GeoClaimClass, GeoControlEntityLevel, GeoDeedIndexRowsRequest, GeoDeedTruthLoanRef,
+    GeoDenominatorSource, GeoDigest, GeoDigestAlgorithm, GeoEntityLevel, GeoEvidenceClass,
+    GeoExecutorKind, GeoExecutorTrace, GeoFieldRole, GeoH7PipBlockPopulationBatchRequest,
+    GeoH7PopulationRowsRequest, GeoH7StagingSourceRecordBytesBatchRequest, GeoHomeCellRow,
+    GeoHomeCellRowsRequest, GeoIdentityParticipation, GeoImageTilePin, GeoLocalArtifactDigest,
+    GeoNativeEntityScope, GeoNullOrdering, GeoOrderDirection, GeoOrderingTerm,
+    GeoPaginationReceipt, GeoPaginationRequest, GeoPlan, GeoPlanArtifactRef, GeoPlanBudgetRef,
+    GeoPlanClaimEffect, GeoPlanGrainOutcome, GeoPlanGrainStatus, GeoPlanInventoryRef,
+    GeoPlanNodeOverlay, GeoPlanProfileRef, GeoPlanStage, GeoPlanStatus, GeoPlanTransitionSet,
+    GeoPointPopulationArtifact, GeoPointPopulationPoint, GeoReleasePin, GeoRequestedField,
+    GeoRetryLoopArtifact, GeoRetryPolicy, GeoRetryTerminal, GeoRowByteCeilings, GeoRun,
+    GeoRunArtifactBinding, GeoRunStatus, GeoSourceRelease, GeoSubsetPredicate,
+    GeoSubsetPredicateKind, GeoTileSourceBinding, GeoTruthPlane, GeoValidTimeInterval,
+    canonical_deed_truth_bytes, canonical_geo_acquisition_request_bytes, canonical_geo_run_bytes,
     canonical_h7_population_bytes, canonical_retry_loop_bytes, canonical_retry_recovery_bytes,
     derive_deed_truth_from_index, geo_acquisition_request_id,
     geo_acquisition_request_semantic_hash, geo_plan_semantic_hash,
     materialize_h7_pip_block_population_batch, materialize_h7_population_rows,
-    materialize_h7_staging_source_record_bytes_batch, measure_recovery, run_geo_plan,
-    validate_geo_acquisition_receipt, validate_geo_acquisition_request, validate_geo_plan,
-    validate_geo_run, validate_point_population_artifact, validate_retry_loop_artifact,
+    materialize_h7_staging_source_record_bytes_batch, measure_recovery,
+    revalidate_adjudication_labels, run_geo_plan, validate_geo_acquisition_receipt,
+    validate_geo_acquisition_request, validate_geo_plan, validate_geo_run,
+    validate_point_population_artifact, validate_retry_loop_artifact,
 };
 use canon::project::{
     ProjectExtensionDagNode, ProjectExtensionDagOutput, ProjectExtensionDagRequest,
@@ -62,6 +64,8 @@ const REPORT_VERSION: &str = "canon_geo_measurement_report.v0";
 const RECEIPTS_VERSION: &str = "canon_geo_measurement_receipts.v0";
 const RESULT_ARTIFACT_VERSION: &str = "canon_geo_measurement_result_artifact.v0";
 const RESULT_SET_VERSION: &str = "canon_geo_measurement_result_set.v0";
+const D0_ADJUDICATION_LABELS_VERSION: &str = "canon_geo_d0_adjudication_labels.v0";
+const D0_ADJUDICATION_PINS_VERSION: &str = "canon_geo_d0_adjudication_pins.v0";
 const EXECUTION_CHANNEL: &str = "cmdrvl_data_mcp";
 const EXECUTION_TRANSFORM: &str = "cmdrvl_data_sqlglot_normalized_plus_tool_row_limit";
 const LIVENESS_NOT_ATTESTED: &str = "receipt is internally consistent, but this offline runner does not attest liveness, authenticity, or query-history provenance";
@@ -113,6 +117,8 @@ enum EmitMode {
 enum MeasurementCommand {
     #[command(name = "derive-deed-truth")]
     DeedTruth(DeedTruthArgs),
+    #[command(name = "revalidate-d0-adjudication")]
+    RevalidateD0Adjudication(Box<RevalidateD0AdjudicationArgs>),
     #[command(name = "materialize-acquisition-receipt")]
     AcquisitionReceipt(Box<AcquisitionReceiptArgs>),
     #[command(name = "prepare-retry-recovery")]
@@ -142,6 +148,66 @@ struct DeedTruthArgs {
     /// Inclusive recording-date window in days after origination
     #[arg(long)]
     window_days: u32,
+}
+
+#[derive(Debug, ClapArgs)]
+struct RevalidateD0AdjudicationArgs {
+    /// Retained canon_geo_d0_adjudication_labels.v0 JSON file
+    #[arg(long = "d0-labels", alias = "labels")]
+    labels: PathBuf,
+    /// Retained canon_geo_d0_adjudication_pins.v0 JSON file
+    #[arg(long = "d0-pins", alias = "pins")]
+    pins: PathBuf,
+    /// Directory containing retained crop bytes named <case_id>.bin
+    #[arg(long)]
+    crop_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Deserialize)]
+struct D0AdjudicationLabelsFile {
+    version: String,
+    labels: Vec<D0AdjudicationLabelRow>,
+}
+
+#[derive(Debug, Deserialize)]
+struct D0AdjudicationLabelRow {
+    case_id: String,
+    subject_id: String,
+    pin_id: String,
+    window_blake3: String,
+    candidate_parcel_ids: Vec<String>,
+    overlay_geometry_blake3: String,
+    crop_blake3: String,
+    label: D0AdjudicationLabel,
+    adjudicator_id: String,
+    truth_plane: GeoTruthPlane,
+    notes_blake3: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum D0AdjudicationLabel {
+    Selected { selected_parcels: Vec<String> },
+    Disposition(String),
+}
+
+#[derive(Debug, Deserialize)]
+struct D0AdjudicationPinsFile {
+    version: String,
+    pins: Vec<D0AdjudicationPin>,
+}
+
+#[derive(Debug, Deserialize)]
+struct D0AdjudicationPin {
+    pin_id: String,
+    source_dataset: String,
+    url: String,
+    byte_range: Option<(u64, u64)>,
+    etag: Option<String>,
+    blake3: Option<String>,
+    vintage: String,
+    license_id: String,
+    license_text_blake3: String,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -690,6 +756,9 @@ fn run_measurement_command(command: MeasurementCommand) -> Result<ExitCode, AppE
             })?;
             write_canonical(&bytes)?;
         }
+        MeasurementCommand::RevalidateD0Adjudication(args) => {
+            return revalidate_d0_adjudication(*args);
+        }
         MeasurementCommand::AcquisitionReceipt(args) => {
             let receipt = materialize_acquisition_receipt(*args)?;
             print_json(&receipt)?;
@@ -781,6 +850,185 @@ fn run_measurement_command(command: MeasurementCommand) -> Result<ExitCode, AppE
         }
     }
     Ok(ExitCode::SUCCESS)
+}
+
+fn revalidate_d0_adjudication(args: RevalidateD0AdjudicationArgs) -> Result<ExitCode, AppError> {
+    let labels_file: D0AdjudicationLabelsFile = load_unversioned_json(
+        &args.labels,
+        "D0 adjudication labels",
+        "canon_geo_measurements revalidate-d0-adjudication --d0-labels <LABELS.json>",
+    )?;
+    if labels_file.version != D0_ADJUDICATION_LABELS_VERSION {
+        return Err(AppError::new(format!(
+            "unsupported D0 adjudication labels version {}; expected {D0_ADJUDICATION_LABELS_VERSION}",
+            labels_file.version
+        )));
+    }
+    let pins_file: D0AdjudicationPinsFile = load_unversioned_json(
+        &args.pins,
+        "D0 adjudication pins",
+        "canon_geo_measurements revalidate-d0-adjudication --d0-pins <PINS.json>",
+    )?;
+    if pins_file.version != D0_ADJUDICATION_PINS_VERSION {
+        return Err(AppError::new(format!(
+            "unsupported D0 adjudication pins version {}; expected {D0_ADJUDICATION_PINS_VERSION}",
+            pins_file.version
+        )));
+    }
+
+    let labels = labels_file
+        .labels
+        .into_iter()
+        .map(d0_retained_label_row)
+        .collect::<Result<Vec<_>, _>>()?;
+    let pins = d0_typed_tile_pins_by_id(pins_file.pins)?;
+    let crop_bytes = d0_crop_bytes_by_case_id(args.crop_dir.as_deref(), &labels)?;
+    let report = revalidate_adjudication_labels(&labels, &pins, &crop_bytes)
+        .map_err(|error| AppError::new(error.to_string()))?;
+    let has_invalid = !report.d0_labels_invalid.is_empty();
+    print_json(&report)?;
+    Ok(if has_invalid {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
+    })
+}
+
+fn d0_retained_label_row(
+    row: D0AdjudicationLabelRow,
+) -> Result<GeoAdjudicationRetainedLabelRow, AppError> {
+    Ok(GeoAdjudicationRetainedLabelRow {
+        case_id: row.case_id,
+        subject_id: row.subject_id,
+        pin_id: row.pin_id,
+        window_blake3: row.window_blake3,
+        candidate_parcel_ids: row.candidate_parcel_ids,
+        overlay_geometry_blake3: row.overlay_geometry_blake3,
+        crop_blake3: row.crop_blake3,
+        label: d0_adjudication_label(row.label)?,
+        adjudicator_id: row.adjudicator_id,
+        truth_plane: row.truth_plane,
+        notes_blake3: row.notes_blake3,
+    })
+}
+
+fn d0_adjudication_label(label: D0AdjudicationLabel) -> Result<GeoAdjudicationLabel, AppError> {
+    match label {
+        D0AdjudicationLabel::Selected { selected_parcels } => {
+            Ok(GeoAdjudicationLabel::SelectedParcels(selected_parcels))
+        }
+        D0AdjudicationLabel::Disposition(disposition) if disposition == "none_visible" => {
+            Ok(GeoAdjudicationLabel::NoneVisible)
+        }
+        D0AdjudicationLabel::Disposition(disposition) if disposition == "unresolvable" => {
+            Ok(GeoAdjudicationLabel::Unresolvable)
+        }
+        D0AdjudicationLabel::Disposition(disposition) => Err(AppError::new(format!(
+            "unsupported D0 adjudication label disposition {disposition}"
+        ))),
+    }
+}
+
+fn d0_typed_tile_pins_by_id(
+    pins: Vec<D0AdjudicationPin>,
+) -> Result<BTreeMap<String, GeoImageTilePin>, AppError> {
+    let mut by_id = BTreeMap::new();
+    for pin in pins {
+        let Some(blake3) = pin.blake3 else {
+            continue;
+        };
+        let vintage = d0_vintage_interval(&pin.vintage)?;
+        let pin_id = pin.pin_id;
+        if by_id
+            .insert(
+                pin_id.clone(),
+                GeoImageTilePin {
+                    url: pin.url,
+                    byte_range: pin.byte_range,
+                    etag: pin.etag,
+                    blake3,
+                    vintage,
+                    license_id: pin.license_id,
+                    license_text_blake3: pin.license_text_blake3,
+                    source_dataset: pin.source_dataset,
+                },
+            )
+            .is_some()
+        {
+            return Err(AppError::new(format!(
+                "duplicate typed D0 adjudication pin_id {pin_id}"
+            )));
+        }
+    }
+    Ok(by_id)
+}
+
+fn d0_crop_bytes_by_case_id(
+    crop_dir: Option<&Path>,
+    labels: &[GeoAdjudicationRetainedLabelRow],
+) -> Result<BTreeMap<String, Vec<u8>>, AppError> {
+    let Some(crop_dir) = crop_dir else {
+        return Ok(BTreeMap::new());
+    };
+    let mut bytes_by_case = BTreeMap::new();
+    for row in labels {
+        let file_name = d0_crop_file_name(&row.case_id)?;
+        let path = crop_dir.join(file_name);
+        if !path.exists() {
+            continue;
+        }
+        if bytes_by_case
+            .insert(
+                row.case_id.clone(),
+                read_file(&path, "D0 adjudication crop bytes")?,
+            )
+            .is_some()
+        {
+            return Err(AppError::new(format!(
+                "duplicate D0 adjudication crop case_id {}",
+                row.case_id
+            )));
+        }
+    }
+    Ok(bytes_by_case)
+}
+
+fn d0_crop_file_name(case_id: &str) -> Result<String, AppError> {
+    if case_id.is_empty()
+        || !case_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    {
+        return Err(AppError::new(format!(
+            "D0 adjudication case_id cannot name a crop file safely: {case_id}"
+        )));
+    }
+    Ok(format!("{case_id}.bin"))
+}
+
+fn d0_vintage_interval(vintage: &str) -> Result<GeoValidTimeInterval, AppError> {
+    if vintage.len() != 4 || !vintage.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(AppError::new(format!(
+            "D0 adjudication pin vintage must be a YYYY year, got {vintage}"
+        )));
+    }
+    let year = vintage
+        .parse::<i32>()
+        .map_err(|error| AppError::new(format!("invalid D0 adjudication vintage: {error}")))?;
+    Ok(GeoValidTimeInterval {
+        start_day: epoch_day(year, 1, 1)?,
+        end_day: epoch_day(year, 12, 31)?,
+    })
+}
+
+fn epoch_day(year: i32, month: u32, day: u32) -> Result<i64, AppError> {
+    let date = NaiveDate::from_ymd_opt(year, month, day).ok_or_else(|| {
+        AppError::new(format!(
+            "invalid D0 adjudication vintage date {year:04}-{month:02}-{day:02}"
+        ))
+    })?;
+    let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).expect("Unix epoch date is valid");
+    Ok(date.signed_duration_since(epoch).num_days())
 }
 
 fn materialize_acquisition_receipt(

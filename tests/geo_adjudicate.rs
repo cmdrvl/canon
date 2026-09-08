@@ -9,7 +9,12 @@ use canon::geo::{
     validate_adjudication_request_artifact,
 };
 use serde::Deserialize;
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    process::Command,
+};
+use tempfile::tempdir;
 
 const CROP_BYTES: &[u8] = b"retained adjudication crop bytes";
 const D0_LABELS_JSON: &str =
@@ -283,6 +288,116 @@ fn t22_d0_retained_fixture_is_not_promoted_without_typed_pins_and_crop_bytes() {
             .filter(|invalid| invalid.reason == GeoAdjudicationInvalidLabelReason::MissingCropBytes)
             .count(),
         2
+    );
+}
+
+#[test]
+fn t22_measurement_binary_revalidates_d0_rows_from_retained_bytes() {
+    let temp = tempdir().expect("tempdir");
+    let labels_path = temp.path().join("labels.json");
+    let pins_path = temp.path().join("pins.json");
+    let crop_dir = temp.path().join("crops");
+    fs::create_dir_all(&crop_dir).expect("crop dir");
+
+    let crop_bytes = b"fixture crop bytes";
+    let crop_blake3 = blake3::hash(crop_bytes).to_hex().to_string();
+    let tile_blake3 = blake3::hash(b"fixture tile bytes").to_hex().to_string();
+    let window_blake3 = blake3::hash(b"fixture window").to_hex().to_string();
+    let overlay_blake3 = blake3::hash(b"fixture overlay").to_hex().to_string();
+    fs::write(crop_dir.join("case.alpha.bin"), crop_bytes).expect("crop bytes");
+    fs::write(
+        &labels_path,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "version": "canon_geo_d0_adjudication_labels.v0",
+            "labels": [{
+                "case_id": "case.alpha",
+                "subject_id": "subject.alpha",
+                "pin_id": "pin.alpha",
+                "window_blake3": window_blake3,
+                "candidate_parcel_ids": ["1004540041", "1004540042"],
+                "overlay_geometry_blake3": overlay_blake3,
+                "crop_blake3": crop_blake3,
+                "label": {
+                    "selected_parcels": ["1004540041"]
+                },
+                "adjudicator_id": "adjudicator:reviewer-1",
+                "truth_plane": "human_adjudication",
+                "notes_blake3": null
+            }]
+        }))
+        .expect("labels serialize"),
+    )
+    .expect("labels file");
+    fs::write(
+        &pins_path,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "version": "canon_geo_d0_adjudication_pins.v0",
+            "pins": [{
+                "pin_id": "pin.alpha",
+                "source_dataset": "fixture.ortho",
+                "url": "https://example.test/ortho/tile.bin",
+                "byte_range": [0, 18],
+                "etag": "fixture-etag",
+                "blake3": tile_blake3,
+                "vintage": "2024",
+                "license_id": "cc_by_4_0",
+                "license_text_blake3": blake3::hash(b"license text").to_hex().to_string()
+            }]
+        }))
+        .expect("pins serialize"),
+    )
+    .expect("pins file");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_canon_geo_measurements"))
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .arg("revalidate-d0-adjudication")
+        .arg("--d0-labels")
+        .arg(&labels_path)
+        .arg("--d0-pins")
+        .arg(&pins_path)
+        .arg("--crop-dir")
+        .arg(&crop_dir)
+        .output()
+        .expect("run revalidate-d0-adjudication");
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout report parses");
+    assert_eq!(report["labels_in"], 1);
+    assert_eq!(report["receipts_out"], 1);
+    assert_eq!(report["labels_unchanged"], true);
+    assert_eq!(
+        report["receipts"][0]["label"]["kind"],
+        serde_json::Value::String("selected_parcels".to_string())
+    );
+}
+
+#[test]
+fn t22_measurement_binary_reports_current_d0_fixture_gaps_without_live_claim() {
+    let output = Command::new(env!("CARGO_BIN_EXE_canon_geo_measurements"))
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .arg("revalidate-d0-adjudication")
+        .arg("--d0-labels")
+        .arg("scripts/geo_measurements/fixtures/d0_adjudication/labels.json")
+        .arg("--d0-pins")
+        .arg("scripts/geo_measurements/fixtures/d0_adjudication/pins.json")
+        .output()
+        .expect("run revalidate-d0-adjudication on retained D0 fixture");
+    assert_eq!(output.status.code(), Some(1));
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout report parses");
+    assert_eq!(report["labels_in"], 6);
+    assert_eq!(report["receipts_out"], 0);
+    assert_eq!(report["labels_unchanged"], true);
+    assert_eq!(
+        report["d0_labels_invalid"]
+            .as_array()
+            .expect("invalid rows")
+            .len(),
+        6
     );
 }
 
