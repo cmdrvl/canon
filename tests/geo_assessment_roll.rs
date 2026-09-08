@@ -9,8 +9,8 @@ use canon::geo::assessment_roll::{
     GeoAssessmentRollOwnerProofClass, GeoAssessmentRollOwnerRequest,
     GeoAssessmentRollPartyFamilyRelationRow, GeoAssessmentRollPartyRow,
     assessment_roll_owner_match, assessment_roll_owner_match_with_family_relations,
-    build_assessment_roll_owner_family_overlay, normalize_assessment_roll_owner_name,
-    produce_assessment_roll_owner_evidence,
+    build_assessment_roll_owner_family_overlay, derive_assessment_roll_party_family_relations,
+    normalize_assessment_roll_owner_name, produce_assessment_roll_owner_evidence,
 };
 use canon::geo::{
     GeoEvidenceCompilationRequest, GeoEvidenceDisposition, GeoEvidenceRecordRef,
@@ -504,6 +504,73 @@ fn party_family_relation_identifies_recoverable_owner_falsification_variants() {
 }
 
 #[test]
+fn party_family_relations_derive_from_configured_document_parties() {
+    let document_id = "2024041000706002";
+    let party_rows = retained_manhattan_owner_party_rows();
+    let mut derivation_rows = party_rows.clone();
+    derivation_rows.push(acris_party_row(
+        document_id,
+        "2",
+        "CITI REAL ESTATE FUNDING INC.",
+        44523888,
+        "79a9ae7c38c784da26d7131bb3564eed114e5ff79f8a32be89c913685cd0b164",
+    ));
+    derivation_rows.push(acris_party_row(
+        "2026040100000001",
+        "1",
+        "SOLO BORROWER LLC",
+        1,
+        "0000000000000000000000000000000000000000000000000000000000000001",
+    ));
+
+    let relations = derive_assessment_roll_party_family_relations(
+        &derivation_rows,
+        &["1".to_string()],
+        "fixture:acris_party_family",
+    )
+    .expect("same-document party relation derives");
+
+    assert_eq!(relations.len(), 1);
+    let relation = &relations[0];
+    assert_eq!(relation.document_id, document_id);
+    assert_eq!(
+        relation.family_id,
+        format!("party-family:{document_id}:1:2026-08-10")
+    );
+    assert_eq!(
+        relation.source_record_id,
+        format!("fixture:acris_party_family:{document_id}:1:2026-08-10")
+    );
+    let expected_members = [
+        "574 MANHATTAN AVE OWNER, LLC",
+        "591 MANHATTAN AVE OWNER LLC",
+        "592 MANHATTAN AVE OWNER, LLC",
+        "593 MANHATTAN AVE OWNER, LLC",
+        "595 MANHATTAN AVE OWNER, LLC",
+        "602 MANHATTAN AVE OWNER, LLC",
+        "872 LORIMER ST OWNER LLC",
+    ]
+    .into_iter()
+    .map(normalize_assessment_roll_owner_name)
+    .collect::<Vec<_>>();
+    assert_eq!(relation.member_name_norms, expected_members);
+    assert!(
+        !relation
+            .member_name_norms
+            .contains(&"CITI REAL ESTATE FUNDING INC".to_string()),
+        "configured party roles, not all ACRIS rows, define the owner family"
+    );
+
+    let lender_relations = derive_assessment_roll_party_family_relations(
+        &derivation_rows,
+        &["2".to_string()],
+        "fixture:acris_party_family",
+    )
+    .expect("single lender row is valid but not a family");
+    assert!(lender_relations.is_empty());
+}
+
+#[test]
 fn party_family_overlay_hard_admits_when_relation_supports_two_members() {
     let population = GeoPopulationEvaluationRequest {
         version: canon::geo::CANON_GEO_POPULATION_REQUEST_VERSION.to_string(),
@@ -633,6 +700,119 @@ fn party_family_overlay_hard_admits_when_relation_supports_two_members() {
     assert!(family_admission.admission_reason.is_none());
     assert_eq!(compilation.composition_request.hard_constraints.len(), 1);
     assert!(compilation.composition_request.soft_preferences.is_empty());
+}
+
+#[test]
+fn derived_party_family_overlay_supports_retained_multi_owner_truth_lots() {
+    let document_id = "2024041000706002";
+    let truth_parcels = vec![
+        "3026790021".to_string(),
+        "3026790022".to_string(),
+        "3026790023".to_string(),
+        "3026790054".to_string(),
+        "3026800037".to_string(),
+        "3026800043".to_string(),
+        "3026800046".to_string(),
+    ];
+    let population = GeoPopulationEvaluationRequest {
+        version: canon::geo::CANON_GEO_POPULATION_REQUEST_VERSION.to_string(),
+        max_cases: 1,
+        cases: vec![canon::geo::GeoLabeledCompositionCase {
+            id: "case-retained-manhattan-owner-family".to_string(),
+            evidence: GeoEvidenceCompilationRequest {
+                version: canon::geo::CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+                profile: canon::geo::GeoCompositionProfile::parcel(),
+                universe: canon::geo::GeoCompositionUniverse {
+                    parcels: truth_parcels.clone(),
+                    buildings: Vec::new(),
+                },
+                contracts: Vec::new(),
+                observations: Vec::new(),
+                max_assignments: 64,
+                max_materialized_models: 64,
+            },
+            truth_plane: canon::geo::GeoTruthPlane::HumanAdjudication,
+            truth: canon::geo::GeoCompositionModel {
+                parcels: truth_parcels.clone(),
+                buildings: Vec::new(),
+            },
+        }],
+    };
+    let mut calibration = calibration_from_fixture_contracts(
+        &fixture_contract(GEO_ASSESSMENT_ROLL_OWNER_EXACT_CONTRACT_ID),
+        &fixture_contract(GEO_ASSESSMENT_ROLL_OWNER_AFFILIATE_CONTRACT_ID),
+    );
+    calibration.exact_admission_policy =
+        GeoRhoAdmissionPolicy::HardOnlyWhenSupportedMembersAtLeast {
+            minimum_supported_members: 2,
+            fallback: GeoRhoAdmissionFallback::SoftWithWeight { cost_if_absent: 1 },
+        };
+    let party_rows = retained_manhattan_owner_party_rows();
+    let family_relations = derive_assessment_roll_party_family_relations(
+        &party_rows,
+        &["1".to_string()],
+        "fixture:acris_party_family",
+    )
+    .expect("retained ACRIS type-1 party rows derive a family relation");
+    let request = GeoAssessmentRollOwnerRequest {
+        version: CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION.to_string(),
+        proof_class: GeoAssessmentRollOwnerProofClass::Fixture,
+        population,
+        case_documents: vec![GeoAssessmentRollCaseDocument {
+            case_id: "case-retained-manhattan-owner-family".to_string(),
+            document_id: document_id.to_string(),
+        }],
+        contract_source: contract_source(),
+        calibration,
+        roll_rows: retained_manhattan_owner_roll_rows(),
+        party_rows,
+        max_cases: 1,
+        max_roll_rows: truth_parcels.len(),
+        max_party_rows: 7,
+        max_overlay_observations: 4,
+    };
+
+    let family_overlay = build_assessment_roll_owner_family_overlay(&request, &family_relations)
+        .expect("derived party-family overlay builds");
+    assert_eq!(family_overlay.case_overlays.len(), 1);
+    let overlay = &family_overlay.case_overlays[0];
+    assert_eq!(
+        overlay.observations[0].contract_id,
+        GEO_ASSESSMENT_ROLL_OWNER_FAMILY_CONTRACT_ID
+    );
+    assert!(
+        overlay.observations[0]
+            .source_records
+            .iter()
+            .any(|record| record
+                .source_record_id
+                .starts_with("fixture:acris_party_family:2024041000706002")),
+        "family observation must cite the derived family relation record"
+    );
+    let GeoRhoObservationKind::IntegerSumBand { values, .. } = &overlay.observations[0].observation
+    else {
+        panic!("family observation must be an integer sum band");
+    };
+    let supported = values
+        .iter()
+        .filter(|value| value.value == 0)
+        .map(|value| value.id.clone())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(supported, truth_parcels.into_iter().collect());
+
+    let stacked = stack_population_evidence(&request.population, &family_overlay)
+        .expect("derived family overlay stacks");
+    let compilation = canon::geo::compile_evidence(&stacked.population.cases[0].evidence)
+        .expect("derived family overlay compiles");
+    let family_admission = compilation
+        .admissions
+        .iter()
+        .find(|admission| admission.contract.id == GEO_ASSESSMENT_ROLL_OWNER_FAMILY_CONTRACT_ID)
+        .expect("family admission");
+    assert_eq!(
+        family_admission.disposition,
+        GeoEvidenceDisposition::HardConstraint
+    );
 }
 
 fn assessment_roll_owner_fixture_request(
@@ -826,6 +1006,105 @@ fn party_family_relation(
             family_id.replace(':', "_")
         ),
         source_vintage: "retained-2026-09-08".to_string(),
+    }
+}
+
+fn retained_manhattan_owner_party_rows() -> Vec<GeoAssessmentRollPartyRow> {
+    let document_id = "2024041000706002";
+    let source_hash = "79a9ae7c38c784da26d7131bb3564eed114e5ff79f8a32be89c913685cd0b164";
+    vec![
+        acris_party_row(
+            document_id,
+            "1",
+            "574 MANHATTAN AVE OWNER, LLC",
+            44565176,
+            source_hash,
+        ),
+        acris_party_row(
+            document_id,
+            "1",
+            "591 MANHATTAN AVE OWNER LLC",
+            44573802,
+            source_hash,
+        ),
+        acris_party_row(
+            document_id,
+            "1",
+            "592 MANHATTAN AVE OWNER, LLC",
+            44550596,
+            source_hash,
+        ),
+        acris_party_row(
+            document_id,
+            "1",
+            "593 MANHATTAN AVE OWNER, LLC",
+            44521437,
+            source_hash,
+        ),
+        acris_party_row(
+            document_id,
+            "1",
+            "595 MANHATTAN AVE OWNER, LLC",
+            44559763,
+            source_hash,
+        ),
+        acris_party_row(
+            document_id,
+            "1",
+            "602 MANHATTAN AVE OWNER, LLC",
+            44560221,
+            source_hash,
+        ),
+        acris_party_row(
+            document_id,
+            "1",
+            "872 LORIMER ST OWNER LLC",
+            44522200,
+            source_hash,
+        ),
+    ]
+}
+
+fn retained_manhattan_owner_roll_rows() -> Vec<GeoAssessmentRollLotRow> {
+    [
+        ("3026790021", "595 MANHATTAN AVE OWNER, LLC", "2160", "3"),
+        ("3026790022", "593 MANHATTAN AVE OWNER, LLC", "2926", "3"),
+        ("3026790023", "591 MANHATTAN AVE OWNER, LLC", "2926", "3"),
+        ("3026790054", "872 LORIMER ST OWNER, LLC", "4125", "6"),
+        ("3026800037", "574 MANHATTAN AVE OWNER, LLC", "6636", "10"),
+        ("3026800043", "592 MANHATTAN AVE OWNER, LLC", "4500", "6"),
+        ("3026800046", "602 MANHATTAN AVE OWNER, LLC", "7600", "9"),
+    ]
+    .into_iter()
+    .map(|(bbl, owner, gross_sqft, units)| GeoAssessmentRollLotRow {
+        bbl: bbl.to_string(),
+        owner: owner.to_string(),
+        gross_sqft: gross_sqft.to_string(),
+        units: units.to_string(),
+        condo_number: String::new(),
+        source_record_id: format!(
+            "EDGAR_DB.DBT_WRANGLING_NYC_OPENDATA.PROPERTY_VALUATION:FY2026P3:{bbl}"
+        ),
+        source_vintage: "FY2026P3".to_string(),
+    })
+    .collect()
+}
+
+fn acris_party_row(
+    document_id: &str,
+    party_type: &str,
+    name: &str,
+    source_row_number: u64,
+    raw_csv_sha256: &str,
+) -> GeoAssessmentRollPartyRow {
+    GeoAssessmentRollPartyRow {
+        document_id: document_id.to_string(),
+        party_type: party_type.to_string(),
+        party_name_norm: normalize_assessment_roll_owner_name(name),
+        source_record_id: format!(
+            "EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_PARTIES_EXT:2026-08-10:{source_row_number}:{raw_csv_sha256}"
+        ),
+        source_vintage: "2026-08-10".to_string(),
     }
 }
 
