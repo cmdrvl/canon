@@ -171,6 +171,17 @@ const GEO_LEDGER_COLLISION_NEXT_COMMAND: &str = "canon geo ledger collision --le
 const GEO_LEDGER_VALIDATE_NEXT_COMMAND: &str = "canon geo ledger validate --ledger <LEDGER.json>";
 const GEO_LEDGER_EXPOSURE_NEXT_COMMAND: &str = "canon geo ledger exposure --ledger <LEDGER.json> --advisory <ADVISORY.json> --geometry <GEOMETRY.json> --archive <ARCHIVE.json>";
 
+pub fn geo_ledger_subcommand_names() -> Vec<String> {
+    let mut names = <GeoLedgerSubcommand as clap::Subcommand>::augment_subcommands(
+        clap::Command::new("ledger"),
+    )
+    .get_subcommands()
+    .map(|command| command.get_name().to_string())
+    .collect::<Vec<_>>();
+    names.sort();
+    names
+}
+
 pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
     match &geo.command {
         GeoSubcommand::Capabilities(args) => run_capabilities(args),
@@ -524,7 +535,7 @@ fn run_ledger(args: &GeoLedgerCli) -> Result<u8, Box<dyn Error>> {
             "Geo ledger requires a subcommand",
             json!({
                 "command": "canon geo ledger",
-                "subcommands": ["build", "card", "collision", "exposure", "validate"],
+                "subcommands": geo_ledger_subcommand_names(),
                 "writes_performed": false,
             }),
             Some(GEO_LEDGER_BUILD_NEXT_COMMAND.to_string()),

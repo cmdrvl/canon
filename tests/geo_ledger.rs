@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use assert_cmd::Command;
+use clap::CommandFactory;
 
 mod geo {
     pub use canon::geo::*;
@@ -10,17 +11,21 @@ mod geo {
 #[path = "../src/geo/ledger.rs"]
 mod ledger;
 
-use canon::geo::{
-    CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION,
-    CANON_GEO_EVIDENCE_REQUEST_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoCandidateReachStatus,
-    GeoCompositionArtifact, GeoCompositionBackbone, GeoCompositionFallback, GeoCompositionModel,
-    GeoCompositionProfile, GeoCompositionStatus, GeoCompositionSummary, GeoCompositionUniverse,
-    GeoEntityLevel, GeoEvidenceClaimRole, GeoEvidenceCompilationArtifact,
-    GeoEvidenceCompilationReference, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef,
-    GeoLabeledCompositionCase, GeoModelCountScope, GeoPopulationEvaluationRequest, GeoRhoBasis,
-    GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoTruthPlane, GeoValidTimeInterval,
-    canonical_composition_bytes, canonical_evidence_compilation_bytes, compile_evidence,
-    solve_composition,
+use canon::{
+    cli::Cli,
+    geo::{
+        CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION,
+        CANON_GEO_EVIDENCE_REQUEST_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS,
+        GeoCandidateReachStatus, GeoCompositionArtifact, GeoCompositionBackbone,
+        GeoCompositionFallback, GeoCompositionModel, GeoCompositionProfile, GeoCompositionStatus,
+        GeoCompositionSummary, GeoCompositionUniverse, GeoEntityLevel, GeoEvidenceClaimRole,
+        GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
+        GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoLabeledCompositionCase,
+        GeoModelCountScope, GeoPopulationEvaluationRequest, GeoRhoBasis, GeoRhoContract,
+        GeoRhoObservation, GeoRhoObservationKind, GeoTruthPlane, GeoValidTimeInterval,
+        canonical_composition_bytes, canonical_evidence_compilation_bytes,
+        cli::geo_ledger_subcommand_names, compile_evidence, solve_composition,
+    },
 };
 use ledger::{
     CANON_GEO_COLLATERAL_LEDGER_SEED_VERSION, CANON_GEO_COLLATERAL_LEDGER_VERSION,
@@ -663,11 +668,35 @@ fn t07_geo_ledger_cli_requires_a_subcommand() {
     assert_eq!(output["refusal"]["detail"]["command"], "canon geo ledger");
     assert_eq!(
         output["refusal"]["detail"]["subcommands"],
-        json!(["build", "card", "collision", "exposure", "validate"])
+        json!(geo_ledger_subcommand_names())
     );
     assert_eq!(
         output["refusal"]["next_command"],
         "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>"
+    );
+}
+
+#[test]
+fn t07_geo_ledger_subcommand_helper_matches_compiled_clap_tree() {
+    let command = Cli::command();
+    let geo = command
+        .get_subcommands()
+        .find(|command| command.get_name() == "geo")
+        .expect("compiled cli exposes geo command");
+    let ledger = geo
+        .get_subcommands()
+        .find(|command| command.get_name() == "ledger")
+        .expect("compiled geo cli exposes ledger command");
+    let mut compiled = ledger
+        .get_subcommands()
+        .map(|command| command.get_name().to_string())
+        .collect::<Vec<_>>();
+    compiled.sort();
+
+    assert_eq!(
+        geo_ledger_subcommand_names(),
+        compiled,
+        "operator-visible geo ledger subcommands must be derived from the compiled Clap tree, not copied as a test literal"
     );
 }
 

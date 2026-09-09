@@ -21,8 +21,8 @@ use canon::{
         GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoLedgerPropertyRef, GeoRhoBasis,
         GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoSourceReleasePin,
         GeoTruthPlane, GeoValidTimeInterval, canonical_collateral_ledger_seed_bytes,
-        canonical_composition_bytes, canonical_evidence_compilation_bytes, compile_evidence,
-        solve_composition,
+        canonical_composition_bytes, canonical_evidence_compilation_bytes,
+        cli::geo_ledger_subcommand_names, compile_evidence, solve_composition,
     },
     operator::{
         public_leaf_commands_from, public_leaf_long_flags_from, stable_manifest_digest,
@@ -1440,7 +1440,7 @@ impl RuntimeHarness {
                     .assert_eq("refusal.detail.command", json!("canon geo ledger"))
                     .assert_eq(
                         "refusal.detail.subcommands",
-                        json!(["build", "card", "collision", "exposure", "validate"]),
+                        json!(geo_ledger_subcommand_names()),
                     )
                     .assert_eq(
                         "refusal.next_command",
