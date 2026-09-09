@@ -1440,7 +1440,7 @@ impl RuntimeHarness {
                     .assert_eq("refusal.detail.command", json!("canon geo ledger"))
                     .assert_eq(
                         "refusal.detail.subcommands",
-                        json!(["build", "card", "exposure", "validate"]),
+                        json!(["build", "card", "collision", "exposure", "validate"]),
                     )
                     .assert_eq(
                         "refusal.next_command",
