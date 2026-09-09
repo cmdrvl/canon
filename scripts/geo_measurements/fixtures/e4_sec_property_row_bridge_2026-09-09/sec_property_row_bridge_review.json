@@ -1,0 +1,594 @@
+{
+  "version": "canon_geo_e4_sec_property_row_bridge_review.v0",
+  "bead": "bd-3io8",
+  "owner": "codex-geo-2",
+  "proof_class": "retained_cmdrvl_data_warehouse_source_audit_not_live",
+  "release_claim_allowed": false,
+  "frozen_denominator": 77,
+  "reported_frozen_denominator": 79,
+  "retained_population_denominator": 70,
+  "retained_population_deficit": 7,
+  "measurement_time_utc": "2026-09-09T02:00:09Z",
+  "boundary": {
+    "statement": "SEC property rows and identity xrefs prove property-row/property-key completeness, not tax-lot all-of completeness. No rho.address.pad.membership widening, no truth fixture edits, and no tax-lot cardinality inference from LOAN_PROPERTY_COUNT or property-row count equality.",
+    "loan_property_count_inference_allowed": false,
+    "property_row_count_equality_safe_as_tax_lot_cardinality": false,
+    "admission_only": true,
+    "retained_fixture_is_not_live_proof": true
+  },
+  "source_tables": [
+    {
+      "table": "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY",
+      "grain": "one row per loan_key/property_key in the current property mart build",
+      "cluster_key_used": "loan_key",
+      "license_terms": "Derived mart row; source licensing is carried by the underlying SEC source observations.",
+      "attribution_text": "CMD+RVL EDGAR property mart"
+    },
+    {
+      "table": "EDGAR_DB.DBT_WRANGLING_EDGAR.WRGL_EDGAR_PROPERTY_IDENTITY_XREF",
+      "grain": "property identity xref row linking source observations to property_key",
+      "cluster_key_used": "property_key/source_observation_key",
+      "license_terms": "Derived xref row; source licensing is carried by the underlying SEC and annex observations.",
+      "attribution_text": "CMD+RVL EDGAR property identity xref"
+    },
+    {
+      "table": "EDGAR_DB.DBT_WRANGLING_EDGAR.WRGL_EDGAR_PROPERTY_IDENTITY_OBSERVATIONS",
+      "grain": "source property identity observation with SEC filing/source metadata",
+      "cluster_key_used": "source_observation_key",
+      "license_terms": "SEC public filing source observation where source_url/source_filing_id are present.",
+      "attribution_text": "U.S. Securities and Exchange Commission EDGAR"
+    },
+    {
+      "table": "EDGAR_DB.SOURCE.NYC_DCP_PAD_ADDRESS_HOT",
+      "grain": "PAD address row keyed by release and source row number",
+      "cluster_key_used": "release plus address predicates",
+      "license_terms": "NYC Department of City Planning PAD source terms carried from the source table.",
+      "attribution_text": "NYC Department of City Planning PAD"
+    }
+  ],
+  "denominator": {
+    "description": "18 retained H7 subjects whose retained bridge_loan row count equals retained truth lot count; this is an upper bound for an independent SEC completeness second instance, not a handoff-ready all-of relation.",
+    "subjects": 18,
+    "current_lip_rows": 61,
+    "current_ny_rows": 48,
+    "current_non_ny_or_null_rows": 13,
+    "retained_safe_pad_union_subject_count": 6,
+    "retained_safe_pad_union_subjects": [
+      "20869bd8",
+      "d2cfbf35",
+      "65067164",
+      "c1803335",
+      "f5588ba9",
+      "f608ce46"
+    ],
+    "sec_tax_lot_all_of_ready_subject_count": 0,
+    "sec_tax_lot_all_of_ready_subjects": []
+  },
+  "live_lip_probe": {
+    "retained_h7_lip_build_id": "d5ddd2d9-07dc-44d6-bf8b-b7bfc373dbc3",
+    "retained_build_rows_found_in_live_lip": 0,
+    "current_lip_build_id": "d012ffbb-f95f-4c29-9b3d-804f38ada29e",
+    "current_rows": 61,
+    "interpretation": "The retained H7 property rows are not replayable from the current live mart build by retained build_id. Current rows are useful for source audit and bridge design, but are not sufficient to publish a retained completeness overlay."
+  },
+  "xref_probe": {
+    "current_property_keys": 61,
+    "xref_property_keys": 61,
+    "missing_xref_property_keys": 0,
+    "annex_subject_count": 8,
+    "annex_property_key_count": 25,
+    "abs_ee_property_key_count": 61,
+    "annex_subjects": [
+      "03ff08e7",
+      "13ff4751",
+      "56f3e4fa",
+      "8fd55140",
+      "c1803335",
+      "d2cfbf35",
+      "f5588ba9",
+      "f608ce46"
+    ],
+    "interpretation": "The SEC chain is complete at property-row/property-key grain for the 18-subject upper bound. The landed xref and source observations provide source address/name rows, not retained row-to-parcel all-of assertions."
+  },
+  "row_bridge_probe": {
+    "method_id": "literal_sec_property_address_to_pad_26b_smoke_v0",
+    "method_limit": "Diagnostic exact-address smoke only. It does not replace Canon's address parser and does not create a retained row-level parse forest or row-to-PAD-member bridge bundle.",
+    "rows_by_status": {
+      "total_unambiguous_exact_pad_row": 16,
+      "ambiguous_multiple_pad_bbls_for_one_sec_property_row": 1,
+      "unbridged_no_exact_pad_address_row": 32,
+      "out_of_scope_non_nyc_property_row": 12
+    },
+    "subjects_all_current_rows_total": [
+      "13ff4751",
+      "d2cfbf35"
+    ],
+    "current_exact_row_bridge_is_retained_replay_proof": false,
+    "sec_tax_lot_all_of_ready": false,
+    "new_sec_tax_lot_all_of_subjects": [],
+    "expected_direct_e4_movement": {
+      "resolved": 0,
+      "exactly_correct": 0,
+      "completed_truth_exclusions": 0,
+      "false_merges": 0
+    }
+  },
+  "admission_overlay_handoff": {
+    "ready": false,
+    "all_of_exact_cardinality_relations": [],
+    "reason": "The landed SEC schedule/xref chain is not yet a retained, source-pinned row-to-parcel bridge. Count equality and current-build exact PAD hits must abstain and exclude no subsets."
+  },
+  "cases": [
+    {
+      "short_id": "03ff08e7",
+      "subject_id": "h7-subject:round-exact-lender:03ff08e79939253c5baa893d07f37d872d3d9b41b611d036fa72ee1ae531c2ae",
+      "loan_key": "2a2d2adf109a880c7f5efd5750972745",
+      "document_id": "2025122301152008",
+      "truth_lot_count": 2,
+      "retained_bridge_loan_rows": 2,
+      "current_lip_rows": 2,
+      "current_ny_rows": 2,
+      "current_non_ny_or_null_rows": 0,
+      "row_status_counts": {
+        "total_unambiguous_exact_pad_row": 0,
+        "ambiguous_multiple_pad_bbls_for_one_sec_property_row": 0,
+        "unbridged_no_exact_pad_address_row": 2,
+        "out_of_scope_non_nyc_property_row": 0
+      },
+      "retained_subject_level_pad_union_safe": false,
+      "safe_for_sec_tax_lot_all_of": false,
+      "refusal_reason": "current rows have no retained replayable row-to-parcel bridge; literal PAD smoke leaves both rows unbridged"
+    },
+    {
+      "short_id": "0a8342fd",
+      "subject_id": "h7-subject:round-exact-lender:0a8342fd463d4869d604e870c300e5f43f452e10ff8d815b2e53e26302743be6",
+      "loan_key": "abc2df548bbd7e2a655aab2c43845b4d",
+      "document_id": "2021062400490001",
+      "truth_lot_count": 2,
+      "retained_bridge_loan_rows": 2,
+      "current_lip_rows": 2,
+      "current_ny_rows": 2,
+      "current_non_ny_or_null_rows": 0,
+      "row_status_counts": {
+        "total_unambiguous_exact_pad_row": 0,
+        "ambiguous_multiple_pad_bbls_for_one_sec_property_row": 0,
+        "unbridged_no_exact_pad_address_row": 2,
+        "out_of_scope_non_nyc_property_row": 0
+      },
+      "retained_subject_level_pad_union_safe": false,
+      "safe_for_sec_tax_lot_all_of": false,
+      "refusal_reason": "multi-address SEC rows require a retained parser/bridge bundle before they can assert tax-lot completeness"
+    },
+    {
+      "short_id": "13ff4751",
+      "subject_id": "h7-subject:round-exact-lender:13ff475129dbf3a8874ae7ab326c4ca40ef96552cb935aaf8435450c014a0d6a",
+      "loan_key": "c88a233fbc140d00649dd966add4abb7",
+      "document_id": "2024041000706002",
+      "truth_lot_count": 7,
+      "retained_bridge_loan_rows": 7,
+      "current_lip_rows": 7,
+      "current_ny_rows": 7,
+      "current_non_ny_or_null_rows": 0,
+      "row_status_counts": {
+        "total_unambiguous_exact_pad_row": 7,
+        "ambiguous_multiple_pad_bbls_for_one_sec_property_row": 0,
+        "unbridged_no_exact_pad_address_row": 0,
+        "out_of_scope_non_nyc_property_row": 0
+      },
+      "retained_subject_level_pad_union_safe": false,
+      "safe_for_sec_tax_lot_all_of": false,
+      "refusal_reason": "all current rows have exact PAD matches, but current-build matches are not retained replayable all-of evidence"
+    },
+    {
+      "short_id": "1fdc1350",
+      "subject_id": "h7-subject:round-exact-lender:1fdc13503b4934adefd3d065201b7036559d1bd5ea2430095f6c51290cd3f888",
+      "loan_key": "b1409df04e4b208fe22b043b7c5716ce",
+      "document_id": "2022071101440001",
+      "truth_lot_count": 2,
+      "retained_bridge_loan_rows": 2,
+      "current_lip_rows": 2,
+      "current_ny_rows": 2,
+      "current_non_ny_or_null_rows": 0,
+      "row_status_counts": {
+        "total_unambiguous_exact_pad_row": 0,
+        "ambiguous_multiple_pad_bbls_for_one_sec_property_row": 0,
+        "unbridged_no_exact_pad_address_row": 2,
+        "out_of_scope_non_nyc_property_row": 0
+      },
+      "retained_subject_level_pad_union_safe": false,
+      "safe_for_sec_tax_lot_all_of": false,
+      "refusal_reason": "literal PAD smoke leaves both rows unbridged"
+    },
+    {
+      "short_id": "20869bd8",
+      "subject_id": "h7-subject:non-round:20869bd800113cc1e8656827b4e09582b9d998b874cce0f8a6b7225ea9ab9893",
+      "loan_key": "7402ec7245fbb952845811f2985dc6ad",
+      "document_id": "2018031200288001",
+      "truth_lot_count": 2,
+      "retained_bridge_loan_rows": 2,
+      "current_lip_rows": 2,
+      "current_ny_rows": 2,
+      "current_non_ny_or_null_rows": 0,
+      "row_status_counts": {
+        "total_unambiguous_exact_pad_row": 0,
+        "ambiguous_multiple_pad_bbls_for_one_sec_property_row": 0,
+        "unbridged_no_exact_pad_address_row": 2,
+        "out_of_scope_non_nyc_property_row": 0
+      },
+      "retained_subject_level_pad_union_safe": true,
+      "safe_for_sec_tax_lot_all_of": false,
+      "refusal_reason": "subject-level PAD union is retained safe, but per-SEC-row bridge proof is absent"
+    },
+    {
+      "short_id": "56f3e4fa",
+      "subject_id": "h7-subject:non-round:56f3e4fa43b049e025eebbc3548ddebd72c1759bb2490d720fe7dfc39e3a30dd",
+      "loan_key": "c7aae0bb8dcacba8ad27bdfd51cea625",
+      "document_id": "2024122601072007",
+      "truth_lot_count": 2,
+      "retained_bridge_loan_rows": 2,
+      "current_lip_rows": 5,
+      "current_ny_rows": 2,
+      "current_non_ny_or_null_rows": 3,
+      "row_status_counts": {
+        "total_unambiguous_exact_pad_row": 2,
+        "ambiguous_multiple_pad_bbls_for_one_sec_property_row": 0,
+        "unbridged_no_exact_pad_address_row": 0,
+        "out_of_scope_non_nyc_property_row": 3
+      },
+      "retained_subject_level_pad_union_safe": false,
+      "safe_for_sec_tax_lot_all_of": false,
+      "refusal_reason": "current loan includes out-of-NYC property rows, so the NYC PAD bridge cannot assert total tax-lot completeness for the loan"
+    },
+    {
+      "short_id": "65067164",
+      "subject_id": "h7-subject:round-exact-lender:6506716451b8405fbd83f48449d4f858881f94bc3b8a7ea3001e7b5399a3a018",
+      "loan_key": "49d6e4dcac8841eca517c1190949b551",
+      "document_id": "2019102800385001",
+      "truth_lot_count": 2,
+      "retained_bridge_loan_rows": 2,
+      "current_lip_rows": 3,
+      "current_ny_rows": 2,
+      "current_non_ny_or_null_rows": 1,
+      "row_status_counts": {
+        "total_unambiguous_exact_pad_row": 0,
+        "ambiguous_multiple_pad_bbls_for_one_sec_property_row": 0,
+        "unbridged_no_exact_pad_address_row": 2,
+        "out_of_scope_non_nyc_property_row": 1
+      },
+      "retained_subject_level_pad_union_safe": true,
+      "safe_for_sec_tax_lot_all_of": false,
+      "refusal_reason": "subject-level PAD union is retained safe, but current rows include out-of-NYC collateral and no row-level all-of bridge"
+    },
+    {
+      "short_id": "7b694e77",
+      "subject_id": "h7-subject:round-exact-lender:7b694e770de8331827bf785d9303bf2d5d8857fdc235011fa2a9b0c2cf37dbf6",
+      "loan_key": "0048d206538d873999f3c2d49f259d31",
+      "document_id": "2019050100901003",
+      "truth_lot_count": 2,
+      "retained_bridge_loan_rows": 2,
+      "current_lip_rows": 3,
+      "current_ny_rows": 2,
+      "current_non_ny_or_null_rows": 1,
+      "row_status_counts": {
+        "total_unambiguous_exact_pad_row": 0,
+        "ambiguous_multiple_pad_bbls_for_one_sec_property_row": 0,
+        "unbridged_no_exact_pad_address_row": 2,
+        "out_of_scope_non_nyc_property_row": 1
+      },
+      "retained_subject_level_pad_union_safe": false,
+      "safe_for_sec_tax_lot_all_of": false,
+      "refusal_reason": "current rows include non-NYC collateral and unbridged NYC rows"
+    },
+    {
+      "short_id": "84b4195d",
+      "subject_id": "h7-subject:non-round:84b4195d0c6095348830cdee94ada12a4db1483ab31f88aacb4c9b1c1335e916",
+      "loan_key": "dfc0f3e18f4d1be82f94b66b6bc22e84",
+      "document_id": "2019122000039001",
+      "truth_lot_count": 6,
+      "retained_bridge_loan_rows": 6,
+      "current_lip_rows": 6,
+      "current_ny_rows": 6,
+      "current_non_ny_or_null_rows": 0,
+      "row_status_counts": {
+        "total_unambiguous_exact_pad_row": 0,
+        "ambiguous_multiple_pad_bbls_for_one_sec_property_row": 0,
+        "unbridged_no_exact_pad_address_row": 6,
+        "out_of_scope_non_nyc_property_row": 0
+      },
+      "retained_subject_level_pad_union_safe": false,
+      "safe_for_sec_tax_lot_all_of": false,
+      "refusal_reason": "literal PAD smoke leaves all rows unbridged"
+    },
+    {
+      "short_id": "865c66c6",
+      "subject_id": "h7-subject:round-exact-lender:865c66c667292597a971c715ec92735a99d0a77455110ff8be59d7cbf8e8bcdd",
+      "loan_key": "433c6803fe0f42d7384f5dddace182c5",
+      "document_id": "2026013000325005",
+      "truth_lot_count": 2,
+      "retained_bridge_loan_rows": 2,
+      "current_lip_rows": 2,
+      "current_ny_rows": 2,
+      "current_non_ny_or_null_rows": 0,
+      "row_status_counts": {
+        "total_unambiguous_exact_pad_row": 0,
+        "ambiguous_multiple_pad_bbls_for_one_sec_property_row": 0,
+        "unbridged_no_exact_pad_address_row": 2,
+        "out_of_scope_non_nyc_property_row": 0
+      },
+      "retained_subject_level_pad_union_safe": false,
+      "safe_for_sec_tax_lot_all_of": false,
+      "refusal_reason": "range address requires retained parser/bridge proof before all-of handoff"
+    },
+    {
+      "short_id": "8fd55140",
+      "subject_id": "h7-subject:round-exact-lender:8fd55140aa370ed0de8a0165bdc2badf437576fa21ed6840f7cdc922380e5a01",
+      "loan_key": "7b18a4419586e1411d46dafa4375865c",
+      "document_id": "2021101500491003",
+      "truth_lot_count": 3,
+      "retained_bridge_loan_rows": 3,
+      "current_lip_rows": 6,
+      "current_ny_rows": 3,
+      "current_non_ny_or_null_rows": 3,
+      "row_status_counts": {
+        "total_unambiguous_exact_pad_row": 1,
+        "ambiguous_multiple_pad_bbls_for_one_sec_property_row": 0,
+        "unbridged_no_exact_pad_address_row": 2,
+        "out_of_scope_non_nyc_property_row": 3
+      },
+      "retained_subject_level_pad_union_safe": false,
+      "safe_for_sec_tax_lot_all_of": false,
+      "refusal_reason": "current rows include defeased/null-address rows and unbridged NYC rows"
+    },
+    {
+      "short_id": "95ffa8e1",
+      "subject_id": "h7-subject:non-round:95ffa8e15d66c259fb48f50e0ba3623ad1a34990d430f4513091658055c1f1fd",
+      "loan_key": "4b2d7fc321ef05c03b7e8ecaad0152a6",
+      "document_id": "2024100400812003",
+      "truth_lot_count": 2,
+      "retained_bridge_loan_rows": 2,
+      "current_lip_rows": 2,
+      "current_ny_rows": 2,
+      "current_non_ny_or_null_rows": 0,
+      "row_status_counts": {
+        "total_unambiguous_exact_pad_row": 1,
+        "ambiguous_multiple_pad_bbls_for_one_sec_property_row": 0,
+        "unbridged_no_exact_pad_address_row": 1,
+        "out_of_scope_non_nyc_property_row": 0
+      },
+      "retained_subject_level_pad_union_safe": false,
+      "safe_for_sec_tax_lot_all_of": false,
+      "refusal_reason": "one row exact-matches PAD and one multi-address row remains unbridged"
+    },
+    {
+      "short_id": "97ae3eeb",
+      "subject_id": "h7-subject:non-round:97ae3eeb8035a1914b178d2cf3a447b50735e954a33067d57d6e9a5e1c3e6d58",
+      "loan_key": "5081a27f5b2e4b03f660bbba032d82ed",
+      "document_id": "2025120900884001",
+      "truth_lot_count": 2,
+      "retained_bridge_loan_rows": 2,
+      "current_lip_rows": 2,
+      "current_ny_rows": 2,
+      "current_non_ny_or_null_rows": 0,
+      "row_status_counts": {
+        "total_unambiguous_exact_pad_row": 0,
+        "ambiguous_multiple_pad_bbls_for_one_sec_property_row": 0,
+        "unbridged_no_exact_pad_address_row": 2,
+        "out_of_scope_non_nyc_property_row": 0
+      },
+      "retained_subject_level_pad_union_safe": false,
+      "safe_for_sec_tax_lot_all_of": false,
+      "refusal_reason": "single-address and multi-address SEC forms need retained parser/bridge proof"
+    },
+    {
+      "short_id": "9edc5d1a",
+      "subject_id": "h7-subject:round-exact-lender:9edc5d1ad11f6c2897c1b2f2c3fc015fbe75fb018fb289092e38b224540bdb01",
+      "loan_key": "f214970742c4aa0e386fa8b344d1dc4d",
+      "document_id": "2022040400745005",
+      "truth_lot_count": 2,
+      "retained_bridge_loan_rows": 2,
+      "current_lip_rows": 2,
+      "current_ny_rows": 2,
+      "current_non_ny_or_null_rows": 0,
+      "row_status_counts": {
+        "total_unambiguous_exact_pad_row": 0,
+        "ambiguous_multiple_pad_bbls_for_one_sec_property_row": 0,
+        "unbridged_no_exact_pad_address_row": 2,
+        "out_of_scope_non_nyc_property_row": 0
+      },
+      "retained_subject_level_pad_union_safe": false,
+      "safe_for_sec_tax_lot_all_of": false,
+      "refusal_reason": "range/multi-address rows require retained parser/bridge proof"
+    },
+    {
+      "short_id": "c1803335",
+      "subject_id": "h7-subject:round-exact-lender:c1803335d23eff218e1d19afd43acbdd7b552e79522646ce12b7623e2b14c020",
+      "loan_key": "2bd9a92fb4c295cf8917a9fd43df3333",
+      "document_id": "2025061700259005",
+      "truth_lot_count": 2,
+      "retained_bridge_loan_rows": 2,
+      "current_lip_rows": 2,
+      "current_ny_rows": 2,
+      "current_non_ny_or_null_rows": 0,
+      "row_status_counts": {
+        "total_unambiguous_exact_pad_row": 0,
+        "ambiguous_multiple_pad_bbls_for_one_sec_property_row": 0,
+        "unbridged_no_exact_pad_address_row": 2,
+        "out_of_scope_non_nyc_property_row": 0
+      },
+      "retained_subject_level_pad_union_safe": true,
+      "safe_for_sec_tax_lot_all_of": false,
+      "refusal_reason": "subject-level PAD union is retained safe, but per-SEC-row bridge proof is absent"
+    },
+    {
+      "short_id": "d2cfbf35",
+      "subject_id": "h7-subject:non-round:d2cfbf35920510e5b64e5ce9b946ce17317ba26ad9a740bf3381ce8add5126f5",
+      "loan_key": "f46f9ea45311d9e17972ae06637393de",
+      "document_id": "2024090400016018",
+      "truth_lot_count": 3,
+      "retained_bridge_loan_rows": 3,
+      "current_lip_rows": 3,
+      "current_ny_rows": 3,
+      "current_non_ny_or_null_rows": 0,
+      "row_status_counts": {
+        "total_unambiguous_exact_pad_row": 3,
+        "ambiguous_multiple_pad_bbls_for_one_sec_property_row": 0,
+        "unbridged_no_exact_pad_address_row": 0,
+        "out_of_scope_non_nyc_property_row": 0
+      },
+      "retained_subject_level_pad_union_safe": true,
+      "safe_for_sec_tax_lot_all_of": false,
+      "refusal_reason": "all current rows have exact PAD matches, but no retained per-row bridge bundle exists"
+    },
+    {
+      "short_id": "f5588ba9",
+      "subject_id": "h7-subject:round-exact-lender:f5588ba9a55f697afea24ed55d8b34f58e1b544ad9bc5af07b6eaf49ae430ef7",
+      "loan_key": "913f619113b7ceec6118a4844f7e459c",
+      "document_id": "2021053100003008",
+      "truth_lot_count": 4,
+      "retained_bridge_loan_rows": 4,
+      "current_lip_rows": 8,
+      "current_ny_rows": 4,
+      "current_non_ny_or_null_rows": 4,
+      "row_status_counts": {
+        "total_unambiguous_exact_pad_row": 1,
+        "ambiguous_multiple_pad_bbls_for_one_sec_property_row": 0,
+        "unbridged_no_exact_pad_address_row": 3,
+        "out_of_scope_non_nyc_property_row": 4
+      },
+      "retained_subject_level_pad_union_safe": true,
+      "safe_for_sec_tax_lot_all_of": false,
+      "refusal_reason": "subject-level PAD union is retained safe, but current rows include out-of-NYC collateral and unbridged NYC rows"
+    },
+    {
+      "short_id": "f608ce46",
+      "subject_id": "h7-subject:round-exact-lender:f608ce46d91a6e61eddb84f291cbb81c8fe43cb3a2fddc12d78c438fb55fc3a8",
+      "loan_key": "2b7bc3d79f35a8e9f91103795d5dc2a6",
+      "document_id": "2024041600013009",
+      "truth_lot_count": 2,
+      "retained_bridge_loan_rows": 2,
+      "current_lip_rows": 2,
+      "current_ny_rows": 2,
+      "current_non_ny_or_null_rows": 0,
+      "row_status_counts": {
+        "total_unambiguous_exact_pad_row": 1,
+        "ambiguous_multiple_pad_bbls_for_one_sec_property_row": 1,
+        "unbridged_no_exact_pad_address_row": 0,
+        "out_of_scope_non_nyc_property_row": 0
+      },
+      "retained_subject_level_pad_union_safe": true,
+      "safe_for_sec_tax_lot_all_of": false,
+      "refusal_reason": "one SEC row maps to multiple PAD BBLs under the literal smoke; no unambiguous per-row all-of relation"
+    }
+  ],
+  "rows": [
+    {"short_id":"03ff08e7","property_key":"CREP-2FFFD97ECD41F22F","source_observation_key":"065192f7621d072b985b69551ab19994","property_state":"NY","property_address":"110 South 2nd Street","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"03ff08e7","property_key":"CREP-D5B15F63FEC6A811","source_observation_key":"065192f7621d072b985b69551ab19994","property_state":"NY","property_address":"175 South 4th Street","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"0a8342fd","property_key":"CREP-B915ABF2DE6579C2","source_observation_key":"f692f838ae34434f66faa997a7307049","property_state":"NY","property_address":"140-18, 140-21 & 140-35 Burden Crescent and 139-09 84th Drive","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"0a8342fd","property_key":"CREP-BE51B75855B9EE40","source_observation_key":"f692f838ae34434f66faa997a7307049","property_state":"NY","property_address":"139-09 84TH DR","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"13ff4751","property_key":"CREP-12DAF547B34E3785","source_observation_key":"cc27264575249671f25cbb0df1bb8a7f","property_state":"NY","property_address":"574 Manhattan Avenue","bridge_status":"total_unambiguous_exact_pad_row","parcel_ids":["3026800037"],"pad_source_rows":[308788]},
+    {"short_id":"13ff4751","property_key":"CREP-27A4645192E78DB6","source_observation_key":"cc27264575249671f25cbb0df1bb8a7f","property_state":"NY","property_address":"593 Manhattan Avenue","bridge_status":"total_unambiguous_exact_pad_row","parcel_ids":["3026790022"],"pad_source_rows":[308724]},
+    {"short_id":"13ff4751","property_key":"CREP-3881AE6FA674A0F9","source_observation_key":"cc27264575249671f25cbb0df1bb8a7f","property_state":"NY","property_address":"602 Manhattan Avenue","bridge_status":"total_unambiguous_exact_pad_row","parcel_ids":["3026800046"],"pad_source_rows":[308796]},
+    {"short_id":"13ff4751","property_key":"CREP-7FF40D234C6BF544","source_observation_key":"cc27264575249671f25cbb0df1bb8a7f","property_state":"NY","property_address":"872 Lorimer Street","bridge_status":"total_unambiguous_exact_pad_row","parcel_ids":["3026790054"],"pad_source_rows":[308740]},
+    {"short_id":"13ff4751","property_key":"CREP-CD5DDA1F463090DC","source_observation_key":"cc27264575249671f25cbb0df1bb8a7f","property_state":"NY","property_address":"595 Manhattan Avenue","bridge_status":"total_unambiguous_exact_pad_row","parcel_ids":["3026790021"],"pad_source_rows":[308723]},
+    {"short_id":"13ff4751","property_key":"CREP-E2577C0CFA608D86","source_observation_key":"cc27264575249671f25cbb0df1bb8a7f","property_state":"NY","property_address":"591 Manhattan Avenue","bridge_status":"total_unambiguous_exact_pad_row","parcel_ids":["3026790023"],"pad_source_rows":[308725]},
+    {"short_id":"13ff4751","property_key":"CREP-FFD0CCCA77BAF629","source_observation_key":"cc27264575249671f25cbb0df1bb8a7f","property_state":"NY","property_address":"592 Manhattan Avenue","bridge_status":"total_unambiguous_exact_pad_row","parcel_ids":["3026800043"],"pad_source_rows":[308793]},
+    {"short_id":"1fdc1350","property_key":"CREP-709E230E0BAD18A7","source_observation_key":"027b2bfc84922defdfdff07a5604441c","property_state":"NY","property_address":"244-246 EAST 90TH ST","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"1fdc1350","property_key":"CREP-BE4B52A333F56D1C","source_observation_key":"027b2bfc84922defdfdff07a5604441c","property_state":"NY","property_address":"182 LAFAYETTE ST","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"20869bd8","property_key":"CREP-BCC44A2E302B3426","source_observation_key":"cc3b1549ff0cb758840938b82cebe296","property_state":"NY","property_address":"44-46 WEST 65TH ST","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"20869bd8","property_key":"CREP-C5FD27693BAA2D3C","source_observation_key":"cc3b1549ff0cb758840938b82cebe296","property_state":"NY","property_address":"44 West 65th Street; 46 West 65th Street","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"56f3e4fa","property_key":"CREP-210836EBD2EE5840","source_observation_key":"b965beddc8df9b01e21f88f0c3ef2864","property_state":"NV","property_address":"2300-2408 OLIVE STREET AND 2317 CLIFFORD AVENUE","bridge_status":"out_of_scope_non_nyc_property_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"56f3e4fa","property_key":"CREP-55DE7DD6AA8A91F1","source_observation_key":"b965beddc8df9b01e21f88f0c3ef2864","property_state":"NV","property_address":"118 SOUTH 15TH STREET","bridge_status":"out_of_scope_non_nyc_property_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"56f3e4fa","property_key":"CREP-7648D013EFC2AF48","source_observation_key":"b965beddc8df9b01e21f88f0c3ef2864","property_state":"NY","property_address":"3605 HOLLAND AVENUE","bridge_status":"total_unambiguous_exact_pad_row","parcel_ids":["2046610023"],"pad_source_rows":[158014]},
+    {"short_id":"56f3e4fa","property_key":"CREP-90BFD361D263A529","source_observation_key":"b965beddc8df9b01e21f88f0c3ef2864","property_state":"NY","property_address":"1392 NELSON AVENUE","bridge_status":"total_unambiguous_exact_pad_row","parcel_ids":["2028730012"],"pad_source_rows":[91798]},
+    {"short_id":"56f3e4fa","property_key":"CREP-E2DAC75F92F2E92C","source_observation_key":"b965beddc8df9b01e21f88f0c3ef2864","property_state":"NV","property_address":"1411 NORTH 23RD STREET","bridge_status":"out_of_scope_non_nyc_property_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"65067164","property_key":"CREP-7228EF3906DD6C6F","source_observation_key":"832e22d2883c4597babc03588314b04f","property_state":"NY","property_address":"11-20 46TH ROAD","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"65067164","property_key":"CREP-7454CE06C985ECB0","source_observation_key":"832e22d2883c4597babc03588314b04f","property_state":"MI","property_address":"777 EAST EISENHOWER PARKWAY","bridge_status":"out_of_scope_non_nyc_property_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"65067164","property_key":"CREP-A83B9E34EA34C86A","source_observation_key":"832e22d2883c4597babc03588314b04f","property_state":"NY","property_address":"74 KENT STREET","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"7b694e77","property_key":"CREP-010517E28B9E2261","source_observation_key":"e652850bc7bdc5db9bf84d3655a69b9d","property_state":"TX","property_address":"2720 SOUTH BROADWAY AVENUE","bridge_status":"out_of_scope_non_nyc_property_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"7b694e77","property_key":"CREP-40E19994F1DF4754","source_observation_key":"e652850bc7bdc5db9bf84d3655a69b9d","property_state":"NY","property_address":"83-52/64 TALBOT ST","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"7b694e77","property_key":"CREP-790F3A32F7AFC666","source_observation_key":"e652850bc7bdc5db9bf84d3655a69b9d","property_state":"NY","property_address":"100 and 200 Diplomat Drive","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"84b4195d","property_key":"CREP-1110B8E7DC696BB7","source_observation_key":"d2342d447b371b236166b7cf0dc42534","property_state":"NY","property_address":"419 WEST 128TH STREET","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"84b4195d","property_key":"CREP-3D40EDE9AD5AF9FC","source_observation_key":"d2342d447b371b236166b7cf0dc42534","property_state":"NY","property_address":"502 WEST 143RD STREET","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"84b4195d","property_key":"CREP-88B3B884E4765E60","source_observation_key":"d2342d447b371b236166b7cf0dc42534","property_state":"NY","property_address":"533 WEST 151ST STREET","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"84b4195d","property_key":"CREP-B3480C3E20582C90","source_observation_key":"d2342d447b371b236166b7cf0dc42534","property_state":"NY","property_address":"507 WEST 168TH STREET","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"84b4195d","property_key":"CREP-CFC6CACB4AE42E60","source_observation_key":"d2342d447b371b236166b7cf0dc42534","property_state":"NY","property_address":"517 WEST 169TH STREET","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"84b4195d","property_key":"CREP-F6892D33D39F9112","source_observation_key":"d2342d447b371b236166b7cf0dc42534","property_state":"NY","property_address":"23-02 36TH AVENUE","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"865c66c6","property_key":"CREP-5784826269201DE7","source_observation_key":"28903caaa2b3c783f4444eebbbdee054","property_state":"NY","property_address":"44 AND 48 W 12TH ST","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"865c66c6","property_key":"CREP-7C11F5A08E9A4B52","source_observation_key":"28903caaa2b3c783f4444eebbbdee054","property_state":"NY","property_address":"44-48 West 12th Street","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"8fd55140","property_key":"CREP-186AFA04D41DFF77","source_observation_key":"757c4578cbbf8b1d0a2018004b9bff65","property_state":"NY","property_address":"522 Southern Boulevard","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"8fd55140","property_key":"CREP-9A4AFAB6AA15A2CE","source_observation_key":"757c4578cbbf8b1d0a2018004b9bff65","property_state":"NY","property_address":"334 East 148th Street","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"8fd55140","property_key":"CREP-C8370CF74ACF42F7","source_observation_key":"757c4578cbbf8b1d0a2018004b9bff65","property_state":null,"property_address":null,"bridge_status":"out_of_scope_non_nyc_property_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"8fd55140","property_key":"CREP-E5E806AB5052325B","source_observation_key":"757c4578cbbf8b1d0a2018004b9bff65","property_state":"NY","property_address":"818 Sterling Place","bridge_status":"total_unambiguous_exact_pad_row","parcel_ids":["3012470029"],"pad_source_rows":[253575]},
+    {"short_id":"8fd55140","property_key":"CREP-F40214B412FC3164","source_observation_key":"757c4578cbbf8b1d0a2018004b9bff65","property_state":null,"property_address":null,"bridge_status":"out_of_scope_non_nyc_property_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"8fd55140","property_key":"CREP-FF32C2E38A4596CB","source_observation_key":"757c4578cbbf8b1d0a2018004b9bff65","property_state":null,"property_address":null,"bridge_status":"out_of_scope_non_nyc_property_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"95ffa8e1","property_key":"CREP-63B2DFC2DDEFFEA8","source_observation_key":"6410d4fd1fb787a40780be4d391f7c86","property_state":"NY","property_address":"6035 Broadway a/k/a 4450 Post Road and 6037/6053 Broadway","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"95ffa8e1","property_key":"CREP-BC2E343828C727BB","source_observation_key":"6410d4fd1fb787a40780be4d391f7c86","property_state":"NY","property_address":"6035 BROADWAY","bridge_status":"total_unambiguous_exact_pad_row","parcel_ids":["2058021294"],"pad_source_rows":[205375]},
+    {"short_id":"97ae3eeb","property_key":"CREP-37B4EB28699059FE","source_observation_key":"3c3f4011dfa0855002fc1ee1ef2659df","property_state":"NY","property_address":"141-33 78TH AVE","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"97ae3eeb","property_key":"CREP-A3479293D380732B","source_observation_key":"3c3f4011dfa0855002fc1ee1ef2659df","property_state":"NY","property_address":"141-33 78th Avenue and 77-30 Main Street","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"9edc5d1a","property_key":"CREP-2A743DE29D53430C","source_observation_key":"a6cebb0844c3d333b993769b6b9238a6","property_state":"NY","property_address":"60-80 KNOLLS CRESCENT","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"9edc5d1a","property_key":"CREP-A99CC1F130423A38","source_observation_key":"a6cebb0844c3d333b993769b6b9238a6","property_state":"NY","property_address":"60 Knolls Crescent and 80 Knolls Crescent","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"c1803335","property_key":"CREP-12E6CD3E0CFBAC8C","source_observation_key":"fb0b747ec8b45e34635fa61e5eb14537","property_state":"NY","property_address":"243 EAST 25TH STREET","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"c1803335","property_key":"CREP-C924272712FB4FBB","source_observation_key":"fb0b747ec8b45e34635fa61e5eb14537","property_state":"NY","property_address":"386 EAST 31ST STREET","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"d2cfbf35","property_key":"CREP-31574C7A47C40385","source_observation_key":"122f84448fa09a8f33d77e81cd66b412","property_state":"NY","property_address":"2822 University Avenue","bridge_status":"total_unambiguous_exact_pad_row","parcel_ids":["2032500151"],"pad_source_rows":[106740]},
+    {"short_id":"d2cfbf35","property_key":"CREP-BDAFE49E7916A8F3","source_observation_key":"122f84448fa09a8f33d77e81cd66b412","property_state":"NY","property_address":"171 Herzl Street","bridge_status":"total_unambiguous_exact_pad_row","parcel_ids":["3035390015"],"pad_source_rows":[334273]},
+    {"short_id":"d2cfbf35","property_key":"CREP-E9B935537540918F","source_observation_key":"122f84448fa09a8f33d77e81cd66b412","property_state":"NY","property_address":"1503 Teller Avenue","bridge_status":"total_unambiguous_exact_pad_row","parcel_ids":["2027870057"],"pad_source_rows":[89094]},
+    {"short_id":"f5588ba9","property_key":"CREP-0CAD1DB3AFFA9342","source_observation_key":"e218ae1b01c380b0a9359817125356aa","property_state":"NY","property_address":"4415 3rd Avenue","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"f5588ba9","property_key":"CREP-5173D303D73C207F","source_observation_key":"e218ae1b01c380b0a9359817125356aa","property_state":"MI","property_address":"1229 Oak Valley Dr Ann","bridge_status":"out_of_scope_non_nyc_property_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"f5588ba9","property_key":"CREP-71239DD1A2AF6566","source_observation_key":"e218ae1b01c380b0a9359817125356aa","property_state":"NY","property_address":"104 Linden Boulevard","bridge_status":"total_unambiguous_exact_pad_row","parcel_ids":["3050870021"],"pad_source_rows":[396659]},
+    {"short_id":"f5588ba9","property_key":"CREP-94063DF1F55698FF","source_observation_key":"e218ae1b01c380b0a9359817125356aa","property_state":"NY","property_address":"4417 3rd Avenue","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"f5588ba9","property_key":"CREP-9A7E569A81D66477","source_observation_key":"e218ae1b01c380b0a9359817125356aa","property_state":"MI","property_address":"781 Avis Drive","bridge_status":"out_of_scope_non_nyc_property_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"f5588ba9","property_key":"CREP-9CB60C8AC1EA8AF0","source_observation_key":"e218ae1b01c380b0a9359817125356aa","property_state":"NY","property_address":"1416 Saint Marks Avenue","bridge_status":"unbridged_no_exact_pad_address_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"f5588ba9","property_key":"CREP-A554CA83F6FC8B81","source_observation_key":"e218ae1b01c380b0a9359817125356aa","property_state":"AZ","property_address":"5750 E McKellips Rd","bridge_status":"out_of_scope_non_nyc_property_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"f5588ba9","property_key":"CREP-E3DB44B39F93E547","source_observation_key":"e218ae1b01c380b0a9359817125356aa","property_state":"IL","property_address":"3030 WEST SALT CREEK LANE","bridge_status":"out_of_scope_non_nyc_property_row","parcel_ids":[],"pad_source_rows":[]},
+    {"short_id":"f608ce46","property_key":"CREP-110898CEA3D9FE42","source_observation_key":"7f802ae52700c4d52ac3d7c10e456ee2","property_state":"NY","property_address":"152 Norman Avenue","bridge_status":"total_unambiguous_exact_pad_row","parcel_ids":["3026500009"],"pad_source_rows":[308020]},
+    {"short_id":"f608ce46","property_key":"CREP-5891A1E52FAFED38","source_observation_key":"7f802ae52700c4d52ac3d7c10e456ee2","property_state":"NY","property_address":"126 Bedford Avenue","bridge_status":"ambiguous_multiple_pad_bbls_for_one_sec_property_row","parcel_ids":["3023040020","4163500400"],"pad_source_rows":[1142920,299963]}
+  ],
+  "matched_pad_source_pins": [
+    {"source_row_number":89094,"release":"26B","release_dt":"2026-05-01","bbl_key":"2027870057","source_file":"bobaadr.txt","source_zip_sha256":"016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd","parser_version":"2026-08-16","license_terms":"NYC Department of City Planning PAD source terms carried from the source table.","attribution_text":"NYC Department of City Planning PAD"},
+    {"source_row_number":91798,"release":"26B","release_dt":"2026-05-01","bbl_key":"2028730012","source_file":"bobaadr.txt","source_zip_sha256":"016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd","parser_version":"2026-08-16","license_terms":"NYC Department of City Planning PAD source terms carried from the source table.","attribution_text":"NYC Department of City Planning PAD"},
+    {"source_row_number":106740,"release":"26B","release_dt":"2026-05-01","bbl_key":"2032500151","source_file":"bobaadr.txt","source_zip_sha256":"016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd","parser_version":"2026-08-16","license_terms":"NYC Department of City Planning PAD source terms carried from the source table.","attribution_text":"NYC Department of City Planning PAD"},
+    {"source_row_number":158014,"release":"26B","release_dt":"2026-05-01","bbl_key":"2046610023","source_file":"bobaadr.txt","source_zip_sha256":"016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd","parser_version":"2026-08-16","license_terms":"NYC Department of City Planning PAD source terms carried from the source table.","attribution_text":"NYC Department of City Planning PAD"},
+    {"source_row_number":205375,"release":"26B","release_dt":"2026-05-01","bbl_key":"2058021294","source_file":"bobaadr.txt","source_zip_sha256":"016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd","parser_version":"2026-08-16","license_terms":"NYC Department of City Planning PAD source terms carried from the source table.","attribution_text":"NYC Department of City Planning PAD"},
+    {"source_row_number":253575,"release":"26B","release_dt":"2026-05-01","bbl_key":"3012470029","source_file":"bobaadr.txt","source_zip_sha256":"016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd","parser_version":"2026-08-16","license_terms":"NYC Department of City Planning PAD source terms carried from the source table.","attribution_text":"NYC Department of City Planning PAD"},
+    {"source_row_number":299963,"release":"26B","release_dt":"2026-05-01","bbl_key":"4163500400","source_file":"bobaadr.txt","source_zip_sha256":"016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd","parser_version":"2026-08-16","license_terms":"NYC Department of City Planning PAD source terms carried from the source table.","attribution_text":"NYC Department of City Planning PAD"},
+    {"source_row_number":308020,"release":"26B","release_dt":"2026-05-01","bbl_key":"3026500009","source_file":"bobaadr.txt","source_zip_sha256":"016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd","parser_version":"2026-08-16","license_terms":"NYC Department of City Planning PAD source terms carried from the source table.","attribution_text":"NYC Department of City Planning PAD"},
+    {"source_row_number":308723,"release":"26B","release_dt":"2026-05-01","bbl_key":"3026790021","source_file":"bobaadr.txt","source_zip_sha256":"016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd","parser_version":"2026-08-16","license_terms":"NYC Department of City Planning PAD source terms carried from the source table.","attribution_text":"NYC Department of City Planning PAD"},
+    {"source_row_number":308724,"release":"26B","release_dt":"2026-05-01","bbl_key":"3026790022","source_file":"bobaadr.txt","source_zip_sha256":"016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd","parser_version":"2026-08-16","license_terms":"NYC Department of City Planning PAD source terms carried from the source table.","attribution_text":"NYC Department of City Planning PAD"},
+    {"source_row_number":308725,"release":"26B","release_dt":"2026-05-01","bbl_key":"3026790023","source_file":"bobaadr.txt","source_zip_sha256":"016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd","parser_version":"2026-08-16","license_terms":"NYC Department of City Planning PAD source terms carried from the source table.","attribution_text":"NYC Department of City Planning PAD"},
+    {"source_row_number":308740,"release":"26B","release_dt":"2026-05-01","bbl_key":"3026790054","source_file":"bobaadr.txt","source_zip_sha256":"016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd","parser_version":"2026-08-16","license_terms":"NYC Department of City Planning PAD source terms carried from the source table.","attribution_text":"NYC Department of City Planning PAD"},
+    {"source_row_number":308788,"release":"26B","release_dt":"2026-05-01","bbl_key":"3026800037","source_file":"bobaadr.txt","source_zip_sha256":"016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd","parser_version":"2026-08-16","license_terms":"NYC Department of City Planning PAD source terms carried from the source table.","attribution_text":"NYC Department of City Planning PAD"},
+    {"source_row_number":308793,"release":"26B","release_dt":"2026-05-01","bbl_key":"3026800043","source_file":"bobaadr.txt","source_zip_sha256":"016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd","parser_version":"2026-08-16","license_terms":"NYC Department of City Planning PAD source terms carried from the source table.","attribution_text":"NYC Department of City Planning PAD"},
+    {"source_row_number":308796,"release":"26B","release_dt":"2026-05-01","bbl_key":"3026800046","source_file":"bobaadr.txt","source_zip_sha256":"016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd","parser_version":"2026-08-16","license_terms":"NYC Department of City Planning PAD source terms carried from the source table.","attribution_text":"NYC Department of City Planning PAD"},
+    {"source_row_number":334273,"release":"26B","release_dt":"2026-05-01","bbl_key":"3035390015","source_file":"bobaadr.txt","source_zip_sha256":"016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd","parser_version":"2026-08-16","license_terms":"NYC Department of City Planning PAD source terms carried from the source table.","attribution_text":"NYC Department of City Planning PAD"},
+    {"source_row_number":396659,"release":"26B","release_dt":"2026-05-01","bbl_key":"3050870021","source_file":"bobaadr.txt","source_zip_sha256":"016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd","parser_version":"2026-08-16","license_terms":"NYC Department of City Planning PAD source terms carried from the source table.","attribution_text":"NYC Department of City Planning PAD"},
+    {"source_row_number":1142920,"release":"26B","release_dt":"2026-05-01","bbl_key":"3023040020","source_file":"bobaadr.txt","source_zip_sha256":"016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd","parser_version":"2026-08-16","license_terms":"NYC Department of City Planning PAD source terms carried from the source table.","attribution_text":"NYC Department of City Planning PAD"}
+  ],
+  "source_queries": [
+    {
+      "measurement_name": "bd_3io8_lip_rows_18_upper_bound",
+      "result": "0 rows for retained H7 LIP build_id d5ddd2d9-07dc-44d6-bf8b-b7bfc373dbc3"
+    },
+    {
+      "measurement_name": "bd_3io8_lip_rows_18_upper_bound_current_build_aggregate",
+      "result": "61 current LIP rows across 18 subjects, all build_id d012ffbb-f95f-4c29-9b3d-804f38ada29e"
+    },
+    {
+      "measurement_name": "bd_3io8_xref_rows_18_upper_bound_current_build_aggregate",
+      "result": "61/61 current property keys covered by xref; annex xref covers 8/18 subjects and 25 property keys"
+    },
+    {
+      "measurement_name": "bd_3io8_lip_to_pad_exact_address_status_totals",
+      "result": "16 total exact PAD rows, 1 ambiguous exact PAD row, 32 unbridged rows, 12 out-of-scope rows"
+    },
+    {
+      "measurement_name": "bd_3io8_pad_source_pins_for_matched_exact_rows",
+      "result": "18 matched PAD source rows, all release 26B with release_dt, source file, source_zip_sha256, parser_version, license terms, and attribution"
+    }
+  ],
+  "acquisition_handoff": {
+    "required": true,
+    "bead": "bd-taok",
+    "title": "ACQUISITION: retain SEC property-row to parcel bridge pins for independent completeness",
+    "flip_condition": "Every SEC property row for a subject is bridged to parcel ids, every row is unambiguous at the declared grain, and the union is reproducible from retained SEC and PAD/parcel pins. Otherwise the completeness source abstains and excludes no subsets."
+  }
+}
