@@ -62,10 +62,21 @@
     }
   ],
   "current_non_definitional_score": {
-    "name": "combined_pad_owner_gsf_repair_score_before_acris_completeness",
+    "name": "combined_pad_owner_gsf_repair_score_after_bd_35t1_before_acris_completeness",
     "proof_class": "retained_not_live",
     "release_claim_allowed": false,
     "entity_grain": "parcel_and_building_entity_grain_per_PLAN_CANON_GEO_L5_not_ledger_key_grain",
+    "completed_truth_exclusion_restatement": {
+      "reported_completed_truth_exclusion_cases_before_bd_35t1": 6,
+      "current_completed_truth_exclusion_cases": 5,
+      "truth_classification_incomplete_cases": 2,
+      "cause": "bd-35t1 same-loan document-address property-row rebinder cleared e1ee0535 from the completed truth-exclusion bucket by replacing the unrelated Park Avenue SQFT row with the same-loan Regency Gardens UNITS row, which suppresses the GSF hard band rather than widening rho.",
+      "source_artifact": "scripts/geo_measurements/fixtures/e4_gsf_property_row_binding_2026-09-08/measurement.json",
+      "source_case_fragment": "e1ee0535",
+      "source_field": "predeclared_expected_e4_movement.expected_after.truth_exclusions.completed",
+      "measured_result": "completed truth exclusions 6 -> 5; resolved 7 -> 7; exactly_correct 7 -> 7; false_merges 0 -> 0",
+      "release_claim_allowed": false
+    },
     "planes": {
       "coverage": {
         "evaluated_cases": 70,
@@ -81,7 +92,18 @@
       },
       "rho_admission": {
         "reported_truth_exclusions_before_bd_3cez": 8,
-        "completed_truth_exclusion_cases": 6,
+        "reported_completed_truth_exclusion_cases_before_bd_35t1": 6,
+        "completed_truth_exclusion_cases": 5,
+        "completed_truth_exclusion_case_fragments": [
+          "3899edce",
+          "5934bb93",
+          "68a1a4ce",
+          "69dbf5da",
+          "e3a5228d"
+        ],
+        "cleared_completed_truth_exclusion_case_fragments_by_bd_35t1": [
+          "e1ee0535"
+        ],
         "truth_classification_incomplete_cases": 2,
         "truth_classification_incomplete_case_fragments": [
           "91b2df27",
@@ -103,9 +125,12 @@
       "truth_quality": {
         "exactly_correct_cases": 7,
         "false_merge_cases": 0,
-        "truth_quality_audit_cases": 8,
+        "reported_truth_quality_audit_cases_before_bd_35t1": 8,
+        "truth_quality_audit_cases": 7,
         "truth_row_binding_defect_cases": 5,
-        "canon_property_row_binding_defect_cases": 1,
+        "reported_canon_property_row_binding_defect_cases_before_bd_35t1": 1,
+        "canon_property_row_binding_defect_cases": 0,
+        "cleared_canon_property_row_binding_defect_cases_by_bd_35t1": 1,
         "independently_supported_truth_source_current_owner_divergence_cases": 2,
         "admission_gap_cases": 0,
         "unsettled_cases": 0
@@ -252,11 +277,13 @@
     "classification_counts": {
       "admission_gap": 0,
       "truth_row_binding_defect": 5,
-      "canon_property_row_binding_defect": 1,
+      "reported_canon_property_row_binding_defect_cases_before_bd_35t1": 1,
+      "canon_property_row_binding_defect": 0,
+      "cleared_canon_property_row_binding_defect_cases_by_bd_35t1": 1,
       "independently_supported_truth_source_current_owner_divergence": 2,
       "unsettled": 0
     },
-    "interpretation": "The E4 precision plane is bounded by truth quality: five of eight residual exclusions trace to truth-row binding defects, not admission or solver defects."
+    "interpretation": "After bd-35t1, the current non-definitional gate report has five completed truth-row/source binding defects plus two incomplete truth classifications. e1ee0535 is preserved in bd-1hvb as a historical canon property-row binding defect, but it is no longer a current E4 blocker."
   },
   "what_closes_e4": [
     {
@@ -264,8 +291,8 @@
       "required": "Independent remediation or replacement of the five truth-row binding defects without editing the retained truth fixture to match Canon output."
     },
     {
-      "blocker": "canon_property_row_binding",
-      "required": "Resolve the e1ee0535 same-loan property-row binding defect and rescore without widening rho."
+      "blocker": "truth_classification_incomplete",
+      "required": "Settle the two incomplete truth classifications, 91b2df27 and a7dac634, without folding component-budget fallbacks back into completed truth exclusions."
     },
     {
       "blocker": "denominator_deficit",
@@ -294,7 +321,8 @@
     "bead_comments": [
       "bd-1g4x denominator ruling at a0025b3",
       "bd-3cez incomplete-classification re-report",
-      "bd-1hvb truth-quality audit"
+      "bd-1hvb truth-quality audit",
+      "bd-35t1 same-loan property-row rebinder score and close"
     ]
   }
 }
