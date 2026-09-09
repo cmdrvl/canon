@@ -359,6 +359,24 @@ fn interval_constraints_forbid_absent_after_reference_only_with_authoritative_se
 #[test]
 fn interval_constraints_keep_unqualified_absence_out_of_hard_constraints() {
     let artifact = temporal_containment_fixture();
+    let present_only = temporal_interval_constraints_as_of(
+        &artifact,
+        &interval_constraint_query(
+            GeoEntityRef::new(GeoEntityLevel::Building, building_id(6)),
+            true,
+            false,
+            &["presence-b06-2020"],
+        ),
+    )
+    .expect("present-only temporal observation is handled");
+    assert_eq!(present_only.summary.observations, 1);
+    assert_eq!(present_only.summary.diagnostic, 1);
+    assert!(present_only.hard_constraints.is_empty());
+    assert_eq!(
+        present_only.rows[0].reason,
+        GeoTemporalIntervalConstraintReason::PresentAtVintageDoesNotConstrain
+    );
+
     let no_separator = temporal_interval_constraints_as_of(
         &artifact,
         &interval_constraint_query(
