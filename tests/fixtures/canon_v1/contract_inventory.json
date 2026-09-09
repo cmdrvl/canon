@@ -258,6 +258,17 @@
       "action": "preserve"
     },
     {
+      "id": "canon geo ledger collision",
+      "family": "geo",
+      "clap_path": "geo ledger collision",
+      "operator_name": "geo ledger collision",
+      "primary_contracts": [
+        "canon_geo_collateral_ledger.v0",
+        "canon_geo_cross_deal.v0"
+      ],
+      "action": "preserve"
+    },
+    {
       "id": "canon geo ledger exposure",
       "family": "geo",
       "clap_path": "geo ledger exposure",
@@ -2424,6 +2435,14 @@
       "access_boundary": "public_crate_api",
       "crate_module": "canon::geo",
       "source_path": "schemas/canon.geo.pre_resolution.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_name_region_resolution.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.name_region_resolution.v0.schema.json"
     },
     {
       "id": "canon_geo_redacted_artifact.v0",

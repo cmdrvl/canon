@@ -18,6 +18,7 @@ use super::{
         CANON_GEO_ASSESSMENT_ROLL_OWNER_REQUEST_VERSION, CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION,
     },
     card::CANON_GEO_EVIDENCE_CARD_VERSION,
+    collision::CANON_GEO_CROSS_DEAL_VERSION,
     composition::{
         CANON_GEO_COMPOSITION_PROFILE_VERSION, CANON_GEO_COMPOSITION_REQUEST_VERSION,
         CANON_GEO_COMPOSITION_VERSION, CANON_GEO_ENTITY_PROJECTION_VERSION,
@@ -1331,6 +1332,11 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "loan-grain wind-radii event exposure artifact contract",
         ),
         contract(
+            CANON_GEO_CROSS_DEAL_VERSION,
+            "schemas/canon.geo.cross_deal.v0.schema.json",
+            "cross-deal collateral collision and adjacency concentration artifact contract",
+        ),
+        contract(
             CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION,
             "schemas/canon.geo.footprint_roll_evidence_request.v0.schema.json",
             "assessment-roll gross-square-foot and footprint active-BIN evidence request contract",
@@ -1581,6 +1587,12 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
         unsurfaced_command(
             "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> [--composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json>] [--explanation <EXPLANATION.json>]",
             CANON_GEO_EVIDENCE_CARD_VERSION,
+            true,
+            false,
+        ),
+        unsurfaced_command(
+            "canon geo ledger collision --ledgers <LEDGER.json> <LEDGER.json> [--pari-passu <DECLARATIONS.json>] [--adjacency <PARCEL_TO_BLOCK.json>]",
+            CANON_GEO_CROSS_DEAL_VERSION,
             true,
             false,
         ),

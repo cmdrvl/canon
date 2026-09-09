@@ -19,6 +19,10 @@ use canon::geo::assessment_roll::{
     GeoAssessmentRollOwnerProofClass, GeoAssessmentRollOwnerRequest, GeoAssessmentRollPartyRow,
     canonical_assessment_roll_owner_bytes, produce_assessment_roll_owner_evidence,
 };
+use canon::geo::collision::{
+    CANON_GEO_CROSS_DEAL_VERSION, GeoPariPassuDeclaration, canonical_cross_deal_bytes,
+    find_collisions,
+};
 use canon::geo::condo::{
     CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION, CANON_GEO_CONDO_BRIDGE_VERSION,
     CANON_GEO_LEDGER_BRIDGE_VERSION, GeoCondoBridgeCaseRequest, GeoCondoBridgeRequest,
@@ -251,6 +255,7 @@ const COLLATERAL_LEDGER_SCHEMA: &str =
     include_str!("../schemas/canon.geo.collateral_ledger.v0.schema.json");
 const EVENT_EXPOSURE_SCHEMA: &str =
     include_str!("../schemas/canon.geo.event_exposure.v0.schema.json");
+const CROSS_DEAL_SCHEMA: &str = include_str!("../schemas/canon.geo.cross_deal.v0.schema.json");
 const FOOTPRINT_ROLL_EVIDENCE_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.footprint_roll_evidence_request.v0.schema.json");
 const SEPARATION_REQUEST_SCHEMA: &str =
@@ -2017,6 +2022,38 @@ fn collateral_ledger_seed_schema_instance() -> GeoCollateralLedgerSeed {
             },
         ],
     }
+}
+
+fn cross_deal_schema_instance() -> Value {
+    let ledger_a = collateral_ledger_schema_instance();
+    let mut row_b = ledger_a.rows[0].clone();
+    row_b.accession = "schema-accession-b".to_string();
+    row_b.deal_id = "schema-deal-b".to_string();
+    row_b.loan_id = "schema-loan-b".to_string();
+    let ledger_b = build_collateral_ledger(vec![row_b], GeoCollateralLedgerProofClass::Fixture)
+        .expect("schema cross-deal ledger b builds");
+    let declaration = GeoPariPassuDeclaration {
+        entity: GeoEntityRef::new(GeoEntityLevel::Parcel, "schema-parcel"),
+        accessions: vec![
+            "schema-accession".to_string(),
+            "schema-accession-b".to_string(),
+        ],
+        source_record: GeoEvidenceRecordRef {
+            source_record_id: "schema-cross-deal-pari-passu".to_string(),
+            source_vintage: "schema-fixture-release".to_string(),
+            record_blake3: blake3::hash(b"schema cross deal declaration")
+                .to_hex()
+                .to_string(),
+        },
+    };
+    let artifact = find_collisions(
+        &[ledger_a, ledger_b],
+        &[declaration],
+        &BTreeMap::from([("schema-parcel".to_string(), "schema-block".to_string())]),
+    )
+    .expect("schema cross-deal artifact builds");
+    let canonical_bytes = canonical_cross_deal_bytes(&artifact).expect("cross-deal canonicalizes");
+    serde_json::from_slice(&canonical_bytes).expect("canonical cross-deal JSON parses")
 }
 
 fn event_exposure_schema_instance() -> GeoEventExposure {
@@ -3851,6 +3888,17 @@ fn event_exposure_schema_matches_a_real_instance() {
         EVENT_EXPOSURE_SCHEMA,
         "canon.geo.event_exposure.v0",
         CANON_GEO_EVENT_EXPOSURE_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn cross_deal_schema_matches_a_real_instance() {
+    let instance = cross_deal_schema_instance();
+    assert_drift_free(
+        CROSS_DEAL_SCHEMA,
+        "canon.geo.cross_deal.v0",
+        CANON_GEO_CROSS_DEAL_VERSION,
         &instance,
     );
 }

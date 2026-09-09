@@ -425,9 +425,9 @@ canon geo evaluate --population <POPULATION.json> [--truth <DEED_TRUTH.json> --t
 canon geo inspect --run <DIR> [--component <ID>] [--compare <OTHER_RUN>] [--recommend-next] [--emit json|summary]
 canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>
 canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> [--composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json>] [--explanation <EXPLANATION.json>]
+canon geo ledger collision --ledgers <LEDGER.json> <LEDGER.json> [--pari-passu <DECLARATIONS.json>] [--adjacency <PARCEL_TO_BLOCK.json>]
 canon geo ledger exposure --ledger <LEDGER.json> --advisory <ADVISORY.json> --geometry <GEOMETRY.json> --archive <ARCHIVE.json>
 canon geo ledger validate --ledger <LEDGER.json>
-canon geo ledger collision                           # planned, not implemented
 
 # Geo — stage leaves (driven by `geo run` and Demo 0; independently callable, hidden from top-level help)
 canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>
@@ -516,7 +516,8 @@ and `geo ledger validate` ship today as local artifact operations under `geo led
 geometry as a read-only downstream artifact, and `geo ledger card` emits the
 offline visual evidence-card data artifact from stored solve, evidence, geometry,
 explanation, and tile-pin bytes. `geo inspect` ships as a read-only stored-run
-inspection command. Ledger `collision` remains planned. No
+inspection command. `geo ledger collision` ships as a read-only cross-deal
+collision and adjacency-concentration report over retained ledger ids. No
 shipped command was removed or renamed to reach this shape: the tiers change ordering
 and visibility, not availability.
 
@@ -680,8 +681,8 @@ Open Geo limits remain: acquisition stays outside Canon's deterministic offline 
 exactness is representation-relative to admitted candidates and contracts, candidate reach
 is an upstream proof obligation, immutable cross-release reuse in the same work directory is
 not guaranteed, E5/live scale proof is not shipped, `geo inspect` reads stored run
-artifacts only, and `geo ledger` currently ships `build`, `card`, `exposure`, and
-`validate` while `collision` remains planned.
+artifacts only, and `geo ledger` currently ships `build`, `card`, `collision`,
+`exposure`, and `validate`.
 
 ### Arguments
 
@@ -740,9 +741,9 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `geo inspect --run <DIR> [--component <ID>] [--compare <OTHER_RUN>] [--recommend-next] [--emit json\|summary]` | *(primary)* Inspect a stored Geo run manifest, receipts, and content-addressed output artifacts without rerunning acquisition, materialization, compilation, solving, or evaluation. Missing question-specific artifacts are typed as unanswerable; missing or corrupt referenced artifacts refuse. |
 | `geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>` | *(primary)* Build a local collateral ledger from strict seed rows and bound solve/evidence artifacts. |
 | `geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> [--composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json>] [--explanation <EXPLANATION.json>]` | *(primary)* Emit a `canon_geo_evidence_card.v0` data artifact from stored solve, evidence, retained geometry, explanation, and one pinned ortho tile artifact; reach-none coverage cards omit solve/evidence geometry and carry the missing-coverage reason. |
+| `geo ledger collision --ledgers <LEDGER.json> <LEDGER.json> [--pari-passu <DECLARATIONS.json>] [--adjacency <PARCEL_TO_BLOCK.json>]` | *(primary)* Emit a `canon_geo_cross_deal.v0` artifact reporting every parcel/building shared across accessions and any multi-accession adjacency block, keeping declared pari passu collisions as labeled rows. |
 | `geo ledger exposure --ledger <LEDGER.json> --advisory <ADVISORY.json> --geometry <GEOMETRY.json> --archive <ARCHIVE.json>` | *(primary)* Join a pinned wind-radii advisory to exact ledger building geometry and emit a `canon_geo_event_exposure.v0` artifact. |
 | `geo ledger validate --ledger <LEDGER.json>` | *(primary)* Validate a local collateral ledger artifact with the shipped D3 ledger validator. |
-| `geo ledger collision` | *(primary, planned — not implemented)* Ledger collision verb. Tracked in `docs/PLAN_CANON_GEO.md` §19.3. |
 | `geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]` | *(primary)* Execute or preflight the current bounded offline Geo five-stage chain through the shared project runner and Geo executor, using only local exogenous leaf inputs when provided. It resumes validated completed outputs, refuses undeclared commands or compile/solve input overrides, and emits a `canon_geo_run.v0` projection over `canon.project.run.v2` receipts. `--satisfy` checks receipt/explicit-byte consistency only; it does not mutate the plan, clear acquisition blockers, or replan. |
 | `geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVENTORY.json> --question <QUESTION.json> --capabilities <CAPABILITIES.json> --profile <PROFILE.json> --budget <BUDGET.json> --satisfy <REQUEST_ID=RECEIPT.json> --local-artifact <LOCAL_ARTIFACT_ID=PATH>... [--result <DIGEST_ID=PATH>...] --advancement-out <ADVANCEMENT.json>` | *(primary)* Validate one live, complete, positive, nontruncated, full-region acquisition receipt against exact local artifact bytes, atomically publish a separate `canon_geo_regional_inventory_advancement.v0` sidecar, and emit a new base-inventory-bound `canon_geo_plan.v0` on stdout. It never performs acquisition or mutates the old plan or inventory. |
 | `geo <stage leaf>` and `geo materialize-h7-*` | Stage-leaf and measurement-tier commands. They stay independently callable for Demo 0, debugging, and tests but are not part of the primary surface — see [Geo command surface](#geo-command-surface) for the full tier table and per-command contracts. |
@@ -1661,8 +1662,8 @@ normal way to ask Geo a question. See [Geo command surface](#geo-command-surface
 Geo run is not live acquisition or live proof: acquisition remains external, exactness is
 representation-relative, candidate reach is upstream, immutable cross-release same-workdir
 reuse is not guaranteed, E5/live scale proof is not shipped, `geo inspect` reads stored run
-artifacts only, and `geo ledger` currently ships `build`, `card`, `exposure`, and
-`validate` while `collision` remains planned.
+artifacts only, and `geo ledger` currently ships `build`, `card`, `collision`,
+`exposure`, and `validate`.
 
 ---
 

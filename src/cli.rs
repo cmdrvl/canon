@@ -440,6 +440,8 @@ pub enum GeoLedgerSubcommand {
     Build(GeoLedgerBuildCli),
     /// Build an offline visual evidence-card data artifact from stored Geo artifacts
     Card(GeoLedgerCardCli),
+    /// Report cross-deal parcel/building collisions and block concentration from ledgers
+    Collision(GeoLedgerCollisionCli),
     /// Join a pinned wind-radii advisory to exact ledger building geometry
     Exposure(GeoLedgerExposureCli),
     /// Validate a physical collateral ledger artifact and emit canonical bytes
@@ -489,6 +491,19 @@ pub struct GeoLedgerCardCli {
     /// Optional canon_geo_explanation.v0 artifact chained to a conflict or not-conflict composition
     #[arg(long)]
     pub explanation: Option<PathBuf>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoLedgerCollisionCli {
+    /// Two or more JSON files holding canon_geo_collateral_ledger.v0 artifacts
+    #[arg(long = "ledgers", value_name = "LEDGER.json", num_args = 2..)]
+    pub ledgers: Vec<PathBuf>,
+    /// Optional JSON array of source-pinned pari passu declarations
+    #[arg(long = "pari-passu")]
+    pub pari_passu: Option<PathBuf>,
+    /// Optional JSON object mapping parcel ids to adjacency block ids
+    #[arg(long)]
+    pub adjacency: Option<PathBuf>,
 }
 
 #[derive(Args, Debug, Clone)]

@@ -219,6 +219,7 @@ fn franklin_instance_names_do_not_enter_the_generic_geo_engine() {
         include_str!("../src/geo/evaluation.rs"),
         include_str!("../src/geo/observer.rs"),
         include_str!("../src/geo/ledger.rs"),
+        include_str!("../src/geo/collision.rs"),
         include_str!("../src/geo/materialize.rs"),
         include_str!("../src/geo/geometry_value.rs"),
         include_str!("../src/geo/evidence.rs"),

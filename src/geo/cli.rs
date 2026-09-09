@@ -11,8 +11,8 @@ use crate::{
     CanonOutput, Refusal, RefusalCode,
     cli::{
         GeoCapabilitiesCli, GeoCapabilitiesEmitMode, GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli,
-        GeoInspectCli, GeoLedgerBuildCli, GeoLedgerCardCli, GeoLedgerCli, GeoLedgerExposureCli,
-        GeoLedgerSubcommand, GeoLedgerValidateCli, GeoLinkSourcesCli,
+        GeoInspectCli, GeoLedgerBuildCli, GeoLedgerCardCli, GeoLedgerCli, GeoLedgerCollisionCli,
+        GeoLedgerExposureCli, GeoLedgerSubcommand, GeoLedgerValidateCli, GeoLinkSourcesCli,
         GeoMaterializeAddressEvidenceCli, GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli,
         GeoMaterializeH7PipBlockBatchCli, GeoMaterializeH7PopulationCli,
         GeoMaterializeH7StagingBatchCli, GeoMaterializeHomeCellsCli,
@@ -43,6 +43,9 @@ use super::{
         GeoCardError, GeoCardErrorCode, GeoEvidenceCardBuildContext,
         build_evidence_card_with_context, build_reach_none_evidence_card,
         canonical_evidence_card_bytes,
+    },
+    collision::{
+        GeoCollisionError, GeoPariPassuDeclaration, canonical_cross_deal_bytes, find_collisions,
     },
     composition::{
         CANON_GEO_COMPOSITION_PROFILE_VERSION, CANON_GEO_COMPOSITION_VERSION,
@@ -164,6 +167,7 @@ const GEO_INSPECT_NEXT_COMMAND: &str =
     "canon geo inspect --run <DIR> [--component <ID>] [--compare <OTHER_RUN>] [--recommend-next]";
 const GEO_LEDGER_BUILD_NEXT_COMMAND: &str = "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>";
 const GEO_LEDGER_CARD_NEXT_COMMAND: &str = "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> --composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json> [--explanation <EXPLANATION.json>]";
+const GEO_LEDGER_COLLISION_NEXT_COMMAND: &str = "canon geo ledger collision --ledgers <LEDGER.json> <LEDGER.json> [--pari-passu <DECLARATIONS.json>] [--adjacency <PARCEL_TO_BLOCK.json>]";
 const GEO_LEDGER_VALIDATE_NEXT_COMMAND: &str = "canon geo ledger validate --ledger <LEDGER.json>";
 const GEO_LEDGER_EXPOSURE_NEXT_COMMAND: &str = "canon geo ledger exposure --ledger <LEDGER.json> --advisory <ADVISORY.json> --geometry <GEOMETRY.json> --archive <ARCHIVE.json>";
 
@@ -512,6 +516,7 @@ fn run_ledger(args: &GeoLedgerCli) -> Result<u8, Box<dyn Error>> {
     match &args.command {
         Some(GeoLedgerSubcommand::Build(args)) => run_ledger_build(args),
         Some(GeoLedgerSubcommand::Card(args)) => run_ledger_card(args),
+        Some(GeoLedgerSubcommand::Collision(args)) => run_ledger_collision(args),
         Some(GeoLedgerSubcommand::Exposure(args)) => run_ledger_exposure(args),
         Some(GeoLedgerSubcommand::Validate(args)) => run_ledger_validate(args),
         None => emit_refusal(
@@ -519,7 +524,7 @@ fn run_ledger(args: &GeoLedgerCli) -> Result<u8, Box<dyn Error>> {
             "Geo ledger requires a subcommand",
             json!({
                 "command": "canon geo ledger",
-                "subcommands": ["build", "card", "exposure", "validate"],
+                "subcommands": ["build", "card", "collision", "exposure", "validate"],
                 "writes_performed": false,
             }),
             Some(GEO_LEDGER_BUILD_NEXT_COMMAND.to_string()),
@@ -667,6 +672,57 @@ fn run_ledger_card(args: &GeoLedgerCardCli) -> Result<u8, Box<dyn Error>> {
     match canonical_evidence_card_bytes(&card) {
         Ok(bytes) => write_canonical(&bytes),
         Err(error) => emit_card_error(error),
+    }
+}
+
+fn run_ledger_collision(args: &GeoLedgerCollisionCli) -> Result<u8, Box<dyn Error>> {
+    let ledgers = match args
+        .ledgers
+        .iter()
+        .map(|path| {
+            read_request(
+                path,
+                "ledgers",
+                CANON_GEO_COLLATERAL_LEDGER_VERSION,
+                GEO_LEDGER_COLLISION_NEXT_COMMAND,
+            )
+        })
+        .collect::<Result<Vec<GeoCollateralLedger>, u8>>()
+    {
+        Ok(ledgers) => ledgers,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let declarations = match &args.pari_passu {
+        Some(path) => match read_request(
+            path,
+            "pari-passu",
+            "GeoPariPassuDeclaration[]",
+            GEO_LEDGER_COLLISION_NEXT_COMMAND,
+        ) {
+            Ok(declarations) => declarations,
+            Err(exit_code) => return Ok(exit_code),
+        },
+        None => Vec::<GeoPariPassuDeclaration>::new(),
+    };
+    let adjacency = match &args.adjacency {
+        Some(path) => match read_request(
+            path,
+            "adjacency",
+            "BTreeMap<String,String>",
+            GEO_LEDGER_COLLISION_NEXT_COMMAND,
+        ) {
+            Ok(adjacency) => adjacency,
+            Err(exit_code) => return Ok(exit_code),
+        },
+        None => BTreeMap::new(),
+    };
+    let artifact = match find_collisions(&ledgers, &declarations, &adjacency) {
+        Ok(artifact) => artifact,
+        Err(error) => return emit_collision_error(error),
+    };
+    match canonical_cross_deal_bytes(&artifact) {
+        Ok(bytes) => write_canonical(&bytes),
+        Err(error) => emit_collision_error(error),
     }
 }
 
@@ -2849,6 +2905,19 @@ fn emit_exposure_error(error: GeoExposureError) -> Result<u8, Box<dyn Error>> {
             "detail": error.detail,
         }),
         Some(GEO_LEDGER_EXPOSURE_NEXT_COMMAND.to_string()),
+    )
+}
+
+fn emit_collision_error(error: GeoCollisionError) -> Result<u8, Box<dyn Error>> {
+    emit_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Geo cross-deal collision artifact could not be built or validated",
+        json!({
+            "geo_collision_error_code": code_name(&error.code),
+            "message": error.message,
+            "detail": error.detail,
+        }),
+        Some(GEO_LEDGER_COLLISION_NEXT_COMMAND.to_string()),
     )
 }
 
