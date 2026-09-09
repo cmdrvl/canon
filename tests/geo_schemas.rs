@@ -182,6 +182,7 @@ use canon::geo::{
     GeoTemporalContainmentArtifact, GeoTemporalContainmentCluster, GeoTemporalContainmentEdge,
     GeoTemporalContainmentInterval, GeoTemporalContainmentRelation,
     GeoTemporalContainmentSourceReceipt, GeoTemporalContainmentSummary,
+    GeoTemporalPresenceObservation, GeoTemporalPresenceObservationKind,
     GeoTemporalPropertyMembershipEdge, GeoTemporalPropertyMembershipRelation,
     canonical_temporal_containment_bytes, validate_temporal_containment_artifact,
 };
@@ -5198,6 +5199,20 @@ fn temporal_containment_schema_matches_a_real_instance() {
             }),
         "property memberships may point at parcel or building members, not property members"
     );
+    assert!(
+        schema
+            .pointer("/$defs/presence_observation_kind/enum")
+            .and_then(Value::as_array)
+            .is_some_and(|kinds| {
+                kinds
+                    .iter()
+                    .any(|value| value.as_str() == Some("present_at_vintage"))
+                    && kinds
+                        .iter()
+                        .any(|value| value.as_str() == Some("absent_at_vintage"))
+            }),
+        "presence observations must expose both present and absent vintage diagnostics"
+    );
 }
 
 fn temporal_containment_artifact() -> GeoTemporalContainmentArtifact {
@@ -5235,6 +5250,21 @@ fn temporal_containment_artifact() -> GeoTemporalContainmentArtifact {
                 proof_class: "fixture".to_string(),
                 rule_id: "geo_entity_existence_fixture.v1".to_string(),
             }],
+        }],
+        presence_observations: vec![GeoTemporalPresenceObservation {
+            observation_id: "presence-fixture-schema-001".to_string(),
+            cluster_id: "cmdrvl:building:nyc:bin:fixture-schema-001".to_string(),
+            entity_level: GeoEntityLevel::Building,
+            observation_kind: GeoTemporalPresenceObservationKind::PresentAtVintage,
+            vintage_utc_day: "2020-06-01".to_string(),
+            source_receipt: GeoTemporalContainmentSourceReceipt {
+                receipt_id: "receipt-fixture-schema-presence-001".to_string(),
+                source_dataset: "fixture.temporal_presence".to_string(),
+                source_record_id: "presence:fixture-schema-001".to_string(),
+                source_record_blake3: pre_resolution_blake3("presence:fixture-schema-001"),
+                proof_class: "fixture".to_string(),
+                rule_id: "geo_temporal_presence_observation_fixture.v1".to_string(),
+            },
         }],
         edges: vec![GeoTemporalContainmentEdge {
             edge_id: "edge-fixture-schema-001".to_string(),
@@ -5280,6 +5310,7 @@ fn temporal_containment_artifact() -> GeoTemporalContainmentArtifact {
         summary: GeoTemporalContainmentSummary {
             clusters: 3,
             existence_intervals: 1,
+            presence_observations: 1,
             edges: 1,
             property_membership_edges: 1,
         },

@@ -472,6 +472,8 @@ pub struct GeoTemporalContainmentArtifact {
     pub clusters: Vec<GeoTemporalContainmentCluster>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub existence_intervals: Vec<GeoEntityExistenceInterval>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub presence_observations: Vec<GeoTemporalPresenceObservation>,
     pub edges: Vec<GeoTemporalContainmentEdge>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub property_membership_edges: Vec<GeoTemporalPropertyMembershipEdge>,
@@ -572,12 +574,32 @@ pub struct GeoEntityLifecycleEvidenceRow {
     pub source_receipt: GeoTemporalContainmentSourceReceipt,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoTemporalPresenceObservationKind {
+    PresentAtVintage,
+    AbsentAtVintage,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTemporalPresenceObservation {
+    pub observation_id: String,
+    pub cluster_id: String,
+    pub entity_level: GeoEntityLevel,
+    pub observation_kind: GeoTemporalPresenceObservationKind,
+    pub vintage_utc_day: String,
+    pub source_receipt: GeoTemporalContainmentSourceReceipt,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeoTemporalContainmentSummary {
     pub clusters: u64,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub existence_intervals: u64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub presence_observations: u64,
     pub edges: u64,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub property_membership_edges: u64,
@@ -637,6 +659,66 @@ pub struct GeoPropertyMembershipAsOfSummary {
     pub memberships: u64,
     pub property_clusters: u64,
     pub member_clusters: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTemporalPresenceDisagreementQuery {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoTemporalPresenceDisagreementStatus {
+    DemolitionSupported,
+    CoverageGap,
+    NewConstructionColdStart,
+    Indistinguishable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoTemporalPresenceDisagreementReason {
+    AuthoritativeDeathBetweenPresentAndAbsent,
+    SameVintagePresentAndAbsent,
+    AuthoritativeBirthAfterRetainedAbsence,
+    MissingAuthoritativeLifecycleEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTemporalPresenceDisagreementRow {
+    pub cluster_id: String,
+    pub entity_level: GeoEntityLevel,
+    pub status: GeoTemporalPresenceDisagreementStatus,
+    pub reason: GeoTemporalPresenceDisagreementReason,
+    pub diagnostic_only: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub present_observation_ids: Vec<String>,
+    pub absent_observation_ids: Vec<String>,
+    pub source_receipts: Vec<GeoTemporalContainmentSourceReceipt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_evidence: Option<GeoEntityExistenceNextEvidence>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTemporalPresenceDisagreementArtifact {
+    pub version: String,
+    pub mart_id: String,
+    pub rows: Vec<GeoTemporalPresenceDisagreementRow>,
+    pub summary: GeoTemporalPresenceDisagreementSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTemporalPresenceDisagreementSummary {
+    pub rows: u64,
+    pub demolition_supported: u64,
+    pub coverage_gap: u64,
+    pub new_construction_cold_start: u64,
+    pub indistinguishable: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -738,6 +820,9 @@ pub fn canonical_temporal_containment_artifact(
     canonical
         .existence_intervals
         .sort_by(existence_interval_sort_order);
+    canonical
+        .presence_observations
+        .sort_by(presence_observation_sort_order);
     canonical.edges.sort_by(edge_sort_order);
     canonical
         .property_membership_edges
@@ -747,6 +832,10 @@ pub fn canonical_temporal_containment_artifact(
         existence_intervals: usize_to_u64(
             canonical.existence_intervals.len(),
             "summary.existence_intervals",
+        )?,
+        presence_observations: usize_to_u64(
+            canonical.presence_observations.len(),
+            "summary.presence_observations",
         )?,
         edges: usize_to_u64(canonical.edges.len(), "summary.edges")?,
         property_membership_edges: usize_to_u64(
@@ -850,6 +939,73 @@ pub fn property_membership_as_of(
         mart_id: canonical.mart_id,
         as_of_utc_day: query.as_of_utc_day.clone(),
         memberships,
+        summary,
+    })
+}
+
+pub fn classify_temporal_presence_disagreements(
+    artifact: &GeoTemporalContainmentArtifact,
+    query: &GeoTemporalPresenceDisagreementQuery,
+) -> Result<GeoTemporalPresenceDisagreementArtifact, GeoLifecycleError> {
+    let canonical = canonical_temporal_containment_artifact(artifact)?;
+    let clusters = canonical
+        .clusters
+        .iter()
+        .map(|cluster| (cluster.cluster_id.as_str(), cluster.entity_level))
+        .collect::<BTreeMap<_, _>>();
+    if let Some(cluster_id) = &query.cluster_id {
+        validate_cluster_identifier("cluster_id", cluster_id)?;
+        if !clusters.contains_key(cluster_id.as_str()) {
+            return Err(GeoLifecycleError::invalid(
+                "Geo temporal presence disagreement query references an unknown cluster",
+                [("cluster_id", cluster_id.as_str())],
+            ));
+        }
+    }
+
+    let mut observations_by_cluster = BTreeMap::<&str, Vec<&GeoTemporalPresenceObservation>>::new();
+    for observation in &canonical.presence_observations {
+        observations_by_cluster
+            .entry(observation.cluster_id.as_str())
+            .or_default()
+            .push(observation);
+    }
+    let mut intervals_by_cluster = BTreeMap::<&str, Vec<&GeoEntityExistenceInterval>>::new();
+    for interval in &canonical.existence_intervals {
+        intervals_by_cluster
+            .entry(interval.cluster_id.as_str())
+            .or_default()
+            .push(interval);
+    }
+
+    let mut rows = Vec::new();
+    for cluster in &canonical.clusters {
+        if query
+            .cluster_id
+            .as_ref()
+            .is_some_and(|requested| requested != &cluster.cluster_id)
+        {
+            continue;
+        }
+        let observations = observations_by_cluster
+            .get(cluster.cluster_id.as_str())
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        let intervals = intervals_by_cluster
+            .get(cluster.cluster_id.as_str())
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        if let Some(row) = classify_cluster_presence_disagreement(cluster, observations, intervals)?
+        {
+            rows.push(row);
+        }
+    }
+    rows.sort_by(|left, right| left.cluster_id.cmp(&right.cluster_id));
+    let summary = temporal_presence_disagreement_summary(&rows)?;
+    Ok(GeoTemporalPresenceDisagreementArtifact {
+        version: canonical.version,
+        mart_id: canonical.mart_id,
+        rows,
         summary,
     })
 }
@@ -2294,6 +2450,11 @@ fn validate_temporal_containment_artifact_inner(
         &clusters,
         require_canonical_order,
     )?;
+    validate_presence_observations(
+        &artifact.presence_observations,
+        &clusters,
+        require_canonical_order,
+    )?;
     validate_edges(&artifact.edges, &clusters, require_canonical_order)?;
     validate_property_membership_edges(
         &artifact.property_membership_edges,
@@ -2325,6 +2486,20 @@ fn validate_summary(artifact: &GeoTemporalContainmentArtifact) -> Result<(), Geo
                 ("field", "summary.existence_intervals".to_string()),
                 ("actual", artifact.summary.existence_intervals.to_string()),
                 ("expected", existence_interval_count.to_string()),
+            ],
+        ));
+    }
+    let presence_observation_count = usize_to_u64(
+        artifact.presence_observations.len(),
+        "summary.presence_observations",
+    )?;
+    if artifact.summary.presence_observations != presence_observation_count {
+        return Err(GeoLifecycleError::invalid(
+            "Geo temporal-containment presence observation summary does not match observations",
+            [
+                ("field", "summary.presence_observations".to_string()),
+                ("actual", artifact.summary.presence_observations.to_string()),
+                ("expected", presence_observation_count.to_string()),
             ],
         ));
     }
@@ -2493,6 +2668,85 @@ fn validate_existence_interval(
         validate_source_receipt(receipt)?;
     }
     Ok(())
+}
+
+fn validate_presence_observations(
+    observations: &[GeoTemporalPresenceObservation],
+    clusters: &BTreeMap<String, GeoEntityLevel>,
+    require_canonical_order: bool,
+) -> Result<(), GeoLifecycleError> {
+    let mut observation_ids = BTreeSet::new();
+    let mut semantic_observations = BTreeSet::new();
+    let mut previous_key: Option<String> = None;
+    for observation in observations {
+        validate_presence_observation(observation, clusters)?;
+        if !observation_ids.insert(observation.observation_id.clone()) {
+            return Err(GeoLifecycleError::invalid(
+                "Geo temporal presence observation ids must be unique",
+                [
+                    (
+                        "field",
+                        "presence_observations[].observation_id".to_string(),
+                    ),
+                    ("observation_id", observation.observation_id.clone()),
+                ],
+            ));
+        }
+        let semantic_key = presence_observation_semantic_key(observation);
+        if !semantic_observations.insert(semantic_key) {
+            return Err(GeoLifecycleError::invalid(
+                "Geo temporal presence observations must be unique by cluster, kind, vintage, and source row",
+                [
+                    ("field", "presence_observations".to_string()),
+                    ("cluster_id", observation.cluster_id.clone()),
+                    ("vintage_utc_day", observation.vintage_utc_day.clone()),
+                ],
+            ));
+        }
+        if require_canonical_order {
+            let key = presence_observation_sort_key(observation);
+            if let Some(previous) = &previous_key
+                && previous >= &key
+            {
+                return Err(GeoLifecycleError::invalid(
+                    "Geo temporal presence observations must be in canonical order",
+                    [
+                        ("field", "presence_observations".to_string()),
+                        ("previous_key", previous.clone()),
+                        ("observation_key", key.clone()),
+                    ],
+                ));
+            }
+            previous_key = Some(key);
+        }
+    }
+    Ok(())
+}
+
+fn validate_presence_observation(
+    observation: &GeoTemporalPresenceObservation,
+    clusters: &BTreeMap<String, GeoEntityLevel>,
+) -> Result<(), GeoLifecycleError> {
+    validate_string(
+        "presence_observations[].observation_id",
+        &observation.observation_id,
+    )?;
+    validate_cluster_id(
+        "presence_observations[].cluster_id",
+        &observation.cluster_id,
+        observation.entity_level,
+    )?;
+    validate_endpoint_level(
+        "presence_observations[].cluster_id",
+        &observation.cluster_id,
+        observation.entity_level,
+        clusters,
+    )?;
+    validate_utc_day(
+        "presence_observations[].vintage_utc_day",
+        &observation.vintage_utc_day,
+    )?;
+    validate_source_receipt(&observation.source_receipt)
 }
 
 fn validate_edges(
@@ -2857,6 +3111,219 @@ fn property_membership_summary(
     })
 }
 
+fn classify_cluster_presence_disagreement(
+    cluster: &GeoTemporalContainmentCluster,
+    observations: &[&GeoTemporalPresenceObservation],
+    intervals: &[&GeoEntityExistenceInterval],
+) -> Result<Option<GeoTemporalPresenceDisagreementRow>, GeoLifecycleError> {
+    let present = observations
+        .iter()
+        .copied()
+        .filter(|observation| {
+            observation.observation_kind == GeoTemporalPresenceObservationKind::PresentAtVintage
+        })
+        .collect::<Vec<_>>();
+    let absent = observations
+        .iter()
+        .copied()
+        .filter(|observation| {
+            observation.observation_kind == GeoTemporalPresenceObservationKind::AbsentAtVintage
+        })
+        .collect::<Vec<_>>();
+    if absent.is_empty() {
+        return Ok(None);
+    }
+
+    let classification = if present.is_empty() {
+        cold_start_without_present(&absent, intervals).map(|_| {
+            (
+                GeoTemporalPresenceDisagreementStatus::NewConstructionColdStart,
+                GeoTemporalPresenceDisagreementReason::AuthoritativeBirthAfterRetainedAbsence,
+            )
+        })
+    } else if same_vintage_present_and_absent(&present, &absent) {
+        Some((
+            GeoTemporalPresenceDisagreementStatus::CoverageGap,
+            GeoTemporalPresenceDisagreementReason::SameVintagePresentAndAbsent,
+        ))
+    } else if authoritative_death_between_present_and_absent(&present, &absent, intervals) {
+        Some((
+            GeoTemporalPresenceDisagreementStatus::DemolitionSupported,
+            GeoTemporalPresenceDisagreementReason::AuthoritativeDeathBetweenPresentAndAbsent,
+        ))
+    } else if authoritative_birth_between_absent_and_present(&present, &absent, intervals) {
+        Some((
+            GeoTemporalPresenceDisagreementStatus::NewConstructionColdStart,
+            GeoTemporalPresenceDisagreementReason::AuthoritativeBirthAfterRetainedAbsence,
+        ))
+    } else {
+        Some((
+            GeoTemporalPresenceDisagreementStatus::Indistinguishable,
+            GeoTemporalPresenceDisagreementReason::MissingAuthoritativeLifecycleEvidence,
+        ))
+    };
+
+    let Some((status, reason)) = classification else {
+        return Ok(None);
+    };
+    let mut present_observation_ids = present
+        .iter()
+        .map(|observation| observation.observation_id.clone())
+        .collect::<Vec<_>>();
+    present_observation_ids.sort();
+    let mut absent_observation_ids = absent
+        .iter()
+        .map(|observation| observation.observation_id.clone())
+        .collect::<Vec<_>>();
+    absent_observation_ids.sort();
+    let source_receipts = disagreement_source_receipts(observations, intervals);
+    Ok(Some(GeoTemporalPresenceDisagreementRow {
+        cluster_id: cluster.cluster_id.clone(),
+        entity_level: cluster.entity_level,
+        status,
+        reason,
+        diagnostic_only: true,
+        present_observation_ids,
+        absent_observation_ids,
+        source_receipts,
+        next_evidence: presence_disagreement_next_evidence(status),
+    }))
+}
+
+fn same_vintage_present_and_absent(
+    present: &[&GeoTemporalPresenceObservation],
+    absent: &[&GeoTemporalPresenceObservation],
+) -> bool {
+    present.iter().any(|present_observation| {
+        absent.iter().any(|absent_observation| {
+            present_observation.vintage_utc_day == absent_observation.vintage_utc_day
+        })
+    })
+}
+
+fn authoritative_death_between_present_and_absent(
+    present: &[&GeoTemporalPresenceObservation],
+    absent: &[&GeoTemporalPresenceObservation],
+    intervals: &[&GeoEntityExistenceInterval],
+) -> bool {
+    intervals
+        .iter()
+        .filter_map(|interval| interval.authoritative_death_utc_day.as_deref())
+        .any(|death| {
+            present.iter().any(|present_observation| {
+                present_observation.vintage_utc_day.as_str() <= death
+                    && absent.iter().any(|absent_observation| {
+                        death < absent_observation.vintage_utc_day.as_str()
+                    })
+            })
+        })
+}
+
+fn authoritative_birth_between_absent_and_present(
+    present: &[&GeoTemporalPresenceObservation],
+    absent: &[&GeoTemporalPresenceObservation],
+    intervals: &[&GeoEntityExistenceInterval],
+) -> bool {
+    intervals
+        .iter()
+        .filter_map(|interval| interval.authoritative_birth_utc_day.as_deref())
+        .any(|birth| {
+            absent.iter().any(|absent_observation| {
+                absent_observation.vintage_utc_day.as_str() < birth
+                    && present.iter().any(|present_observation| {
+                        birth <= present_observation.vintage_utc_day.as_str()
+                    })
+            })
+        })
+}
+
+fn cold_start_without_present<'a>(
+    absent: &[&GeoTemporalPresenceObservation],
+    intervals: &'a [&GeoEntityExistenceInterval],
+) -> Option<&'a str> {
+    let latest_absent = absent
+        .iter()
+        .map(|observation| observation.vintage_utc_day.as_str())
+        .max()?;
+    intervals
+        .iter()
+        .filter_map(|interval| interval.authoritative_birth_utc_day.as_deref())
+        .find(|birth| latest_absent < *birth)
+}
+
+fn disagreement_source_receipts(
+    observations: &[&GeoTemporalPresenceObservation],
+    intervals: &[&GeoEntityExistenceInterval],
+) -> Vec<GeoTemporalContainmentSourceReceipt> {
+    let mut receipts = observations
+        .iter()
+        .map(|observation| observation.source_receipt.clone())
+        .collect::<Vec<_>>();
+    for interval in intervals {
+        receipts.extend(interval.source_receipts.iter().cloned());
+    }
+    receipts.sort();
+    receipts.dedup();
+    receipts
+}
+
+fn presence_disagreement_next_evidence(
+    status: GeoTemporalPresenceDisagreementStatus,
+) -> Option<GeoEntityExistenceNextEvidence> {
+    match status {
+        GeoTemporalPresenceDisagreementStatus::DemolitionSupported => None,
+        GeoTemporalPresenceDisagreementStatus::CoverageGap => {
+            Some(GeoEntityExistenceNextEvidence {
+                kind: GeoEntityExistenceNextEvidenceKind::AcquireAuthoritativeLifecycleEvidence,
+                reason: "same-vintage present and absent observations require source coverage reconciliation".to_string(),
+            })
+        }
+        GeoTemporalPresenceDisagreementStatus::NewConstructionColdStart => {
+            Some(GeoEntityExistenceNextEvidence {
+                kind: GeoEntityExistenceNextEvidenceKind::RefreshTemporalEvidence,
+                reason: "authoritative birth follows retained absence; refresh later-vintage observations before constraining composition".to_string(),
+            })
+        }
+        GeoTemporalPresenceDisagreementStatus::Indistinguishable => {
+            Some(GeoEntityExistenceNextEvidence {
+                kind: GeoEntityExistenceNextEvidenceKind::AcquireAuthoritativeLifecycleEvidence,
+                reason: "present and absent observations lack authoritative lifecycle evidence separating demolition from coverage gap".to_string(),
+            })
+        }
+    }
+}
+
+fn temporal_presence_disagreement_summary(
+    rows: &[GeoTemporalPresenceDisagreementRow],
+) -> Result<GeoTemporalPresenceDisagreementSummary, GeoLifecycleError> {
+    let demolition_supported = rows
+        .iter()
+        .filter(|row| row.status == GeoTemporalPresenceDisagreementStatus::DemolitionSupported)
+        .count();
+    let coverage_gap = rows
+        .iter()
+        .filter(|row| row.status == GeoTemporalPresenceDisagreementStatus::CoverageGap)
+        .count();
+    let new_construction_cold_start = rows
+        .iter()
+        .filter(|row| row.status == GeoTemporalPresenceDisagreementStatus::NewConstructionColdStart)
+        .count();
+    let indistinguishable = rows
+        .iter()
+        .filter(|row| row.status == GeoTemporalPresenceDisagreementStatus::Indistinguishable)
+        .count();
+    Ok(GeoTemporalPresenceDisagreementSummary {
+        rows: usize_to_u64(rows.len(), "summary.rows")?,
+        demolition_supported: usize_to_u64(demolition_supported, "summary.demolition_supported")?,
+        coverage_gap: usize_to_u64(coverage_gap, "summary.coverage_gap")?,
+        new_construction_cold_start: usize_to_u64(
+            new_construction_cold_start,
+            "summary.new_construction_cold_start",
+        )?,
+        indistinguishable: usize_to_u64(indistinguishable, "summary.indistinguishable")?,
+    })
+}
+
 fn existence_row_as_of(
     cluster_id: &str,
     entity_level: GeoEntityLevel,
@@ -3117,6 +3584,42 @@ fn existence_interval_semantic_key(interval: &GeoEntityExistenceInterval) -> Str
             .as_deref()
             .unwrap_or("")
     )
+}
+
+fn presence_observation_sort_order(
+    left: &GeoTemporalPresenceObservation,
+    right: &GeoTemporalPresenceObservation,
+) -> std::cmp::Ordering {
+    presence_observation_sort_key(left).cmp(&presence_observation_sort_key(right))
+}
+
+fn presence_observation_sort_key(observation: &GeoTemporalPresenceObservation) -> String {
+    format!(
+        "{}\u{1f}{}\u{1f}{}\u{1f}{}",
+        observation.cluster_id,
+        observation.vintage_utc_day,
+        presence_observation_kind_rank(observation.observation_kind),
+        observation.observation_id
+    )
+}
+
+fn presence_observation_semantic_key(observation: &GeoTemporalPresenceObservation) -> String {
+    format!(
+        "{}\u{1f}{:?}\u{1f}{:?}\u{1f}{}\u{1f}{}\u{1f}{}",
+        observation.cluster_id,
+        observation.entity_level,
+        observation.observation_kind,
+        observation.vintage_utc_day,
+        observation.source_receipt.source_dataset,
+        observation.source_receipt.source_record_id
+    )
+}
+
+fn presence_observation_kind_rank(kind: GeoTemporalPresenceObservationKind) -> &'static str {
+    match kind {
+        GeoTemporalPresenceObservationKind::PresentAtVintage => "0_present_at_vintage",
+        GeoTemporalPresenceObservationKind::AbsentAtVintage => "1_absent_at_vintage",
+    }
 }
 
 fn edge_semantic_key(edge: &GeoTemporalContainmentEdge) -> String {

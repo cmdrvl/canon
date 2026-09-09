@@ -6,8 +6,11 @@ use canon::geo::{
     GeoTemporalContainmentArtifact, GeoTemporalContainmentCluster, GeoTemporalContainmentEdge,
     GeoTemporalContainmentInterval, GeoTemporalContainmentRelation,
     GeoTemporalContainmentSourceReceipt, GeoTemporalContainmentSummary,
-    GeoTemporalPropertyMembershipEdge, GeoTemporalPropertyMembershipRelation,
-    canonical_temporal_containment_bytes, containment_as_of, entity_existence_as_of,
+    GeoTemporalPresenceDisagreementQuery, GeoTemporalPresenceDisagreementReason,
+    GeoTemporalPresenceDisagreementStatus, GeoTemporalPresenceObservation,
+    GeoTemporalPresenceObservationKind, GeoTemporalPropertyMembershipEdge,
+    GeoTemporalPropertyMembershipRelation, canonical_temporal_containment_bytes,
+    classify_temporal_presence_disagreements, containment_as_of, entity_existence_as_of,
     entity_existence_intervals_from_lifecycle_evidence, property_membership_as_of,
     validate_temporal_containment_artifact,
 };
@@ -147,11 +150,13 @@ fn canonical_bytes_are_deterministic_under_edge_and_cluster_order_shuffle() {
     for interval in &mut shuffled.existence_intervals {
         interval.source_receipts.reverse();
     }
+    shuffled.presence_observations.reverse();
     shuffled.edges.reverse();
     shuffled.property_membership_edges.reverse();
     shuffled.summary = GeoTemporalContainmentSummary {
         clusters: shuffled.clusters.len() as u64,
         existence_intervals: shuffled.existence_intervals.len() as u64,
+        presence_observations: shuffled.presence_observations.len() as u64,
         edges: shuffled.edges.len() as u64,
         property_membership_edges: shuffled.property_membership_edges.len() as u64,
     };
@@ -305,6 +310,106 @@ fn entity_existence_as_of_reports_new_construction_cold_start_with_refresh_remed
         next.reason.contains("latest retained observation vintage"),
         "remedy should name the observation-window limit"
     );
+}
+
+#[test]
+fn presence_disagreement_classifier_keeps_absence_diagnostic() {
+    let artifact = temporal_containment_fixture();
+    let classified = classify_temporal_presence_disagreements(
+        &artifact,
+        &GeoTemporalPresenceDisagreementQuery { cluster_id: None },
+    )
+    .expect("presence disagreements classify");
+
+    assert_eq!(classified.summary.rows, 4);
+    assert_eq!(classified.summary.demolition_supported, 1);
+    assert_eq!(classified.summary.coverage_gap, 1);
+    assert_eq!(classified.summary.new_construction_cold_start, 1);
+    assert_eq!(classified.summary.indistinguishable, 1);
+    assert!(
+        classified.rows.iter().all(|row| row.diagnostic_only),
+        "present/absent vintage rows must remain diagnostic before Allen/STP composition lands"
+    );
+
+    let rows = classified
+        .rows
+        .iter()
+        .map(|row| (row.cluster_id.as_str(), row))
+        .collect::<BTreeMap<_, _>>();
+
+    let demolition = rows
+        .get(building_id(3).as_str())
+        .expect("authoritative death supports demolition");
+    assert_eq!(
+        demolition.status,
+        GeoTemporalPresenceDisagreementStatus::DemolitionSupported
+    );
+    assert_eq!(
+        demolition.reason,
+        GeoTemporalPresenceDisagreementReason::AuthoritativeDeathBetweenPresentAndAbsent
+    );
+    assert!(demolition.next_evidence.is_none());
+
+    let coverage_gap = rows
+        .get(building_id(1).as_str())
+        .expect("same-vintage source disagreement is a coverage gap");
+    assert_eq!(
+        coverage_gap.status,
+        GeoTemporalPresenceDisagreementStatus::CoverageGap
+    );
+    assert_eq!(
+        coverage_gap.reason,
+        GeoTemporalPresenceDisagreementReason::SameVintagePresentAndAbsent
+    );
+    assert_eq!(
+        coverage_gap.next_evidence.as_ref().map(|next| next.kind),
+        Some(GeoEntityExistenceNextEvidenceKind::AcquireAuthoritativeLifecycleEvidence)
+    );
+
+    let cold_start = rows
+        .get(building_id(2).as_str())
+        .expect("authoritative birth after retained absence is a cold start");
+    assert_eq!(
+        cold_start.status,
+        GeoTemporalPresenceDisagreementStatus::NewConstructionColdStart
+    );
+    assert_eq!(
+        cold_start.reason,
+        GeoTemporalPresenceDisagreementReason::AuthoritativeBirthAfterRetainedAbsence
+    );
+    assert_eq!(
+        cold_start.next_evidence.as_ref().map(|next| next.kind),
+        Some(GeoEntityExistenceNextEvidenceKind::RefreshTemporalEvidence)
+    );
+
+    let indistinguishable = rows
+        .get(building_id(5).as_str())
+        .expect("unsupported present-then-absent sequence abstains");
+    assert_eq!(
+        indistinguishable.status,
+        GeoTemporalPresenceDisagreementStatus::Indistinguishable
+    );
+    assert_eq!(
+        indistinguishable.reason,
+        GeoTemporalPresenceDisagreementReason::MissingAuthoritativeLifecycleEvidence
+    );
+    assert_eq!(
+        indistinguishable.present_observation_ids,
+        vec!["presence-b05-2019".to_string()]
+    );
+    assert_eq!(
+        indistinguishable.absent_observation_ids,
+        vec!["absence-b05-2022".to_string()]
+    );
+
+    let building_6 = classify_temporal_presence_disagreements(
+        &artifact,
+        &GeoTemporalPresenceDisagreementQuery {
+            cluster_id: Some(building_id(6)),
+        },
+    )
+    .expect("cluster-scoped presence disagreement query succeeds");
+    assert!(building_6.rows.is_empty());
 }
 
 #[test]
@@ -542,6 +647,42 @@ fn validator_rejects_invalid_temporal_property_memberships() {
 }
 
 #[test]
+fn validator_rejects_invalid_temporal_presence_observations() {
+    let mut unsorted = temporal_containment_fixture();
+    unsorted.presence_observations.swap(0, 1);
+    let error = validate_temporal_containment_artifact(&unsorted)
+        .expect_err("validator rejects non-canonical presence observation order");
+    assert_eq!(error.code, GeoLifecycleErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("presence_observations")
+    );
+
+    let mut duplicate = temporal_containment_fixture();
+    let mut duplicate_observation = duplicate.presence_observations[0].clone();
+    duplicate_observation.observation_id = "presence-duplicate-semantic".to_string();
+    duplicate.presence_observations.push(duplicate_observation);
+    duplicate.summary.presence_observations = duplicate.presence_observations.len() as u64;
+    let error = validate_temporal_containment_artifact(&duplicate)
+        .expect_err("validator rejects duplicate semantic presence observations");
+    assert_eq!(error.code, GeoLifecycleErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("presence_observations")
+    );
+
+    let mut misleveled = temporal_containment_fixture();
+    misleveled.presence_observations[0].entity_level = GeoEntityLevel::Parcel;
+    let error = validate_temporal_containment_artifact(&misleveled)
+        .expect_err("validator rejects presence observation endpoint level mismatch");
+    assert_eq!(error.code, GeoLifecycleErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("presence_observations[].cluster_id")
+    );
+}
+
+#[test]
 fn validator_rejects_bad_intervals_and_missing_receipts() {
     let mut bad_interval = temporal_containment_fixture();
     bad_interval.edges[0].valid_interval.start_utc_day = "2021-01-01".to_string();
@@ -691,6 +832,71 @@ fn temporal_containment_fixture() -> GeoTemporalContainmentArtifact {
             )],
         },
     ];
+    let mut presence_observations = vec![
+        presence_observation(
+            "presence-b01-2020",
+            1,
+            GeoTemporalPresenceObservationKind::PresentAtVintage,
+            "2020-06-01",
+            "fixture.fema.2020",
+        ),
+        presence_observation(
+            "absence-b01-2020",
+            1,
+            GeoTemporalPresenceObservationKind::AbsentAtVintage,
+            "2020-06-01",
+            "fixture.overture.2020",
+        ),
+        presence_observation(
+            "absence-b02-2019",
+            2,
+            GeoTemporalPresenceObservationKind::AbsentAtVintage,
+            "2019-06-01",
+            "fixture.overture.2019",
+        ),
+        presence_observation(
+            "presence-b03-2020",
+            3,
+            GeoTemporalPresenceObservationKind::PresentAtVintage,
+            "2020-06-01",
+            "fixture.fema.2020",
+        ),
+        presence_observation(
+            "absence-b03-2021",
+            3,
+            GeoTemporalPresenceObservationKind::AbsentAtVintage,
+            "2021-06-01",
+            "fixture.overture.2021",
+        ),
+        presence_observation(
+            "presence-b05-2019",
+            5,
+            GeoTemporalPresenceObservationKind::PresentAtVintage,
+            "2019-06-01",
+            "fixture.fema.2019",
+        ),
+        presence_observation(
+            "absence-b05-2022",
+            5,
+            GeoTemporalPresenceObservationKind::AbsentAtVintage,
+            "2022-06-01",
+            "fixture.overture.2022",
+        ),
+        presence_observation(
+            "presence-b06-2020",
+            6,
+            GeoTemporalPresenceObservationKind::PresentAtVintage,
+            "2020-06-01",
+            "fixture.microsoft.2020",
+        ),
+    ];
+    presence_observations.sort_by(|left, right| {
+        left.cluster_id
+            .cmp(&right.cluster_id)
+            .then_with(|| left.vintage_utc_day.cmp(&right.vintage_utc_day))
+            .then_with(|| left.observation_kind.cmp(&right.observation_kind))
+            .then_with(|| left.observation_id.cmp(&right.observation_id))
+    });
     let mut property_membership_edges = vec![
         property_membership_edge("reit", 1, "fixture.reit.positions"),
         property_membership_edge("cmbs", 2, "fixture.cmbs.positions"),
@@ -719,11 +925,13 @@ fn temporal_containment_fixture() -> GeoTemporalContainmentArtifact {
         summary: GeoTemporalContainmentSummary {
             clusters: clusters.len() as u64,
             existence_intervals: existence_intervals.len() as u64,
+            presence_observations: presence_observations.len() as u64,
             edges: edges.len() as u64,
             property_membership_edges: property_membership_edges.len() as u64,
         },
         clusters,
         existence_intervals,
+        presence_observations,
         edges,
         property_membership_edges,
     }
@@ -760,6 +968,30 @@ fn source_receipt(receipt_id: &str, source_record_id: &str) -> GeoTemporalContai
         source_record_blake3: blake3_uri(source_record_id),
         proof_class: "fixture".to_string(),
         rule_id: "geo_entity_existence_fixture.v1".to_string(),
+    }
+}
+
+fn presence_observation(
+    observation_id: &str,
+    building: u8,
+    observation_kind: GeoTemporalPresenceObservationKind,
+    vintage_utc_day: &str,
+    source_dataset: &str,
+) -> GeoTemporalPresenceObservation {
+    GeoTemporalPresenceObservation {
+        observation_id: observation_id.to_string(),
+        cluster_id: building_id(building),
+        entity_level: GeoEntityLevel::Building,
+        observation_kind,
+        vintage_utc_day: vintage_utc_day.to_string(),
+        source_receipt: GeoTemporalContainmentSourceReceipt {
+            receipt_id: format!("receipt-{observation_id}"),
+            source_dataset: source_dataset.to_string(),
+            source_record_id: format!("{source_dataset}:{observation_id}"),
+            source_record_blake3: blake3_uri(&format!("{source_dataset}:{observation_id}")),
+            proof_class: "fixture".to_string(),
+            rule_id: "geo_temporal_presence_observation_fixture.v1".to_string(),
+        },
     }
 }
 

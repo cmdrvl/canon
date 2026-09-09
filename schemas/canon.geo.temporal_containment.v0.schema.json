@@ -32,6 +32,12 @@
         "$ref": "#/$defs/existence_interval"
       }
     },
+    "presence_observations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/presence_observation"
+      }
+    },
     "edges": {
       "type": "array",
       "minItems": 1,
@@ -101,6 +107,41 @@
           "items": {
             "$ref": "#/$defs/source_receipt"
           }
+        }
+      }
+    },
+    "presence_observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observation_id",
+        "cluster_id",
+        "entity_level",
+        "observation_kind",
+        "vintage_utc_day",
+        "source_receipt"
+      ],
+      "properties": {
+        "observation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cluster_id": {
+          "type": "string",
+          "pattern": "^cmdrvl:(parcel|building|property):"
+        },
+        "entity_level": {
+          "$ref": "#/$defs/entity_level"
+        },
+        "observation_kind": {
+          "$ref": "#/$defs/presence_observation_kind"
+        },
+        "vintage_utc_day": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "source_receipt": {
+          "$ref": "#/$defs/source_receipt"
         }
       }
     },
@@ -262,6 +303,10 @@
           "type": "integer",
           "minimum": 0
         },
+        "presence_observations": {
+          "type": "integer",
+          "minimum": 0
+        },
         "edges": {
           "type": "integer",
           "minimum": 1
@@ -279,6 +324,13 @@
         "building",
         "parcel",
         "property"
+      ]
+    },
+    "presence_observation_kind": {
+      "type": "string",
+      "enum": [
+        "present_at_vintage",
+        "absent_at_vintage"
       ]
     },
     "relation": {
