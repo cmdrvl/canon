@@ -39,6 +39,14 @@ repo_root="$(cd -- "$script_dir/../.." && pwd -P)"
 
 if [[ -n "${CANON_BIN:-}" ]]; then
   canon_bin="$CANON_BIN"
+  if [[ ! -e "$canon_bin" ]]; then
+    printf 'demo0 invalid CANON_BIN: missing executable at %s\n' "$canon_bin" >&2
+    exit 70
+  fi
+  if [[ ! -x "$canon_bin" ]]; then
+    printf 'demo0 invalid CANON_BIN: not executable at %s\n' "$canon_bin" >&2
+    exit 70
+  fi
 else
   cargo_target_dir="$(cargo metadata --quiet --no-deps --format-version 1 --manifest-path "$repo_root/Cargo.toml" | jq -r '.target_directory')"
   if [[ -z "$cargo_target_dir" || "$cargo_target_dir" == "null" ]]; then

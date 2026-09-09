@@ -5,20 +5,44 @@ use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
+    os::unix::fs::PermissionsExt,
     path::Path,
 };
 use tempfile::tempdir;
 
+fn demo_script() -> String {
+    format!("{}/scripts/geo_demo/demo0.sh", env!("CARGO_MANIFEST_DIR"))
+}
+
+fn copy_canon_binary_for_demo(work_dir: &Path) -> std::path::PathBuf {
+    let source = Path::new(env!("CARGO_BIN_EXE_canon"));
+    let copy = work_dir.join("canon-demo-bin");
+    fs::copy(source, &copy).unwrap_or_else(|err| {
+        panic!(
+            "copy test-owned canon binary from {} to {}: {err}",
+            source.display(),
+            copy.display()
+        )
+    });
+    let mut permissions = fs::metadata(&copy)
+        .expect("copied canon binary metadata")
+        .permissions();
+    let mode = permissions.mode();
+    if mode & 0o111 == 0 {
+        permissions.set_mode(mode | 0o700);
+        fs::set_permissions(&copy, permissions).expect("make copied canon binary executable");
+    }
+    copy
+}
+
 fn run_demo(work_dir: &Path) -> Vec<u8> {
+    let canon_bin = copy_canon_binary_for_demo(work_dir);
     let mut command = Command::new("bash");
     command
-        .arg(format!(
-            "{}/scripts/geo_demo/demo0.sh",
-            env!("CARGO_MANIFEST_DIR")
-        ))
+        .arg(demo_script())
         .arg("--work-dir")
         .arg(work_dir)
-        .env("CANON_BIN", env!("CARGO_BIN_EXE_canon"));
+        .env("CANON_BIN", canon_bin);
 
     let assert = command.assert().success();
     assert
@@ -69,12 +93,28 @@ fn unsurfaced_geo_commands(capabilities: &Value) -> BTreeSet<String> {
 fn demo0_script_has_valid_bash_syntax() {
     Command::new("bash")
         .arg("-n")
-        .arg(format!(
-            "{}/scripts/geo_demo/demo0.sh",
-            env!("CARGO_MANIFEST_DIR")
-        ))
+        .arg(demo_script())
         .assert()
         .success();
+}
+
+#[test]
+fn demo0_refuses_missing_or_non_executable_canon_bin_before_shellout() {
+    let temp = tempdir().expect("tempdir");
+    let work_dir = temp.path().join("work");
+    fs::create_dir_all(&work_dir).expect("demo workdir");
+
+    let missing = temp.path().join("missing-canon");
+    assert_demo0_invalid_canon_bin(&work_dir, &missing, "missing executable at");
+
+    let not_executable = temp.path().join("not-executable-canon");
+    fs::write(&not_executable, b"#!/usr/bin/env bash\nexit 0\n").expect("write fake canon");
+    let mut permissions = fs::metadata(&not_executable)
+        .expect("fake canon metadata")
+        .permissions();
+    permissions.set_mode(0o600);
+    fs::set_permissions(&not_executable, permissions).expect("remove execute bits");
+    assert_demo0_invalid_canon_bin(&work_dir, &not_executable, "not executable at");
 }
 
 #[test]
@@ -120,10 +160,7 @@ fn demo0_fallback_cargo_path_is_cwd_independent() {
     let mut command = Command::new("bash");
     command
         .current_dir(&foreign_dir)
-        .arg(format!(
-            "{}/scripts/geo_demo/demo0.sh",
-            env!("CARGO_MANIFEST_DIR")
-        ))
+        .arg(demo_script())
         .arg("--work-dir")
         .arg(&work_dir)
         .env_remove("CANON_BIN");
@@ -334,5 +371,38 @@ fn demo0_case4_public_cli_journey_is_byte_deterministic_and_honest() {
             .unwrap()
             .contains(&json!("chimera_wrongly_admitted")),
         "the negative must fail if the demo hard-codes the happy path"
+    );
+}
+
+fn assert_demo0_invalid_canon_bin(work_dir: &Path, canon_bin: &Path, expected_reason: &str) {
+    let assert = Command::new("bash")
+        .arg(demo_script())
+        .arg("--work-dir")
+        .arg(work_dir)
+        .env("CANON_BIN", canon_bin)
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    assert_eq!(
+        output.status.code(),
+        Some(70),
+        "invalid CANON_BIN must fail as a typed harness error, not a shell 127"
+    );
+    assert!(
+        output.stdout.is_empty(),
+        "invalid CANON_BIN must not emit a partial demo artifact"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("demo0 invalid CANON_BIN"),
+        "stderr names the typed harness error: {stderr}"
+    );
+    assert!(
+        stderr.contains(expected_reason),
+        "stderr names the executable preflight reason: {stderr}"
+    );
+    assert!(
+        stderr.contains(&canon_bin.display().to_string()),
+        "stderr names the invalid binary path: {stderr}"
     );
 }
