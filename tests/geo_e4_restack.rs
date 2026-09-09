@@ -998,7 +998,7 @@ fn measurement_summary(
             current_value: 0,
             affected_case_id: "3cf11e9a58e3b710".to_string(),
             cause: "bd-35t1 same-loan document-address property-row rebinder".to_string(),
-            semantic_diff: "The recomputed Gate V2 restack now keeps the truth model in the residual for one component-budget-fallback case; all other stacked G1 counters are unchanged.".to_string(),
+            semantic_diff: "The recomputed Gate V2 restack no longer reports one component-budget-fallback case as a truth exclusion; its truth_model_in_residual is now unscored/null, and all other stacked G1 counters are unchanged.".to_string(),
         }],
         source_fixture_digests,
         stage_summaries,

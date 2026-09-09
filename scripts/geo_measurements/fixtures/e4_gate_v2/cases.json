@@ -180,7 +180,7 @@
       "residual_count": null,
       "residual_count_saturated": false,
       "truth_in_universe": "6/6",
-      "truth_model_in_residual": true,
+      "truth_model_in_residual": null,
       "forced": {
         "parcels": [],
         "buildings": []
