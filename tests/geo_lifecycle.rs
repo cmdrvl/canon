@@ -2,13 +2,16 @@ use canon::geo::{
     CANON_GEO_TEMPORAL_CONTAINMENT_VERSION, GeoContainmentAsOfQuery, GeoEntityExistenceAsOfQuery,
     GeoEntityExistenceInterval, GeoEntityExistenceNextEvidenceKind, GeoEntityExistenceReason,
     GeoEntityExistenceStatus, GeoEntityLevel, GeoEntityLifecycleEvidenceKind,
-    GeoEntityLifecycleEvidenceRow, GeoLifecycleErrorCode, GeoTemporalContainmentArtifact,
-    GeoTemporalContainmentCluster, GeoTemporalContainmentEdge, GeoTemporalContainmentInterval,
-    GeoTemporalContainmentRelation, GeoTemporalContainmentSourceReceipt,
-    GeoTemporalContainmentSummary, canonical_temporal_containment_bytes, containment_as_of,
-    entity_existence_as_of, entity_existence_intervals_from_lifecycle_evidence,
+    GeoEntityLifecycleEvidenceRow, GeoLifecycleErrorCode, GeoPropertyMembershipAsOfQuery,
+    GeoTemporalContainmentArtifact, GeoTemporalContainmentCluster, GeoTemporalContainmentEdge,
+    GeoTemporalContainmentInterval, GeoTemporalContainmentRelation,
+    GeoTemporalContainmentSourceReceipt, GeoTemporalContainmentSummary,
+    GeoTemporalPropertyMembershipEdge, GeoTemporalPropertyMembershipRelation,
+    canonical_temporal_containment_bytes, containment_as_of, entity_existence_as_of,
+    entity_existence_intervals_from_lifecycle_evidence, property_membership_as_of,
     validate_temporal_containment_artifact,
 };
+use std::collections::BTreeMap;
 
 #[test]
 fn containment_as_of_answers_the_2020_shape_without_leaking_to_2019() {
@@ -50,6 +53,92 @@ fn containment_as_of_answers_the_2020_shape_without_leaking_to_2019() {
 }
 
 #[test]
+fn property_membership_as_of_keeps_three_corpora_distinct_on_one_parcel() {
+    let artifact = temporal_containment_fixture();
+    let active = property_membership_as_of(
+        &artifact,
+        &GeoPropertyMembershipAsOfQuery {
+            as_of_utc_day: "2020-06-01".to_string(),
+            property_cluster_id: None,
+            member_cluster_id: None,
+        },
+    )
+    .expect("property membership query succeeds");
+    assert_eq!(active.summary.memberships, 3);
+    assert_eq!(active.summary.property_clusters, 3);
+    assert_eq!(active.summary.member_clusters, 3);
+
+    let memberships = active
+        .memberships
+        .iter()
+        .map(|membership| {
+            (
+                membership.property_cluster_id.as_str(),
+                membership.member_cluster_id.as_str(),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(
+        memberships.get(property_id("reit", 1).as_str()).copied(),
+        Some(building_id(1).as_str())
+    );
+    assert_eq!(
+        memberships.get(property_id("cmbs", 2).as_str()).copied(),
+        Some(building_id(2).as_str())
+    );
+    assert_eq!(
+        memberships.get(property_id("rca", 3).as_str()).copied(),
+        Some(building_id(3).as_str())
+    );
+
+    for member_cluster_id in memberships.values() {
+        let containing_parcel = containment_as_of(
+            &artifact,
+            &GeoContainmentAsOfQuery {
+                as_of_utc_day: "2020-06-01".to_string(),
+                parent_cluster_id: Some(parcel_id()),
+                child_cluster_id: Some((*member_cluster_id).to_string()),
+            },
+        )
+        .expect("building containment query succeeds");
+        assert_eq!(
+            containing_parcel.summary.edges, 1,
+            "all three property members should share the same parcel without merging properties"
+        );
+    }
+
+    let before_construction = property_membership_as_of(
+        &artifact,
+        &GeoPropertyMembershipAsOfQuery {
+            as_of_utc_day: "2019-06-01".to_string(),
+            property_cluster_id: None,
+            member_cluster_id: None,
+        },
+    )
+    .expect("pre-construction property membership query succeeds");
+    assert!(
+        before_construction.memberships.is_empty(),
+        "property memberships must not leak before their valid interval"
+    );
+
+    let cmbs_only = property_membership_as_of(
+        &artifact,
+        &GeoPropertyMembershipAsOfQuery {
+            as_of_utc_day: "2020-06-01".to_string(),
+            property_cluster_id: Some(property_id("cmbs", 2)),
+            member_cluster_id: None,
+        },
+    )
+    .expect("property-scoped membership query succeeds");
+    assert_eq!(cmbs_only.summary.memberships, 1);
+    assert_eq!(
+        cmbs_only.memberships[0].member_cluster_id,
+        building_id(2),
+        "CMBS and REIT positions must remain separate even when the buildings share one BBL"
+    );
+}
+
+#[test]
 fn canonical_bytes_are_deterministic_under_edge_and_cluster_order_shuffle() {
     let canonical = temporal_containment_fixture();
     let mut shuffled = canonical.clone();
@@ -59,10 +148,12 @@ fn canonical_bytes_are_deterministic_under_edge_and_cluster_order_shuffle() {
         interval.source_receipts.reverse();
     }
     shuffled.edges.reverse();
+    shuffled.property_membership_edges.reverse();
     shuffled.summary = GeoTemporalContainmentSummary {
         clusters: shuffled.clusters.len() as u64,
         existence_intervals: shuffled.existence_intervals.len() as u64,
         edges: shuffled.edges.len() as u64,
+        property_membership_edges: shuffled.property_membership_edges.len() as u64,
     };
 
     let left = canonical_temporal_containment_bytes(&canonical).expect("canonical bytes");
@@ -412,6 +503,45 @@ fn validator_rejects_unknown_or_misleveled_endpoints() {
 }
 
 #[test]
+fn validator_rejects_invalid_temporal_property_memberships() {
+    let mut unknown_member = temporal_containment_fixture();
+    unknown_member.property_membership_edges[0].member_cluster_id =
+        "cmdrvl:building:missing".to_string();
+    let error = validate_temporal_containment_artifact(&unknown_member)
+        .expect_err("validator rejects unknown property member cluster");
+    assert_eq!(error.code, GeoLifecycleErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("property_membership_edges[].member_cluster_id")
+    );
+
+    let mut unsupported_member_level = temporal_containment_fixture();
+    unsupported_member_level.property_membership_edges[0].member_level = GeoEntityLevel::Property;
+    unsupported_member_level.property_membership_edges[0].member_cluster_id =
+        property_id("reit", 1);
+    let error = validate_temporal_containment_artifact(&unsupported_member_level)
+        .expect_err("validator rejects property-as-member edges");
+    assert_eq!(error.code, GeoLifecycleErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("property_membership_edges[].member_level")
+    );
+
+    let mut duplicate = temporal_containment_fixture();
+    let mut duplicate_edge = duplicate.property_membership_edges[0].clone();
+    duplicate_edge.membership_id = "membership-duplicate-semantic".to_string();
+    duplicate.property_membership_edges.push(duplicate_edge);
+    duplicate.summary.property_membership_edges = duplicate.property_membership_edges.len() as u64;
+    let error = validate_temporal_containment_artifact(&duplicate)
+        .expect_err("validator rejects duplicate semantic property memberships");
+    assert_eq!(error.code, GeoLifecycleErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("property_membership_edges")
+    );
+}
+
+#[test]
 fn validator_rejects_bad_intervals_and_missing_receipts() {
     let mut bad_interval = temporal_containment_fixture();
     bad_interval.edges[0].valid_interval.start_utc_day = "2021-01-01".to_string();
@@ -454,6 +584,20 @@ fn temporal_containment_fixture() -> GeoTemporalContainmentArtifact {
         cluster_id: building_id(building),
         entity_level: GeoEntityLevel::Building,
     }));
+    clusters.extend([
+        GeoTemporalContainmentCluster {
+            cluster_id: property_id("cmbs", 2),
+            entity_level: GeoEntityLevel::Property,
+        },
+        GeoTemporalContainmentCluster {
+            cluster_id: property_id("rca", 3),
+            entity_level: GeoEntityLevel::Property,
+        },
+        GeoTemporalContainmentCluster {
+            cluster_id: property_id("reit", 1),
+            entity_level: GeoEntityLevel::Property,
+        },
+    ]);
     clusters.sort_by(|left, right| left.cluster_id.cmp(&right.cluster_id));
 
     let mut edges = (1..=7)
@@ -547,6 +691,27 @@ fn temporal_containment_fixture() -> GeoTemporalContainmentArtifact {
             )],
         },
     ];
+    let mut property_membership_edges = vec![
+        property_membership_edge("reit", 1, "fixture.reit.positions"),
+        property_membership_edge("cmbs", 2, "fixture.cmbs.positions"),
+        property_membership_edge("rca", 3, "fixture.rca.positions"),
+    ];
+    property_membership_edges.sort_by(|left, right| {
+        left.property_cluster_id
+            .cmp(&right.property_cluster_id)
+            .then_with(|| left.member_cluster_id.cmp(&right.member_cluster_id))
+            .then_with(|| {
+                left.valid_interval
+                    .start_utc_day
+                    .cmp(&right.valid_interval.start_utc_day)
+            })
+            .then_with(|| {
+                left.valid_interval
+                    .end_utc_day
+                    .cmp(&right.valid_interval.end_utc_day)
+            })
+            .then_with(|| left.membership_id.cmp(&right.membership_id))
+    });
 
     GeoTemporalContainmentArtifact {
         version: CANON_GEO_TEMPORAL_CONTAINMENT_VERSION.to_string(),
@@ -555,10 +720,12 @@ fn temporal_containment_fixture() -> GeoTemporalContainmentArtifact {
             clusters: clusters.len() as u64,
             existence_intervals: existence_intervals.len() as u64,
             edges: edges.len() as u64,
+            property_membership_edges: property_membership_edges.len() as u64,
         },
         clusters,
         existence_intervals,
         edges,
+        property_membership_edges,
     }
 }
 
@@ -577,6 +744,10 @@ fn building_id(number: u8) -> String {
     format!("cmdrvl:building:nyc:bin:fixture-201-{number:02}")
 }
 
+fn property_id(corpus: &str, number: u8) -> String {
+    format!("cmdrvl:property:fixture:{corpus}:building-{number:02}")
+}
+
 fn blake3_uri(input: &str) -> String {
     format!("blake3:{}", blake3::hash(input.as_bytes()).to_hex())
 }
@@ -589,6 +760,32 @@ fn source_receipt(receipt_id: &str, source_record_id: &str) -> GeoTemporalContai
         source_record_blake3: blake3_uri(source_record_id),
         proof_class: "fixture".to_string(),
         rule_id: "geo_entity_existence_fixture.v1".to_string(),
+    }
+}
+
+fn property_membership_edge(
+    corpus: &str,
+    building: u8,
+    source_dataset: &str,
+) -> GeoTemporalPropertyMembershipEdge {
+    GeoTemporalPropertyMembershipEdge {
+        membership_id: format!("membership-{corpus}-b{building:02}"),
+        property_cluster_id: property_id(corpus, building),
+        member_cluster_id: building_id(building),
+        member_level: GeoEntityLevel::Building,
+        relation: GeoTemporalPropertyMembershipRelation::CollateralMember,
+        valid_interval: GeoTemporalContainmentInterval {
+            start_utc_day: "2020-01-01".to_string(),
+            end_utc_day: "2020-12-31".to_string(),
+        },
+        source_receipt: GeoTemporalContainmentSourceReceipt {
+            receipt_id: format!("receipt-membership-{corpus}-b{building:02}"),
+            source_dataset: source_dataset.to_string(),
+            source_record_id: format!("{source_dataset}:b{building:02}"),
+            source_record_blake3: blake3_uri(&format!("{source_dataset}:b{building:02}")),
+            proof_class: "fixture".to_string(),
+            rule_id: "geo_temporal_property_membership_fixture.v1".to_string(),
+        },
     }
 }
 

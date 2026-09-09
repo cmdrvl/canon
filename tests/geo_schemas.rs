@@ -182,6 +182,7 @@ use canon::geo::{
     GeoTemporalContainmentArtifact, GeoTemporalContainmentCluster, GeoTemporalContainmentEdge,
     GeoTemporalContainmentInterval, GeoTemporalContainmentRelation,
     GeoTemporalContainmentSourceReceipt, GeoTemporalContainmentSummary,
+    GeoTemporalPropertyMembershipEdge, GeoTemporalPropertyMembershipRelation,
     canonical_temporal_containment_bytes, validate_temporal_containment_artifact,
 };
 use canon::geo::{
@@ -5176,6 +5177,27 @@ fn temporal_containment_schema_matches_a_real_instance() {
             .and_then(Value::as_str),
         Some("building")
     );
+    assert_eq!(
+        schema
+            .pointer("/$defs/property_membership_edge/properties/property_cluster_id/pattern")
+            .and_then(Value::as_str),
+        Some("^cmdrvl:property:")
+    );
+    assert!(
+        schema
+            .pointer("/$defs/property_membership_edge/properties/member_level/enum")
+            .and_then(Value::as_array)
+            .is_some_and(|levels| {
+                levels
+                    .iter()
+                    .any(|value| value.as_str() == Some("building"))
+                    && levels.iter().any(|value| value.as_str() == Some("parcel"))
+                    && !levels
+                        .iter()
+                        .any(|value| value.as_str() == Some("property"))
+            }),
+        "property memberships may point at parcel or building members, not property members"
+    );
 }
 
 fn temporal_containment_artifact() -> GeoTemporalContainmentArtifact {
@@ -5190,6 +5212,10 @@ fn temporal_containment_artifact() -> GeoTemporalContainmentArtifact {
             GeoTemporalContainmentCluster {
                 cluster_id: "cmdrvl:parcel:nyc:bbl:fixture-schema-001".to_string(),
                 entity_level: GeoEntityLevel::Parcel,
+            },
+            GeoTemporalContainmentCluster {
+                cluster_id: "cmdrvl:property:fixture-schema-001".to_string(),
+                entity_level: GeoEntityLevel::Property,
             },
         ],
         existence_intervals: vec![GeoEntityExistenceInterval {
@@ -5230,10 +5256,32 @@ fn temporal_containment_artifact() -> GeoTemporalContainmentArtifact {
                 rule_id: "geo_temporal_containment_fixture.v1".to_string(),
             },
         }],
+        property_membership_edges: vec![GeoTemporalPropertyMembershipEdge {
+            membership_id: "membership-fixture-schema-001".to_string(),
+            property_cluster_id: "cmdrvl:property:fixture-schema-001".to_string(),
+            member_cluster_id: "cmdrvl:building:nyc:bin:fixture-schema-001".to_string(),
+            member_level: GeoEntityLevel::Building,
+            relation: GeoTemporalPropertyMembershipRelation::CollateralMember,
+            valid_interval: GeoTemporalContainmentInterval {
+                start_utc_day: "2020-01-01".to_string(),
+                end_utc_day: "2020-12-31".to_string(),
+            },
+            source_receipt: GeoTemporalContainmentSourceReceipt {
+                receipt_id: "receipt-fixture-schema-membership-001".to_string(),
+                source_dataset: "fixture.lifecycle.property_membership".to_string(),
+                source_record_id: "property-membership:fixture-schema-001".to_string(),
+                source_record_blake3: pre_resolution_blake3(
+                    "property-membership:fixture-schema-001",
+                ),
+                proof_class: "fixture".to_string(),
+                rule_id: "geo_temporal_property_membership_fixture.v1".to_string(),
+            },
+        }],
         summary: GeoTemporalContainmentSummary {
-            clusters: 2,
+            clusters: 3,
             existence_intervals: 1,
             edges: 1,
+            property_membership_edges: 1,
         },
     }
 }

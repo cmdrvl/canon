@@ -473,6 +473,8 @@ pub struct GeoTemporalContainmentArtifact {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub existence_intervals: Vec<GeoEntityExistenceInterval>,
     pub edges: Vec<GeoTemporalContainmentEdge>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub property_membership_edges: Vec<GeoTemporalPropertyMembershipEdge>,
     pub summary: GeoTemporalContainmentSummary,
 }
 
@@ -498,6 +500,24 @@ pub struct GeoTemporalContainmentEdge {
     pub child_cluster_id: String,
     pub child_level: GeoEntityLevel,
     pub relation: GeoTemporalContainmentRelation,
+    pub valid_interval: GeoTemporalContainmentInterval,
+    pub source_receipt: GeoTemporalContainmentSourceReceipt,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoTemporalPropertyMembershipRelation {
+    CollateralMember,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTemporalPropertyMembershipEdge {
+    pub membership_id: String,
+    pub property_cluster_id: String,
+    pub member_cluster_id: String,
+    pub member_level: GeoEntityLevel,
+    pub relation: GeoTemporalPropertyMembershipRelation,
     pub valid_interval: GeoTemporalContainmentInterval,
     pub source_receipt: GeoTemporalContainmentSourceReceipt,
 }
@@ -559,6 +579,8 @@ pub struct GeoTemporalContainmentSummary {
     #[serde(default, skip_serializing_if = "is_zero")]
     pub existence_intervals: u64,
     pub edges: u64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub property_membership_edges: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -587,6 +609,34 @@ pub struct GeoContainmentAsOfSummary {
     pub edges: u64,
     pub parent_clusters: u64,
     pub child_clusters: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoPropertyMembershipAsOfQuery {
+    pub as_of_utc_day: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub property_cluster_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub member_cluster_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoPropertyMembershipAsOfArtifact {
+    pub version: String,
+    pub mart_id: String,
+    pub as_of_utc_day: String,
+    pub memberships: Vec<GeoTemporalPropertyMembershipEdge>,
+    pub summary: GeoPropertyMembershipAsOfSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoPropertyMembershipAsOfSummary {
+    pub memberships: u64,
+    pub property_clusters: u64,
+    pub member_clusters: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -689,6 +739,9 @@ pub fn canonical_temporal_containment_artifact(
         .existence_intervals
         .sort_by(existence_interval_sort_order);
     canonical.edges.sort_by(edge_sort_order);
+    canonical
+        .property_membership_edges
+        .sort_by(property_membership_sort_order);
     canonical.summary = GeoTemporalContainmentSummary {
         clusters: usize_to_u64(canonical.clusters.len(), "summary.clusters")?,
         existence_intervals: usize_to_u64(
@@ -696,6 +749,10 @@ pub fn canonical_temporal_containment_artifact(
             "summary.existence_intervals",
         )?,
         edges: usize_to_u64(canonical.edges.len(), "summary.edges")?,
+        property_membership_edges: usize_to_u64(
+            canonical.property_membership_edges.len(),
+            "summary.property_membership_edges",
+        )?,
     };
     validate_temporal_containment_artifact(&canonical)?;
     Ok(canonical)
@@ -749,6 +806,50 @@ pub fn containment_as_of(
         mart_id: canonical.mart_id,
         as_of_utc_day: query.as_of_utc_day.clone(),
         edges,
+        summary,
+    })
+}
+
+pub fn property_membership_as_of(
+    artifact: &GeoTemporalContainmentArtifact,
+    query: &GeoPropertyMembershipAsOfQuery,
+) -> Result<GeoPropertyMembershipAsOfArtifact, GeoLifecycleError> {
+    let canonical = canonical_temporal_containment_artifact(artifact)?;
+    validate_utc_day("as_of_utc_day", &query.as_of_utc_day)?;
+    if let Some(property_cluster_id) = &query.property_cluster_id {
+        validate_cluster_id(
+            "property_cluster_id",
+            property_cluster_id,
+            GeoEntityLevel::Property,
+        )?;
+    }
+    if let Some(member_cluster_id) = &query.member_cluster_id {
+        validate_cluster_identifier("member_cluster_id", member_cluster_id)?;
+    }
+
+    let memberships = canonical
+        .property_membership_edges
+        .iter()
+        .filter(|membership| {
+            membership.valid_interval.start_utc_day.as_str() <= query.as_of_utc_day.as_str()
+                && query.as_of_utc_day.as_str() <= membership.valid_interval.end_utc_day.as_str()
+                && query
+                    .property_cluster_id
+                    .as_ref()
+                    .is_none_or(|property| property == &membership.property_cluster_id)
+                && query
+                    .member_cluster_id
+                    .as_ref()
+                    .is_none_or(|member| member == &membership.member_cluster_id)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let summary = property_membership_summary(&memberships)?;
+    Ok(GeoPropertyMembershipAsOfArtifact {
+        version: canonical.version,
+        mart_id: canonical.mart_id,
+        as_of_utc_day: query.as_of_utc_day.clone(),
+        memberships,
         summary,
     })
 }
@@ -2193,7 +2294,12 @@ fn validate_temporal_containment_artifact_inner(
         &clusters,
         require_canonical_order,
     )?;
-    validate_edges(&artifact.edges, &clusters, require_canonical_order)
+    validate_edges(&artifact.edges, &clusters, require_canonical_order)?;
+    validate_property_membership_edges(
+        &artifact.property_membership_edges,
+        &clusters,
+        require_canonical_order,
+    )
 }
 
 fn validate_summary(artifact: &GeoTemporalContainmentArtifact) -> Result<(), GeoLifecycleError> {
@@ -2230,6 +2336,23 @@ fn validate_summary(artifact: &GeoTemporalContainmentArtifact) -> Result<(), Geo
                 ("field", "summary.edges".to_string()),
                 ("actual", artifact.summary.edges.to_string()),
                 ("expected", edge_count.to_string()),
+            ],
+        ));
+    }
+    let property_membership_count = usize_to_u64(
+        artifact.property_membership_edges.len(),
+        "summary.property_membership_edges",
+    )?;
+    if artifact.summary.property_membership_edges != property_membership_count {
+        return Err(GeoLifecycleError::invalid(
+            "Geo temporal-containment property membership summary does not match edges",
+            [
+                ("field", "summary.property_membership_edges".to_string()),
+                (
+                    "actual",
+                    artifact.summary.property_membership_edges.to_string(),
+                ),
+                ("expected", property_membership_count.to_string()),
             ],
         ));
     }
@@ -2482,6 +2605,114 @@ fn validate_edge(
     validate_source_receipt(&edge.source_receipt)
 }
 
+fn validate_property_membership_edges(
+    memberships: &[GeoTemporalPropertyMembershipEdge],
+    clusters: &BTreeMap<String, GeoEntityLevel>,
+    require_canonical_order: bool,
+) -> Result<(), GeoLifecycleError> {
+    let mut membership_ids = BTreeSet::new();
+    let mut semantic_memberships = BTreeSet::new();
+    let mut previous_key: Option<String> = None;
+    for membership in memberships {
+        validate_property_membership_edge(membership, clusters)?;
+        if !membership_ids.insert(membership.membership_id.clone()) {
+            return Err(GeoLifecycleError::invalid(
+                "Geo temporal property membership ids must be unique",
+                [
+                    (
+                        "field",
+                        "property_membership_edges[].membership_id".to_string(),
+                    ),
+                    ("membership_id", membership.membership_id.clone()),
+                ],
+            ));
+        }
+        let semantic_key = property_membership_semantic_key(membership);
+        if !semantic_memberships.insert(semantic_key) {
+            return Err(GeoLifecycleError::invalid(
+                "Geo temporal property memberships must be unique by property, member, relation, and interval",
+                [
+                    ("field", "property_membership_edges".to_string()),
+                    (
+                        "property_cluster_id",
+                        membership.property_cluster_id.clone(),
+                    ),
+                    ("member_cluster_id", membership.member_cluster_id.clone()),
+                ],
+            ));
+        }
+        if require_canonical_order {
+            let key = property_membership_sort_key(membership);
+            if let Some(previous) = &previous_key
+                && previous >= &key
+            {
+                return Err(GeoLifecycleError::invalid(
+                    "Geo temporal property memberships must be in canonical order",
+                    [
+                        ("field", "property_membership_edges".to_string()),
+                        ("previous_key", previous.clone()),
+                        ("membership_key", key.clone()),
+                    ],
+                ));
+            }
+            previous_key = Some(key);
+        }
+    }
+    Ok(())
+}
+
+fn validate_property_membership_edge(
+    membership: &GeoTemporalPropertyMembershipEdge,
+    clusters: &BTreeMap<String, GeoEntityLevel>,
+) -> Result<(), GeoLifecycleError> {
+    validate_string(
+        "property_membership_edges[].membership_id",
+        &membership.membership_id,
+    )?;
+    validate_cluster_id(
+        "property_membership_edges[].property_cluster_id",
+        &membership.property_cluster_id,
+        GeoEntityLevel::Property,
+    )?;
+    validate_endpoint_level(
+        "property_membership_edges[].property_cluster_id",
+        &membership.property_cluster_id,
+        GeoEntityLevel::Property,
+        clusters,
+    )?;
+    match membership.member_level {
+        GeoEntityLevel::Parcel | GeoEntityLevel::Building => {}
+        GeoEntityLevel::Property | GeoEntityLevel::PoiUnit => {
+            return Err(GeoLifecycleError::invalid(
+                "Geo temporal property membership v0 supports parcel or building members only",
+                [
+                    (
+                        "field",
+                        "property_membership_edges[].member_level".to_string(),
+                    ),
+                    ("member_level", format!("{:?}", membership.member_level)),
+                ],
+            ));
+        }
+    }
+    validate_cluster_id(
+        "property_membership_edges[].member_cluster_id",
+        &membership.member_cluster_id,
+        membership.member_level,
+    )?;
+    validate_endpoint_level(
+        "property_membership_edges[].member_cluster_id",
+        &membership.member_cluster_id,
+        membership.member_level,
+        clusters,
+    )?;
+    match membership.relation {
+        GeoTemporalPropertyMembershipRelation::CollateralMember => {}
+    }
+    validate_interval(&membership.valid_interval)?;
+    validate_source_receipt(&membership.source_receipt)
+}
+
 fn validate_endpoint_level(
     field: &'static str,
     cluster_id: &str,
@@ -2605,6 +2836,24 @@ fn containment_summary(
         edges: usize_to_u64(edges.len(), "summary.edges")?,
         parent_clusters: usize_to_u64(parent_clusters.len(), "summary.parent_clusters")?,
         child_clusters: usize_to_u64(child_clusters.len(), "summary.child_clusters")?,
+    })
+}
+
+fn property_membership_summary(
+    memberships: &[GeoTemporalPropertyMembershipEdge],
+) -> Result<GeoPropertyMembershipAsOfSummary, GeoLifecycleError> {
+    let property_clusters = memberships
+        .iter()
+        .map(|membership| membership.property_cluster_id.clone())
+        .collect::<BTreeSet<_>>();
+    let member_clusters = memberships
+        .iter()
+        .map(|membership| membership.member_cluster_id.clone())
+        .collect::<BTreeSet<_>>();
+    Ok(GeoPropertyMembershipAsOfSummary {
+        memberships: usize_to_u64(memberships.len(), "summary.memberships")?,
+        property_clusters: usize_to_u64(property_clusters.len(), "summary.property_clusters")?,
+        member_clusters: usize_to_u64(member_clusters.len(), "summary.member_clusters")?,
     })
 }
 
@@ -2878,6 +3127,35 @@ fn edge_semantic_key(edge: &GeoTemporalContainmentEdge) -> String {
         edge.relation,
         edge.valid_interval.start_utc_day,
         edge.valid_interval.end_utc_day
+    )
+}
+
+fn property_membership_sort_order(
+    left: &GeoTemporalPropertyMembershipEdge,
+    right: &GeoTemporalPropertyMembershipEdge,
+) -> std::cmp::Ordering {
+    property_membership_sort_key(left).cmp(&property_membership_sort_key(right))
+}
+
+fn property_membership_sort_key(membership: &GeoTemporalPropertyMembershipEdge) -> String {
+    format!(
+        "{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
+        membership.property_cluster_id,
+        membership.member_cluster_id,
+        membership.valid_interval.start_utc_day,
+        membership.valid_interval.end_utc_day,
+        membership.membership_id
+    )
+}
+
+fn property_membership_semantic_key(membership: &GeoTemporalPropertyMembershipEdge) -> String {
+    format!(
+        "{}\u{1f}{}\u{1f}{:?}\u{1f}{}\u{1f}{}",
+        membership.property_cluster_id,
+        membership.member_cluster_id,
+        membership.relation,
+        membership.valid_interval.start_utc_day,
+        membership.valid_interval.end_utc_day
     )
 }
 

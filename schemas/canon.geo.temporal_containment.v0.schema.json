@@ -39,6 +39,12 @@
         "$ref": "#/$defs/edge"
       }
     },
+    "property_membership_edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/property_membership_edge"
+      }
+    },
     "summary": {
       "$ref": "#/$defs/summary"
     }
@@ -141,6 +147,49 @@
         }
       }
     },
+    "property_membership_edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "membership_id",
+        "property_cluster_id",
+        "member_cluster_id",
+        "member_level",
+        "relation",
+        "valid_interval",
+        "source_receipt"
+      ],
+      "properties": {
+        "membership_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "property_cluster_id": {
+          "type": "string",
+          "pattern": "^cmdrvl:property:"
+        },
+        "member_cluster_id": {
+          "type": "string",
+          "pattern": "^cmdrvl:(parcel|building):"
+        },
+        "member_level": {
+          "type": "string",
+          "enum": [
+            "building",
+            "parcel"
+          ]
+        },
+        "relation": {
+          "$ref": "#/$defs/property_membership_relation"
+        },
+        "valid_interval": {
+          "$ref": "#/$defs/valid_interval"
+        },
+        "source_receipt": {
+          "$ref": "#/$defs/source_receipt"
+        }
+      }
+    },
     "valid_interval": {
       "type": "object",
       "additionalProperties": false,
@@ -216,6 +265,10 @@
         "edges": {
           "type": "integer",
           "minimum": 1
+        },
+        "property_membership_edges": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },
@@ -232,6 +285,12 @@
       "type": "string",
       "enum": [
         "part_of"
+      ]
+    },
+    "property_membership_relation": {
+      "type": "string",
+      "enum": [
+        "collateral_member"
       ]
     }
   }
