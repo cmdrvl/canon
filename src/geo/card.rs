@@ -10,10 +10,11 @@ use super::{
     GeoCandidateReachStatus, GeoCompositionArtifact, GeoCompositionBackbone, GeoCompositionModel,
     GeoCompositionRequest, GeoCompositionStatus, GeoCompositionUniverse, GeoEntityLevel,
     GeoEntityRef, GeoEvidenceAdmission, GeoEvidenceCompilationArtifact, GeoEvidenceRecordRef,
-    GeoExplanationArtifact, GeoImageTilePin, GeoImageTilePinArtifact, GeoSourceReleasePin,
-    GeoTruthPlane, GeoTruthRepresentationGrain, GeoTypedGeometry, canonical_composition_bytes,
-    canonical_evidence_compilation_bytes, canonical_explanation_bytes, canonical_geometry_bytes,
-    canonicalize_composition_request, validate_evidence_compilation_artifact,
+    GeoExplanationArtifact, GeoImageTilePin, GeoImageTilePinArtifact, GeoRedactedArtifact,
+    GeoRedactionEgressPolicy, GeoSourceReleasePin, GeoTruthPlane, GeoTruthRepresentationGrain,
+    GeoTypedGeometry, canonical_composition_bytes, canonical_evidence_compilation_bytes,
+    canonical_explanation_bytes, canonical_geometry_bytes, canonicalize_composition_request,
+    redact_geo_artifact_with_policy, validate_evidence_compilation_artifact,
     verify_image_tile_pin_replay,
 };
 use serde::{Deserialize, Serialize};
@@ -457,6 +458,273 @@ pub fn canonical_evidence_card_bytes(card: &GeoEvidenceCard) -> Result<Vec<u8>, 
             [("serde_error", error.to_string())],
         )
     })
+}
+
+pub fn redact_evidence_card_artifact(
+    card: &GeoEvidenceCard,
+) -> Result<GeoRedactedArtifact, GeoCardError> {
+    redact_evidence_card_artifact_with_policy(card, GeoRedactionEgressPolicy::shareable())
+}
+
+pub fn redact_evidence_card_artifact_with_policy(
+    card: &GeoEvidenceCard,
+    policy: GeoRedactionEgressPolicy,
+) -> Result<GeoRedactedArtifact, GeoCardError> {
+    validate_evidence_card_artifact(card)?;
+    let artifact = serde_json::to_value(card).map_err(|error| {
+        GeoCardError::invalid(
+            "Geo evidence card artifact could not be serialized before redaction",
+            [("serde_error", error.to_string())],
+        )
+    })?;
+    redact_geo_artifact_with_policy(
+        &card.version,
+        &artifact,
+        &classify_evidence_card_artifact_fields(card),
+        policy,
+    )
+    .map_err(|error| {
+        GeoCardError::invalid(
+            "Geo evidence card redaction failed",
+            [
+                ("geo_error_code".to_string(), format!("{:?}", error.code)),
+                ("geo_error".to_string(), error.message),
+            ],
+        )
+    })
+}
+
+pub fn classify_evidence_card_artifact_fields(
+    card: &GeoEvidenceCard,
+) -> Vec<GeoArtifactFieldClassification> {
+    let mut classifications = vec![
+        field_classification(
+            "$.version",
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            "evidence card contract identifier",
+        ),
+        field_classification(
+            "$.proof_class",
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            "proof-class label must survive redaction",
+        ),
+        field_classification(
+            "$.subject_id",
+            GeoArtifactFieldLicenseClass::InternalDigestLink,
+            false,
+            "subject identifier links the redacted projection to retained full artifacts",
+        ),
+        field_classification(
+            "$.subject_ref",
+            GeoArtifactFieldLicenseClass::InternalDigestLink,
+            false,
+            "loan and deal references identify retained artifact lineage",
+        ),
+        field_classification(
+            "$.truth_plane",
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            "truth-plane label states the evaluation boundary",
+        ),
+        field_classification(
+            "$.reach",
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            "reach state is a shareable control-plane result",
+        ),
+        field_classification(
+            "$.reach_none_reason",
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            "reach-none reason is a shareable abstention reason",
+        ),
+        field_classification(
+            "$.coverage",
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            "coverage state is shareable and distinct from geometry",
+        ),
+        field_classification(
+            "$.answer_grain",
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            "answer grain is required so visual claims do not silently change meaning",
+        ),
+        field_classification(
+            "$.answer_grain_caveat",
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            "answer-grain caveat must survive redaction",
+        ),
+        field_classification(
+            "$.ortho_pin",
+            GeoArtifactFieldLicenseClass::InternalDigestLink,
+            false,
+            "image tile pin is content-addressed for replay from retained bytes",
+        ),
+        field_classification(
+            "$.home_cell",
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            "home H3 cell is a blocking index, not geometry truth",
+        ),
+        field_classification(
+            "$.halo_members",
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            "halo membership explains local ownership without raw geometry",
+        ),
+        field_classification(
+            "$.forced",
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            "forced backbone is the rendered answer state",
+        ),
+        field_classification(
+            "$.ambiguous_members",
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            "ambiguous member ids preserve tie topology",
+        ),
+        field_classification(
+            "$.conflicting_records",
+            GeoArtifactFieldLicenseClass::InternalDigestLink,
+            false,
+            "conflict source-record references link retained evidence",
+        ),
+        field_classification(
+            "$.evidence_admissions",
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            "typed admitted evidence explains the decision without raw geometry",
+        ),
+        field_classification(
+            "$.geometry_source_pins",
+            GeoArtifactFieldLicenseClass::InternalDigestLink,
+            false,
+            "geometry pins identify retained bytes and prevent live re-query",
+        ),
+        field_classification(
+            "$.field_classifications",
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            "embedded field classifications let clients inspect the egress boundary",
+        ),
+        field_classification(
+            "$.composition_status",
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            "decision state",
+        ),
+        field_classification(
+            "$.residual_model_count",
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            "residual model count is a non-reconstructive solver diagnostic",
+        ),
+        field_classification(
+            "$.count_exact",
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            "residual count exactness flag is shareable",
+        ),
+        field_classification(
+            "$.backbone_complete",
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            "backbone completeness flag is shareable",
+        ),
+        field_classification(
+            "$.multi_containment_cardinality",
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            "multi-containment count is not enough to reconstruct geometry by itself",
+        ),
+        field_classification(
+            "$.composition_blake3",
+            GeoArtifactFieldLicenseClass::InternalDigestLink,
+            false,
+            "composition digest binds the card to retained solve state",
+        ),
+        field_classification(
+            "$.evidence_blake3",
+            GeoArtifactFieldLicenseClass::InternalDigestLink,
+            false,
+            "evidence digest binds the card to retained evidence state",
+        ),
+        field_classification(
+            "$.request_blake3",
+            GeoArtifactFieldLicenseClass::InternalDigestLink,
+            false,
+            "request digest binds the card to retained input state",
+        ),
+        field_classification(
+            "$.explanation_blake3",
+            GeoArtifactFieldLicenseClass::InternalDigestLink,
+            false,
+            "explanation digest binds the card to retained explanation state",
+        ),
+    ];
+    classifications.extend(candidate_field_classifications(
+        "$.candidate_parcels",
+        !card.candidate_parcels.is_empty(),
+        "parcel",
+    ));
+    classifications.extend(candidate_field_classifications(
+        "$.candidate_buildings",
+        !card.candidate_buildings.is_empty(),
+        "building",
+    ));
+    sorted_unique(classifications)
+}
+
+fn candidate_field_classifications(
+    path: &'static str,
+    has_candidates: bool,
+    grain: &'static str,
+) -> Vec<GeoArtifactFieldClassification> {
+    if !has_candidates {
+        return vec![field_classification(
+            path,
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            format!("empty {grain} candidate container"),
+        )];
+    }
+    vec![
+        field_classification(
+            format!("{path}[].id"),
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            format!("{grain} candidate identifier"),
+        ),
+        field_classification(
+            format!("{path}[].geometry_blake3"),
+            GeoArtifactFieldLicenseClass::InternalDigestLink,
+            false,
+            format!("{grain} candidate geometry digest"),
+        ),
+        field_classification(
+            format!("{path}[].geometry"),
+            GeoArtifactFieldLicenseClass::EncumberedGeometry,
+            true,
+            format!("{grain} candidate geometry is reconstructive"),
+        ),
+        field_classification(
+            format!("{path}[].in_halo"),
+            GeoArtifactFieldLicenseClass::Shareable,
+            false,
+            format!("{grain} candidate halo ownership flag"),
+        ),
+        field_classification(
+            format!("{path}[].evidence_observation_ids"),
+            GeoArtifactFieldLicenseClass::InternalDigestLink,
+            false,
+            format!("{grain} candidate evidence-observation ids"),
+        ),
+    ]
 }
 
 pub fn verify_evidence_card_tile_replay(
@@ -1230,17 +1498,17 @@ fn default_field_classifications() -> Vec<GeoArtifactFieldClassification> {
 }
 
 fn field_classification(
-    field_path: &str,
+    field_path: impl Into<String>,
     license_class: GeoArtifactFieldLicenseClass,
     reconstructive: bool,
-    rationale: &str,
+    rationale: impl Into<String>,
 ) -> GeoArtifactFieldClassification {
     GeoArtifactFieldClassification {
-        field_path: field_path.to_string(),
+        field_path: field_path.into(),
         license_class,
         source_instance_id: None,
         reconstructive,
-        rationale: rationale.to_string(),
+        rationale: rationale.into(),
     }
 }
 

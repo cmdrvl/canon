@@ -13,9 +13,9 @@ use canon::geo::{
     GeoRhoObservationKind, GeoSourceReleasePin, GeoTruthPlane, GeoTruthRepresentationGrain,
     GeoTypedGeometry, GeoValidTimeInterval, build_evidence_card_with_context,
     build_reach_none_evidence_card, canonical_evidence_card_bytes,
-    canonical_evidence_compilation_bytes, compile_evidence, minimal_core,
-    reliability_order_from_evidence, solve_composition, validate_evidence_card_artifact,
-    verify_evidence_card_tile_replay,
+    canonical_evidence_compilation_bytes, canonical_redacted_artifact_bytes, compile_evidence,
+    minimal_core, redact_evidence_card_artifact, reliability_order_from_evidence,
+    solve_composition, validate_evidence_card_artifact, verify_evidence_card_tile_replay,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -373,6 +373,79 @@ fn evidence_card_resolved_artifact_carries_rejected_candidates_and_replays_tile_
     verify_evidence_card_tile_replay(&card, &bytes_by_blake3)
         .expect("card replays from retained tile bytes");
     canonical_evidence_card_bytes(&card).expect("card canonicalizes");
+}
+
+#[test]
+fn evidence_card_redaction_keeps_review_topology_without_candidate_geometry() {
+    let (evidence, composition) = resolved_evidence_and_composition();
+    let card = build_evidence_card_with_context(
+        "subject.237_park",
+        &composition,
+        &evidence,
+        None,
+        &tile_pin(b"retained fixture ortho tile bytes"),
+        &geometry_by_id(&[
+            "bbl.1012920001",
+            "bbl.1012920026",
+            "bbl.1012930001",
+            "bbl.1012930026",
+        ]),
+        card_context(),
+    )
+    .expect("resolved evidence card builds");
+    let redacted = redact_evidence_card_artifact(&card).expect("card redaction succeeds");
+
+    assert!(redacted.redacted);
+    assert!(
+        redacted
+            .egress_policy
+            .full_artifact_requires_explicit_operator_action
+    );
+    assert_eq!(
+        redacted
+            .artifact
+            .pointer("/composition_status")
+            .and_then(Value::as_str),
+        Some("resolved")
+    );
+    let forced = serde_json::to_value(&card.forced).expect("forced backbone serializes");
+    assert_eq!(redacted.artifact.pointer("/forced"), Some(&forced));
+    assert_eq!(
+        redacted
+            .artifact
+            .pointer("/candidate_parcels/0/id")
+            .and_then(Value::as_str),
+        Some("bbl.1012920001")
+    );
+    assert_eq!(
+        redacted
+            .artifact
+            .pointer("/candidate_parcels/0/geometry")
+            .and_then(Value::as_str),
+        Some("[REDACTED]")
+    );
+    assert_eq!(
+        redacted
+            .artifact
+            .pointer("/candidate_parcels/3/geometry")
+            .and_then(Value::as_str),
+        Some("[REDACTED]")
+    );
+    assert_eq!(
+        redacted
+            .artifact
+            .pointer("/evidence_admissions/0/observation_id")
+            .and_then(Value::as_str),
+        Some("obs.237_park.address_breaks_tie")
+    );
+    let text = String::from_utf8(
+        canonical_redacted_artifact_bytes(&redacted).expect("redacted card canonicalizes"),
+    )
+    .expect("redacted card JSON is UTF-8");
+    assert!(text.contains("bbl.1012920026"));
+    assert!(text.contains("obs.237_park.address_breaks_tie"));
+    assert!(!text.contains("\"bbox\""));
+    assert!(!text.contains("\"vertices\""));
 }
 
 #[test]

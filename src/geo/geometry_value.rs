@@ -435,7 +435,7 @@ pub struct GeoRedactedArtifact {
 }
 
 impl GeoRedactionEgressPolicy {
-    fn shareable() -> Self {
+    pub fn shareable() -> Self {
         Self {
             default_action: GeoRedactionDefaultAction::ShareFullArtifact,
             full_artifact_requires_explicit_operator_action: false,
