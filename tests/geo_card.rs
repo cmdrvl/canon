@@ -2,20 +2,22 @@ use assert_cmd::Command;
 use canon::geo::{
     CANON_GEO_EVIDENCE_CARD_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
     CANON_GEO_GEOMETRY_VALUE_VERSION, CANON_GEO_IMAGE_TILE_PIN_VERSION,
-    GeoArtifactFieldClassification, GeoArtifactFieldLicenseClass, GeoBoundingBoxMm,
-    GeoCandidateReachStatus, GeoCanonicalGeometryMm, GeoCanonicalPolygonMm, GeoCanonicalRingMm,
-    GeoCompositionArtifact, GeoCompositionStatus, GeoCompositionUniverse, GeoEntityLevel,
-    GeoEntityRef, GeoEvidenceCard, GeoEvidenceCardBuildContext, GeoEvidenceCardCoverage,
-    GeoEvidenceCardCoverageState, GeoEvidenceCardProofClass, GeoEvidenceCardSubjectRef,
-    GeoEvidenceClaimRole, GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
-    GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoImageTilePin, GeoImageTilePinArtifact,
-    GeoPointMm, GeoQuantizationAudit, GeoRhoBasis, GeoRhoContract, GeoRhoObservation,
+    CANON_GEO_REDACTED_ARTIFACT_VERSION, GeoArtifactFieldClassification,
+    GeoArtifactFieldLicenseClass, GeoBoundingBoxMm, GeoCandidateReachStatus,
+    GeoCanonicalGeometryMm, GeoCanonicalPolygonMm, GeoCanonicalRingMm, GeoCompositionArtifact,
+    GeoCompositionStatus, GeoCompositionUniverse, GeoEntityLevel, GeoEntityRef, GeoEvidenceCard,
+    GeoEvidenceCardBuildContext, GeoEvidenceCardCoverage, GeoEvidenceCardCoverageState,
+    GeoEvidenceCardProofClass, GeoEvidenceCardSubjectRef, GeoEvidenceClaimRole,
+    GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference, GeoEvidenceCompilationRequest,
+    GeoEvidenceRecordRef, GeoImageTilePin, GeoImageTilePinArtifact, GeoPointMm,
+    GeoQuantizationAudit, GeoRedactedArtifact, GeoRhoBasis, GeoRhoContract, GeoRhoObservation,
     GeoRhoObservationKind, GeoSourceReleasePin, GeoTruthPlane, GeoTruthRepresentationGrain,
     GeoTypedGeometry, GeoValidTimeInterval, build_evidence_card_with_context,
     build_reach_none_evidence_card, canonical_evidence_card_bytes,
     canonical_evidence_compilation_bytes, canonical_redacted_artifact_bytes, compile_evidence,
     minimal_core, redact_evidence_card_artifact, reliability_order_from_evidence,
-    solve_composition, validate_evidence_card_artifact, verify_evidence_card_tile_replay,
+    solve_composition, validate_evidence_card_artifact, validate_redacted_artifact,
+    verify_evidence_card_tile_replay,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -692,6 +694,7 @@ fn evidence_card_cli_exports_reached_card_from_stored_artifact_refs() {
         .arg(&evidence_path)
         .arg("--geometry")
         .arg(&geometry_path)
+        .arg("--explicit")
         .assert()
         .success();
     assert!(assert.get_output().stderr.is_empty());
@@ -727,6 +730,89 @@ fn evidence_card_cli_exports_reached_card_from_stored_artifact_refs() {
 }
 
 #[test]
+fn evidence_card_cli_redacts_candidate_geometry_by_default() {
+    let temp = tempdir().expect("tempdir");
+    let (evidence, composition) = resolved_evidence_and_composition();
+    let context_path = write_json(temp.path(), "context.json", &card_context());
+    let pin_path = write_json(
+        temp.path(),
+        "ortho-pin.json",
+        &tile_pin_artifact(tile_pin(b"cli default redacted tile bytes")),
+    );
+    let composition_path = write_json(temp.path(), "solve.json", &composition);
+    let evidence_path = write_json(temp.path(), "evidence.json", &evidence);
+    let geometry_path = write_json(
+        temp.path(),
+        "geometry.json",
+        &geometry_by_id(&[
+            "bbl.1012920001",
+            "bbl.1012920026",
+            "bbl.1012930001",
+            "bbl.1012930026",
+        ]),
+    );
+
+    let assert = canon_command()
+        .args(["geo", "ledger", "card"])
+        .arg("--subject-id")
+        .arg("subject.237_park.cli")
+        .arg("--context")
+        .arg(&context_path)
+        .arg("--ortho-pin")
+        .arg(&pin_path)
+        .arg("--composition")
+        .arg(&composition_path)
+        .arg("--evidence")
+        .arg(&evidence_path)
+        .arg("--geometry")
+        .arg(&geometry_path)
+        .assert()
+        .success();
+    assert!(assert.get_output().stderr.is_empty());
+    let redacted: GeoRedactedArtifact =
+        serde_json::from_slice(&assert.get_output().stdout).expect("redacted card JSON parses");
+
+    validate_redacted_artifact(&redacted).expect("redacted CLI card validates");
+    assert_eq!(redacted.version, CANON_GEO_REDACTED_ARTIFACT_VERSION);
+    assert_eq!(
+        redacted.source_artifact_version,
+        CANON_GEO_EVIDENCE_CARD_VERSION
+    );
+    assert!(redacted.redacted);
+    assert!(
+        redacted
+            .egress_policy
+            .full_artifact_requires_explicit_operator_action
+    );
+    assert_eq!(
+        redacted
+            .artifact
+            .pointer("/composition_status")
+            .and_then(Value::as_str),
+        Some("resolved")
+    );
+    assert_eq!(
+        redacted
+            .artifact
+            .pointer("/candidate_parcels/0/id")
+            .and_then(Value::as_str),
+        Some("bbl.1012920001")
+    );
+    assert_eq!(
+        redacted
+            .artifact
+            .pointer("/candidate_parcels/0/geometry")
+            .and_then(Value::as_str),
+        Some("[REDACTED]")
+    );
+    let stdout =
+        String::from_utf8(assert.get_output().stdout.clone()).expect("stdout is UTF-8 JSON");
+    assert!(stdout.contains("\"original_artifact_blake3\""));
+    assert!(!stdout.contains("\"vertices\""));
+    assert!(!stdout.contains("\"bbox\""));
+}
+
+#[test]
 fn evidence_card_cli_exports_reach_none_coverage_card_without_fabricated_artifacts() {
     let temp = tempdir().expect("tempdir");
     let mut context = card_context();
@@ -752,6 +838,7 @@ fn evidence_card_cli_exports_reach_none_coverage_card_without_fabricated_artifac
         .arg(&context_path)
         .arg("--ortho-pin")
         .arg(&pin_path)
+        .arg("--explicit")
         .assert()
         .success();
     assert!(assert.get_output().stderr.is_empty());
@@ -829,7 +916,7 @@ fn evidence_card_cli_refuses_mismatched_stored_artifact_chain_before_card_output
     );
     assert_eq!(
         output["refusal"]["next_command"],
-        "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> --composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json> [--explanation <EXPLANATION.json>]"
+        "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> --composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json> [--explanation <EXPLANATION.json>] [--explicit]"
     );
 }
 

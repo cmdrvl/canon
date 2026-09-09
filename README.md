@@ -427,7 +427,7 @@ canon geo ledger
 
 # Geo — ledger subcommands (implemented under `geo ledger`, not extra primary verbs)
 canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>
-canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> [--composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json>] [--explanation <EXPLANATION.json>]
+canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> [--composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json>] [--explanation <EXPLANATION.json>] [--explicit]
 canon geo ledger collision --ledgers <LEDGER.json> <LEDGER.json> [--pari-passu <DECLARATIONS.json>] [--adjacency <PARCEL_TO_BLOCK.json>]
 canon geo ledger exposure --ledger <LEDGER.json> --advisory <ADVISORY.json> --geometry <GEOMETRY.json> --archive <ARCHIVE.json>
 canon geo ledger validate --ledger <LEDGER.json>
@@ -516,9 +516,10 @@ every row:
 [`docs/PLAN_CANON_GEO.md`](docs/PLAN_CANON_GEO.md) §19.3. `geo ledger build`
 and `geo ledger validate` ship today as local artifact operations under `geo ledger`;
 `geo ledger exposure` joins a pinned wind-radii advisory to exact ledger building
-geometry as a read-only downstream artifact, and `geo ledger card` emits the
-offline visual evidence-card data artifact from stored solve, evidence, geometry,
-explanation, and tile-pin bytes. `geo inspect` ships as a read-only stored-run
+geometry as a read-only downstream artifact, and `geo ledger card` emits a
+redacted visual evidence-card projection by default from stored solve, evidence,
+geometry, explanation, and tile-pin bytes; full card output requires `--explicit`.
+`geo inspect` ships as a read-only stored-run
 inspection command. `geo ledger collision` ships as a read-only cross-deal
 collision and adjacency-concentration report over retained ledger ids. No
 shipped command was removed or renamed to reach this shape: the tiers change ordering
@@ -685,7 +686,8 @@ exactness is representation-relative to admitted candidates and contracts, candi
 is an upstream proof obligation, immutable cross-release reuse in the same work directory is
 not guaranteed, E5/live scale proof is not shipped, `geo inspect` reads stored run
 artifacts only, and `geo ledger` currently ships `build`, `card`, `collision`,
-`exposure`, and `validate`.
+`exposure`, and `validate`; `card` is redacted by default and emits the full
+artifact only with `--explicit`.
 
 ### Arguments
 
@@ -743,7 +745,7 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `geo evaluate --population <POPULATION.json> [--truth <DEED_TRUTH.json> --truth-plane deed_grain_instrument] [--artifact-dir <DIR>] [--e4-assessment-out <ASSESSMENT.json>] [--e4-before-assessment <BEFORE.json> --e4-rescore-out <COMPARISON.json>]` | *(primary)* Evaluate a bounded population request and report coverage, reach, rho, solver, truth, and cost as separate planes. This is the E4/E5 gate instrument; optional deed truth binds only Unique rows for truth scoring and reports discarded/no-match rows as unbound, while assessment and rescore comparison sidecars are owned outputs. |
 | `geo inspect --run <DIR> [--component <ID>] [--compare <OTHER_RUN>] [--recommend-next] [--emit json\|summary]` | *(primary)* Inspect a stored Geo run manifest, receipts, and content-addressed output artifacts without rerunning acquisition, materialization, compilation, solving, or evaluation. Missing question-specific artifacts are typed as unanswerable; missing or corrupt referenced artifacts refuse. |
 | `geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>` | *(ledger subcommand)* Build a local collateral ledger from strict seed rows and bound solve/evidence artifacts. |
-| `geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> [--composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json>] [--explanation <EXPLANATION.json>]` | *(ledger subcommand)* Emit a `canon_geo_evidence_card.v0` data artifact from stored solve, evidence, retained geometry, explanation, and one pinned ortho tile artifact; reach-none coverage cards omit solve/evidence geometry and carry the missing-coverage reason. |
+| `geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> [--composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json>] [--explanation <EXPLANATION.json>] [--explicit]` | *(ledger subcommand)* Emit a digest-linked `canon_geo_redacted_artifact.v0` projection by default from stored solve, evidence, retained geometry, explanation, and one pinned ortho tile artifact; full `canon_geo_evidence_card.v0` output requires `--explicit`. |
 | `geo ledger collision --ledgers <LEDGER.json> <LEDGER.json> [--pari-passu <DECLARATIONS.json>] [--adjacency <PARCEL_TO_BLOCK.json>]` | *(ledger subcommand)* Emit a `canon_geo_cross_deal.v0` artifact reporting every parcel/building shared across accessions and any multi-accession adjacency block, keeping declared pari passu collisions as labeled rows. |
 | `geo ledger exposure --ledger <LEDGER.json> --advisory <ADVISORY.json> --geometry <GEOMETRY.json> --archive <ARCHIVE.json>` | *(ledger subcommand)* Join a pinned wind-radii advisory to exact ledger building geometry and emit a `canon_geo_event_exposure.v0` artifact. |
 | `geo ledger validate --ledger <LEDGER.json>` | *(ledger subcommand)* Validate a local collateral ledger artifact with the shipped D3 ledger validator. |

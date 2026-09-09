@@ -36,7 +36,7 @@ use canon::geo::{
     CANON_GEO_PAD_ADDRESS_SET_VERSION, CANON_GEO_PAD_MEMBERSHIP_VERSION, CANON_GEO_PLAN_VERSION,
     CANON_GEO_POPULATION_EVALUATION_VERSION, CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
     CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
-    CANON_GEO_PROPAGATION_VERSION, CANON_GEO_QUESTION_VERSION,
+    CANON_GEO_PROPAGATION_VERSION, CANON_GEO_QUESTION_VERSION, CANON_GEO_REDACTED_ARTIFACT_VERSION,
     CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
     CANON_GEO_RESIDUAL_BENCHMARK_VERSION, CANON_GEO_RESIDUAL_OBDD_VERSION,
     CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_RETRY_LOOP_VERSION,
@@ -251,6 +251,7 @@ fn expected_implemented_contracts() -> BTreeSet<&'static str> {
         CANON_GEO_EVIDENCE_REQUEST_VERSION,
         CANON_GEO_EVIDENCE_COMPILATION_VERSION,
         CANON_GEO_EVIDENCE_CARD_VERSION,
+        CANON_GEO_REDACTED_ARTIFACT_VERSION,
         CANON_GEO_IMAGE_TILE_PIN_VERSION,
         CANON_GEO_OBSERVER_VERSION,
         CANON_GEO_OBSERVER_CHARACTERIZATION_VERSION,
@@ -357,8 +358,8 @@ fn expected_implemented_commands() -> BTreeMap<&'static str, ExpectedGeoCommand>
             unsurfaced_command(CANON_GEO_COLLATERAL_LEDGER_VERSION, true, false),
         ),
         (
-            "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> [--composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json>] [--explanation <EXPLANATION.json>]",
-            unsurfaced_command(CANON_GEO_EVIDENCE_CARD_VERSION, true, false),
+            "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> [--composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json>] [--explanation <EXPLANATION.json>] [--explicit]",
+            unsurfaced_command(CANON_GEO_REDACTED_ARTIFACT_VERSION, true, false),
         ),
         (
             "canon geo ledger collision --ledgers <LEDGER.json> <LEDGER.json> [--pari-passu <DECLARATIONS.json>] [--adjacency <PARCEL_TO_BLOCK.json>]",

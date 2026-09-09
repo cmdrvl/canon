@@ -42,7 +42,7 @@ use super::{
     card::{
         GeoCardError, GeoCardErrorCode, GeoEvidenceCardBuildContext,
         build_evidence_card_with_context, build_reach_none_evidence_card,
-        canonical_evidence_card_bytes,
+        canonical_evidence_card_bytes, redact_evidence_card_artifact,
     },
     collision::{
         GeoCollisionError, GeoPariPassuDeclaration, canonical_cross_deal_bytes, find_collisions,
@@ -93,8 +93,9 @@ use super::{
         CANON_GEO_GEOMETRY_VALUE_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION,
         CANON_GEO_WAREHOUSE_GEOMETRY_VERSION, GeoCanonicalPolygonMm, GeoGeometryError,
         GeoGeometryTileRequest, GeoTypedGeometry, GeoWarehouseGeometryRowsRequest,
-        canonical_geometry_tile_bytes, canonical_warehouse_geometry_bytes,
-        materialize_geometry_tile, materialize_warehouse_geometry,
+        canonical_geometry_tile_bytes, canonical_redacted_artifact_bytes,
+        canonical_warehouse_geometry_bytes, materialize_geometry_tile,
+        materialize_warehouse_geometry,
     },
     inspect::{
         GeoInspectError, GeoInspectOptions, canonical_inspection_bytes, inspect_with_compare,
@@ -166,7 +167,7 @@ const GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND: &str = "canon geo replan-from-ac
 const GEO_INSPECT_NEXT_COMMAND: &str =
     "canon geo inspect --run <DIR> [--component <ID>] [--compare <OTHER_RUN>] [--recommend-next]";
 const GEO_LEDGER_BUILD_NEXT_COMMAND: &str = "canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>";
-const GEO_LEDGER_CARD_NEXT_COMMAND: &str = "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> --composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json> [--explanation <EXPLANATION.json>]";
+const GEO_LEDGER_CARD_NEXT_COMMAND: &str = "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> --composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json> [--explanation <EXPLANATION.json>] [--explicit]";
 const GEO_LEDGER_COLLISION_NEXT_COMMAND: &str = "canon geo ledger collision --ledgers <LEDGER.json> <LEDGER.json> [--pari-passu <DECLARATIONS.json>] [--adjacency <PARCEL_TO_BLOCK.json>]";
 const GEO_LEDGER_VALIDATE_NEXT_COMMAND: &str = "canon geo ledger validate --ledger <LEDGER.json>";
 const GEO_LEDGER_EXPOSURE_NEXT_COMMAND: &str = "canon geo ledger exposure --ledger <LEDGER.json> --advisory <ADVISORY.json> --geometry <GEOMETRY.json> --archive <ARCHIVE.json>";
@@ -680,9 +681,28 @@ fn run_ledger_card(args: &GeoLedgerCardCli) -> Result<u8, Box<dyn Error>> {
             Err(error) => return emit_card_error(error),
         }
     };
-    match canonical_evidence_card_bytes(&card) {
-        Ok(bytes) => write_canonical(&bytes),
-        Err(error) => emit_card_error(error),
+    if args.explicit {
+        match canonical_evidence_card_bytes(&card) {
+            Ok(bytes) => write_canonical(&bytes),
+            Err(error) => emit_card_error(error),
+        }
+    } else {
+        let redacted = match redact_evidence_card_artifact(&card) {
+            Ok(redacted) => redacted,
+            Err(error) => return emit_card_error(error),
+        };
+        match canonical_redacted_artifact_bytes(&redacted) {
+            Ok(bytes) => write_canonical(&bytes),
+            Err(error) => emit_card_error(GeoCardError {
+                code: GeoCardErrorCode::InvalidInput,
+                message: "Geo evidence card redacted projection could not be serialized"
+                    .to_string(),
+                detail: BTreeMap::from([
+                    ("geo_error_code".to_string(), format!("{:?}", error.code)),
+                    ("geo_error".to_string(), error.message),
+                ]),
+            }),
+        }
     }
 }
 

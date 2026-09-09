@@ -1429,7 +1429,7 @@
     {
       "name": "geo ledger",
       "usage": "canon geo ledger <SUBCOMMAND>",
-      "description": "Aggregate primary Geo ledger command for physical collateral artifact operations; use build to construct a ledger from bound seed, solve, and evidence artifacts, card to export visual evidence-card data from stored artifacts, collision for cross-deal set algebra, exposure for event joins, or validate to replay canonical ledger bytes",
+      "description": "Aggregate primary Geo ledger command for physical collateral artifact operations; use build to construct a ledger from bound seed, solve, and evidence artifacts, card to export redacted visual evidence-card data from stored artifacts by default, collision for cross-deal set algebra, exposure for event joins, or validate to replay canonical ledger bytes",
       "surface": "primary",
       "output_mode": "mixed",
       "output_schema": "canon_geo_collateral_ledger.v0",
@@ -1571,15 +1571,18 @@
     },
     {
       "name": "geo ledger card",
-      "usage": "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> [--composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json>] [--explanation <EXPLANATION.json>]",
-      "description": "Build an offline visual evidence-card data artifact from stored composition, evidence, retained geometry, explanation, and one pinned ortho tile artifact",
+      "usage": "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> [--composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json>] [--explanation <EXPLANATION.json>] [--explicit]",
+      "description": "Build a redacted offline visual evidence-card projection from stored composition, evidence, retained geometry, explanation, and one pinned ortho tile artifact",
       "output_mode": "json",
-      "output_schema": "canon_geo_evidence_card.v0",
+      "output_schema": "canon_geo_redacted_artifact.v0",
+      "alternate_output_schemas": [
+        "canon_geo_evidence_card.v0"
+      ],
       "status": "implemented",
       "read_only": true,
       "safety": {
         "owned_temp_fixtures_only": true,
-        "notes": "reads only explicit stored JSON artifacts and retained tile/geometry pins, validates the digest chain, and emits canonical evidence-card bytes on stdout; performs no catalog, project, registry, work-dir, image rendering, or network reads",
+        "notes": "reads only explicit stored JSON artifacts and retained tile/geometry pins, validates the digest chain, and emits canonical redacted evidence-card projection bytes on stdout by default; --explicit emits the full evidence-card artifact and requires an explicit operator action; performs no catalog, project, registry, work-dir, image rendering, or network reads",
         "mutation_class": "ReadOnly",
         "network_class": "Offline",
         "concurrency_class": "StatelessRead",
@@ -1607,7 +1610,7 @@
       },
       "exit_codes": {
         "0": {
-          "meaning": "canonical canon_geo_evidence_card.v0 artifact emitted",
+          "meaning": "canonical canon_geo_redacted_artifact.v0 projection emitted, or canon_geo_evidence_card.v0 when --explicit is supplied",
           "domain": "positive"
         },
         "2": {
@@ -1615,9 +1618,9 @@
           "domain": "error"
         }
       },
-      "next_command": "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> --composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json> [--explanation <EXPLANATION.json>]",
+      "next_command": "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> --composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json> [--explanation <EXPLANATION.json>] [--explicit]",
       "recovery": {
-        "next_command": "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> --composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json> [--explanation <EXPLANATION.json>]",
+        "next_command": "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> --composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json> [--explanation <EXPLANATION.json>] [--explicit]",
         "refusal_exit_code": 2
       },
       "options": [
@@ -1669,6 +1672,13 @@
           "type": "file_path",
           "required": false,
           "description": "Optional canon_geo_explanation.v0 artifact chained to a conflict or not-conflict composition"
+        },
+        {
+          "name": "explicit",
+          "flag": "--explicit",
+          "type": "boolean",
+          "default": false,
+          "description": "Emit the full canon_geo_evidence_card.v0 artifact instead of the default redacted projection"
         }
       ]
     },

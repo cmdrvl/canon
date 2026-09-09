@@ -100,7 +100,7 @@ canon geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVE
 canon geo inspect --run <DIR> [--component <ID>] [--compare <OTHER_RUN>] [--recommend-next] [--emit json|summary]
 canon geo ledger
 canon geo ledger build --seed <SEED.json> --composition <ARTIFACT_ID=COMPOSITION.json> --evidence <ARTIFACT_ID=EVIDENCE.json>
-canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> [--composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json>] [--explanation <EXPLANATION.json>]
+canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> [--composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json>] [--explanation <EXPLANATION.json>] [--explicit]
 canon geo ledger collision --ledgers <LEDGER.json> <LEDGER.json> [--pari-passu <DECLARATIONS.json>] [--adjacency <PARCEL_TO_BLOCK.json>]
 canon geo ledger exposure --ledger <LEDGER.json> --advisory <ADVISORY.json> --geometry <GEOMETRY.json> --archive <ARCHIVE.json>
 canon geo ledger validate --ledger <LEDGER.json>

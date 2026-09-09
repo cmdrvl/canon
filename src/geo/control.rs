@@ -47,7 +47,8 @@ use super::{
     geometry_value::{
         CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
         CANON_GEO_GEOMETRY_VALUE_VERSION, CANON_GEO_LOCAL_FRAME_VERSION,
-        CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_VERSION,
+        CANON_GEO_REDACTED_ARTIFACT_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION,
+        CANON_GEO_WAREHOUSE_GEOMETRY_VERSION,
     },
     identifiers::{
         CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
@@ -1462,6 +1463,11 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "offline visual evidence-card data artifact contract",
         ),
         contract(
+            CANON_GEO_REDACTED_ARTIFACT_VERSION,
+            "schemas/canon.geo.redacted_artifact.v0.schema.json",
+            "digest-linked shareable Geo artifact redaction projection",
+        ),
+        contract(
             CANON_GEO_WAREHOUSE_ROWS_VERSION,
             "schemas/canon.geo.warehouse_rows.v0.schema.json",
             "release-pinned offline evidence row contract",
@@ -1585,8 +1591,8 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
             false,
         ),
         unsurfaced_command(
-            "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> [--composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json>] [--explanation <EXPLANATION.json>]",
-            CANON_GEO_EVIDENCE_CARD_VERSION,
+            "canon geo ledger card --subject-id <SUBJECT_ID> --context <CONTEXT.json> --ortho-pin <PIN.json> [--composition <COMPOSITION.json> --evidence <EVIDENCE.json> --geometry <GEOMETRY.json>] [--explanation <EXPLANATION.json>] [--explicit]",
+            CANON_GEO_REDACTED_ARTIFACT_VERSION,
             true,
             false,
         ),

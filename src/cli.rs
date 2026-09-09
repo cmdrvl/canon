@@ -491,6 +491,9 @@ pub struct GeoLedgerCardCli {
     /// Optional canon_geo_explanation.v0 artifact chained to a conflict or not-conflict composition
     #[arg(long)]
     pub explanation: Option<PathBuf>,
+    /// Emit the full evidence-card artifact instead of the default redacted projection
+    #[arg(long)]
+    pub explicit: bool,
 }
 
 #[derive(Args, Debug, Clone)]

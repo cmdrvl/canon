@@ -253,7 +253,8 @@
         "canon_geo_explanation.v0",
         "canon_geo_geometry_value.v0",
         "canon_geo_image_tile_pin.v0",
-        "canon_geo_evidence_card.v0"
+        "canon_geo_evidence_card.v0",
+        "canon_geo_redacted_artifact.v0"
       ],
       "action": "preserve"
     },
