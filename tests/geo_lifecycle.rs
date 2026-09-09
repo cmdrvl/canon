@@ -2,16 +2,19 @@ use canon::geo::{
     CANON_GEO_TEMPORAL_CONTAINMENT_VERSION, GeoContainmentAsOfQuery, GeoEntityExistenceAsOfQuery,
     GeoEntityExistenceInterval, GeoEntityExistenceNextEvidenceKind, GeoEntityExistenceReason,
     GeoEntityExistenceStatus, GeoEntityLevel, GeoEntityLifecycleEvidenceKind,
-    GeoEntityLifecycleEvidenceRow, GeoLifecycleErrorCode, GeoPropertyMembershipAsOfQuery,
+    GeoEntityLifecycleEvidenceRow, GeoHardConstraintKind, GeoLifecycleErrorCode,
+    GeoPropertyMembershipAsOfQuery, GeoTemporalAssemblageConstraintQuery,
+    GeoTemporalAssemblageConstraintReason, GeoTemporalAssemblageConstraintStatus,
     GeoTemporalContainmentArtifact, GeoTemporalContainmentCluster, GeoTemporalContainmentEdge,
     GeoTemporalContainmentInterval, GeoTemporalContainmentRelation,
     GeoTemporalContainmentSourceReceipt, GeoTemporalContainmentSummary,
     GeoTemporalPresenceDisagreementQuery, GeoTemporalPresenceDisagreementReason,
     GeoTemporalPresenceDisagreementStatus, GeoTemporalPresenceObservation,
-    GeoTemporalPresenceObservationKind, GeoTemporalPropertyMembershipEdge,
-    GeoTemporalPropertyMembershipRelation, canonical_temporal_containment_bytes,
-    classify_temporal_presence_disagreements, containment_as_of, entity_existence_as_of,
-    entity_existence_intervals_from_lifecycle_evidence, property_membership_as_of,
+    GeoTemporalPresenceObservationKind, GeoTemporalPropertyCompletenessAssertion,
+    GeoTemporalPropertyMembershipEdge, GeoTemporalPropertyMembershipRelation,
+    canonical_temporal_containment_bytes, classify_temporal_presence_disagreements,
+    containment_as_of, entity_existence_as_of, entity_existence_intervals_from_lifecycle_evidence,
+    property_assemblage_constraints_as_of, property_membership_as_of,
     validate_temporal_containment_artifact,
 };
 use std::collections::BTreeMap;
@@ -138,6 +141,141 @@ fn property_membership_as_of_keeps_three_corpora_distinct_on_one_parcel() {
         cmbs_only.memberships[0].member_cluster_id,
         building_id(2),
         "CMBS and REIT positions must remain separate even when the buildings share one BBL"
+    );
+}
+
+#[test]
+fn assemblage_constraints_bind_complete_membership_to_assertion_as_of() {
+    let artifact = temporal_containment_fixture();
+    let bound = property_assemblage_constraints_as_of(
+        &artifact,
+        &GeoTemporalAssemblageConstraintQuery {
+            property_cluster_id: property_id("cmbs", 2),
+            assertion_as_of_utc_day: "2020-06-01".to_string(),
+            completeness: GeoTemporalPropertyCompletenessAssertion::CompleteSet,
+            constraint_id_prefix: "fixture.cmbs.schedule".to_string(),
+        },
+    )
+    .expect("complete 2020 assemblage constraint projection succeeds");
+
+    assert_eq!(bound.status, GeoTemporalAssemblageConstraintStatus::Bound);
+    assert_eq!(
+        bound.reason,
+        GeoTemporalAssemblageConstraintReason::CompleteMembershipActiveAtAssertionAsOf
+    );
+    assert_eq!(bound.summary.active_members, 1);
+    assert_eq!(bound.summary.constrained_levels, 1);
+    assert_eq!(bound.summary.hard_constraints, 2);
+    assert_eq!(bound.summary.source_receipts, 1);
+    assert_eq!(bound.active_members.len(), 1);
+    assert_eq!(bound.active_members[0].level, GeoEntityLevel::Building);
+    assert_eq!(bound.active_members[0].id, building_id(2));
+    assert!(
+        bound
+            .source_receipts
+            .iter()
+            .all(|receipt| receipt.source_dataset == "fixture.cmbs.positions")
+    );
+
+    let all_of = bound
+        .hard_constraints
+        .iter()
+        .find(|constraint| constraint.id == "fixture.cmbs.schedule.building.all_of")
+        .expect("all_of constraint emitted");
+    assert_eq!(
+        all_of.constraint,
+        GeoHardConstraintKind::AllOf {
+            members: bound.active_members.clone()
+        }
+    );
+    let exact_cardinality = bound
+        .hard_constraints
+        .iter()
+        .find(|constraint| constraint.id == "fixture.cmbs.schedule.building.exact_cardinality")
+        .expect("exact cardinality constraint emitted");
+    assert_eq!(
+        exact_cardinality.constraint,
+        GeoHardConstraintKind::Cardinality {
+            level: GeoEntityLevel::Building,
+            min: 1,
+            max: 1
+        }
+    );
+}
+
+#[test]
+fn assemblage_constraints_abstain_without_active_complete_membership() {
+    let artifact = temporal_containment_fixture();
+    let before_construction = property_assemblage_constraints_as_of(
+        &artifact,
+        &GeoTemporalAssemblageConstraintQuery {
+            property_cluster_id: property_id("cmbs", 2),
+            assertion_as_of_utc_day: "2019-06-01".to_string(),
+            completeness: GeoTemporalPropertyCompletenessAssertion::CompleteSet,
+            constraint_id_prefix: "fixture.cmbs.schedule".to_string(),
+        },
+    )
+    .expect("pre-construction assemblage query succeeds");
+    assert_eq!(
+        before_construction.status,
+        GeoTemporalAssemblageConstraintStatus::Abstained
+    );
+    assert_eq!(
+        before_construction.reason,
+        GeoTemporalAssemblageConstraintReason::NoActiveMembershipAtAssertionAsOf
+    );
+    assert!(before_construction.active_members.is_empty());
+    assert!(
+        before_construction.hard_constraints.is_empty(),
+        "2020 membership must not constrain a 2019 assertion"
+    );
+
+    let unasserted = property_assemblage_constraints_as_of(
+        &artifact,
+        &GeoTemporalAssemblageConstraintQuery {
+            property_cluster_id: property_id("cmbs", 2),
+            assertion_as_of_utc_day: "2020-06-01".to_string(),
+            completeness: GeoTemporalPropertyCompletenessAssertion::NotAsserted,
+            constraint_id_prefix: "fixture.cmbs.schedule".to_string(),
+        },
+    )
+    .expect("unasserted completeness query succeeds");
+    assert_eq!(unasserted.summary.active_members, 1);
+    assert_eq!(
+        unasserted.status,
+        GeoTemporalAssemblageConstraintStatus::Abstained
+    );
+    assert_eq!(
+        unasserted.reason,
+        GeoTemporalAssemblageConstraintReason::CompletenessNotAsserted
+    );
+    assert!(
+        unasserted.hard_constraints.is_empty(),
+        "membership evidence without a complete-set assertion excludes no proper subset"
+    );
+
+    let partial = property_assemblage_constraints_as_of(
+        &artifact,
+        &GeoTemporalAssemblageConstraintQuery {
+            property_cluster_id: property_id("cmbs", 2),
+            assertion_as_of_utc_day: "2020-06-01".to_string(),
+            completeness: GeoTemporalPropertyCompletenessAssertion::PartialSet,
+            constraint_id_prefix: "fixture.cmbs.schedule".to_string(),
+        },
+    )
+    .expect("partial completeness query succeeds");
+    assert_eq!(partial.summary.active_members, 1);
+    assert_eq!(
+        partial.status,
+        GeoTemporalAssemblageConstraintStatus::Abstained
+    );
+    assert_eq!(
+        partial.reason,
+        GeoTemporalAssemblageConstraintReason::PartialMembershipOnly
+    );
+    assert!(
+        partial.hard_constraints.is_empty(),
+        "partial membership assertions are not complete-set assemblage constraints"
     );
 }
 

@@ -8,7 +8,7 @@
 //! change composition decisions, solve scores, or Canon's exact registry replay
 //! path.
 
-use super::GeoEntityLevel;
+use super::{GeoEntityLevel, GeoEntityRef, GeoHardConstraint, GeoHardConstraintKind};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -661,6 +661,64 @@ pub struct GeoPropertyMembershipAsOfSummary {
     pub member_clusters: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoTemporalPropertyCompletenessAssertion {
+    CompleteSet,
+    PartialSet,
+    NotAsserted,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoTemporalAssemblageConstraintStatus {
+    Bound,
+    Abstained,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoTemporalAssemblageConstraintReason {
+    CompleteMembershipActiveAtAssertionAsOf,
+    CompletenessNotAsserted,
+    PartialMembershipOnly,
+    NoActiveMembershipAtAssertionAsOf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTemporalAssemblageConstraintQuery {
+    pub property_cluster_id: String,
+    pub assertion_as_of_utc_day: String,
+    pub completeness: GeoTemporalPropertyCompletenessAssertion,
+    pub constraint_id_prefix: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTemporalAssemblageConstraintArtifact {
+    pub version: String,
+    pub mart_id: String,
+    pub property_cluster_id: String,
+    pub assertion_as_of_utc_day: String,
+    pub completeness: GeoTemporalPropertyCompletenessAssertion,
+    pub status: GeoTemporalAssemblageConstraintStatus,
+    pub reason: GeoTemporalAssemblageConstraintReason,
+    pub active_members: Vec<GeoEntityRef>,
+    pub hard_constraints: Vec<GeoHardConstraint>,
+    pub source_receipts: Vec<GeoTemporalContainmentSourceReceipt>,
+    pub summary: GeoTemporalAssemblageConstraintSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTemporalAssemblageConstraintSummary {
+    pub active_members: u64,
+    pub constrained_levels: u64,
+    pub hard_constraints: u64,
+    pub source_receipts: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeoTemporalPresenceDisagreementQuery {
@@ -939,6 +997,86 @@ pub fn property_membership_as_of(
         mart_id: canonical.mart_id,
         as_of_utc_day: query.as_of_utc_day.clone(),
         memberships,
+        summary,
+    })
+}
+
+pub fn property_assemblage_constraints_as_of(
+    artifact: &GeoTemporalContainmentArtifact,
+    query: &GeoTemporalAssemblageConstraintQuery,
+) -> Result<GeoTemporalAssemblageConstraintArtifact, GeoLifecycleError> {
+    let canonical = canonical_temporal_containment_artifact(artifact)?;
+    validate_temporal_assemblage_constraint_query(&canonical, query)?;
+
+    let active_memberships = canonical
+        .property_membership_edges
+        .iter()
+        .filter(|membership| {
+            membership.property_cluster_id == query.property_cluster_id
+                && membership.valid_interval.start_utc_day.as_str()
+                    <= query.assertion_as_of_utc_day.as_str()
+                && query.assertion_as_of_utc_day.as_str()
+                    <= membership.valid_interval.end_utc_day.as_str()
+        })
+        .collect::<Vec<_>>();
+    let mut active_members = active_memberships
+        .iter()
+        .map(|membership| GeoEntityRef::new(membership.member_level, &membership.member_cluster_id))
+        .collect::<Vec<_>>();
+    active_members.sort();
+    active_members.dedup();
+
+    let mut source_receipts = active_memberships
+        .iter()
+        .map(|membership| membership.source_receipt.clone())
+        .collect::<Vec<_>>();
+    source_receipts.sort();
+    source_receipts.dedup();
+
+    let (status, reason, hard_constraints) = match query.completeness {
+        GeoTemporalPropertyCompletenessAssertion::NotAsserted => (
+            GeoTemporalAssemblageConstraintStatus::Abstained,
+            GeoTemporalAssemblageConstraintReason::CompletenessNotAsserted,
+            Vec::new(),
+        ),
+        GeoTemporalPropertyCompletenessAssertion::PartialSet => (
+            GeoTemporalAssemblageConstraintStatus::Abstained,
+            GeoTemporalAssemblageConstraintReason::PartialMembershipOnly,
+            Vec::new(),
+        ),
+        GeoTemporalPropertyCompletenessAssertion::CompleteSet if active_members.is_empty() => (
+            GeoTemporalAssemblageConstraintStatus::Abstained,
+            GeoTemporalAssemblageConstraintReason::NoActiveMembershipAtAssertionAsOf,
+            Vec::new(),
+        ),
+        GeoTemporalPropertyCompletenessAssertion::CompleteSet => (
+            GeoTemporalAssemblageConstraintStatus::Bound,
+            GeoTemporalAssemblageConstraintReason::CompleteMembershipActiveAtAssertionAsOf,
+            assemblage_hard_constraints(&query.constraint_id_prefix, &active_members),
+        ),
+    };
+    let constrained_levels = hard_constraints
+        .iter()
+        .filter_map(|constraint| hard_constraint_level(&constraint.constraint))
+        .collect::<BTreeSet<_>>();
+    let summary = GeoTemporalAssemblageConstraintSummary {
+        active_members: usize_to_u64(active_members.len(), "summary.active_members")?,
+        constrained_levels: usize_to_u64(constrained_levels.len(), "summary.constrained_levels")?,
+        hard_constraints: usize_to_u64(hard_constraints.len(), "summary.hard_constraints")?,
+        source_receipts: usize_to_u64(source_receipts.len(), "summary.source_receipts")?,
+    };
+
+    Ok(GeoTemporalAssemblageConstraintArtifact {
+        version: canonical.version,
+        mart_id: canonical.mart_id,
+        property_cluster_id: query.property_cluster_id.clone(),
+        assertion_as_of_utc_day: query.assertion_as_of_utc_day.clone(),
+        completeness: query.completeness,
+        status,
+        reason,
+        active_members,
+        hard_constraints,
+        source_receipts,
         summary,
     })
 }
@@ -3109,6 +3247,84 @@ fn property_membership_summary(
         property_clusters: usize_to_u64(property_clusters.len(), "summary.property_clusters")?,
         member_clusters: usize_to_u64(member_clusters.len(), "summary.member_clusters")?,
     })
+}
+
+fn validate_temporal_assemblage_constraint_query(
+    artifact: &GeoTemporalContainmentArtifact,
+    query: &GeoTemporalAssemblageConstraintQuery,
+) -> Result<(), GeoLifecycleError> {
+    validate_cluster_id(
+        "property_cluster_id",
+        &query.property_cluster_id,
+        GeoEntityLevel::Property,
+    )?;
+    validate_string("constraint_id_prefix", &query.constraint_id_prefix)?;
+    validate_utc_day("assertion_as_of_utc_day", &query.assertion_as_of_utc_day)?;
+    let clusters = artifact
+        .clusters
+        .iter()
+        .map(|cluster| (cluster.cluster_id.clone(), cluster.entity_level))
+        .collect::<BTreeMap<_, _>>();
+    validate_endpoint_level(
+        "property_cluster_id",
+        &query.property_cluster_id,
+        GeoEntityLevel::Property,
+        &clusters,
+    )
+}
+
+fn assemblage_hard_constraints(
+    constraint_id_prefix: &str,
+    active_members: &[GeoEntityRef],
+) -> Vec<GeoHardConstraint> {
+    let mut members_by_level = BTreeMap::<GeoEntityLevel, Vec<GeoEntityRef>>::new();
+    for member in active_members {
+        members_by_level
+            .entry(member.level)
+            .or_default()
+            .push(member.clone());
+    }
+
+    let mut constraints = Vec::new();
+    for (level, members) in members_by_level {
+        constraints.push(GeoHardConstraint {
+            id: format!(
+                "{constraint_id_prefix}.{}.all_of",
+                entity_level_token(level)
+            ),
+            constraint: GeoHardConstraintKind::AllOf {
+                members: members.clone(),
+            },
+        });
+        constraints.push(GeoHardConstraint {
+            id: format!(
+                "{constraint_id_prefix}.{}.exact_cardinality",
+                entity_level_token(level)
+            ),
+            constraint: GeoHardConstraintKind::Cardinality {
+                level,
+                min: members.len(),
+                max: members.len(),
+            },
+        });
+    }
+    constraints
+}
+
+fn hard_constraint_level(constraint: &GeoHardConstraintKind) -> Option<GeoEntityLevel> {
+    match constraint {
+        GeoHardConstraintKind::Cardinality { level, .. } => Some(*level),
+        GeoHardConstraintKind::AllOf { members } => members.first().map(|member| member.level),
+        GeoHardConstraintKind::Require { member } | GeoHardConstraintKind::Forbid { member } => {
+            Some(member.level)
+        }
+        GeoHardConstraintKind::AllowedSets { level, .. } => Some(*level),
+        GeoHardConstraintKind::AnyOf { members } | GeoHardConstraintKind::AllOrNone { members } => {
+            members.first().map(|member| member.level)
+        }
+        GeoHardConstraintKind::IntegerSumBand { level, .. } => Some(*level),
+        GeoHardConstraintKind::Requires { if_member, .. } => Some(if_member.level),
+    }
 }
 
 fn classify_cluster_presence_disagreement(
