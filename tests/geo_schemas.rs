@@ -4055,29 +4055,36 @@ fn redacted_artifact_schema_matches_a_real_instance() {
         &source,
         &[
             GeoArtifactFieldClassification {
+                field_path: "$.version".to_string(),
+                license_class: GeoArtifactFieldLicenseClass::Shareable,
+                source_instance_id: None,
+                reconstructive: false,
+                rationale: "artifact contract identifier".to_string(),
+            },
+            GeoArtifactFieldClassification {
                 field_path: "$.tile_id".to_string(),
-                license_class: GeoArtifactFieldLicenseClass::Identifier,
+                license_class: GeoArtifactFieldLicenseClass::Shareable,
                 source_instance_id: None,
                 reconstructive: false,
                 rationale: "tile identifier".to_string(),
             },
             GeoArtifactFieldClassification {
                 field_path: "$.geometry".to_string(),
-                license_class: GeoArtifactFieldLicenseClass::LicensedGeometry,
+                license_class: GeoArtifactFieldLicenseClass::EncumberedGeometry,
                 source_instance_id: Some("source.client.parcels".to_string()),
                 reconstructive: true,
                 rationale: "client parcel geometry is licensed".to_string(),
             },
             GeoArtifactFieldClassification {
                 field_path: "$.decision".to_string(),
-                license_class: GeoArtifactFieldLicenseClass::Public,
+                license_class: GeoArtifactFieldLicenseClass::Shareable,
                 source_instance_id: None,
                 reconstructive: false,
                 rationale: "decision state".to_string(),
             },
             GeoArtifactFieldClassification {
                 field_path: "$.candidate_count".to_string(),
-                license_class: GeoArtifactFieldLicenseClass::DerivedMeasure,
+                license_class: GeoArtifactFieldLicenseClass::Shareable,
                 source_instance_id: None,
                 reconstructive: false,
                 rationale: "candidate denominator".to_string(),
@@ -4107,6 +4114,13 @@ fn redacted_artifact_schema_matches_a_real_instance() {
         "derived-measure",
         "identifier",
         "public",
+        "shareable",
+        "shareable-required-attribution",
+        "encumbered-source-value",
+        "encumbered-geometry",
+        "reconstructive-aggregate",
+        "internal-digest-link",
+        "unclassified",
     ] {
         assert!(
             license_classes

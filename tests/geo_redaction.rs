@@ -12,8 +12,8 @@ use canon::geo::{
     GeoProviderTileSubsetPredicate, GeoRedactionDefaultAction, GeoSourceAxisDomain,
     GeoSourceGeometry, GeoSourcePointDecimal, GeoSourcePointFixed,
     canonical_redacted_artifact_bytes, geo_redacted_artifact_content_blake3,
-    materialize_provider_geometry_tile, redact_geo_artifact, redact_geometry_tile_artifact,
-    validate_redacted_artifact,
+    materialize_provider_geometry_tile, redact_geo_artifact, redact_geo_artifact_with_policy,
+    redact_geometry_tile_artifact, validate_redacted_artifact,
 };
 use serde_json::{Value, json};
 
@@ -100,6 +100,179 @@ fn redacted_artifact_hash_is_deterministic_under_shuffled_classifications() {
 }
 
 #[test]
+fn generic_redaction_requires_all_fields_to_be_classified() {
+    let artifact = json!({
+        "version": "canon_geo_fixture_decision.v0",
+        "decision": "accepted",
+        "client_row_value": "client-secret-row"
+    });
+    let error = redact_geo_artifact(
+        "canon_geo_fixture_decision.v0",
+        &artifact,
+        &[
+            classification(
+                "$.version",
+                GeoArtifactFieldLicenseClass::Shareable,
+                None,
+                false,
+                "artifact contract identifier",
+            ),
+            classification(
+                "$.decision",
+                GeoArtifactFieldLicenseClass::Shareable,
+                None,
+                false,
+                "decision state",
+            ),
+        ],
+    )
+    .expect_err("unclassified source value must not default to shareable");
+
+    assert_eq!(error.code, GeoGeometryErrorCode::InvalidLicensePosture);
+    assert_eq!(
+        error.detail.get("field_path").map(String::as_str),
+        Some("$.client_row_value")
+    );
+}
+
+#[test]
+fn unclassified_and_reconstructive_fields_are_default_denied() {
+    let artifact = json!({
+        "version": "canon_geo_fixture_decision.v0",
+        "decision": "accepted",
+        "client_row_value": "client-secret-row",
+        "geometry_fingerprint": {
+            "bbox": [123456789, 987654321, 123456799, 987654331],
+            "vertex_count": 4
+        }
+    });
+    let redacted = redact_geo_artifact(
+        "canon_geo_fixture_decision.v0",
+        &artifact,
+        &[
+            classification(
+                "$.version",
+                GeoArtifactFieldLicenseClass::Shareable,
+                None,
+                false,
+                "artifact contract identifier",
+            ),
+            classification(
+                "$.decision",
+                GeoArtifactFieldLicenseClass::Shareable,
+                None,
+                false,
+                "decision state",
+            ),
+            classification(
+                "$.client_row_value",
+                GeoArtifactFieldLicenseClass::Unclassified,
+                Some("source.client.parcels"),
+                false,
+                "unclassified source value must not pass through",
+            ),
+            classification(
+                "$.geometry_fingerprint",
+                GeoArtifactFieldLicenseClass::ReconstructiveAggregate,
+                Some("source.client.parcels"),
+                true,
+                "bbox plus vertex count can reconstruct client geometry too precisely",
+            ),
+        ],
+    )
+    .expect("default-deny projection redacts unclassified and reconstructive fields");
+
+    assert!(redacted.redacted);
+    assert_eq!(
+        redacted.egress_policy.default_action,
+        GeoRedactionDefaultAction::ShareRedactedProjection
+    );
+    assert!(
+        redacted
+            .egress_policy
+            .full_artifact_requires_explicit_operator_action
+    );
+    assert_eq!(
+        redacted
+            .artifact
+            .pointer("/client_row_value")
+            .and_then(Value::as_str),
+        Some("[REDACTED]")
+    );
+    assert_eq!(
+        redacted
+            .artifact
+            .pointer("/geometry_fingerprint")
+            .and_then(Value::as_str),
+        Some("[REDACTED]")
+    );
+
+    let text = String::from_utf8(
+        canonical_redacted_artifact_bytes(&redacted).expect("canonical redacted bytes"),
+    )
+    .expect("redacted bytes are UTF-8");
+    assert!(!text.contains("client-secret-row"));
+    assert!(!text.contains("123456789"));
+    assert!(
+        redacted.stripped_fields.iter().any(|field| {
+            field.field_path == "$.client_row_value"
+                && field.license_class == GeoArtifactFieldLicenseClass::Unclassified
+        }),
+        "unclassified fields must be recorded as stripped, not treated as safe"
+    );
+}
+
+#[test]
+fn attribution_required_fields_survive_with_policy_and_refuse_without_it() {
+    let artifact = json!({
+        "version": "canon_geo_fixture_decision.v0",
+        "source_name": "FEMA USA Structures"
+    });
+    let classifications = [
+        classification(
+            "$.version",
+            GeoArtifactFieldLicenseClass::Shareable,
+            None,
+            false,
+            "artifact contract identifier",
+        ),
+        classification(
+            "$.source_name",
+            GeoArtifactFieldLicenseClass::ShareableRequiredAttribution,
+            Some("source.fema.structures"),
+            false,
+            "FEMA source attribution must survive redaction",
+        ),
+    ];
+    let error = redact_geo_artifact("canon_geo_fixture_decision.v0", &artifact, &classifications)
+        .expect_err("attribution-required field needs an egress attribution policy");
+    assert_eq!(error.code, GeoGeometryErrorCode::InvalidLicensePosture);
+
+    let redacted = redact_geo_artifact_with_policy(
+        "canon_geo_fixture_decision.v0",
+        &artifact,
+        &classifications,
+        canon::geo::GeoRedactionEgressPolicy {
+            default_action: GeoRedactionDefaultAction::ShareFullArtifact,
+            full_artifact_requires_explicit_operator_action: false,
+            attribution_requirements: vec!["ORNL and FEMA Geospatial Response Office".to_string()],
+            client_restricted_source_ids: Vec::new(),
+        },
+    )
+    .expect("attribution-aware projection succeeds");
+
+    assert!(!redacted.redacted);
+    assert_eq!(
+        redacted.artifact.pointer("/source_name"),
+        artifact.pointer("/source_name")
+    );
+    assert_eq!(
+        redacted.egress_policy.attribution_requirements,
+        vec!["ORNL and FEMA Geospatial Response Office".to_string()]
+    );
+}
+
+#[test]
 fn provider_geometry_tile_redaction_uses_client_license_posture_as_default_deny() {
     let tile = materialize_provider_geometry_tile(&provider_tile_build_request())
         .expect("provider tile materializes");
@@ -128,7 +301,24 @@ fn provider_geometry_tile_redaction_uses_client_license_posture_as_default_deny(
     assert!(text.contains(&tile.provider_tile.as_ref().unwrap().tile_content_blake3));
     assert!(text.contains("building-1"));
     assert!(text.contains("parcel-1"));
+    assert!(text.contains("fema-building-1"));
     assert!(text.contains("[REDACTED]"));
+    assert!(
+        !text.contains("client-parcel-1"),
+        "client vendor feature identifiers must not survive redaction"
+    );
+    assert!(
+        !text.contains("client/parcels.gpkg"),
+        "client source paths must not survive redaction"
+    );
+    assert!(
+        !text.contains("client-declared-parcel-vendor"),
+        "client source provenance must not survive redaction"
+    );
+    assert!(
+        text.contains("ORNL and FEMA Geospatial Response Office"),
+        "required attribution must survive redaction"
+    );
     assert!(
         !text.contains("123456789"),
         "redacted artifact must not leak planted licensed x coordinate"
@@ -174,52 +364,73 @@ fn decision_fixture() -> Value {
 fn decision_fixture_classifications(include_geometry: bool) -> Vec<GeoArtifactFieldClassification> {
     let mut classifications = vec![
         classification(
+            "$.version",
+            GeoArtifactFieldLicenseClass::Shareable,
+            None,
+            false,
+            "artifact contract identifier",
+        ),
+        classification(
             "$.tile_id",
-            GeoArtifactFieldLicenseClass::Identifier,
+            GeoArtifactFieldLicenseClass::Shareable,
             None,
             false,
             "tile identifier",
         ),
         classification(
             "$.decision",
-            GeoArtifactFieldLicenseClass::Public,
+            GeoArtifactFieldLicenseClass::Shareable,
             None,
             false,
             "decision result and reason code",
         ),
         classification(
             "$.denominator",
-            GeoArtifactFieldLicenseClass::DerivedMeasure,
+            GeoArtifactFieldLicenseClass::Shareable,
             None,
             false,
             "candidate and score denominators",
         ),
         classification(
             "$.candidates[0].feature_id",
-            GeoArtifactFieldLicenseClass::Identifier,
+            GeoArtifactFieldLicenseClass::Shareable,
             Some("source.client.parcels"),
             false,
             "candidate identifier needed for replay",
         ),
         classification(
             "$.candidates[0].source_instance_id",
-            GeoArtifactFieldLicenseClass::Identifier,
+            GeoArtifactFieldLicenseClass::InternalDigestLink,
             Some("source.client.parcels"),
             false,
             "source identifier needed for replay",
         ),
         classification(
             "$.candidates[1].feature_id",
-            GeoArtifactFieldLicenseClass::Identifier,
+            GeoArtifactFieldLicenseClass::Shareable,
             Some("source.fema.structures"),
             false,
             "candidate identifier needed for replay",
+        ),
+        classification(
+            "$.candidates[1].source_instance_id",
+            GeoArtifactFieldLicenseClass::InternalDigestLink,
+            Some("source.fema.structures"),
+            false,
+            "source identifier needed for replay",
+        ),
+        classification(
+            "$.candidates[1].score_basis_points",
+            GeoArtifactFieldLicenseClass::Shareable,
+            Some("source.fema.structures"),
+            false,
+            "shareable score",
         ),
     ];
     if include_geometry {
         classifications.push(classification(
             "$.candidates[0].licensed_geometry",
-            GeoArtifactFieldLicenseClass::LicensedGeometry,
+            GeoArtifactFieldLicenseClass::EncumberedGeometry,
             Some("source.client.parcels"),
             true,
             "client parcel geometry is licensed and reconstructive",

@@ -71,7 +71,19 @@
     },
     "field_license_class": {
       "type": "string",
-      "enum": ["licensed-geometry", "derived-measure", "identifier", "public"]
+      "enum": [
+        "licensed-geometry",
+        "derived-measure",
+        "identifier",
+        "public",
+        "shareable",
+        "shareable-required-attribution",
+        "encumbered-source-value",
+        "encumbered-geometry",
+        "reconstructive-aggregate",
+        "internal-digest-link",
+        "unclassified"
+      ]
     },
     "field_classification": {
       "type": "object",
@@ -126,7 +138,9 @@
       "redacted_artifact_blake3 is recomputed over the redacted projection excluding the hash field itself",
       "original_artifact_blake3 links the projection to the full artifact bytes",
       "geometry-bearing source fields must carry a field classification before redaction",
-      "licensed-geometry and reconstructive derived-measure fields are replaced with [REDACTED]",
+      "every emitted field must be covered by a field classification before redaction",
+      "encumbered-geometry, encumbered-source-value, reconstructive-aggregate, unclassified, licensed-geometry, and reconstructive derived-measure fields are replaced with [REDACTED]",
+      "unclassified fields are default-denied and cannot pass through as shareable payload",
       "attribution_requirements survive redaction and are not themselves redactable"
     ]
   }

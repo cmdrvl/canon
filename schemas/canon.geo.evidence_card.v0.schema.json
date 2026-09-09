@@ -261,7 +261,19 @@
     },
     "field_license_class": {
       "type": "string",
-      "enum": ["licensed-geometry", "derived-measure", "identifier", "public"]
+      "enum": [
+        "licensed-geometry",
+        "derived-measure",
+        "identifier",
+        "public",
+        "shareable",
+        "shareable-required-attribution",
+        "encumbered-source-value",
+        "encumbered-geometry",
+        "reconstructive-aggregate",
+        "internal-digest-link",
+        "unclassified"
+      ]
     },
     "field_classification": {
       "type": "object",
