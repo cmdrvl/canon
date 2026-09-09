@@ -13,6 +13,8 @@ use std::{
 use tempfile::{TempDir, tempdir};
 
 const MANIFEST: &str = include_str!("../scripts/geo_measurements/manifest.json");
+const APPENDIX_F_OVERTURE_SQL: &str =
+    include_str!("../scripts/geo_measurements/appendix_f_overture_three_source.sql");
 const RECEIPTS_VERSION: &str = "canon_geo_measurement_receipts.v0";
 const RESULT_ARTIFACT_VERSION: &str = "canon_geo_measurement_result_artifact.v0";
 const RESULT_SET_VERSION: &str = "canon_geo_measurement_result_set.v0";
@@ -874,6 +876,17 @@ fn plan_is_ordered_offline_and_excludes_h7() {
         output.status.success(),
         "stderr={}",
         String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn appendix_f_overture_uses_repaired_tile_entry_contracts() {
+    assert!(APPENDIX_F_OVERTURE_SQL.contains("OVERTURE_MAPS_BUILDINGS_HOT"));
+    assert!(APPENDIX_F_OVERTURE_SQL.contains("OVERTURE_MAPS_FEATURE_H3_COVERAGE"));
+    assert!(APPENDIX_F_OVERTURE_SQL.contains("overture_r8_coverage"));
+    assert!(
+        !APPENDIX_F_OVERTURE_SQL.contains("OVERTURE_MAPS_FEATURES_HOT"),
+        "Appendix F must consume the repaired typed building/coverage contracts, not the historical base-table bypass"
     );
 }
 

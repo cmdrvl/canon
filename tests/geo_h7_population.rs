@@ -718,7 +718,12 @@ fn h7_sql_uses_staging_columns_and_defers_borough_truth_to_legals() {
     assert!(H7_INCIDENCE_SHARD_SQL.contains("component_shape_sanity"));
     assert!(H7_INCIDENCE_SHARD_SQL.contains("component_accounting_sanity"));
     assert!(H7_INCIDENCE_SHARD_SQL.contains("NYC_BUILDING_FOOTPRINTS_HOT"));
-    assert!(H7_INCIDENCE_SHARD_SQL.contains("OVERTURE_MAPS_FEATURES_HOT"));
+    assert!(H7_INCIDENCE_SHARD_SQL.contains("OVERTURE_MAPS_BUILDINGS_HOT"));
+    assert!(H7_INCIDENCE_SHARD_SQL.contains("OVERTURE_MAPS_FEATURE_H3_COVERAGE"));
+    assert!(
+        !H7_INCIDENCE_SHARD_SQL.contains("OVERTURE_MAPS_FEATURES_HOT"),
+        "H.7 Overture tile entry must use the repaired typed building/coverage contracts"
+    );
     assert!(
         H7_INCIDENCE_SHARD_SQL
             .contains("REGEXP_REPLACE(TO_CHAR(p.bbl), '[.]0$', '') = k.parcel_id"),

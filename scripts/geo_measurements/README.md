@@ -317,9 +317,9 @@ Snowflake↔h3o assignment parity, or a solver runtime distribution.
 
 `appendix_f_overture_three_source.sql` adds Overture buildings pinned to
 `2026-07-22.0` / `2026-07-22` without changing the MapPLUTO or NYC-footprint
-pins above. The statement returned 24 nonzero source-stratum rows under query
-`01c6bcc3-0821-a0dc-006c-c703088c2682` in 35,772 ms. Every emitted sanity field
-passed.
+pins above. The 2026-08-30 statement returned 24 nonzero source-stratum rows
+under query `01c6bcc3-0821-a0dc-006c-c703088c2682` in 35,772 ms. Every emitted
+sanity field passed.
 
 - Overture center observations: 6,018 at r8 and 1,401 at r9. Controlled k1 and
   the complete parcel reference both classified `6,005 / 13 / 0` at r8 and
@@ -334,13 +334,16 @@ passed.
   evidence. Raw OSM semantic tags may still be a distinct evidence channel when
   preserved with record/version lineage and ODbL attribution.
 
-The upstream convenience contracts are not healthy: the pinned H3 coverage
-projection returned zero rows (`01c6bcbd-0821-a0dc-006c-c703088c2502`), and the
-typed building view failed its 28-versus-33-column contract
-(`01c6bcbc-0821-9afc-006c-c703088c06e6`). The working base table has 6,443,512
-distinct New York buildings with valid H3 anchors
-(`01c6bcbd-0821-a0dc-006c-c703088c24fe`), which is the explicitly documented
-bypass used by this measurement.
+The upstream convenience contracts were later repaired. The current
+2026-09-09 control reads the typed `OVERTURE_MAPS_BUILDINGS_HOT` contract and
+the `OVERTURE_MAPS_FEATURE_H3_COVERAGE` projection directly for the pinned
+New York building slice: 6,443,512 building features, 6,443,512 r8 coverage
+rows, 120,196 r8 cells, zero text/int H3 mismatches, zero invalid H3 status
+rows, 6,441,933 `representative_point_fallback` rows, and 1,579
+`polygon_to_cells` rows. In the Appendix F controlled r8 tile-entry cells, the
+projection contributes 32,776 distinct Overture building features, occupies 6/6
+center cells and 39/42 k1 work cells, and replaces the historical
+`OVERTURE_MAPS_FEATURES_HOT` bypass for current measurement SQL.
 
 ## 2026-08-30 H.7 staging-table truth control
 
@@ -599,9 +602,12 @@ raw `.0` suffix and makes a nonzero work unit an independent sanity condition.
 Components remain raw observation stars, not reconciled latent buildings or
 the final constraint-incidence graph; Overture/OSM lineage overlap also
 prevents source count from becoming independent evidence. Snowflake geometry
-and H3 remain empirical until exact local integer and h3o replay. The source
-SHA-256 is
-`d289cc42f742cdfb2b009a8630b10a9122d22fe8c9faa5fd8d71ff94c26734e1`.
+and H3 remain empirical until exact local integer and h3o replay. The
+2026-09-09 source SHA-256 is
+`12e95c48b4b55e0c3e2c9202ba8e4ad291db25dd07ea4010f84c82a722e73455`,
+changed only because Overture building tile entry now reads the repaired typed
+`OVERTURE_MAPS_BUILDINGS_HOT` and `OVERTURE_MAPS_FEATURE_H3_COVERAGE`
+contracts instead of the historical `OVERTURE_MAPS_FEATURES_HOT` bypass.
 
 Appendix B's query returns the frozen observation set. Build the bipartite graph
 between parcel and footprint centroids using haversine distance with mean Earth

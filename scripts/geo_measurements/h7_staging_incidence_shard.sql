@@ -154,6 +154,7 @@ center_cells AS (
 work_cells AS (
   SELECT
     c.center_cell,
+    cell.value::TEXT AS work_cell,
     H3_STRING_TO_INT(cell.value::TEXT) AS work_cell_int
   FROM center_cells c,
     LATERAL FLATTEN(
@@ -216,6 +217,49 @@ global_parcels AS (
     AND p.bbl IS NOT NULL
     AND p.geom_wkt IS NOT NULL
 ),
+overture_ny_buildings AS (
+  SELECT
+    provider_feature_id,
+    license_class,
+    geom_geog,
+    bbox_xmin,
+    bbox_ymin,
+    bbox_xmax,
+    bbox_ymax
+  FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT
+  WHERE release = '2026-07-22.0'
+    AND release_dt = '2026-07-22'
+    AND country = 'US'
+    AND state = 'US-NY'
+    AND dataset = 'buildings'
+    AND feature_type = 'building'
+    AND license_class = 'odbl'
+    AND h3_key_status = 'valid'
+    AND provider_feature_id IS NOT NULL
+    AND geom_geog IS NOT NULL
+),
+overture_r8_coverage AS (
+  SELECT
+    c.provider_feature_id,
+    c.h3_cell AS h3_r8
+  FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_FEATURE_H3_COVERAGE c
+  JOIN overture_ny_buildings b
+    ON b.provider_feature_id = c.provider_feature_id
+   AND b.license_class = c.license_class
+  WHERE c.release = '2026-07-22.0'
+    AND c.dataset = 'buildings'
+    AND c.feature_type = 'building'
+    AND c.license_class = 'odbl'
+    AND c.h3_resolution = 8
+    AND c.h3_key_status = 'valid'
+    AND c.h3_cell IS NOT NULL
+    AND c.h3_cell IN (
+      SELECT work_cell FROM work_cells
+      UNION
+      SELECT center_cell FROM center_cells
+    )
+  GROUP BY c.provider_feature_id, c.h3_cell
+),
 target_observations AS (
   SELECT
     c.center_cell,
@@ -248,18 +292,10 @@ target_observations AS (
     o.bbox_ymax,
     NULLIF(ST_AREA(o.geom_geog), 0) AS computed_area_m2
   FROM center_cells c
-  JOIN EDGAR_DB.SOURCE.OVERTURE_MAPS_FEATURES_HOT o
-    ON o.h3_r8 = c.center_cell
-  WHERE o.release = '2026-07-22.0'
-    AND o.release_dt = '2026-07-22'
-    AND o.country = 'US'
-    AND o.state = 'US-NY'
-    AND o.dataset = 'buildings'
-    AND o.feature_type = 'building'
-    AND o.license_class = 'odbl'
-    AND o.h3_key_status = 'valid'
-    AND o.provider_feature_id IS NOT NULL
-    AND o.geom_geog IS NOT NULL
+  JOIN overture_r8_coverage oc
+    ON oc.h3_r8 = c.center_cell
+  JOIN overture_ny_buildings o
+    ON o.provider_feature_id = oc.provider_feature_id
 ),
 majority_pairs AS (
   SELECT

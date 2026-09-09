@@ -4,17 +4,11 @@
 -- independent vote merely because they occupy another warehouse row: most
 -- NYC Overture buildings declare OpenStreetMap lineage.
 --
--- Current source state, corrected 2026-09-02: both upstream convenience
--- contracts are repaired. OVERTURE_MAPS_BUILDINGS_HOT was fixed in a52edb0 and
--- verified with 6,443,512 NY rows, null_geom=0, null_centroid=0, null_h3_r8=0.
--- OVERTURE_MAPS_FEATURE_H3_COVERAGE now has 6,443,512 rows for release
--- 2026-07-22.0 / buildings / US-NY at r8, covering 120,196 cells with key=0
--- and not_valid_status=0.
---
--- This retained statement still reads OVERTURE_MAPS_FEATURES_HOT only to
--- preserve lineage with the measured 2026-08-30 Appendix F result. A refreshed
--- measurement should read the typed BUILDINGS_HOT contract; changing the query
--- body is a separate measurement event requiring a new run receipt.
+-- Current source state, corrected 2026-09-09: the typed
+-- OVERTURE_MAPS_BUILDINGS_HOT contract and the r8
+-- OVERTURE_MAPS_FEATURE_H3_COVERAGE projection are both populated for the
+-- pinned NY building slice. The measurement reads those repaired contracts
+-- directly; the historical base-table bypass is no longer used for tile entry.
 --
 -- H3 blocks and assigns ownership only. Majority edges use computed geometry
 -- area in both numerator and denominator. The complete parcel snapshot is an
@@ -140,6 +134,50 @@ WITH strata AS (
     AND GEOM_WKT IS NOT NULL
     AND CENTROID_LON IS NOT NULL
     AND CENTROID_LAT IS NOT NULL
+), overture_ny_buildings AS (
+  SELECT PROVIDER_FEATURE_ID,
+         LICENSE_CLASS,
+         GEOM_GEOG,
+         CENTROID_LON,
+         CENTROID_LAT,
+         BBOX_XMIN,
+         BBOX_YMIN,
+         BBOX_XMAX,
+         BBOX_YMAX,
+         SOURCES_JSON
+  FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT
+  WHERE RELEASE = '2026-07-22.0'
+    AND RELEASE_DT = '2026-07-22'
+    AND COUNTRY = 'US'
+    AND STATE = 'US-NY'
+    AND DATASET = 'buildings'
+    AND FEATURE_TYPE = 'building'
+    AND LICENSE_CLASS = 'odbl'
+    AND H3_KEY_STATUS = 'valid'
+    AND PROVIDER_FEATURE_ID IS NOT NULL
+    AND GEOM_GEOG IS NOT NULL
+    AND CENTROID_LON IS NOT NULL
+    AND CENTROID_LAT IS NOT NULL
+), overture_r8_coverage AS (
+  SELECT c.PROVIDER_FEATURE_ID,
+         c.H3_CELL AS h3_r8
+  FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_FEATURE_H3_COVERAGE c
+  JOIN overture_ny_buildings b
+    ON b.PROVIDER_FEATURE_ID = c.PROVIDER_FEATURE_ID
+   AND b.LICENSE_CLASS = c.LICENSE_CLASS
+  WHERE c.RELEASE = '2026-07-22.0'
+    AND c.DATASET = 'buildings'
+    AND c.FEATURE_TYPE = 'building'
+    AND c.LICENSE_CLASS = 'odbl'
+    AND c.H3_RESOLUTION = 8
+    AND c.H3_KEY_STATUS = 'valid'
+    AND c.H3_CELL IS NOT NULL
+    AND c.H3_CELL IN (
+      SELECT center_cell FROM strata WHERE resolution = 8
+      UNION
+      SELECT work_cell FROM work_cells WHERE resolution = 8
+    )
+  GROUP BY c.PROVIDER_FEATURE_ID, c.H3_CELL
 ), observation_index AS (
   SELECT 'nyc_footprint' AS source_name,
          TO_VARCHAR(OBJECTID) AS observation_id,
@@ -161,30 +199,40 @@ WITH strata AS (
     AND CENTROID_LAT IS NOT NULL
   UNION ALL
   SELECT 'overture_building' AS source_name,
-         PROVIDER_FEATURE_ID AS observation_id,
-         GEOM_GEOG AS geom,
-         BBOX_XMIN,
-         BBOX_YMIN,
-         BBOX_XMAX,
-         BBOX_YMAX,
-         NULLIF(ST_AREA(GEOM_GEOG), 0) AS computed_area_m2,
-         H3_R8 AS h3_r8,
-         H3_POINT_TO_CELL_STRING(ST_MAKEPOINT(CENTROID_LON, CENTROID_LAT), 9) AS h3_r9,
-         COALESCE(SOURCES_JSON LIKE '%\"dataset\":\"OpenStreetMap\"%', FALSE)
+         b.PROVIDER_FEATURE_ID AS observation_id,
+         b.GEOM_GEOG AS geom,
+         b.BBOX_XMIN,
+         b.BBOX_YMIN,
+         b.BBOX_XMAX,
+         b.BBOX_YMAX,
+         NULLIF(ST_AREA(b.GEOM_GEOG), 0) AS computed_area_m2,
+         c.h3_r8,
+         NULL::TEXT AS h3_r9,
+         COALESCE(b.SOURCES_JSON LIKE '%\"dataset\":\"OpenStreetMap\"%', FALSE)
            AS has_osm_lineage
-  FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_FEATURES_HOT
-  WHERE RELEASE = '2026-07-22.0'
-    AND RELEASE_DT = '2026-07-22'
-    AND COUNTRY = 'US'
-    AND STATE = 'US-NY'
-    AND DATASET = 'buildings'
-    AND FEATURE_TYPE = 'building'
-    AND LICENSE_CLASS = 'odbl'
-    AND H3_KEY_STATUS = 'valid'
-    AND PROVIDER_FEATURE_ID IS NOT NULL
-    AND GEOM_GEOG IS NOT NULL
-    AND CENTROID_LON IS NOT NULL
-    AND CENTROID_LAT IS NOT NULL
+  FROM overture_ny_buildings b
+  JOIN overture_r8_coverage c
+    ON c.PROVIDER_FEATURE_ID = b.PROVIDER_FEATURE_ID
+  UNION ALL
+  SELECT 'overture_building' AS source_name,
+         b.PROVIDER_FEATURE_ID AS observation_id,
+         b.GEOM_GEOG AS geom,
+         b.BBOX_XMIN,
+         b.BBOX_YMIN,
+         b.BBOX_XMAX,
+         b.BBOX_YMAX,
+         NULLIF(ST_AREA(b.GEOM_GEOG), 0) AS computed_area_m2,
+         NULL::TEXT AS h3_r8,
+         H3_POINT_TO_CELL_STRING(ST_MAKEPOINT(b.CENTROID_LON, b.CENTROID_LAT), 9)
+           AS h3_r9,
+         COALESCE(b.SOURCES_JSON LIKE '%\"dataset\":\"OpenStreetMap\"%', FALSE)
+           AS has_osm_lineage
+  FROM overture_ny_buildings b
+  WHERE H3_POINT_TO_CELL_STRING(ST_MAKEPOINT(b.CENTROID_LON, b.CENTROID_LAT), 9) IN (
+    SELECT center_cell FROM strata WHERE resolution = 9
+    UNION
+    SELECT work_cell FROM work_cells WHERE resolution = 9
+  )
 ), target_observations AS (
   SELECT s.stratum,
          s.resolution,

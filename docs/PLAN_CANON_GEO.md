@@ -2841,16 +2841,17 @@ a replication sequence, preserve ODbL attribution, and retain OSM record/version
 lineage. A mutable live Overpass response is suitable for a bounded capability
 probe, not a reproducible solver input.
 
-The upstream landing is only partially repaired. The base table exposes
-6,443,512 distinct New York building features with valid H3 anchors (query
-`01c6bcbd-0821-a0dc-006c-c703088c24fe`, 1,315 ms), so the bounded measurement is
-real. However, `OVERTURE_MAPS_FEATURE_H3_COVERAGE` still returns zero pinned
-building rows (`01c6bcbd-0821-a0dc-006c-c703088c2502`), and
-`OVERTURE_MAPS_BUILDINGS_HOT` fails compilation because its declared 28 columns
-do not match the 33 produced by its view query
-(`01c6bcbc-0821-9afc-006c-c703088c06e6`). The landing bead remains open until
-those contracts are repaired; bypassing them through the working base table is
-measurement progress, not closure.
+The upstream landing was later repaired. The current 2026-09-09 control reads
+the typed `OVERTURE_MAPS_BUILDINGS_HOT` contract and the r8
+`OVERTURE_MAPS_FEATURE_H3_COVERAGE` projection directly for the pinned New York
+building slice: 6,443,512 building features, 6,443,512 r8 coverage rows,
+120,196 r8 cells, zero text/int H3 mismatches, zero invalid H3 status rows,
+6,441,933 `representative_point_fallback` rows, and 1,579 `polygon_to_cells`
+rows. In the Appendix F controlled r8 tile-entry cells, the projection
+contributes 32,776 distinct Overture building features, occupies 6/6 center
+cells and 39/42 k1 work cells, and replaces the historical base-table bypass
+for current measurement SQL. This repairs the tile-entry source contract; it is
+not a new independent precision claim.
 
 ---
 
@@ -3419,7 +3420,9 @@ discarded because a raw-number/text BBL mismatch produced zero local parcels;
 the file-backed query normalizes the raw `.0` suffix and separately requires a
 nonzero work unit. Exact per-shard query IDs are retained beside the script in
 the measurement README. Its source SHA-256 is
-`d289cc42f742cdfb2b009a8630b10a9122d22fe8c9faa5fd8d71ff94c26734e1`.
+`12e95c48b4b55e0c3e2c9202ba8e4ad291db25dd07ea4010f84c82a722e73455`;
+the 2026-09-09 byte change only moved Overture tile entry from the historical
+base-table bypass to the repaired typed building and coverage contracts.
 
 These are PIP baseline measurements against document truth, not solver correctness or a
 release precision claim. Candidate-reach failure remains upstream of solver truth; human
