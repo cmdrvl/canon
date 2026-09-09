@@ -2466,6 +2466,14 @@
       "source_path": "schemas/canon.geo.event_exposure.v0.schema.json"
     },
     {
+      "id": "canon_geo_cross_deal.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.cross_deal.v0.schema.json"
+    },
+    {
       "id": "canon_geo_retry_loop.v0",
       "family": "geo",
       "action": "preserve",

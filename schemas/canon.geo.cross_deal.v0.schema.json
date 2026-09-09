@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.cross_deal.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "ledger_blake3s",
+    "collisions",
+    "adjacency_concentration"
+  ],
+  "properties": {
+    "version": {
+      "const": "canon_geo_cross_deal.v0"
+    },
+    "ledger_blake3s": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/blake3_uri"
+      }
+    },
+    "collisions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/collision"
+      }
+    },
+    "adjacency_concentration": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/adjacency_concentration"
+      }
+    }
+  },
+  "$defs": {
+    "nonempty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "hex_blake3": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "blake3_uri": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "entity_level": {
+      "type": "string",
+      "enum": ["parcel", "building", "poi_unit", "property"]
+    },
+    "entity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "id"],
+      "properties": {
+        "level": {
+          "$ref": "#/$defs/entity_level"
+        },
+        "id": {
+          "$ref": "#/$defs/nonempty_string"
+        }
+      }
+    },
+    "evidence_record_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_record_id", "source_vintage", "record_blake3"],
+      "properties": {
+        "source_record_id": {
+          "$ref": "#/$defs/nonempty_string"
+        },
+        "source_vintage": {
+          "$ref": "#/$defs/nonempty_string"
+        },
+        "record_blake3": {
+          "$ref": "#/$defs/hex_blake3"
+        }
+      }
+    },
+    "collision_kind": {
+      "type": "string",
+      "enum": ["shared_parcel", "shared_building", "adjacent"]
+    },
+    "claim_class": {
+      "type": "string",
+      "enum": [
+        "candidate_reach",
+        "stable_identity",
+        "collateral_composition",
+        "temporal_occupancy",
+        "lifecycle_state",
+        "attribute_band"
+      ]
+    },
+    "truth_plane": {
+      "type": "string",
+      "enum": [
+        "gate_v2_historical",
+        "non_round_amount_date_legal_borough",
+        "round_exact_lender_party",
+        "address_derived_control",
+        "deed_grain_instrument",
+        "human_adjudication"
+      ]
+    },
+    "collision_side": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accession",
+        "loan_id",
+        "claim_class",
+        "count_exact",
+        "backbone_member",
+        "truth_plane"
+      ],
+      "properties": {
+        "accession": {
+          "$ref": "#/$defs/nonempty_string"
+        },
+        "loan_id": {
+          "$ref": "#/$defs/nonempty_string"
+        },
+        "claim_class": {
+          "$ref": "#/$defs/claim_class"
+        },
+        "count_exact": {
+          "type": "boolean"
+        },
+        "backbone_member": {
+          "type": "boolean"
+        },
+        "truth_plane": {
+          "$ref": "#/$defs/truth_plane"
+        }
+      }
+    },
+    "collision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "entity",
+        "accessions",
+        "loan_ids",
+        "sides",
+        "pari_passu",
+        "explanation"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/collision_kind"
+        },
+        "entity": {
+          "$ref": "#/$defs/entity_ref"
+        },
+        "accessions": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/nonempty_string"
+          }
+        },
+        "loan_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonempty_string"
+          }
+        },
+        "sides": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/collision_side"
+          }
+        },
+        "pari_passu": {
+          "type": "boolean"
+        },
+        "source_record": {
+          "$ref": "#/$defs/evidence_record_ref"
+        },
+        "explanation": {
+          "$ref": "#/$defs/nonempty_string"
+        }
+      }
+    },
+    "adjacency_concentration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "block_id",
+        "deal_count",
+        "accessions",
+        "loan_ids",
+        "parcel_count"
+      ],
+      "properties": {
+        "block_id": {
+          "$ref": "#/$defs/nonempty_string"
+        },
+        "deal_count": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "accessions": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/nonempty_string"
+          }
+        },
+        "loan_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonempty_string"
+          }
+        },
+        "parcel_count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}
