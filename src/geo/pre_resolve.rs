@@ -6,8 +6,11 @@
 //! ordinary Canon path remains exact replay against reviewed registry entries.
 
 use super::{
-    CANON_GEO_REGISTRY_PROPOSAL_VERSION, GeoLedgerIdentifierRow, GeoRegistryMintProposal,
-    GeoRegistryProposalEntry, registry_proposal_from_ledger_rows,
+    CANON_GEO_REGIONAL_INVENTORY_VERSION, CANON_GEO_REGISTRY_PROPOSAL_VERSION, GeoBoundedGeography,
+    GeoClaimClass, GeoControlEntityLevel, GeoEgressClass, GeoEvidenceClass,
+    GeoIdentityParticipation, GeoLedgerIdentifierRow, GeoLicenseClass, GeoLocalAcquisitionState,
+    GeoNativeEntityScope, GeoRegionalInventory, GeoRegionalSourceInstance, GeoRegistryMintProposal,
+    GeoRegistryProposalEntry, GeoSourceAvailability, registry_proposal_from_ledger_rows,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -17,8 +20,11 @@ use std::{
 };
 
 pub const CANON_GEO_PRE_RESOLUTION_VERSION: &str = "canon_geo_pre_resolution.v0";
+pub const CANON_GEO_NAME_REGION_RESOLUTION_VERSION: &str = "canon_geo_name_region_resolution.v0";
 pub const GEO_PRE_RESOLUTION_CMBS_ADDRESS_RULE_ID: &str =
     "geo_pre_resolution.cmbs_annex_a_address.v1";
+pub const GEO_NAME_REGION_ENTITY_REUSE_PROFILE_ID: &str =
+    "geo_name_region.entity_operator_reuse.v0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -86,6 +92,267 @@ pub enum GeoPreResolutionProofClass {
     LiveQuery,
     RetainedArtifact,
     Fixture,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoNameRegionResolutionRequest {
+    pub version: String,
+    pub source_corpus: GeoPreResolutionSourceCorpus,
+    pub proof_class: GeoPreResolutionProofClass,
+    pub build_receipts: Vec<GeoPreResolutionBuildReceipt>,
+    pub region: GeoBoundedGeography,
+    pub requested_entity_level: GeoControlEntityLevel,
+    pub requested_claim_classes: Vec<GeoClaimClass>,
+    pub source_pins: Vec<GeoNameRegionSourcePin>,
+    pub region_cell_coverage: GeoNameRegionCellCoverage,
+    pub subject: GeoNameRegionSubject,
+    pub rarity_policy: GeoNameRegionRarityPolicy,
+    pub candidates: Vec<GeoNameRegionCandidate>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoNameRegionSubject {
+    pub row_id: String,
+    pub source_record_id: String,
+    pub source_record_blake3: String,
+    pub asserted_name: String,
+    pub asserted_region: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asserted_property_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asserted_year_built: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoNameRegionSourceRole {
+    RegionCellCoverage,
+    NameBearingEntity,
+    DescentRelation,
+    AttributeConfirmation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoNameRegionSourcePin {
+    pub source_instance_id: String,
+    pub role: GeoNameRegionSourceRole,
+    pub release_id: String,
+    pub release_digest: String,
+    pub local_artifact_id: String,
+    pub local_content_hash: String,
+    pub license_class: GeoLicenseClass,
+    pub egress_class: GeoEgressClass,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoNameRegionCoverageBasis {
+    AdministrativeBoundaryCells,
+    ZipBoundaryCells,
+    OperatorDeclaredCells,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoNameRegionCellCoverage {
+    pub coverage_id: String,
+    pub source_instance_id: String,
+    pub source_record_id: String,
+    pub source_record_blake3: String,
+    pub basis: GeoNameRegionCoverageBasis,
+    pub h3_cells: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoNameRegionRarityPolicy {
+    pub policy_id: String,
+    pub max_name_matches_for_resolution: u64,
+    pub min_name_score_basis_points: u32,
+    pub chain_review_min_matches: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoNameRegionNameOperator {
+    Namekit,
+    TfidfCosine,
+    AliasPatchMatch,
+    Rapidfuzz,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoNameRegionNameEvidence {
+    pub operator: GeoNameRegionNameOperator,
+    pub operator_id: String,
+    pub profile_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_hash: Option<String>,
+    pub asserted_surface: String,
+    pub candidate_surface: String,
+    pub score_basis_points: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoNameRegionAttributeField {
+    PropertyType,
+    YearBuilt,
+    BuildingSize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoNameRegionAttributeEvidence {
+    pub field: GeoNameRegionAttributeField,
+    pub source_instance_id: String,
+    pub source_record_id: String,
+    pub source_record_blake3: String,
+    pub asserted_value: String,
+    pub candidate_value: String,
+    pub hard_filter_passed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoNameRegionDescentEdge {
+    pub source_instance_id: String,
+    pub source_record_id: String,
+    pub source_record_blake3: String,
+    pub from_level: GeoControlEntityLevel,
+    pub from_id: String,
+    pub to_level: GeoControlEntityLevel,
+    pub to_id: String,
+    pub relation: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoNameRegionCandidate {
+    pub candidate_id: String,
+    pub entity_level: GeoControlEntityLevel,
+    pub source_instance_id: String,
+    pub source_record_id: String,
+    pub source_record_blake3: String,
+    pub display_name: String,
+    pub region_cell_ids: Vec<String>,
+    pub name_evidence: Vec<GeoNameRegionNameEvidence>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attribute_evidence: Vec<GeoNameRegionAttributeEvidence>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub descent_edges: Vec<GeoNameRegionDescentEdge>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoNameRegionResolutionStatus {
+    Resolved,
+    Abstained,
+    Refused,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoNameRegionResolutionReason {
+    UniqueNameRegionMatchDescendedToSupportedGrain,
+    NoNameMatchInRegion,
+    NonDiscriminatingNameInRegion,
+    AmbiguousNameMatchesInRegion,
+    AttributeDisagreementAtConfirmStep,
+    MissingRegionBoundary,
+    MissingPinnedNameBearingSource,
+    MissingSourceLicensePins,
+    NoDescentPathToSupportedGrain,
+    ParcelGrainRequestedWithoutParcelInventory,
+    UnsupportedRequestedGrain,
+    UnsupportedCorpusKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoNameRegionRarityReport {
+    pub policy_id: String,
+    pub region_candidate_count: u64,
+    pub name_matched_candidate_count: u64,
+    pub max_name_matches_for_resolution: u64,
+    pub min_name_score_basis_points: u32,
+    pub chain_review_min_matches: u64,
+    pub discriminating_in_region: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoNameRegionCandidateReport {
+    pub candidate_id: String,
+    pub entity_level: GeoControlEntityLevel,
+    pub display_name: String,
+    pub source_instance_id: String,
+    pub in_region: bool,
+    pub name_matched: bool,
+    pub best_name_score_basis_points: u32,
+    pub region_cell_overlap_count: u64,
+    pub hard_attribute_failures: Vec<String>,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoNameRegionResolvedSet {
+    pub entity_level: GeoControlEntityLevel,
+    pub entity_ids: Vec<String>,
+    pub source_candidate_ids: Vec<String>,
+    pub representation: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoNameRegionRefusal {
+    pub reason: GeoNameRegionResolutionReason,
+    pub detail: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_entity_level: Option<GeoControlEntityLevel>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoNameRegionSummary {
+    pub input_rows: u64,
+    pub resolved_rows: u64,
+    pub abstained_rows: u64,
+    pub refused_rows: u64,
+    pub region_cells: u64,
+    pub region_candidates: u64,
+    pub name_matched_candidates: u64,
+    pub selected_candidates: u64,
+    pub resolved_entity_sets: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoNameRegionResolutionArtifact {
+    pub version: String,
+    pub resolution_id: String,
+    pub source_corpus: GeoPreResolutionSourceCorpus,
+    pub proof_class: GeoPreResolutionProofClass,
+    pub build_receipts: Vec<GeoPreResolutionBuildReceipt>,
+    pub release_claim_allowed: bool,
+    pub region: GeoBoundedGeography,
+    pub requested_entity_level: GeoControlEntityLevel,
+    pub requested_claim_classes: Vec<GeoClaimClass>,
+    pub source_pins: Vec<GeoNameRegionSourcePin>,
+    pub region_cell_coverage: GeoNameRegionCellCoverage,
+    pub subject: GeoNameRegionSubject,
+    pub status: GeoNameRegionResolutionStatus,
+    pub reason: GeoNameRegionResolutionReason,
+    pub regional_rarity: GeoNameRegionRarityReport,
+    pub candidates: Vec<GeoNameRegionCandidateReport>,
+    pub selected_sets: Vec<GeoNameRegionResolvedSet>,
+    pub refusals: Vec<GeoNameRegionRefusal>,
+    pub summary: GeoNameRegionSummary,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -393,6 +660,1093 @@ pub fn materialize_pre_resolution(
     artifact.pre_resolution_id = pre_resolution_id(&artifact)?;
     validate_pre_resolution_artifact(&artifact)?;
     Ok(artifact)
+}
+
+pub fn materialize_name_region_resolution(
+    request: &GeoNameRegionResolutionRequest,
+    inventory: &GeoRegionalInventory,
+) -> Result<GeoNameRegionResolutionArtifact, GeoPreResolutionError> {
+    validate_name_region_request_shell(request)?;
+
+    let source_pins = canonical_name_region_source_pins(&request.source_pins)?;
+    let region_cell_coverage = canonical_name_region_cell_coverage(&request.region_cell_coverage)?;
+    let candidates = canonical_name_region_candidates(&request.candidates)?;
+    let requested_claim_classes = canonical_geo_claim_classes(&request.requested_claim_classes)?;
+    let candidate_reports = name_region_candidate_reports(
+        &candidates,
+        &region_cell_coverage,
+        request.rarity_policy.min_name_score_basis_points,
+        &BTreeSet::new(),
+    )?;
+    let region_candidates = candidate_reports
+        .iter()
+        .filter(|candidate| candidate.in_region)
+        .count() as u64;
+    let name_matched_candidates = candidate_reports
+        .iter()
+        .filter(|candidate| candidate.name_matched)
+        .count() as u64;
+    let rarity = GeoNameRegionRarityReport {
+        policy_id: request.rarity_policy.policy_id.clone(),
+        region_candidate_count: region_candidates,
+        name_matched_candidate_count: name_matched_candidates,
+        max_name_matches_for_resolution: request.rarity_policy.max_name_matches_for_resolution,
+        min_name_score_basis_points: request.rarity_policy.min_name_score_basis_points,
+        chain_review_min_matches: request.rarity_policy.chain_review_min_matches,
+        discriminating_in_region: name_matched_candidates > 0
+            && name_matched_candidates <= request.rarity_policy.max_name_matches_for_resolution
+            && name_matched_candidates < request.rarity_policy.chain_review_min_matches,
+    };
+
+    let decision = name_region_decision(
+        request,
+        inventory,
+        &source_pins,
+        &region_cell_coverage,
+        &candidates,
+        &candidate_reports,
+        &rarity,
+    );
+    let selected_candidate_ids = decision
+        .selected_sets
+        .iter()
+        .flat_map(|set| set.source_candidate_ids.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    let candidate_reports = name_region_candidate_reports(
+        &candidates,
+        &region_cell_coverage,
+        request.rarity_policy.min_name_score_basis_points,
+        &selected_candidate_ids,
+    )?;
+    let resolved_rows = u64::from(decision.status == GeoNameRegionResolutionStatus::Resolved);
+    let abstained_rows = u64::from(decision.status == GeoNameRegionResolutionStatus::Abstained);
+    let refused_rows = u64::from(decision.status == GeoNameRegionResolutionStatus::Refused);
+    let region_cells = region_cell_coverage.h3_cells.len() as u64;
+    let selected_candidates = selected_candidate_ids.len() as u64;
+    let resolved_entity_sets = decision.selected_sets.len() as u64;
+
+    let mut artifact = GeoNameRegionResolutionArtifact {
+        version: CANON_GEO_NAME_REGION_RESOLUTION_VERSION.to_string(),
+        resolution_id: String::new(),
+        source_corpus: request.source_corpus.clone(),
+        proof_class: request.proof_class,
+        build_receipts: request.build_receipts.clone(),
+        release_claim_allowed: false,
+        region: request.region.clone(),
+        requested_entity_level: request.requested_entity_level,
+        requested_claim_classes,
+        source_pins,
+        region_cell_coverage,
+        subject: request.subject.clone(),
+        status: decision.status,
+        reason: decision.reason,
+        regional_rarity: rarity,
+        candidates: candidate_reports,
+        selected_sets: decision.selected_sets,
+        refusals: decision.refusals,
+        summary: GeoNameRegionSummary {
+            input_rows: 1,
+            resolved_rows,
+            abstained_rows,
+            refused_rows,
+            region_cells,
+            region_candidates,
+            name_matched_candidates,
+            selected_candidates,
+            resolved_entity_sets,
+        },
+    };
+    artifact.resolution_id = name_region_resolution_id(&artifact)?;
+    validate_name_region_resolution_artifact(&artifact)?;
+    Ok(artifact)
+}
+
+pub fn validate_name_region_resolution_artifact(
+    artifact: &GeoNameRegionResolutionArtifact,
+) -> Result<(), GeoPreResolutionError> {
+    if artifact.version != CANON_GEO_NAME_REGION_RESOLUTION_VERSION {
+        return Err(GeoPreResolutionError::new(
+            GeoPreResolutionErrorCode::UnsupportedVersion,
+            "Unsupported Geo name-region resolution artifact version",
+            [
+                ("actual", artifact.version.as_str()),
+                ("expected", CANON_GEO_NAME_REGION_RESOLUTION_VERSION),
+            ],
+        ));
+    }
+    validate_string("resolution_id", &artifact.resolution_id)?;
+    validate_source_corpus(&artifact.source_corpus)?;
+    validate_build_receipts(&artifact.build_receipts)?;
+    validate_bounded_geography("region", &artifact.region)?;
+    validate_name_region_subject(&artifact.subject)?;
+    validate_name_region_source_pins(&artifact.source_pins)?;
+    validate_name_region_cell_coverage(&artifact.region_cell_coverage)?;
+    validate_geo_claim_classes(&artifact.requested_claim_classes)?;
+    validate_name_region_rarity(&artifact.regional_rarity)?;
+    validate_name_region_candidate_reports(&artifact.candidates)?;
+    validate_name_region_selected_sets(&artifact.selected_sets)?;
+    validate_name_region_refusals(&artifact.refusals)?;
+    validate_name_region_summary(&artifact.summary, artifact)?;
+    if artifact.release_claim_allowed {
+        return Err(GeoPreResolutionError::invalid(
+            "Geo name-region v0 is a workbench resolution and cannot emit release claims",
+            [("field", "release_claim_allowed")],
+        ));
+    }
+    let expected_id = name_region_resolution_id(artifact)?;
+    if artifact.resolution_id != expected_id {
+        return Err(GeoPreResolutionError::invalid(
+            "Geo name-region resolution id must match canonical artifact content",
+            [
+                ("field", "resolution_id".to_string()),
+                ("expected", expected_id),
+                ("actual", artifact.resolution_id.clone()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+pub fn canonical_name_region_resolution_bytes(
+    artifact: &GeoNameRegionResolutionArtifact,
+) -> Result<Vec<u8>, GeoPreResolutionError> {
+    validate_name_region_resolution_artifact(artifact)?;
+    serde_json::to_vec(artifact).map_err(|error| {
+        GeoPreResolutionError::invalid(
+            "Geo name-region resolution artifact could not be serialized",
+            [("error", error.to_string())],
+        )
+    })
+}
+
+#[derive(Debug, Clone)]
+struct NameRegionDecision {
+    status: GeoNameRegionResolutionStatus,
+    reason: GeoNameRegionResolutionReason,
+    selected_sets: Vec<GeoNameRegionResolvedSet>,
+    refusals: Vec<GeoNameRegionRefusal>,
+}
+
+fn name_region_decision(
+    request: &GeoNameRegionResolutionRequest,
+    inventory: &GeoRegionalInventory,
+    source_pins: &[GeoNameRegionSourcePin],
+    region_cell_coverage: &GeoNameRegionCellCoverage,
+    candidates: &[GeoNameRegionCandidate],
+    candidate_reports: &[GeoNameRegionCandidateReport],
+    rarity: &GeoNameRegionRarityReport,
+) -> NameRegionDecision {
+    if !matches!(
+        request.source_corpus.corpus_kind,
+        GeoPreResolutionCorpusKind::ReitScheduleIiiNameOnly
+            | GeoPreResolutionCorpusKind::NaicDescriptor
+    ) {
+        return stopped(
+            GeoNameRegionResolutionStatus::Refused,
+            GeoNameRegionResolutionReason::UnsupportedCorpusKind,
+            "name-region resolution accepts name-only Schedule III and NAIC descriptor corpora; Ginnie pool records need the FHA identifier-join path",
+            Some(request.requested_entity_level),
+        );
+    }
+    if inventory.version != CANON_GEO_REGIONAL_INVENTORY_VERSION
+        || inventory.region.geography_id != request.region.geography_id
+        || region_cell_coverage.h3_cells.is_empty()
+        || !inventory_has_available_source(inventory, &region_cell_coverage.source_instance_id)
+    {
+        return stopped(
+            GeoNameRegionResolutionStatus::Refused,
+            GeoNameRegionResolutionReason::MissingRegionBoundary,
+            "region must bind to a pinned local administrative-boundary cell coverage source",
+            Some(request.requested_entity_level),
+        );
+    }
+    if let Some(reason) =
+        missing_name_region_pin_reason(source_pins, region_cell_coverage, candidates, inventory)
+    {
+        return stopped(
+            GeoNameRegionResolutionStatus::Refused,
+            GeoNameRegionResolutionReason::MissingSourceLicensePins,
+            reason,
+            Some(request.requested_entity_level),
+        );
+    }
+    if !has_pinned_name_bearing_source(inventory, source_pins) {
+        return stopped(
+            GeoNameRegionResolutionStatus::Refused,
+            GeoNameRegionResolutionReason::MissingPinnedNameBearingSource,
+            "inventory must expose at least one pinned local native source that can carry entity names in the region",
+            Some(request.requested_entity_level),
+        );
+    }
+    if !matches!(
+        request.requested_entity_level,
+        GeoControlEntityLevel::Parcel | GeoControlEntityLevel::Building
+    ) {
+        return stopped(
+            GeoNameRegionResolutionStatus::Refused,
+            GeoNameRegionResolutionReason::UnsupportedRequestedGrain,
+            "current composition confirmation supports only building and parcel grains; POI/property/site matches must descend before they can claim a supported answer",
+            Some(request.requested_entity_level),
+        );
+    }
+    if request.requested_entity_level == GeoControlEntityLevel::Parcel
+        && !inventory_has_native_level(inventory, GeoControlEntityLevel::Parcel)
+    {
+        return stopped(
+            GeoNameRegionResolutionStatus::Refused,
+            GeoNameRegionResolutionReason::ParcelGrainRequestedWithoutParcelInventory,
+            "parcel-grain name-region resolution requires an explicit parcel inventory source; building-only regions may resolve only at building grain",
+            Some(GeoControlEntityLevel::Parcel),
+        );
+    }
+    if rarity.name_matched_candidate_count == 0 {
+        return stopped(
+            GeoNameRegionResolutionStatus::Abstained,
+            GeoNameRegionResolutionReason::NoNameMatchInRegion,
+            "no candidate in the bounded region matched the asserted name under the declared entity operators",
+            Some(request.requested_entity_level),
+        );
+    }
+    if !rarity.discriminating_in_region {
+        return stopped(
+            GeoNameRegionResolutionStatus::Abstained,
+            GeoNameRegionResolutionReason::NonDiscriminatingNameInRegion,
+            "the asserted name is not discriminating in the bounded region and must route to review",
+            Some(request.requested_entity_level),
+        );
+    }
+
+    let eligible_matches = candidate_reports
+        .iter()
+        .filter(|candidate| candidate.name_matched && candidate.hard_attribute_failures.is_empty())
+        .collect::<Vec<_>>();
+    if eligible_matches.is_empty() {
+        return stopped(
+            GeoNameRegionResolutionStatus::Abstained,
+            GeoNameRegionResolutionReason::AttributeDisagreementAtConfirmStep,
+            "the unique name match fails one or more hard attribute confirmations",
+            Some(request.requested_entity_level),
+        );
+    }
+    if eligible_matches.len() > 1 {
+        return stopped(
+            GeoNameRegionResolutionStatus::Abstained,
+            GeoNameRegionResolutionReason::AmbiguousNameMatchesInRegion,
+            "more than one candidate remains after name-region blocking and hard attribute confirmation",
+            Some(request.requested_entity_level),
+        );
+    }
+
+    let selected_report = eligible_matches[0];
+    let Some(candidate) = candidates
+        .iter()
+        .find(|candidate| candidate.candidate_id == selected_report.candidate_id)
+    else {
+        return stopped(
+            GeoNameRegionResolutionStatus::Refused,
+            GeoNameRegionResolutionReason::NoDescentPathToSupportedGrain,
+            "selected name-region candidate is missing from the canonical candidate set",
+            Some(request.requested_entity_level),
+        );
+    };
+    let requested_entity_ids = candidate_entity_ids(candidate, request.requested_entity_level);
+    if requested_entity_ids.is_empty() {
+        return stopped(
+            GeoNameRegionResolutionStatus::Refused,
+            GeoNameRegionResolutionReason::NoDescentPathToSupportedGrain,
+            "selected POI/property candidate has no pinned descent path to the requested supported grain",
+            Some(request.requested_entity_level),
+        );
+    }
+    let representation = match candidate.entity_level {
+        level if level == request.requested_entity_level => "direct_name_region_candidate",
+        GeoControlEntityLevel::Poi | GeoControlEntityLevel::Property => {
+            "descended_from_named_entity"
+        }
+        _ => "descended_to_supported_grain",
+    }
+    .to_string();
+    let mut selected_sets = vec![GeoNameRegionResolvedSet {
+        entity_level: request.requested_entity_level,
+        entity_ids: requested_entity_ids,
+        source_candidate_ids: vec![candidate.candidate_id.clone()],
+        representation: representation.clone(),
+    }];
+    if request.requested_entity_level == GeoControlEntityLevel::Parcel {
+        let building_ids = candidate_entity_ids(candidate, GeoControlEntityLevel::Building);
+        if !building_ids.is_empty() {
+            selected_sets.push(GeoNameRegionResolvedSet {
+                entity_level: GeoControlEntityLevel::Building,
+                entity_ids: building_ids,
+                source_candidate_ids: vec![candidate.candidate_id.clone()],
+                representation,
+            });
+        }
+    }
+    selected_sets.sort_by(|left, right| left.entity_level.cmp(&right.entity_level));
+
+    NameRegionDecision {
+        status: GeoNameRegionResolutionStatus::Resolved,
+        reason: GeoNameRegionResolutionReason::UniqueNameRegionMatchDescendedToSupportedGrain,
+        selected_sets,
+        refusals: Vec::new(),
+    }
+}
+
+fn stopped(
+    status: GeoNameRegionResolutionStatus,
+    reason: GeoNameRegionResolutionReason,
+    detail: impl Into<String>,
+    requested_entity_level: Option<GeoControlEntityLevel>,
+) -> NameRegionDecision {
+    NameRegionDecision {
+        status,
+        reason,
+        selected_sets: Vec::new(),
+        refusals: vec![GeoNameRegionRefusal {
+            reason,
+            detail: detail.into(),
+            requested_entity_level,
+        }],
+    }
+}
+
+fn validate_name_region_request_shell(
+    request: &GeoNameRegionResolutionRequest,
+) -> Result<(), GeoPreResolutionError> {
+    if request.version != CANON_GEO_NAME_REGION_RESOLUTION_VERSION {
+        return Err(GeoPreResolutionError::new(
+            GeoPreResolutionErrorCode::UnsupportedVersion,
+            "Unsupported Geo name-region resolution request version",
+            [
+                ("actual", request.version.as_str()),
+                ("expected", CANON_GEO_NAME_REGION_RESOLUTION_VERSION),
+            ],
+        ));
+    }
+    validate_source_corpus(&request.source_corpus)?;
+    validate_build_receipts(&request.build_receipts)?;
+    validate_bounded_geography("region", &request.region)?;
+    validate_geo_claim_classes(&request.requested_claim_classes)?;
+    validate_name_region_subject(&request.subject)?;
+    validate_name_region_rarity_policy(&request.rarity_policy)?;
+    Ok(())
+}
+
+fn canonical_name_region_source_pins(
+    source_pins: &[GeoNameRegionSourcePin],
+) -> Result<Vec<GeoNameRegionSourcePin>, GeoPreResolutionError> {
+    let mut pins = source_pins.to_vec();
+    pins.sort_by(|left, right| {
+        left.source_instance_id
+            .cmp(&right.source_instance_id)
+            .then_with(|| left.role.cmp(&right.role))
+            .then_with(|| left.release_id.cmp(&right.release_id))
+    });
+    validate_name_region_source_pins(&pins)?;
+    Ok(pins)
+}
+
+fn canonical_name_region_cell_coverage(
+    coverage: &GeoNameRegionCellCoverage,
+) -> Result<GeoNameRegionCellCoverage, GeoPreResolutionError> {
+    let mut coverage = coverage.clone();
+    coverage.h3_cells = canonical_string_list(&coverage.h3_cells)?;
+    validate_name_region_cell_coverage(&coverage)?;
+    Ok(coverage)
+}
+
+fn canonical_name_region_candidates(
+    candidates: &[GeoNameRegionCandidate],
+) -> Result<Vec<GeoNameRegionCandidate>, GeoPreResolutionError> {
+    let mut canonical = candidates.to_vec();
+    for candidate in &mut canonical {
+        candidate.region_cell_ids = canonical_string_list(&candidate.region_cell_ids)?;
+        candidate.name_evidence.sort_by(|left, right| {
+            left.operator
+                .cmp(&right.operator)
+                .then_with(|| left.operator_id.cmp(&right.operator_id))
+                .then_with(|| left.profile_id.cmp(&right.profile_id))
+                .then_with(|| left.candidate_surface.cmp(&right.candidate_surface))
+        });
+        candidate.attribute_evidence.sort_by(|left, right| {
+            left.field
+                .cmp(&right.field)
+                .then_with(|| left.source_instance_id.cmp(&right.source_instance_id))
+                .then_with(|| left.source_record_id.cmp(&right.source_record_id))
+                .then_with(|| left.candidate_value.cmp(&right.candidate_value))
+        });
+        candidate.descent_edges.sort_by(|left, right| {
+            left.from_level
+                .cmp(&right.from_level)
+                .then_with(|| left.from_id.cmp(&right.from_id))
+                .then_with(|| left.to_level.cmp(&right.to_level))
+                .then_with(|| left.to_id.cmp(&right.to_id))
+                .then_with(|| left.source_instance_id.cmp(&right.source_instance_id))
+        });
+        validate_name_region_candidate(candidate)?;
+    }
+    canonical.sort_by(|left, right| left.candidate_id.cmp(&right.candidate_id));
+    let mut previous: Option<&str> = None;
+    for candidate in &canonical {
+        if let Some(previous_id) = previous
+            && previous_id >= candidate.candidate_id.as_str()
+        {
+            return Err(GeoPreResolutionError::invalid(
+                "Geo name-region candidates must be strictly sorted and unique",
+                [
+                    ("field", "candidates[].candidate_id".to_string()),
+                    ("candidate_id", candidate.candidate_id.clone()),
+                ],
+            ));
+        }
+        previous = Some(candidate.candidate_id.as_str());
+    }
+    Ok(canonical)
+}
+
+fn canonical_geo_claim_classes(
+    claim_classes: &[GeoClaimClass],
+) -> Result<Vec<GeoClaimClass>, GeoPreResolutionError> {
+    let mut values = claim_classes.to_vec();
+    values.sort();
+    values.dedup();
+    validate_geo_claim_classes(&values)?;
+    Ok(values)
+}
+
+fn canonical_string_list(values: &[String]) -> Result<Vec<String>, GeoPreResolutionError> {
+    let mut canonical = values.to_vec();
+    canonical.sort();
+    canonical.dedup();
+    validate_string_vec("string_list", &canonical)?;
+    Ok(canonical)
+}
+
+fn name_region_candidate_reports(
+    candidates: &[GeoNameRegionCandidate],
+    coverage: &GeoNameRegionCellCoverage,
+    min_name_score_basis_points: u32,
+    selected_candidate_ids: &BTreeSet<String>,
+) -> Result<Vec<GeoNameRegionCandidateReport>, GeoPreResolutionError> {
+    let coverage_cells = coverage.h3_cells.iter().collect::<BTreeSet<_>>();
+    candidates
+        .iter()
+        .map(|candidate| {
+            let region_cell_overlap_count = candidate
+                .region_cell_ids
+                .iter()
+                .filter(|cell| coverage_cells.contains(cell))
+                .count() as u64;
+            let in_region = region_cell_overlap_count > 0;
+            let best_name_score_basis_points = candidate
+                .name_evidence
+                .iter()
+                .map(|evidence| evidence.score_basis_points)
+                .max()
+                .unwrap_or(0);
+            let name_matched =
+                in_region && best_name_score_basis_points >= min_name_score_basis_points;
+            let hard_attribute_failures = candidate
+                .attribute_evidence
+                .iter()
+                .filter(|evidence| !evidence.hard_filter_passed)
+                .map(|evidence| attribute_field_name(evidence.field).to_string())
+                .collect::<Vec<_>>();
+            Ok(GeoNameRegionCandidateReport {
+                candidate_id: candidate.candidate_id.clone(),
+                entity_level: candidate.entity_level,
+                display_name: candidate.display_name.clone(),
+                source_instance_id: candidate.source_instance_id.clone(),
+                in_region,
+                name_matched,
+                best_name_score_basis_points,
+                region_cell_overlap_count,
+                hard_attribute_failures,
+                selected: selected_candidate_ids.contains(&candidate.candidate_id),
+            })
+        })
+        .collect()
+}
+
+fn candidate_entity_ids(
+    candidate: &GeoNameRegionCandidate,
+    requested_entity_level: GeoControlEntityLevel,
+) -> Vec<String> {
+    let mut ids = if candidate.entity_level == requested_entity_level {
+        vec![candidate.candidate_id.clone()]
+    } else {
+        candidate
+            .descent_edges
+            .iter()
+            .filter(|edge| {
+                edge.from_level == candidate.entity_level
+                    && edge.from_id == candidate.candidate_id
+                    && edge.to_level == requested_entity_level
+            })
+            .map(|edge| edge.to_id.clone())
+            .collect::<Vec<_>>()
+    };
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+fn missing_name_region_pin_reason(
+    source_pins: &[GeoNameRegionSourcePin],
+    coverage: &GeoNameRegionCellCoverage,
+    candidates: &[GeoNameRegionCandidate],
+    inventory: &GeoRegionalInventory,
+) -> Option<String> {
+    let pinned_sources = source_pins
+        .iter()
+        .map(|pin| pin.source_instance_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut required_sources = BTreeSet::from([coverage.source_instance_id.as_str()]);
+    for candidate in candidates {
+        required_sources.insert(candidate.source_instance_id.as_str());
+        for attribute in &candidate.attribute_evidence {
+            required_sources.insert(attribute.source_instance_id.as_str());
+        }
+        for edge in &candidate.descent_edges {
+            required_sources.insert(edge.source_instance_id.as_str());
+        }
+    }
+    if let Some(source_id) = required_sources
+        .iter()
+        .find(|source_id| !pinned_sources.contains(**source_id))
+    {
+        return Some(format!(
+            "required source {source_id} is not bound by source_pins"
+        ));
+    }
+    if let Some(pin) = source_pins.iter().find(|pin| {
+        pin.license_class == GeoLicenseClass::Unknown
+            || pin.egress_class == GeoEgressClass::Unknown
+            || !inventory_has_available_source(inventory, &pin.source_instance_id)
+    }) {
+        return Some(format!(
+            "source {} lacks an available local inventory row or usable license/egress pin",
+            pin.source_instance_id
+        ));
+    }
+    None
+}
+
+fn has_pinned_name_bearing_source(
+    inventory: &GeoRegionalInventory,
+    source_pins: &[GeoNameRegionSourcePin],
+) -> bool {
+    source_pins.iter().any(|pin| {
+        pin.role == GeoNameRegionSourceRole::NameBearingEntity
+            && inventory
+                .sources
+                .iter()
+                .find(|source| source.source_instance_id == pin.source_instance_id)
+                .is_some_and(source_can_bear_name)
+    })
+}
+
+fn source_can_bear_name(source: &GeoRegionalSourceInstance) -> bool {
+    if !source_is_available(&source.local_state) {
+        return false;
+    }
+    let is_native_entity = matches!(
+        &source.native_scope,
+        GeoNativeEntityScope::NativeEntity {
+            entity_level: GeoControlEntityLevel::Site
+                | GeoControlEntityLevel::Property
+                | GeoControlEntityLevel::Building
+                | GeoControlEntityLevel::Poi,
+            identity_participation: GeoIdentityParticipation::StableAlias
+                | GeoIdentityParticipation::EvidenceOnly,
+        }
+    );
+    is_native_entity
+        && source.evidence_classes.iter().any(|class| {
+            matches!(
+                class,
+                GeoEvidenceClass::AssertedAttribute | GeoEvidenceClass::EntityRelation
+            )
+        })
+}
+
+fn inventory_has_native_level(
+    inventory: &GeoRegionalInventory,
+    entity_level: GeoControlEntityLevel,
+) -> bool {
+    inventory.sources.iter().any(|source| {
+        source_is_available(&source.local_state)
+            && matches!(
+                &source.native_scope,
+                GeoNativeEntityScope::NativeEntity {
+                    entity_level: level,
+                    ..
+                } if *level == entity_level
+            )
+    })
+}
+
+fn inventory_has_available_source(
+    inventory: &GeoRegionalInventory,
+    source_instance_id: &str,
+) -> bool {
+    inventory
+        .sources
+        .iter()
+        .find(|source| source.source_instance_id == source_instance_id)
+        .is_some_and(|source| source_is_available(&source.local_state))
+}
+
+fn source_is_available(state: &GeoLocalAcquisitionState) -> bool {
+    matches!(
+        state.state,
+        GeoSourceAvailability::Available | GeoSourceAvailability::Partial
+    ) && state.local_ref.is_some()
+}
+
+fn validate_name_region_subject(
+    subject: &GeoNameRegionSubject,
+) -> Result<(), GeoPreResolutionError> {
+    validate_string("subject.row_id", &subject.row_id)?;
+    validate_string("subject.source_record_id", &subject.source_record_id)?;
+    validate_blake3_uri(
+        "subject.source_record_blake3",
+        &subject.source_record_blake3,
+    )?;
+    validate_string("subject.asserted_name", &subject.asserted_name)?;
+    validate_string("subject.asserted_region", &subject.asserted_region)?;
+    if let Some(property_type) = &subject.asserted_property_type {
+        validate_string("subject.asserted_property_type", property_type)?;
+    }
+    Ok(())
+}
+
+fn validate_bounded_geography(
+    field: &'static str,
+    region: &GeoBoundedGeography,
+) -> Result<(), GeoPreResolutionError> {
+    validate_string(field, &region.geography_id)?;
+    validate_string(field, &region.geography_kind)?;
+    validate_string(field, &region.description)?;
+    Ok(())
+}
+
+fn validate_geo_claim_classes(
+    claim_classes: &[GeoClaimClass],
+) -> Result<(), GeoPreResolutionError> {
+    if claim_classes.is_empty() {
+        return Err(GeoPreResolutionError::invalid(
+            "Geo name-region requests must declare at least one claim class",
+            [("field", "requested_claim_classes")],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_name_region_rarity_policy(
+    policy: &GeoNameRegionRarityPolicy,
+) -> Result<(), GeoPreResolutionError> {
+    validate_string("rarity_policy.policy_id", &policy.policy_id)?;
+    if policy.max_name_matches_for_resolution == 0 {
+        return Err(GeoPreResolutionError::invalid(
+            "Geo name-region rarity policy must allow at least one resolved match",
+            [("field", "rarity_policy.max_name_matches_for_resolution")],
+        ));
+    }
+    if policy.min_name_score_basis_points > 10_000 {
+        return Err(GeoPreResolutionError::invalid(
+            "Geo name-region name scores use integer basis points in 0..=10000",
+            [("field", "rarity_policy.min_name_score_basis_points")],
+        ));
+    }
+    if policy.chain_review_min_matches <= policy.max_name_matches_for_resolution {
+        return Err(GeoPreResolutionError::invalid(
+            "Geo name-region chain review threshold must exceed the resolution match cap",
+            [("field", "rarity_policy.chain_review_min_matches")],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_name_region_source_pins(
+    source_pins: &[GeoNameRegionSourcePin],
+) -> Result<(), GeoPreResolutionError> {
+    let mut previous: Option<(&str, GeoNameRegionSourceRole)> = None;
+    for pin in source_pins {
+        validate_string("source_pins[].source_instance_id", &pin.source_instance_id)?;
+        validate_string("source_pins[].release_id", &pin.release_id)?;
+        validate_blake3_uri("source_pins[].release_digest", &pin.release_digest)?;
+        validate_string("source_pins[].local_artifact_id", &pin.local_artifact_id)?;
+        validate_blake3_uri("source_pins[].local_content_hash", &pin.local_content_hash)?;
+        let key = (pin.source_instance_id.as_str(), pin.role);
+        if let Some(previous_key) = previous
+            && previous_key >= key
+        {
+            return Err(GeoPreResolutionError::invalid(
+                "Geo name-region source pins must be strictly sorted and unique by source and role",
+                [
+                    ("field", "source_pins".to_string()),
+                    ("source_instance_id", pin.source_instance_id.clone()),
+                ],
+            ));
+        }
+        previous = Some(key);
+    }
+    Ok(())
+}
+
+fn validate_name_region_cell_coverage(
+    coverage: &GeoNameRegionCellCoverage,
+) -> Result<(), GeoPreResolutionError> {
+    validate_string("region_cell_coverage.coverage_id", &coverage.coverage_id)?;
+    validate_string(
+        "region_cell_coverage.source_instance_id",
+        &coverage.source_instance_id,
+    )?;
+    validate_string(
+        "region_cell_coverage.source_record_id",
+        &coverage.source_record_id,
+    )?;
+    validate_blake3_uri(
+        "region_cell_coverage.source_record_blake3",
+        &coverage.source_record_blake3,
+    )?;
+    validate_string_vec("region_cell_coverage.h3_cells", &coverage.h3_cells)?;
+    Ok(())
+}
+
+fn validate_name_region_candidate(
+    candidate: &GeoNameRegionCandidate,
+) -> Result<(), GeoPreResolutionError> {
+    validate_string("candidates[].candidate_id", &candidate.candidate_id)?;
+    validate_string(
+        "candidates[].source_instance_id",
+        &candidate.source_instance_id,
+    )?;
+    validate_string("candidates[].source_record_id", &candidate.source_record_id)?;
+    validate_blake3_uri(
+        "candidates[].source_record_blake3",
+        &candidate.source_record_blake3,
+    )?;
+    validate_string("candidates[].display_name", &candidate.display_name)?;
+    validate_string_vec("candidates[].region_cell_ids", &candidate.region_cell_ids)?;
+    if candidate.name_evidence.is_empty() {
+        return Err(GeoPreResolutionError::invalid(
+            "Geo name-region candidates must carry at least one entity name operator hit",
+            [
+                ("field", "candidates[].name_evidence".to_string()),
+                ("candidate_id", candidate.candidate_id.clone()),
+            ],
+        ));
+    }
+    for evidence in &candidate.name_evidence {
+        validate_name_region_name_evidence(evidence)?;
+    }
+    for evidence in &candidate.attribute_evidence {
+        validate_name_region_attribute_evidence(evidence)?;
+    }
+    for edge in &candidate.descent_edges {
+        validate_name_region_descent_edge(edge)?;
+    }
+    Ok(())
+}
+
+fn validate_name_region_name_evidence(
+    evidence: &GeoNameRegionNameEvidence,
+) -> Result<(), GeoPreResolutionError> {
+    validate_string("name_evidence[].operator_id", &evidence.operator_id)?;
+    validate_string("name_evidence[].profile_id", &evidence.profile_id)?;
+    if let Some(profile_hash) = &evidence.profile_hash {
+        validate_blake3_uri("name_evidence[].profile_hash", profile_hash)?;
+    }
+    validate_string(
+        "name_evidence[].asserted_surface",
+        &evidence.asserted_surface,
+    )?;
+    validate_string(
+        "name_evidence[].candidate_surface",
+        &evidence.candidate_surface,
+    )?;
+    if evidence.score_basis_points > 10_000 {
+        return Err(GeoPreResolutionError::invalid(
+            "Geo name-region name evidence scores use integer basis points in 0..=10000",
+            [("field", "name_evidence[].score_basis_points")],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_name_region_attribute_evidence(
+    evidence: &GeoNameRegionAttributeEvidence,
+) -> Result<(), GeoPreResolutionError> {
+    validate_string(
+        "attribute_evidence[].source_instance_id",
+        &evidence.source_instance_id,
+    )?;
+    validate_string(
+        "attribute_evidence[].source_record_id",
+        &evidence.source_record_id,
+    )?;
+    validate_blake3_uri(
+        "attribute_evidence[].source_record_blake3",
+        &evidence.source_record_blake3,
+    )?;
+    validate_string(
+        "attribute_evidence[].asserted_value",
+        &evidence.asserted_value,
+    )?;
+    validate_string(
+        "attribute_evidence[].candidate_value",
+        &evidence.candidate_value,
+    )?;
+    Ok(())
+}
+
+fn validate_name_region_descent_edge(
+    edge: &GeoNameRegionDescentEdge,
+) -> Result<(), GeoPreResolutionError> {
+    validate_string(
+        "descent_edges[].source_instance_id",
+        &edge.source_instance_id,
+    )?;
+    validate_string("descent_edges[].source_record_id", &edge.source_record_id)?;
+    validate_blake3_uri(
+        "descent_edges[].source_record_blake3",
+        &edge.source_record_blake3,
+    )?;
+    validate_string("descent_edges[].from_id", &edge.from_id)?;
+    validate_string("descent_edges[].to_id", &edge.to_id)?;
+    validate_string("descent_edges[].relation", &edge.relation)?;
+    Ok(())
+}
+
+fn validate_name_region_rarity(
+    rarity: &GeoNameRegionRarityReport,
+) -> Result<(), GeoPreResolutionError> {
+    validate_string("regional_rarity.policy_id", &rarity.policy_id)?;
+    if rarity.min_name_score_basis_points > 10_000 {
+        return Err(GeoPreResolutionError::invalid(
+            "Geo name-region rarity scores use integer basis points",
+            [("field", "regional_rarity.min_name_score_basis_points")],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_name_region_candidate_reports(
+    candidates: &[GeoNameRegionCandidateReport],
+) -> Result<(), GeoPreResolutionError> {
+    let mut previous: Option<&str> = None;
+    for candidate in candidates {
+        validate_string("candidates[].candidate_id", &candidate.candidate_id)?;
+        validate_string("candidates[].display_name", &candidate.display_name)?;
+        validate_string(
+            "candidates[].source_instance_id",
+            &candidate.source_instance_id,
+        )?;
+        validate_string_vec(
+            "candidates[].hard_attribute_failures",
+            &candidate.hard_attribute_failures,
+        )?;
+        if candidate.best_name_score_basis_points > 10_000 {
+            return Err(GeoPreResolutionError::invalid(
+                "Geo name-region candidate report scores use integer basis points",
+                [("field", "candidates[].best_name_score_basis_points")],
+            ));
+        }
+        if let Some(previous_id) = previous
+            && previous_id >= candidate.candidate_id.as_str()
+        {
+            return Err(GeoPreResolutionError::invalid(
+                "Geo name-region candidate reports must be strictly sorted",
+                [
+                    ("field", "candidates[].candidate_id".to_string()),
+                    ("candidate_id", candidate.candidate_id.clone()),
+                ],
+            ));
+        }
+        previous = Some(candidate.candidate_id.as_str());
+    }
+    Ok(())
+}
+
+fn validate_name_region_selected_sets(
+    selected_sets: &[GeoNameRegionResolvedSet],
+) -> Result<(), GeoPreResolutionError> {
+    let mut previous: Option<GeoControlEntityLevel> = None;
+    for set in selected_sets {
+        validate_string_vec("selected_sets[].entity_ids", &set.entity_ids)?;
+        validate_string_vec(
+            "selected_sets[].source_candidate_ids",
+            &set.source_candidate_ids,
+        )?;
+        validate_string("selected_sets[].representation", &set.representation)?;
+        if let Some(previous_level) = previous
+            && previous_level >= set.entity_level
+        {
+            return Err(GeoPreResolutionError::invalid(
+                "Geo name-region selected sets must be strictly sorted by entity level",
+                [("field", "selected_sets[].entity_level")],
+            ));
+        }
+        previous = Some(set.entity_level);
+    }
+    Ok(())
+}
+
+fn validate_name_region_refusals(
+    refusals: &[GeoNameRegionRefusal],
+) -> Result<(), GeoPreResolutionError> {
+    for refusal in refusals {
+        validate_string("refusals[].detail", &refusal.detail)?;
+    }
+    Ok(())
+}
+
+fn validate_name_region_summary(
+    summary: &GeoNameRegionSummary,
+    artifact: &GeoNameRegionResolutionArtifact,
+) -> Result<(), GeoPreResolutionError> {
+    if summary.input_rows != summary.resolved_rows + summary.abstained_rows + summary.refused_rows {
+        return Err(GeoPreResolutionError::invalid(
+            "Geo name-region summary must classify the input row exactly once",
+            [("field", "summary.input_rows")],
+        ));
+    }
+    let expected = match artifact.status {
+        GeoNameRegionResolutionStatus::Resolved => (1, 0, 0),
+        GeoNameRegionResolutionStatus::Abstained => (0, 1, 0),
+        GeoNameRegionResolutionStatus::Refused => (0, 0, 1),
+    };
+    if (
+        summary.resolved_rows,
+        summary.abstained_rows,
+        summary.refused_rows,
+    ) != expected
+    {
+        return Err(GeoPreResolutionError::invalid(
+            "Geo name-region summary row counts must match artifact status",
+            [("field", "summary")],
+        ));
+    }
+    if summary.region_cells != artifact.region_cell_coverage.h3_cells.len() as u64
+        || summary.region_candidates
+            != artifact
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.in_region)
+                .count() as u64
+        || summary.name_matched_candidates
+            != artifact
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.name_matched)
+                .count() as u64
+        || summary.selected_candidates
+            != artifact
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.selected)
+                .count() as u64
+        || summary.resolved_entity_sets != artifact.selected_sets.len() as u64
+    {
+        return Err(GeoPreResolutionError::invalid(
+            "Geo name-region summary counters must match artifact sections",
+            [("field", "summary")],
+        ));
+    }
+    if artifact.status == GeoNameRegionResolutionStatus::Resolved
+        && artifact.selected_sets.is_empty()
+    {
+        return Err(GeoPreResolutionError::invalid(
+            "Resolved name-region artifacts must carry at least one selected set",
+            [("field", "selected_sets")],
+        ));
+    }
+    if artifact.status != GeoNameRegionResolutionStatus::Resolved
+        && !artifact.selected_sets.is_empty()
+    {
+        return Err(GeoPreResolutionError::invalid(
+            "Non-resolved name-region artifacts must not carry selected sets",
+            [("field", "selected_sets")],
+        ));
+    }
+    if artifact.status != GeoNameRegionResolutionStatus::Resolved && artifact.refusals.is_empty() {
+        return Err(GeoPreResolutionError::invalid(
+            "Abstained or refused name-region artifacts must carry a typed stop reason",
+            [("field", "refusals")],
+        ));
+    }
+    Ok(())
+}
+
+fn name_region_resolution_id(
+    artifact: &GeoNameRegionResolutionArtifact,
+) -> Result<String, GeoPreResolutionError> {
+    #[derive(Serialize)]
+    struct ArtifactSeed<'a> {
+        version: &'a str,
+        source_corpus: &'a GeoPreResolutionSourceCorpus,
+        proof_class: GeoPreResolutionProofClass,
+        build_receipts: &'a [GeoPreResolutionBuildReceipt],
+        release_claim_allowed: bool,
+        region: &'a GeoBoundedGeography,
+        requested_entity_level: GeoControlEntityLevel,
+        requested_claim_classes: &'a [GeoClaimClass],
+        source_pins: &'a [GeoNameRegionSourcePin],
+        region_cell_coverage: &'a GeoNameRegionCellCoverage,
+        subject: &'a GeoNameRegionSubject,
+        status: GeoNameRegionResolutionStatus,
+        reason: GeoNameRegionResolutionReason,
+        regional_rarity: &'a GeoNameRegionRarityReport,
+        candidates: &'a [GeoNameRegionCandidateReport],
+        selected_sets: &'a [GeoNameRegionResolvedSet],
+        refusals: &'a [GeoNameRegionRefusal],
+        summary: &'a GeoNameRegionSummary,
+    }
+
+    let seed = ArtifactSeed {
+        version: &artifact.version,
+        source_corpus: &artifact.source_corpus,
+        proof_class: artifact.proof_class,
+        build_receipts: &artifact.build_receipts,
+        release_claim_allowed: artifact.release_claim_allowed,
+        region: &artifact.region,
+        requested_entity_level: artifact.requested_entity_level,
+        requested_claim_classes: &artifact.requested_claim_classes,
+        source_pins: &artifact.source_pins,
+        region_cell_coverage: &artifact.region_cell_coverage,
+        subject: &artifact.subject,
+        status: artifact.status,
+        reason: artifact.reason,
+        regional_rarity: &artifact.regional_rarity,
+        candidates: &artifact.candidates,
+        selected_sets: &artifact.selected_sets,
+        refusals: &artifact.refusals,
+        summary: &artifact.summary,
+    };
+    serde_json::to_vec(&seed)
+        .map(|bytes| {
+            format!(
+                "{CANON_GEO_NAME_REGION_RESOLUTION_VERSION}:{}",
+                blake3::hash(&bytes).to_hex()
+            )
+        })
+        .map_err(|error| {
+            GeoPreResolutionError::invalid(
+                "Geo name-region resolution id seed could not be serialized",
+                [("error", error.to_string())],
+            )
+        })
+}
+
+fn attribute_field_name(field: GeoNameRegionAttributeField) -> &'static str {
+    match field {
+        GeoNameRegionAttributeField::PropertyType => "property_type",
+        GeoNameRegionAttributeField::YearBuilt => "year_built",
+        GeoNameRegionAttributeField::BuildingSize => "building_size",
+    }
 }
 
 pub fn validate_pre_resolution_artifact(
