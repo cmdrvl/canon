@@ -2,11 +2,10 @@
 
 //! Temporal containment query helpers for Geo mart artifacts.
 //!
-//! This module is intentionally narrower than the deferred Allen/STP temporal
-//! solver in `docs/PLAN_CANON_GEO.md`. It validates and queries reviewed
-//! parent/child containment edges at a whole-day `as_of` time; it does not
-//! change composition decisions, solve scores, or Canon's exact registry replay
-//! path.
+//! This module validates and queries reviewed temporal entity facts at a
+//! whole-day `as_of` time. Lifecycle facts remain source-generic: adapters
+//! provide dated observations and source pins, while this module only projects
+//! typed intervals into diagnostic rows or declared composition constraints.
 
 use super::{GeoEntityLevel, GeoEntityRef, GeoHardConstraint, GeoHardConstraintKind};
 use serde::{Deserialize, Serialize};
@@ -20,6 +19,8 @@ pub const CANON_GEO_TEMPORAL_CONTAINMENT_VERSION: &str = "canon_geo_temporal_con
 pub const CANON_GEO_AS_OF_RESOLUTION_REQUEST_VERSION: &str =
     "canon_geo_as_of_resolution_request.v0";
 pub const CANON_GEO_AS_OF_RESOLUTION_VERSION: &str = "canon_geo_as_of_resolution.v0";
+pub const GEO_TEMPORAL_ABSENT_AFTER_REFERENCE_RHO_CONTRACT_ID: &str =
+    "rho.temporal.absent_after_reference.v0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeoLifecycleError {
@@ -781,6 +782,85 @@ pub struct GeoTemporalPresenceDisagreementSummary {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct GeoTemporalIntervalConstraintQuery {
+    pub member: GeoEntityRef,
+    pub query_as_of_utc_day: String,
+    pub reference_interval: GeoTemporalContainmentInterval,
+    pub rho_contract_id: String,
+    pub observer: GeoTemporalObserverCharacterization,
+    pub current_universe_members: Vec<GeoEntityRef>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTemporalObserverCharacterization {
+    pub observer_id: String,
+    pub characterized: bool,
+    pub null_baseline: bool,
+    pub diagnostic_observation_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoTemporalIntervalConstraintStatus {
+    HardConstraint,
+    Diagnostic,
+    Abstained,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoTemporalIntervalConstraintReason {
+    AbsentAfterReferenceWithAuthoritativeSeparator,
+    PresentAtVintageDoesNotConstrain,
+    ObserverUncharacterized,
+    NullBaselineObserver,
+    ObservationNotDiagnosticInSourceArtifact,
+    AbsenceNotAfterReference,
+    MissingAuthoritativeLifecycleSeparator,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTemporalIntervalConstraintRow {
+    pub observation_id: String,
+    pub observation_kind: GeoTemporalPresenceObservationKind,
+    pub observation_interval: GeoTemporalContainmentInterval,
+    pub status: GeoTemporalIntervalConstraintStatus,
+    pub reason: GeoTemporalIntervalConstraintReason,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub generated_constraint_ids: Vec<String>,
+    pub source_receipts: Vec<GeoTemporalContainmentSourceReceipt>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTemporalIntervalConstraintArtifact {
+    pub version: String,
+    pub mart_id: String,
+    pub query_as_of_utc_day: String,
+    pub reference_interval: GeoTemporalContainmentInterval,
+    pub rho_contract_id: String,
+    pub observer_id: String,
+    pub member: GeoEntityRef,
+    pub rows: Vec<GeoTemporalIntervalConstraintRow>,
+    pub hard_constraints: Vec<GeoHardConstraint>,
+    pub source_receipts: Vec<GeoTemporalContainmentSourceReceipt>,
+    pub summary: GeoTemporalIntervalConstraintSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTemporalIntervalConstraintSummary {
+    pub observations: u64,
+    pub hard_constraints: u64,
+    pub diagnostic: u64,
+    pub abstained: u64,
+    pub source_receipts: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoEntityExistenceAsOfQuery {
     pub as_of_utc_day: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1075,6 +1155,72 @@ pub fn property_assemblage_constraints_as_of(
         status,
         reason,
         active_members,
+        hard_constraints,
+        source_receipts,
+        summary,
+    })
+}
+
+pub fn temporal_interval_constraints_as_of(
+    artifact: &GeoTemporalContainmentArtifact,
+    query: &GeoTemporalIntervalConstraintQuery,
+) -> Result<GeoTemporalIntervalConstraintArtifact, GeoLifecycleError> {
+    let canonical = canonical_temporal_containment_artifact(artifact)?;
+    validate_temporal_interval_constraint_query(&canonical, query)?;
+
+    let mut rows = Vec::new();
+    let mut hard_constraints = Vec::new();
+    for observation in canonical
+        .presence_observations
+        .iter()
+        .filter(|observation| {
+            observation.cluster_id == query.member.id
+                && observation.entity_level == query.member.level
+        })
+    {
+        let decision = classify_temporal_interval_observation(&canonical, query, observation);
+        rows.push(GeoTemporalIntervalConstraintRow {
+            observation_id: observation.observation_id.clone(),
+            observation_kind: observation.observation_kind,
+            observation_interval: GeoTemporalContainmentInterval {
+                start_utc_day: observation.vintage_utc_day.clone(),
+                end_utc_day: observation.vintage_utc_day.clone(),
+            },
+            status: decision.status,
+            reason: decision.reason,
+            generated_constraint_ids: decision.generated_constraint_ids.clone(),
+            source_receipts: decision.source_receipts,
+        });
+        hard_constraints.extend(decision.generated_constraint_ids.into_iter().map(|id| {
+            GeoHardConstraint {
+                id,
+                constraint: GeoHardConstraintKind::Forbid {
+                    member: query.member.clone(),
+                },
+            }
+        }));
+    }
+    rows.sort_by(|left, right| left.observation_id.cmp(&right.observation_id));
+    hard_constraints.sort_by(|left, right| left.id.cmp(&right.id));
+    hard_constraints.dedup_by(|left, right| left.id == right.id);
+
+    let mut source_receipts = rows
+        .iter()
+        .flat_map(|row| row.source_receipts.iter().cloned())
+        .collect::<Vec<_>>();
+    source_receipts.sort();
+    source_receipts.dedup();
+    let summary = temporal_interval_constraint_summary(&rows, &hard_constraints, &source_receipts)?;
+
+    Ok(GeoTemporalIntervalConstraintArtifact {
+        version: canonical.version,
+        mart_id: canonical.mart_id,
+        query_as_of_utc_day: query.query_as_of_utc_day.clone(),
+        reference_interval: query.reference_interval.clone(),
+        rho_contract_id: query.rho_contract_id.clone(),
+        observer_id: query.observer.observer_id.clone(),
+        member: query.member.clone(),
+        rows,
         hard_constraints,
         source_receipts,
         summary,
@@ -3309,6 +3455,293 @@ fn assemblage_hard_constraints(
         });
     }
     constraints
+}
+
+fn validate_temporal_interval_constraint_query(
+    artifact: &GeoTemporalContainmentArtifact,
+    query: &GeoTemporalIntervalConstraintQuery,
+) -> Result<(), GeoLifecycleError> {
+    validate_cluster_id("member.id", &query.member.id, query.member.level)?;
+    match query.member.level {
+        GeoEntityLevel::Parcel | GeoEntityLevel::Building => {}
+        GeoEntityLevel::Property | GeoEntityLevel::PoiUnit => {
+            return Err(GeoLifecycleError::invalid(
+                "Geo temporal interval constraints support parcel or building members",
+                [
+                    ("field", "member.level".to_string()),
+                    ("value", format!("{:?}", query.member.level)),
+                ],
+            ));
+        }
+    }
+    validate_interval(&query.reference_interval)?;
+    validate_utc_day("query_as_of_utc_day", &query.query_as_of_utc_day)?;
+    if query.query_as_of_utc_day.as_str() < query.reference_interval.start_utc_day.as_str()
+        || query.reference_interval.end_utc_day.as_str() < query.query_as_of_utc_day.as_str()
+    {
+        return Err(GeoLifecycleError::invalid(
+            "Geo temporal interval constraint query_as_of must be inside the reference interval",
+            [
+                ("field", "query_as_of_utc_day".to_string()),
+                ("query_as_of_utc_day", query.query_as_of_utc_day.clone()),
+                (
+                    "reference_interval",
+                    format!(
+                        "{}..{}",
+                        query.reference_interval.start_utc_day,
+                        query.reference_interval.end_utc_day
+                    ),
+                ),
+            ],
+        ));
+    }
+    validate_string("rho_contract_id", &query.rho_contract_id)?;
+    if query.rho_contract_id != GEO_TEMPORAL_ABSENT_AFTER_REFERENCE_RHO_CONTRACT_ID {
+        return Err(GeoLifecycleError::invalid(
+            "Geo temporal interval constraints require the declared absent-after-reference rho contract",
+            [
+                ("field", "rho_contract_id".to_string()),
+                ("actual", query.rho_contract_id.clone()),
+                (
+                    "expected",
+                    GEO_TEMPORAL_ABSENT_AFTER_REFERENCE_RHO_CONTRACT_ID.to_string(),
+                ),
+            ],
+        ));
+    }
+    validate_temporal_observer_characterization(&query.observer)?;
+
+    let clusters = artifact
+        .clusters
+        .iter()
+        .map(|cluster| (cluster.cluster_id.clone(), cluster.entity_level))
+        .collect::<BTreeMap<_, _>>();
+    validate_endpoint_level("member.id", &query.member.id, query.member.level, &clusters)?;
+    validate_current_universe_members(&query.current_universe_members)?;
+    if !query
+        .current_universe_members
+        .iter()
+        .any(|member| member == &query.member)
+    {
+        return Err(GeoLifecycleError::invalid(
+            "Geo temporal interval constraint member must be in the current composition universe",
+            [("member_id", query.member.id.clone())],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_temporal_observer_characterization(
+    observer: &GeoTemporalObserverCharacterization,
+) -> Result<(), GeoLifecycleError> {
+    validate_string("observer.observer_id", &observer.observer_id)?;
+    validate_canonical_string_list(
+        "observer.diagnostic_observation_ids",
+        &observer.diagnostic_observation_ids,
+    )
+}
+
+fn validate_current_universe_members(members: &[GeoEntityRef]) -> Result<(), GeoLifecycleError> {
+    if members.is_empty() {
+        return Err(invalid_field(
+            "current_universe_members",
+            "Geo temporal interval constraints require the current composition universe",
+            "0",
+        ));
+    }
+    let mut previous: Option<&GeoEntityRef> = None;
+    for member in members {
+        validate_cluster_id("current_universe_members[].id", &member.id, member.level)?;
+        match member.level {
+            GeoEntityLevel::Parcel | GeoEntityLevel::Building => {}
+            GeoEntityLevel::Property | GeoEntityLevel::PoiUnit => {
+                return Err(GeoLifecycleError::invalid(
+                    "Geo temporal interval constraints support parcel or building universe members",
+                    [
+                        ("field", "current_universe_members[].level".to_string()),
+                        ("value", format!("{:?}", member.level)),
+                    ],
+                ));
+            }
+        }
+        if let Some(prior) = previous
+            && prior >= member
+        {
+            return Err(GeoLifecycleError::invalid(
+                "Geo temporal interval constraint universe members must be unique and sorted",
+                [
+                    ("field", "current_universe_members".to_string()),
+                    ("previous", prior.id.clone()),
+                    ("member", member.id.clone()),
+                ],
+            ));
+        }
+        previous = Some(member);
+    }
+    Ok(())
+}
+
+fn validate_canonical_string_list(
+    field: &'static str,
+    values: &[String],
+) -> Result<(), GeoLifecycleError> {
+    let mut previous: Option<&str> = None;
+    for value in values {
+        validate_string(field, value)?;
+        if let Some(prior) = previous
+            && prior >= value.as_str()
+        {
+            return Err(GeoLifecycleError::invalid(
+                "Geo temporal interval constraint id lists must be unique and sorted",
+                [
+                    ("field", field.to_string()),
+                    ("previous", prior.to_string()),
+                    ("value", value.clone()),
+                ],
+            ));
+        }
+        previous = Some(value);
+    }
+    Ok(())
+}
+
+struct GeoTemporalIntervalObservationDecision {
+    status: GeoTemporalIntervalConstraintStatus,
+    reason: GeoTemporalIntervalConstraintReason,
+    generated_constraint_ids: Vec<String>,
+    source_receipts: Vec<GeoTemporalContainmentSourceReceipt>,
+}
+
+fn classify_temporal_interval_observation(
+    artifact: &GeoTemporalContainmentArtifact,
+    query: &GeoTemporalIntervalConstraintQuery,
+    observation: &GeoTemporalPresenceObservation,
+) -> GeoTemporalIntervalObservationDecision {
+    let mut source_receipts = vec![observation.source_receipt.clone()];
+    let is_diagnostic = query
+        .observer
+        .diagnostic_observation_ids
+        .binary_search(&observation.observation_id)
+        .is_ok();
+    if !is_diagnostic {
+        return GeoTemporalIntervalObservationDecision {
+            status: GeoTemporalIntervalConstraintStatus::Abstained,
+            reason: GeoTemporalIntervalConstraintReason::ObservationNotDiagnosticInSourceArtifact,
+            generated_constraint_ids: Vec::new(),
+            source_receipts,
+        };
+    }
+    if !query.observer.characterized {
+        return GeoTemporalIntervalObservationDecision {
+            status: GeoTemporalIntervalConstraintStatus::Diagnostic,
+            reason: GeoTemporalIntervalConstraintReason::ObserverUncharacterized,
+            generated_constraint_ids: Vec::new(),
+            source_receipts,
+        };
+    }
+    if query.observer.null_baseline {
+        return GeoTemporalIntervalObservationDecision {
+            status: GeoTemporalIntervalConstraintStatus::Diagnostic,
+            reason: GeoTemporalIntervalConstraintReason::NullBaselineObserver,
+            generated_constraint_ids: Vec::new(),
+            source_receipts,
+        };
+    }
+    match observation.observation_kind {
+        GeoTemporalPresenceObservationKind::PresentAtVintage => {
+            GeoTemporalIntervalObservationDecision {
+                status: GeoTemporalIntervalConstraintStatus::Diagnostic,
+                reason: GeoTemporalIntervalConstraintReason::PresentAtVintageDoesNotConstrain,
+                generated_constraint_ids: Vec::new(),
+                source_receipts,
+            }
+        }
+        GeoTemporalPresenceObservationKind::AbsentAtVintage
+            if observation.vintage_utc_day.as_str()
+                <= query.reference_interval.end_utc_day.as_str() =>
+        {
+            GeoTemporalIntervalObservationDecision {
+                status: GeoTemporalIntervalConstraintStatus::Diagnostic,
+                reason: GeoTemporalIntervalConstraintReason::AbsenceNotAfterReference,
+                generated_constraint_ids: Vec::new(),
+                source_receipts,
+            }
+        }
+        GeoTemporalPresenceObservationKind::AbsentAtVintage => {
+            let Some(separator) =
+                authoritative_lifecycle_separator(artifact, query, &observation.vintage_utc_day)
+            else {
+                return GeoTemporalIntervalObservationDecision {
+                    status: GeoTemporalIntervalConstraintStatus::Abstained,
+                    reason:
+                        GeoTemporalIntervalConstraintReason::MissingAuthoritativeLifecycleSeparator,
+                    generated_constraint_ids: Vec::new(),
+                    source_receipts,
+                };
+            };
+            source_receipts.extend(separator.source_receipts.iter().cloned());
+            source_receipts.sort();
+            source_receipts.dedup();
+            GeoTemporalIntervalObservationDecision {
+                status: GeoTemporalIntervalConstraintStatus::HardConstraint,
+                reason: GeoTemporalIntervalConstraintReason::AbsentAfterReferenceWithAuthoritativeSeparator,
+                generated_constraint_ids: vec![temporal_interval_constraint_id(query, observation)],
+                source_receipts,
+            }
+        }
+    }
+}
+
+fn authoritative_lifecycle_separator<'a>(
+    artifact: &'a GeoTemporalContainmentArtifact,
+    query: &GeoTemporalIntervalConstraintQuery,
+    absent_vintage_utc_day: &str,
+) -> Option<&'a GeoEntityExistenceInterval> {
+    artifact.existence_intervals.iter().find(|interval| {
+        interval.cluster_id == query.member.id
+            && interval.entity_level == query.member.level
+            && interval
+                .authoritative_death_utc_day
+                .as_deref()
+                .is_some_and(|death| {
+                    query.reference_interval.end_utc_day.as_str() < death
+                        && death <= absent_vintage_utc_day
+                })
+    })
+}
+
+fn temporal_interval_constraint_id(
+    query: &GeoTemporalIntervalConstraintQuery,
+    observation: &GeoTemporalPresenceObservation,
+) -> String {
+    format!(
+        "{}:{}:{}:forbid",
+        query.rho_contract_id,
+        entity_level_token(query.member.level),
+        observation.observation_id
+    )
+}
+
+fn temporal_interval_constraint_summary(
+    rows: &[GeoTemporalIntervalConstraintRow],
+    hard_constraints: &[GeoHardConstraint],
+    source_receipts: &[GeoTemporalContainmentSourceReceipt],
+) -> Result<GeoTemporalIntervalConstraintSummary, GeoLifecycleError> {
+    let diagnostic = rows
+        .iter()
+        .filter(|row| row.status == GeoTemporalIntervalConstraintStatus::Diagnostic)
+        .count();
+    let abstained = rows
+        .iter()
+        .filter(|row| row.status == GeoTemporalIntervalConstraintStatus::Abstained)
+        .count();
+    Ok(GeoTemporalIntervalConstraintSummary {
+        observations: usize_to_u64(rows.len(), "summary.observations")?,
+        hard_constraints: usize_to_u64(hard_constraints.len(), "summary.hard_constraints")?,
+        diagnostic: usize_to_u64(diagnostic, "summary.diagnostic")?,
+        abstained: usize_to_u64(abstained, "summary.abstained")?,
+        source_receipts: usize_to_u64(source_receipts.len(), "summary.source_receipts")?,
+    })
 }
 
 fn hard_constraint_level(constraint: &GeoHardConstraintKind) -> Option<GeoEntityLevel> {

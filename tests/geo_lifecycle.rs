@@ -1,20 +1,23 @@
 use canon::geo::{
-    CANON_GEO_TEMPORAL_CONTAINMENT_VERSION, GeoContainmentAsOfQuery, GeoEntityExistenceAsOfQuery,
-    GeoEntityExistenceInterval, GeoEntityExistenceNextEvidenceKind, GeoEntityExistenceReason,
-    GeoEntityExistenceStatus, GeoEntityLevel, GeoEntityLifecycleEvidenceKind,
-    GeoEntityLifecycleEvidenceRow, GeoHardConstraintKind, GeoLifecycleErrorCode,
-    GeoPropertyMembershipAsOfQuery, GeoTemporalAssemblageConstraintQuery,
-    GeoTemporalAssemblageConstraintReason, GeoTemporalAssemblageConstraintStatus,
-    GeoTemporalContainmentArtifact, GeoTemporalContainmentCluster, GeoTemporalContainmentEdge,
-    GeoTemporalContainmentInterval, GeoTemporalContainmentRelation,
-    GeoTemporalContainmentSourceReceipt, GeoTemporalContainmentSummary,
-    GeoTemporalPresenceDisagreementQuery, GeoTemporalPresenceDisagreementReason,
-    GeoTemporalPresenceDisagreementStatus, GeoTemporalPresenceObservation,
-    GeoTemporalPresenceObservationKind, GeoTemporalPropertyCompletenessAssertion,
-    GeoTemporalPropertyMembershipEdge, GeoTemporalPropertyMembershipRelation,
-    canonical_temporal_containment_bytes, classify_temporal_presence_disagreements,
-    containment_as_of, entity_existence_as_of, entity_existence_intervals_from_lifecycle_evidence,
-    property_assemblage_constraints_as_of, property_membership_as_of,
+    CANON_GEO_TEMPORAL_CONTAINMENT_VERSION, GEO_TEMPORAL_ABSENT_AFTER_REFERENCE_RHO_CONTRACT_ID,
+    GeoContainmentAsOfQuery, GeoEntityExistenceAsOfQuery, GeoEntityExistenceInterval,
+    GeoEntityExistenceNextEvidenceKind, GeoEntityExistenceReason, GeoEntityExistenceStatus,
+    GeoEntityLevel, GeoEntityLifecycleEvidenceKind, GeoEntityLifecycleEvidenceRow, GeoEntityRef,
+    GeoHardConstraintKind, GeoLifecycleErrorCode, GeoPropertyMembershipAsOfQuery,
+    GeoTemporalAssemblageConstraintQuery, GeoTemporalAssemblageConstraintReason,
+    GeoTemporalAssemblageConstraintStatus, GeoTemporalContainmentArtifact,
+    GeoTemporalContainmentCluster, GeoTemporalContainmentEdge, GeoTemporalContainmentInterval,
+    GeoTemporalContainmentRelation, GeoTemporalContainmentSourceReceipt,
+    GeoTemporalContainmentSummary, GeoTemporalIntervalConstraintQuery,
+    GeoTemporalIntervalConstraintReason, GeoTemporalIntervalConstraintStatus,
+    GeoTemporalObserverCharacterization, GeoTemporalPresenceDisagreementQuery,
+    GeoTemporalPresenceDisagreementReason, GeoTemporalPresenceDisagreementStatus,
+    GeoTemporalPresenceObservation, GeoTemporalPresenceObservationKind,
+    GeoTemporalPropertyCompletenessAssertion, GeoTemporalPropertyMembershipEdge,
+    GeoTemporalPropertyMembershipRelation, canonical_temporal_containment_bytes,
+    classify_temporal_presence_disagreements, containment_as_of, entity_existence_as_of,
+    entity_existence_intervals_from_lifecycle_evidence, property_assemblage_constraints_as_of,
+    property_membership_as_of, temporal_interval_constraints_as_of,
     validate_temporal_containment_artifact,
 };
 use std::collections::BTreeMap;
@@ -276,6 +279,186 @@ fn assemblage_constraints_abstain_without_active_complete_membership() {
     assert!(
         partial.hard_constraints.is_empty(),
         "partial membership assertions are not complete-set assemblage constraints"
+    );
+}
+
+#[test]
+fn interval_constraints_forbid_absent_after_reference_only_with_authoritative_separator() {
+    let artifact = temporal_containment_fixture();
+    let member = GeoEntityRef::new(GeoEntityLevel::Building, building_id(3));
+    let constrained = temporal_interval_constraints_as_of(
+        &artifact,
+        &interval_constraint_query(
+            member.clone(),
+            true,
+            false,
+            &["absence-b03-2021", "presence-b03-2020"],
+        ),
+    )
+    .expect("temporal interval constraint projection succeeds");
+
+    assert_eq!(
+        constrained.rho_contract_id,
+        GEO_TEMPORAL_ABSENT_AFTER_REFERENCE_RHO_CONTRACT_ID
+    );
+    assert_eq!(constrained.summary.observations, 2);
+    assert_eq!(constrained.summary.hard_constraints, 1);
+    assert_eq!(constrained.summary.diagnostic, 1);
+    assert_eq!(constrained.summary.abstained, 0);
+    assert_eq!(constrained.hard_constraints.len(), 1);
+    assert_eq!(
+        constrained.hard_constraints[0].id,
+        "rho.temporal.absent_after_reference.v0:building:absence-b03-2021:forbid"
+    );
+    assert_eq!(
+        constrained.hard_constraints[0].constraint,
+        GeoHardConstraintKind::Forbid {
+            member: member.clone()
+        }
+    );
+
+    let rows = constrained
+        .rows
+        .iter()
+        .map(|row| (row.observation_id.as_str(), row))
+        .collect::<BTreeMap<_, _>>();
+    let absence = rows
+        .get("absence-b03-2021")
+        .expect("absence row is present");
+    assert_eq!(
+        absence.status,
+        GeoTemporalIntervalConstraintStatus::HardConstraint
+    );
+    assert_eq!(
+        absence.reason,
+        GeoTemporalIntervalConstraintReason::AbsentAfterReferenceWithAuthoritativeSeparator
+    );
+    assert_eq!(absence.source_receipts.len(), 2);
+    assert!(
+        absence
+            .source_receipts
+            .iter()
+            .any(|receipt| receipt.receipt_id == "existence-b03"),
+        "hard exclusion must carry the authoritative lifecycle separator receipt"
+    );
+
+    let present = rows
+        .get("presence-b03-2020")
+        .expect("present row is retained");
+    assert_eq!(
+        present.status,
+        GeoTemporalIntervalConstraintStatus::Diagnostic
+    );
+    assert_eq!(
+        present.reason,
+        GeoTemporalIntervalConstraintReason::PresentAtVintageDoesNotConstrain
+    );
+    assert!(present.generated_constraint_ids.is_empty());
+}
+
+#[test]
+fn interval_constraints_keep_unqualified_absence_out_of_hard_constraints() {
+    let artifact = temporal_containment_fixture();
+    let no_separator = temporal_interval_constraints_as_of(
+        &artifact,
+        &interval_constraint_query(
+            GeoEntityRef::new(GeoEntityLevel::Building, building_id(5)),
+            true,
+            false,
+            &["absence-b05-2022", "presence-b05-2019"],
+        ),
+    )
+    .expect("absence without lifecycle separator is handled");
+    assert!(no_separator.hard_constraints.is_empty());
+    let absence = no_separator
+        .rows
+        .iter()
+        .find(|row| row.observation_id == "absence-b05-2022")
+        .expect("absence row is present");
+    assert_eq!(
+        absence.status,
+        GeoTemporalIntervalConstraintStatus::Abstained
+    );
+    assert_eq!(
+        absence.reason,
+        GeoTemporalIntervalConstraintReason::MissingAuthoritativeLifecycleSeparator
+    );
+
+    let uncharacterized = temporal_interval_constraints_as_of(
+        &artifact,
+        &interval_constraint_query(
+            GeoEntityRef::new(GeoEntityLevel::Building, building_id(3)),
+            false,
+            false,
+            &["absence-b03-2021", "presence-b03-2020"],
+        ),
+    )
+    .expect("uncharacterized observer remains diagnostic");
+    assert!(uncharacterized.hard_constraints.is_empty());
+    assert!(uncharacterized.rows.iter().all(|row| {
+        row.status == GeoTemporalIntervalConstraintStatus::Diagnostic
+            && row.reason == GeoTemporalIntervalConstraintReason::ObserverUncharacterized
+    }));
+
+    let null_baseline = temporal_interval_constraints_as_of(
+        &artifact,
+        &interval_constraint_query(
+            GeoEntityRef::new(GeoEntityLevel::Building, building_id(3)),
+            true,
+            true,
+            &["absence-b03-2021", "presence-b03-2020"],
+        ),
+    )
+    .expect("null-baseline observer remains diagnostic");
+    assert!(null_baseline.hard_constraints.is_empty());
+    assert!(null_baseline.rows.iter().all(|row| {
+        row.status == GeoTemporalIntervalConstraintStatus::Diagnostic
+            && row.reason == GeoTemporalIntervalConstraintReason::NullBaselineObserver
+    }));
+
+    let not_listed_diagnostic = temporal_interval_constraints_as_of(
+        &artifact,
+        &interval_constraint_query(
+            GeoEntityRef::new(GeoEntityLevel::Building, building_id(3)),
+            true,
+            false,
+            &["presence-b03-2020"],
+        ),
+    )
+    .expect("unlisted source diagnostic id abstains");
+    assert!(not_listed_diagnostic.hard_constraints.is_empty());
+    let unlisted_absence = not_listed_diagnostic
+        .rows
+        .iter()
+        .find(|row| row.observation_id == "absence-b03-2021")
+        .expect("absence row is present");
+    assert_eq!(
+        unlisted_absence.status,
+        GeoTemporalIntervalConstraintStatus::Abstained
+    );
+    assert_eq!(
+        unlisted_absence.reason,
+        GeoTemporalIntervalConstraintReason::ObservationNotDiagnosticInSourceArtifact
+    );
+}
+
+#[test]
+fn interval_constraints_refuse_missing_query_as_of() {
+    let artifact = temporal_containment_fixture();
+    let mut query = interval_constraint_query(
+        GeoEntityRef::new(GeoEntityLevel::Building, building_id(3)),
+        true,
+        false,
+        &["absence-b03-2021", "presence-b03-2020"],
+    );
+    query.query_as_of_utc_day.clear();
+
+    let error = temporal_interval_constraints_as_of(&artifact, &query)
+        .expect_err("missing query_as_of is refused");
+    assert_eq!(error.code, GeoLifecycleErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("query_as_of_utc_day")
     );
 }
 
@@ -1072,6 +1255,39 @@ fn temporal_containment_fixture() -> GeoTemporalContainmentArtifact {
         presence_observations,
         edges,
         property_membership_edges,
+    }
+}
+
+fn interval_constraint_query(
+    member: GeoEntityRef,
+    characterized: bool,
+    null_baseline: bool,
+    diagnostic_observation_ids: &[&str],
+) -> GeoTemporalIntervalConstraintQuery {
+    let mut current_universe_members = (1..=7)
+        .map(|building| GeoEntityRef::new(GeoEntityLevel::Building, building_id(building)))
+        .collect::<Vec<_>>();
+    current_universe_members.sort();
+    let mut diagnostic_ids = diagnostic_observation_ids
+        .iter()
+        .map(|id| (*id).to_string())
+        .collect::<Vec<_>>();
+    diagnostic_ids.sort();
+    GeoTemporalIntervalConstraintQuery {
+        member,
+        query_as_of_utc_day: "2019-06-01".to_string(),
+        reference_interval: GeoTemporalContainmentInterval {
+            start_utc_day: "2019-01-01".to_string(),
+            end_utc_day: "2019-12-31".to_string(),
+        },
+        rho_contract_id: GEO_TEMPORAL_ABSENT_AFTER_REFERENCE_RHO_CONTRACT_ID.to_string(),
+        observer: GeoTemporalObserverCharacterization {
+            observer_id: "observer.fixture.characterized".to_string(),
+            characterized,
+            null_baseline,
+            diagnostic_observation_ids: diagnostic_ids,
+        },
+        current_universe_members,
     }
 }
 
