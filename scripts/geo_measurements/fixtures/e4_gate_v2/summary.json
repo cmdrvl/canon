@@ -2,6 +2,16 @@
   "version": "canon_geo_e4_gate_v2_restack_measurement.v0",
   "fixture_class": "fixture_replay_observed_warehouse_snapshot_not_live",
   "proof_class": "fixture replay of retained warehouse snapshot; not live proof; not a gate pass",
+  "reported_golden_changes": [
+    {
+      "field": "g1_numbers.stacked.truth_exclusion_cases",
+      "previous_reported_value": 1,
+      "current_value": 0,
+      "affected_case_id": "3cf11e9a58e3b710",
+      "cause": "bd-35t1 same-loan document-address property-row rebinder",
+      "semantic_diff": "The recomputed Gate V2 restack now keeps the truth model in the residual for one component-budget-fallback case; all other stacked G1 counters are unchanged."
+    }
+  ],
   "source_fixture_digests": [
     {
       "path": "tests/fixtures/geo/e4_gate_v2_population_request.json",
@@ -112,7 +122,7 @@
       "component_budget_fallback_cases": 2,
       "deed_exact_cases": 3,
       "false_merge_cases": 0,
-      "truth_exclusion_cases": 1,
+      "truth_exclusion_cases": 0,
       "residual_count_le16_cases": 8
     }
   }

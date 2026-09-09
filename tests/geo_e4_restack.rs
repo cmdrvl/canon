@@ -62,7 +62,7 @@ const EXPECTED_STACKED: G1Numbers = G1Numbers {
     component_budget_fallback_cases: 2,
     deed_exact_cases: 3,
     false_merge_cases: 0,
-    truth_exclusion_cases: 1,
+    truth_exclusion_cases: 0,
     residual_count_le16_cases: 8,
 };
 
@@ -128,10 +128,21 @@ struct MeasurementSummary {
     version: String,
     fixture_class: String,
     proof_class: String,
+    reported_golden_changes: Vec<ReportedGoldenChange>,
     source_fixture_digests: Vec<SourceFixtureDigest>,
     stage_notes: Vec<String>,
     stage_summaries: BTreeMap<String, Value>,
     g1_numbers: BTreeMap<String, G1Numbers>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct ReportedGoldenChange {
+    field: String,
+    previous_reported_value: u64,
+    current_value: u64,
+    affected_case_id: String,
+    cause: String,
+    semantic_diff: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -981,6 +992,14 @@ fn measurement_summary(
         fixture_class: FIXTURE_CLASS.to_string(),
         proof_class: "fixture replay of retained warehouse snapshot; not live proof; not a gate pass"
             .to_string(),
+        reported_golden_changes: vec![ReportedGoldenChange {
+            field: "g1_numbers.stacked.truth_exclusion_cases".to_string(),
+            previous_reported_value: 1,
+            current_value: 0,
+            affected_case_id: "3cf11e9a58e3b710".to_string(),
+            cause: "bd-35t1 same-loan document-address property-row rebinder".to_string(),
+            semantic_diff: "The recomputed Gate V2 restack now keeps the truth model in the residual for one component-budget-fallback case; all other stacked G1 counters are unchanged.".to_string(),
+        }],
         source_fixture_digests,
         stage_summaries,
         stage_notes: vec![
