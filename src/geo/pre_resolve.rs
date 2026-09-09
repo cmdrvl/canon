@@ -983,7 +983,7 @@ fn name_region_decision(
             });
         }
     }
-    selected_sets.sort_by(|left, right| left.entity_level.cmp(&right.entity_level));
+    selected_sets.sort_by_key(|selected_set| selected_set.entity_level);
 
     NameRegionDecision {
         status: GeoNameRegionResolutionStatus::Resolved,
