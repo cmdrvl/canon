@@ -761,18 +761,27 @@ fn is_single_adjacent_digit_transposition(left: &str, right: &str) -> bool {
         .enumerate()
         .filter_map(|(index, (left, right))| (left != right).then_some(index))
         .collect::<Vec<_>>();
-    if differences.len() != 2 || differences[1] != differences[0] + 1 {
+    let [first, second] = differences.as_slice() else {
+        return false;
+    };
+    if *second != *first + 1 {
         return false;
     }
 
-    let first = differences[0];
-    let second = differences[1];
-    left[first].is_ascii_digit()
-        && left[second].is_ascii_digit()
-        && right[first].is_ascii_digit()
-        && right[second].is_ascii_digit()
-        && left[first] == right[second]
-        && left[second] == right[first]
+    let (Some(&left_first), Some(&left_second), Some(&right_first), Some(&right_second)) = (
+        left.get(*first),
+        left.get(*second),
+        right.get(*first),
+        right.get(*second),
+    ) else {
+        return false;
+    };
+    left_first.is_ascii_digit()
+        && left_second.is_ascii_digit()
+        && right_first.is_ascii_digit()
+        && right_second.is_ascii_digit()
+        && left_first == right_second
+        && left_second == right_first
 }
 
 fn transposed_date_damerau_cutoff_units() -> ScoreUnits {
@@ -780,8 +789,8 @@ fn transposed_date_damerau_cutoff_units() -> ScoreUnits {
 }
 
 fn score_units_to_namekit(score_units: ScoreUnits) -> SimilarityScore {
-    SimilarityScore::from_scaled(score_units.as_u32() as u16)
-        .expect("entity score units share the namekit score scale")
+    let scaled = u16::try_from(score_units.as_u32()).unwrap_or(u16::MAX);
+    SimilarityScore::from_scaled(scaled).expect("entity score units share the namekit score scale")
 }
 
 fn metric_id(metric: SimilarityMetric) -> &'static str {
@@ -1002,12 +1011,28 @@ impl IsoDate {
             return Ok(None);
         }
         let bytes = trimmed.as_bytes();
-        if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+        let (
+            Some(year_bytes),
+            Some(&first_sep),
+            Some(month_bytes),
+            Some(&second_sep),
+            Some(day_bytes),
+        ) = (
+            bytes.get(0..4),
+            bytes.get(4),
+            bytes.get(5..7),
+            bytes.get(7),
+            bytes.get(8..10),
+        )
+        else {
+            return Err(structured_error(field, "malformed_date"));
+        };
+        if bytes.len() != 10 || first_sep != b'-' || second_sep != b'-' {
             return Err(structured_error(field, "malformed_date"));
         }
-        let year = parse_date_component(&bytes[0..4], field)?;
-        let month = parse_date_component(&bytes[5..7], field)?;
-        let day = parse_date_component(&bytes[8..10], field)?;
+        let year = parse_date_component(year_bytes, field)?;
+        let month = parse_date_component(month_bytes, field)?;
+        let day = parse_date_component(day_bytes, field)?;
         if year == 0 || !(1..=12).contains(&month) {
             return Err(structured_error(field, "invalid_date"));
         }
@@ -1016,7 +1041,11 @@ impl IsoDate {
         }
 
         Ok(Some(Self {
-            day_number: days_from_civil(year as i32, month, day),
+            day_number: days_from_civil(
+                i32::try_from(year).map_err(|_| structured_error(field, "invalid_date"))?,
+                month,
+                day,
+            ),
         }))
     }
 }
