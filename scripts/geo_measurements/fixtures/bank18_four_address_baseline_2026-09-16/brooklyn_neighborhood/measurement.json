@@ -394,7 +394,20 @@
       "src/entity/anti_merge.rs",
       "src/entity/evidence.rs",
       "tests/entity_domain_ops.rs"
-    ]
+    ],
+    "full_suite_scope": "Full suite passed before the final concurrent entity evidence/indexing refactor. No Geo runtime source changed.",
+    "final_shared_entity_validation": {
+      "cargo_fmt_check": "passed",
+      "cargo_clippy_all_targets_deny_warnings": "passed",
+      "test_targets": [
+        "entity_domain_ops",
+        "entity_edge_support"
+      ],
+      "passed": 6,
+      "failed": 0,
+      "log_sha256": "96dd22297faacedcc053759edb8e058ad1004bae784c25bd79ea59b7d3af477f",
+      "scope": "Fresh checks on committed shared entity refactors after the full repository gate; not represented as a second full-suite run."
+    }
   },
   "replay_helper_sha256": "3c4f9e6221c73458d3335e6aac2ee616b2f734c79a25e64191c19ad21266a77c"
 }
