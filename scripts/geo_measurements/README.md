@@ -106,6 +106,91 @@ Implementation follow-up: bd-3mft (source-neutral address membership) then bd-33
 (address-first acquisition handoff, plan/run, and inspect). This baseline measures those
 features; it does not close them.
 
+### Brooklyn neighborhood solve: 2026-09-16 continuation
+
+`bd-2l7h` exercises the surrounding-area part of the same Brooklyn case without changing
+Geo runtime code. Open the [interactive walkthrough](fixtures/bank18_four_address_baseline_2026-09-16/brooklyn_neighborhood/walkthrough.html).
+Its [measurement](fixtures/bank18_four_address_baseline_2026-09-16/brooklyn_neighborhood/measurement.json)
+records the actual outcomes and verification; adjacent files retain all source rows,
+the coordinate-transform receipt, the boundary expansion, and a compressed archive of
+the exact native inputs, outputs, and project receipts.
+
+**Inventory:** 91 MapPLUTO 26v2 parcels intersect the declared 150-metre discovery circle.
+One active footprint references a parcel 150.173 metres from the anchor, so its parent
+parcel and frontage are acquired as an explicit boundary expansion. Final inventory:
+**92 parcels, 98 active NYC footprints, and 131 PAD frontage rows.** Footprints include
+all active records on acquired parcels as well as those intersecting the circle; five
+are wholly outside the circle. Native address membership consumes 121 representable
+PAD members. Ten rows with letter suffixes, rear/garage annotations, or missing numbers
+remain explicitly unrepresented; none are silently treated as negative evidence.
+
+The target PAD row names BBL `3051090025` and BIN `3117371`. Other frontages on that same
+parcel are 2278–2292 Bedford Avenue and 38–52 Snyder Avenue. MapPLUTO independently lists
+2207 Albemarle Road, but that observation is retained as corroborating context, not
+counted as an additional admitted constraint. Assessor attributes likewise remain
+observations; no uncalibrated count/area band or ownership exclusion is imposed.
+
+| Executed evidence stage | Required parcel | Required building | Target component possibilities | Whole composition |
+|---|---|---|---:|---|
+| All neighborhood candidates and source building/parcel incidences | none | none | 3 | ambiguous |
+| Add the native address-to-parcel observation | `3051090025` | none | 2 | ambiguous |
+| Add existential building inclusion from the matched PAD BIN | `3051090025` | `3117371` | 1 | ambiguous |
+
+The three initial target-component possibilities are neither member, parcel only, or
+parcel plus building. The structural incidence prevents selecting that building without
+its parcel. Each run factors the full 190-variable universe into 92 exact components.
+The other components remain unconstrained by these address observations. The combined
+model count exceeds the output's unsigned 64-bit range, so Canon reports its saturated
+lower bound with the saturation flag; the component counts above are exact. A forced
+member is an inclusion result, not a proof of complete property extent. No cardinality
+or complete-set assertion was invented to remove extra members.
+
+For an address-association question, the supported parcel/building relationship is already
+useful. A complete-property or legal-collateral question asks for a stronger claim. The
+address-first workflow should expose those answers separately instead of requiring
+complete collateral proof to report an address association. This measurement uses the
+existing parcel-composition profile, whose whole-set ambiguity is preserved above.
+
+**Execution boundary:** the current planner schedules nine stages. All three runs
+complete home cells, section, materialization, compilation, propagation, solving, and
+explanation. Separation rejects the supplied empty prospective-observation list:
+`Geo separation requests require at least one prospective observation`. Next-evidence
+selection is blocked and the overall `geo run` status is `FAILED`; the successful solve
+artifacts remain available through `geo inspect`. This is a real partial execution,
+not an end-to-end success. Twenty-four deterministic artifacts match across two fresh
+process runs, and a retry resumes all seven completed nodes with no invalidation while
+preserving the same separation failure.
+
+**Assembly boundary:** the retained replay helper manually performs a bounded source
+adapter's role and writes explicit node bindings. The native address command emits the
+parcel observation. The building observation is separately assembled from the same PAD
+row; it is not independent corroboration or an implemented PAD-to-building adapter.
+Evidence Machine integration is not exercised. `bd-33hh` retains the automated assembly
+and useful terminal/next-evidence behavior; `bd-3mft` retains source-neutral address input.
+
+MapPLUTO's source digest addresses unrounded WKB, while this acquisition retains complete
+display WKT rounded to nine decimals. The two representations have separate hashes.
+Evidence-record BLAKE3 hashes bind the retained query-row projections; provider archive
+digests are retained as source locators, without claiming a fresh archive download.
+The coordinate operation and its declared accuracy are pinned by the retained source
+receipt; that accuracy is not overall geometric truth. Source BBL references supply
+the solver's incidences. No exact local geometry predicate, multisource reconciliation,
+imagery observation, independent truth reach, or historical boundary reconstruction is
+claimed by this run. The neighborhood radius is a declared diagnostic scope, not a
+calibrated geocode bound. All earlier E4/E5/G3 limitations remain.
+
+Reproduce in a new empty output directory (the helper copies the selected binary to
+keep it fixed during concurrent builds):
+
+```bash
+uv run scripts/geo_measurements/fixtures/bank18_four_address_baseline_2026-09-16/brooklyn_neighborhood/replay.py \
+  --canon target/debug/canon --out /tmp/brooklyn-neighborhood-replay
+```
+
+The helper exits successfully after verifying the observed partial-execution state;
+each underlying Geo run's `FAILED` outcome is retained explicitly. Its Python dependencies
+serve acquisition-artifact assembly and display only; Canon's computation remains Rust.
+
 Existing footprints are available around all four addresses, so the address-first path can
 proceed with these sources. Imagery may help review Clyde's unresolved association or
 whether a containing polygon represents the whole site. No imagery or model-derived outline

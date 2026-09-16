@@ -4,7 +4,7 @@
 > This document defines how an agent should operate Canon Geo as one coherent system.
 > The seven primary commands are implemented: capabilities, plan, run,
 > replan-from-acquisition, evaluate, inspect, and ledger. The default parcel/building
-> composition plan has five stages; registered internal executors also support extensions
+> composition plan has nine stages; registered internal executors also support extensions
 > to that DAG. `geo inspect` reads stored runs without re-executing them.
 > Standalone address input is part of the target; the native address-membership contract
 > is currently NYC/PAD-specific, and the complete address-first journey remains open.
@@ -580,7 +580,9 @@ canon geo inspect --run DIR [--component ID] [--compare OTHER_RUN] [--recommend-
   truth reach.
 - `run` delegates scheduling, receipts, resume, and workspace safety to the shared project
   substrate; it orchestrates registered offline Geo stages, including the default
-  five-stage parcel/building chain, accepts explicit local input bindings, may validate supplied
+  nine-stage parcel/building plan (home cells, section, materialization, compilation,
+  propagation, solve, explanation, separation, next evidence), accepts explicit local
+  input bindings, may validate supplied
   acquisition receipts against those explicit bytes, emits `canon_geo_run.v0`, and resumes
   from verified project receipts in one work directory. The `--satisfy` validation path
   does not mutate the immutable plan, clear acquisition blockers, update inventory, or

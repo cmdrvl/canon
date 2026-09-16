@@ -1,0 +1,400 @@
+{
+  "version": "brooklyn_neighborhood_measurement.v0",
+  "proof_class": "retained_real_source_snapshot_execution",
+  "canon_binary_sha256": "d8686e1b9c93df8ca041a4d5ce7535cbde295212f098eceaff0fae9af1616854",
+  "parcels": 92,
+  "footprints": 98,
+  "frontage_rows": 131,
+  "typed_address_members": 121,
+  "unrepresented_address_rows": [
+    {
+      "source_row_number": 397320,
+      "reason": "house-number representation unsupported by this bounded adapter",
+      "low": "952A",
+      "high": "952A",
+      "street": "FLATBUSH AVENUE"
+    },
+    {
+      "source_row_number": 397328,
+      "reason": "house-number representation unsupported by this bounded adapter",
+      "low": "964A",
+      "high": "964B",
+      "street": "FLATBUSH AVENUE"
+    },
+    {
+      "source_row_number": 397330,
+      "reason": "house-number representation unsupported by this bounded adapter",
+      "low": "968A",
+      "high": "968B",
+      "street": "FLATBUSH AVENUE"
+    },
+    {
+      "source_row_number": 397334,
+      "reason": "house-number representation unsupported by this bounded adapter",
+      "low": "972A",
+      "high": "972B",
+      "street": "FLATBUSH AVENUE"
+    },
+    {
+      "source_row_number": 397384,
+      "reason": "house-number representation unsupported by this bounded adapter",
+      "low": null,
+      "high": null,
+      "street": "BEDFORD AVENUE"
+    },
+    {
+      "source_row_number": 397399,
+      "reason": "house-number representation unsupported by this bounded adapter",
+      "low": null,
+      "high": null,
+      "street": "PS    6"
+    },
+    {
+      "source_row_number": 397402,
+      "reason": "house-number representation unsupported by this bounded adapter",
+      "low": null,
+      "high": null,
+      "street": "PS    6 PLAYGROUND"
+    },
+    {
+      "source_row_number": 397695,
+      "reason": "house-number representation unsupported by this bounded adapter",
+      "low": "2276B",
+      "high": "2276B",
+      "street": "BEDFORD AVENUE"
+    },
+    {
+      "source_row_number": 397697,
+      "reason": "house-number representation unsupported by this bounded adapter",
+      "low": "2276 GARAGE",
+      "high": "2276 GARAGE",
+      "street": "BEDFORD AVENUE"
+    },
+    {
+      "source_row_number": 398327,
+      "reason": "house-number representation unsupported by this bounded adapter",
+      "low": "2308 REAR",
+      "high": "2308 REAR",
+      "street": "BEDFORD AVENUE"
+    }
+  ],
+  "halo_k": 1,
+  "stages": [
+    {
+      "stage": "00_neighborhood",
+      "status": "ambiguous",
+      "summary": {
+        "parcel_candidates": 92,
+        "building_candidates": 98,
+        "candidate_assignments": 18446744073709551615,
+        "candidate_assignments_saturated": true,
+        "structurally_feasible_assignments": 18446744073709551615,
+        "structurally_feasible_assignments_complete": true,
+        "structurally_feasible_assignments_saturated": true,
+        "hard_constraint_evaluations": 0,
+        "hard_constraint_evaluations_complete": true,
+        "hard_constraint_evaluations_saturated": false,
+        "residual_model_count": 18446744073709551615,
+        "model_count_scope": "entity_selection",
+        "residual_model_count_complete": true,
+        "residual_model_count_saturated": true,
+        "summary_counts_saturated": true,
+        "component_count": 92,
+        "residual_models_materialized": false
+      },
+      "hard_forced": {
+        "parcels": [],
+        "buildings": []
+      },
+      "source_observations": 0,
+      "target_components": [
+        {
+          "key": "parcel:3051090025",
+          "variables": [
+            {
+              "level": "parcel",
+              "id": "3051090025"
+            },
+            {
+              "level": "building",
+              "id": "3117371"
+            }
+          ],
+          "constraint_ids": [],
+          "strategy": "exhaustive_enumeration",
+          "exact": true,
+          "search_visits": 4,
+          "hard_feasible_assignments": 3,
+          "hard_feasible_assignments_saturated": false,
+          "positive_assignments": 2,
+          "positive_assignments_saturated": false
+        }
+      ],
+      "failure_message": "Geo separation inputs validation contract failed: Geo separation requests require at least one prospective observation: InvalidInput",
+      "solve_path": "00_neighborhood/workspace/geo/parcel/solve.json",
+      "run_status": "FAILED",
+      "executed_nodes": [
+        "geo.parcel.compile_evidence",
+        "geo.parcel.explain",
+        "geo.parcel.home_cells",
+        "geo.parcel.materialize_evidence",
+        "geo.parcel.propagate",
+        "geo.parcel.section",
+        "geo.parcel.solve"
+      ],
+      "failed_nodes": [
+        "geo.parcel.separation"
+      ],
+      "blocked_nodes": [
+        "geo.parcel.next_evidence"
+      ]
+    },
+    {
+      "stage": "01_address_parcel",
+      "status": "ambiguous",
+      "summary": {
+        "parcel_candidates": 92,
+        "building_candidates": 98,
+        "candidate_assignments": 18446744073709551615,
+        "candidate_assignments_saturated": true,
+        "structurally_feasible_assignments": 18446744073709551615,
+        "structurally_feasible_assignments_complete": true,
+        "structurally_feasible_assignments_saturated": true,
+        "hard_constraint_evaluations": 3,
+        "hard_constraint_evaluations_complete": true,
+        "hard_constraint_evaluations_saturated": false,
+        "residual_model_count": 18446744073709551615,
+        "model_count_scope": "entity_selection",
+        "residual_model_count_complete": true,
+        "residual_model_count_saturated": true,
+        "summary_counts_saturated": true,
+        "component_count": 92,
+        "residual_models_materialized": false
+      },
+      "hard_forced": {
+        "parcels": [
+          "3051090025"
+        ],
+        "buildings": []
+      },
+      "source_observations": 1,
+      "target_components": [
+        {
+          "key": "parcel:3051090025",
+          "variables": [
+            {
+              "level": "parcel",
+              "id": "3051090025"
+            },
+            {
+              "level": "building",
+              "id": "3117371"
+            }
+          ],
+          "constraint_ids": [
+            "rho:rho.bank18.address.pad@1.0.0:obs.bank18.address.pad"
+          ],
+          "strategy": "exhaustive_enumeration",
+          "exact": true,
+          "search_visits": 4,
+          "hard_feasible_assignments": 2,
+          "hard_feasible_assignments_saturated": false,
+          "positive_assignments": 2,
+          "positive_assignments_saturated": false
+        }
+      ],
+      "failure_message": "Geo separation inputs validation contract failed: Geo separation requests require at least one prospective observation: InvalidInput",
+      "solve_path": "01_address_parcel/workspace/geo/parcel/solve.json",
+      "run_status": "FAILED",
+      "executed_nodes": [
+        "geo.parcel.compile_evidence",
+        "geo.parcel.explain",
+        "geo.parcel.home_cells",
+        "geo.parcel.materialize_evidence",
+        "geo.parcel.propagate",
+        "geo.parcel.section",
+        "geo.parcel.solve"
+      ],
+      "failed_nodes": [
+        "geo.parcel.separation"
+      ],
+      "blocked_nodes": [
+        "geo.parcel.next_evidence"
+      ]
+    },
+    {
+      "stage": "02_address_building",
+      "status": "ambiguous",
+      "summary": {
+        "parcel_candidates": 92,
+        "building_candidates": 98,
+        "candidate_assignments": 18446744073709551615,
+        "candidate_assignments_saturated": true,
+        "structurally_feasible_assignments": 18446744073709551615,
+        "structurally_feasible_assignments_complete": true,
+        "structurally_feasible_assignments_saturated": true,
+        "hard_constraint_evaluations": 5,
+        "hard_constraint_evaluations_complete": true,
+        "hard_constraint_evaluations_saturated": false,
+        "residual_model_count": 18446744073709551615,
+        "model_count_scope": "entity_selection",
+        "residual_model_count_complete": true,
+        "residual_model_count_saturated": true,
+        "summary_counts_saturated": true,
+        "component_count": 92,
+        "residual_models_materialized": false
+      },
+      "hard_forced": {
+        "parcels": [
+          "3051090025"
+        ],
+        "buildings": [
+          "3117371"
+        ]
+      },
+      "source_observations": 2,
+      "target_components": [
+        {
+          "key": "parcel:3051090025",
+          "variables": [
+            {
+              "level": "parcel",
+              "id": "3051090025"
+            },
+            {
+              "level": "building",
+              "id": "3117371"
+            }
+          ],
+          "constraint_ids": [
+            "rho:rho.bank18.address.pad@1.0.0:obs.bank18.address.pad",
+            "rho:rho.brooklyn.pad.bin@1.0.0:obs.brooklyn.pad.bin"
+          ],
+          "strategy": "exhaustive_enumeration",
+          "exact": true,
+          "search_visits": 4,
+          "hard_feasible_assignments": 1,
+          "hard_feasible_assignments_saturated": false,
+          "positive_assignments": 1,
+          "positive_assignments_saturated": false
+        }
+      ],
+      "failure_message": "Geo separation inputs validation contract failed: Geo separation requests require at least one prospective observation: InvalidInput",
+      "solve_path": "02_address_building/workspace/geo/parcel/solve.json",
+      "run_status": "FAILED",
+      "executed_nodes": [
+        "geo.parcel.compile_evidence",
+        "geo.parcel.explain",
+        "geo.parcel.home_cells",
+        "geo.parcel.materialize_evidence",
+        "geo.parcel.propagate",
+        "geo.parcel.section",
+        "geo.parcel.solve"
+      ],
+      "failed_nodes": [
+        "geo.parcel.separation"
+      ],
+      "blocked_nodes": [
+        "geo.parcel.next_evidence"
+      ]
+    }
+  ],
+  "limits": [
+    "No independent truth reach proof",
+    "No historical or current physical-validity proof",
+    "No property-set completeness assertion",
+    "Same PAD row supplies parcel and building observations; not independent corroboration",
+    "Manual source adapter and node bindings; not automated Evidence Machine integration",
+    "No geometry-derived hard constraint",
+    "Empty prospective-observation inputs are rejected by separation; seven stages complete, separation fails and next_evidence is blocked; no end-to-end success or recommendation claimed"
+  ],
+  "bead": "bd-2l7h",
+  "code_revision": "8b5e9b1d0b44fe52e99226183d6470662db5fbbb",
+  "verification": {
+    "comparison": "two fresh output directories and fresh CLI processes; same frozen binary",
+    "byte_identical_artifacts": [
+      "address_bundle.json",
+      "plan.json",
+      "home_cell_assignment.json",
+      "00_neighborhood/workspace/geo/parcel/explanation.json",
+      "00_neighborhood/workspace/geo/parcel/solve.json",
+      "00_neighborhood/workspace/geo/parcel/section.json",
+      "00_neighborhood/workspace/geo/parcel/compile_evidence.json",
+      "00_neighborhood/workspace/geo/parcel/propagation.json",
+      "00_neighborhood/workspace/geo/parcel/materialize_evidence.json",
+      "00_neighborhood/workspace/geo/parcel/home_cells.json",
+      "01_address_parcel/workspace/geo/parcel/explanation.json",
+      "01_address_parcel/workspace/geo/parcel/solve.json",
+      "01_address_parcel/workspace/geo/parcel/section.json",
+      "01_address_parcel/workspace/geo/parcel/compile_evidence.json",
+      "01_address_parcel/workspace/geo/parcel/propagation.json",
+      "01_address_parcel/workspace/geo/parcel/materialize_evidence.json",
+      "01_address_parcel/workspace/geo/parcel/home_cells.json",
+      "02_address_building/workspace/geo/parcel/explanation.json",
+      "02_address_building/workspace/geo/parcel/solve.json",
+      "02_address_building/workspace/geo/parcel/section.json",
+      "02_address_building/workspace/geo/parcel/compile_evidence.json",
+      "02_address_building/workspace/geo/parcel/propagation.json",
+      "02_address_building/workspace/geo/parcel/materialize_evidence.json",
+      "02_address_building/workspace/geo/parcel/home_cells.json"
+    ],
+    "resume": {
+      "resumed_nodes": [
+        "geo.parcel.compile_evidence",
+        "geo.parcel.explain",
+        "geo.parcel.home_cells",
+        "geo.parcel.materialize_evidence",
+        "geo.parcel.propagate",
+        "geo.parcel.section",
+        "geo.parcel.solve"
+      ],
+      "invalidated_nodes": [],
+      "failed_nodes": [
+        "geo.parcel.separation"
+      ],
+      "limitation": "Completed outputs resume; separation still lacks prospective input."
+    }
+  },
+  "source_files": {
+    "boundary_expansion.json": {
+      "sha256": "c51763178f9b6af43f1eb452b95917511e02658548fd7334c951fa865d1ba5bf",
+      "bytes": 5220
+    },
+    "source_records.json": {
+      "sha256": "bc23997e780bfc33a77f1404a72a2fdf44409881d6c4ee5f88a3a194795db990",
+      "bytes": 385566
+    },
+    "transform_receipt.json": {
+      "sha256": "b036d9a32d211d2ae4c3e2d9f3f1a328137c0e816bff5e35e8d11f505b5990c2",
+      "bytes": 10297
+    }
+  },
+  "source_geometry_representation": "MapPLUTO source hashes refer to unrounded WKB; retained display WKT is rounded to nine decimals and hashed separately. No source WKB readback or exact local geometric predicate was performed.",
+  "proof_limit": "Purposively chosen address from the earlier four-case baseline; not a randomly selected live acceptance sample, an accuracy measurement, or E4/E5/G3 closure.",
+  "run_archive": {
+    "path": "run_artifacts.json.gz",
+    "sha256": "5fd4a67013ef350bfe6240e5db60ccc4bf64e4426054dd01d267f49dc8f965fc",
+    "retained_json_files": 157
+  },
+  "repository_validation": {
+    "cargo_fmt_check": "passed",
+    "cargo_clippy_all_targets_deny_warnings": "passed",
+    "cargo_test": {
+      "passed": 3137,
+      "failed": 0,
+      "ignored": 11,
+      "test_binaries": 329
+    },
+    "test_log_sha256": "cb0ba8fbb2789862324c4c2e34a53e7290bbd5953fd738af6c4f1c0b44b1286f",
+    "native_replay_byte_identical_artifacts": 24,
+    "resume_completed_nodes": 7,
+    "visual_review": "Chrome screenshot reviewed at 1500x1600; map and table readable; source geometry only",
+    "geo_runtime_changes": false,
+    "shared_entity_changes_in_quality_gate": [
+      "src/entity/anti_merge.rs",
+      "src/entity/evidence.rs",
+      "tests/entity_domain_ops.rs"
+    ]
+  },
+  "replay_helper_sha256": "3c4f9e6221c73458d3335e6aac2ee616b2f734c79a25e64191c19ad21266a77c"
+}

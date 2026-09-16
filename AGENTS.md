@@ -161,9 +161,11 @@ question + capabilities + regional inventory + resolution profile + budget
   substrate. Do not create a second scheduler, cache, receipt store, or workspace policy.
 - Geo capabilities, planning, inspection, ledger operations, and bounded offline runs exist.
   `geo run` delegates one validated project DAG through registered internal Geo executors.
-  The default composition chain has five stages: materialize home cells, build the bounded
-  tile section, materialize evidence, compile evidence, then solve composition. Additional
-  registered stages extend that DAG; the executor is not limited to those five. It accepts local
+  The default composition plan has nine stages: materialize home cells, build the bounded
+  tile section, materialize evidence, compile evidence, propagate constraints, solve,
+  explain, separate the residual, and select next evidence. Additional registered stages
+  extend that DAG. Separation and next-evidence stages need explicit prospective inputs;
+  a successful solve does not imply that the whole run completed. It accepts local
   exogenous leaf inputs such as home-cell rows, tile-work requests, and warehouse rows; no
   ambient shell or network acquisition is part of the run.
 - The Geo command surface has three tiers (`docs/PLAN_CANON_GEO.md` §19.3, frozen

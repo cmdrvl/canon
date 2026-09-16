@@ -398,12 +398,27 @@ impl IsoDate {
             return Ok(None);
         }
         let bytes = trimmed.as_bytes();
-        if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+        if bytes.len() != 10 || bytes.get(4) != Some(&b'-') || bytes.get(7) != Some(&b'-') {
             return Err(anti_merge_error(field, "malformed_date"));
         }
-        let year = parse_date_component(&bytes[0..4], field)?;
-        let month = parse_date_component(&bytes[5..7], field)?;
-        let day = parse_date_component(&bytes[8..10], field)?;
+        let year = parse_date_component(
+            bytes
+                .get(0..4)
+                .ok_or_else(|| anti_merge_error(field, "malformed_date"))?,
+            field,
+        )?;
+        let month = parse_date_component(
+            bytes
+                .get(5..7)
+                .ok_or_else(|| anti_merge_error(field, "malformed_date"))?,
+            field,
+        )?;
+        let day = parse_date_component(
+            bytes
+                .get(8..10)
+                .ok_or_else(|| anti_merge_error(field, "malformed_date"))?,
+            field,
+        )?;
         if year == 0 || !(1..=12).contains(&month) || day == 0 || day > days_in_month(year, month) {
             return Err(anti_merge_error(field, "invalid_date"));
         }

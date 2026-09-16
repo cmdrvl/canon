@@ -562,9 +562,9 @@ pub fn two_token_reversal_support_hit(
     if left.is_empty() || right.is_empty() || left == right {
         return None;
     }
-    let left_tokens = exactly_two_tokens(left)?;
-    let right_tokens = exactly_two_tokens(right)?;
-    if left_tokens[0] != right_tokens[1] || left_tokens[1] != right_tokens[0] {
+    let [left_first, left_second] = exactly_two_tokens(left)?;
+    let [right_first, right_second] = exactly_two_tokens(right)?;
+    if left_first != right_second || left_second != right_first {
         return None;
     }
 
@@ -648,25 +648,31 @@ fn valid_us_ca_isin_embedded_cusip_set(values: &[&str]) -> BTreeSet<String> {
 fn valid_cusip(value: &str) -> Option<&str> {
     let value = value.trim();
     let bytes = value.as_bytes();
-    if bytes.len() != 9 || !bytes[8].is_ascii_digit() {
+    if bytes.len() != 9 {
         return None;
     }
-    let expected = cusip_check_digit(&bytes[..8])?;
-    (bytes[8] - b'0' == expected).then_some(value)
+    let body = bytes.get(..8)?;
+    let check_digit = *bytes.get(8)?;
+    if !check_digit.is_ascii_digit() {
+        return None;
+    }
+    let expected = cusip_check_digit(body)?;
+    (check_digit - b'0' == expected).then_some(value)
 }
 
 fn us_ca_isin_embedded_cusip(value: &str) -> Option<&str> {
     let value = value.trim();
-    let bytes = value.as_bytes();
-    if bytes.len() != 12
-        || !matches!(&bytes[..2], b"US" | b"CA")
-        || !bytes[11].is_ascii_digit()
-        || !bytes[2..11].iter().all(u8::is_ascii_alphanumeric)
-        || !valid_isin(value)
-    {
+    if value.len() != 12 || !value.is_ascii() || !valid_isin(value) {
         return None;
     }
-    let cusip = &value[2..11];
+    let body = value
+        .strip_prefix("US")
+        .or_else(|| value.strip_prefix("CA"))?;
+    let cusip = body.get(..9)?;
+    let isin_check = body.as_bytes().get(9)?;
+    if !isin_check.is_ascii_digit() || !cusip.bytes().all(|byte| byte.is_ascii_alphanumeric()) {
+        return None;
+    }
     valid_cusip(cusip)
 }
 
@@ -682,7 +688,7 @@ fn cusip_check_digit(body: &[u8]) -> Option<u8> {
         }
         sum += value / 10 + value % 10;
     }
-    Some(((10 - (sum % 10)) % 10) as u8)
+    u8::try_from((10 - (sum % 10)) % 10).ok()
 }
 
 fn cusip_char_value(byte: u8) -> Option<u32> {
@@ -703,8 +709,16 @@ fn valid_isin(value: &str) -> bool {
             b'0'..=b'9' => digits.push(byte - b'0'),
             b'A'..=b'Z' => {
                 let expanded = u32::from(byte - b'A') + 10;
-                digits.push(u8::try_from(expanded / 10).expect("letter expansion fits"));
-                digits.push(u8::try_from(expanded % 10).expect("letter expansion fits"));
+                let tens = match u8::try_from(expanded / 10) {
+                    Ok(digit) => digit,
+                    Err(_) => return false,
+                };
+                let ones = match u8::try_from(expanded % 10) {
+                    Ok(digit) => digit,
+                    Err(_) => return false,
+                };
+                digits.push(tens);
+                digits.push(ones);
             }
             _ => return false,
         }

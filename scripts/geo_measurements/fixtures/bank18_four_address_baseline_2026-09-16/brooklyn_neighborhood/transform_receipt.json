@@ -1,0 +1,82 @@
+{
+  "query": "SELECT TRANSFORM_EXECUTION_ID, LENGTH(TO_JSON(PAYLOAD)) AS PAYLOAD_LENGTH, SHA2(TO_JSON(PAYLOAD), 256) AS PAYLOAD_SHA256, SUBSTRING(TO_JSON(PAYLOAD), 1, 2000) AS PART_1, SUBSTRING(TO_JSON(PAYLOAD), 2001, 2000) AS PART_2, SUBSTRING(TO_JSON(PAYLOAD), 4001, 2000) AS PART_3 FROM EDGAR_DB.SOURCE.NYC_DCP_MAPPLUTO_TRANSFORM_RECEIPT_EXT WHERE RELEASE = '26v2' AND TRANSFORM_EXECUTION_ID = 'sha256-139be5d84880248055ba44ea94e76f4c7968ab28ea2991cafd3a3463bc6ad538' LIMIT 2",
+  "source_execution_id": "sha256-139be5d84880248055ba44ea94e76f4c7968ab28ea2991cafd3a3463bc6ad538",
+  "payload_serialization": "Snowflake TO_JSON(PAYLOAD) bytes, fully recovered via non-overlapping chunks",
+  "payload_sha256": "8c19baf8e5481f9618ecf2e9bea027c41f93ef05e9ea93c895f169bfe6a05f5c",
+  "payload_text": "{\"dataset\":\"mappluto\",\"geometry_evidence_contract_version\":\"nyc_dcp_mappluto_geometry_evidence.v3\",\"observed\":{\"derived_geometry_digest_chain\":\"c3d128158aaaaa521ee30fb82028da6bd12c688e5bb5b1e56e5e9be809100f2c\",\"derived_vertex_count\":5822609,\"feature_count\":856687,\"source_geometry_digest_chain\":\"74883326ae556670ec58c4a40f6cc48c7808cb9e1875f9cff99b109b60dfd9a6\",\"source_vertex_count\":5822609},\"release\":\"26v2\",\"release_dt\":\"2026-08-01\",\"runtime\":{\"gdal_version\":\"3.12.4\",\"geos_version\":\"3.13.1\",\"proj_crs_database_version\":\"v11.022\",\"proj_version\":\"9.5.1\",\"pyarrow_version\":\"25.0.1\",\"pyogrio_version\":\"0.13.0\",\"pyproj_version\":\"3.7.2\",\"shapely_version\":\"2.1.2\",\"source_decoder_id\":\"pyogrio-shapely-iso-wkb\"},\"serialization\":{\"admitted_geometry_types\":[\"MultiPolygon\",\"Polygon\"],\"empty_geometry_policy\":\"refuse: empty geometry is never published\",\"geometry_collection_policy\":\"refuse: only Polygon and MultiPolygon are admitted\",\"source_wkb_byte_order\":1,\"source_wkb_flavor\":\"iso\",\"source_wkb_include_srid\":false,\"source_wkb_output_dimension\":2,\"wgs84_wkt_rounding_precision\":9},\"source_archive_s3_key\":\"nyc/dcp_pluto/dataset=mappluto/release=26v2/release_dt=2026-08-01/variant=shoreline_clipped/artifact=raw/nyc_mappluto_26v2_shp.zip\",\"source_archive_sha256\":\"e06eca9034731bc23f058bf532090e3c1ea6aed44a8128c6928f33872da34ab5\",\"source_crs_wkt2\":\"PROJCRS[\\\"NAD83 / New York Long Island (ftUS)\\\",BASEGEOGCRS[\\\"NAD83\\\",DATUM[\\\"North American Datum 1983\\\",ELLIPSOID[\\\"GRS 1980\\\",6378137,298.257222101,LENGTHUNIT[\\\"metre\\\",1]],ID[\\\"EPSG\\\",6269]],PRIMEM[\\\"Greenwich\\\",0,ANGLEUNIT[\\\"Degree\\\",0.0174532925199433]]],CONVERSION[\\\"unnamed\\\",METHOD[\\\"Lambert Conic Conformal (2SP)\\\",ID[\\\"EPSG\\\",9802]],PARAMETER[\\\"Latitude of false origin\\\",40.1666666666667,ANGLEUNIT[\\\"Degree\\\",0.0174532925199433],ID[\\\"EPSG\\\",8821]],PARAMETER[\\\"Longitude of false origin\\\",-74,ANGLEUNIT[\\\"Degree\\\",0.0174532925199433],ID[\\\"EPSG\\\",8822]],PARAMETER[\\\"Latitude of 1st standard parallel\\\",40.6666666666667,ANGLEUNIT[\\\"Degree\\\",0.0174532925199433],ID[\\\"EPSG\\\",8823]],PARAMETER[\\\"Latitude of 2nd standard parallel\\\",41.0333333333333,ANGLEUNIT[\\\"Degree\\\",0.0174532925199433],ID[\\\"EPSG\\\",8824]],PARAMETER[\\\"Easting at false origin\\\",984250,LENGTHUNIT[\\\"US survey foot\\\",0.304800609601219],ID[\\\"EPSG\\\",8826]],PARAMETER[\\\"Northing at false origin\\\",0,LENGTHUNIT[\\\"US survey foot\\\",0.304800609601219],ID[\\\"EPSG\\\",8827]]],CS[Cartesian,2],AXIS[\\\"(E)\\\",east,ORDER[1],LENGTHUNIT[\\\"US survey foot\\\",0.304800609601219,ID[\\\"EPSG\\\",9003]]],AXIS[\\\"(N)\\\",north,ORDER[2],LENGTHUNIT[\\\"US survey foot\\\",0.304800609601219,ID[\\\"EPSG\\\",9003]]]]\",\"transform\":{\"axis_order_policy\":\"always_xy: inputs and outputs are (x=easting/longitude, y=northing/latitude)\",\"better_operations_unavailable\":[],\"declared_accuracy_metres\":2,\"degraded_transform_accepted\":false,\"grids\":[{\"available\":true,\"bytes\":8896,\"open_license\":true,\"sha256\":\"0ad8982a7c3aff423aff0c29cfbaba3505486b36fd16c4920db0fb24685bb31b\",\"short_name\":\"us_noaa_nyhpgn.tif\",\"url\":\"https://cdn.proj.org/us_noaa_nyhpgn.tif\"}],\"operation_group_index\":0,\"operation_name\":\"Inverse of SPCS83 New York Long Island zone (US survey foot) + NAD83 to WGS 84 (31) + axis order change (2D)\",\"operation_selection_rule\":\"lowest declared accuracy among operations available in this runtime, ties broken by pyproj TransformerGroup order\",\"operation_steps\":[\"Inverse of SPCS83 New York Long Island zone (US survey foot)\",\"NAD83 to WGS 84 (31)\",\"axis order change (2D)\"],\"operations_available\":4,\"proj_network_enabled\":false,\"proj_pipeline\":\"proj=pipeline step proj=unitconvert xy_in=us-ft xy_out=m step inv proj=lcc lat_0=40.1666666666667 lon_0=-74 lat_1=41.0333333333333 lat_2=40.6666666666667 x_0=300000 y_0=0 ellps=GRS80 step proj=hgridshift grids=us_noaa_nyhpgn.tif step proj=unitconvert xy_in=rad xy_out=deg\",\"source_crs_identifier\":\"EPSG:2263\",\"source_crs_wkt2_sha256\":\"1e5ac5931e25550820d0787129db8cf56816e109425aed31c411cc6d7310cb01\",\"target_crs\":\"EPSG:4326\"},\"transform_definition_id\":\"sha256-ec1dc733d5f6e0ce38794baff7fa3d29d9d7369fd39b824550de7f8592bfac00\",\"transform_execution_id\":\"sha256-139be5d84880248055ba44ea94e76f4c7968ab28ea2991cafd3a3463bc6ad538\",\"transform_receipt_contract_version\":\"nyc_dcp_mappluto_transform_receipt.v2\",\"variant\":\"shoreline_clipped\",\"wkb_column_encoding\":\"base64\"}",
+  "payload": {
+    "dataset": "mappluto",
+    "geometry_evidence_contract_version": "nyc_dcp_mappluto_geometry_evidence.v3",
+    "observed": {
+      "derived_geometry_digest_chain": "c3d128158aaaaa521ee30fb82028da6bd12c688e5bb5b1e56e5e9be809100f2c",
+      "derived_vertex_count": 5822609,
+      "feature_count": 856687,
+      "source_geometry_digest_chain": "74883326ae556670ec58c4a40f6cc48c7808cb9e1875f9cff99b109b60dfd9a6",
+      "source_vertex_count": 5822609
+    },
+    "release": "26v2",
+    "release_dt": "2026-08-01",
+    "runtime": {
+      "gdal_version": "3.12.4",
+      "geos_version": "3.13.1",
+      "proj_crs_database_version": "v11.022",
+      "proj_version": "9.5.1",
+      "pyarrow_version": "25.0.1",
+      "pyogrio_version": "0.13.0",
+      "pyproj_version": "3.7.2",
+      "shapely_version": "2.1.2",
+      "source_decoder_id": "pyogrio-shapely-iso-wkb"
+    },
+    "serialization": {
+      "admitted_geometry_types": [
+        "MultiPolygon",
+        "Polygon"
+      ],
+      "empty_geometry_policy": "refuse: empty geometry is never published",
+      "geometry_collection_policy": "refuse: only Polygon and MultiPolygon are admitted",
+      "source_wkb_byte_order": 1,
+      "source_wkb_flavor": "iso",
+      "source_wkb_include_srid": false,
+      "source_wkb_output_dimension": 2,
+      "wgs84_wkt_rounding_precision": 9
+    },
+    "source_archive_s3_key": "nyc/dcp_pluto/dataset=mappluto/release=26v2/release_dt=2026-08-01/variant=shoreline_clipped/artifact=raw/nyc_mappluto_26v2_shp.zip",
+    "source_archive_sha256": "e06eca9034731bc23f058bf532090e3c1ea6aed44a8128c6928f33872da34ab5",
+    "source_crs_wkt2": "PROJCRS[\"NAD83 / New York Long Island (ftUS)\",BASEGEOGCRS[\"NAD83\",DATUM[\"North American Datum 1983\",ELLIPSOID[\"GRS 1980\",6378137,298.257222101,LENGTHUNIT[\"metre\",1]],ID[\"EPSG\",6269]],PRIMEM[\"Greenwich\",0,ANGLEUNIT[\"Degree\",0.0174532925199433]]],CONVERSION[\"unnamed\",METHOD[\"Lambert Conic Conformal (2SP)\",ID[\"EPSG\",9802]],PARAMETER[\"Latitude of false origin\",40.1666666666667,ANGLEUNIT[\"Degree\",0.0174532925199433],ID[\"EPSG\",8821]],PARAMETER[\"Longitude of false origin\",-74,ANGLEUNIT[\"Degree\",0.0174532925199433],ID[\"EPSG\",8822]],PARAMETER[\"Latitude of 1st standard parallel\",40.6666666666667,ANGLEUNIT[\"Degree\",0.0174532925199433],ID[\"EPSG\",8823]],PARAMETER[\"Latitude of 2nd standard parallel\",41.0333333333333,ANGLEUNIT[\"Degree\",0.0174532925199433],ID[\"EPSG\",8824]],PARAMETER[\"Easting at false origin\",984250,LENGTHUNIT[\"US survey foot\",0.304800609601219],ID[\"EPSG\",8826]],PARAMETER[\"Northing at false origin\",0,LENGTHUNIT[\"US survey foot\",0.304800609601219],ID[\"EPSG\",8827]]],CS[Cartesian,2],AXIS[\"(E)\",east,ORDER[1],LENGTHUNIT[\"US survey foot\",0.304800609601219,ID[\"EPSG\",9003]]],AXIS[\"(N)\",north,ORDER[2],LENGTHUNIT[\"US survey foot\",0.304800609601219,ID[\"EPSG\",9003]]]]",
+    "transform": {
+      "axis_order_policy": "always_xy: inputs and outputs are (x=easting/longitude, y=northing/latitude)",
+      "better_operations_unavailable": [],
+      "declared_accuracy_metres": 2,
+      "degraded_transform_accepted": false,
+      "grids": [
+        {
+          "available": true,
+          "bytes": 8896,
+          "open_license": true,
+          "sha256": "0ad8982a7c3aff423aff0c29cfbaba3505486b36fd16c4920db0fb24685bb31b",
+          "short_name": "us_noaa_nyhpgn.tif",
+          "url": "https://cdn.proj.org/us_noaa_nyhpgn.tif"
+        }
+      ],
+      "operation_group_index": 0,
+      "operation_name": "Inverse of SPCS83 New York Long Island zone (US survey foot) + NAD83 to WGS 84 (31) + axis order change (2D)",
+      "operation_selection_rule": "lowest declared accuracy among operations available in this runtime, ties broken by pyproj TransformerGroup order",
+      "operation_steps": [
+        "Inverse of SPCS83 New York Long Island zone (US survey foot)",
+        "NAD83 to WGS 84 (31)",
+        "axis order change (2D)"
+      ],
+      "operations_available": 4,
+      "proj_network_enabled": false,
+      "proj_pipeline": "proj=pipeline step proj=unitconvert xy_in=us-ft xy_out=m step inv proj=lcc lat_0=40.1666666666667 lon_0=-74 lat_1=41.0333333333333 lat_2=40.6666666666667 x_0=300000 y_0=0 ellps=GRS80 step proj=hgridshift grids=us_noaa_nyhpgn.tif step proj=unitconvert xy_in=rad xy_out=deg",
+      "source_crs_identifier": "EPSG:2263",
+      "source_crs_wkt2_sha256": "1e5ac5931e25550820d0787129db8cf56816e109425aed31c411cc6d7310cb01",
+      "target_crs": "EPSG:4326"
+    },
+    "transform_definition_id": "sha256-ec1dc733d5f6e0ce38794baff7fa3d29d9d7369fd39b824550de7f8592bfac00",
+    "transform_execution_id": "sha256-139be5d84880248055ba44ea94e76f4c7968ab28ea2991cafd3a3463bc6ad538",
+    "transform_receipt_contract_version": "nyc_dcp_mappluto_transform_receipt.v2",
+    "variant": "shoreline_clipped",
+    "wkb_column_encoding": "base64"
+  }
+}

@@ -195,7 +195,9 @@ fn domain_ops_are_configured_noop_absent_and_deterministic_under_shuffle() {
             "2031-03-12",
         ),
     ];
-    let shuffled_rows = [rows[2], rows[0], rows[3], rows[1]];
+    let [row_0, row_1, row_2, row_3] = rows;
+    let rows = [row_0, row_1, row_2, row_3];
+    let shuffled_rows = [row_2, row_0, row_3, row_1];
     let fixture = DomainOpsFixture::new();
     let profile = fixture.write_profile("configured_profile.json", true);
     let first_rows = fixture.write_rows("first.csv", &rows);
@@ -698,7 +700,7 @@ fn record_for_cores<'a>(
             };
             (left_core == left && right_core == right) || (left_core == right && right_core == left)
         })
-        .unwrap_or_else(|| panic!("expected evidence pair {left:?} <> {right:?}"))
+        .expect("expected evidence pair")
 }
 
 fn record_has_core(
