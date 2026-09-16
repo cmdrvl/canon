@@ -1,0 +1,1850 @@
+{
+  "version": "canon_geo_bank18_four_address_baseline.v0",
+  "bead": "bd-1o6d",
+  "observed_on": "2026-09-16",
+  "code_revision": "c7c44ac67948f3a44a341bd0488614f64338bd65",
+  "proof_class": "observed_snapshot_and_retained_offline_replay",
+  "release_claim_allowed": false,
+  "purpose": "Baseline for a standalone address-first Geo workflow. Four diagnostic cases, not an accuracy benchmark or E4/E5/G3 closure.",
+  "selection": {
+    "deal": "BANK 2019-BNK18",
+    "cik": "1774962",
+    "filing_id": "0001539497-19-000868",
+    "rule": "Operator-selected market strata; within NYC, a non-NYC major city, a regional secondary market and a small tertiary market, choose explicit single street addresses with complete city/state/ZIP from the filing-bound property issuance rows, before invoking address resolution. Selected loan ids 13,1,11,19 remain fixed regardless of results.",
+    "market_labels": "Practical walkthrough strata, not a formal CRE classification.",
+    "query": "SELECT PROPERTY_KEY, LOAN_ASSET_KEY, PROPERTY_ORDINAL, PROPERTYNAME, PROPERTYADDRESS, PROPERTYCITY, PROPERTYSTATE, PROPERTYZIP, PROPERTYCOUNTY, PROPERTYTYPECODE, ISSUANCE_FILING_ID, TO_VARCHAR(ISSUANCE_REPORTING_PERIOD,'YYYY-MM-DD') AS ISSUANCE_REPORTING_PERIOD, BUILD_ID FROM EDGAR_DB.PROPERTY_MART.PROPERTY_ISSUANCE WHERE CIK='1774962' AND ISSUANCE_FILING_ID='0001539497-19-000868' ORDER BY TRY_TO_NUMBER(LOAN_ASSET_KEY), LOAN_ASSET_KEY, PROPERTY_ORDINAL, PROPERTY_KEY",
+    "denominator": {
+      "ok": true,
+      "query": "SELECT COUNT(*) AS PROPERTY_ROWS, COUNT(DISTINCT LOAN_ASSET_KEY) AS LOANS, COUNT(DISTINCT PROPERTY_KEY) AS PROPERTY_KEYS FROM EDGAR_DB.PROPERTY_MART.PROPERTY_ISSUANCE WHERE CIK = '1774962' AND ISSUANCE_FILING_ID = '0001539497-19-000868' LIMIT 5",
+      "row_count": 1,
+      "columns": [
+        "PROPERTY_ROWS",
+        "LOANS",
+        "PROPERTY_KEYS"
+      ],
+      "rows": [
+        {
+          "PROPERTY_ROWS": 233,
+          "LOANS": 56,
+          "PROPERTY_KEYS": 233
+        }
+      ]
+    },
+    "source_scope_caveat": "CIK-only lookup returned property rows from multiple filings. Selection is bound to ISSUANCE_FILING_ID as well as CIK. Only selected rows are retained here; the 233-row population was counted but not fully exported.",
+    "samples": [
+      {
+        "market": "nyc",
+        "source_row": {
+          "PROPERTY_KEY": "CREP-B6CC5A87BFA7E268",
+          "LOAN_ASSET_KEY": "13",
+          "PROPERTY_ORDINAL": null,
+          "PROPERTYNAME": "Cubesmart - Brooklyn",
+          "PROPERTYADDRESS": "2207 Albemarle Road",
+          "PROPERTYCITY": "Brooklyn",
+          "PROPERTYSTATE": "NY",
+          "PROPERTYZIP": "11226",
+          "PROPERTYCOUNTY": "Kings",
+          "PROPERTYTYPECODE": "SS",
+          "ISSUANCE_FILING_ID": "0001539497-19-000868",
+          "BUILD_ID": "f27ee7b3-6f57-4c28-b77c-3f88f4f87654"
+        },
+        "address": "2207 Albemarle Road, Brooklyn, NY, 11226"
+      },
+      {
+        "market": "major",
+        "source_row": {
+          "PROPERTY_KEY": "CREP-1C417C399734532A",
+          "LOAN_ASSET_KEY": "1",
+          "PROPERTY_ORDINAL": null,
+          "PROPERTYNAME": "350 Bush Street",
+          "PROPERTYADDRESS": "350 Bush Street",
+          "PROPERTYCITY": "San Francisco",
+          "PROPERTYSTATE": "CA",
+          "PROPERTYZIP": "94104",
+          "PROPERTYCOUNTY": "San Francisco",
+          "PROPERTYTYPECODE": "OF",
+          "ISSUANCE_FILING_ID": "0001539497-19-000868",
+          "ISSUANCE_REPORTING_PERIOD": "2019-05-13",
+          "BUILD_ID": "f27ee7b3-6f57-4c28-b77c-3f88f4f87654"
+        },
+        "address": "350 Bush Street, San Francisco, CA, 94104"
+      },
+      {
+        "market": "secondary",
+        "source_row": {
+          "PROPERTY_KEY": "CREP-9804B614A40B68E7",
+          "LOAN_ASSET_KEY": "11",
+          "PROPERTY_ORDINAL": null,
+          "PROPERTYNAME": "801 Barton Springs",
+          "PROPERTYADDRESS": "801 Barton Springs Road",
+          "PROPERTYCITY": "Austin",
+          "PROPERTYSTATE": "TX",
+          "PROPERTYZIP": "78704",
+          "PROPERTYCOUNTY": "Travis",
+          "PROPERTYTYPECODE": "OF",
+          "ISSUANCE_FILING_ID": "0001539497-19-000868",
+          "BUILD_ID": "f27ee7b3-6f57-4c28-b77c-3f88f4f87654"
+        },
+        "address": "801 Barton Springs Road, Austin, TX, 78704"
+      },
+      {
+        "market": "tertiary",
+        "source_row": {
+          "PROPERTY_KEY": "CREP-25CBA6959DB21A07",
+          "LOAN_ASSET_KEY": "19",
+          "PROPERTY_ORDINAL": null,
+          "PROPERTYNAME": "Revere Plastics",
+          "PROPERTYADDRESS": "401 East Elm Street",
+          "PROPERTYCITY": "Clyde",
+          "PROPERTYSTATE": "OH",
+          "PROPERTYZIP": "43410",
+          "PROPERTYCOUNTY": "Sandusky",
+          "PROPERTYTYPECODE": "IN",
+          "ISSUANCE_FILING_ID": "0001539497-19-000868",
+          "BUILD_ID": "f27ee7b3-6f57-4c28-b77c-3f88f4f87654"
+        },
+        "address": "401 East Elm Street, Clyde, OH, 43410"
+      }
+    ]
+  },
+  "address_mcp": {
+    "tool": "cmdrvl-geo.resolve_address_to_tract",
+    "input": "original street, city, state and ZIP from the selected property rows",
+    "results": [
+      {
+        "market": "nyc",
+        "ok": true,
+        "tract_geoid": "36047079400",
+        "county_fips": "36047",
+        "state_fips": "36",
+        "matched_address": "2207 ALBEMARLE RD, BROOKLYN, NY, 11226",
+        "coordinates": {
+          "x": -73.95734672002,
+          "y": 40.647862086767
+        },
+        "match_quality": "exact",
+        "candidates": null,
+        "source_chain": [
+          "usaddress",
+          "census_structured"
+        ]
+      },
+      {
+        "market": "major",
+        "ok": true,
+        "tract_geoid": "06075011700",
+        "county_fips": "06075",
+        "state_fips": "06",
+        "matched_address": "350 BUSH ST, SAN FRANCISCO, CA, 94104",
+        "coordinates": {
+          "x": -122.403322404091,
+          "y": 37.790907154641
+        },
+        "match_quality": "exact",
+        "candidates": null,
+        "source_chain": [
+          "usaddress",
+          "census_structured"
+        ]
+      },
+      {
+        "market": "secondary",
+        "ok": true,
+        "tract_geoid": "48453001311",
+        "county_fips": "48453",
+        "state_fips": "48",
+        "matched_address": "801 BARTON SPRINGS RD, AUSTIN, TX, 78704",
+        "coordinates": {
+          "x": -97.752364237508,
+          "y": 30.259130725816
+        },
+        "match_quality": "exact",
+        "candidates": null,
+        "source_chain": [
+          "usaddress",
+          "census_structured"
+        ]
+      },
+      {
+        "market": "tertiary",
+        "ok": true,
+        "tract_geoid": "39143962000",
+        "county_fips": "39143",
+        "state_fips": "39",
+        "matched_address": "401 ELM ST, CLYDE, OH, 43410",
+        "coordinates": {
+          "x": -82.966613706823,
+          "y": 41.299744874698
+        },
+        "match_quality": "exact",
+        "candidates": null,
+        "source_chain": [
+          "usaddress",
+          "census_structured"
+        ]
+      }
+    ],
+    "caveats": [
+      "match_quality=exact describes the returned address match, not roof-level coordinate accuracy.",
+      "Census benchmark/vintage, source-object hashes and geocode accuracy tier are not present in this MCP result.",
+      "Clyde input includes East; returned matched_address drops the directional. This change is retained, not silently rewritten."
+    ]
+  },
+  "nyc": {
+    "pad": {
+      "ok": true,
+      "query": "SELECT RELEASE, RELEASE_DT, SOURCE_ROW_NUMBER, BBL_KEY, BIN_KEY, LOW_HOUSE_NUMBER_DISPLAY, HIGH_HOUSE_NUMBER_DISPLAY, STREET_NAME, STREET_NAME_NORMALIZED, PARITY, ZIPCODE, SOURCE_ZIP_SHA256, PARSER_VERSION, SOURCE_FILENAME, LICENSE_TERMS, ATTRIBUTION_TEXT FROM EDGAR_DB.SOURCE.NYC_DCP_PAD_ADDRESS_HOT WHERE IS_CURRENT_RELEASE = TRUE AND BORO = 3 AND STREET_NAME_NORMALIZED LIKE 'ALBEMARLE%' AND LOW_HOUSE_NUMBER_INT <= 2207 AND HIGH_HOUSE_NUMBER_INT >= 2207 ORDER BY BBL_KEY, BIN_KEY, SOURCE_ROW_NUMBER LIMIT 30",
+      "row_count": 1,
+      "columns": [
+        "RELEASE",
+        "RELEASE_DT",
+        "SOURCE_ROW_NUMBER",
+        "BBL_KEY",
+        "BIN_KEY",
+        "LOW_HOUSE_NUMBER_DISPLAY",
+        "HIGH_HOUSE_NUMBER_DISPLAY",
+        "STREET_NAME",
+        "STREET_NAME_NORMALIZED",
+        "PARITY",
+        "ZIPCODE",
+        "SOURCE_ZIP_SHA256",
+        "PARSER_VERSION",
+        "SOURCE_FILENAME",
+        "LICENSE_TERMS",
+        "ATTRIBUTION_TEXT"
+      ],
+      "rows": [
+        {
+          "RELEASE": "26B",
+          "RELEASE_DT": "2026-05-01",
+          "SOURCE_ROW_NUMBER": 397690,
+          "BBL_KEY": "3051090025",
+          "BIN_KEY": "3117371",
+          "LOW_HOUSE_NUMBER_DISPLAY": "2207",
+          "HIGH_HOUSE_NUMBER_DISPLAY": "2231",
+          "STREET_NAME": "ALBEMARLE ROAD",
+          "STREET_NAME_NORMALIZED": "ALBEMARLE ROAD",
+          "PARITY": "1",
+          "ZIPCODE": "11226",
+          "SOURCE_ZIP_SHA256": "016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd",
+          "PARSER_VERSION": "2026-08-16",
+          "SOURCE_FILENAME": "nyc/dcp_pad/dataset=pad_address/release=26B/release_dt=2026-05-01/artifact=normalized/part=000001/nyc_dcp_pad_address_26B_part-000001.parquet",
+          "LICENSE_TERMS": "Public NYC Department of City Planning Bytes of the Big Apple release for informational purposes only; DCP disclaims completeness, accuracy, content, and fitness warranties.",
+          "ATTRIBUTION_TEXT": "NYC Department of City Planning (DCP)"
+        }
+      ]
+    },
+    "footprints": {
+      "ok": true,
+      "query": "SELECT RELEASE_DT, SOURCE_ROW_NUMBER, BIN, BBL, BASE_BBL, MAPPLUTO_BBL, ST_ASGEOJSON(GEOM_GEOG) AS GEOMETRY_GEOJSON, RAW_CSV_SHA256, PARSER_VERSION, FILENAME, SOURCE_URL, LICENSE_TERMS, ATTRIBUTION_TEXT FROM EDGAR_DB.SOURCE.NYC_BUILDING_FOOTPRINTS_HOT WHERE RELEASE_DT = '2026-08-09' AND BBL = '3051090025' AND IS_ACTIVE_FOOTPRINT = TRUE ORDER BY BIN, SOURCE_ROW_NUMBER LIMIT 30",
+      "row_count": 1,
+      "columns": [
+        "RELEASE_DT",
+        "SOURCE_ROW_NUMBER",
+        "BIN",
+        "BBL",
+        "BASE_BBL",
+        "MAPPLUTO_BBL",
+        "GEOMETRY_GEOJSON",
+        "RAW_CSV_SHA256",
+        "PARSER_VERSION",
+        "FILENAME",
+        "SOURCE_URL",
+        "LICENSE_TERMS",
+        "ATTRIBUTION_TEXT"
+      ],
+      "rows": [
+        {
+          "RELEASE_DT": "2026-08-09",
+          "SOURCE_ROW_NUMBER": 736828,
+          "BIN": "3117371",
+          "BBL": "3051090025",
+          "BASE_BBL": "3051090025",
+          "MAPPLUTO_BBL": "3051090025",
+          "GEOMETRY_GEOJSON": "{\n  \"coordinates\": [\n    [\n      [\n        [\n          -73.956276021186,\n          40.648416912451\n        ],\n        [\n          -73.956261500775,\n          40.648213950889\n        ],\n        [\n          -73.955971240835,\n          40.648225998034\n        ],\n        [\n          -73.955902829956,\n          40.648228837273\n        ],\n        [\n          -73.95590068381,\n          40.648198840196\n        ],\n        [\n          -73.95588295008,\n          40.647950945102\n        ],\n        [\n          -73.956616465157,\n          40.647920500251\n        ],\n        [\n          -73.956665393332,\n          40.647918470018\n        ],\n        [\n          -73.956667979179,\n          40.647954616885\n        ],\n        [\n          -73.956683859905,\n          40.648176572639\n        ],\n        [\n          -73.956642063356,\n          40.648178307498\n        ],\n        [\n          -73.95666698346,\n          40.648526602122\n        ],\n        [\n          -73.956365442742,\n          40.648539117882\n        ],\n        [\n          -73.956285003647,\n          40.648542456175\n        ],\n        [\n          -73.956276021186,\n          40.648416912451\n        ]\n      ]\n    ]\n  ],\n  \"type\": \"MultiPolygon\"\n}",
+          "RAW_CSV_SHA256": "8da9f2fb83139be92760d9b11fb8096c7229b69440a081c608021514ffb76d34",
+          "PARSER_VERSION": "2026-08-14",
+          "FILENAME": "nyc/building_footprints/dataset=building_footprints/release_dt=2026-08-09/artifact=normalized/page=000015/nyc_building_footprints_2026-08-09_page_000015.parquet",
+          "SOURCE_URL": "https://data.cityofnewyork.us/resource/5zhs-2jue.csv?%24limit=50000&%24offset=700000&%24order=objectid",
+          "LICENSE_TERMS": "NYC Open Data public dataset; Socrata metadata did not provide a license code. Use under NYC Open Data Terms of Use with source attribution to Office of Technology and Innovation (OTI).",
+          "ATTRIBUTION_TEXT": "Office of Technology and Innovation (OTI)"
+        }
+      ]
+    },
+    "point_check": {
+      "ok": true,
+      "query": "SELECT BIN, BBL, ST_COVERS(GEOM_GEOG, ST_MAKEPOINT(-73.95734672002, 40.647862086767)) AS CONTAINS_GEOCODE, ST_DISTANCE(GEOM_GEOG, ST_MAKEPOINT(-73.95734672002, 40.647862086767)) AS DISTANCE_M FROM EDGAR_DB.SOURCE.NYC_BUILDING_FOOTPRINTS_HOT WHERE RELEASE_DT = '2026-08-09' AND BBL = '3051090025' AND BIN = '3117371' AND IS_ACTIVE_FOOTPRINT = TRUE LIMIT 5",
+      "row_count": 1,
+      "columns": [
+        "BIN",
+        "BBL",
+        "CONTAINS_GEOCODE",
+        "DISTANCE_M"
+      ],
+      "rows": [
+        {
+          "BIN": "3117371",
+          "BBL": "3051090025",
+          "CONTAINS_GEOCODE": false,
+          "DISTANCE_M": 57.822210583657096
+        }
+      ]
+    },
+    "native_canon": {
+      "command": "target/debug/canon geo materialize-address-evidence --request scripts/geo_measurements/fixtures/bank18_four_address_baseline_2026-09-16/nyc_address_request.json",
+      "input_assembly": "Manual adapter step from retained PAD row 397690, preserving the 2207-2231 odd-number range and BBL. The CLI did not acquire PAD or footprints.",
+      "source_record_serialization": "UTF-8 JSON of pad.rows[0], keys sorted, compact separators, ensure_ascii=false, no trailing newline; record_blake3 hashes those retained normalized row bytes, not the original provider archive.",
+      "request": "nyc_address_request.json",
+      "output": "nyc_address_bundle.json",
+      "exit_codes": [
+        0,
+        0
+      ],
+      "fresh_process_byte_identical": true,
+      "output_sha256": "a0b840568890fc5756a54cad49d5e0f240d9c3b40892c3f28038186c6b0c2d4d",
+      "binary_sha256": "d336aead7b3f2d02c4e94c30c30d275ebf420f452df3b0c0680ee68286c01957",
+      "result": "range_contained address membership and source-linked existential parcel observation for 3051090025",
+      "not_proven": [
+        "No composition solve or registry promotion was performed.",
+        "Building 3117371 is linked by the acquired PAD and footprint source rows, not emitted by this Canon address evidence command.",
+        "One imported PAD member is not a demonstrated complete regional candidate universe."
+      ]
+    }
+  },
+  "non_nyc_building_discovery": {
+    "source_table": "EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT",
+    "release": "2026-07-22.0",
+    "release_dt": "2026-07-22",
+    "bounded_query": "150 metres from the Census point after H3 r7 home-cell plus k=1 halo pruning. Counts are relative to this declared discovery query; no empirical or structural reach-completeness claim.",
+    "halo": {
+      "ok": true,
+      "query": "SELECT H3_GRID_DISK('87283082affffff', 1) AS SF_CELLS, H3_GRID_DISK('87489e346ffffff', 1) AS AUSTIN_CELLS, H3_GRID_DISK('872a94840ffffff', 1) AS CLYDE_CELLS LIMIT 1",
+      "row_count": 1,
+      "columns": [
+        "SF_CELLS",
+        "AUSTIN_CELLS",
+        "CLYDE_CELLS"
+      ],
+      "rows": [
+        {
+          "SF_CELLS": "[\n  \"87283082affffff\",\n  \"872830805ffffff\",\n  \"872830801ffffff\",\n  \"87283080cffffff\",\n  \"87283082bffffff\",\n  \"872830828ffffff\",\n  \"87283082effffff\"\n]",
+          "AUSTIN_CELLS": "[\n  \"87489e346ffffff\",\n  \"87489e373ffffff\",\n  \"87489e355ffffff\",\n  \"87489e342ffffff\",\n  \"87489e340ffffff\",\n  \"87489e344ffffff\",\n  \"87489e371ffffff\"\n]",
+          "CLYDE_CELLS": "[\n  \"872a94840ffffff\",\n  \"872a94846ffffff\",\n  \"872a94842ffffff\",\n  \"872a94843ffffff\",\n  \"872a94841ffffff\",\n  \"872a94845ffffff\",\n  \"872a94844ffffff\"\n]"
+        }
+      ]
+    },
+    "counts": {
+      "major": {
+        "ok": true,
+        "query": "SELECT COUNT(*) AS BUILDING_ROWS, COUNT(DISTINCT PROVIDER_FEATURE_ID) AS BUILDING_IDS, COUNT_IF(ST_COVERS(GEOM_GEOG, ST_MAKEPOINT(-122.403322404091, 37.790907154641))) AS CONTAINING_POINT_ROWS, MIN(ST_DISTANCE(GEOM_GEOG, ST_MAKEPOINT(-122.403322404091, 37.790907154641))) AS MIN_DISTANCE_M FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT WHERE RELEASE = '2026-07-22.0' AND RELEASE_DT = '2026-07-22' AND H3_R7 IN ('87283082affffff', '872830805ffffff', '872830801ffffff', '87283080cffffff', '87283082bffffff', '872830828ffffff', '87283082effffff') AND ST_DWITHIN(GEOM_GEOG, ST_MAKEPOINT(-122.403322404091, 37.790907154641), 150) LIMIT 1",
+        "row_count": 1,
+        "columns": [
+          "BUILDING_ROWS",
+          "BUILDING_IDS",
+          "CONTAINING_POINT_ROWS",
+          "MIN_DISTANCE_M"
+        ],
+        "rows": [
+          {
+            "BUILDING_ROWS": 74,
+            "BUILDING_IDS": 74,
+            "CONTAINING_POINT_ROWS": 0,
+            "MIN_DISTANCE_M": 6.59022186162255
+          }
+        ]
+      },
+      "secondary": {
+        "ok": true,
+        "query": "SELECT COUNT(*) AS BUILDING_ROWS, COUNT(DISTINCT PROVIDER_FEATURE_ID) AS BUILDING_IDS, COUNT_IF(ST_COVERS(GEOM_GEOG, ST_MAKEPOINT(-97.752364237508, 30.259130725816))) AS CONTAINING_POINT_ROWS, MIN(ST_DISTANCE(GEOM_GEOG, ST_MAKEPOINT(-97.752364237508, 30.259130725816))) AS MIN_DISTANCE_M FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT WHERE RELEASE = '2026-07-22.0' AND RELEASE_DT = '2026-07-22' AND H3_R7 IN ('87489e346ffffff', '87489e373ffffff', '87489e355ffffff', '87489e342ffffff', '87489e340ffffff', '87489e344ffffff', '87489e371ffffff') AND ST_DWITHIN(GEOM_GEOG, ST_MAKEPOINT(-97.752364237508, 30.259130725816), 150) LIMIT 1",
+        "row_count": 1,
+        "columns": [
+          "BUILDING_ROWS",
+          "BUILDING_IDS",
+          "CONTAINING_POINT_ROWS",
+          "MIN_DISTANCE_M"
+        ],
+        "rows": [
+          {
+            "BUILDING_ROWS": 23,
+            "BUILDING_IDS": 23,
+            "CONTAINING_POINT_ROWS": 0,
+            "MIN_DISTANCE_M": 11.359568919419424
+          }
+        ]
+      },
+      "tertiary": {
+        "ok": true,
+        "query": "SELECT COUNT(*) AS BUILDING_ROWS, COUNT(DISTINCT PROVIDER_FEATURE_ID) AS BUILDING_IDS, COUNT_IF(ST_COVERS(GEOM_GEOG, ST_MAKEPOINT(-82.966613706823, 41.299744874698))) AS CONTAINING_POINT_ROWS, MIN(ST_DISTANCE(GEOM_GEOG, ST_MAKEPOINT(-82.966613706823, 41.299744874698))) AS MIN_DISTANCE_M FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT WHERE RELEASE = '2026-07-22.0' AND RELEASE_DT = '2026-07-22' AND H3_R7 IN ('872a94840ffffff', '872a94846ffffff', '872a94842ffffff', '872a94843ffffff', '872a94841ffffff', '872a94845ffffff', '872a94844ffffff') AND ST_DWITHIN(GEOM_GEOG, ST_MAKEPOINT(-82.966613706823, 41.299744874698), 150) LIMIT 1",
+        "row_count": 1,
+        "columns": [
+          "BUILDING_ROWS",
+          "BUILDING_IDS",
+          "CONTAINING_POINT_ROWS",
+          "MIN_DISTANCE_M"
+        ],
+        "rows": [
+          {
+            "BUILDING_ROWS": 4,
+            "BUILDING_IDS": 4,
+            "CONTAINING_POINT_ROWS": 0,
+            "MIN_DISTANCE_M": 51.78330231048259
+          }
+        ]
+      }
+    },
+    "metadata_rows": {
+      "major": [
+        {
+          "PROVIDER_FEATURE_ID": "04f8bb28-7040-4093-aac6-b8babaa5be26",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 135.02797085713235,
+          "NAMES_JSON": "{\"primary\":\"St. Mary's Square\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w104627922@7\",\"update_time\":\"2026-01-03T23:07:22.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "058448f7-6ea1-4135-b083-abaf09e0ff0e",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 31.468440147957466,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w151195270@3\",\"update_time\":\"2022-09-04T23:55:14.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "0b90e908-c5ec-4ca2-bb94-7569ff74e5ca",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 116.8355642562613,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w260280330@3\",\"update_time\":\"2018-01-22T17:36:58.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "0e662782-fb8e-4481-8729-fc74762d363d",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 66.74934337924684,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w151195285@4\",\"update_time\":\"2022-09-04T23:55:14.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "0e898a48-dc4e-4b46-ba22-52c42c909bd3",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 134.58868888555625,
+          "NAMES_JSON": "{\"primary\":\"Hotel Des Arts\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w474341709@4\",\"update_time\":\"2022-04-08T19:35:03.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "1366d5e7-9c50-4b59-892f-cb93049f3567",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 37.60108223260485,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w1091966780@2\",\"update_time\":\"2026-02-04T06:11:24.000Z\",\"confidence\":null,\"between\":null},{\"property\":\"/properties/height\",\"dataset\":\"USGS Lidar\",\"license\":null,\"record_id\":null,\"update_time\":null,\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "13d157be-a590-4601-afb1-cf3da47c7511",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 56.71485296816526,
+          "NAMES_JSON": "{\"primary\":\"Alexander Building\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w132125157@5\",\"update_time\":\"2022-09-04T23:55:14.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "144549c8-bded-4425-b4a6-e17c790ea4bf",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 66.80122112608247,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w148741775@4\",\"update_time\":\"2022-02-26T05:35:52.000Z\",\"confidence\":null,\"between\":null},{\"property\":\"/properties/height\",\"dataset\":\"USGS Lidar\",\"license\":null,\"record_id\":null,\"update_time\":null,\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "15c65702-fe09-4ab0-a9c4-f36a183f09da",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 80.97988880701705,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w151195273@1\",\"update_time\":\"2022-09-04T23:55:14.000Z\",\"confidence\":null,\"between\":null},{\"property\":\"/properties/height\",\"dataset\":\"USGS Lidar\",\"license\":null,\"record_id\":null,\"update_time\":null,\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "173ec5cd-147f-4505-b784-05f61e45deb0",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 114.77812865190378,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w1020483120@1\",\"update_time\":\"2022-01-12T08:05:16.000Z\",\"confidence\":null,\"between\":null},{\"property\":\"/properties/height\",\"dataset\":\"USGS Lidar\",\"license\":null,\"record_id\":null,\"update_time\":null,\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "1a2ed04b-73d0-4ce9-b8b8-c8c8bc6052dc",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 67.09768885390125,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w148741779@2\",\"update_time\":\"2022-03-12T06:34:21.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "2a4bbab9-cf62-40ba-878d-4a29e6e5a9f7",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 57.17594522118809,
+          "NAMES_JSON": "{\"primary\":\"Hallidie Building\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w151195286@10\",\"update_time\":\"2026-04-23T01:04:51.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "3225016c-52d4-4f8a-b306-f510f58d8dc5",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 115.82895425853162,
+          "NAMES_JSON": "{\"primary\":\"555 California Street\",\"common\":{\"kn\":\"ಬ್ಯಾಂಕ್ ಆಫ್ ಅಮೇರಿಕ\"},\"rules\":[{\"variant\":\"alternate\",\"language\":null,\"perspectives\":null,\"value\":\"Bank of America Building\",\"between\":null,\"side\":null}]}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w288511106@14\",\"update_time\":\"2024-01-30T04:51:23.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "34e4794f-1c86-4ff7-943b-225d44c9703a",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 146.6707055226727,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w135174110@3\",\"update_time\":\"2020-07-09T03:50:14.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "34fcf145-be71-4676-bb51-82d0b72ed516",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 86.41919271171889,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w151683978@4\",\"update_time\":\"2022-03-12T06:34:21.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "355dd0a6-3852-47a9-ac42-63341f2ed115",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 83.3791373856156,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w151683980@4\",\"update_time\":\"2022-03-12T06:34:21.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "38956c17-f546-499c-8885-8eb4d0e72749",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 96.34049450348243,
+          "NAMES_JSON": "{\"primary\":\"Academy of Art University - School of Fine Art Sculpture\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w256076609@5\",\"update_time\":\"2021-05-10T18:53:46.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "3bb27670-3b48-43cf-b245-6998549bf9ed",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 111.85786356274694,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w260280328@3\",\"update_time\":\"2018-01-22T17:36:58.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "427a817b-21d0-42dd-8047-3f83bec3dd90",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 91.93200573206488,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w132125163@4\",\"update_time\":\"2022-09-04T23:02:08.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "4399467e-9b2d-4d3c-9c3c-70286498d88e",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 83.58742882983051,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w151195276@5\",\"update_time\":\"2026-04-25T01:50:35.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "455e847f-5c06-4fa6-9181-670bc1ed2b43",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 113.5434969006098,
+          "NAMES_JSON": "{\"primary\":\"Commercial Union Assurance Building\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w32859357@9\",\"update_time\":\"2024-01-30T04:51:23.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "4ca428de-257d-437d-a9f2-58437ba0603e",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 38.45225383289869,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w151195278@3\",\"update_time\":\"2022-07-21T02:45:59.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "4d2c997d-3f36-4be0-975a-5e35559a4d09",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 81.20967461355644,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w151683981@3\",\"update_time\":\"2022-03-12T06:34:21.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "4f3c97d9-edf4-42c0-8c91-3a8f14030dc4",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 91.94204389440331,
+          "NAMES_JSON": "{\"primary\":\"Mills Building\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"r3492808@2\",\"update_time\":\"2024-08-21T00:34:31.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "5c9c21e5-0ab8-4d4a-b901-95f48748956c",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 75.67858992543856,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w148741777@5\",\"update_time\":\"2018-01-25T19:25:15.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "5ed396d3-ea94-49b9-8013-b8b91e8ab332",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 108.14002319886804,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w151683979@11\",\"update_time\":\"2023-01-18T17:02:00.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "67a0914e-31ec-437c-95aa-92819a858557",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 13.229271547298108,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w148741778@7\",\"update_time\":\"2026-03-22T21:01:30.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "70c06972-eaeb-4563-8a26-6ab294062987",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 93.37260723153604,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w148741772@2\",\"update_time\":\"2022-03-12T06:34:21.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "70c06d46-7d3a-4e29-9e6e-c2ef7e7d4b27",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 127.37804551160731,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w256076607@6\",\"update_time\":\"2021-05-10T18:53:46.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "7347e35d-99e8-4d21-adbf-ae64797f4a42",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 105.35801070847732,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w942665598@2\",\"update_time\":\"2022-09-04T23:02:08.000Z\",\"confidence\":null,\"between\":null},{\"property\":\"/properties/height\",\"dataset\":\"USGS Lidar\",\"license\":null,\"record_id\":null,\"update_time\":null,\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "7c6ef540-5831-44d0-8c64-0468ae50f84d",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 77.10538653084468,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w148741785@2\",\"update_time\":\"2022-03-12T06:34:21.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "7e1c131c-5f17-42a0-a65a-5d752f7bc05e",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 95.96462236098476,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w260280335@4\",\"update_time\":\"2020-07-09T03:50:17.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "80eb9207-97be-44c3-b904-60140f9fdeb3",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 107.11891405120882,
+          "NAMES_JSON": "{\"primary\":\"250 Montgomery\",\"common\":null,\"rules\":[{\"variant\":\"alternate\",\"language\":null,\"perspectives\":null,\"value\":\"Continental Center\",\"between\":null,\"side\":null}]}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w256066242@6\",\"update_time\":\"2024-08-21T00:34:31.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "821166d9-b97c-4100-94c5-8a9a78228991",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 36.91637402453532,
+          "NAMES_JSON": "{\"primary\":\"Cafe Tiramisu\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w148741774@5\",\"update_time\":\"2022-02-26T05:35:52.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "8336fb37-c02f-47d6-abb1-aca2fa735723",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 117.20346179958031,
+          "NAMES_JSON": "{\"primary\":\"W&J Sloane Building\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w260280326@6\",\"update_time\":\"2022-04-15T21:31:50.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "8436c032-d83e-4231-b70e-28d670b53cc6",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 78.60604649290639,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w474354577@1\",\"update_time\":\"2022-03-12T06:34:21.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "88fa17c1-01d5-473d-ad5f-beba1b0b42c7",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 142.7839520689808,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w944039725@1\",\"update_time\":\"2021-05-17T21:26:56.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "92457b79-0882-4fa2-9345-6233fa94dff2",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 66.6409827056204,
+          "NAMES_JSON": "{\"primary\":\"101 Montgomery\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w132125159@6\",\"update_time\":\"2022-09-04T23:55:14.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "92851a50-e04a-4dcc-b108-a78759b08d72",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 42.23451763537508,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w151195275@4\",\"update_time\":\"2020-07-09T03:50:14.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "930beef3-12d5-4a2f-84f9-de161cdc6ba2",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 103.33350917404758,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w260280327@4\",\"update_time\":\"2022-01-12T08:05:16.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "984e2801-172e-490a-862f-ffed5c2e0b7a",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 48.796123468038026,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w148741781@5\",\"update_time\":\"2022-06-16T22:55:34.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "9f0c5846-114c-4a1f-902b-c8912a59704c",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 62.45428253847973,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w148741771@4\",\"update_time\":\"2022-03-12T06:34:21.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "a0129775-32c2-4305-a39d-ffb0b9b276d9",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 121.68505434503436,
+          "NAMES_JSON": "{\"primary\":\"Crocker Galleria\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w132125164@9\",\"update_time\":\"2021-12-09T02:05:23.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "a5b1da75-607a-4d28-b126-dc3fb9a3d6f5",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 110.39771420850542,
+          "NAMES_JSON": "{\"primary\":\"AT&T\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w256076599@8\",\"update_time\":\"2021-05-10T18:53:46.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "a94e063a-b7db-464d-a5ac-eb0b340e76f9",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 30.896266680259906,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w148741776@5\",\"update_time\":\"2022-05-31T20:56:11.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "aa97aa00-7d31-40d7-b159-2c2f565211e9",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 78.09987783098153,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w260280334@3\",\"update_time\":\"2018-01-22T17:36:59.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "ac25a365-f727-4b5b-a588-704e927071c3",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 42.758857181441236,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w148741783@7\",\"update_time\":\"2022-02-26T05:35:52.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "afb717fa-040a-4ec6-813d-a106e0deb68f",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 123.9888019702919,
+          "NAMES_JSON": "{\"primary\":\"Galleria Park Hotel\",\"common\":null,\"rules\":[{\"variant\":\"alternate\",\"language\":null,\"perspectives\":null,\"value\":\"Hotel Sutter\",\"between\":null,\"side\":null}]}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w132125160@7\",\"update_time\":\"2025-03-29T15:50:46.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "b1f675cb-1aaa-4a46-b048-a68b261a04b3",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 73.39222055534066,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w151195282@4\",\"update_time\":\"2022-11-10T21:05:47.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "b59e1a5f-a7da-4e86-83a1-c3926ac59fe6",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 60.93149278349427,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w148741782@5\",\"update_time\":\"2022-02-26T05:35:52.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "b5b8e481-72e9-489e-b73c-fdd8c7f46511",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 119.60446658385376,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w467941178@2\",\"update_time\":\"2021-05-10T18:47:54.000Z\",\"confidence\":null,\"between\":null},{\"property\":\"/properties/height\",\"dataset\":\"USGS Lidar\",\"license\":null,\"record_id\":null,\"update_time\":null,\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "b5c0b810-1bd9-4ffe-9d04-e7710780da47",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 91.62536644447567,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w151683977@3\",\"update_time\":\"2022-03-12T06:34:21.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "b5fb2d6a-c814-4020-b516-14bbf054c2f5",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 72.76507586762672,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w151185873@6\",\"update_time\":\"2021-05-13T00:24:00.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "ba787dc5-2c77-4cb1-8855-0745809dd5d4",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 106.20935149797744,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w260280331@4\",\"update_time\":\"2020-07-09T03:50:17.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "bfcc6610-baae-44ee-8293-cded07d47dd8",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 122.87899318212837,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w260280336@5\",\"update_time\":\"2022-01-12T08:05:16.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "c4a60914-bfd3-4f57-9f3e-6a22103ffcd1",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 38.857051038843515,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w148741780@5\",\"update_time\":\"2022-03-12T06:34:21.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "ca8710ea-9b1d-4f1e-8483-1ece26701a4f",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 90.07667460043677,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w260280329@4\",\"update_time\":\"2020-07-09T03:50:17.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "cac4309c-341d-4a11-9af7-eb829a9b1d1e",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 101.01433997128792,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w260280333@3\",\"update_time\":\"2020-07-09T03:50:17.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "cba99e53-5637-4956-bd71-cb4f556defc4",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 17.90146373068786,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w151195281@6\",\"update_time\":\"2026-02-04T06:11:24.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "d0ab9cb6-f4b9-4989-b85f-2c4cb8bef1ef",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 12.8790722519248,
+          "NAMES_JSON": "{\"primary\":\"350 Bush St.\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w151185876@6\",\"update_time\":\"2022-09-04T23:20:30.000Z\",\"confidence\":null,\"between\":null},{\"property\":\"/properties/height\",\"dataset\":\"USGS Lidar\",\"license\":null,\"record_id\":null,\"update_time\":null,\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "d5015c07-e5ef-4f3e-acee-f248d2c471fc",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 143.04283587557345,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w333823795@6\",\"update_time\":\"2022-04-02T02:25:45.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "d57d437a-4e63-420f-832c-03318c2ffef8",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 125.63065021089164,
+          "NAMES_JSON": "{\"primary\":\"Hunter-Dulin Building\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w942664247@1\",\"update_time\":\"2021-05-13T17:07:05.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "d91dedae-1d8f-4d10-be03-98f2c1c70b15",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 84.82402139644185,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w260280332@4\",\"update_time\":\"2020-07-09T03:50:17.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "d9c93614-193f-4e35-ba8f-aaf718fa5fb6",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 132.3554039017671,
+          "NAMES_JSON": "{\"primary\":\"225 Bush Street\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w942665601@2\",\"update_time\":\"2024-01-31T19:48:10.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "e12aa200-b19e-4f4f-8838-86dde7f2be8e",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 16.32279208657758,
+          "NAMES_JSON": "{\"primary\":\"333 Bush\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w132125167@8\",\"update_time\":\"2022-11-10T21:05:47.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "e6acb41c-9015-4d24-bd3c-3c5dab1d9fc3",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 111.28694191948874,
+          "NAMES_JSON": "{\"primary\":\"100 Montgomery\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w132125166@4\",\"update_time\":\"2022-09-04T23:02:08.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "e9fffd8e-e0e7-4e64-aafd-fa758898ed84",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 87.93484980784224,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w148741773@2\",\"update_time\":\"2022-03-12T06:34:21.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "ece3c298-b31a-45b9-8dd1-fc4f83d60470",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 90.48656499956128,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w151195280@5\",\"update_time\":\"2026-04-25T01:50:35.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "f0093ec8-60d8-49c4-8cf7-d9c5fae2afb3",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 129.94538038970393,
+          "NAMES_JSON": "{\"primary\":\"Exchange Block Building\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w1309156123@1\",\"update_time\":\"2024-08-21T00:34:31.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "f1010449-1438-430f-963d-44e780651326",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 103.55940798777415,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w256076601@1\",\"update_time\":\"2021-05-10T18:53:46.000Z\",\"confidence\":null,\"between\":null},{\"property\":\"/properties/height\",\"dataset\":\"USGS Lidar\",\"license\":null,\"record_id\":null,\"update_time\":null,\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "f3da279f-39a3-4e71-8e86-597a76048bd8",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 62.054077456811754,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w151195272@3\",\"update_time\":\"2020-07-09T03:50:14.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "fbf4bc56-3ae9-4b5b-847b-b0239bfe7bde",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 32.35606212308555,
+          "NAMES_JSON": "{\"primary\":\"Russ Building\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w129142347@8\",\"update_time\":\"2022-09-04T23:20:30.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "fc9feb88-2f14-47ed-bfaf-040d077d3182",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 6.59022186162255,
+          "NAMES_JSON": "{\"primary\":\"San Francisco Curb Exchange Building\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w151185875@6\",\"update_time\":\"2023-07-12T22:36:47.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "fde4a67c-7bb1-4462-be22-41268d58809c",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 71.68868758222953,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w148741784@4\",\"update_time\":\"2022-03-12T06:34:21.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        }
+      ],
+      "secondary": [
+        {
+          "PROVIDER_FEATURE_ID": "0330a316-3ba5-4197-be4a-6394bf9a7b2c",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 121.17616899381525,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w383346710@2\",\"update_time\":\"2020-12-05T01:12:37.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "03e7f0ec-36fd-4cef-b6ca-5a2651fc2946",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 114.74780037933603,
+          "NAMES_JSON": "{\"primary\":\"Palmer Events Center\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w187668223@12\",\"update_time\":\"2024-04-12T14:57:39.000Z\",\"confidence\":null,\"between\":null},{\"property\":\"/properties/height\",\"dataset\":\"Microsoft ML Buildings\",\"license\":\"ODbL-1.0\",\"record_id\":null,\"update_time\":\"2022-10-21T00:00:00.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "1624786f-6228-4b16-a1fd-9c0431f11742",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 59.51863220197644,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w187766951@2\",\"update_time\":\"2017-08-17T02:50:34.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "1bd0fadf-61a5-4baa-8f72-f90a1c4b82b6",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 130.44587818529627,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"Microsoft ML Buildings\",\"license\":\"ODbL-1.0\",\"record_id\":null,\"update_time\":\"2022-10-21T00:00:00.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "2037edad-1d9c-4a60-9e73-2cb39a9f76dc",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 121.54042267319142,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w383346699@1\",\"update_time\":\"2015-11-28T21:34:50.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "476411c5-c479-4082-9bcc-5a8bd236c6d7",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 148.48995384054496,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w617847488@3\",\"update_time\":\"2024-09-20T14:18:14.000Z\",\"confidence\":null,\"between\":null},{\"property\":\"/properties/height\",\"dataset\":\"USGS Lidar\",\"license\":null,\"record_id\":null,\"update_time\":null,\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "78f0faed-30b2-40ac-b99b-57a355e691d9",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 29.08663824359749,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w383346750@9\",\"update_time\":\"2024-04-13T14:48:21.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "87fb24db-6d92-4558-815c-aaba1443fa6d",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 120.38215232381222,
+          "NAMES_JSON": "{\"primary\":\"The Long Center for the Performing Arts\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w187668220@16\",\"update_time\":\"2025-02-16T16:27:03.000Z\",\"confidence\":null,\"between\":null},{\"property\":\"/properties/height\",\"dataset\":\"Microsoft ML Buildings\",\"license\":\"ODbL-1.0\",\"record_id\":null,\"update_time\":\"2022-10-21T00:00:00.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "91e54952-8c33-4302-aa90-37b3ac37ae94",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 136.94892664018042,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w383346575@1\",\"update_time\":\"2015-11-28T21:34:36.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "937409a5-479f-4286-b802-27cff4968fee",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 144.2635332526992,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w383346772@2\",\"update_time\":\"2018-08-18T17:10:17.000Z\",\"confidence\":null,\"between\":null},{\"property\":\"/properties/height\",\"dataset\":\"USGS Lidar\",\"license\":null,\"record_id\":null,\"update_time\":null,\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "98c0cedd-5489-486f-b842-1727161fead1",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 132.06668480999818,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w382455273@1\",\"update_time\":\"2015-11-24T13:31:13.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "a409c6e2-fdf3-476f-ae49-328350803ab5",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 132.72136539196322,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w383346746@1\",\"update_time\":\"2015-11-28T21:34:54.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "a694f565-d9b2-4700-a69e-b4245d56a700",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 139.5431911518264,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w881161888@1\",\"update_time\":\"2020-12-05T01:12:37.000Z\",\"confidence\":null,\"between\":null},{\"property\":\"/properties/height\",\"dataset\":\"USGS Lidar\",\"license\":null,\"record_id\":null,\"update_time\":null,\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "ae95b6ee-876e-497d-b9cb-4fdd3c2695f3",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 135.66188151612138,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"Microsoft ML Buildings\",\"license\":\"ODbL-1.0\",\"record_id\":null,\"update_time\":\"2022-10-21T00:00:00.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "c0ff1af7-bbe5-481c-b22c-add15bdd2663",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 98.16293879595713,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"r13045640@1\",\"update_time\":\"2022-06-12T14:35:11.000Z\",\"confidence\":null,\"between\":null},{\"property\":\"/properties/height\",\"dataset\":\"USGS Lidar\",\"license\":null,\"record_id\":null,\"update_time\":null,\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "d60a11b8-b1a6-489e-b1aa-ead67b0cf665",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 26.19969012556962,
+          "NAMES_JSON": "{\"primary\":\"Town Lake Center\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w187766953@5\",\"update_time\":\"2024-04-12T13:49:21.000Z\",\"confidence\":null,\"between\":null},{\"property\":\"/properties/height\",\"dataset\":\"Microsoft ML Buildings\",\"license\":\"ODbL-1.0\",\"record_id\":null,\"update_time\":\"2022-10-21T00:00:00.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "d64d8492-2f81-4461-aba5-aa01a2953a30",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 147.6144358295171,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w383346578@1\",\"update_time\":\"2015-11-28T21:34:36.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "d7c955af-44ef-4cb4-ad4d-0bfd4497565c",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 136.82833286880958,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w383346792@2\",\"update_time\":\"2020-12-05T01:12:37.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "d83f42a6-4bf9-4594-b17b-8561b0dbf858",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 11.359568919419424,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w516271471@2\",\"update_time\":\"2020-03-18T13:00:59.000Z\",\"confidence\":null,\"between\":null},{\"property\":\"/properties/height\",\"dataset\":\"USGS Lidar\",\"license\":null,\"record_id\":null,\"update_time\":null,\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "e0caadae-ed9b-404e-853a-4466c9dd5a85",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 47.090467445587464,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w187766950@4\",\"update_time\":\"2020-03-18T13:00:59.000Z\",\"confidence\":null,\"between\":null},{\"property\":\"/properties/height\",\"dataset\":\"USGS Lidar\",\"license\":null,\"record_id\":null,\"update_time\":null,\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "e954a262-c118-43b9-85fa-6e81807b440c",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 109.50463466764747,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"Microsoft ML Buildings\",\"license\":\"ODbL-1.0\",\"record_id\":null,\"update_time\":\"2022-10-21T00:00:00.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "ebcca6da-45cd-4a4c-96ef-157a14359851",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 119.2279493719354,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"Microsoft ML Buildings\",\"license\":\"ODbL-1.0\",\"record_id\":null,\"update_time\":\"2022-10-21T00:00:00.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "f0801819-32b9-4fa2-91db-43a4b388e4c7",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "DISTANCE_M": 146.9102614246842,
+          "NAMES_JSON": "{\"primary\":\"Sandy's\",\"common\":null,\"rules\":null}",
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w299395705@11\",\"update_time\":\"2024-04-13T14:48:22.000Z\",\"confidence\":null,\"between\":null},{\"property\":\"/properties/height\",\"dataset\":\"USGS Lidar\",\"license\":null,\"record_id\":null,\"update_time\":null,\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+          "LICENSE_CLASS": "odbl"
+        }
+      ],
+      "tertiary": [
+        {
+          "PROVIDER_FEATURE_ID": "0cd38a86-3510-4532-acc8-47603abe85a2",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "H3_R7": "872a94840ffffff",
+          "GEOMETRY_GEOJSON": "{\n  \"coordinates\": [\n    [\n      [\n        -8.296587470000000e+01,\n        4.129913350000000e+01\n      ],\n      [\n        -8.296585320000000e+01,\n        4.129775510000000e+01\n      ],\n      [\n        -8.296523660000000e+01,\n        4.129776060000000e+01\n      ],\n      [\n        -8.296525800000001e+01,\n        4.129913890000000e+01\n      ],\n      [\n        -8.296587470000000e+01,\n        4.129913350000000e+01\n      ]\n    ]\n  ],\n  \"type\": \"Polygon\"\n}",
+          "DISTANCE_M": 91.82988736127861,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w881530341@1\",\"update_time\":\"2020-12-06T08:17:58.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-OH/h3_r4=842a949ffffffff/source_part=part-000057__US-OH__rg0064-0067/data_0.parquet",
+          "LICENSE_CLASS": "odbl",
+          "LICENSE_TERMS": "ODbL-1.0; attribution required to Overture Maps Foundation and source contributors including OpenStreetMap contributors where present; keep ODbL-derived outputs segregated from permissive-only outputs.",
+          "ATTRIBUTION_TEXT": "Overture Maps Foundation"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "94e9bfc2-f0f5-40b9-bc6b-db28082afa3b",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "H3_R7": "872a94840ffffff",
+          "GEOMETRY_GEOJSON": "{\n  \"coordinates\": [\n    [\n      [\n        -8.296563840000000e+01,\n        4.130274140000000e+01\n      ],\n      [\n        -8.296669600000000e+01,\n        4.130273150000000e+01\n      ],\n      [\n        -8.296667119999999e+01,\n        4.130122050000000e+01\n      ],\n      [\n        -8.296622870000000e+01,\n        4.130122460000000e+01\n      ],\n      [\n        -8.296621020000001e+01,\n        4.130009840000000e+01\n      ],\n      [\n        -8.296588840000000e+01,\n        4.130010140000000e+01\n      ],\n      [\n        -8.296588610000001e+01,\n        4.129995750000000e+01\n      ],\n      [\n        -8.296552130000001e+01,\n        4.129996090000000e+01\n      ],\n      [\n        -8.296552370000001e+01,\n        4.130010590000000e+01\n      ],\n      [\n        -8.296503030000000e+01,\n        4.130011050000000e+01\n      ],\n      [\n        -8.296505030000000e+01,\n        4.130133340000000e+01\n      ],\n      [\n        -8.296510660000000e+01,\n        4.130133290000000e+01\n      ],\n      [\n        -8.296510750000000e+01,\n        4.130138620000000e+01\n      ],\n      [\n        -8.296505010000000e+01,\n        4.130138670000000e+01\n      ],\n      [\n        -8.296505440000000e+01,\n        4.130164770000000e+01\n      ],\n      [\n        -8.296563209999999e+01,\n        4.130164240000000e+01\n      ],\n      [\n        -8.296563930000001e+01,\n        4.130208160000000e+01\n      ],\n      [\n        -8.296564460000000e+01,\n        4.130208150000000e+01\n      ],\n      [\n        -8.296564560000000e+01,\n        4.130214080000000e+01\n      ],\n      [\n        -8.296563120000000e+01,\n        4.130214100000000e+01\n      ],\n      [\n        -8.296563829999999e+01,\n        4.130256920000000e+01\n      ],\n      [\n        -8.296563560000000e+01,\n        4.130256920000000e+01\n      ],\n      [\n        -8.296563840000000e+01,\n        4.130274140000000e+01\n      ]\n    ]\n  ],\n  \"type\": \"Polygon\"\n}",
+          "DISTANCE_M": 51.78330231048259,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"Microsoft ML Buildings\",\"license\":\"ODbL-1.0\",\"record_id\":null,\"update_time\":\"2000-01-01T00:00:00.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-OH/h3_r4=842a949ffffffff/source_part=part-000057__US-OH__rg0064-0067/data_0.parquet",
+          "LICENSE_CLASS": "odbl",
+          "LICENSE_TERMS": "ODbL-1.0; attribution required to Overture Maps Foundation and source contributors including OpenStreetMap contributors where present; keep ODbL-derived outputs segregated from permissive-only outputs.",
+          "ATTRIBUTION_TEXT": "Overture Maps Foundation"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "950618fa-f27d-4a6a-b165-0c46f6193079",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "H3_R7": "872a94840ffffff",
+          "GEOMETRY_GEOJSON": "{\n  \"coordinates\": [\n    [\n      [\n        -8.296797620000000e+01,\n        4.129950830000000e+01\n      ],\n      [\n        -8.296850590000000e+01,\n        4.129950630000000e+01\n      ],\n      [\n        -8.296850410000000e+01,\n        4.129923660000000e+01\n      ],\n      [\n        -8.296797440000000e+01,\n        4.129923870000000e+01\n      ],\n      [\n        -8.296797620000000e+01,\n        4.129950830000000e+01\n      ]\n    ]\n  ],\n  \"type\": \"Polygon\"\n}",
+          "DISTANCE_M": 116.81947406183339,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w881530340@1\",\"update_time\":\"2020-12-06T08:17:58.000Z\",\"confidence\":null,\"between\":null},{\"property\":\"/properties/height\",\"dataset\":\"Microsoft ML Buildings\",\"license\":\"ODbL-1.0\",\"record_id\":null,\"update_time\":\"2019-10-02T00:00:00.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-OH/h3_r4=842a949ffffffff/source_part=part-000057__US-OH__rg0064-0067/data_0.parquet",
+          "LICENSE_CLASS": "odbl",
+          "LICENSE_TERMS": "ODbL-1.0; attribution required to Overture Maps Foundation and source contributors including OpenStreetMap contributors where present; keep ODbL-derived outputs segregated from permissive-only outputs.",
+          "ATTRIBUTION_TEXT": "Overture Maps Foundation"
+        },
+        {
+          "PROVIDER_FEATURE_ID": "e50dfc88-3150-4af9-a569-913e65b3ebc2",
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "H3_R7": "872a94840ffffff",
+          "GEOMETRY_GEOJSON": "{\n  \"coordinates\": [\n    [\n      [\n        -8.296736700000000e+01,\n        4.129851080000000e+01\n      ],\n      [\n        -8.296736530000000e+01,\n        4.129840200000000e+01\n      ],\n      [\n        -8.296728620000000e+01,\n        4.129840270000000e+01\n      ],\n      [\n        -8.296728790000000e+01,\n        4.129851150000000e+01\n      ],\n      [\n        -8.296736700000000e+01,\n        4.129851080000000e+01\n      ]\n    ]\n  ],\n  \"type\": \"Polygon\"\n}",
+          "DISTANCE_M": 148.25936733846166,
+          "NAMES_JSON": null,
+          "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"Microsoft ML Buildings\",\"license\":\"ODbL-1.0\",\"record_id\":null,\"update_time\":\"2019-10-02T00:00:00.000Z\",\"confidence\":null,\"between\":null}]",
+          "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-OH/h3_r4=842a949ffffffff/source_part=part-000057__US-OH__rg0064-0067/data_0.parquet",
+          "LICENSE_CLASS": "odbl",
+          "LICENSE_TERMS": "ODbL-1.0; attribution required to Overture Maps Foundation and source contributors including OpenStreetMap contributors where present; keep ODbL-derived outputs segregated from permissive-only outputs.",
+          "ATTRIBUTION_TEXT": "Overture Maps Foundation"
+        }
+      ]
+    },
+    "source_queries": {
+      "major": "SELECT PROVIDER_FEATURE_ID, RELEASE, RELEASE_DT, H3_R7, ST_ASGEOJSON(GEOM_GEOG) AS GEOMETRY_GEOJSON, ST_DISTANCE(GEOM_GEOG, ST_MAKEPOINT(-122.403322404091, 37.790907154641)) AS DISTANCE_M, NAMES_JSON, SOURCES_JSON, SOURCE_FILENAME, LICENSE_CLASS, LICENSE_TERMS, ATTRIBUTION_TEXT FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT WHERE RELEASE = '2026-07-22.0' AND RELEASE_DT = '2026-07-22' AND H3_R7 IN ('87283082affffff', '872830805ffffff', '872830801ffffff', '87283080cffffff', '87283082bffffff', '872830828ffffff', '87283082effffff') AND ST_DWITHIN(GEOM_GEOG, ST_MAKEPOINT(-122.403322404091, 37.790907154641), 150) ORDER BY PROVIDER_FEATURE_ID LIMIT 200",
+      "secondary": "SELECT PROVIDER_FEATURE_ID, RELEASE, RELEASE_DT, H3_R7, ST_ASGEOJSON(GEOM_GEOG) AS GEOMETRY_GEOJSON, ST_DISTANCE(GEOM_GEOG, ST_MAKEPOINT(-97.752364237508, 30.259130725816)) AS DISTANCE_M, NAMES_JSON, SOURCES_JSON, SOURCE_FILENAME, LICENSE_CLASS, LICENSE_TERMS, ATTRIBUTION_TEXT FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT WHERE RELEASE = '2026-07-22.0' AND RELEASE_DT = '2026-07-22' AND H3_R7 IN ('87489e346ffffff', '87489e373ffffff', '87489e355ffffff', '87489e342ffffff', '87489e340ffffff', '87489e344ffffff', '87489e371ffffff') AND ST_DWITHIN(GEOM_GEOG, ST_MAKEPOINT(-97.752364237508, 30.259130725816), 150) ORDER BY PROVIDER_FEATURE_ID LIMIT 200",
+      "tertiary": "SELECT PROVIDER_FEATURE_ID, RELEASE, RELEASE_DT, H3_R7, ST_ASGEOJSON(GEOM_GEOG) AS GEOMETRY_GEOJSON, ST_DISTANCE(GEOM_GEOG, ST_MAKEPOINT(-82.966613706823, 41.299744874698)) AS DISTANCE_M, NAMES_JSON, SOURCES_JSON, SOURCE_FILENAME, LICENSE_CLASS, LICENSE_TERMS, ATTRIBUTION_TEXT FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT WHERE RELEASE = '2026-07-22.0' AND RELEASE_DT = '2026-07-22' AND H3_R7 IN ('872a94840ffffff', '872a94846ffffff', '872a94842ffffff', '872a94843ffffff', '872a94841ffffff', '872a94845ffffff', '872a94844ffffff') AND ST_DWITHIN(GEOM_GEOG, ST_MAKEPOINT(-82.966613706823, 41.299744874698), 150) ORDER BY PROVIDER_FEATURE_ID LIMIT 200"
+    },
+    "geometry_retention": "Clyde discovery rows include complete returned geometry. San Francisco/Austin metadata rows are complete for the bounded Census-point query, but full neighborhood geometry is not retained. Initial responses contained byte/cell truncation; projected metadata was paged to completion. No truncated geometry is used as a valid polygon. Complete geometry for the later SF/Austin source-address-point containment candidates is retained separately in national_address_point_followup.",
+    "license_terms": "Native Overture buildings/building hot table with WGS84 GEOGRAPHY, bbox, centroid, and H3 columns. License terms: ODbL-1.0; attribution required to Overture Maps Foundation and source contributors including OpenStreetMap contributors where present; keep ODbL-derived outputs segregated from permissive-only outputs.",
+    "native_canon_status": "Not executed for non-NYC address membership: the existing GeoAddressJurisdiction contract has only the NYC variant. Nearby footprint availability is not an address-to-building association or a Canon result.",
+    "selected_building_ids": {
+      "major": [],
+      "secondary": [],
+      "tertiary": []
+    }
+  },
+  "source_inventory": {
+    "examined_schema": "SOURCE",
+    "parcel_sources_found": [
+      {
+        "name": "FRANKLIN_COUNTY_AUDITOR_PARCELS_EXT",
+        "description": "Audit external table over the warehouse-interop plane of Franklin County Auditor tax parcels (append-only S3 Parquet, artifact=normalized). Grain: one parcel polygon per (release, provider_feature_id). Carries every Auditor field (DBF names), WGS84 WKT, centroid, bbox, H3 r4/r7/r8, the CRS admission evidence, the transform ids, and the evidence-plane locator. Public record; Franklin County Auditor disclaimer (no warranty, primary source controls); attribution: Franklin County Auditor, Ohio - Real Estate Division / GIS."
+      },
+      {
+        "name": "FRANKLIN_COUNTY_AUDITOR_PARCELS_FEATURE_H3_COVERAGE",
+        "description": "Native H3 r8 overlap coverage bridge keyed by (release, provider_feature_id, h3_resolution, h3_cell) for point-in-parcel candidate generation. Clustered by (release, h3_resolution, h3_cell)."
+      },
+      {
+        "name": "FRANKLIN_COUNTY_AUDITOR_PARCELS_FEATURE_H3_COVERAGE_EXT",
+        "description": "Audit external table over the parcel polygon H3 r8 coverage bridge (overlap mode: every cell touching the polygon) used to bound point-in-parcel candidates before exact GEOGRAPHY predicates."
+      },
+      {
+        "name": "FRANKLIN_COUNTY_AUDITOR_PARCELS_GEOMETRY_EVIDENCE_EXT",
+        "description": "Source evidence plane under contract geom-v1: decoded EPSG:3735 parcel geometry as base64 2D ISO WKB with per-feature digests, plus the derived WGS84 WKB. Scanned only when source vertices are needed; reach it through the (release, release_dt, h3_r4, geometry_evidence_part, source_row_number) locator on the interop plane, never by scanning this table directly."
+      },
+      {
+        "name": "FRANKLIN_COUNTY_AUDITOR_PARCELS_HOT",
+        "description": "Native Snowflake hot table for Franklin County tax parcels: every Auditor field (DBF names with the Auditor's aliases in the column descriptions), WGS84 GEOGRAPHY + parse status, centroid, bbox, H3 r4/r7/r8 (hex + conformed integer), bitemporal release columns, CRS admission evidence, the evidence-plane locator, and transform ids. Clustered by (release, h3_r7). Merge key (release, provider_feature_id). Public record; Franklin County Auditor disclaimer (no warranty, primary source controls); attribution: Franklin County Auditor, Ohio - Real Estate Division / GIS."
+      },
+      {
+        "name": "FRANKLIN_COUNTY_AUDITOR_PARCELS_MANIFEST_EXT",
+        "description": "JSON release manifests: Hub headers, archive bytes/SHA256, feature and live layer counts, schema hash, transform ids, observed digest chains, and landed parts."
+      },
+      {
+        "name": "FRANKLIN_COUNTY_AUDITOR_PARCELS_META_EXT",
+        "description": "Provenance sidecars for raw archives, Parquet parts, receipts, and manifests."
+      },
+      {
+        "name": "FRANKLIN_COUNTY_AUDITOR_PARCELS_TRANSFORM_RECEIPT_EXT",
+        "description": "One JSON receipt per (release, transform execution): the pinned PROJ operation, pipeline, grids and their digests, engine versions, serialization policy, and observed feature/vertex counts with digest chains. Join geometry rows on transform_execution_id; transform_definition_id is a sameness claim shared across releases."
+      },
+      {
+        "name": "NYC_DCP_MAPPLUTO_EXT",
+        "description": "WAREHOUSE INTEROPERABILITY PLANE. Audit external table over normalized clipped MapPLUTO Shapefile rows. Geometry here is DERIVED evidence: WGS84 WKT with bbox and centroid, produced from the source-coordinate geometry by the coordinate operation named by transform_execution_id. Use it for discovery, pruning, maps and cross-source joins. It does not replace and must not be mistaken for the source plane: the source vertices live in nyc_dcp_mappluto_geometry_evidence_ext, reachable by the (release, release_dt, borough, geometry_evidence_part, source_row_number) locator these rows carry. release_dt is the provider release watermark."
+      },
+      {
+        "name": "NYC_DCP_MAPPLUTO_GEOMETRY_EVIDENCE_EXT",
+        "description": "SOURCE EVIDENCE PLANE. Row-addressable source-coordinate geometry for every admitted MapPLUTO feature, captured BEFORE reprojection, plus the WGS84 derivation and both digests. source_geom_wkb is a deterministic decoding of the retained provider archive under contract nyc_dcp_mappluto_geometry_evidence.v1 - it is NOT the provider's original byte stream, and its hash proves equality of that pinned representation, not world truth. Authority for the source bytes stays with the artifact=raw object named by source_archive_s3_key / source_archive_sha256. Scan only via the bounded locator from nyc_dcp_mappluto_ext; never sweep it whole."
+      },
+      {
+        "name": "NYC_DCP_MAPPLUTO_GEOM_V3_EXT",
+        "description": "WAREHOUSE INTEROPERABILITY PLANE, re-derived under contract nyc_dcp_mappluto_geometry_evidence.v3. Same projection as nyc_dcp_mappluto_ext plus the geometry-evidence columns, but every row was produced by the PINNED coordinate operation named in its transform receipt (NAD83 to WGS 84 via the HPGN grid, declared 2.0 m) rather than the null transform (declared 4.0 m) that produced nyc_dcp_mappluto_ext. The two tables differ by roughly 5 cm per parcel and are deliberately kept separate so a query can never mix coordinate operations. This is the plane new work should read; nyc_dcp_mappluto_hot and the OC-0048 consumers have NOT been cut over to it yet."
+      },
+      {
+        "name": "NYC_DCP_MAPPLUTO_HOT",
+        "description": "WAREHOUSE INTEROPERABILITY PLANE. Native MapPLUTO geometry hot table with WGS84 GEOGRAPHY, bbox, centroid and H3 columns for OC-0048 point-in-polygon consumers. GEOGRAPHY is derived evidence, not world truth and not the source plane; carry transform_execution_id when a result has to be defensible."
+      },
+      {
+        "name": "NYC_DCP_MAPPLUTO_TRANSFORM_RECEIPT_EXT",
+        "description": "TRANSFORM RECEIPTS. One row per release/variant transform execution, naming the exact coordinate operation applied (PROJ pipeline, declared accuracy, selection rule), the sha256 of every PROJ grid it depended on, the pinned decoder/engine/CRS-database versions, and the observed feature and vertex counts with source and derived digest chains. Rows in the geometry tables reference transform_execution_id rather than duplicating this document. Two ids: transform_execution_id is unique per release and source archive and is the join key; transform_definition_id addresses the pinned operation alone and is SHARED by releases transformed identically, so joining on it alone fans out across releases. degraded_transform_accepted = TRUE means a more accurate operation existed but its grids were absent from that runtime - treat those coordinates accordingly."
+      },
+      {
+        "name": "NYC_DCP_PAD_ADDRESS_HOT",
+        "description": null
+      }
+    ],
+    "scope": "No SF/Travis/Sandusky parcel source identified in this exposed SOURCE inventory; this is not a claim about all external public sources."
+  },
+  "diagnostics": {
+    "overture_manifest_rows": {
+      "ok": true,
+      "query": "SELECT DISTINCT RELEASE, RELEASE_DT FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_MANIFEST_EXT ORDER BY RELEASE_DT DESC, RELEASE DESC LIMIT 10",
+      "row_count": 0,
+      "columns": [
+        "RELEASE",
+        "RELEASE_DT"
+      ],
+      "rows": []
+    },
+    "initial_correlated_overture_query": {
+      "ok": false,
+      "error": "000604 (57014): 01c71beb-0522-8d80-006c-c70308c8665a: SQL execution canceled"
+    },
+    "literal_cell_probe": {
+      "ok": true,
+      "query": "SELECT RELEASE, RELEASE_DT, H3_R7, COUNT(*) AS BUILDING_ROWS FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT WHERE H3_R7 IN ('87283082affffff', '87489e346ffffff', '872a94840ffffff') GROUP BY RELEASE, RELEASE_DT, H3_R7 ORDER BY H3_R7, RELEASE LIMIT 20",
+      "row_count": 3,
+      "columns": [
+        "RELEASE",
+        "RELEASE_DT",
+        "H3_R7",
+        "BUILDING_ROWS"
+      ],
+      "rows": [
+        {
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "H3_R7": "87283082affffff",
+          "BUILDING_ROWS": 1952
+        },
+        {
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "H3_R7": "872a94840ffffff",
+          "BUILDING_ROWS": 1211
+        },
+        {
+          "RELEASE": "2026-07-22.0",
+          "RELEASE_DT": "2026-07-22",
+          "H3_R7": "87489e346ffffff",
+          "BUILDING_ROWS": 2502
+        }
+      ]
+    },
+    "annex_address_resolution_probe": {
+      "ok": true,
+      "query": "SELECT LOAN_ID, LOAN_NUMBER, PROPERTY_NAME, PROPERTY_ADDRESS, PROPERTY_CITY, PROPERTY_STATE, PROPERTY_ZIP, FILING_ID, URL, BLOCK_IDX, SOURCE_BLOCK_IDXS, PROPERTY_ADDRESS_OBSERVATION_STATUS, PROPERTY_KEY_RESOLUTION_STATUS, PROPERTY_ADDRESS_RESOLUTION_WARNING, BUILD_ID FROM EDGAR_DB.PROPERTY_MART.PROPERTY_ADDRESS_RESOLUTION WHERE FILING_ID = '0001539497-19-000868' AND UPPER(PROPERTY_ADDRESS) IN ('2207 ALBEMARLE ROAD', '350 BUSH STREET', '801 BARTON SPRINGS ROAD', '401 EAST ELM STREET') ORDER BY LOAN_NUMBER, LOAN_ID, BLOCK_IDX LIMIT 30",
+      "row_count": 0,
+      "columns": [
+        "LOAN_ID",
+        "LOAN_NUMBER",
+        "PROPERTY_NAME",
+        "PROPERTY_ADDRESS",
+        "PROPERTY_CITY",
+        "PROPERTY_STATE",
+        "PROPERTY_ZIP",
+        "FILING_ID",
+        "URL",
+        "BLOCK_IDX",
+        "SOURCE_BLOCK_IDXS",
+        "PROPERTY_ADDRESS_OBSERVATION_STATUS",
+        "PROPERTY_KEY_RESOLUTION_STATUS",
+        "PROPERTY_ADDRESS_RESOLUTION_WARNING",
+        "BUILD_ID"
+      ],
+      "rows": []
+    },
+    "interpretation": "Empty manifest and Annex-address-view results are retained as source-access limitations; property issuance records establish the selected source rows. The correlated H3 query was canceled; literal release/cell queries succeeded. These query-shape and source-access observations are not Canon solver failures."
+  },
+  "summary": {
+    "samples": 4,
+    "address_mcp_matches": 4,
+    "source_supported_nyc_parcel_building_links": 1,
+    "native_address_evidence_replays": 1,
+    "complete_native_address_to_building_runs": 0,
+    "independent_truth_accuracy": "not_measured",
+    "next_step": "Review baseline with the operator, then implement source-neutral address membership and the address-first plan/run acquisition handoff without a CMBS loan requirement.",
+    "external_address_point_containment_candidates": {
+      "major": 1,
+      "secondary": 1,
+      "tertiary": 0
+    },
+    "accepted_non_nyc_building_identities": 0,
+    "temporal_limit": "2019 collateral address observations are compared with 2026 source geometry; no historical building or collateral reconstruction is claimed."
+  },
+  "national_address_point_followup": {
+    "major": {
+      "address_query": {
+        "ok": true,
+        "query": "SELECT PROVIDER_FEATURE_ID, RELEASE, RELEASE_DT, CAST(GET_PATH(TRY_PARSE_JSON(ROW_PAYLOAD_JSON), 'number') AS VARCHAR) AS HOUSE_NUMBER, CAST(GET_PATH(TRY_PARSE_JSON(ROW_PAYLOAD_JSON), 'street') AS VARCHAR) AS STREET, CAST(GET_PATH(TRY_PARSE_JSON(ROW_PAYLOAD_JSON), 'postal_city') AS VARCHAR) AS CITY, CAST(GET_PATH(TRY_PARSE_JSON(ROW_PAYLOAD_JSON), 'postcode') AS VARCHAR) AS POSTCODE, ST_X(GEOM_GEOG) AS LONGITUDE, ST_Y(GEOM_GEOG) AS LATITUDE, SOURCES_JSON, SOURCE_FILENAME, LICENSE_TERMS, ATTRIBUTION_TEXT FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_ADDRESSES_HOT WHERE RELEASE = '2026-07-22.0' AND RELEASE_DT = '2026-07-22' AND H3_R7 IN ('87283082affffff', '872830805ffffff', '872830801ffffff', '87283080cffffff', '87283082bffffff', '872830828ffffff', '87283082effffff') AND CAST(GET_PATH(TRY_PARSE_JSON(ROW_PAYLOAD_JSON), 'number') AS VARCHAR) = '350' AND UPPER(CAST(GET_PATH(TRY_PARSE_JSON(ROW_PAYLOAD_JSON), 'street') AS VARCHAR)) LIKE '%BUSH%' ORDER BY PROVIDER_FEATURE_ID LIMIT 30",
+        "row_count": 1,
+        "columns": [
+          "PROVIDER_FEATURE_ID",
+          "RELEASE",
+          "RELEASE_DT",
+          "HOUSE_NUMBER",
+          "STREET",
+          "CITY",
+          "POSTCODE",
+          "LONGITUDE",
+          "LATITUDE",
+          "SOURCES_JSON",
+          "SOURCE_FILENAME",
+          "LICENSE_TERMS",
+          "ATTRIBUTION_TEXT"
+        ],
+        "rows": [
+          {
+            "PROVIDER_FEATURE_ID": "8d9fa23e-58b4-4f30-b9e7-4ea5f3a523ed",
+            "RELEASE": "2026-07-22.0",
+            "RELEASE_DT": "2026-07-22",
+            "HOUSE_NUMBER": "350",
+            "STREET": "BUSH ST",
+            "CITY": null,
+            "POSTCODE": "94104",
+            "LONGITUDE": -122.4033845,
+            "LATITUDE": 37.7909937,
+            "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenAddresses/CA/San Francisco County\",\"license\":null,\"record_id\":null,\"update_time\":null,\"confidence\":null,\"between\":null}]",
+            "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=addresses/type=address/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=source_specific/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000008/data_0.parquet",
+            "LICENSE_TERMS": "Source-specific Overture addresses terms; no single theme license. Preserve source attribution and terms, including NAD Access and Usage License and state/local source terms where present. Addresses are alpha and have no stable GERS ID.",
+            "ATTRIBUTION_TEXT": "Overture Maps Foundation"
+          }
+        ]
+      },
+      "selected_address_point_provider_id": "8d9fa23e-58b4-4f30-b9e7-4ea5f3a523ed",
+      "selection_reason": "House number, street and postcode agree; postal city is null.",
+      "footprint_probe": {
+        "ok": true,
+        "query": "SELECT COUNT(*) AS BUILDING_ROWS, COUNT(DISTINCT PROVIDER_FEATURE_ID) AS BUILDING_IDS, COUNT_IF(ST_COVERS(GEOM_GEOG, ST_MAKEPOINT(-122.4033845, 37.7909937))) AS CONTAINING_POINT_ROWS, MIN(ST_DISTANCE(GEOM_GEOG, ST_MAKEPOINT(-122.4033845, 37.7909937))) AS MIN_DISTANCE_M FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT WHERE RELEASE = '2026-07-22.0' AND RELEASE_DT = '2026-07-22' AND H3_R7 IN ('87283082affffff', '872830805ffffff', '872830801ffffff', '87283080cffffff', '87283082bffffff', '872830828ffffff', '87283082effffff') AND ST_DWITHIN(GEOM_GEOG, ST_MAKEPOINT(-122.4033845, 37.7909937), 150) LIMIT 1",
+        "row_count": 1,
+        "columns": [
+          "BUILDING_ROWS",
+          "BUILDING_IDS",
+          "CONTAINING_POINT_ROWS",
+          "MIN_DISTANCE_M"
+        ],
+        "rows": [
+          {
+            "BUILDING_ROWS": 76,
+            "BUILDING_IDS": 76,
+            "CONTAINING_POINT_ROWS": 1,
+            "MIN_DISTANCE_M": 0
+          }
+        ]
+      },
+      "containing_building_candidates": {
+        "ok": true,
+        "query": "SELECT PROVIDER_FEATURE_ID, RELEASE, RELEASE_DT, ST_ASGEOJSON(GEOM_GEOG) AS GEOMETRY_GEOJSON, SOURCES_JSON, SOURCE_FILENAME, LICENSE_TERMS, ATTRIBUTION_TEXT FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT WHERE RELEASE = '2026-07-22.0' AND RELEASE_DT = '2026-07-22' AND H3_R7 IN ('87283082affffff', '872830805ffffff', '872830801ffffff', '87283080cffffff', '87283082bffffff', '872830828ffffff', '87283082effffff') AND ST_COVERS(GEOM_GEOG, ST_MAKEPOINT(-122.4033845, 37.7909937)) ORDER BY PROVIDER_FEATURE_ID LIMIT 10",
+        "row_count": 1,
+        "columns": [
+          "PROVIDER_FEATURE_ID",
+          "RELEASE",
+          "RELEASE_DT",
+          "GEOMETRY_GEOJSON",
+          "SOURCES_JSON",
+          "SOURCE_FILENAME",
+          "LICENSE_TERMS",
+          "ATTRIBUTION_TEXT"
+        ],
+        "rows": [
+          {
+            "PROVIDER_FEATURE_ID": "fc9feb88-2f14-47ed-bfaf-040d077d3182",
+            "RELEASE": "2026-07-22.0",
+            "RELEASE_DT": "2026-07-22",
+            "GEOMETRY_GEOJSON": "{\n  \"coordinates\": [\n    [\n      [\n        -1.224032097000000e+02,\n        3.779098120000000e+01\n      ],\n      [\n        -1.224032343000000e+02,\n        3.779109860000000e+01\n      ],\n      [\n        -1.224032750000000e+02,\n        3.779109330000000e+01\n      ],\n      [\n        -1.224032669000000e+02,\n        3.779105450000000e+01\n      ],\n      [\n        -1.224034771000000e+02,\n        3.779102710000000e+01\n      ],\n      [\n        -1.224034630000000e+02,\n        3.779094970000000e+01\n      ],\n      [\n        -1.224033429000000e+02,\n        3.779096460000000e+01\n      ],\n      [\n        -1.224032097000000e+02,\n        3.779098120000000e+01\n      ]\n    ]\n  ],\n  \"type\": \"Polygon\"\n}",
+            "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w151185875@6\",\"update_time\":\"2023-07-12T22:36:47.000Z\",\"confidence\":null,\"between\":null}]",
+            "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-CA/h3_r4=8428309ffffffff/source_part=part-000033__US-CA__rg0012-0015/data_0.parquet",
+            "LICENSE_TERMS": "ODbL-1.0; attribution required to Overture Maps Foundation and source contributors including OpenStreetMap contributors where present; keep ODbL-derived outputs segregated from permissive-only outputs.",
+            "ATTRIBUTION_TEXT": "Overture Maps Foundation"
+          }
+        ]
+      },
+      "claim": "External source-address point containment is candidate evidence, not an accepted building identity, complete building set, proof of 2019 collateral scope, or a native Canon solve."
+    },
+    "secondary": {
+      "address_query": {
+        "ok": true,
+        "query": "SELECT PROVIDER_FEATURE_ID, RELEASE, RELEASE_DT, CAST(GET_PATH(TRY_PARSE_JSON(ROW_PAYLOAD_JSON), 'number') AS VARCHAR) AS HOUSE_NUMBER, CAST(GET_PATH(TRY_PARSE_JSON(ROW_PAYLOAD_JSON), 'street') AS VARCHAR) AS STREET, CAST(GET_PATH(TRY_PARSE_JSON(ROW_PAYLOAD_JSON), 'postal_city') AS VARCHAR) AS CITY, CAST(GET_PATH(TRY_PARSE_JSON(ROW_PAYLOAD_JSON), 'postcode') AS VARCHAR) AS POSTCODE, ST_X(GEOM_GEOG) AS LONGITUDE, ST_Y(GEOM_GEOG) AS LATITUDE, SOURCES_JSON, SOURCE_FILENAME, LICENSE_TERMS, ATTRIBUTION_TEXT FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_ADDRESSES_HOT WHERE RELEASE = '2026-07-22.0' AND RELEASE_DT = '2026-07-22' AND H3_R7 IN ('87489e346ffffff', '87489e373ffffff', '87489e355ffffff', '87489e342ffffff', '87489e340ffffff', '87489e344ffffff', '87489e371ffffff') AND CAST(GET_PATH(TRY_PARSE_JSON(ROW_PAYLOAD_JSON), 'number') AS VARCHAR) = '801' AND UPPER(CAST(GET_PATH(TRY_PARSE_JSON(ROW_PAYLOAD_JSON), 'street') AS VARCHAR)) LIKE '%BARTON%' ORDER BY PROVIDER_FEATURE_ID LIMIT 30",
+        "row_count": 2,
+        "columns": [
+          "PROVIDER_FEATURE_ID",
+          "RELEASE",
+          "RELEASE_DT",
+          "HOUSE_NUMBER",
+          "STREET",
+          "CITY",
+          "POSTCODE",
+          "LONGITUDE",
+          "LATITUDE",
+          "SOURCES_JSON",
+          "SOURCE_FILENAME",
+          "LICENSE_TERMS",
+          "ATTRIBUTION_TEXT"
+        ],
+        "rows": [
+          {
+            "PROVIDER_FEATURE_ID": "5880f901-39e0-4356-842e-3aad9ac52b4d",
+            "RELEASE": "2026-07-22.0",
+            "RELEASE_DT": "2026-07-22",
+            "HOUSE_NUMBER": "801",
+            "STREET": "Barton Boulevard",
+            "CITY": "Austin",
+            "POSTCODE": "78704",
+            "LONGITUDE": -97.76702733099995,
+            "LATITUDE": 30.26091486200005,
+            "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"NAD\",\"license\":null,\"record_id\":null,\"update_time\":null,\"confidence\":null,\"between\":null}]",
+            "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=addresses/type=address/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=source_specific/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000002/data_0.parquet",
+            "LICENSE_TERMS": "Source-specific Overture addresses terms; no single theme license. Preserve source attribution and terms, including NAD Access and Usage License and state/local source terms where present. Addresses are alpha and have no stable GERS ID.",
+            "ATTRIBUTION_TEXT": "Overture Maps Foundation"
+          },
+          {
+            "PROVIDER_FEATURE_ID": "59a045b5-e3f6-45a1-93a2-66e120d9cf43",
+            "RELEASE": "2026-07-22.0",
+            "RELEASE_DT": "2026-07-22",
+            "HOUSE_NUMBER": "801",
+            "STREET": "Barton Springs Road",
+            "CITY": "Austin",
+            "POSTCODE": "78704",
+            "LONGITUDE": -97.75255101099998,
+            "LATITUDE": 30.258916124000052,
+            "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"NAD\",\"license\":null,\"record_id\":null,\"update_time\":null,\"confidence\":null,\"between\":null}]",
+            "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=addresses/type=address/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=source_specific/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000002/data_0.parquet",
+            "LICENSE_TERMS": "Source-specific Overture addresses terms; no single theme license. Preserve source attribution and terms, including NAD Access and Usage License and state/local source terms where present. Addresses are alpha and have no stable GERS ID.",
+            "ATTRIBUTION_TEXT": "Overture Maps Foundation"
+          }
+        ]
+      },
+      "selected_address_point_provider_id": "59a045b5-e3f6-45a1-93a2-66e120d9cf43",
+      "selection_reason": "Exact house number, full street and postcode. The 801 Barton Boulevard row is retained as a rejected different-street candidate.",
+      "footprint_probe": {
+        "ok": true,
+        "query": "SELECT COUNT(*) AS BUILDING_ROWS, COUNT(DISTINCT PROVIDER_FEATURE_ID) AS BUILDING_IDS, COUNT_IF(ST_COVERS(GEOM_GEOG, ST_MAKEPOINT(-97.75255101099998, 30.258916124000052))) AS CONTAINING_POINT_ROWS, MIN(ST_DISTANCE(GEOM_GEOG, ST_MAKEPOINT(-97.75255101099998, 30.258916124000052))) AS MIN_DISTANCE_M FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT WHERE RELEASE = '2026-07-22.0' AND RELEASE_DT = '2026-07-22' AND H3_R7 IN ('87489e346ffffff', '87489e373ffffff', '87489e355ffffff', '87489e342ffffff', '87489e340ffffff', '87489e344ffffff', '87489e371ffffff') AND ST_DWITHIN(GEOM_GEOG, ST_MAKEPOINT(-97.75255101099998, 30.258916124000052), 150) LIMIT 1",
+        "row_count": 1,
+        "columns": [
+          "BUILDING_ROWS",
+          "BUILDING_IDS",
+          "CONTAINING_POINT_ROWS",
+          "MIN_DISTANCE_M"
+        ],
+        "rows": [
+          {
+            "BUILDING_ROWS": 32,
+            "BUILDING_IDS": 32,
+            "CONTAINING_POINT_ROWS": 1,
+            "MIN_DISTANCE_M": 0
+          }
+        ]
+      },
+      "containing_building_candidates": {
+        "ok": true,
+        "query": "SELECT PROVIDER_FEATURE_ID, RELEASE, RELEASE_DT, ST_ASGEOJSON(GEOM_GEOG) AS GEOMETRY_GEOJSON, SOURCES_JSON, SOURCE_FILENAME, LICENSE_TERMS, ATTRIBUTION_TEXT FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT WHERE RELEASE = '2026-07-22.0' AND RELEASE_DT = '2026-07-22' AND H3_R7 IN ('87489e346ffffff', '87489e373ffffff', '87489e355ffffff', '87489e342ffffff', '87489e340ffffff', '87489e344ffffff', '87489e371ffffff') AND ST_COVERS(GEOM_GEOG, ST_MAKEPOINT(-97.75255101099998, 30.258916124000052)) ORDER BY PROVIDER_FEATURE_ID LIMIT 10",
+        "row_count": 1,
+        "columns": [
+          "PROVIDER_FEATURE_ID",
+          "RELEASE",
+          "RELEASE_DT",
+          "GEOMETRY_GEOJSON",
+          "SOURCES_JSON",
+          "SOURCE_FILENAME",
+          "LICENSE_TERMS",
+          "ATTRIBUTION_TEXT"
+        ],
+        "rows": [
+          {
+            "PROVIDER_FEATURE_ID": "d83f42a6-4bf9-4594-b17b-8561b0dbf858",
+            "RELEASE": "2026-07-22.0",
+            "RELEASE_DT": "2026-07-22",
+            "GEOMETRY_GEOJSON": "{\n  \"coordinates\": [\n    [\n      [\n        -9.775264790000000e+01,\n        3.025909850000000e+01\n      ],\n      [\n        -9.775267750000000e+01,\n        3.025910800000000e+01\n      ],\n      [\n        -9.775280950000000e+01,\n        3.025885400000000e+01\n      ],\n      [\n        -9.775278849999999e+01,\n        3.025884320000000e+01\n      ],\n      [\n        -9.775289570000000e+01,\n        3.025868750000000e+01\n      ],\n      [\n        -9.775293340000000e+01,\n        3.025870680000000e+01\n      ],\n      [\n        -9.775310070000000e+01,\n        3.025846390000000e+01\n      ],\n      [\n        -9.775281990000001e+01,\n        3.025831970000000e+01\n      ],\n      [\n        -9.775252690000001e+01,\n        3.025870230000000e+01\n      ],\n      [\n        -9.775236200000001e+01,\n        3.025902110000000e+01\n      ],\n      [\n        -9.775264270000000e+01,\n        3.025911070000000e+01\n      ],\n      [\n        -9.775264790000000e+01,\n        3.025909850000000e+01\n      ]\n    ]\n  ],\n  \"type\": \"Polygon\"\n}",
+            "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"OpenStreetMap\",\"license\":\"ODbL-1.0\",\"record_id\":\"w516271471@2\",\"update_time\":\"2020-03-18T13:00:59.000Z\",\"confidence\":null,\"between\":null},{\"property\":\"/properties/height\",\"dataset\":\"USGS Lidar\",\"license\":null,\"record_id\":null,\"update_time\":null,\"confidence\":null,\"between\":null}]",
+            "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=buildings/type=building/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=odbl/state=US-TX/h3_r4=84489e3ffffffff/source_part=part-000040__US-TX__rg0136-0139/data_0.parquet",
+            "LICENSE_TERMS": "ODbL-1.0; attribution required to Overture Maps Foundation and source contributors including OpenStreetMap contributors where present; keep ODbL-derived outputs segregated from permissive-only outputs.",
+            "ATTRIBUTION_TEXT": "Overture Maps Foundation"
+          }
+        ]
+      },
+      "claim": "External source-address point containment is candidate evidence, not an accepted building identity, complete building set, proof of 2019 collateral scope, or a native Canon solve."
+    },
+    "tertiary": {
+      "address_query": {
+        "ok": true,
+        "query": "SELECT PROVIDER_FEATURE_ID, RELEASE, RELEASE_DT, CAST(GET_PATH(TRY_PARSE_JSON(ROW_PAYLOAD_JSON), 'number') AS VARCHAR) AS HOUSE_NUMBER, CAST(GET_PATH(TRY_PARSE_JSON(ROW_PAYLOAD_JSON), 'street') AS VARCHAR) AS STREET, CAST(GET_PATH(TRY_PARSE_JSON(ROW_PAYLOAD_JSON), 'postal_city') AS VARCHAR) AS CITY, CAST(GET_PATH(TRY_PARSE_JSON(ROW_PAYLOAD_JSON), 'postcode') AS VARCHAR) AS POSTCODE, ST_X(GEOM_GEOG) AS LONGITUDE, ST_Y(GEOM_GEOG) AS LATITUDE, SOURCES_JSON, SOURCE_FILENAME, LICENSE_TERMS, ATTRIBUTION_TEXT FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_ADDRESSES_HOT WHERE RELEASE = '2026-07-22.0' AND RELEASE_DT = '2026-07-22' AND H3_R7 IN ('872a94840ffffff', '872a94846ffffff', '872a94842ffffff', '872a94843ffffff', '872a94841ffffff', '872a94845ffffff', '872a94844ffffff') AND CAST(GET_PATH(TRY_PARSE_JSON(ROW_PAYLOAD_JSON), 'number') AS VARCHAR) = '401' AND UPPER(CAST(GET_PATH(TRY_PARSE_JSON(ROW_PAYLOAD_JSON), 'street') AS VARCHAR)) LIKE '%ELM%' ORDER BY PROVIDER_FEATURE_ID LIMIT 30",
+        "row_count": 1,
+        "columns": [
+          "PROVIDER_FEATURE_ID",
+          "RELEASE",
+          "RELEASE_DT",
+          "HOUSE_NUMBER",
+          "STREET",
+          "CITY",
+          "POSTCODE",
+          "LONGITUDE",
+          "LATITUDE",
+          "SOURCES_JSON",
+          "SOURCE_FILENAME",
+          "LICENSE_TERMS",
+          "ATTRIBUTION_TEXT"
+        ],
+        "rows": [
+          {
+            "PROVIDER_FEATURE_ID": "95364890-ad74-4a09-9268-67e5a479a685",
+            "RELEASE": "2026-07-22.0",
+            "RELEASE_DT": "2026-07-22",
+            "HOUSE_NUMBER": "401",
+            "STREET": "ELM Street",
+            "CITY": "CLYDE",
+            "POSTCODE": "43410",
+            "LONGITUDE": -82.96679674218665,
+            "LATITUDE": 41.29988143056333,
+            "SOURCES_JSON": "[{\"property\":\"\",\"dataset\":\"NAD\",\"license\":null,\"record_id\":null,\"update_time\":null,\"confidence\":null,\"between\":null}]",
+            "SOURCE_FILENAME": "geo/overture_maps/source=overture_maps/dataset=addresses/type=address/release=2026-07-22.0/release_dt=2026-07-22/country=US/license_class=source_specific/state=US-OH/h3_r4=842a949ffffffff/source_part=part-000014/data_0.parquet",
+            "LICENSE_TERMS": "Source-specific Overture addresses terms; no single theme license. Preserve source attribution and terms, including NAD Access and Usage License and state/local source terms where present. Addresses are alpha and have no stable GERS ID.",
+            "ATTRIBUTION_TEXT": "Overture Maps Foundation"
+          }
+        ]
+      },
+      "selected_address_point_provider_id": "95364890-ad74-4a09-9268-67e5a479a685",
+      "selection_reason": "House number, base street, city and postcode agree; missing East directional remains unresolved.",
+      "footprint_probe": {
+        "ok": true,
+        "query": "SELECT COUNT(*) AS BUILDING_ROWS, COUNT(DISTINCT PROVIDER_FEATURE_ID) AS BUILDING_IDS, COUNT_IF(ST_COVERS(GEOM_GEOG, ST_MAKEPOINT(-82.96679674218665, 41.29988143056333))) AS CONTAINING_POINT_ROWS, MIN(ST_DISTANCE(GEOM_GEOG, ST_MAKEPOINT(-82.96679674218665, 41.29988143056333))) AS MIN_DISTANCE_M FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT WHERE RELEASE = '2026-07-22.0' AND RELEASE_DT = '2026-07-22' AND H3_R7 IN ('872a94840ffffff', '872a94846ffffff', '872a94842ffffff', '872a94843ffffff', '872a94841ffffff', '872a94845ffffff', '872a94844ffffff') AND ST_DWITHIN(GEOM_GEOG, ST_MAKEPOINT(-82.96679674218665, 41.29988143056333), 150) LIMIT 1",
+        "row_count": 1,
+        "columns": [
+          "BUILDING_ROWS",
+          "BUILDING_IDS",
+          "CONTAINING_POINT_ROWS",
+          "MIN_DISTANCE_M"
+        ],
+        "rows": [
+          {
+            "BUILDING_ROWS": 3,
+            "BUILDING_IDS": 3,
+            "CONTAINING_POINT_ROWS": 0,
+            "MIN_DISTANCE_M": 54.6155373731571
+          }
+        ]
+      },
+      "containing_building_candidates": {
+        "rows": [],
+        "note": "No containing footprint found in the bounded source-point probe."
+      },
+      "claim": "External source-address point containment is candidate evidence, not an accepted building identity, complete building set, proof of 2019 collateral scope, or a native Canon solve."
+    }
+  }
+}

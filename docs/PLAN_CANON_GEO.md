@@ -1043,6 +1043,41 @@ reacquisition—re-geocode and retry—not a terminal failure. Other profiles ar
 exact composition semantics by v0; unsupported parcel, site, or address grains must not
 erase a supported parcel/building result.
 
+#### 16.1.1 Standalone address workflow and measured boundary
+
+Operator clarification, 2026-09-16: one address is a valid unit of work. A CMBS filing
+may supply sample addresses, but deal, loan, and deed identifiers are not prerequisites
+for asking which physical parcels/buildings an address identifies. Collateral membership
+is an additional claim requiring its own evidence. The six-field declaration and
+agreement rules above continue to govern admission; this clarification does not lower
+the hard-forced threshold or change E1–E5/G3 acceptance.
+
+The intended journey is one address record with jurisdiction and declared temporal scope
+through the existing question/profile/inventory/budget, external acquisition handoff,
+offline plan/run, and inspect surfaces. It returns supported answers at each requested
+grain, alternatives, source vintages, uncertainty, and the next missing evidence. A
+building-only profile remains available where parcel data is absent. Network acquisition
+stays outside Canon; implementations extend the shared project substrate and registered
+Geo executors without adding an eighth primary verb or a second scheduler.
+
+The [four-address BANK 2019-BNK18 baseline](../scripts/geo_measurements/README.md#2026-09-16-four-address-bank-2019-bnk18-baseline)
+freezes NYC, San Francisco, Austin, and Clyde, Ohio samples before lookup. External MCP
+geocoding matched all four addresses. NYC source rows linked one address to a parcel and
+building; manual input assembly enabled a byte-identical native address-evidence replay.
+The other three had nearby Overture footprints. A separate national address-point lookup
+yielded one containing building candidate each in San Francisco and Austin; neither
+Clyde point was inside a footprint. These external spatial candidates are not accepted
+identities or complete building sets. All Census geocode points were outside the
+footprints checked; an exact address-match label is not a rooftop-accuracy declaration.
+The 2026 source snapshots do not establish 2019 collateral boundaries. No complete native
+address-to-building run or independent truth score was demonstrated.
+
+Current implementation limits: `GeoAddressJurisdiction` in `src/geo/address.rs` supports
+NYC only; address acquisition/input assembly is not an integrated generic entry path.
+bd-3mft owns source-neutral address membership, and bd-33hh owns the standalone plan/run
+journey. bd-3uug and bd-kwmc retain ownership of reviewed publication and client export.
+The four cases are a diagnostic baseline, not a statistical benchmark or a gate closure.
+
 ### 16.2 Candidate enumeration
 
 Candidates are never proposed by a channel (§2: there is no proposer). The generic

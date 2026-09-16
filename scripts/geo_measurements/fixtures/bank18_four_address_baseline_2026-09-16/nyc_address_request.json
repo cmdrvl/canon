@@ -1,0 +1,63 @@
+{
+  "version": "canon_geo_address_parcel_evidence_request.v0",
+  "parse_request": {
+    "version": "canon_geo_address_parse_request.v0",
+    "input": "2207 Albemarle Road",
+    "jurisdiction": {
+      "kind": "nyc",
+      "borough": "brooklyn"
+    }
+  },
+  "address_set": {
+    "version": "canon_geo_pad_address_set.v0",
+    "jurisdiction": {
+      "kind": "nyc",
+      "borough": "brooklyn"
+    },
+    "members": [
+      {
+        "member_id": "nyc.pad:26B:397690",
+        "lot_id": "3051090025",
+        "house": {
+          "kind": "range",
+          "start": 2207,
+          "end": 2231,
+          "parity": "odd",
+          "operator": "dash",
+          "asserted_numbers": []
+        },
+        "street": {
+          "name": [
+            {
+              "kind": "literal",
+              "value": "albemarle"
+            }
+          ],
+          "suffix": "road"
+        }
+      }
+    ]
+  },
+  "bridge_request": {
+    "version": "canon_geo_address_parcel_bridge_request.v0",
+    "observation_id": "obs.bank18.address.pad",
+    "contract_id": "rho.bank18.address.pad",
+    "query_as_of": {
+      "utc_day": "2026-09-16",
+      "semantic_id": "bank18.walkthrough.as_of",
+      "unit": "utc_day",
+      "origin": "caller_declared"
+    },
+    "member_source_records": [
+      {
+        "member_id": "nyc.pad:26B:397690",
+        "normalized_member_blake3": "3a8a5af993f391bfc06a53b872df546835de5ce6df8c7b7b1ecfd6bd5c347364",
+        "source_record": {
+          "source_record_id": "SOURCE.NYC_DCP_PAD_ADDRESS_HOT:26B:397690",
+          "source_vintage": "26B/2026-05-01",
+          "record_blake3": "3f35cf9e267892b130f88cc3bb68b932ca3dbf8a3d39ed48572e649b8dff6f6d"
+        }
+      }
+    ]
+  }
+}

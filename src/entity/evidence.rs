@@ -75,6 +75,31 @@ pub struct FrequencyWeightedStringSimilaritySupportRequest<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnchorMatchSupportRequest<'a> {
+    pub namespace: &'a str,
+    pub operator_id: &'a str,
+    pub reason_code: &'a str,
+    pub field: &'a str,
+    pub left_values: &'a [&'a str],
+    pub right_values: &'a [&'a str],
+    pub score_units: ScoreUnits,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IsinCusipArithmeticSupportRequest<'a> {
+    pub namespace: &'a str,
+    pub operator_id: &'a str,
+    pub reason_code: &'a str,
+    pub cusip_field: &'a str,
+    pub isin_field: &'a str,
+    pub left_cusips: &'a [&'a str],
+    pub left_isins: &'a [&'a str],
+    pub right_cusips: &'a [&'a str],
+    pub right_isins: &'a [&'a str],
+    pub score_units: ScoreUnits,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NumericWithinToleranceSupportRequest<'a> {
     pub namespace: &'a str,
     pub operator_id: &'a str,
@@ -318,6 +343,66 @@ pub fn validate_value_frequency_strategy_for_scoring(
         .map_err(value_frequency_refusal)
 }
 
+pub fn anchor_match_support_hit(request: AnchorMatchSupportRequest<'_>) -> Option<EdgeEvidenceHit> {
+    let left = non_empty_value_set(request.left_values);
+    let right = non_empty_value_set(request.right_values);
+    if left.is_empty() || left != right {
+        return None;
+    }
+    let values = left.into_iter().map(str::to_string).collect::<Vec<_>>();
+
+    Some(EdgeEvidenceHit::new(
+        ScoreLane::Support,
+        request.namespace,
+        request.operator_id,
+        request.reason_code,
+        request.score_units,
+        false,
+        format!(
+            "anchor field {} matched values={} score_units={}",
+            request.field,
+            list_or_none(&values),
+            request.score_units.as_u32()
+        ),
+    ))
+}
+
+pub fn isin_cusip_arithmetic_support_hit(
+    request: IsinCusipArithmeticSupportRequest<'_>,
+) -> Option<EdgeEvidenceHit> {
+    let left_cusips = valid_cusip_set(request.left_cusips);
+    let right_cusips = valid_cusip_set(request.right_cusips);
+    let left_embedded = valid_us_ca_isin_embedded_cusip_set(request.left_isins);
+    let right_embedded = valid_us_ca_isin_embedded_cusip_set(request.right_isins);
+
+    let mut matched = left_cusips
+        .intersection(&right_embedded)
+        .chain(right_cusips.intersection(&left_embedded))
+        .map(|value| (*value).to_string())
+        .collect::<Vec<_>>();
+    matched.sort();
+    matched.dedup();
+    if matched.is_empty() {
+        return None;
+    }
+
+    Some(EdgeEvidenceHit::new(
+        ScoreLane::Support,
+        request.namespace,
+        request.operator_id,
+        request.reason_code,
+        request.score_units,
+        false,
+        format!(
+            "isin/cusip arithmetic matched cusip_field={} isin_field={} embedded_cusips={} score_units={}",
+            request.cusip_field,
+            request.isin_field,
+            matched.join("|"),
+            request.score_units.as_u32()
+        ),
+    ))
+}
+
 pub fn numeric_within_tolerance_support_hit(
     request: NumericWithinToleranceSupportRequest<'_>,
 ) -> Result<Option<EdgeEvidenceHit>, StructuredSupportError> {
@@ -528,6 +613,115 @@ fn token_set<'a>(tokens: &'a [&'a str]) -> BTreeSet<&'a str> {
         .map(|token| token.trim())
         .filter(|token| !token.is_empty())
         .collect()
+}
+
+fn non_empty_value_set<'a>(values: &'a [&'a str]) -> BTreeSet<&'a str> {
+    values
+        .iter()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .collect()
+}
+
+fn list_or_none(values: &[String]) -> String {
+    if values.is_empty() {
+        "none".to_string()
+    } else {
+        values.join("|")
+    }
+}
+
+fn valid_cusip_set(values: &[&str]) -> BTreeSet<String> {
+    values
+        .iter()
+        .filter_map(|value| valid_cusip(value).map(str::to_string))
+        .collect()
+}
+
+fn valid_us_ca_isin_embedded_cusip_set(values: &[&str]) -> BTreeSet<String> {
+    values
+        .iter()
+        .filter_map(|value| us_ca_isin_embedded_cusip(value).map(str::to_string))
+        .collect()
+}
+
+fn valid_cusip(value: &str) -> Option<&str> {
+    let value = value.trim();
+    let bytes = value.as_bytes();
+    if bytes.len() != 9 || !bytes[8].is_ascii_digit() {
+        return None;
+    }
+    let expected = cusip_check_digit(&bytes[..8])?;
+    (bytes[8] - b'0' == expected).then_some(value)
+}
+
+fn us_ca_isin_embedded_cusip(value: &str) -> Option<&str> {
+    let value = value.trim();
+    let bytes = value.as_bytes();
+    if bytes.len() != 12
+        || !matches!(&bytes[..2], b"US" | b"CA")
+        || !bytes[11].is_ascii_digit()
+        || !bytes[2..11].iter().all(u8::is_ascii_alphanumeric)
+        || !valid_isin(value)
+    {
+        return None;
+    }
+    let cusip = &value[2..11];
+    valid_cusip(cusip)
+}
+
+fn cusip_check_digit(body: &[u8]) -> Option<u8> {
+    if body.len() != 8 {
+        return None;
+    }
+    let mut sum = 0u32;
+    for (index, byte) in body.iter().enumerate() {
+        let mut value = cusip_char_value(*byte)?;
+        if index % 2 == 1 {
+            value *= 2;
+        }
+        sum += value / 10 + value % 10;
+    }
+    Some(((10 - (sum % 10)) % 10) as u8)
+}
+
+fn cusip_char_value(byte: u8) -> Option<u32> {
+    match byte {
+        b'0'..=b'9' => Some(u32::from(byte - b'0')),
+        b'A'..=b'Z' => Some(u32::from(byte - b'A') + 10),
+        b'*' => Some(36),
+        b'@' => Some(37),
+        b'#' => Some(38),
+        _ => None,
+    }
+}
+
+fn valid_isin(value: &str) -> bool {
+    let mut digits = Vec::new();
+    for byte in value.bytes() {
+        match byte {
+            b'0'..=b'9' => digits.push(byte - b'0'),
+            b'A'..=b'Z' => {
+                let expanded = u32::from(byte - b'A') + 10;
+                digits.push(u8::try_from(expanded / 10).expect("letter expansion fits"));
+                digits.push(u8::try_from(expanded % 10).expect("letter expansion fits"));
+            }
+            _ => return false,
+        }
+    }
+    luhn_digits_valid(&digits)
+}
+
+fn luhn_digits_valid(digits: &[u8]) -> bool {
+    let mut sum = 0u32;
+    for (index, digit) in digits.iter().rev().enumerate() {
+        let mut value = u32::from(*digit);
+        if index % 2 == 1 {
+            value *= 2;
+        }
+        sum += value / 10 + value % 10;
+    }
+    sum.is_multiple_of(10)
 }
 
 fn exactly_two_tokens(value: &str) -> Option<[&str; 2]> {

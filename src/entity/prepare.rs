@@ -177,7 +177,7 @@ pub struct PreparedSurface {
     pub field: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct PreparedAnchor {
     pub namespace: String,
     pub value: String,
@@ -195,6 +195,8 @@ pub struct PreparedSurfaceRecord {
     pub raw_variants: Vec<String>,
     pub alias_surfaces: Vec<String>,
     pub mention_surfaces: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub anchors: Vec<PreparedAnchor>,
     pub row_count: u64,
     pub deal_count: u64,
     pub provenance_samples: Vec<PreparedSurfaceProvenanceSample>,
@@ -1005,6 +1007,7 @@ struct PreparedSurfaceAccumulator {
     raw_variants: BTreeSet<String>,
     alias_surfaces: BTreeSet<String>,
     mention_surfaces: BTreeSet<String>,
+    anchors: BTreeSet<PreparedAnchor>,
     deal_ids: BTreeSet<String>,
     provenance_samples: Vec<PreparedSurfaceProvenanceSample>,
     row_count: u64,
@@ -1023,6 +1026,7 @@ impl PreparedSurfaceAccumulator {
             raw_variants: BTreeSet::new(),
             alias_surfaces: BTreeSet::new(),
             mention_surfaces: BTreeSet::new(),
+            anchors: BTreeSet::new(),
             deal_ids: BTreeSet::new(),
             provenance_samples: Vec::new(),
             row_count: 0,
@@ -1045,6 +1049,7 @@ impl PreparedSurfaceAccumulator {
                 .iter()
                 .map(|surface| surface.value.clone()),
         );
+        self.anchors.extend(observation.anchors.iter().cloned());
         if let Some(deal_id) = observation.provenance.get("deal_id") {
             self.deal_ids.insert(deal_id.clone());
         } else if let Some(Value::String(deal_id)) = observation.context.get("deal_id") {
@@ -1102,6 +1107,7 @@ impl PreparedSurfaceAccumulator {
             raw_variants,
             alias_surfaces: self.alias_surfaces.into_iter().collect(),
             mention_surfaces: self.mention_surfaces.into_iter().collect(),
+            anchors: self.anchors.into_iter().collect(),
             row_count: self.row_count,
             deal_count: u64::try_from(self.deal_ids.len()).expect("deal count fits u64"),
             provenance_samples: self.provenance_samples,

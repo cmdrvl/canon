@@ -39,6 +39,78 @@ IDs were read back from Snowflake query history after execution.
 | Appendix D same-cell file | `01c6b1c0-0821-83a1-006c-c7030888b8de` | 3,527 ms | BX 287/4/0; BK 2,332/22/0 |
 | Appendix D complete-reach file | `01c6b1c0-0821-784b-006c-c7030888c3c6` | 2,332 ms | BX 290/1/0; BK 2,352/2/0 |
 
+## 2026-09-16 four-address BANK 2019-BNK18 baseline
+
+`bd-1o6d` measures the standalone-address entry path before implementation changes.
+The [retained measurement](fixtures/bank18_four_address_baseline_2026-09-16/measurement.json)
+records source rows, SQL, MCP results, candidate metadata, source limitations, and the
+exact code/binary used. Selection is bound to CIK `1774962` and filing
+`0001539497-19-000868`; the property view counted 233 property rows across 56 loans.
+The four single-address cases were fixed before geocoding. Market labels are practical
+walkthrough strata, not formal classifications.
+
+Open the [four-panel footprint view](fixtures/bank18_four_address_baseline_2026-09-16/footprints.svg)
+to compare the retained source polygons with Census and source-address points. It uses
+approximate local metric display coordinates, separate panel scales, and no imagery.
+
+| Sample | Loan | Address | Observed baseline |
+|---|---|---|---|
+| NYC | 13 | 2207 Albemarle Road, Brooklyn, NY 11226 | PAD 26B links BBL `3051090025` and BIN `3117371`; the August 9 footprint exists; native address evidence replays. |
+| Major city | 1 | 350 Bush Street, San Francisco, CA 94104 | Census address match; 74 nearby footprints. A separate OpenAddresses point falls inside one Overture building candidate. |
+| Secondary market | 11 | 801 Barton Springs Road, Austin, TX 78704 | Census address match; 23 nearby footprints. A separate NAD address point falls inside one Overture building candidate. |
+| Tertiary market | 19 | 401 East Elm Street, Clyde, OH 43410 | Census returns `401 ELM ST`; directional change retained. Four nearby footprints; neither Census nor NAD address point falls inside a building. |
+
+The non-NYC discovery queries use Overture `2026-07-22.0`, a 150-metre radius from the
+returned Census point, and an H3 r7 home cell plus k1 halo. These are availability probes,
+not candidate-reach proofs. All three points were outside every footprint returned by those
+queries. Brooklyn's point was 57.82 metres from the source-linked NYC building polygon.
+The MCP's `exact` address-match label supplies no rooftop-accuracy declaration.
+
+The national address-point follow-up uses the same Overture release and cell bounds.
+The San Francisco OpenAddresses point intersects building
+`fc9feb88-2f14-47ed-bfaf-040d077d3182`; Austin's NAD point intersects
+`d83f42a6-4bf9-4594-b17b-8561b0dbf858`. These are spatial candidates, not accepted
+identities or complete building sets. Austin also returned `801 Barton Boulevard`,
+which was rejected because it is a different street. Clyde's NAD point also omits
+`East` and is 54.62 metres from the nearest footprint in that probe. Source-point
+150-metre queries return 76/32/3 footprints, distinct from the Census-centered counts.
+
+The NYC request was **manually assembled** from the retained PAD row, preserving its
+2207–2231 odd-number range. Replay the actual existing leaf with:
+
+```bash
+target/debug/canon geo materialize-address-evidence \
+  --request scripts/geo_measurements/fixtures/bank18_four_address_baseline_2026-09-16/nyc_address_request.json
+```
+
+Two fresh processes exited 0 and emitted byte-identical output, retained as
+[`nyc_address_bundle.json`](fixtures/bank18_four_address_baseline_2026-09-16/nyc_address_bundle.json).
+That output is an address-membership observation for a parcel, not a solved building set
+or registry promotion. The building link came from external source rows. Non-NYC address
+membership was not executed because the native jurisdiction contract currently admits
+NYC only. No complete native address-to-building run was demonstrated.
+
+Proof class is observed snapshot plus retained offline replay, not live acceptance.
+The MCP omits Census vintage/source hashes; the Overture manifest view returned no rows;
+the Annex address-resolution view returned no rows for the four filing/address filters.
+The filing-bound property issuance rows remain the sample provenance. A correlated H3
+warehouse query was canceled, while literal release/cell queries succeeded. Truncated
+SF/Austin neighborhood geometry was not used: their projected feature metadata was paged
+to completion. Full geometry is retained for NYC, Clyde, and the two source-address-point
+containment candidates. Overture building records retain their separate ODbL attribution;
+address records retain source-specific terms and are not stable GERS identities. The
+2019 filing supplies addresses; 2026 geometry does not establish historical collateral
+boundaries. E4, E5, and G3 acceptance are unchanged.
+
+Implementation follow-up: bd-3mft (source-neutral address membership) then bd-33hh
+(address-first acquisition handoff, plan/run, and inspect). This baseline measures those
+features; it does not close them.
+
+Existing footprints are available around all four addresses, so the address-first path can
+proceed with these sources. Imagery may help review Clyde's unresolved association or
+whether a containing polygon represents the whole site. No imagery or model-derived outline
+was tested in this baseline; that extension remains under bd-3pkw and bd-1uhl.
+
 ## 2026-09-02 PAD 26B address residual characterization
 
 `address_parse_residual_pad26b_characterization.sql` characterizes the full

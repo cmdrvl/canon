@@ -353,6 +353,7 @@ fn surface(id: &str, views: &[(&str, &str)]) -> PreparedSurfaceRecord {
         raw_variants: vec!["North Harbor Labs".to_string()],
         alias_surfaces: Vec::new(),
         mention_surfaces: Vec::new(),
+        anchors: Vec::new(),
         row_count: 1,
         deal_count: 0,
         provenance_samples: Vec::new(),

@@ -14,6 +14,10 @@ use crate::{
         CANON_ENTITY_RUN_VERSION_V1, CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactHeader,
         EntityArtifactMetadata, EntityArtifactReference, EntityArtifactReferenceV1,
         EntityArtifactStageV1, EntityDeterministicSummary, EntityStrategyReference,
+        anti_merge::{
+            AnchorConflictRequest, AttributeConflictComparison, AttributeConflictRequest,
+            BasisPointScale, StructuredAntiMergeError, anchor_conflict_hit, attribute_conflict_hit,
+        },
         block::{
             BlockCandidateBudgetConfig, BlockCandidateBudgetObservation,
             BlockCandidateGenerationRequest, BlockCandidateHit, BlockCandidateOperator,
@@ -44,10 +48,12 @@ use crate::{
         },
         error::EntityRefusalKind,
         evidence::{
-            DateTransposedDigitSupportRequest, ExactViewSupportRequest,
-            StringSimilaritySupportRequest, StructuredSupportError, TwoTokenReversalSupportRequest,
+            AnchorMatchSupportRequest, DateTransposedDigitSupportRequest, ExactViewSupportRequest,
+            IsinCusipArithmeticSupportRequest, StringSimilaritySupportRequest,
+            StructuredSupportError, TwoTokenReversalSupportRequest, anchor_match_support_hit,
             date_transposed_digit_support_hit, exact_view_support_hit,
-            string_similarity_support_hit, two_token_reversal_support_hit,
+            isin_cusip_arithmetic_support_hit, string_similarity_support_hit,
+            two_token_reversal_support_hit,
         },
         evidence_ir::{CANON_EVIDENCE_VERSION, canonical_bundle_bytes},
         graph::{SignedEvidenceGraphInput, SurfaceIncumbentId, build_signed_evidence_graph},
@@ -3619,7 +3625,7 @@ impl<'a> EdgeSupportScoringContext<'a> {
         relation_namespace: &'a str,
         surfaces: &'a [PreparedSurfaceRecord],
     ) -> Result<Self, Refusal> {
-        validate_support_operator_params(profile)?;
+        validate_edge_operator_params(profile)?;
         let surface_lookup = surfaces
             .iter()
             .map(|surface| (surface.surface_id.as_str(), surface))
@@ -3668,7 +3674,8 @@ fn edge_record_for_candidate(
     candidate: &crate::entity::block::BlockCandidateRecord,
     context: &EdgeSupportScoringContext<'_>,
 ) -> Result<EdgeEvidenceRecord, Refusal> {
-    let hits = support_hits_for_candidate(candidate, context)?;
+    let mut hits = support_hits_for_candidate(candidate, context)?;
+    hits.extend(cannot_link_hits_for_candidate(candidate, context)?);
     if hits.is_empty() {
         relation_hint_edge(
             candidate,
@@ -3695,6 +3702,10 @@ fn support_hits_for_candidate(
     for spec in &context.profile.evidence.support {
         let hit = match spec.op.as_str() {
             "exact_view" => exact_view_support_for_spec(spec, left, right, context)?,
+            "anchor_match" => anchor_match_support_for_spec(spec, left, right, context)?,
+            "isin_cusip_arithmetic" => {
+                isin_cusip_arithmetic_support_for_spec(spec, left, right, context)?
+            }
             "string_similarity" => string_similarity_support_for_spec(spec, left, right, context)?,
             "tfidf_cosine" => tfidf_support_for_spec(spec, candidate, context)?,
             "date_transposed_digits" => {
@@ -3703,6 +3714,28 @@ fn support_hits_for_candidate(
             "two_token_reversal" => {
                 two_token_reversal_support_for_spec(spec, left, right, context)?
             }
+            _ => None,
+        };
+        if let Some(hit) = hit {
+            hits.push(hit);
+        }
+    }
+
+    Ok(hits)
+}
+
+fn cannot_link_hits_for_candidate(
+    candidate: &crate::entity::block::BlockCandidateRecord,
+    context: &EdgeSupportScoringContext<'_>,
+) -> Result<Vec<EdgeEvidenceHit>, Refusal> {
+    let left = candidate_surface(&candidate.left_surface_id, context)?;
+    let right = candidate_surface(&candidate.right_surface_id, context)?;
+    let mut hits = Vec::new();
+
+    for spec in &context.profile.evidence.cannot_link {
+        let hit = match spec.op.as_str() {
+            "anchor_conflict" => anchor_conflict_for_spec(spec, left, right, context)?,
+            "attribute_conflict" => attribute_conflict_for_spec(spec, left, right, context)?,
             _ => None,
         };
         if let Some(hit) = hit {
@@ -3755,6 +3788,128 @@ fn exact_view_support_for_spec(
         right_value: support_view_value(right, view_name, "exact_view")?,
         score_units,
     }))
+}
+
+fn anchor_match_support_for_spec(
+    spec: &EntityOperatorSpec,
+    left: &PreparedSurfaceRecord,
+    right: &PreparedSurfaceRecord,
+    context: &EdgeSupportScoringContext<'_>,
+) -> Result<Option<EdgeEvidenceHit>, Refusal> {
+    let score_units =
+        optional_score_units_param(spec, "score_units", "score")?.unwrap_or(ScoreUnits::MAX);
+    if score_units == ScoreUnits::ZERO {
+        return Ok(None);
+    }
+    let field = required_field_param(spec, "anchor_match")?;
+    let left_values = anchor_values(left, field);
+    let right_values = anchor_values(right, field);
+    Ok(anchor_match_support_hit(AnchorMatchSupportRequest {
+        namespace: context.support_namespace,
+        operator_id: &field_operator_id(spec, field),
+        reason_code: "anchor_match_support",
+        field,
+        left_values: &left_values,
+        right_values: &right_values,
+        score_units,
+    }))
+}
+
+fn isin_cusip_arithmetic_support_for_spec(
+    spec: &EntityOperatorSpec,
+    left: &PreparedSurfaceRecord,
+    right: &PreparedSurfaceRecord,
+    context: &EdgeSupportScoringContext<'_>,
+) -> Result<Option<EdgeEvidenceHit>, Refusal> {
+    let score_units =
+        optional_score_units_param(spec, "score_units", "score")?.unwrap_or(ScoreUnits::MAX);
+    if score_units == ScoreUnits::ZERO {
+        return Ok(None);
+    }
+    let cusip_field = optional_non_empty_param(spec, "cusip_field")?.unwrap_or("cusip");
+    let isin_field = optional_non_empty_param(spec, "isin_field")?.unwrap_or("isin");
+    let left_cusips = surface_field_values(left, cusip_field);
+    let left_isins = surface_field_values(left, isin_field);
+    let right_cusips = surface_field_values(right, cusip_field);
+    let right_isins = surface_field_values(right, isin_field);
+    Ok(isin_cusip_arithmetic_support_hit(
+        IsinCusipArithmeticSupportRequest {
+            namespace: context.support_namespace,
+            operator_id: &format!("{}:{}:{}", spec.op, cusip_field, isin_field),
+            reason_code: "isin_cusip_arithmetic_support",
+            cusip_field,
+            isin_field,
+            left_cusips: &left_cusips,
+            left_isins: &left_isins,
+            right_cusips: &right_cusips,
+            right_isins: &right_isins,
+            score_units,
+        },
+    ))
+}
+
+fn anchor_conflict_for_spec(
+    spec: &EntityOperatorSpec,
+    left: &PreparedSurfaceRecord,
+    right: &PreparedSurfaceRecord,
+    context: &EdgeSupportScoringContext<'_>,
+) -> Result<Option<EdgeEvidenceHit>, Refusal> {
+    let score_units =
+        optional_score_units_param(spec, "score_units", "score")?.unwrap_or(ScoreUnits::MAX);
+    if score_units == ScoreUnits::ZERO {
+        return Ok(None);
+    }
+    let field = required_field_param(spec, "anchor_conflict")?;
+    let left_values = anchor_values(left, field);
+    let right_values = anchor_values(right, field);
+    Ok(anchor_conflict_hit(AnchorConflictRequest {
+        namespace: context.profile.patch_namespaces.distinct.as_str(),
+        operator_id: &field_operator_id(spec, field),
+        reason_code: "anchor_conflict",
+        field,
+        left_values: &left_values,
+        right_values: &right_values,
+        score_units,
+    }))
+}
+
+fn attribute_conflict_for_spec(
+    spec: &EntityOperatorSpec,
+    left: &PreparedSurfaceRecord,
+    right: &PreparedSurfaceRecord,
+    context: &EdgeSupportScoringContext<'_>,
+) -> Result<Option<EdgeEvidenceHit>, Refusal> {
+    let score_units =
+        optional_score_units_param(spec, "score_units", "score")?.unwrap_or(ScoreUnits::MAX);
+    if score_units == ScoreUnits::ZERO {
+        return Ok(None);
+    }
+    let field = required_field_param(spec, "attribute_conflict")?;
+    let comparison = attribute_conflict_comparison(spec)?;
+    let tolerance_bps = optional_u32_param(spec, "tolerance_bps")?.unwrap_or_default();
+    let left_values = surface_field_values(left, field);
+    let right_values = surface_field_values(right, field);
+    let operator_id = field_operator_id(spec, field);
+    for left_value in &left_values {
+        for right_value in &right_values {
+            if let Some(hit) = attribute_conflict_hit(AttributeConflictRequest {
+                namespace: context.profile.patch_namespaces.distinct.as_str(),
+                operator_id: &operator_id,
+                reason_code: "attribute_conflict",
+                field,
+                left_value,
+                right_value,
+                comparison,
+                tolerance_bps,
+                score_units,
+            })
+            .map_err(|error| structured_anti_merge_refusal("attribute_conflict", error))?
+            {
+                return Ok(Some(hit));
+            }
+        }
+    }
+    Ok(None)
 }
 
 fn string_similarity_support_for_spec(
@@ -3865,9 +4020,21 @@ fn two_token_reversal_support_for_spec(
     ))
 }
 
-fn validate_support_operator_params(profile: &EntityProfileDocument) -> Result<(), Refusal> {
+fn validate_edge_operator_params(profile: &EntityProfileDocument) -> Result<(), Refusal> {
     for spec in &profile.evidence.support {
         match spec.op.as_str() {
+            "anchor_match" => {
+                if optional_score_units_param(spec, "score_units", "score")?
+                    != Some(ScoreUnits::ZERO)
+                {
+                    required_field_param(spec, "anchor_match")?;
+                }
+            }
+            "isin_cusip_arithmetic" => {
+                optional_score_units_param(spec, "score_units", "score")?;
+                optional_non_empty_param(spec, "cusip_field")?;
+                optional_non_empty_param(spec, "isin_field")?;
+            }
             "string_similarity" => {
                 if positive_support_threshold(spec)?.is_some() {
                     required_support_view_name(spec, "string_similarity")?;
@@ -3897,6 +4064,25 @@ fn validate_support_operator_params(profile: &EntityProfileDocument) -> Result<(
                     != Some(ScoreUnits::ZERO) =>
             {
                 required_support_view_name(spec, "two_token_reversal")?;
+            }
+            _ => {}
+        }
+    }
+    for spec in &profile.evidence.cannot_link {
+        match spec.op.as_str() {
+            "anchor_conflict"
+                if optional_score_units_param(spec, "score_units", "score")?
+                    != Some(ScoreUnits::ZERO) =>
+            {
+                required_field_param(spec, "anchor_conflict")?;
+            }
+            "attribute_conflict"
+                if optional_score_units_param(spec, "score_units", "score")?
+                    != Some(ScoreUnits::ZERO) =>
+            {
+                required_field_param(spec, "attribute_conflict")?;
+                optional_u32_param(spec, "tolerance_bps")?;
+                attribute_conflict_comparison(spec)?;
             }
             _ => {}
         }
@@ -3991,6 +4177,91 @@ fn support_view_value<'a>(
                 }),
             )
         })
+}
+
+fn required_field_param<'a>(
+    spec: &'a EntityOperatorSpec,
+    operator: &'static str,
+) -> Result<&'a str, Refusal> {
+    if let Some(field) = optional_non_empty_param(spec, "field")? {
+        return Ok(field);
+    }
+    if let Some(anchor) = optional_non_empty_param(spec, "anchor")? {
+        return Ok(anchor);
+    }
+    if let Some(view) = spec
+        .view
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(view);
+    }
+    Err(edge_support_config_refusal(
+        "Profile-declared evidence operator requires a field",
+        operator,
+        "field",
+        json!({ "operator": operator }),
+    ))
+}
+
+fn optional_non_empty_param<'a>(
+    spec: &'a EntityOperatorSpec,
+    field: &'static str,
+) -> Result<Option<&'a str>, Refusal> {
+    let Some(value) = spec.params.get(field) else {
+        return Ok(None);
+    };
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(edge_support_config_refusal(
+            "Profile-declared evidence parameter must be non-empty",
+            &spec.op,
+            field,
+            json!({ "value": spec.params.get(field) }),
+        ));
+    }
+    Ok(Some(value))
+}
+
+fn field_operator_id(spec: &EntityOperatorSpec, field: &str) -> String {
+    format!("{}:{field}", spec.op)
+}
+
+fn anchor_values<'a>(surface: &'a PreparedSurfaceRecord, field: &str) -> Vec<&'a str> {
+    unique_values(
+        surface
+            .anchors
+            .iter()
+            .filter(move |anchor| anchor.namespace == field || anchor.field == field)
+            .map(|anchor| anchor.value.as_str()),
+    )
+}
+
+fn surface_field_values<'a>(surface: &'a PreparedSurfaceRecord, field: &str) -> Vec<&'a str> {
+    unique_values(
+        surface
+            .normalized_views
+            .get(field)
+            .map(|view| view.value.as_str())
+            .into_iter()
+            .chain(
+                surface
+                    .anchors
+                    .iter()
+                    .filter(move |anchor| anchor.namespace == field || anchor.field == field)
+                    .map(|anchor| anchor.value.as_str()),
+            ),
+    )
+}
+
+fn unique_values<'a>(values: impl Iterator<Item = &'a str>) -> Vec<&'a str> {
+    values
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 fn positive_support_threshold(spec: &EntityOperatorSpec) -> Result<Option<ScoreUnits>, Refusal> {
@@ -4114,6 +4385,70 @@ fn positive_usize_param(
     Ok(parsed)
 }
 
+fn optional_u32_param(
+    spec: &EntityOperatorSpec,
+    field: &'static str,
+) -> Result<Option<u32>, Refusal> {
+    let Some(value) = spec.params.get(field) else {
+        return Ok(None);
+    };
+    let parsed = value.trim().parse::<u32>().map_err(|_| {
+        edge_support_config_refusal(
+            "Profile-declared evidence parameter must be an unsigned integer",
+            &spec.op,
+            field,
+            json!({ "value": value }),
+        )
+    })?;
+    Ok(Some(parsed))
+}
+
+fn attribute_conflict_comparison(
+    spec: &EntityOperatorSpec,
+) -> Result<AttributeConflictComparison, Refusal> {
+    let comparison = spec
+        .params
+        .get("comparison")
+        .or_else(|| spec.params.get("kind"))
+        .map(|value| value.trim())
+        .unwrap_or(if spec.params.contains_key("tolerance_bps") {
+            "decimal_bps"
+        } else {
+            "date"
+        });
+    match comparison {
+        "date" => Ok(AttributeConflictComparison::Date),
+        "decimal_bps" | "bps" | "rate_bps" => Ok(AttributeConflictComparison::DecimalBasisPoints {
+            scale: attribute_bps_scale(spec)?,
+        }),
+        _ => Err(edge_support_config_refusal(
+            "Profile-declared attribute conflict comparison is unsupported",
+            &spec.op,
+            "comparison",
+            json!({ "value": comparison }),
+        )),
+    }
+}
+
+fn attribute_bps_scale(spec: &EntityOperatorSpec) -> Result<BasisPointScale, Refusal> {
+    let scale = spec
+        .params
+        .get("rate_scale")
+        .or_else(|| spec.params.get("scale"))
+        .map(|value| value.trim())
+        .unwrap_or("percent");
+    match scale {
+        "percent" | "percentage" => Ok(BasisPointScale::Percent),
+        "unit" | "decimal" => Ok(BasisPointScale::Unit),
+        _ => Err(edge_support_config_refusal(
+            "Profile-declared basis-point scale is unsupported",
+            &spec.op,
+            "rate_scale",
+            json!({ "value": scale }),
+        )),
+    }
+}
+
 fn required_similarity_metric(spec: &EntityOperatorSpec) -> Result<SimilarityMetric, Refusal> {
     let metric = spec.params.get("metric").ok_or_else(|| {
         edge_support_config_refusal(
@@ -4171,6 +4506,18 @@ fn structured_edge_support_refusal(
 ) -> Refusal {
     edge_support_config_refusal(
         "Profile-declared structured support evidence is malformed",
+        operator,
+        error.field(),
+        json!({ "reason": error.reason() }),
+    )
+}
+
+fn structured_anti_merge_refusal(
+    operator: &'static str,
+    error: StructuredAntiMergeError,
+) -> Refusal {
+    edge_support_config_refusal(
+        "Profile-declared structured cannot-link evidence is malformed",
         operator,
         error.field(),
         json!({ "reason": error.reason() }),

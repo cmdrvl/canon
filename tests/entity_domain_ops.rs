@@ -29,13 +29,25 @@ fn configured_domain_ops_emit_distinct_support_and_reject_runtime_negatives() {
     let rows = fixture.write_rows(
         "domain_ops.csv",
         &[
-            ("row-1", "SMITH JOHN", "SMITH JOHN", "2031-01-12"),
-            ("row-2", "JOHN SMITH", "JOHN SMITH", "2031-01-21"),
-            (
+            domain_row("row-1", "SMITH JOHN", "SMITH JOHN", "2031-01-12")
+                .with_identifiers("037833100", "US0378331005", "BBG000B9XRY4")
+                .with_attributes("2035-06-30", "5.000"),
+            domain_row("row-2", "JOHN SMITH", "JOHN SMITH", "2031-01-21")
+                .with_identifiers("037833100", "US0378331005", "BBG000B9XRY4")
+                .with_attributes("2035-06-30", "5.010"),
+            domain_row(
                 "row-3",
                 "JOHN SMITH ROBERT",
                 "JOHN SMITH ROBERT",
                 "2031-02-12",
+            )
+            .with_identifiers("594918104", "US5949181044", "BBG000DIFFER")
+            .with_attributes("2035-07-30", "5.011"),
+            domain_row(
+                "row-4",
+                "JOHN SMITH MISSING",
+                "JOHN SMITH MISSING",
+                "2031-03-12",
             ),
         ],
     );
@@ -76,11 +88,51 @@ fn configured_domain_ops_emit_distinct_support_and_reject_runtime_negatives() {
     assert_eq!(reversal_hit.reason_code, "two_token_reversal_support");
     assert_eq!(reversal_hit.score_units.as_u32(), 7_500);
 
+    let anchor_hit = support_hit(positive, "anchor_match:figi").expect("FIGI anchor agreement");
+    assert_eq!(anchor_hit.reason_code, "anchor_match_support");
+    assert!(
+        anchor_hit.explanation.contains("BBG000B9XRY4"),
+        "anchor explanation records the agreed anchor value: {}",
+        anchor_hit.explanation
+    );
+
+    let arithmetic_hit = support_hit(positive, "isin_cusip_arithmetic:cusip:isin")
+        .expect("valid ISIN/CUSIP arithmetic support");
+    assert_eq!(arithmetic_hit.reason_code, "isin_cusip_arithmetic_support");
+    assert!(
+        arithmetic_hit
+            .explanation
+            .contains("embedded_cusips=037833100"),
+        "arithmetic explanation records the embedded CUSIP: {}",
+        arithmetic_hit.explanation
+    );
+    assert!(
+        anti_merge_hit(positive, "attribute_conflict:annualized_rate").is_none(),
+        "one bps rate difference is inside tolerance and must not conflict"
+    );
+    assert!(
+        anti_merge_hit(positive, "attribute_conflict:instrument_maturity").is_none(),
+        "matching maturity date must not conflict"
+    );
+
     let month_change = record_for_cores(&evidence, &cores, "smith john", "john smith robert");
     assert!(
         support_hit(month_change, "date_transposed_digits:maturity_date").is_none(),
         "real month change must not be labeled as a digit transposition"
     );
+    assert!(
+        support_hit(month_change, "isin_cusip_arithmetic:cusip:isin").is_none(),
+        "invalid ISIN check digit and nonmatching embedded CUSIP must not support identity"
+    );
+    let anchor_conflict =
+        anti_merge_hit(month_change, "anchor_conflict:figi").expect("FIGI contradiction");
+    assert_eq!(anchor_conflict.reason_code, "anchor_conflict");
+    let maturity_conflict = anti_merge_hit(month_change, "attribute_conflict:instrument_maturity")
+        .expect("maturity mismatch is a hard cannot-link");
+    assert_eq!(maturity_conflict.reason_code, "attribute_conflict");
+    let rate_conflict = anti_merge_hit(month_change, "attribute_conflict:annualized_rate")
+        .expect("rate beyond one bps tolerance is a hard cannot-link");
+    assert_eq!(rate_conflict.reason_code, "attribute_conflict");
 
     let partial_reversal_records = evidence
         .iter()
@@ -98,21 +150,52 @@ fn configured_domain_ops_emit_distinct_support_and_reject_runtime_negatives() {
         .is_none()),
         "partial three-token reversal must not emit reversal support"
     );
+
+    let missing_input_records = evidence
+        .iter()
+        .filter(|record| record_has_core(record, &cores, "john smith missing"))
+        .collect::<Vec<_>>();
+    assert!(
+        !missing_input_records.is_empty(),
+        "fixture must produce at least one candidate involving missing identifier/anchor inputs"
+    );
+    assert!(
+        missing_input_records.iter().all(|record| {
+            support_hit(record, "anchor_match:figi").is_none()
+                && support_hit(record, "isin_cusip_arithmetic:cusip:isin").is_none()
+                && anti_merge_hit(record, "anchor_conflict:figi").is_none()
+                && anti_merge_hit(record, "attribute_conflict:instrument_maturity").is_none()
+                && anti_merge_hit(record, "attribute_conflict:annualized_rate").is_none()
+        }),
+        "missing anchors/attributes/identifiers must abstain, not agree or conflict"
+    );
 }
 
 #[test]
 fn domain_ops_are_configured_noop_absent_and_deterministic_under_shuffle() {
     let rows = [
-        ("row-1", "SMITH JOHN", "SMITH JOHN", "2031-01-12"),
-        ("row-2", "JOHN SMITH", "JOHN SMITH", "2031-01-21"),
-        (
+        domain_row("row-1", "SMITH JOHN", "SMITH JOHN", "2031-01-12")
+            .with_identifiers("037833100", "US0378331005", "BBG000B9XRY4")
+            .with_attributes("2035-06-30", "5.000"),
+        domain_row("row-2", "JOHN SMITH", "JOHN SMITH", "2031-01-21")
+            .with_identifiers("037833100", "US0378331005", "BBG000B9XRY4")
+            .with_attributes("2035-06-30", "5.010"),
+        domain_row(
             "row-3",
             "JOHN SMITH ROBERT",
             "JOHN SMITH ROBERT",
             "2031-02-12",
+        )
+        .with_identifiers("594918104", "US5949181044", "BBG000DIFFER")
+        .with_attributes("2035-07-30", "5.011"),
+        domain_row(
+            "row-4",
+            "JOHN SMITH MISSING",
+            "JOHN SMITH MISSING",
+            "2031-03-12",
         ),
     ];
-    let shuffled_rows = [rows[2], rows[0], rows[1]];
+    let shuffled_rows = [rows[2], rows[0], rows[3], rows[1]];
     let fixture = DomainOpsFixture::new();
     let profile = fixture.write_profile("configured_profile.json", true);
     let first_rows = fixture.write_rows("first.csv", &rows);
@@ -140,11 +223,67 @@ fn domain_ops_are_configured_noop_absent_and_deterministic_under_shuffle() {
             .all(|hit| {
                 hit.operator_id != "date_transposed_digits:maturity_date"
                     && hit.operator_id != "two_token_reversal:name_reversal"
+                    && hit.operator_id != "anchor_match:figi"
+                    && hit.operator_id != "isin_cusip_arithmetic:cusip:isin"
+                    && hit.operator_id != "anchor_conflict:figi"
+                    && hit.operator_id != "attribute_conflict:instrument_maturity"
+                    && hit.operator_id != "attribute_conflict:annualized_rate"
                     && hit.reason_code != "transposed_digit_date_support"
                     && hit.reason_code != "two_token_reversal_support"
+                    && hit.reason_code != "anchor_match_support"
+                    && hit.reason_code != "isin_cusip_arithmetic_support"
+                    && hit.reason_code != "anchor_conflict"
+                    && hit.reason_code != "attribute_conflict"
             }),
         "absent-config profile must not emit the new support operators"
     );
+}
+
+#[derive(Clone, Copy)]
+struct DomainRow<'a> {
+    observation_id: &'a str,
+    raw_name: &'a str,
+    raw_name_reversal: &'a str,
+    maturity_date: &'a str,
+    cusip: &'a str,
+    isin: &'a str,
+    figi: &'a str,
+    instrument_maturity: &'a str,
+    annualized_rate: &'a str,
+}
+
+impl<'a> DomainRow<'a> {
+    fn with_identifiers(mut self, cusip: &'a str, isin: &'a str, figi: &'a str) -> Self {
+        self.cusip = cusip;
+        self.isin = isin;
+        self.figi = figi;
+        self
+    }
+
+    fn with_attributes(mut self, instrument_maturity: &'a str, annualized_rate: &'a str) -> Self {
+        self.instrument_maturity = instrument_maturity;
+        self.annualized_rate = annualized_rate;
+        self
+    }
+}
+
+fn domain_row<'a>(
+    observation_id: &'a str,
+    raw_name: &'a str,
+    raw_name_reversal: &'a str,
+    maturity_date: &'a str,
+) -> DomainRow<'a> {
+    DomainRow {
+        observation_id,
+        raw_name,
+        raw_name_reversal,
+        maturity_date,
+        cusip: "",
+        isin: "",
+        figi: "",
+        instrument_maturity: "",
+        annualized_rate: "",
+    }
 }
 
 struct DomainOpsFixture {
@@ -176,17 +315,29 @@ impl DomainOpsFixture {
         self.root.join(relpath)
     }
 
-    fn write_rows(&self, name: &str, rows: &[(&str, &str, &str, &str)]) -> PathBuf {
+    fn write_rows(&self, name: &str, rows: &[DomainRow<'_>]) -> PathBuf {
         let path = self.path(name);
-        let mut csv = String::from("observation_id,raw_name,raw_name_reversal,maturity_date\n");
-        for (observation_id, raw_name, raw_name_reversal, maturity_date) in rows {
-            csv.push_str(observation_id);
+        let mut csv = String::from(
+            "observation_id,raw_name,raw_name_reversal,maturity_date,cusip,isin,figi,instrument_maturity,annualized_rate\n",
+        );
+        for row in rows {
+            csv.push_str(row.observation_id);
             csv.push(',');
-            csv.push_str(raw_name);
+            csv.push_str(row.raw_name);
             csv.push(',');
-            csv.push_str(raw_name_reversal);
+            csv.push_str(row.raw_name_reversal);
             csv.push(',');
-            csv.push_str(maturity_date);
+            csv.push_str(row.maturity_date);
+            csv.push(',');
+            csv.push_str(row.cusip);
+            csv.push(',');
+            csv.push_str(row.isin);
+            csv.push(',');
+            csv.push_str(row.figi);
+            csv.push(',');
+            csv.push_str(row.instrument_maturity);
+            csv.push(',');
+            csv.push_str(row.annualized_rate);
             csv.push('\n');
         }
         fs::write(&path, csv).expect("rows csv");
@@ -247,14 +398,26 @@ fn profile_package(configured: bool) -> EntityProfilePackage {
                 "maturity_date".to_string(),
                 view(vec![EntityNormalizationOperatorKind::AsciiTrimUpper]),
             ),
+            (
+                "cusip".to_string(),
+                view(vec![EntityNormalizationOperatorKind::AsciiTrimUpper]),
+            ),
+            (
+                "isin".to_string(),
+                view(vec![EntityNormalizationOperatorKind::AsciiTrimUpper]),
+            ),
+            (
+                "instrument_maturity".to_string(),
+                view(vec![EntityNormalizationOperatorKind::AsciiTrimUpper]),
+            ),
+            (
+                "annualized_rate".to_string(),
+                view(vec![EntityNormalizationOperatorKind::AsciiTrimUpper]),
+            ),
         ]),
         evidence: EntityEvidenceLanes {
             support: support_ops(configured),
-            cannot_link: vec![EntityOperatorSpec {
-                op: "protected_token_conflict".to_string(),
-                view: Some("core".to_string()),
-                params: BTreeMap::new(),
-            }],
+            cannot_link: cannot_link_ops(configured),
             relation_hints: vec![EntityOperatorSpec {
                 op: "context_alignment".to_string(),
                 view: Some("core".to_string()),
@@ -324,6 +487,21 @@ fn profile_package(configured: bool) -> EntityProfilePackage {
                 Some("maturity_date"),
                 true,
             ),
+            field_mapping("cusip", "context_value", Some("cusip"), false),
+            field_mapping("isin", "context_value", Some("isin"), false),
+            field_mapping("figi", "anchor:figi", None, false),
+            field_mapping(
+                "instrument_maturity",
+                "context_value",
+                Some("instrument_maturity"),
+                false,
+            ),
+            field_mapping(
+                "annualized_rate",
+                "context_value",
+                Some("annualized_rate"),
+                false,
+            ),
         ],
         execution_modes: vec![EntityProfileMode {
             mode: ProfileModeKind::Cluster,
@@ -345,6 +523,11 @@ fn profile_package(configured: bool) -> EntityProfilePackage {
                 "raw_name".to_string(),
                 "raw_name_reversal".to_string(),
                 "maturity_date".to_string(),
+                "cusip".to_string(),
+                "isin".to_string(),
+                "figi".to_string(),
+                "instrument_maturity".to_string(),
+                "annualized_rate".to_string(),
             ],
             outputs: vec![
                 "prepare_bundle".to_string(),
@@ -353,7 +536,7 @@ fn profile_package(configured: bool) -> EntityProfilePackage {
             ],
         }],
         limits: EntityProfileLimits {
-            max_observation_fields: 8,
+            max_observation_fields: 16,
             max_candidate_pairs: 200,
             max_outputs: 20,
         },
@@ -379,12 +562,70 @@ fn support_ops(configured: bool) -> Vec<EntityOperatorSpec> {
                 view: Some("name_reversal".to_string()),
                 params: BTreeMap::from([("score_units".to_string(), "7500".to_string())]),
             },
+            EntityOperatorSpec {
+                op: "anchor_match".to_string(),
+                view: None,
+                params: BTreeMap::from([
+                    ("field".to_string(), "figi".to_string()),
+                    ("score_units".to_string(), "6500".to_string()),
+                ]),
+            },
+            EntityOperatorSpec {
+                op: "isin_cusip_arithmetic".to_string(),
+                view: None,
+                params: BTreeMap::from([
+                    ("cusip_field".to_string(), "cusip".to_string()),
+                    ("isin_field".to_string(), "isin".to_string()),
+                    ("score_units".to_string(), "7000".to_string()),
+                ]),
+            },
         ]
     } else {
         vec![EntityOperatorSpec {
             op: "exact_view".to_string(),
             view: Some("core".to_string()),
             params: BTreeMap::from([("score_units".to_string(), "0".to_string())]),
+        }]
+    }
+}
+
+fn cannot_link_ops(configured: bool) -> Vec<EntityOperatorSpec> {
+    if configured {
+        vec![
+            EntityOperatorSpec {
+                op: "anchor_conflict".to_string(),
+                view: None,
+                params: BTreeMap::from([
+                    ("field".to_string(), "figi".to_string()),
+                    ("score_units".to_string(), "10000".to_string()),
+                ]),
+            },
+            EntityOperatorSpec {
+                op: "attribute_conflict".to_string(),
+                view: None,
+                params: BTreeMap::from([
+                    ("field".to_string(), "instrument_maturity".to_string()),
+                    ("comparison".to_string(), "date".to_string()),
+                    ("score_units".to_string(), "10000".to_string()),
+                ]),
+            },
+            EntityOperatorSpec {
+                op: "attribute_conflict".to_string(),
+                view: None,
+                params: BTreeMap::from([
+                    ("field".to_string(), "annualized_rate".to_string()),
+                    ("comparison".to_string(), "decimal_bps".to_string()),
+                    ("rate_scale".to_string(), "percent".to_string()),
+                    ("tolerance_bps".to_string(), "1".to_string()),
+                    ("score_units".to_string(), "10000".to_string()),
+                ]),
+            },
+        ]
+    } else {
+        vec![EntityOperatorSpec {
+            op: "protected_token_conflict".to_string(),
+            view: Some("core".to_string()),
+            params: BTreeMap::new(),
         }]
     }
 }
@@ -481,6 +722,16 @@ fn support_hit<'a>(
         .hits
         .iter()
         .find(|hit| hit.lane == ScoreLane::Support && hit.operator_id == operator_id)
+}
+
+fn anti_merge_hit<'a>(
+    record: &'a EdgeEvidenceRecord,
+    operator_id: &str,
+) -> Option<&'a EdgeEvidenceHit> {
+    record
+        .hits
+        .iter()
+        .find(|hit| hit.lane == ScoreLane::AntiMerge && hit.operator_id == operator_id)
 }
 
 fn read_jsonl<T: DeserializeOwned>(path: &Path) -> Vec<T> {

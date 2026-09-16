@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200" role="img" aria-labelledby="title desc">
+<title id="title">BANK 2019-BNK18: four address baseline</title>
+<desc id="desc">Source building outlines and address points. Census points lie outside the displayed footprints. Separate source address points fall within one candidate in San Francisco and Austin, but not Clyde. These are 2026 source geometries, not verified 2019 collateral boundaries.</desc>
+<rect width="1200" height="1200" fill="#f6f7f9"/>
+<g font-family="Arial, sans-serif" fill="#162133">
+<text x="35" y="40" font-size="25" font-weight="bold">Four addresses: points and existing footprints</text>
+<text x="35" y="67" font-size="15">Observed 2026-09-16 · 2019 filing addresses / 2026 geometry · each panel has its own scale</text>
+<circle cx="44" cy="94" r="6" fill="#c8541b"/><text x="58" y="100" font-size="14">Census geocoder</text>
+<path d="M 224,86 L 232,94 L 224,102 L 216,94 Z" fill="#156da6"/><text x="240" y="100" font-size="14">Source address point (OpenAddresses / NAD)</text>
+<text x="715" y="100" font-size="14">N ↑ · local metric display; no imagery or parcel boundaries</text>
+<rect x="30" y="125" width="555" height="425" rx="10" fill="white" stroke="#d2d8df"/>
+<text x="48" y="152" font-size="17" font-weight="bold">NYC · 2207 Albemarle Road, Brooklyn</text>
+<text x="48" y="174" font-size="13">PAD links BBL 3051090025 → BIN 3117371</text>
+<path d="M 403.35,240.55 L 407.48,316.62 L 490.02,312.11 L 509.47,311.04 L 510.08,322.29 L 515.12,415.20 L 306.54,426.61 L 292.62,427.37 L 291.89,413.82 L 287.37,330.63 L 299.26,329.98 L 292.17,199.44 L 377.92,194.75 L 400.79,193.50 L 403.35,240.55 Z" fill="#b5d9c6" stroke="#50677c" stroke-width="1.6" fill-rule="evenodd"/>
+<circle cx="98.88" cy="448.50" r="6" fill="#c8541b" stroke="white" stroke-width="1.5"/>
+<path d="M 50,469 h 67.34" stroke="#162133" stroke-width="2"/>
+<text x="50" y="488" font-size="12">≈ 20 m</text>
+<text x="48" y="512" font-size="14">Census point is 57.82 m from the linked building.</text>
+<text x="48" y="532" font-size="13">Native Canon address evidence replay: passed.</text>
+<rect x="615" y="125" width="555" height="425" rx="10" fill="white" stroke="#d2d8df"/>
+<text x="633" y="152" font-size="17" font-weight="bold">Major city · 350 Bush Street, San Francisco</text>
+<text x="633" y="174" font-size="13">One spatial candidate; full building/site scope unverified</text>
+<path d="M 1032.73,349.87 L 1006.84,193.50 L 964.00,200.56 L 972.52,252.24 L 751.27,288.74 L 766.11,391.83 L 892.53,371.98 L 1032.73,349.87 Z" fill="#c6ddec" stroke="#50677c" stroke-width="1.6" fill-rule="evenodd"/>
+<circle cx="914.10" cy="448.50" r="6" fill="#c8541b" stroke="white" stroke-width="1.5"/>
+<path d="M 848.74,326.22 L 855.74,333.22 L 848.74,340.22 L 841.74,333.22 Z" fill="#156da6" stroke="white" stroke-width="1.5"/>
+<path d="M 635,469 h 119.65" stroke="#162133" stroke-width="2"/>
+<text x="635" y="488" font-size="12">≈ 10 m</text>
+<text x="633" y="512" font-size="14">OpenAddresses point is inside this source polygon.</text>
+<text x="633" y="532" font-size="13">No native Canon address-to-building run.</text>
+<rect x="30" y="565" width="555" height="425" rx="10" fill="white" stroke="#d2d8df"/>
+<text x="48" y="592" font-size="17" font-weight="bold">Secondary · 801 Barton Springs Road, Austin</text>
+<text x="48" y="614" font-size="13">One spatial candidate; full building/site scope unverified</text>
+<path d="M 329.66,643.63 L 321.62,640.65 L 285.78,720.51 L 291.48,723.90 L 262.37,772.86 L 252.13,766.79 L 206.69,843.16 L 282.95,888.50 L 362.52,768.20 L 407.31,667.97 L 331.08,639.80 L 329.66,643.63 Z" fill="#c6ddec" stroke="#50677c" stroke-width="1.6" fill-rule="evenodd"/>
+<circle cx="406.70" cy="633.50" r="6" fill="#c8541b" stroke="white" stroke-width="1.5"/>
+<path d="M 355.98,693.97 L 362.98,700.97 L 355.98,707.97 L 348.98,700.97 Z" fill="#156da6" stroke="white" stroke-width="1.5"/>
+<path d="M 50,909 h 56.49" stroke="#162133" stroke-width="2"/>
+<text x="50" y="928" font-size="12">≈ 20 m</text>
+<text x="48" y="952" font-size="14">NAD point is inside this source polygon.</text>
+<text x="48" y="972" font-size="13">Different-street Barton Boulevard candidate excluded.</text>
+<rect x="615" y="565" width="555" height="425" rx="10" fill="white" stroke="#d2d8df"/>
+<text x="633" y="592" font-size="17" font-weight="bold">Tertiary · 401 East Elm Street, Clyde</text>
+<text x="633" y="614" font-size="13">Four nearby footprints; none assigned to the address</text>
+<path d="M 926.32,818.01 L 927.15,888.50 L 950.84,888.22 L 950.02,817.73 L 926.32,818.01 Z" fill="#d6dbe1" stroke="#50677c" stroke-width="1.6" fill-rule="evenodd"/>
+<path d="M 935.40,633.50 L 894.77,634.01 L 895.72,711.28 L 912.72,711.07 L 913.43,768.66 L 925.80,768.51 L 925.89,775.87 L 939.90,775.70 L 939.81,768.28 L 958.77,768.04 L 958.00,705.51 L 955.83,705.53 L 955.80,702.81 L 958.01,702.78 L 957.84,689.43 L 935.64,689.70 L 935.37,667.24 L 935.16,667.25 L 935.13,664.21 L 935.68,664.20 L 935.41,642.31 L 935.51,642.31 L 935.40,633.50 Z" fill="#d6dbe1" stroke="#50677c" stroke-width="1.6" fill-rule="evenodd"/>
+<path d="M 845.58,798.84 L 825.23,798.94 L 825.30,812.74 L 845.65,812.63 L 845.58,798.84 Z" fill="#d6dbe1" stroke="#50677c" stroke-width="1.6" fill-rule="evenodd"/>
+<path d="M 868.99,849.85 L 869.06,855.42 L 872.09,855.38 L 872.03,849.82 L 868.99,849.85 Z" fill="#d6dbe1" stroke="#50677c" stroke-width="1.6" fill-rule="evenodd"/>
+<circle cx="897.93" cy="786.74" r="6" fill="#c8541b" stroke="white" stroke-width="1.5"/>
+<path d="M 890.90,772.76 L 897.90,779.76 L 890.90,786.76 L 883.90,779.76 Z" fill="#156da6" stroke="white" stroke-width="1.5"/>
+<path d="M 635,909 h 45.94" stroke="#162133" stroke-width="2"/>
+<text x="635" y="928" font-size="12">≈ 100 m</text>
+<text x="633" y="952" font-size="14">Neither address point is inside a queried footprint.</text>
+<text x="633" y="972" font-size="13">Both address sources omit East; discrepancy retained.</text>
+<text x="35" y="1035" font-size="13">Sources: NYC DCP / OTI; Overture Maps Foundation and OpenStreetMap contributors (building data: ODbL-1.0).</text>
+<text x="35" y="1056" font-size="13">Address data: source-specific terms. Exact source records, releases, candidate IDs and limitations: measurement.json.</text>
+<text x="35" y="1100" font-size="15" font-weight="bold">How to read this</text>
+<text x="35" y="1125" font-size="14">Brooklyn shows the source-linked building. San Francisco and Austin show only the point-containing candidate.</text>
+<text x="35" y="1148" font-size="14">Clyde shows all four footprints from the bounded Census-point query. Nearby does not establish address membership.</text>
+<text x="35" y="1171" font-size="14">No complete native address-to-building run or independent building-identity verification was demonstrated.</text>
+</g></svg>

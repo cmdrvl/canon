@@ -10626,6 +10626,7 @@ mod leakage_provenance_tests {
             raw_variants: vec![raw],
             alias_surfaces: Vec::new(),
             mention_surfaces: Vec::new(),
+            anchors: Vec::new(),
             row_count: 1,
             deal_count: 1,
             provenance_samples: Vec::new(),

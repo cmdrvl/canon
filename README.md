@@ -527,6 +527,14 @@ and visibility, not availability.
 
 ##### Primary
 
+**Single-address status (2026-09-16):** an address is a standalone Geo input; a CMBS
+deal or loan is optional context. The current address-membership leaf accepts NYC/PAD
+inputs supplied by the caller. Nationwide geocoding and footprint acquisition through
+external tools are not an automated Canon address-to-building result. The
+[four-address baseline](scripts/geo_measurements/README.md#2026-09-16-four-address-bank-2019-bnk18-baseline)
+records the current boundary and replayable NYC evidence. Source-neutral address
+membership and the integrated plan/run journey remain open as bd-3mft and bd-33hh.
+
 `canon geo plan --question --capabilities --inventory --profile --budget` is a
 deterministic offline planner. It emits `canon_geo_plan.v0`, a Geo semantic overlay over one
 validated `canon.project.plan.v1` DAG. It plans the current parcel/building composition
@@ -539,8 +547,9 @@ data, or prove candidate reach without an independent reference.
 
 `canon geo run --plan --work-dir` is a bounded offline run over the Geo plan's single
 validated project DAG. It delegates to the shared project runner and registered internal
-Geo executor for the current five-stage chain: materialize home cells, build the bounded
-tile section, materialize evidence, compile evidence, then solve composition. `--input` is
+Geo executor. The default composition chain has five stages: materialize home cells, build
+the bounded tile section, materialize evidence, compile evidence, then solve composition;
+additional registered stages can extend that DAG. `--input` is
 optional at invocation because a blocked plan or missing local artifacts can still produce
 a typed `WAITING_FOR_INPUT` run with exact next actions. When supplied, public inputs are
 local exogenous leaf artifacts only: home-cell rows, tile-work requests, and warehouse
@@ -749,7 +758,7 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `geo ledger collision --ledgers <LEDGER.json> <LEDGER.json> [--pari-passu <DECLARATIONS.json>] [--adjacency <PARCEL_TO_BLOCK.json>]` | *(ledger subcommand)* Emit a `canon_geo_cross_deal.v0` artifact reporting every parcel/building shared across accessions and any multi-accession adjacency block, keeping declared pari passu collisions as labeled rows. |
 | `geo ledger exposure --ledger <LEDGER.json> --advisory <ADVISORY.json> --geometry <GEOMETRY.json> --archive <ARCHIVE.json>` | *(ledger subcommand)* Join a pinned wind-radii advisory to exact ledger building geometry and emit a `canon_geo_event_exposure.v0` artifact. |
 | `geo ledger validate --ledger <LEDGER.json>` | *(ledger subcommand)* Validate a local collateral ledger artifact with the shipped D3 ledger validator. |
-| `geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]` | *(primary)* Execute or preflight the current bounded offline Geo five-stage chain through the shared project runner and Geo executor, using only local exogenous leaf inputs when provided. It resumes validated completed outputs, refuses undeclared commands or compile/solve input overrides, and emits a `canon_geo_run.v0` projection over `canon.project.run.v2` receipts. `--satisfy` checks receipt/explicit-byte consistency only; it does not mutate the plan, clear acquisition blockers, or replan. |
+| `geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]` | *(primary)* Execute or preflight a bounded offline Geo DAG through registered executors and the shared project runner, using local exogenous leaf inputs. The default composition chain has five stages. It resumes validated completed outputs, refuses undeclared commands or compile/solve input overrides, and emits a `canon_geo_run.v0` projection over `canon.project.run.v2` receipts. `--satisfy` checks receipt/explicit-byte consistency only; it does not mutate the plan, clear acquisition blockers, or replan. |
 | `geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVENTORY.json> --question <QUESTION.json> --capabilities <CAPABILITIES.json> --profile <PROFILE.json> --budget <BUDGET.json> --satisfy <REQUEST_ID=RECEIPT.json> --local-artifact <LOCAL_ARTIFACT_ID=PATH>... [--result <DIGEST_ID=PATH>...] --advancement-out <ADVANCEMENT.json>` | *(primary)* Validate one live, complete, positive, nontruncated, full-region acquisition receipt against exact local artifact bytes, atomically publish a separate `canon_geo_regional_inventory_advancement.v0` sidecar, and emit a new base-inventory-bound `canon_geo_plan.v0` on stdout. It never performs acquisition or mutates the old plan or inventory. |
 | `geo <stage leaf>` and `geo materialize-h7-*` | Stage-leaf and measurement-tier commands. They stay independently callable for Demo 0, debugging, and tests but are not part of the primary surface — see [Geo command surface](#geo-command-surface) for the full tier table and per-command contracts. |
 | `inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json\|summary]` | List ranked unresolved inbox items with deterministic pagination and typed filters. |

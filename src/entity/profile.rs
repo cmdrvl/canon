@@ -855,6 +855,8 @@ const SUPPORTED_NORMALIZE_OPS: &[&str] = &[
 
 const SUPPORTED_SUPPORT_OPS: &[&str] = &[
     "exact_view",
+    "anchor_match",
+    "isin_cusip_arithmetic",
     "token_overlap",
     "string_similarity",
     "tfidf_cosine",
@@ -866,6 +868,8 @@ const SUPPORTED_SUPPORT_OPS: &[&str] = &[
 
 const SUPPORTED_CANNOT_LINK_OPS: &[&str] = &[
     "alias_patch_distinct",
+    "anchor_conflict",
+    "attribute_conflict",
     "protected_token_conflict",
     "related_distinct_phrase",
     "conflicting_anchor",

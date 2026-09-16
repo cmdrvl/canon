@@ -159,16 +159,17 @@ question + capabilities + regional inventory + resolution profile + budget
   components. Network acquisition remains outside Canon's deterministic offline build.
 - Geo planning/runs must extend the shared `src/project/` manifest/lock/plan/run/receipt
   substrate. Do not create a second scheduler, cache, receipt store, or workspace policy.
-- Geo capabilities, planning, and the bounded offline run surface exist. `geo run` delegates
-  one validated project DAG through registered internal Geo executors for the current
-  five-stage offline chain: materialize home cells, build the bounded tile section,
-  materialize evidence, compile evidence, then solve composition. It accepts only local
+- Geo capabilities, planning, inspection, ledger operations, and bounded offline runs exist.
+  `geo run` delegates one validated project DAG through registered internal Geo executors.
+  The default composition chain has five stages: materialize home cells, build the bounded
+  tile section, materialize evidence, compile evidence, then solve composition. Additional
+  registered stages extend that DAG; the executor is not limited to those five. It accepts local
   exogenous leaf inputs such as home-cell rows, tile-work requests, and warehouse rows; no
   ambient shell or network acquisition is part of the run.
 - The Geo command surface has three tiers (`docs/PLAN_CANON_GEO.md` §19.3, frozen
   2026-09-02). **primary:** `geo capabilities`, `geo plan`, `geo run`,
-  `geo replan-from-acquisition`, `geo evaluate`, and the not-yet-implemented `geo inspect`
-  and `geo ledger` — seven verbs, the whole in-business surface. **leaf:** the eleven
+  `geo replan-from-acquisition`, `geo evaluate`, `geo inspect`, and `geo ledger` — seven
+  implemented verbs, the whole in-business surface. **leaf:** the eleven
   shipped stage commands, driven by `geo run` and Demo 0, hidden from top-level help but
   still callable and machine-described. **measurement:** the three `materialize-h7-*`
   adapters, moving under `scripts/geo_measurements/` at their next touch. A new §19.3
@@ -177,8 +178,11 @@ question + capabilities + regional inventory + resolution profile + budget
   per module.
 - Open limits remain explicit: acquisition is external, exactness is representation-relative,
   candidate reach is an upstream proof obligation, immutable cross-release reuse in the same
-  work directory is not guaranteed, E5/live scale proof is not shipped, and the primary
-  `geo inspect` and `geo ledger` verbs are unimplemented.
+  work directory is not guaranteed, and E5/live scale proof is not shipped. A standalone
+  address is a valid target input, with no CMBS deal/loan prerequisite. The current native
+  address-membership contract is NYC/PAD-specific; an automated source-neutral
+  address-to-building journey remains open (bd-3mft, bd-33hh). External geocoder success
+  is not a Canon solve or proof of building identity.
 
 ### 3. Summary invariant
 
@@ -468,6 +472,16 @@ Example: if working on `registry` (bd-23d), reserve only `src/registry.rs`.
 ---
 
 ## Multi-Agent Coordination
+
+For an NTM implementation wave, workers deliver code and meaningful positive
+and negative tests together. The coordinator serializes verification per repo
+and alone closes beads with commands, results, and the verified revision. Keep
+review-ready work `in_progress` with a `batch-pending` label; do not invent
+unsupported tracker statuses. Required quality gates still apply before commits
+and pushes. Share passing evidence instead of duplicating expensive concurrent
+builds. Never weaken acceptance, inflate fixtures into live proof, or credit
+refusal-only functionality as delivery. Preserve frozen denominators and report
+residuals and countermetrics.
 
 When working alongside other agents:
 

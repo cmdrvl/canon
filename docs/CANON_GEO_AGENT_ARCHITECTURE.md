@@ -2,9 +2,12 @@
 
 > Status: **normative target architecture; partially implemented Geo control plane**.
 > This document defines how an agent should operate Canon Geo as one coherent system.
-> Shipped control-plane commands are `canon geo capabilities --emit json` and offline
-> `canon geo plan`, plus bounded offline `canon geo run` for the current five-stage
-> parcel/building composition plan. `geo inspect` remains proposed/unavailable.
+> The seven primary commands are implemented: capabilities, plan, run,
+> replan-from-acquisition, evaluate, inspect, and ledger. The default parcel/building
+> composition plan has five stages; registered internal executors also support extensions
+> to that DAG. `geo inspect` reads stored runs without re-executing them.
+> Standalone address input is part of the target; the native address-membership contract
+> is currently NYC/PAD-specific, and the complete address-first journey remains open.
 > The mathematical model and empirical gates remain governed by
 > [`PLAN_CANON_GEO.md`](./PLAN_CANON_GEO.md).
 
@@ -14,7 +17,7 @@
 > refresh and pure planning, while `project run` validates/reuses v2 receipts and executes
 > pending nodes only through registered internal offline executors. The first narrow
 > `copy-file-v1` executor proves positive dispatch; Geo plan now emits a semantic overlay
-> over one validated project DAG, and bounded Geo run delegates the current five Geo stages
+> over one validated project DAG, and bounded Geo run delegates registered Geo stages
 > through that runner. Its CLI `--satisfy` path validates an explicit receipt against
 > explicit local bytes only; it does not mutate the immutable plan, clear acquisition
 > blockers, update inventory, or replan. A library caller can materialize a separate,
@@ -29,7 +32,7 @@
 > The shared project runner now publishes immutable content-addressed manifest revisions
 > with full-plan receipt prevalidation, and project receipts retain immutable
 > content-addressed copies while cooperating publishers protect canonical receipt/output
-> slots. Output-plus-receipt and multi-output transactionality, Geo inspect, ready-node
+> slots. Output-plus-receipt and multi-output transactionality, ready-node
 > claims, crash-stale lock recovery, live acquisition, and concurrent scheduling remain
 > open. Geo must extend this substrate, not build a parallel orchestrator.
 
@@ -463,7 +466,7 @@ The current shipped v0 contains:
 
 - a `plan_ref` with hashes of the plan, project graph, question, capabilities, inventory
   planning input, profile, and budget planning input;
-- status and phase over the current five-stage run;
+- status and phase over the run's registered Geo stages;
 - explicit local artifact input refs keyed by `node_id` plus `binding_id`, with digest,
   JSON media type, contract version, and byte count;
 - typed project output refs for completed nodes;
@@ -483,9 +486,10 @@ restricted, plan-bound inventory advancement described in §4.5. Once evidence i
 acquired, the genuine advancement path is still an explicit new plan whose inventory and
 inputs include that evidence.
 
-It does not yet contain the full target answer projection, a Geo inspect/readiness view
-over receipt lineage, separate abstention/contradiction/fallback collections, registry
-proposal refs, ready-node claims, or a cross-agent concurrency protocol.
+The run artifact does not yet contain the full target answer projection, separate
+abstention/contradiction/fallback collections, registry proposal refs, ready-node claims,
+or a cross-agent concurrency protocol. Stored-run inspection over manifests, receipt
+lineage, and referenced artifacts is provided separately by the shipped `geo inspect`.
 
 Semantic dependency hashes include declared inputs, policy, node contract, dependency
 semantic hashes, output content digests, and deterministic usage counters that control
@@ -558,8 +562,8 @@ parallelism level may change elapsed time, never semantic output.
 ## 6. Minimal agent command surface
 
 Leaf commands remain independently callable and machine-described. The control plane
-currently ships capability introspection, offline planning, and bounded offline execution
-for the current five-stage parcel/building plan; inspection remains a target operation:
+ships capability introspection, offline planning, bounded offline execution, evaluation,
+ledger operations, and read-only inspection of stored runs:
 
 ```text
 canon geo capabilities --emit json
@@ -575,8 +579,8 @@ canon geo inspect --run DIR [--component ID] [--compare OTHER_RUN] [--recommend-
   mutation. It does not acquire data, execute nodes, or turn unverified candidate reach into
   truth reach.
 - `run` delegates scheduling, receipts, resume, and workspace safety to the shared project
-  substrate; it orchestrates only offline leaf capabilities in the current five-stage
-  parcel/building plan, accepts explicit local input bindings, may validate supplied
+  substrate; it orchestrates registered offline Geo stages, including the default
+  five-stage parcel/building chain, accepts explicit local input bindings, may validate supplied
   acquisition receipts against those explicit bytes, emits `canon_geo_run.v0`, and resumes
   from verified project receipts in one work directory. The `--satisfy` validation path
   does not mutate the immutable plan, clear acquisition blockers, update inventory, or
@@ -586,20 +590,21 @@ canon geo inspect --run DIR [--component ID] [--compare OTHER_RUN] [--recommend-
   sidecar, and emits a new plan whose inventory and inputs include that evidence. The
   shared runner publishes immutable
   content-addressed manifest revisions with full-plan receipt prevalidation, but `geo run`
-  does not perform live acquisition, provide live proof, expose ready-node claims or
-  inspect, recover crash-stale locks, schedule concurrently across agents, or make
+  does not perform live acquisition, provide live proof, expose ready-node claims,
+  recover crash-stale locks, schedule concurrently across agents, or make
   multi-output publication transactional.
-- `inspect` is the one-call situation report, explanation, diff, and next-action surface;
-  it remains proposed/unavailable.
+- `inspect` reads stored run manifests, receipts, and referenced artifacts. It supports
+  component focus, run comparison, and stored next-evidence recommendations. A missing
+  question-specific artifact is unanswerable; corrupt or missing referenced bytes refuse.
 
 `inspect` must emit structured next actions containing the exact command, required inputs,
 expected output contract, deterministic cost ceiling, and the reason the action can change
 the answer. Human prose is a rendering of those fields, not the only representation.
 
-Until `geo inspect` exists, agents must inspect run state through the emitted
-`canon_geo_run.v0`, project receipts, and implemented leaf commands listed by
-`canon --describe`; documentation must label inspection as planned rather than advertising
-it as shipped.
+Use `geo inspect` for stored-run inspection and `canon geo capabilities --emit json` for
+the compiled command/stage inventory. Its availability does not imply an automatic
+address-to-building acquisition workflow. The four-address baseline and the remaining
+source-neutral address work are recorded in `PLAN_CANON_GEO.md` §16.1.1.
 
 ## 7. Resource minimization
 
