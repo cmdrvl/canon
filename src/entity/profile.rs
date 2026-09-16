@@ -34,6 +34,8 @@ pub struct EntityProfileDocument {
     pub required_fields: Vec<String>,
     #[serde(default)]
     pub normalized_views: BTreeMap<String, EntityNormalizedView>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prepare: Option<PrepareFieldMapping>,
     #[serde(default)]
     pub evidence: EntityEvidenceLanes,
     #[serde(default)]
@@ -113,6 +115,7 @@ impl EntityProfileDocument {
         ensure_unique_non_empty("required_fields", &self.required_fields)?;
         self.validate_patch_namespaces()?;
         self.validate_normalized_views()?;
+        self.validate_prepare_mapping()?;
         self.validate_evidence()?;
         Ok(())
     }
@@ -254,6 +257,83 @@ impl EntityProfileDocument {
         Ok(())
     }
 
+    fn validate_prepare_mapping(&self) -> Result<(), EntityProfileError> {
+        let Some(mapping) = &self.prepare else {
+            return Ok(());
+        };
+
+        if mapping.primary_surface_fields.is_empty() {
+            return Err(EntityProfileError::new(
+                EntityRefusalKind::Profile,
+                "Entity prepare mapping must declare at least one primary surface field",
+                json!({ "field": "prepare.primary_surface_fields" }),
+            ));
+        }
+        ensure_unique_non_empty(
+            "prepare.primary_surface_fields",
+            &mapping.primary_surface_fields,
+        )?;
+        ensure_unique_non_empty("prepare.context_fields", &mapping.context_fields)?;
+        ensure_unique_non_empty("prepare.provenance_fields", &mapping.provenance_fields)?;
+        ensure_unique_non_empty("prepare.placeholder_values", &mapping.placeholder_values)?;
+
+        let mut seen_anchor_namespaces = BTreeSet::new();
+        let mut seen_anchor_fields = BTreeSet::new();
+        for (namespace, field) in &mapping.anchor_fields {
+            if namespace.trim().is_empty() || field.trim().is_empty() {
+                return Err(EntityProfileError::new(
+                    EntityRefusalKind::Profile,
+                    "Entity prepare anchor mapping must use non-empty namespace and field names",
+                    json!({ "namespace": namespace, "field": field }),
+                ));
+            }
+            if !seen_anchor_namespaces.insert(namespace) || !seen_anchor_fields.insert(field) {
+                return Err(EntityProfileError::new(
+                    EntityRefusalKind::Profile,
+                    "Entity prepare anchor mappings must not repeat namespaces or fields",
+                    json!({ "namespace": namespace, "field": field }),
+                ));
+            }
+        }
+
+        for (view_name, field) in &mapping.normalized_view_fields {
+            if !self.normalized_views.contains_key(view_name) {
+                return Err(EntityProfileError::new(
+                    EntityRefusalKind::Profile,
+                    "Entity prepare mapping references an unknown normalized view",
+                    json!({
+                        "view": view_name,
+                        "field": field,
+                        "available_views": self.normalized_views.keys().collect::<Vec<_>>()
+                    }),
+                ));
+            }
+            if field.trim().is_empty() {
+                return Err(EntityProfileError::new(
+                    EntityRefusalKind::Profile,
+                    "Entity prepare normalized view mapping must use non-empty field names",
+                    json!({ "view": view_name, "field": field }),
+                ));
+            }
+        }
+
+        if let Some(view_name) = mapping.canonical_surface_normalized_view.as_deref() {
+            let view_name = view_name.trim();
+            if view_name.is_empty() || !mapping.normalized_view_fields.contains_key(view_name) {
+                return Err(EntityProfileError::new(
+                    EntityRefusalKind::Profile,
+                    "Entity prepare canonical normalized view must be mapped from a source field",
+                    json!({
+                        "view": view_name,
+                        "mapped_views": mapping.normalized_view_fields.keys().collect::<Vec<_>>()
+                    }),
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
     fn validate_evidence(&self) -> Result<(), EntityProfileError> {
         validate_evidence_lane("support", &self.evidence.support, SUPPORTED_SUPPORT_OPS)?;
         validate_evidence_lane(
@@ -380,6 +460,7 @@ fn profile_document_from_package(
                 .map(profile_operator_from_package)
                 .collect(),
         },
+        prepare: None,
         patch_namespaces: EntityPatchNamespaces {
             aliases: package.patch_namespaces.aliases.clone(),
             distinct: package.patch_namespaces.distinct.clone(),
@@ -851,6 +932,7 @@ const SUPPORTED_NORMALIZE_OPS: &[&str] = &[
     "preserve_legal_form",
     "firm_core",
     "expand_na_abbreviation",
+    "placeholder_to_null",
 ];
 
 const SUPPORTED_SUPPORT_OPS: &[&str] = &[
@@ -891,6 +973,8 @@ const SUPPORTED_RELATION_HINT_OPS: &[&str] = &[
     "cross_profile_alignment",
     "context_alignment",
     "segment_alignment",
+    "issued_by",
+    "superseded_by",
 ];
 
 const CROSS_PROFILE_RELATION_OPS: &[&str] = &["cross_profile_alignment"];

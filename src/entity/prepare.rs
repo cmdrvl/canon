@@ -44,6 +44,8 @@ const BUILTIN_CMBS_TENANT_LABEL_PROFILE: &str =
     include_str!("../../tests/fixtures/entity/profiles/cmbs_tenant_label.yaml");
 const BUILTIN_REGAB_FIRM_IDENTITY_PROFILE: &str =
     include_str!("../../tests/fixtures/entity/profiles/regab_firm_identity.yaml");
+const BUILTIN_INSTRUMENT_IDENTITY_PROFILE: &str =
+    include_str!("../../tests/fixtures/entity/profiles/instrument_identity.yaml");
 pub const DEFAULT_PREPARE_ROWS_PER_CHUNK: u64 = 1024;
 const MAX_PREPARE_PROVENANCE_SAMPLES: usize = 16;
 const MAX_SURFACE_PROVENANCE_SAMPLES: usize = 8;
@@ -59,11 +61,15 @@ pub struct PrepareFieldMapping {
     pub alias_surfaces_field: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mention_surfaces_field: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub anchor_fields: BTreeMap<String, String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub normalized_view_fields: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub placeholder_values: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub context_fields: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub provenance_fields: Vec<String>,
 }
 
@@ -75,6 +81,8 @@ impl PrepareFieldMapping {
             alias_surfaces_field: Some("alias_surfaces_json".to_string()),
             mention_surfaces_field: Some("mention_surfaces_json".to_string()),
             anchor_fields: BTreeMap::new(),
+            normalized_view_fields: BTreeMap::new(),
+            placeholder_values: Vec::new(),
             context_fields: vec![
                 "deal_id".to_string(),
                 "loan_id".to_string(),
@@ -99,6 +107,8 @@ impl PrepareFieldMapping {
                 ("cik".to_string(), "filing_cik".to_string()),
                 ("accession".to_string(), "accession".to_string()),
             ]),
+            normalized_view_fields: BTreeMap::new(),
+            placeholder_values: Vec::new(),
             context_fields: vec![
                 "dataset".to_string(),
                 "field_name".to_string(),
@@ -142,6 +152,10 @@ impl PrepareInputContract {
         let mapping = match profile.profile.as_str() {
             "cmbs_tenant_label" => PrepareFieldMapping::cmbs_tenant_label(),
             "regab_firm_identity" => PrepareFieldMapping::regab_firm_identity(),
+            _ if profile.prepare.is_some() => profile
+                .prepare
+                .clone()
+                .expect("profile.prepare checked above"),
             _ => {
                 return Err(EntityRefusalKind::Profile.to_refusal(
                     "Entity profile has no prepare field mapping",
@@ -453,10 +467,11 @@ pub fn load_prepare_profile_with_hash(profile: &str) -> Result<LoadedPrepareProf
             })?;
             let document = EntityProfileDocument::from_yaml_str(&profile_source)
                 .map_err(|error| error.to_refusal())?;
+            let prepare_mapping = document.prepare.clone();
             Ok(LoadedPrepareProfile {
                 document,
                 content_hash: witness::hash_bytes(profile_source.as_bytes()),
-                prepare_mapping: None,
+                prepare_mapping,
                 package: None,
             })
         }
@@ -464,12 +479,17 @@ pub fn load_prepare_profile_with_hash(profile: &str) -> Result<LoadedPrepareProf
         let profile_source = match profile {
             "cmbs_tenant_label" => BUILTIN_CMBS_TENANT_LABEL_PROFILE.to_string(),
             "regab_firm_identity" => BUILTIN_REGAB_FIRM_IDENTITY_PROFILE.to_string(),
+            "instrument_identity" => BUILTIN_INSTRUMENT_IDENTITY_PROFILE.to_string(),
             _ => {
                 return Err(EntityRefusalKind::Profile.to_refusal(
                     "Unknown entity prepare profile",
                     json!({
                         "profile": profile,
-                        "available_profiles": ["cmbs_tenant_label", "regab_firm_identity"]
+                        "available_profiles": [
+                            "cmbs_tenant_label",
+                            "regab_firm_identity",
+                            "instrument_identity"
+                        ]
                     }),
                     None,
                 ));
@@ -478,10 +498,11 @@ pub fn load_prepare_profile_with_hash(profile: &str) -> Result<LoadedPrepareProf
 
         let document = EntityProfileDocument::from_yaml_str(&profile_source)
             .map_err(|error| error.to_refusal())?;
+        let prepare_mapping = document.prepare.clone();
         Ok(LoadedPrepareProfile {
             document,
             content_hash: witness::hash_bytes(profile_source.as_bytes()),
-            prepare_mapping: None,
+            prepare_mapping,
             package: None,
         })
     }
@@ -773,13 +794,24 @@ fn prepare_field_contract_hash(contract: &PrepareInputContract) -> Result<String
 pub fn prepare_surface_records(
     observations: &[PreparedInputObservation],
 ) -> Result<Vec<PreparedSurfaceRecord>, Refusal> {
+    prepare_surface_records_with_profile(None, &PrepareFieldMapping::default(), observations)
+}
+
+fn prepare_surface_records_with_profile(
+    profile: Option<&EntityProfileDocument>,
+    mapping: &PrepareFieldMapping,
+    observations: &[PreparedInputObservation],
+) -> Result<Vec<PreparedSurfaceRecord>, Refusal> {
     let mut groups: BTreeMap<String, PreparedSurfaceAccumulator> = BTreeMap::new();
 
     for observation in observations {
-        let normalized_views = normalized_views_for_surface(
+        let mut normalized_views = normalized_views_for_surface(
             &observation.profile_id,
             &observation.primary_surface.value,
         );
+        if let Some(profile) = profile {
+            normalized_views.extend(configured_normalized_views(profile, mapping, observation)?);
+        }
         let core_value = core_view_value(&observation.profile_id, &normalized_views)
             .unwrap_or_else(|| observation.primary_surface.value.trim().to_string());
         let surface_key = format!("{}:{core_value}", observation.profile_id);
@@ -813,7 +845,12 @@ pub(crate) fn prepare_surface_records_for_loaded_profile(
     observations: &[PreparedInputObservation],
 ) -> Result<Vec<PreparedSurfaceRecord>, Refusal> {
     let Some(package) = loaded_profile.package.as_ref() else {
-        return prepare_surface_records(observations);
+        let contract = prepare_contract_for_loaded_profile(loaded_profile)?;
+        return prepare_surface_records_with_profile(
+            Some(&loaded_profile.document),
+            &contract.mapping,
+            observations,
+        );
     };
     let execution =
         execute_prepare_profile_package(rows, package, loaded_profile.content_hash.as_str())?;
@@ -1336,8 +1373,13 @@ fn surface_id_view_name(profile_id: &str) -> Option<&'static str> {
 }
 
 fn marked_surface_id_view_name(surface: &PreparedSurfaceRecord) -> Option<String> {
-    let mut candidates = surface
-        .normalized_views
+    marked_surface_id_view_name_from_views(&surface.normalized_views)
+}
+
+fn marked_surface_id_view_name_from_views(
+    views: &BTreeMap<String, PreparedNormalizedView>,
+) -> Option<String> {
+    let mut candidates = views
         .iter()
         .filter(|(_, view)| {
             view.reason_codes
@@ -1454,12 +1496,124 @@ fn generic_normalized_views(raw: &str) -> BTreeMap<String, PreparedNormalizedVie
     )])
 }
 
+fn configured_normalized_views(
+    profile: &EntityProfileDocument,
+    mapping: &PrepareFieldMapping,
+    observation: &PreparedInputObservation,
+) -> Result<BTreeMap<String, PreparedNormalizedView>, Refusal> {
+    let mut views = BTreeMap::new();
+    for (view_name, field) in &mapping.normalized_view_fields {
+        let Some(value) = prepared_context_string(observation, field) else {
+            continue;
+        };
+        if is_placeholder_value(&value, mapping) {
+            continue;
+        }
+        let view = profile.normalized_views.get(view_name).ok_or_else(|| {
+            EntityRefusalKind::Profile.to_refusal(
+                "Prepare mapping references a normalized view that is not declared by the profile",
+                json!({
+                    "profile": profile.profile,
+                    "view": view_name,
+                    "field": field
+                }),
+                None,
+            )
+        })?;
+        let value = apply_configured_normalizers(value.as_str(), &view.operators)?;
+        if value.trim().is_empty() || is_placeholder_value(&value, mapping) {
+            continue;
+        }
+
+        let mut reason_codes = vec!["configured_field_mapping".to_string()];
+        if mapping
+            .canonical_surface_normalized_view
+            .as_deref()
+            .is_some_and(|canonical| canonical == view_name)
+        {
+            reason_codes.push("surface_id_view".to_string());
+        }
+        views.insert(
+            view_name.clone(),
+            PreparedNormalizedView {
+                value,
+                reason_codes,
+            },
+        );
+    }
+    Ok(views)
+}
+
+fn prepared_context_string(observation: &PreparedInputObservation, field: &str) -> Option<String> {
+    observation
+        .context
+        .get(field)
+        .and_then(value_to_string)
+        .or_else(|| observation.provenance.get(field).cloned())
+}
+
+fn value_to_string(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) => {
+            let trimmed = text.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        }
+        Value::Bool(value) => Some(value.to_string()),
+        Value::Number(value) => Some(value.to_string()),
+        _ => None,
+    }
+}
+
+fn apply_configured_normalizers(raw: &str, operators: &[String]) -> Result<String, Refusal> {
+    let mut value = raw.to_string();
+    for operator in operators {
+        value = match operator.as_str() {
+            "identity" => value,
+            "ascii_trim_upper" => value.trim().to_ascii_uppercase(),
+            "unicode_fold" => normalize_normality(&value).normalized,
+            "lowercase" => value.to_lowercase(),
+            "uppercase" => value.to_uppercase(),
+            "normalize_whitespace" | "tokenize" => {
+                value.split_whitespace().collect::<Vec<_>>().join(" ")
+            }
+            "fingerprint" => normalize_openrefine_fingerprint(&value).fingerprint,
+            "reverse_two_tokens" => {
+                let tokens = value.split_whitespace().collect::<Vec<_>>();
+                if let [first, second] = tokens.as_slice() {
+                    format!("{second} {first}")
+                } else {
+                    String::new()
+                }
+            }
+            "placeholder_to_null" => {
+                if is_common_placeholder_value(&value) {
+                    String::new()
+                } else {
+                    value
+                }
+            }
+            _ => {
+                return Err(EntityRefusalKind::Profile.to_refusal(
+                    "Prepare configured field mapping uses a normalization operator without a generic field-view implementation",
+                    json!({ "operator": operator }),
+                    None,
+                ));
+            }
+        };
+    }
+    Ok(value.trim().to_string())
+}
+
 fn core_view_value(
     profile_id: &str,
     views: &BTreeMap<String, PreparedNormalizedView>,
 ) -> Option<String> {
-    let view_name = surface_id_view_name(profile_id)?;
-    views.get(view_name).map(|view| view.value.clone())
+    marked_surface_id_view_name_from_views(views)
+        .and_then(|view_name| views.get(&view_name).map(|view| view.value.clone()))
+        .or_else(|| {
+            let view_name = surface_id_view_name(profile_id)?;
+            views.get(view_name).map(|view| view.value.clone())
+        })
 }
 
 fn non_empty_or_fallback(value: &str, fallback: &str) -> String {
@@ -1522,6 +1676,7 @@ fn validate_mapping(mapping: &PrepareFieldMapping) -> Result<(), Refusal> {
     ensure_unique_non_empty("primary_surface_fields", &mapping.primary_surface_fields)?;
     ensure_unique_non_empty("context_fields", &mapping.context_fields)?;
     ensure_unique_non_empty("provenance_fields", &mapping.provenance_fields)?;
+    ensure_unique_non_empty("placeholder_values", &mapping.placeholder_values)?;
     if mapping
         .canonical_surface_normalized_view
         .as_ref()
@@ -1552,6 +1707,28 @@ fn validate_mapping(mapping: &PrepareFieldMapping) -> Result<(), Refusal> {
             ));
         }
     }
+    for (view_name, field) in &mapping.normalized_view_fields {
+        if view_name.trim().is_empty() || field.trim().is_empty() {
+            return Err(EntityRefusalKind::Profile.to_refusal(
+                "Prepare normalized view mappings must use non-empty view and field names",
+                json!({ "view": view_name, "field": field }),
+                None,
+            ));
+        }
+    }
+    if let Some(canonical_view) = mapping.canonical_surface_normalized_view.as_deref()
+        && !mapping.normalized_view_fields.is_empty()
+        && !mapping.normalized_view_fields.contains_key(canonical_view)
+    {
+        return Err(EntityRefusalKind::Profile.to_refusal(
+            "Prepare canonical normalized view must be declared in normalized_view_fields",
+            json!({
+                "canonical_surface_normalized_view": canonical_view,
+                "normalized_view_fields": mapping.normalized_view_fields.keys().collect::<Vec<_>>()
+            }),
+            None,
+        ));
+    }
     Ok(())
 }
 
@@ -1574,6 +1751,21 @@ fn ensure_unique_non_empty(field: &str, values: &[String]) -> Result<(), Refusal
         }
     }
     Ok(())
+}
+
+fn is_placeholder_value(value: &str, mapping: &PrepareFieldMapping) -> bool {
+    mapping
+        .placeholder_values
+        .iter()
+        .any(|placeholder| value.trim().eq_ignore_ascii_case(placeholder.trim()))
+        || is_common_placeholder_value(value)
+}
+
+fn is_common_placeholder_value(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_uppercase().as_str(),
+        "" | "N/A" | "NA" | "NONE" | "NULL" | "UNKNOWN" | "000000000"
+    )
 }
 
 fn validate_headers(headers: &[String], contract: &PrepareInputContract) -> Result<(), Refusal> {
@@ -1754,6 +1946,9 @@ fn anchors(
         let Some(anchor_value) = scalar_string(value, row.row_number, field)? else {
             continue;
         };
+        if is_placeholder_value(&anchor_value, &contract.mapping) {
+            continue;
+        }
         anchors.push(PreparedAnchor {
             namespace: namespace.clone(),
             value: anchor_value,
@@ -1768,18 +1963,33 @@ fn context(
     contract: &PrepareInputContract,
 ) -> Result<BTreeMap<String, Value>, Refusal> {
     let mut context = BTreeMap::new();
-    for field in &contract.mapping.context_fields {
+    for field in context_field_names(&contract.mapping) {
         if field == "source_row_id" {
             continue;
         }
-        let Some(value) = row.get(field) else {
+        let Some(value) = row.get(&field) else {
             continue;
         };
-        if let Some(normalized) = normalized_context_value(value, row.row_number, field)? {
-            context.insert(field.clone(), normalized);
+        if let Some(normalized) = normalized_context_value(value, row.row_number, &field)? {
+            let keep = value_to_string(&normalized)
+                .is_none_or(|text| !is_placeholder_value(&text, &contract.mapping));
+            if keep {
+                context.insert(field, normalized);
+            }
         }
     }
     Ok(context)
+}
+
+fn context_field_names(mapping: &PrepareFieldMapping) -> Vec<String> {
+    mapping
+        .context_fields
+        .iter()
+        .chain(mapping.normalized_view_fields.values())
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 fn provenance(

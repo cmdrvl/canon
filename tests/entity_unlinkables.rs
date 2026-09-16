@@ -241,6 +241,7 @@ fn diagnostic_profile() -> EntityProfileDocument {
         canonical_type: "organization".to_string(),
         required_fields: vec!["name".to_string()],
         normalized_views: BTreeMap::new(),
+        prepare: None,
         evidence: EntityEvidenceLanes {
             support: ["name_key", "name_anchor"]
                 .into_iter()

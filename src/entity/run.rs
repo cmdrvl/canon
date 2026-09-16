@@ -3779,13 +3779,19 @@ fn exact_view_support_for_spec(
         return Ok(None);
     }
     let operator_id = support_operator_id(spec);
+    let Some(left_value) = optional_support_view_value(left, view_name) else {
+        return Ok(None);
+    };
+    let Some(right_value) = optional_support_view_value(right, view_name) else {
+        return Ok(None);
+    };
     Ok(exact_view_support_hit(ExactViewSupportRequest {
         namespace: context.support_namespace,
         operator_id: &operator_id,
         reason_code: "exact_view_support",
         view_name,
-        left_value: support_view_value(left, view_name, "exact_view")?,
-        right_value: support_view_value(right, view_name, "exact_view")?,
+        left_value,
+        right_value,
         score_units,
     }))
 }
@@ -4177,6 +4183,17 @@ fn support_view_value<'a>(
                 }),
             )
         })
+}
+
+fn optional_support_view_value<'a>(
+    surface: &'a PreparedSurfaceRecord,
+    view_name: &str,
+) -> Option<&'a str> {
+    surface
+        .normalized_views
+        .get(view_name)
+        .map(|view| view.value.as_str())
+        .filter(|value| !value.trim().is_empty())
 }
 
 fn required_field_param<'a>(

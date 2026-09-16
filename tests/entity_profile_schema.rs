@@ -54,6 +54,59 @@ fn entity_profile_schema_validates_regab_firm_identity_profile() {
 }
 
 #[test]
+fn entity_profile_schema_validates_instrument_identity_profile() {
+    let profile = EntityProfileDocument::from_yaml_str(include_str!(
+        "fixtures/entity/profiles/instrument_identity.yaml"
+    ))
+    .expect("instrument profile validates");
+
+    assert_eq!(profile.profile, "instrument_identity");
+    assert_eq!(profile.entity_type, "instrument");
+    assert_eq!(profile.identity_semantics, "identifies_same_instrument");
+    assert_eq!(profile.canonical_type, "instrument");
+    assert!(profile.required_fields.contains(&"issuer_lei".to_string()));
+
+    let prepare = profile.prepare.as_ref().expect("prepare mapping");
+    assert_eq!(
+        prepare.canonical_surface_normalized_view.as_deref(),
+        Some("core")
+    );
+    assert_eq!(prepare.normalized_view_fields["cusip"], "cusip");
+    assert_eq!(prepare.anchor_fields["figi"], "figi");
+    assert!(prepare.placeholder_values.contains(&"N/A".to_string()));
+
+    assert!(
+        profile
+            .evidence
+            .support
+            .iter()
+            .any(|operator| operator.op == "isin_cusip_arithmetic")
+    );
+    assert!(
+        profile
+            .evidence
+            .cannot_link
+            .iter()
+            .any(|operator| operator.op == "attribute_conflict")
+    );
+    assert!(
+        profile
+            .evidence
+            .relation_hints
+            .iter()
+            .any(|operator| operator.op == "issued_by"
+                && operator.params.get("merge_authorized").map(String::as_str) == Some("false"))
+    );
+    assert!(
+        profile.evidence.support.iter().all(|operator| operator
+            .params
+            .get("field")
+            .map(String::as_str)
+            != Some("issuer_lei"))
+    );
+}
+
+#[test]
 fn entity_profile_schema_missing_required_fields_refuses_with_entity_profile() {
     let error = EntityProfileDocument::from_yaml_str(
         r#"

@@ -55,6 +55,8 @@ const BUILTIN_CMBS_TENANT_LABEL_PROFILE: &str =
     include_str!("../../tests/fixtures/entity/profiles/cmbs_tenant_label.yaml");
 const BUILTIN_REGAB_FIRM_IDENTITY_PROFILE: &str =
     include_str!("../../tests/fixtures/entity/profiles/regab_firm_identity.yaml");
+const BUILTIN_INSTRUMENT_IDENTITY_PROFILE: &str =
+    include_str!("../../tests/fixtures/entity/profiles/instrument_identity.yaml");
 
 pub const DEFAULT_INDEX_COMMON_POSTING_LIMIT: usize = 100;
 pub const DEFAULT_INDEX_NGRAM_WIDTH: usize = 3;
@@ -2555,13 +2557,18 @@ fn load_profile_reference(profile: &str) -> Result<crate::entity::EntityProfileR
         let profile_source = match profile {
             "cmbs_tenant_label" => BUILTIN_CMBS_TENANT_LABEL_PROFILE.to_string(),
             "regab_firm_identity" => BUILTIN_REGAB_FIRM_IDENTITY_PROFILE.to_string(),
+            "instrument_identity" => BUILTIN_INSTRUMENT_IDENTITY_PROFILE.to_string(),
             _ => {
                 return Err(EntityRefusalKind::Profile.to_refusal(
                     "Unknown entity index profile",
                     json!({
                         "stage": "index",
                         "profile": profile,
-                        "available_profiles": ["cmbs_tenant_label", "regab_firm_identity"],
+                        "available_profiles": [
+                            "cmbs_tenant_label",
+                            "regab_firm_identity",
+                            "instrument_identity"
+                        ],
                         "writes_performed": false
                     }),
                     None,

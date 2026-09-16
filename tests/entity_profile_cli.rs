@@ -23,7 +23,7 @@ fn entity_profile_cli_lists_robot_friendly_templates() {
 
     assert_eq!(catalog["version"], "canon_entity_profile_templates.v0");
     let profiles = catalog["profiles"].as_array().expect("profiles array");
-    assert_eq!(profiles.len(), 2);
+    assert_eq!(profiles.len(), 3);
 
     let cmbs = profiles
         .iter()
@@ -50,6 +50,24 @@ fn entity_profile_cli_lists_robot_friendly_templates() {
         .expect("regab template listed");
     assert_eq!(regab["identity_semantics"], "same_firm_or_reviewed_alias");
     assert_eq!(regab["canonical_type"], "org");
+
+    let instrument = profiles
+        .iter()
+        .find(|profile| profile["profile"] == "instrument_identity")
+        .expect("instrument template listed");
+    assert_eq!(
+        instrument["identity_semantics"],
+        "identifies_same_instrument"
+    );
+    assert_eq!(instrument["canonical_type"], "instrument");
+    assert!(
+        instrument["non_goals"]
+            .as_array()
+            .unwrap()
+            .contains(&Value::String(
+                "does_not_merge_on_shared_issuer_lei".to_string()
+            ))
+    );
 }
 
 #[test]
@@ -65,6 +83,11 @@ fn entity_profile_cli_init_writes_valid_commented_templates() {
             "regab_firm_identity",
             "same_firm_or_reviewed_alias",
             "does not collapse parent/subsidiary",
+        ),
+        (
+            "instrument_identity",
+            "identifies_same_instrument",
+            "issuer LEI is an issued_by relation hint only",
         ),
     ] {
         let output_path = temp.path().join(format!("{profile_id}.yaml"));
@@ -123,7 +146,11 @@ fn entity_profile_cli_unknown_template_refuses_with_recovery() {
     assert_eq!(refusal["refusal"]["code"], "E_ENTITY_PROFILE");
     assert_eq!(
         refusal["refusal"]["detail"]["available_profiles"],
-        serde_json::json!(["cmbs_tenant_label", "regab_firm_identity"])
+        serde_json::json!([
+            "cmbs_tenant_label",
+            "regab_firm_identity",
+            "instrument_identity"
+        ])
     );
     assert_eq!(
         refusal["refusal"]["next_command"],
