@@ -6,6 +6,15 @@ use canon::entity::{
     run::{EntityRunRequest, run_entity_workbench},
     score::ScoreLane,
 };
+use canon::temporal::{
+    IntervalBoundary, RecordedTime, SourceLocator, TimeInterval,
+    instrument::{
+        IDENTIFIES_SAME_INSTRUMENT_PREDICATE, InstrumentIdentifierObservation,
+        InstrumentSuccessionDecisionKind, InstrumentSuccessionReason,
+        derive_instrument_identifier_succession,
+    },
+    relation::{RelationIdentityImplicationMode, relation_edge_implies_alias},
+};
 use serde::de::DeserializeOwned;
 use std::{
     collections::BTreeMap,
@@ -127,6 +136,84 @@ fn instrument_profile_runs_prepare_and_evidence_with_configured_mapping() {
     );
 }
 
+#[test]
+fn instrument_profile_outputs_feed_temporal_cusip_succession_without_issuer_merge_support() {
+    let fixture = InstrumentFixture::new();
+    let rows = fixture.write_rows("temporal-instruments.csv");
+    let work = fixture.path("temporal-work");
+
+    run_fixture(&rows, &fixture.registry, &work);
+
+    let surfaces: Vec<PreparedSurfaceRecord> = read_jsonl(&work.join("prepare/surfaces.jsonl"));
+    let by_core = surface_ids_by_core(&surfaces);
+    let evidence: Vec<EdgeEvidenceRecord> = read_jsonl(&work.join("evidence/evidence.jsonl"));
+    let handover_record = record_for_cores(
+        &evidence,
+        &by_core,
+        "acme term loan legacy cusip",
+        "acme term loan new cusip",
+    );
+    assert!(support_hit(handover_record, "anchor_match:figi").is_some());
+    assert!(anti_merge_hit(handover_record, "anchor_conflict:figi").is_none());
+    assert!(
+        handover_record
+            .hits
+            .iter()
+            .all(|hit| !hit.operator_id.contains("issuer_lei")),
+        "issuer LEI must remain relation metadata in the evidence path"
+    );
+
+    let predecessor = temporal_observation(
+        surface_by_core(&surfaces, "acme term loan legacy cusip"),
+        PeriodSpec {
+            start_at: "2026-01-01T00:00:00Z",
+            end_at: "2026-03-31T23:59:59Z",
+            fragment: "row-7",
+        },
+    );
+    let successor = temporal_observation(
+        surface_by_core(&surfaces, "acme term loan new cusip"),
+        PeriodSpec {
+            start_at: "2026-04-01T00:00:00Z",
+            end_at: "2026-06-30T23:59:59Z",
+            fragment: "row-8",
+        },
+    );
+
+    let succession = derive_instrument_identifier_succession(predecessor, successor)
+        .expect("entity-prepared surfaces feed temporal succession");
+    assert_eq!(
+        succession.decision.kind,
+        InstrumentSuccessionDecisionKind::Succession
+    );
+    assert_eq!(
+        succession.decision.reason,
+        InstrumentSuccessionReason::ValidTimeEqualityWithSupersededByRelation
+    );
+    assert_eq!(succession.identity_facts.len(), 1);
+    assert_eq!(succession.relations.len(), 1);
+    assert_eq!(
+        succession.identity_facts[0].predicate,
+        IDENTIFIES_SAME_INSTRUMENT_PREDICATE
+    );
+    assert_eq!(
+        succession.identity_facts[0].valid_time.start_at.as_deref(),
+        Some("2026-04-01T00:00:00Z")
+    );
+    assert_eq!(
+        succession.relations[0].identity_implication.mode,
+        RelationIdentityImplicationMode::SupportedBySeparateEqualityFact
+    );
+    assert_eq!(
+        succession.relations[0]
+            .identity_implication
+            .equality_fact_ref
+            .as_deref(),
+        Some(succession.identity_facts[0].fact_id.as_str())
+    );
+    assert!(!relation_edge_implies_alias(&succession.relations[0]));
+}
+
 struct InstrumentFixture {
     _temp: tempfile::TempDir,
     root: PathBuf,
@@ -168,6 +255,8 @@ impl InstrumentFixture {
                 "row-4,2026-06-30,Acme Term Loan Placeholder,000000000,NA,N/A,N/A,NA,549300ACMEISSUER,A\n",
                 "row-5,2026-06-30,Acme Class A Common Shares,N/A,NA,N/A,N/A,NA,549300ACMEISSUER,A\n",
                 "row-6,2026-06-30,Acme Class C Common Shares,N/A,NA,N/A,N/A,NA,549300ACMEISSUER,C\n",
+                "row-7,2026-03-31,Acme Term Loan Legacy CUSIP,111111111,N/A,BBG00SUCCESS,2030-06-30,5.000,549300ACMEISSUER,A\n",
+                "row-8,2026-06-30,Acme Term Loan New CUSIP,222222222,N/A,BBG00SUCCESS,2030-06-30,5.000,549300ACMEISSUER,A\n",
             ),
         )
         .expect("rows csv");
@@ -206,7 +295,7 @@ fn surface_by_core<'a>(
     surfaces
         .iter()
         .find(|surface| surface.normalized_views["core"].value == expected)
-        .unwrap_or_else(|| panic!("missing prepared surface core {expected}"))
+        .expect("missing prepared surface core")
 }
 
 fn record_for_cores<'a>(
@@ -223,7 +312,7 @@ fn record_for_cores<'a>(
             (&record.left_surface_id == left_id && &record.right_surface_id == right_id)
                 || (&record.left_surface_id == right_id && &record.right_surface_id == left_id)
         })
-        .unwrap_or_else(|| panic!("missing evidence pair {left} <=> {right}"))
+        .expect("missing evidence pair")
 }
 
 fn record_has_core(
@@ -255,6 +344,56 @@ fn anti_merge_hit<'a>(
         .hits
         .iter()
         .find(|hit| hit.lane == ScoreLane::AntiMerge && hit.operator_id == operator_id)
+}
+
+struct PeriodSpec<'a> {
+    start_at: &'a str,
+    end_at: &'a str,
+    fragment: &'a str,
+}
+
+fn temporal_observation(
+    surface: &PreparedSurfaceRecord,
+    period: PeriodSpec<'_>,
+) -> InstrumentIdentifierObservation {
+    InstrumentIdentifierObservation {
+        surface_id: surface.surface_id.clone(),
+        identifier_namespace: "cusip".to_string(),
+        identifier_value: surface
+            .normalized_views
+            .get("cusip")
+            .map(|view| view.value.clone()),
+        issuer_lei: Some("549300ACMEISSUER".to_string()),
+        maturity_date: surface
+            .normalized_views
+            .get("instrument_maturity")
+            .map(|view| view.value.clone()),
+        annualized_rate_bps: Some(500),
+        balance_profile: Some("principal_bucket:10m".to_string()),
+        figi: surface
+            .anchors
+            .iter()
+            .find(|anchor| anchor.namespace == "figi")
+            .map(|anchor| anchor.value.clone()),
+        valid_time: TimeInterval {
+            start_at: Some(period.start_at.to_string()),
+            start_bound: IntervalBoundary::Inclusive,
+            end_at: Some(period.end_at.to_string()),
+            end_bound: IntervalBoundary::Inclusive,
+        },
+        recorded_time: RecordedTime {
+            start_at: Some("2026-07-15T12:00:00Z".to_string()),
+            start_bound: IntervalBoundary::Inclusive,
+            end_at: None,
+            end_bound: IntervalBoundary::Open,
+            transaction_seq: Some(1),
+        },
+        source_locator: SourceLocator {
+            source_system: "instrument_profile_fixture".to_string(),
+            locator: PROFILE.to_string(),
+            fragment: Some(period.fragment.to_string()),
+        },
+    }
 }
 
 fn read_jsonl<T: DeserializeOwned>(path: &Path) -> Vec<T> {

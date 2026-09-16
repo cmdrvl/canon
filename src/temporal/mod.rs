@@ -12,6 +12,7 @@ pub mod compile;
 pub mod conflict;
 pub mod diff;
 pub mod explain;
+pub mod instrument;
 pub mod relation;
 
 mod fact;
