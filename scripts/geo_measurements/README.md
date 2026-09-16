@@ -104,7 +104,10 @@ boundaries. E4, E5, and G3 acceptance are unchanged.
 
 Implementation follow-up: bd-3mft (source-neutral address membership) then bd-33hh
 (address-first acquisition handoff, plan/run, and inspect). This baseline measures those
-features; it does not close them.
+features; it does not close them. The operator's subsequent priority is command usability
+with manually assembled inputs; bd-1g18 and bd-2dvm can proceed independently of automated
+acquisition/assembly. The target and gap ownership are in
+[PLAN_CANON_GEO.md §16.1.2](../../docs/PLAN_CANON_GEO.md#1612-command-usability-measured-baseline-and-completion-criteria).
 
 ### Brooklyn neighborhood solve: 2026-09-16 continuation
 
@@ -167,6 +170,43 @@ parcel observation. The building observation is separately assembled from the sa
 row; it is not independent corroboration or an implemented PAD-to-building adapter.
 Evidence Machine integration is not exercised. `bd-33hh` retains the automated assembly
 and useful terminal/next-evidence behavior; `bd-3mft` retains source-neutral address input.
+
+#### Command usability findings: retained artifact readback
+
+Operator direction after the walkthrough: preserve this baseline and update plans/beads
+before implementation. Manual JSON assembly is acceptable. The next milestone is usable,
+consistent Geo subcommands; Evidence Machine integration is a later concern.
+
+The archived `02_address_building/inspect.json` and `run.json` expose these concrete gaps:
+
+- Q1 identifies the run by hashes, without the actual question, grain or as-of scope.
+- `metrics.backbone_members` contains the supported BBL/BIN, but the default summary and
+  Q6 do not explain those members or their evidence. Q6 reports status, global count and
+  conflict-core totals. Empty conflict cores do not explain a positive conclusion.
+- `metrics.claim_class` is `collateral_composition`; `inspection_metrics` currently
+  assigns this from the presence of a composition artifact. It does not establish the
+  requested address association or a complete property boundary.
+- The global count is saturated at `18446744073709551615`, with the saturation flag
+  retained. It is not that many independently plausible address matches. Target-component
+  counts are exact; other optional components account for the whole-set ambiguity.
+- Q8 says to rerun the stage producing the missing next-evidence artifact. The actual
+  run blocker says separation requires at least one prospective observation. Run actions
+  name `canon.geo.stage.separation.v0`, an internal executor identifier, rather than a
+  complete public invocation with the corrected input. Unchanged resume repeats failure.
+
+The baseline therefore supports **working evidence admission and local solving, partial
+run completion, and incomplete operator-facing explanation/recovery**. Do not summarize
+it as either a complete end-to-end success or a solver that found nothing. No prospective
+observations supplied does not mean no useful evidence exists. Missing site-completeness
+evidence does not erase the required parcel/building pair.
+
+bd-1g18 is reopened against its original inspection acceptance; bd-2dvm owns bounded
+solve completion and next-evidence input preflight. bd-3mft, bd-33hh and bd-3fq5 retain
+address contracts, staged standalone delivery and cross-command acceptance. The linked
+plan §16.1.2 defines the target and negatives. Original measurement JSON, native archives,
+source bytes, replay script and verification results remain unchanged by this planning
+pass. Acquisition advancement, evaluation, ledger delivery, imagery, historical truth and
+generalization were not exercised by the Brooklyn continuation.
 
 MapPLUTO's source digest addresses unrounded WKB, while this acquisition retains complete
 display WKT rounded to nine decimals. The two representations have separate hashes.

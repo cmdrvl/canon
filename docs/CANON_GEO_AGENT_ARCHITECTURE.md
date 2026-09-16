@@ -599,6 +599,18 @@ canon geo inspect --run DIR [--component ID] [--compare OTHER_RUN] [--recommend-
   component focus, run comparison, and stored next-evidence recommendations. A missing
   question-specific artifact is unanswerable; corrupt or missing referenced bytes refuse.
 
+**Measured usability gap, 2026-09-16:** the retained Brooklyn run has a valid ambiguous
+solve and seven completed stages, then fails because separation receives no prospective
+observations. Current inspection returns hash-oriented question identity, conflict/count
+summaries and generic retry advice; this does not yet satisfy the eight operator questions
+in §1. bd-1g18 is reopened for the unmet answer/explanation/recovery contract; bd-2dvm owns
+bounded solve completion and early next-evidence input checks. Manual input assembly is
+accepted for this phase. The current artifacts and the fully working target are separated
+in [PLAN_CANON_GEO.md §16.1.2](PLAN_CANON_GEO.md#1612-command-usability-measured-baseline-and-completion-criteria).
+An explicit solve/explain endpoint is planned behavior, not a shipped flag or a relabeling
+of the failed baseline. Missing proposed actions must not be represented as proof that no
+useful actions exist. No implementation is part of this planning update.
+
 `inspect` must emit structured next actions containing the exact command, required inputs,
 expected output contract, deterministic cost ceiling, and the reason the action can change
 the answer. Human prose is a rendering of those fields, not the only representation.
@@ -752,8 +764,9 @@ It changes the build order in five ways:
 4. The shared project runner now publishes immutable content-addressed manifest revisions
    and the bounded run manifest reuses verified project receipts for unchanged current-plan
    nodes; ready-node claims, concurrent scheduling, live acquisition deduplication,
-   crash-stale lock recovery, and inspect still have to land before repeated warehouse
-   pulls and exact solves are generically avoided.
+   and crash-stale lock recovery remain open. Stored-run inspection is shipped, with the
+   measured usability gaps above; generic avoidance of repeated warehouse pulls and exact
+   solves still requires the remaining accretion and concurrency work.
 5. Next-evidence selection operates on the current residual and declared costs, making
    evidence stacking deliberate rather than indiscriminate.
 

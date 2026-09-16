@@ -701,6 +701,14 @@ artifacts only, and `geo ledger` currently ships `build`, `card`, `collision`,
 `exposure`, and `validate`; `card` is redacted by default and emits the full
 artifact only with `--explicit`.
 
+The [2026-09-16 standalone-address baseline](scripts/geo_measurements/README.md#2026-09-16-four-address-bank-2019-bnk18-baseline)
+and [command-usability gap plan](docs/PLAN_CANON_GEO.md#1612-command-usability-measured-baseline-and-completion-criteria)
+separate observed behavior from the working target. Brooklyn demonstrates admitted
+parcel/building inclusion and exact local solving, but the nine-stage run stops after
+seven stages because prospective evidence inputs are missing. Clear explanations,
+actionable recovery and bounded completion remain open. Manual input assembly is accepted
+for that work; automated acquisition/assembly is a later milestone.
+
 ### Arguments
 
 | Argument | Description |

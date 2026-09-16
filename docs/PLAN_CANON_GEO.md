@@ -93,10 +93,10 @@ The controlling state entering the main review is:
 | Address evidence | PAD materially repairs address representation and restores street-absence refutation, but is evidence rather than an oracle. `canon geo materialize-address-evidence` now preserves the parse forest and PAD-membership audit, unions supported readings into one parcel existential observation, abstains on chimeras/no support, and binds each source-record association to Canon's hash of the normalized PAD-member payload. The hash prevents id-only payload substitution but does not authenticate upstream bytes or make the artifact live truth. Time-scoped observations remain diagnostic in composition v0. | `src/geo/address.rs`, `canon_geo_address_parcel_*.v0`; offline bridge `IMPLEMENTED`, full residual replay/tile compatibility `OPEN`, Appendix M `MEASURED` on NYC PAD 26B |
 | Evaluation ladder | E1–E3 are complete. E4 has an exact factorized residual solver over admitted evidence (bd-2kjx.1–.3); the E4 population numbers and the E5 non-NYC evidence-tier curve remain the decisive gates. | §17 and Appendix L; E4/E5 `OPEN` |
 | E5 geography preflight | Franklin County, Ohio (`39049`) now has a real parcel-backed successor to the immutable 2026-08-31 thin-tier preflight. Pinned current inputs are bridge build `80d0ea39-a5aa-4c27-a8d7-f662a4507257` and Franklin parcel release `hub-de09f99cce0bcae7142d6d2e26582fd3-25` / `2026-09-01`. Of 494,704 landed parcels, 494,043 pass the declared source/derived geometry admission. H3 feature coverage gives every one of 151 property subjects a nonempty block; Snowflake GEOGRAPHY PIP reaches 147, with 146 unique and one two-parcel case. The four misses are 3.006–22.221 m from the nearest blocked parcel and none is rescued by invalid-retained geometry. Microsoft GlobalML `2026-07-24` footprint coverage over the same current bridge contributes 168,778 features across 581 of 585 center+k1 r8 work cells, with zero HOT-geometry misses. A seeded live row also traversed original EPSG:3735 WKB → independent digest verification → Canon fixed-point materialization: 29 decoded / 28 canonical vertices, ≤1 µm decimal admission loss and ≤499 µm lattice snapping. These are candidate-reach, source-availability, and source-byte transport results, not precision, exact-local parity, solver correctness, or an evidence-tier operating point. Successful MCP envelopes still omit query ids, so durable live receipt promotion remains open. The applicable FEMA Ohio partition remains `2023-05-02`; vintages are pinned per geography. | `e5_franklin_county_parcel_candidate_reach.sql`, `e5_microsoft_globalml_franklin_h3_coverage.sql`, `e5_franklin_county_live_geometry_probe.sql`; parcel candidate reach, Microsoft current-bridge coverage, and one seeded source-byte path `MEASURED`, generic core isolation `TESTED`, E5 `OPEN` |
-| Time semantics | Evidence admissions preserve whole-day valid-time intervals, and v0 deliberately keeps every time-scoped observation diagnostic because composition has no query-as-of domain. Allen/STP inference is not implemented. | §§3, 7, 16.3; compiler contract implemented, temporal solver `OPEN` |
+| Time semantics | Bounded lifecycle/as-of resolution, temporal containment/property membership and declared interval-constraint projection are implemented in `lifecycle.rs`. Timeless composition does not acquire historical validity from a release date. A characterized absence can emit the declared hard constraint only with an authoritative lifecycle death separator and valid scope; presence alone and unseparated absence remain diagnostic/abstained. No historical Brooklyn boundary was measured. | bd-12gh and promoted bd-1oy8; bounded contracts `IMPLEMENTED`, dated population/real-case proof remains separate (bd-1ehd) |
 | Current precision claim | The 96–98% entity-grain answered-point estimate is provisional and truth-instrument-limited; Appendix M indicates residual contamination. | Appendices L.6 and M.5; `MEASURED`, not a release claim |
 | Product thesis | Collateral composition at parcel and building grain, evidence-dated physical existence, and named source conflicts (§18.2). Point re-ranking is `CUT`. Honest abstention is required but not differentiating. | §18; binding scope |
-| Solver scope | Extensional exact kernel retained as backend. Propagators (additive band, cardinality, exclusivity) and explanation artifacts (minimal core, correction sets, counterfactual separation) are `IN`; compiled representations, latent-slot symmetry breaking, Allen/STP, and VeriPB are `DEFERRED` with named triggers (§18.3). | §18.3, §18.5; `IN` items owned by beads, `DEFERRED` items hold P4 placeholders |
+| Solver scope | Extensional exact kernel retained as backend. Propagators (additive band, cardinality, exclusivity) and explanation artifacts (minimal core, correction sets, counterfactual separation) are `IN`; compiled representations, latent-slot symmetry breaking and VeriPB remain `DEFERRED`. The original temporal deferral was promoted on 2026-09-09; bounded lifecycle/as-of/declared temporal constraints are implemented, not historical population proof. | §18.3, §18.5; bd-1oy8 promotion/closure records the temporal amendment |
 | Imagery and map evidence | Licensed orthos, 3DEP, NAIP, NOAA ERI as pinned observer inputs; observers emit typed observations with characterized error through `rho`; first uses are truth adjudication and the evidence card, solver input third. Commercial basemaps and location-proposing models are `CUT`. | §18.4, Appendix J; `PROPOSED`, beads created 2026-09-01 |
 
 The 2026-08-29 and 2026-08-30 live home-cell receipts are preserved in
@@ -150,7 +150,8 @@ deterministic JSONL progress writer that reports
 validated reuse before pending execution, monotone phases, committed artifacts, counters,
 wait/cancellation/failure state, and leaves the semantic run bytes unchanged. That stream
 is not yet a public CLI/schema capability. Ready-node claims, crash-stale lock recovery,
-cross-agent scheduling, live acquisition, and inspection are still open. Paths, clocks,
+cross-agent scheduling and live acquisition are still open. Stored-run inspection is
+implemented, with the measured usability gaps in §16.1.2. Paths, clocks,
 worker order, and machine identity do not enter semantic hashes.
 
 This operating model adds no new epistemic shortcut. More admitted hard evidence narrows
@@ -209,8 +210,9 @@ evidence. `geo run`
 currently operates only within the
 parcel/building composition-profile limit: omitted/default `parcel` preserves the
 non-empty parcel universe requirement, explicit `building` permits a parcel-free building
-universe, and unsupported grains remain separately typed. `geo inspect` remains an
-**OPEN design target**, not a current CLI claim. Existing leaf commands remain
+universe, and unsupported grains remain separately typed. `geo inspect` implements
+stored-run readback; its complete answer/explanation/recovery target remains open under
+bd-1g18 and the measured gaps in §16.1.2. Existing leaf commands remain
 independently callable and machine-described. The public library implements and validates
 `canon_geo_discovery_request.v0`, `canon_geo_acquisition_request.v0`, and
 `canon_geo_acquisition_receipt.v0`; the planner may emit those typed requests for missing
@@ -634,18 +636,24 @@ the solver runs. With `regular` over a declared versioned token grammar, **all p
 alive as a domain** and the other constraints kill the wrong ones. Alternation handles
 `a/k/a` natively. **This removes the last statistical component from the decision path.**
 
-**Allen's interval algebra finds demolitions.** MS footprint from 2021 imagery, FEMA
-structure from 2019, parcel `YEARBUILT` 2020. A spatial join merges all three into one
-building. The temporal network **proves** the 2019 FEMA record cannot denote the same
-physical structure — so the tile contains a demolition-and-rebuild event, meaning **the
-collateral described in the 2019 offering document no longer exists.** A five-alarm CMBS
-finding, falling out of a 1983 paper. *Cheap wrong way:* `WHERE year_built <= 2019` — it
-filters rows instead of detecting events, so the rebuild is invisible.
+**Temporal constraints can distinguish successive structures when lifecycle evidence
+supports the distinction.** A footprint from 2021 imagery, a FEMA observation from 2019
+and parcel `YEARBUILT` 2020 raise a temporal question; those dates alone do not prove a
+demolition, rebuild or loss of collateral. Authoritative lifecycle separation, valid
+observation scope and a justified relation to the claimed property are needed for that
+stronger conclusion. An age filter such as `WHERE year_built <= 2019` cannot supply the
+missing event evidence.
 
-> **CURRENT STATUS — OPEN.** The evidence compiler now preserves valid-time intervals and
-> refuses to turn them into timeless hard or soft constraints. No Allen/STP network or
-> query-as-of composition domain is implemented, so no demolition/rebuild proof is a
-> current Canon capability.
+> **CURRENT STATUS — BOUNDED IMPLEMENTATION, LIVE PROOF OPEN (2026-09-16).**
+> bd-12gh and the 2026-09-09 promotion of bd-1oy8 delivered lifecycle/as-of, temporal
+> containment/property membership and declared temporal constraint projection in
+> `src/geo/lifecycle.rs`. The date discrepancy in the illustration above is insufficient
+> on its own: a hard absence exclusion requires characterized non-null observation,
+> authoritative death separator, current-universe binding and the declared temporal `rho`.
+> Presence alone and absence without that separator remain diagnostic/abstained. This is
+> bounded contract implementation, not general demolition/rebuild inference from source
+> dates or a demonstrated historical Brooklyn boundary. bd-1ehd retains dated real-case
+> integration; no E4/E5 credit follows from the implementation alone.
 
 **Congruence closure makes identity conflicts proofs.** Maintain equivalence classes of
 entity variables and identifier literals; every union records the named evidence
@@ -1079,6 +1087,86 @@ bd-3mft owns source-neutral address membership, and bd-33hh owns the standalone 
 journey. bd-3uug and bd-kwmc retain ownership of reviewed publication and client export.
 The four cases are a diagnostic baseline, not a statistical benchmark or a gate closure.
 
+#### 16.1.2 Command usability: measured baseline and completion criteria
+
+**Operator direction, 2026-09-16:** document the baseline and plan the gap to a fully
+working Canon Geo command surface before implementing changes. Manual source acquisition
+and request JSON assembly are acceptable for this phase. Automated assembly, including a
+possible Evidence Machine handoff, is a later integration concern. The immediate standard
+is that the existing subcommands work, compose consistently, explain their results, and
+provide usable continuation instructions. A valid ambiguous answer is a deliverable;
+changing its label does not strengthen the evidence.
+
+The [Brooklyn continuation](../scripts/geo_measurements/README.md#brooklyn-neighborhood-solve-2026-09-16-continuation)
+retains the actual local inputs, native artifacts and receipts. It contains 92 parcels,
+98 active footprints and 131 frontage rows, of which 121 entered the bounded address
+representation. The native address leaf produces parcel inclusion; building inclusion
+was assembled manually from the BIN on the same PAD record. With source building/parcel
+incidences, the target component has 3, then 2, then 1 feasible assignments as those two
+observations are admitted. The final solve requires parcel `3051090025` and building
+`3117371`; other components remain optional. All three whole-composition results remain
+ambiguous. No completeness/cardinality assertion was supplied, and none is warranted by
+this measurement. Source association and complete physical or legal extent are separate
+claims; command outputs should report each to the extent supported by the evidence.
+
+All three generated runs complete seven of nine stages. Separation rejects the supplied
+empty prospective-observation list, next-evidence selection is blocked, and the overall
+run reports `FAILED` with phase `SOLVED`. This is not a successful complete run. Twenty-four
+artifacts match across two fresh executions; retry reuses the seven completed nodes and
+repeats the same failure. Reproducibility does not repair the missing input contract.
+
+The following is a **retained-execution and code-readback baseline**, not a fresh live
+measurement or a claim that every Geo module was exercised. Keep the original measurement
+and archive immutable; future implementations produce separately dated comparisons.
+
+| Area | Current evidence / gap | Fully working behavior | Owner |
+|---|---|---|---|
+| Manual inputs and stage handoffs | Local typed inputs execute the first seven stages; the replay helper still supplies bindings and a separate building assertion. Required prospective input is rejected only when separation executes. | Help, schemas and plan agree on required inputs, versions, bindings and outputs. Validate available exogenous inputs before expensive work. A documented manually assembled request is a supported operator path. | bd-2dvm; bd-3mft |
+| Address membership | Native NYC/PAD leaf emits parcel existential membership. The BIN assertion is manual; ten frontage rows are explicitly unrepresented. Non-NYC membership was not executed. | Preserve source-backed parcel/building relations and their shared lineage, range/parity/directional ambiguity, and typed unsupported rows. Support source-neutral input without vendor dispatch in the generic core. | bd-3mft |
+| Surrounding-area evidence | All neighborhood candidates and source building/parcel incidences enter the solve. Display geometry and assessor attributes were retained, but exact local geometry predicates, multisource reconciliation and additional attribute constraints were not exercised. | Demonstrate the registered geometry/evidence stages and source-generic neighborhood relations through the command path. Admit only justified constraints; distinguish display context from evidence that changed the answer. An unexercised channel is a proof gap, not evidence that its code is absent. | bd-3fq5 integration; bd-3vox for the existing client-layer scenario; source/evidence feature owners if execution exposes defects |
+| Answer scope | Solve records the forced pair and wider ambiguity. Inspection assigns `collateral_composition` whenever a composition artifact exists. | Show the actual question, grain, temporal scope, required/optional/excluded members, and requested versus supported claims. Do not require complete site extent to report supported address association, or describe that association as full extent. | bd-1g18; bd-33hh |
+| Positive explanation | The explanation artifact analyzes conflicts; this noncontradictory case has empty cores/correction sets. Inspect Q6 reports status/count/core totals. | Trace a supported conclusion to stored observations, admitted constraints and source records. Distinguish direct support from derived support and missing derivation. Keep conflict explanation; inspect remains read-only and never runs a new solve to invent a proof. | bd-1g18, extending existing producing stages if needed |
+| Execution and stopping | The default nine-stage run fails after a successful ambiguous solve because `prospective: []` is invalid. | An explicitly requested solve/explain endpoint can complete. Requested separation/recommendation still requires valid prospective inputs. Distinguish execution failure, domain ambiguity, missing inputs, budget fallback and justified STOP. An empty list is not proof that all useful actions are exhausted. | bd-2dvm |
+| Recovery and next evidence | Run actions name an internal executor; inspect Q8 suggests rerunning the missing stage. Unchanged retry repeats the failure. | Name the specific failed dependency/input, an actual public command, required bindings/contracts and preconditions. Preserve partial results. Recommend evidence only from declared admissible actions; never invent an observation to obtain a green run. | bd-2dvm; bd-1g18; existing recommendation kernel bd-vojr |
+| Counts, comparison and reuse | Exact target counts coexist with a saturated global count. Fresh-process replay and unchanged resume work; a useful CLI explanation of the three-stage delta was not demonstrated. | JSON, summary and component/compare views agree on count scope, saturation, backbone completeness, changed evidence and forced members. Changed inputs invalidate affected descendants; unchanged work remains reusable. | bd-1g18; bd-2rf9 |
+| Time and candidate reach | The radius is diagnostic; truth reach is unverified. Latest retained releases do not establish 2019 boundaries. Bounded lifecycle/as-of code exists separately. | State the query time and each source's temporal meaning; current-source, historical and comparison requests remain distinct. Expose unsupported historical evidence and reach gaps without erasing supported current-source results. | bd-1g18; bd-33hh; bd-1ehd for dated observations; E4/E5 owners for truth |
+| Consistency across the public surface | Capabilities/help enumerate seven primary verbs. This case exercised capabilities, plan, run, the address leaf and inspect; it did not exercise acquisition advancement, evaluation or ledger delivery. | For every advertised supported branch, actual CLI behavior agrees with help/describe/schema/operator metadata, JSON/summary, exits, side effects and recovery. Every branch has positive execution plus meaningful failure tests. Untested branches remain unproven by this baseline. | bd-3fq5, consuming the feature owners above |
+
+**Completion target for the manual-input phase.** Given the retained inputs, an operator
+can use the existing commands to see the supported pair, source-backed reasons, optional
+neighbors, remaining extent uncertainty, source dates and reach limits; complete the
+requested bounded work; and either follow a concrete next command or stop with an honest
+reason. Adding/removing a declared observation produces an understandable, replayable
+delta. Valid ambiguity, contradiction, unsupported grain and budget fallback are normal
+typed outcomes. Invalid input and execution failure remain distinct and actionable.
+
+Use Brooklyn first, then the same four fixed addresses through the public command path.
+Require positive evidence execution in NYC and at least one non-NYC jurisdiction, while
+preserving Austin's different-street negative and Clyde's directional discrepancy and
+unresolved candidates. Include parcel-free input, multiple buildings, corrupt/truncated
+bytes, missing prospective input, contradictory evidence, saturated counts, source-release
+replacement and interrupted resume. A manually supplied input is allowed; precomputed
+answers, fixture-as-live claims and refusal-only completion are not. Feature tests ship
+with their changes; bd-3fq5 owns the cross-command integration scenarios.
+
+**Build order and remaining vision.** Reopen bd-1g18 against its original inspection and
+exact-next-action promise; retain credit for shipped stored-artifact readback. bd-2dvm
+owns the newly explicit bounded endpoint and early input checks. These can proceed without
+waiting for generic acquisition automation. bd-3mft owns address evidence generalization.
+bd-33hh keeps a manual-command milestone followed by its existing automated journey;
+manual success does not close the automation feature. This planning update implements
+none of those gaps and closes no feature bead.
+
+The fully working product also retains the existing broader gates: independent truth and
+non-NYC generalization (bd-1g4x, bd-s07o, bd-13ju), incremental/concurrent operation
+(bd-2rf9, bd-3oj1), reviewed publication and client outputs (bd-3uug, bd-kwmc), and the
+deal ledger/exposure/collision delivery (bd-lc7c, bd-2ocv). Those are not prerequisites for
+a single-address walkthrough and are not proved by it. Imagery remains the separately
+owned input/observer/outline work (bd-3pkw, bd-3ufk, bd-1uhl), with dated observations in
+bd-1ehd. It must demonstrate useful additional evidence under unchanged admission and
+truth gates; highlighted outlines alone neither repair command usability nor establish
+ownership or historical extent. E1–E5, G3 and the seven-primary-verb boundary are unchanged.
+
 ### 16.2 Candidate enumeration
 
 Candidates are never proposed by a channel (§2: there is no proposer). The generic
@@ -1116,7 +1204,7 @@ open work, not established capability.
 | 9 | Imagery / elevation observers | none landed; verified catalog in J (NYS/NYC ortho first, 3DEP, NAIP, NOAA event) | national per J | frozen-weight observers emit typed counts/outlines/floors with characterized regional error (A.2–A.3) | `gcc` checks, an own footprint source, change events | UNMEASURED |
 | 10 | POI / tenant | not landed | — | existential presence; tenant ≠ owner | `Y_q` | UNMEASURED |
 | 11 | Ownership | `OWNERNAME` | — | permits assemblage, never forbids (§3) | `Coll` permitting | ~0 bits alone by design |
-| 12 | Temporal / vintage | per-source dates, `YEARBUILT`, document dates, imagery vintage | — | closed whole-day valid-time intervals; diagnostic until an explicit query-as-of domain and Allen/STP solver exist (§7.1) | future demolition/rebuild events | Interval admission implemented; temporal inference `OPEN` |
+| 12 | Temporal / vintage | per-source dates, `YEARBUILT`, document dates, imagery vintage | — | closed whole-day valid-time intervals; bounded as-of relations and declared absence constraints with authoritative lifecycle separation (§7.1); source dates alone do not prove existence or demolition | time-scoped membership, existence diagnostics and justified exclusions | Bounded lifecycle/as-of contracts implemented; dated real-case proof `OPEN` |
 
 Per §2.1, **every row is worth a few bits at most, by design.** The architecture's claim
 is that joint propagation measures the *conditional* residual reduction after all prior
@@ -1343,8 +1431,10 @@ cannot be silently lost. `CUT` items may be cited only as history.
 - Latent-slot symmetry breaking (§5.1). Trigger: latent buildings become solver
   variables. Today observations are the variables and the canonical order already breaks
   observation symmetry.
-- Allen/STP temporal solver (§7.1). Trigger: the observer lane supplies dated existence
-  observations for a population. Interval admission stays implemented and diagnostic.
+- Historical temporal deferral (§7.1): the 2026-09-09 operator promotion of bd-1oy8
+  superseded this deferral for bounded lifecycle/as-of and declared interval constraints.
+  That implementation is shipped; dated population proof and the broader illustrative
+  demolition/rebuild claims remain unproven. See the current scope in §7.1 and bd-1ehd.
 - VeriPB proof logs (§8.1). Trigger: a trustee, rating agency, or regulator asks for a
   third-party-checkable certificate in writing.
 - National cost model (§13). Trigger: E4 and E5 component costs recorded with evidence.
@@ -1388,7 +1478,7 @@ through `rho`.
 | `structure_count_in_window` with error band | `gcc` lower/upper bound on latent structures inside the parcel or window | cardinality propagator |
 | `footprint_outline` at vintage | one more footprint plane with its own within-source exclusivity; majority-parcel predicate applies | candidate universe, incidence |
 | `height_or_floors` from 3DEP with density-derived error | integer band on floors; never a decider | additive band |
-| `present_at_vintage` / `absent_at_vintage` | closed valid-time interval observation; diagnostic until the temporal solver lands, hard only as "absent at v implies not the 2019 structure" once dated | interval admission; later Allen/STP |
+| `present_at_vintage` / `absent_at_vintage` | closed valid-time observation; presence alone stays diagnostic; characterized non-null absence can constrain only through the declared temporal `rho` with authoritative death separator and valid scope, never from non-observation alone | implemented bounded lifecycle/as-of projection; dated population proof remains open |
 | `change_event` between two vintages | diagnostic flag that raises the next-evidence priority; never a constraint alone | next-evidence controller |
 
 **Three uses, in order.** First, adjudication: ortho crops with candidate parcel lines
