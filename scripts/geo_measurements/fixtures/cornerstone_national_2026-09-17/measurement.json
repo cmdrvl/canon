@@ -1,0 +1,4088 @@
+{
+  "adapter_verification": {
+    "checked_input_artifacts": [
+      {
+        "artifact": "rows",
+        "mode": "replay",
+        "sha256": "690a9353e39ffae11318a9f752307ded7ed88f24f6fb0b61eb6fda658e13e7ed",
+        "variant": "foursquare-parcel"
+      },
+      {
+        "artifact": "question",
+        "mode": "replay",
+        "sha256": "f9a289a1c04f357ab9b3e79298a1908296b139a32574984da3b870944ea76877",
+        "variant": "foursquare-parcel"
+      },
+      {
+        "artifact": "inventory",
+        "mode": "replay",
+        "sha256": "dc2b4baa24517670cb1b73d2f219d9cb899e2906e0edb95371ad819003377438",
+        "variant": "foursquare-parcel"
+      },
+      {
+        "artifact": "profile",
+        "mode": "replay",
+        "sha256": "9fe5908406e293ba1900ef8c880fddfd6bea62d61bd053bd7ff7db76b959920b",
+        "variant": "foursquare-parcel"
+      },
+      {
+        "artifact": "budget",
+        "mode": "replay",
+        "sha256": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6",
+        "variant": "foursquare-parcel"
+      },
+      {
+        "artifact": "capabilities",
+        "mode": "replay",
+        "sha256": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf",
+        "variant": "foursquare-parcel"
+      },
+      {
+        "artifact": "plan",
+        "mode": "replay",
+        "sha256": "2330bbfe64da89c4b40aa069b6f61892e5c172a924da8d50361f195aec59621d",
+        "variant": "foursquare-parcel"
+      },
+      {
+        "artifact": "home",
+        "mode": "replay",
+        "sha256": "a7018dd5abc6ced82e29d4e7a382823e74f38325b2e4e0ba88ab98aecc49aeac",
+        "variant": "foursquare-parcel"
+      },
+      {
+        "artifact": "section",
+        "mode": "replay",
+        "sha256": "ce82b72ee0746ce62bfa5089ff8eb5a813ddb143790b2417cdcad64b6bcc8452",
+        "variant": "foursquare-parcel"
+      },
+      {
+        "artifact": "separation",
+        "mode": "replay",
+        "sha256": "cfb74aa45a31b010dcdfbd662f06ca4a0d63ceca8d06f309f6171688ee32e3d4",
+        "variant": "foursquare-parcel"
+      },
+      {
+        "artifact": "next",
+        "mode": "replay",
+        "sha256": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+        "variant": "foursquare-parcel"
+      },
+      {
+        "artifact": "rows",
+        "mode": "replay",
+        "sha256": "fe6742baaeb22143c7874940f901c556ab54bf1a2ed85638c933ce92c17f7eb3",
+        "variant": "national-parcel"
+      },
+      {
+        "artifact": "question",
+        "mode": "replay",
+        "sha256": "f9a289a1c04f357ab9b3e79298a1908296b139a32574984da3b870944ea76877",
+        "variant": "national-parcel"
+      },
+      {
+        "artifact": "inventory",
+        "mode": "replay",
+        "sha256": "bedd6b905cf8fd1e85ada387fed31a1140b35da85cef7889664ad7f8457d93f7",
+        "variant": "national-parcel"
+      },
+      {
+        "artifact": "profile",
+        "mode": "replay",
+        "sha256": "9fe5908406e293ba1900ef8c880fddfd6bea62d61bd053bd7ff7db76b959920b",
+        "variant": "national-parcel"
+      },
+      {
+        "artifact": "budget",
+        "mode": "replay",
+        "sha256": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6",
+        "variant": "national-parcel"
+      },
+      {
+        "artifact": "capabilities",
+        "mode": "replay",
+        "sha256": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf",
+        "variant": "national-parcel"
+      },
+      {
+        "artifact": "plan",
+        "mode": "replay",
+        "sha256": "1a7f9e7bb2061d33c814ebd87470ee907cb0f2a70ae19ae26cbc632c8a4c0a2f",
+        "variant": "national-parcel"
+      },
+      {
+        "artifact": "home",
+        "mode": "replay",
+        "sha256": "45b4254c4e1292f577c2b00ed48897647afd73e1521e09b01ad45fc9c2bc240c",
+        "variant": "national-parcel"
+      },
+      {
+        "artifact": "section",
+        "mode": "replay",
+        "sha256": "6b96c9155f5923bba6bdf64c6d027ee62085bb5f811e4f0857c0e913ee99e72b",
+        "variant": "national-parcel"
+      },
+      {
+        "artifact": "separation",
+        "mode": "replay",
+        "sha256": "cfb74aa45a31b010dcdfbd662f06ca4a0d63ceca8d06f309f6171688ee32e3d4",
+        "variant": "national-parcel"
+      },
+      {
+        "artifact": "next",
+        "mode": "replay",
+        "sha256": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+        "variant": "national-parcel"
+      },
+      {
+        "artifact": "rows",
+        "mode": "replay",
+        "sha256": "beb223c612c1c25d7acd3903dc97842ea8f8e8b00eefa91c97b0ed1f2ef3b918",
+        "variant": "national-building"
+      },
+      {
+        "artifact": "question",
+        "mode": "replay",
+        "sha256": "2c37fe962c998779b9643a35eaa7576ffc5533dae7961cbf4d551220a5756f25",
+        "variant": "national-building"
+      },
+      {
+        "artifact": "inventory",
+        "mode": "replay",
+        "sha256": "5eb767c79c5ed84dbea6a304da9f246f762dfac5b3c75a5eb512e68d3f89de51",
+        "variant": "national-building"
+      },
+      {
+        "artifact": "profile",
+        "mode": "replay",
+        "sha256": "2cb99c3924cbe9df8b9ceb6ab9e5402b7f65c275ec2f97b099929bb28e459c7a",
+        "variant": "national-building"
+      },
+      {
+        "artifact": "budget",
+        "mode": "replay",
+        "sha256": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6",
+        "variant": "national-building"
+      },
+      {
+        "artifact": "capabilities",
+        "mode": "replay",
+        "sha256": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf",
+        "variant": "national-building"
+      },
+      {
+        "artifact": "plan",
+        "mode": "replay",
+        "sha256": "ecdd5f42bf74af6dafd6e41b790e5862fe8a66a4a459c32c309f94ab6d692f82",
+        "variant": "national-building"
+      },
+      {
+        "artifact": "home",
+        "mode": "replay",
+        "sha256": "f1ae457fdfbe5f34c1ea824e79413cf8bcd40f0c6b7aab9c4cf3905071f2bb10",
+        "variant": "national-building"
+      },
+      {
+        "artifact": "section",
+        "mode": "replay",
+        "sha256": "139e3628aee9d65fbba1416da5eda13bef43baf5c826fd9244699cd20399539e",
+        "variant": "national-building"
+      },
+      {
+        "artifact": "separation",
+        "mode": "replay",
+        "sha256": "a205d7c582fb50ca9ace9c8625d28cce912c428d279b8d4952e6d4d2d4f9861f",
+        "variant": "national-building"
+      },
+      {
+        "artifact": "next",
+        "mode": "replay",
+        "sha256": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+        "variant": "national-building"
+      },
+      {
+        "artifact": "rows",
+        "mode": "duplicate-mirror",
+        "sha256": "690a9353e39ffae11318a9f752307ded7ed88f24f6fb0b61eb6fda658e13e7ed",
+        "variant": "foursquare-parcel"
+      },
+      {
+        "artifact": "rows",
+        "mode": "duplicate-mirror",
+        "sha256": "fe6742baaeb22143c7874940f901c556ab54bf1a2ed85638c933ce92c17f7eb3",
+        "variant": "national-parcel"
+      },
+      {
+        "artifact": "rows",
+        "mode": "duplicate-mirror",
+        "sha256": "beb223c612c1c25d7acd3903dc97842ea8f8e8b00eefa91c97b0ed1f2ef3b918",
+        "variant": "national-building"
+      }
+    ],
+    "duplicate_county_mirror_changes_no_evidence_rows": true,
+    "geometry_cases": {
+      "boundary": [
+        {
+          "location": "boundary",
+          "polygon_id": "shape"
+        }
+      ],
+      "hole": [],
+      "hole-boundary": [
+        {
+          "location": "boundary",
+          "polygon_id": "shape"
+        }
+      ],
+      "interior": [
+        {
+          "location": "interior",
+          "polygon_id": "shape"
+        }
+      ],
+      "outside": [],
+      "second-part": [
+        {
+          "location": "interior",
+          "polygon_id": "shape"
+        }
+      ]
+    },
+    "geometry_fresh_process_bytes_equal": true,
+    "source_support_geometry_replay_equal": true
+  },
+  "archives": {
+    "run.tar.gz": {
+      "bytes": 3527697,
+      "files": [
+        {
+          "bytes": 325,
+          "path": "adapter-checks.json",
+          "sha256": "915f8fe2da298efffc8e890718f428f15b5cd1182a4d106ae50c6dfdca2db980"
+        },
+        {
+          "bytes": 1352,
+          "path": "foursquare-parcel/budget.json",
+          "sha256": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6"
+        },
+        {
+          "bytes": 35279,
+          "path": "foursquare-parcel/capabilities.json",
+          "sha256": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf"
+        },
+        {
+          "bytes": 0,
+          "path": "foursquare-parcel/capabilities.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 1711,
+          "path": "foursquare-parcel/execution.json",
+          "sha256": "d49d780d8fbc2f0d04665bdc27c5ea267da55994bf20a3ea995e8c0694a36edc"
+        },
+        {
+          "bytes": 2601148,
+          "path": "foursquare-parcel/home.json",
+          "sha256": "ce00f16f767fe9b730678e8c7463f7f0250aa37ac3b0c7887039b87206ea95bd"
+        },
+        {
+          "bytes": 10051,
+          "path": "foursquare-parcel/inspect.json",
+          "sha256": "8b10a600a7d69007874de150e96a165830fd76bd0829f5a635f9acc29df782b1"
+        },
+        {
+          "bytes": 0,
+          "path": "foursquare-parcel/inspect.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 2840,
+          "path": "foursquare-parcel/inventory.json",
+          "sha256": "2ce0ccd04357735447b910a4ec44146ae2c83293e0ee1b85760692009b3d215d"
+        },
+        {
+          "bytes": 1658,
+          "path": "foursquare-parcel/next.json",
+          "sha256": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c"
+        },
+        {
+          "bytes": 55008,
+          "path": "foursquare-parcel/plan.json",
+          "sha256": "23dfb8edfb525d0ad55e232b1a4d82d89158e045b74a55ad263f5d700b7357ab"
+        },
+        {
+          "bytes": 0,
+          "path": "foursquare-parcel/plan.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 74,
+          "path": "foursquare-parcel/profile.json",
+          "sha256": "9fe5908406e293ba1900ef8c880fddfd6bea62d61bd053bd7ff7db76b959920b"
+        },
+        {
+          "bytes": 929,
+          "path": "foursquare-parcel/question.json",
+          "sha256": "f9a289a1c04f357ab9b3e79298a1908296b139a32574984da3b870944ea76877"
+        },
+        {
+          "bytes": 3820,
+          "path": "foursquare-parcel/readback.json",
+          "sha256": "c58fa9b5adcfb59b427224e87380f1f086dd004ec6d6175f9ca21e8f308ccf7f"
+        },
+        {
+          "bytes": 28649,
+          "path": "foursquare-parcel/resume.json",
+          "sha256": "cb36d89ba258420892041313c273bdde759cfbb326b1c864ec2a08ad10917ce1"
+        },
+        {
+          "bytes": 0,
+          "path": "foursquare-parcel/resume.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 99096,
+          "path": "foursquare-parcel/rows.json",
+          "sha256": "793932e888cab0dfaba47e0ea343ee0cff499137e9874abb4f8b3786be3fa48c"
+        },
+        {
+          "bytes": 498579,
+          "path": "foursquare-parcel/run/.canon/geo-run/artifacts/cas/019c501786ae7ad750a0397f30425b8fd3f91bf5afed10c31c368a31f505737b.bin",
+          "sha256": "bc65f819adf4e29ee8b091675e8b1c1c475bd49a0a25eb976afa9832ee3671da"
+        },
+        {
+          "bytes": 56825,
+          "path": "foursquare-parcel/run/.canon/geo-run/artifacts/cas/19f53e6069348a64298dee5833f5026f95b8d367cecc90e0584051859bb2760d.bin",
+          "sha256": "b1be588f1af99bf750ad5ba927300bed3c6f357d7b9c14702739e206e4986105"
+        },
+        {
+          "bytes": 416,
+          "path": "foursquare-parcel/run/.canon/geo-run/artifacts/cas/3358c01eb99fb32a6b11d4c03d875ff352754e6ce163f6a2273a3098bea640df.bin",
+          "sha256": "7d59c770b93c9d8bb16ada33919254d3c6236a71237ab1b560b68879365ef348"
+        },
+        {
+          "bytes": 423,
+          "path": "foursquare-parcel/run/.canon/geo-run/artifacts/cas/8e94be56fe23a486170d0a907776a9f38ec8c7b6319339b2fe28f117fa20bdc6.bin",
+          "sha256": "6f7dbaaf383a03276881d93c0f96f14740c6610fe8dfaf5459bd59c6c99a1883"
+        },
+        {
+          "bytes": 1184,
+          "path": "foursquare-parcel/run/.canon/geo-run/artifacts/cas/958908c1b8de7317665b4fb665a9141ab3b018f3b44519e97c71855a3be7866e.bin",
+          "sha256": "2e376e7d21ce16338257fb6efd7633cc525dfa7f911adb7b576a5a0ddde9d175"
+        },
+        {
+          "bytes": 4850534,
+          "path": "foursquare-parcel/run/.canon/geo-run/artifacts/cas/9e918a49bf96d713b577f8c6e9b7c4a10d4daff2f8fd00e655f97b1afc8975d0.bin",
+          "sha256": "36a3b8d6ff02f527df98365256ae5f703be4322d373385a6dcfac9963899e873"
+        },
+        {
+          "bytes": 471,
+          "path": "foursquare-parcel/run/.canon/geo-run/artifacts/cas/e010ead1ad6d109518e7a25c27771cedf995ac71e74e5c90c83941866da06644.bin",
+          "sha256": "43dca5dcd53e0f775dc61527f0b9b21203b3c14ba04b4fc09d112635e45f1d0a"
+        },
+        {
+          "bytes": 1906785,
+          "path": "foursquare-parcel/run/.canon/geo-run/artifacts/cas/e93fcee10c805aab715c4fe5f58394bb6d76e48c05f579c00338fc8d309d82ff.bin",
+          "sha256": "c5195643c941bcf72fbd998dabba0ab4cd1ecb8b7d779d5f6dc6bf5634cbce9e"
+        },
+        {
+          "bytes": 56333,
+          "path": "foursquare-parcel/run/.canon/geo-run/artifacts/cas/eac5ed17f7435a08df24aa5067af9207ee6ede8a4c121a0dc1beed8174a8c4dc.bin",
+          "sha256": "1dd4101e12bae0cff918d5803befe3fbbac83b0be15d6e61b740fa3720b80b55"
+        },
+        {
+          "bytes": 28648,
+          "path": "foursquare-parcel/run/.canon/geo-run/geo-run-manifest/head.json",
+          "sha256": "9768e26a5315761ae5993cbc06886c0ea35f9b51663fd5addc68e73810b3d92f"
+        },
+        {
+          "bytes": 28648,
+          "path": "foursquare-parcel/run/.canon/geo-run/geo-run-manifest/revisions/6a410ccfc9c805a02b6485300dfd70f798a24031ab573e8fee49f489f0108da1.json",
+          "sha256": "9768e26a5315761ae5993cbc06886c0ea35f9b51663fd5addc68e73810b3d92f"
+        },
+        {
+          "bytes": 26921,
+          "path": "foursquare-parcel/run/.canon/geo-run/geo-run-manifest/revisions/8939e31688e06c56f785661c1138667559cd431c264e572de4bdbd4b80bdfedb.json",
+          "sha256": "b01fd618c6e543cd728d298fe1d663dd330a1f9d51d30488505358509c7c2e86"
+        },
+        {
+          "bytes": 1525,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/by-cache-key/blake3_129049975f5a0efd67dea0c687b74d8bd5915d4a24fb7f581d871fb939389453.json",
+          "sha256": "e8a5367c0c7ac2ad82d19d4e643b60821fe2163e33bb5f56be39a8c483415617"
+        },
+        {
+          "bytes": 1659,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/by-cache-key/blake3_2373a9fdfe84824191a976342c406a5f3d5028821848802325f1eccb3cd10239.json",
+          "sha256": "8b78ced48e35316a9054c21bfd348b28d62a77fdbc27b6cb72000584591415c1"
+        },
+        {
+          "bytes": 2355,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/by-cache-key/blake3_473e25e3021305076df27fcdced91fe11be0fe120ba94a17b22ef88b312f44d2.json",
+          "sha256": "257a37f9afbc8d1942ffe00cbf15ebdc101a29d4c9fb7c0e5fe06cebbdf1421d"
+        },
+        {
+          "bytes": 1470,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/by-cache-key/blake3_4cdbe735751afa2c652bd920c20d2e7991f4dc5b85fced99c013fe86dee60f6b.json",
+          "sha256": "4172933f28873ed5c41f435ce9783c05ee3db1ed331a063d35ee7834d9c747ca"
+        },
+        {
+          "bytes": 2208,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/by-cache-key/blake3_510068f28797ca6bcf46b91a9dc1ddc91a7354d2db0aed223a46209939dfdb14.json",
+          "sha256": "1558561b781b6970c2f15f1bf983e63ec0cdd5a9c853163ea4cd01b88fb6ddd0"
+        },
+        {
+          "bytes": 1948,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/by-cache-key/blake3_a97b615206328183a5140655d3c295ed356fc92bc9355785119adaeff683edf2.json",
+          "sha256": "aea2109d82b6ff1b8f299fd34ac0a253d66761a2f4224c222701d75d0e8b3cc4"
+        },
+        {
+          "bytes": 2308,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/by-cache-key/blake3_affe632ebec1f2dc75faf5c842982ea0eae3e49eb3dfc8374d3b7a5c3e0608da.json",
+          "sha256": "4424c2ad2748eb354d7c226ef2876edc8c972f6f77732987611e41e3c39ed1be"
+        },
+        {
+          "bytes": 1597,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/by-cache-key/blake3_b502c3b29670729184830f02988e04f43970065a57d764f9dbff4ecb6d71c09a.json",
+          "sha256": "bcf3cbf7baf3153ba4a1aaffcc33dc0798557f3aaeaaf0332792e594dd7182f5"
+        },
+        {
+          "bytes": 1789,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/by-cache-key/blake3_e9fa0f9084667626ca529745475c66d55ea5eef635543d2e2a8c08b846624b11.json",
+          "sha256": "9b2cdb09e08a017699757c2b6035e648a0e7ca03a67f085079575d581c0d2ca4"
+        },
+        {
+          "bytes": 1470,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_60a4009dc0840f862d5f689663d686a2add2506dee01a3e4bcf1d8f50314a1f8.json",
+          "sha256": "4172933f28873ed5c41f435ce9783c05ee3db1ed331a063d35ee7834d9c747ca"
+        },
+        {
+          "bytes": 2355,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_68cf3d8a07f9cae852bf9fc50f26295fb355406a63a424d7c1333b1245da6514.json",
+          "sha256": "257a37f9afbc8d1942ffe00cbf15ebdc101a29d4c9fb7c0e5fe06cebbdf1421d"
+        },
+        {
+          "bytes": 1659,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_883d9d6d468398ef8917763ac89f3eda05cb264064637cf59d34cbeb5f9f342b.json",
+          "sha256": "8b78ced48e35316a9054c21bfd348b28d62a77fdbc27b6cb72000584591415c1"
+        },
+        {
+          "bytes": 2208,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_997828ff7047ffcf2b15086f95f0a5e6ac1968a2d948140f5926dd9e6dea29a0.json",
+          "sha256": "1558561b781b6970c2f15f1bf983e63ec0cdd5a9c853163ea4cd01b88fb6ddd0"
+        },
+        {
+          "bytes": 1525,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_9e74337cf24baedf59b35344f4bf9c0910b6bcff9e9148972777b08137229884.json",
+          "sha256": "e8a5367c0c7ac2ad82d19d4e643b60821fe2163e33bb5f56be39a8c483415617"
+        },
+        {
+          "bytes": 1597,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_c7ddc4f2861b986082dca3572e3d1c19ea91a6004bdd9162c08c597cc7a776b3.json",
+          "sha256": "bcf3cbf7baf3153ba4a1aaffcc33dc0798557f3aaeaaf0332792e594dd7182f5"
+        },
+        {
+          "bytes": 1948,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_ce17c9ec0da16598f9f49f85a43f63efce5e1cd9b912bd6d6a67c030155e096d.json",
+          "sha256": "aea2109d82b6ff1b8f299fd34ac0a253d66761a2f4224c222701d75d0e8b3cc4"
+        },
+        {
+          "bytes": 1789,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_d9239cc1db65a9508cec40a32c56ce9d81b0c4aa409932612d49db81add58783.json",
+          "sha256": "9b2cdb09e08a017699757c2b6035e648a0e7ca03a67f085079575d581c0d2ca4"
+        },
+        {
+          "bytes": 2308,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_f85db997905949b1232d860b2c7ed61308db3bfdaa1d75fcfa9e4fa4954e8c57.json",
+          "sha256": "4424c2ad2748eb354d7c226ef2876edc8c972f6f77732987611e41e3c39ed1be"
+        },
+        {
+          "bytes": 1470,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/cas/blake3_60a4009dc0840f862d5f689663d686a2add2506dee01a3e4bcf1d8f50314a1f8.json",
+          "sha256": "4172933f28873ed5c41f435ce9783c05ee3db1ed331a063d35ee7834d9c747ca"
+        },
+        {
+          "bytes": 2355,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/cas/blake3_68cf3d8a07f9cae852bf9fc50f26295fb355406a63a424d7c1333b1245da6514.json",
+          "sha256": "257a37f9afbc8d1942ffe00cbf15ebdc101a29d4c9fb7c0e5fe06cebbdf1421d"
+        },
+        {
+          "bytes": 1659,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/cas/blake3_883d9d6d468398ef8917763ac89f3eda05cb264064637cf59d34cbeb5f9f342b.json",
+          "sha256": "8b78ced48e35316a9054c21bfd348b28d62a77fdbc27b6cb72000584591415c1"
+        },
+        {
+          "bytes": 2208,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/cas/blake3_997828ff7047ffcf2b15086f95f0a5e6ac1968a2d948140f5926dd9e6dea29a0.json",
+          "sha256": "1558561b781b6970c2f15f1bf983e63ec0cdd5a9c853163ea4cd01b88fb6ddd0"
+        },
+        {
+          "bytes": 1525,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/cas/blake3_9e74337cf24baedf59b35344f4bf9c0910b6bcff9e9148972777b08137229884.json",
+          "sha256": "e8a5367c0c7ac2ad82d19d4e643b60821fe2163e33bb5f56be39a8c483415617"
+        },
+        {
+          "bytes": 1597,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/cas/blake3_c7ddc4f2861b986082dca3572e3d1c19ea91a6004bdd9162c08c597cc7a776b3.json",
+          "sha256": "bcf3cbf7baf3153ba4a1aaffcc33dc0798557f3aaeaaf0332792e594dd7182f5"
+        },
+        {
+          "bytes": 1948,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/cas/blake3_ce17c9ec0da16598f9f49f85a43f63efce5e1cd9b912bd6d6a67c030155e096d.json",
+          "sha256": "aea2109d82b6ff1b8f299fd34ac0a253d66761a2f4224c222701d75d0e8b3cc4"
+        },
+        {
+          "bytes": 1789,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/cas/blake3_d9239cc1db65a9508cec40a32c56ce9d81b0c4aa409932612d49db81add58783.json",
+          "sha256": "9b2cdb09e08a017699757c2b6035e648a0e7ca03a67f085079575d581c0d2ca4"
+        },
+        {
+          "bytes": 2308,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/cas/blake3_f85db997905949b1232d860b2c7ed61308db3bfdaa1d75fcfa9e4fa4954e8c57.json",
+          "sha256": "4424c2ad2748eb354d7c226ef2876edc8c972f6f77732987611e41e3c39ed1be"
+        },
+        {
+          "bytes": 1525,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/geo_parcel_compile_evidence.json",
+          "sha256": "e8a5367c0c7ac2ad82d19d4e643b60821fe2163e33bb5f56be39a8c483415617"
+        },
+        {
+          "bytes": 2355,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/geo_parcel_explain.json",
+          "sha256": "257a37f9afbc8d1942ffe00cbf15ebdc101a29d4c9fb7c0e5fe06cebbdf1421d"
+        },
+        {
+          "bytes": 1789,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/geo_parcel_home_cells.json",
+          "sha256": "9b2cdb09e08a017699757c2b6035e648a0e7ca03a67f085079575d581c0d2ca4"
+        },
+        {
+          "bytes": 1659,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/geo_parcel_materialize_evidence.json",
+          "sha256": "8b78ced48e35316a9054c21bfd348b28d62a77fdbc27b6cb72000584591415c1"
+        },
+        {
+          "bytes": 1948,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/geo_parcel_next_evidence.json",
+          "sha256": "aea2109d82b6ff1b8f299fd34ac0a253d66761a2f4224c222701d75d0e8b3cc4"
+        },
+        {
+          "bytes": 1470,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/geo_parcel_propagate.json",
+          "sha256": "4172933f28873ed5c41f435ce9783c05ee3db1ed331a063d35ee7834d9c747ca"
+        },
+        {
+          "bytes": 1597,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/geo_parcel_section.json",
+          "sha256": "bcf3cbf7baf3153ba4a1aaffcc33dc0798557f3aaeaaf0332792e594dd7182f5"
+        },
+        {
+          "bytes": 2308,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/geo_parcel_separation.json",
+          "sha256": "4424c2ad2748eb354d7c226ef2876edc8c972f6f77732987611e41e3c39ed1be"
+        },
+        {
+          "bytes": 2208,
+          "path": "foursquare-parcel/run/.canon/geo-run/receipts/geo_parcel_solve.json",
+          "sha256": "1558561b781b6970c2f15f1bf983e63ec0cdd5a9c853163ea4cd01b88fb6ddd0"
+        },
+        {
+          "bytes": 4188,
+          "path": "foursquare-parcel/run/.canon/geo-run/run-manifest/head.json",
+          "sha256": "7059710fc19cfa88ba46ba9b563edb3fe81b0f0966fa571d4a737f47e7e2a87c"
+        },
+        {
+          "bytes": 4188,
+          "path": "foursquare-parcel/run/.canon/geo-run/run-manifest/revisions/9991ff244cf047a84cb1419571d45d28d51e3611a4d42afab3ca2cee1f93defc.json",
+          "sha256": "7059710fc19cfa88ba46ba9b563edb3fe81b0f0966fa571d4a737f47e7e2a87c"
+        },
+        {
+          "bytes": 4089,
+          "path": "foursquare-parcel/run/.canon/geo-run/run-manifest/revisions/ca93c468f02400376ef7d38b5e457f9591a17e5b917c9ee45b5bbd343ada015e.json",
+          "sha256": "7db1db7c5401a015f36bc6d90176a921430aa191dff5e9cdfed3e59bf09f7584"
+        },
+        {
+          "bytes": 56825,
+          "path": "foursquare-parcel/run/geo/parcel/compile_evidence.json",
+          "sha256": "b1be588f1af99bf750ad5ba927300bed3c6f357d7b9c14702739e206e4986105"
+        },
+        {
+          "bytes": 471,
+          "path": "foursquare-parcel/run/geo/parcel/explanation.json",
+          "sha256": "43dca5dcd53e0f775dc61527f0b9b21203b3c14ba04b4fc09d112635e45f1d0a"
+        },
+        {
+          "bytes": 4850534,
+          "path": "foursquare-parcel/run/geo/parcel/home_cells.json",
+          "sha256": "36a3b8d6ff02f527df98365256ae5f703be4322d373385a6dcfac9963899e873"
+        },
+        {
+          "bytes": 56333,
+          "path": "foursquare-parcel/run/geo/parcel/materialize_evidence.json",
+          "sha256": "1dd4101e12bae0cff918d5803befe3fbbac83b0be15d6e61b740fa3720b80b55"
+        },
+        {
+          "bytes": 1184,
+          "path": "foursquare-parcel/run/geo/parcel/next_evidence.json",
+          "sha256": "2e376e7d21ce16338257fb6efd7633cc525dfa7f911adb7b576a5a0ddde9d175"
+        },
+        {
+          "bytes": 423,
+          "path": "foursquare-parcel/run/geo/parcel/propagation.json",
+          "sha256": "6f7dbaaf383a03276881d93c0f96f14740c6610fe8dfaf5459bd59c6c99a1883"
+        },
+        {
+          "bytes": 1906785,
+          "path": "foursquare-parcel/run/geo/parcel/section.json",
+          "sha256": "c5195643c941bcf72fbd998dabba0ab4cd1ecb8b7d779d5f6dc6bf5634cbce9e"
+        },
+        {
+          "bytes": 416,
+          "path": "foursquare-parcel/run/geo/parcel/separation.json",
+          "sha256": "7d59c770b93c9d8bb16ada33919254d3c6236a71237ab1b560b68879365ef348"
+        },
+        {
+          "bytes": 498579,
+          "path": "foursquare-parcel/run/geo/parcel/solve.json",
+          "sha256": "bc65f819adf4e29ee8b091675e8b1c1c475bd49a0a25eb976afa9832ee3671da"
+        },
+        {
+          "bytes": 26922,
+          "path": "foursquare-parcel/run.json",
+          "sha256": "4f4636987732abca7d30bbbab89202e4f358614959f4bc86d025e7d780b3750f"
+        },
+        {
+          "bytes": 0,
+          "path": "foursquare-parcel/run.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 1834690,
+          "path": "foursquare-parcel/section.json",
+          "sha256": "8b676998da06599911fd21e92d71396f9e5a8d77a34dec4125266824d9df6e17"
+        },
+        {
+          "bytes": 59990,
+          "path": "foursquare-parcel/separation.json",
+          "sha256": "cfb74aa45a31b010dcdfbd662f06ca4a0d63ceca8d06f309f6171688ee32e3d4"
+        },
+        {
+          "bytes": 1352,
+          "path": "foursquare-parcel-supported/budget.json",
+          "sha256": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6"
+        },
+        {
+          "bytes": 35279,
+          "path": "foursquare-parcel-supported/capabilities.json",
+          "sha256": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf"
+        },
+        {
+          "bytes": 0,
+          "path": "foursquare-parcel-supported/capabilities.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 1779,
+          "path": "foursquare-parcel-supported/execution.json",
+          "sha256": "bb8e71604d54de36b9a42f029656c7152eac8b3c16df7f4a3e4f674e459485f5"
+        },
+        {
+          "bytes": 2601148,
+          "path": "foursquare-parcel-supported/home.json",
+          "sha256": "a7018dd5abc6ced82e29d4e7a382823e74f38325b2e4e0ba88ab98aecc49aeac"
+        },
+        {
+          "bytes": 10051,
+          "path": "foursquare-parcel-supported/inspect.json",
+          "sha256": "a9ab5778a19a9336316d435bc396eaf3accf3b6fee3327e9567957fc6ab9dab3"
+        },
+        {
+          "bytes": 0,
+          "path": "foursquare-parcel-supported/inspect.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 2840,
+          "path": "foursquare-parcel-supported/inventory.json",
+          "sha256": "dc2b4baa24517670cb1b73d2f219d9cb899e2906e0edb95371ad819003377438"
+        },
+        {
+          "bytes": 1658,
+          "path": "foursquare-parcel-supported/next.json",
+          "sha256": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c"
+        },
+        {
+          "bytes": 55008,
+          "path": "foursquare-parcel-supported/plan.json",
+          "sha256": "2330bbfe64da89c4b40aa069b6f61892e5c172a924da8d50361f195aec59621d"
+        },
+        {
+          "bytes": 0,
+          "path": "foursquare-parcel-supported/plan.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 74,
+          "path": "foursquare-parcel-supported/profile.json",
+          "sha256": "9fe5908406e293ba1900ef8c880fddfd6bea62d61bd053bd7ff7db76b959920b"
+        },
+        {
+          "bytes": 929,
+          "path": "foursquare-parcel-supported/question.json",
+          "sha256": "f9a289a1c04f357ab9b3e79298a1908296b139a32574984da3b870944ea76877"
+        },
+        {
+          "bytes": 2622,
+          "path": "foursquare-parcel-supported/readback.json",
+          "sha256": "a24be1c0dfb4b1f12f53e08a3b06266db4544c03f8abef2c8add2960a68c270c"
+        },
+        {
+          "bytes": 28649,
+          "path": "foursquare-parcel-supported/resume.json",
+          "sha256": "abdb5cc41c537bacf684910f7a2b2877500fcc9e5b7120ef4444997a473e4dbc"
+        },
+        {
+          "bytes": 0,
+          "path": "foursquare-parcel-supported/resume.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 99131,
+          "path": "foursquare-parcel-supported/rows.json",
+          "sha256": "690a9353e39ffae11318a9f752307ded7ed88f24f6fb0b61eb6fda658e13e7ed"
+        },
+        {
+          "bytes": 4850534,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/artifacts/cas/020cfdd460cf6c7dad5e5d7236a794a948d784a1a1bf80cded17f33da620c70e.bin",
+          "sha256": "0f51f8162fe71563900169a00903d56e5191a5f702f137a2761b02bd20e63b77"
+        },
+        {
+          "bytes": 56965,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/artifacts/cas/140c872dbb81c9d4201eec7292d328a4949690c8dbff9430ea43daf9cab5d410.bin",
+          "sha256": "052ae2f07b4e5ded034f604f320068f719125bed75453e2a31cd3933a90cac92"
+        },
+        {
+          "bytes": 498579,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/artifacts/cas/1f0d022f778119b81e93c05980bfe2bc3b9de0c00a022399152bebb55ffaf5d9.bin",
+          "sha256": "e8b464894ec0dbfae11000e14655b25134bafef815979fd413c630b1fe8f7707"
+        },
+        {
+          "bytes": 1184,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/artifacts/cas/26dcac55faf2f281d4e8ec8aae03c1dcd0ed5a8e42e626eb01e7e466dfec926b.bin",
+          "sha256": "f4b86d9745bc5228eac568fe9fa74932e8112bc2a42f42de319b37ffd913a18a"
+        },
+        {
+          "bytes": 1906785,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/artifacts/cas/8cc3e285c475638109db42bc7f6a7cd167befeeea42933778200bc02ae7ddadc.bin",
+          "sha256": "3a1bc6ad4ba7883aba4ade8bc15b1f8d7c9e6000c33c9d6a2eb88a77df0fb016"
+        },
+        {
+          "bytes": 56340,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/artifacts/cas/9071425c9afa5979ca416c3c1a07ecaa2af059adfa04b0454902bdc0129d9860.bin",
+          "sha256": "5d45aba87b410dc608fb68ee5258d45eaba1eb7e20377616b6e504afc6ffad46"
+        },
+        {
+          "bytes": 416,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/artifacts/cas/97516594ad62325558aab88b697978174546c58f37a777618eaba6fe495d345d.bin",
+          "sha256": "54b84bf6b4014a4d4b484cfa443396f359c3e09d64fdde559a8171dcf7b80f5d"
+        },
+        {
+          "bytes": 423,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/artifacts/cas/aa2da340a8b6ffdaf4a7013be78a6b0883d4fed564df1e52cee64d8e8b758926.bin",
+          "sha256": "9ec5278d0dc8ffa3033d2478f62f39af6d945a03568ca681171a61109e9aeb47"
+        },
+        {
+          "bytes": 471,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/artifacts/cas/cb376cc8faf23c71433b9390587546f53043d54f147b85ad0f611a513b1661df.bin",
+          "sha256": "ddd6c48d58808d17c57be9e1dffdb023808c32e7789a27f87d78f438f8596540"
+        },
+        {
+          "bytes": 28648,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/geo-run-manifest/head.json",
+          "sha256": "2da2326105f30f294cc0b6414d80090d0ac6018c389185fe7dd6fc33e4375a02"
+        },
+        {
+          "bytes": 28648,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/geo-run-manifest/revisions/2c89727bda9798fbfb582b68772595b13b5d089d9140edb18d41aab17e805270.json",
+          "sha256": "2da2326105f30f294cc0b6414d80090d0ac6018c389185fe7dd6fc33e4375a02"
+        },
+        {
+          "bytes": 26921,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/geo-run-manifest/revisions/490c195b46317375eaa6c7c75b21cbdef9dc15b70707e9b579ee4d9715315a38.json",
+          "sha256": "104a64f71f231a577f3b95a2adef1fe2a5310eed1186276c4f62fc5447542dcd"
+        },
+        {
+          "bytes": 1789,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_16302b88bcd777f204b49e2df302cc9a91f72fd3d48d1fe0e953bd6cbfc57c8e.json",
+          "sha256": "9c3bb93bb256138465e5ca873a40678cba9b166ba57bab5c63fe918056ac8e15"
+        },
+        {
+          "bytes": 1470,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_22df79f670ba02f5f6cc4fbcb0f40599a05fd00adec4526ccea6b9ba4ab64c49.json",
+          "sha256": "9d1f97a6ef2d9a8f22308e2e728431f89cc61885d32bb5e07c66295b11203970"
+        },
+        {
+          "bytes": 2308,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_2da5e88693fa684237a836307c7a6f22ef6cfbf2f42393c3176411d68e5dbbb9.json",
+          "sha256": "98804cad572d05f53fbd0ce6b735c8d389440c5fe40374342e725eb064f948fa"
+        },
+        {
+          "bytes": 2208,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_34a7a54b9aac5c78cb5b02de9eee7b37c9c2f7c9e874e0f6abd1de25d608b9d2.json",
+          "sha256": "d6747f86c13c92c4d8d6b7edab66135cbdde1759d2f2d6a4c8575bbcafbdefc7"
+        },
+        {
+          "bytes": 1597,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_68492e18b98cae181fdc8822b47a197b90485bc1eaa14a476185b73c2c3dd4d8.json",
+          "sha256": "58fe22e2e4175b5ca6ab3836ba310d1a840cc446c713007c20b2d756afbed687"
+        },
+        {
+          "bytes": 1948,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_6ed467a58a1a253ba3c7a49ee38515b6330b8f5a6c6296df7ccc6078d76da8c5.json",
+          "sha256": "1c626af154ab2fe98552fcb014787898c7a44a4ad32bdb87e5444682e56f0547"
+        },
+        {
+          "bytes": 2355,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_bb4771c8e94f3cb6cbb3f39ed652d890aabd7fccb5855ed1669953447c756553.json",
+          "sha256": "7d243288e9226214875b4457063ad89333613451e6e7e96d5db6a6357e3d792e"
+        },
+        {
+          "bytes": 1525,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_c906c467eef1e5668de0aea97b6d2dc889e396d11bac2a72ed710a7e934d9851.json",
+          "sha256": "0ed3f21680d8c99de2ef771b16803c1b4b86531eef93a3a8522f245eda820db0"
+        },
+        {
+          "bytes": 1659,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_dd1a3cadd3e566ebc64a31c77a566523ee119bd179a9d6027e44ce0376a787e6.json",
+          "sha256": "6f994a52f88bc4da28402e27b1a571ce1263e9d9c23636f5bc561be0bcf7b214"
+        },
+        {
+          "bytes": 2308,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_1943b842df7751e7168b2f5d6b1c412bdcd8f742a82fa5b308547effdd4c615f.json",
+          "sha256": "98804cad572d05f53fbd0ce6b735c8d389440c5fe40374342e725eb064f948fa"
+        },
+        {
+          "bytes": 1789,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_2a161ff6ee0193ff7a9adf5936cc9424fbb1e711e8e036914a4476b5bc0258ee.json",
+          "sha256": "9c3bb93bb256138465e5ca873a40678cba9b166ba57bab5c63fe918056ac8e15"
+        },
+        {
+          "bytes": 1659,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_2e51a022649d4c4c5297a1b46749f1c40c7b30d7c3a46d40a753fe099a26ec76.json",
+          "sha256": "6f994a52f88bc4da28402e27b1a571ce1263e9d9c23636f5bc561be0bcf7b214"
+        },
+        {
+          "bytes": 2355,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_3d174d857c7ee2e9c91a5d75b0ea92a7069348a26dc06400c06d2f46ade32ff2.json",
+          "sha256": "7d243288e9226214875b4457063ad89333613451e6e7e96d5db6a6357e3d792e"
+        },
+        {
+          "bytes": 1525,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_3e81eca4fcd2539a5ab31e66f3b8ad534fe7fe9231f6d762c08dab93581e66c3.json",
+          "sha256": "0ed3f21680d8c99de2ef771b16803c1b4b86531eef93a3a8522f245eda820db0"
+        },
+        {
+          "bytes": 1597,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_4a600e6d0a195e61cdce98430c6e0f387356d4347804719f9675811eb217356b.json",
+          "sha256": "58fe22e2e4175b5ca6ab3836ba310d1a840cc446c713007c20b2d756afbed687"
+        },
+        {
+          "bytes": 1470,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_7d94235b4eb1963f30cb8f7f18e6f65831ba52bf2c3cccb84209b0b70fdfac79.json",
+          "sha256": "9d1f97a6ef2d9a8f22308e2e728431f89cc61885d32bb5e07c66295b11203970"
+        },
+        {
+          "bytes": 1948,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_d9de8733305c79b760ccc72e14d1510d23df20cbd03aaf6d21ce1559c6caa622.json",
+          "sha256": "1c626af154ab2fe98552fcb014787898c7a44a4ad32bdb87e5444682e56f0547"
+        },
+        {
+          "bytes": 2208,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_e8745ec8bad46544fb9f5c9d32d4ae12cf026d6400d7babb270008e92e524267.json",
+          "sha256": "d6747f86c13c92c4d8d6b7edab66135cbdde1759d2f2d6a4c8575bbcafbdefc7"
+        },
+        {
+          "bytes": 2308,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/cas/blake3_1943b842df7751e7168b2f5d6b1c412bdcd8f742a82fa5b308547effdd4c615f.json",
+          "sha256": "98804cad572d05f53fbd0ce6b735c8d389440c5fe40374342e725eb064f948fa"
+        },
+        {
+          "bytes": 1789,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/cas/blake3_2a161ff6ee0193ff7a9adf5936cc9424fbb1e711e8e036914a4476b5bc0258ee.json",
+          "sha256": "9c3bb93bb256138465e5ca873a40678cba9b166ba57bab5c63fe918056ac8e15"
+        },
+        {
+          "bytes": 1659,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/cas/blake3_2e51a022649d4c4c5297a1b46749f1c40c7b30d7c3a46d40a753fe099a26ec76.json",
+          "sha256": "6f994a52f88bc4da28402e27b1a571ce1263e9d9c23636f5bc561be0bcf7b214"
+        },
+        {
+          "bytes": 2355,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/cas/blake3_3d174d857c7ee2e9c91a5d75b0ea92a7069348a26dc06400c06d2f46ade32ff2.json",
+          "sha256": "7d243288e9226214875b4457063ad89333613451e6e7e96d5db6a6357e3d792e"
+        },
+        {
+          "bytes": 1525,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/cas/blake3_3e81eca4fcd2539a5ab31e66f3b8ad534fe7fe9231f6d762c08dab93581e66c3.json",
+          "sha256": "0ed3f21680d8c99de2ef771b16803c1b4b86531eef93a3a8522f245eda820db0"
+        },
+        {
+          "bytes": 1597,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/cas/blake3_4a600e6d0a195e61cdce98430c6e0f387356d4347804719f9675811eb217356b.json",
+          "sha256": "58fe22e2e4175b5ca6ab3836ba310d1a840cc446c713007c20b2d756afbed687"
+        },
+        {
+          "bytes": 1470,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/cas/blake3_7d94235b4eb1963f30cb8f7f18e6f65831ba52bf2c3cccb84209b0b70fdfac79.json",
+          "sha256": "9d1f97a6ef2d9a8f22308e2e728431f89cc61885d32bb5e07c66295b11203970"
+        },
+        {
+          "bytes": 1948,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/cas/blake3_d9de8733305c79b760ccc72e14d1510d23df20cbd03aaf6d21ce1559c6caa622.json",
+          "sha256": "1c626af154ab2fe98552fcb014787898c7a44a4ad32bdb87e5444682e56f0547"
+        },
+        {
+          "bytes": 2208,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/cas/blake3_e8745ec8bad46544fb9f5c9d32d4ae12cf026d6400d7babb270008e92e524267.json",
+          "sha256": "d6747f86c13c92c4d8d6b7edab66135cbdde1759d2f2d6a4c8575bbcafbdefc7"
+        },
+        {
+          "bytes": 1525,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/geo_parcel_compile_evidence.json",
+          "sha256": "0ed3f21680d8c99de2ef771b16803c1b4b86531eef93a3a8522f245eda820db0"
+        },
+        {
+          "bytes": 2355,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/geo_parcel_explain.json",
+          "sha256": "7d243288e9226214875b4457063ad89333613451e6e7e96d5db6a6357e3d792e"
+        },
+        {
+          "bytes": 1789,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/geo_parcel_home_cells.json",
+          "sha256": "9c3bb93bb256138465e5ca873a40678cba9b166ba57bab5c63fe918056ac8e15"
+        },
+        {
+          "bytes": 1659,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/geo_parcel_materialize_evidence.json",
+          "sha256": "6f994a52f88bc4da28402e27b1a571ce1263e9d9c23636f5bc561be0bcf7b214"
+        },
+        {
+          "bytes": 1948,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/geo_parcel_next_evidence.json",
+          "sha256": "1c626af154ab2fe98552fcb014787898c7a44a4ad32bdb87e5444682e56f0547"
+        },
+        {
+          "bytes": 1470,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/geo_parcel_propagate.json",
+          "sha256": "9d1f97a6ef2d9a8f22308e2e728431f89cc61885d32bb5e07c66295b11203970"
+        },
+        {
+          "bytes": 1597,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/geo_parcel_section.json",
+          "sha256": "58fe22e2e4175b5ca6ab3836ba310d1a840cc446c713007c20b2d756afbed687"
+        },
+        {
+          "bytes": 2308,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/geo_parcel_separation.json",
+          "sha256": "98804cad572d05f53fbd0ce6b735c8d389440c5fe40374342e725eb064f948fa"
+        },
+        {
+          "bytes": 2208,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/receipts/geo_parcel_solve.json",
+          "sha256": "d6747f86c13c92c4d8d6b7edab66135cbdde1759d2f2d6a4c8575bbcafbdefc7"
+        },
+        {
+          "bytes": 4188,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/run-manifest/head.json",
+          "sha256": "ae52f9513f977ecc567bc80e61fb03e92e822ac9f83ba7e0c46e286ec616f04a"
+        },
+        {
+          "bytes": 4089,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/run-manifest/revisions/016896aae492f512777b46a7dde119c816ee96d6f06dcab56302183cbf65344d.json",
+          "sha256": "0cb507cbf80a7783712d8017aea6124cbf73a6bba57116d59cf5460febffeda9"
+        },
+        {
+          "bytes": 4188,
+          "path": "foursquare-parcel-supported/run/.canon/geo-run/run-manifest/revisions/d5ed814bf72cca08a2d59dbc41a14c1ab6b2c3e88ffcbbaae427fda9f45935fa.json",
+          "sha256": "ae52f9513f977ecc567bc80e61fb03e92e822ac9f83ba7e0c46e286ec616f04a"
+        },
+        {
+          "bytes": 56965,
+          "path": "foursquare-parcel-supported/run/geo/parcel/compile_evidence.json",
+          "sha256": "052ae2f07b4e5ded034f604f320068f719125bed75453e2a31cd3933a90cac92"
+        },
+        {
+          "bytes": 471,
+          "path": "foursquare-parcel-supported/run/geo/parcel/explanation.json",
+          "sha256": "ddd6c48d58808d17c57be9e1dffdb023808c32e7789a27f87d78f438f8596540"
+        },
+        {
+          "bytes": 4850534,
+          "path": "foursquare-parcel-supported/run/geo/parcel/home_cells.json",
+          "sha256": "0f51f8162fe71563900169a00903d56e5191a5f702f137a2761b02bd20e63b77"
+        },
+        {
+          "bytes": 56340,
+          "path": "foursquare-parcel-supported/run/geo/parcel/materialize_evidence.json",
+          "sha256": "5d45aba87b410dc608fb68ee5258d45eaba1eb7e20377616b6e504afc6ffad46"
+        },
+        {
+          "bytes": 1184,
+          "path": "foursquare-parcel-supported/run/geo/parcel/next_evidence.json",
+          "sha256": "f4b86d9745bc5228eac568fe9fa74932e8112bc2a42f42de319b37ffd913a18a"
+        },
+        {
+          "bytes": 423,
+          "path": "foursquare-parcel-supported/run/geo/parcel/propagation.json",
+          "sha256": "9ec5278d0dc8ffa3033d2478f62f39af6d945a03568ca681171a61109e9aeb47"
+        },
+        {
+          "bytes": 1906785,
+          "path": "foursquare-parcel-supported/run/geo/parcel/section.json",
+          "sha256": "3a1bc6ad4ba7883aba4ade8bc15b1f8d7c9e6000c33c9d6a2eb88a77df0fb016"
+        },
+        {
+          "bytes": 416,
+          "path": "foursquare-parcel-supported/run/geo/parcel/separation.json",
+          "sha256": "54b84bf6b4014a4d4b484cfa443396f359c3e09d64fdde559a8171dcf7b80f5d"
+        },
+        {
+          "bytes": 498579,
+          "path": "foursquare-parcel-supported/run/geo/parcel/solve.json",
+          "sha256": "e8b464894ec0dbfae11000e14655b25134bafef815979fd413c630b1fe8f7707"
+        },
+        {
+          "bytes": 26922,
+          "path": "foursquare-parcel-supported/run.json",
+          "sha256": "25018f3d5fecf66302c2772d36e00e35a428fad70b8b403f9e71f4b1c1f14eb0"
+        },
+        {
+          "bytes": 0,
+          "path": "foursquare-parcel-supported/run.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 1834690,
+          "path": "foursquare-parcel-supported/section.json",
+          "sha256": "ce82b72ee0746ce62bfa5089ff8eb5a813ddb143790b2417cdcad64b6bcc8452"
+        },
+        {
+          "bytes": 59990,
+          "path": "foursquare-parcel-supported/separation.json",
+          "sha256": "cfb74aa45a31b010dcdfbd662f06ca4a0d63ceca8d06f309f6171688ee32e3d4"
+        },
+        {
+          "bytes": 156386,
+          "path": "geometry-request.json",
+          "sha256": "3444ccf16fb4c1db0dfa4725110715dd33e25723cb00277b53fc363cf4265b35"
+        },
+        {
+          "bytes": 318689,
+          "path": "geometry.json",
+          "sha256": "29758692ab5de5230686e23775216ea2748110e3f695ccbd2c3ad64463e41b14"
+        },
+        {
+          "bytes": 0,
+          "path": "geometry.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 674,
+          "path": "initial-diagnostic-encoding/national-profile.json",
+          "sha256": "18013b62ea28becd5ba5800d8a0ea715ccfa2a83047dbd03639f3919368e6861"
+        },
+        {
+          "bytes": 25383,
+          "path": "initial-diagnostic-encoding/prepare.py",
+          "sha256": "c8bc630154297b64868cc512fbc5e250432bda970a8589de76651ea9ef59c8b2"
+        },
+        {
+          "bytes": 36153,
+          "path": "initial-diagnostic-encoding/support.json",
+          "sha256": "6280f79dcd8c29ffa1450c864311610f528f2e23008243a3835e8776e19f5565"
+        },
+        {
+          "bytes": 1352,
+          "path": "national-building/budget.json",
+          "sha256": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6"
+        },
+        {
+          "bytes": 35279,
+          "path": "national-building/capabilities.json",
+          "sha256": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf"
+        },
+        {
+          "bytes": 0,
+          "path": "national-building/capabilities.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 1721,
+          "path": "national-building/execution.json",
+          "sha256": "2bfa08e0fa1e7b8f66ec082d0bb96ff794e476aa39377586e87b1ed0f0f0e3c0"
+        },
+        {
+          "bytes": 307960,
+          "path": "national-building/home.json",
+          "sha256": "746c42383c66e573ac5897784b63fe9b0449e7301d1b550598cd0768442e6a84"
+        },
+        {
+          "bytes": 10122,
+          "path": "national-building/inspect.json",
+          "sha256": "185475d32b89e9893c431735f889ad5d12cf54288f21d17414a0c66a89ec5c57"
+        },
+        {
+          "bytes": 0,
+          "path": "national-building/inspect.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 4031,
+          "path": "national-building/inventory.json",
+          "sha256": "831f7ef88df0142ad67c44e00c3339231f55ce0adc4169805dbfd394580aebe2"
+        },
+        {
+          "bytes": 1658,
+          "path": "national-building/next.json",
+          "sha256": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c"
+        },
+        {
+          "bytes": 55229,
+          "path": "national-building/plan.json",
+          "sha256": "872dc4e48c1cfa6de2b469499e1b4b9e6c9823581bdb6d2e18a2319f734918f2"
+        },
+        {
+          "bytes": 0,
+          "path": "national-building/plan.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 76,
+          "path": "national-building/profile.json",
+          "sha256": "2cb99c3924cbe9df8b9ceb6ab9e5402b7f65c275ec2f97b099929bb28e459c7a"
+        },
+        {
+          "bytes": 937,
+          "path": "national-building/question.json",
+          "sha256": "2c37fe962c998779b9643a35eaa7576ffc5533dae7961cbf4d551220a5756f25"
+        },
+        {
+          "bytes": 4027,
+          "path": "national-building/readback.json",
+          "sha256": "da7b53aa6acbbfc8b342f4828aadc744ab241b13dc338d7945d4b76780e8f0e0"
+        },
+        {
+          "bytes": 28861,
+          "path": "national-building/resume.json",
+          "sha256": "e789eae33b6122e56e0b9d0942fd2abe044cb1fd0a59db80a2c16fb2506059a7"
+        },
+        {
+          "bytes": 0,
+          "path": "national-building/resume.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 32817,
+          "path": "national-building/rows.json",
+          "sha256": "f4aae667847f5e9aa54c2504ec700d42b43596db9966838319c2b4d253f3b27f"
+        },
+        {
+          "bytes": 26429,
+          "path": "national-building/run/.canon/geo-run/artifacts/cas/07d67337a0539598fe6c8ec487d77b100e32bdbd985977e93ad984e80f22baae.bin",
+          "sha256": "aa4b7c9f457435dc3df1e90a8993d313d82df2e1ad39e45bc7cc3d9f87c4698e"
+        },
+        {
+          "bytes": 412,
+          "path": "national-building/run/.canon/geo-run/artifacts/cas/0a0fce2c02033de7e45335bc0f774be66a0d9a8e633aa084e5825c6d00b54228.bin",
+          "sha256": "cd3cda185655e2b361a329c6f79664687f0e446b4d12ba0a056c87c46ae6efa8"
+        },
+        {
+          "bytes": 422,
+          "path": "national-building/run/.canon/geo-run/artifacts/cas/615fd1749896eb539126e94f96f51dbe04ddb2b33df48b5c598fb02e39679004.bin",
+          "sha256": "aeb39359cf4007d6923eaecf691ac56ed523f7218062ae9ce951e5e578385887"
+        },
+        {
+          "bytes": 571534,
+          "path": "national-building/run/.canon/geo-run/artifacts/cas/7bf376207b16cc1a1f70d9970b3018f59ff678531c17a66276c38d6ccfaca7da.bin",
+          "sha256": "743626ce99efd36fcd3fdeff861214f11e04962dc0035def6593f99674850f6b"
+        },
+        {
+          "bytes": 111033,
+          "path": "national-building/run/.canon/geo-run/artifacts/cas/960b48da84c06eb28a1937e8bdbb3ba192b9845d17fdeeafb49512d5f2e36317.bin",
+          "sha256": "aaa98234cb378dec1d035fa92aa999c44e1148bf3a74e314fe099dba31ac5f11"
+        },
+        {
+          "bytes": 1181,
+          "path": "national-building/run/.canon/geo-run/artifacts/cas/c5577d7c21cc5b2d0611e980a9a022d23d01735c0c127994750dc469ef64708d.bin",
+          "sha256": "bb9f0ba381a0e8f7790270cce77ac462fe758690474ae9e42ede8b6bfd5f4bac"
+        },
+        {
+          "bytes": 223217,
+          "path": "national-building/run/.canon/geo-run/artifacts/cas/c60e8152c6e8319d13a833ba042378b3089a6045b8f9d0822997f49b44595b72.bin",
+          "sha256": "957981ba8167066236c679115a181e3da18cd639f1923cf07049b532d44f3ea1"
+        },
+        {
+          "bytes": 471,
+          "path": "national-building/run/.canon/geo-run/artifacts/cas/f09ea12388c921f91f99820a6cecbf48316e4f7af5a70f305ee0dfe533d4093a.bin",
+          "sha256": "4b50f9deeeaf887a1ba6bc3c42c7ff0e91e1fb17c6e1525484472e4323060124"
+        },
+        {
+          "bytes": 26994,
+          "path": "national-building/run/.canon/geo-run/artifacts/cas/ffbb9fccf80e2556c9ee404ad2c9bfe6154f9df5d0e441415b869ddfa4fcedc3.bin",
+          "sha256": "aacaabec2de37d7deb7e6f8288f2031abc1b3f96c260987c8dc71b0cc14a409b"
+        },
+        {
+          "bytes": 28860,
+          "path": "national-building/run/.canon/geo-run/geo-run-manifest/head.json",
+          "sha256": "c71cc8d9dbe50d2bd25ee05ba441266c5a2522f0cb54439d8e7ce570d418433a"
+        },
+        {
+          "bytes": 28860,
+          "path": "national-building/run/.canon/geo-run/geo-run-manifest/revisions/1efcc42572322ed193ab329273ac92ba6f430b994087188f86b86db9cdddf473.json",
+          "sha256": "c71cc8d9dbe50d2bd25ee05ba441266c5a2522f0cb54439d8e7ce570d418433a"
+        },
+        {
+          "bytes": 27167,
+          "path": "national-building/run/.canon/geo-run/geo-run-manifest/revisions/bd330b9e14b21f85c03748397770cded19d4994a1ea0d503be985c7e3b33b34f.json",
+          "sha256": "06eebc2cacbbd57817913d16fce9e38c32247fc0bbfa305c7d4db5f920e25876"
+        },
+        {
+          "bytes": 1792,
+          "path": "national-building/run/.canon/geo-run/receipts/by-cache-key/blake3_03d9e303eda648fcebba4aea0de671dd768ec74bb52ba31919d2150d3f593003.json",
+          "sha256": "86122167da3ebd29f1e5d785cd7728e63bab02de0e7646dfb38e8c02ad5f911a"
+        },
+        {
+          "bytes": 1606,
+          "path": "national-building/run/.canon/geo-run/receipts/by-cache-key/blake3_0c030ef6fbb3bdb8fd83cc1720705fe1a98977114a54411ea8c91ef1b2e055df.json",
+          "sha256": "d1e973bc596c2455991a263d834dac7d651d434f8b869588a3a50fd0d8c672e3"
+        },
+        {
+          "bytes": 2226,
+          "path": "national-building/run/.canon/geo-run/receipts/by-cache-key/blake3_0fb34931f76a1b978442f272b7610809a41fed73244192751cd4dafa999e1de8.json",
+          "sha256": "1bb3bddfceacde4be509a30808c5fe099fb7a991008442bd91945f2539a38c62"
+        },
+        {
+          "bytes": 2332,
+          "path": "national-building/run/.canon/geo-run/receipts/by-cache-key/blake3_3a43f96369dc9c0284c3c5b2becd77fd1bde558fc89ea8db67cc21b7fed6be3a.json",
+          "sha256": "96bb52badd4a75649676dc7aeb751636b6c39e2746af84a39e77a6c6d5e6c82c"
+        },
+        {
+          "bytes": 1480,
+          "path": "national-building/run/.canon/geo-run/receipts/by-cache-key/blake3_4dd52d14a04e19ccf3746faff96d1b9b995f8580fcb0145e315f9ed2c1925e08.json",
+          "sha256": "dfd16119da185c897a17ad924004782f5c5d7dc39a319608ff33eea9d09521ea"
+        },
+        {
+          "bytes": 2377,
+          "path": "national-building/run/.canon/geo-run/receipts/by-cache-key/blake3_50343f37765b526a9195ed42756b042634d7daa7e1af538bf8727acf1405383d.json",
+          "sha256": "7c72f1469174830eb124fa9c6df2a75ccbe78eb26b66d6db7ece1405c1636378"
+        },
+        {
+          "bytes": 1535,
+          "path": "national-building/run/.canon/geo-run/receipts/by-cache-key/blake3_ab7321f1c8d9090ed74a45e47cace9de2077f878b1f1c1c1f40038f3e10c0d51.json",
+          "sha256": "3c5a3710992dcc6a80ac39787da9b32380ec2d1be61283c301ea89b77db60353"
+        },
+        {
+          "bytes": 1671,
+          "path": "national-building/run/.canon/geo-run/receipts/by-cache-key/blake3_ca5fa5bf61c339a9605faf44f03b7d71274299b3159f4c9d1ce2207cf49292fa.json",
+          "sha256": "33f574d7e1b586e33b2c412a215cec8f1624cd149ca223b0dd4f900e31d3db94"
+        },
+        {
+          "bytes": 1966,
+          "path": "national-building/run/.canon/geo-run/receipts/by-cache-key/blake3_ec51a08738abeaa60875130a749cbeb24362300e49203612d49992b7f7e454b2.json",
+          "sha256": "b3f1079efe8a74b0e3acda7314d7c3ac7e7d3d47854d0d5e049b35cad229cf14"
+        },
+        {
+          "bytes": 1966,
+          "path": "national-building/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_21aef6785f4b84cdb087e26baafd447b1f83960cfd52e3002dfcd38a9994eb7a.json",
+          "sha256": "b3f1079efe8a74b0e3acda7314d7c3ac7e7d3d47854d0d5e049b35cad229cf14"
+        },
+        {
+          "bytes": 1535,
+          "path": "national-building/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_4e9d830ddb0d8beb0737c9244ba09d57e73361b979432b1c412fd948f75bdef9.json",
+          "sha256": "3c5a3710992dcc6a80ac39787da9b32380ec2d1be61283c301ea89b77db60353"
+        },
+        {
+          "bytes": 2377,
+          "path": "national-building/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_5183636da06c4f5efb516925774ba25e2bb85917eff8fa35871e2eceab3a8a7e.json",
+          "sha256": "7c72f1469174830eb124fa9c6df2a75ccbe78eb26b66d6db7ece1405c1636378"
+        },
+        {
+          "bytes": 1606,
+          "path": "national-building/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_63c019bb58fdf8e56793ca5aa6f0cc8883f04707fdb6bbfde223d37f7cc0fc8c.json",
+          "sha256": "d1e973bc596c2455991a263d834dac7d651d434f8b869588a3a50fd0d8c672e3"
+        },
+        {
+          "bytes": 1792,
+          "path": "national-building/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_695d068bfea1af78e1166a650c3809dbf573aaefe8fdcc26eba06cf96956662b.json",
+          "sha256": "86122167da3ebd29f1e5d785cd7728e63bab02de0e7646dfb38e8c02ad5f911a"
+        },
+        {
+          "bytes": 2332,
+          "path": "national-building/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_7d2b48ad716a5e59b8d1d5927e3ab0e2ed96a60ebc0c975b7e6682e5895af4f1.json",
+          "sha256": "96bb52badd4a75649676dc7aeb751636b6c39e2746af84a39e77a6c6d5e6c82c"
+        },
+        {
+          "bytes": 2226,
+          "path": "national-building/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_b91df4ac883df38cb0c1796bb40e0e0f7ef1657a2f3990539d4b3fd0ed412501.json",
+          "sha256": "1bb3bddfceacde4be509a30808c5fe099fb7a991008442bd91945f2539a38c62"
+        },
+        {
+          "bytes": 1671,
+          "path": "national-building/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_d917d7f097a8f291d2f7943d829157e46b6ba16dd53b83df07053964e2ed3f6f.json",
+          "sha256": "33f574d7e1b586e33b2c412a215cec8f1624cd149ca223b0dd4f900e31d3db94"
+        },
+        {
+          "bytes": 1480,
+          "path": "national-building/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_e8bc6c0edd4eb4d3f7d8a60acb53116de4fc886f74a04479a69338a6cef9e3f5.json",
+          "sha256": "dfd16119da185c897a17ad924004782f5c5d7dc39a319608ff33eea9d09521ea"
+        },
+        {
+          "bytes": 1966,
+          "path": "national-building/run/.canon/geo-run/receipts/cas/blake3_21aef6785f4b84cdb087e26baafd447b1f83960cfd52e3002dfcd38a9994eb7a.json",
+          "sha256": "b3f1079efe8a74b0e3acda7314d7c3ac7e7d3d47854d0d5e049b35cad229cf14"
+        },
+        {
+          "bytes": 1535,
+          "path": "national-building/run/.canon/geo-run/receipts/cas/blake3_4e9d830ddb0d8beb0737c9244ba09d57e73361b979432b1c412fd948f75bdef9.json",
+          "sha256": "3c5a3710992dcc6a80ac39787da9b32380ec2d1be61283c301ea89b77db60353"
+        },
+        {
+          "bytes": 2377,
+          "path": "national-building/run/.canon/geo-run/receipts/cas/blake3_5183636da06c4f5efb516925774ba25e2bb85917eff8fa35871e2eceab3a8a7e.json",
+          "sha256": "7c72f1469174830eb124fa9c6df2a75ccbe78eb26b66d6db7ece1405c1636378"
+        },
+        {
+          "bytes": 1606,
+          "path": "national-building/run/.canon/geo-run/receipts/cas/blake3_63c019bb58fdf8e56793ca5aa6f0cc8883f04707fdb6bbfde223d37f7cc0fc8c.json",
+          "sha256": "d1e973bc596c2455991a263d834dac7d651d434f8b869588a3a50fd0d8c672e3"
+        },
+        {
+          "bytes": 1792,
+          "path": "national-building/run/.canon/geo-run/receipts/cas/blake3_695d068bfea1af78e1166a650c3809dbf573aaefe8fdcc26eba06cf96956662b.json",
+          "sha256": "86122167da3ebd29f1e5d785cd7728e63bab02de0e7646dfb38e8c02ad5f911a"
+        },
+        {
+          "bytes": 2332,
+          "path": "national-building/run/.canon/geo-run/receipts/cas/blake3_7d2b48ad716a5e59b8d1d5927e3ab0e2ed96a60ebc0c975b7e6682e5895af4f1.json",
+          "sha256": "96bb52badd4a75649676dc7aeb751636b6c39e2746af84a39e77a6c6d5e6c82c"
+        },
+        {
+          "bytes": 2226,
+          "path": "national-building/run/.canon/geo-run/receipts/cas/blake3_b91df4ac883df38cb0c1796bb40e0e0f7ef1657a2f3990539d4b3fd0ed412501.json",
+          "sha256": "1bb3bddfceacde4be509a30808c5fe099fb7a991008442bd91945f2539a38c62"
+        },
+        {
+          "bytes": 1671,
+          "path": "national-building/run/.canon/geo-run/receipts/cas/blake3_d917d7f097a8f291d2f7943d829157e46b6ba16dd53b83df07053964e2ed3f6f.json",
+          "sha256": "33f574d7e1b586e33b2c412a215cec8f1624cd149ca223b0dd4f900e31d3db94"
+        },
+        {
+          "bytes": 1480,
+          "path": "national-building/run/.canon/geo-run/receipts/cas/blake3_e8bc6c0edd4eb4d3f7d8a60acb53116de4fc886f74a04479a69338a6cef9e3f5.json",
+          "sha256": "dfd16119da185c897a17ad924004782f5c5d7dc39a319608ff33eea9d09521ea"
+        },
+        {
+          "bytes": 1535,
+          "path": "national-building/run/.canon/geo-run/receipts/geo_building_compile_evidence.json",
+          "sha256": "3c5a3710992dcc6a80ac39787da9b32380ec2d1be61283c301ea89b77db60353"
+        },
+        {
+          "bytes": 2377,
+          "path": "national-building/run/.canon/geo-run/receipts/geo_building_explain.json",
+          "sha256": "7c72f1469174830eb124fa9c6df2a75ccbe78eb26b66d6db7ece1405c1636378"
+        },
+        {
+          "bytes": 1792,
+          "path": "national-building/run/.canon/geo-run/receipts/geo_building_home_cells.json",
+          "sha256": "86122167da3ebd29f1e5d785cd7728e63bab02de0e7646dfb38e8c02ad5f911a"
+        },
+        {
+          "bytes": 1671,
+          "path": "national-building/run/.canon/geo-run/receipts/geo_building_materialize_evidence.json",
+          "sha256": "33f574d7e1b586e33b2c412a215cec8f1624cd149ca223b0dd4f900e31d3db94"
+        },
+        {
+          "bytes": 1966,
+          "path": "national-building/run/.canon/geo-run/receipts/geo_building_next_evidence.json",
+          "sha256": "b3f1079efe8a74b0e3acda7314d7c3ac7e7d3d47854d0d5e049b35cad229cf14"
+        },
+        {
+          "bytes": 1480,
+          "path": "national-building/run/.canon/geo-run/receipts/geo_building_propagate.json",
+          "sha256": "dfd16119da185c897a17ad924004782f5c5d7dc39a319608ff33eea9d09521ea"
+        },
+        {
+          "bytes": 1606,
+          "path": "national-building/run/.canon/geo-run/receipts/geo_building_section.json",
+          "sha256": "d1e973bc596c2455991a263d834dac7d651d434f8b869588a3a50fd0d8c672e3"
+        },
+        {
+          "bytes": 2332,
+          "path": "national-building/run/.canon/geo-run/receipts/geo_building_separation.json",
+          "sha256": "96bb52badd4a75649676dc7aeb751636b6c39e2746af84a39e77a6c6d5e6c82c"
+        },
+        {
+          "bytes": 2226,
+          "path": "national-building/run/.canon/geo-run/receipts/geo_building_solve.json",
+          "sha256": "1bb3bddfceacde4be509a30808c5fe099fb7a991008442bd91945f2539a38c62"
+        },
+        {
+          "bytes": 4252,
+          "path": "national-building/run/.canon/geo-run/run-manifest/head.json",
+          "sha256": "61e1c1182a7d5c735b5bece2cef1d18e43f01c05fc5579663a3a2ac8e6e7f41d"
+        },
+        {
+          "bytes": 4153,
+          "path": "national-building/run/.canon/geo-run/run-manifest/revisions/19e386460a0f7c71cac28f031da49229d5f8229004a91090ecfba345e731d8a9.json",
+          "sha256": "5c8c668213b528f6227adb26f0072ea6d309c6992390b6633830e76e5defc4d6"
+        },
+        {
+          "bytes": 4252,
+          "path": "national-building/run/.canon/geo-run/run-manifest/revisions/b32f30d1f200df9da426a0243c9ad5b70f365b539438cd56d5d0cbc42e1312d4.json",
+          "sha256": "61e1c1182a7d5c735b5bece2cef1d18e43f01c05fc5579663a3a2ac8e6e7f41d"
+        },
+        {
+          "bytes": 26994,
+          "path": "national-building/run/geo/building/compile_evidence.json",
+          "sha256": "aacaabec2de37d7deb7e6f8288f2031abc1b3f96c260987c8dc71b0cc14a409b"
+        },
+        {
+          "bytes": 471,
+          "path": "national-building/run/geo/building/explanation.json",
+          "sha256": "4b50f9deeeaf887a1ba6bc3c42c7ff0e91e1fb17c6e1525484472e4323060124"
+        },
+        {
+          "bytes": 571534,
+          "path": "national-building/run/geo/building/home_cells.json",
+          "sha256": "743626ce99efd36fcd3fdeff861214f11e04962dc0035def6593f99674850f6b"
+        },
+        {
+          "bytes": 26429,
+          "path": "national-building/run/geo/building/materialize_evidence.json",
+          "sha256": "aa4b7c9f457435dc3df1e90a8993d313d82df2e1ad39e45bc7cc3d9f87c4698e"
+        },
+        {
+          "bytes": 1181,
+          "path": "national-building/run/geo/building/next_evidence.json",
+          "sha256": "bb9f0ba381a0e8f7790270cce77ac462fe758690474ae9e42ede8b6bfd5f4bac"
+        },
+        {
+          "bytes": 422,
+          "path": "national-building/run/geo/building/propagation.json",
+          "sha256": "aeb39359cf4007d6923eaecf691ac56ed523f7218062ae9ce951e5e578385887"
+        },
+        {
+          "bytes": 223217,
+          "path": "national-building/run/geo/building/section.json",
+          "sha256": "957981ba8167066236c679115a181e3da18cd639f1923cf07049b532d44f3ea1"
+        },
+        {
+          "bytes": 412,
+          "path": "national-building/run/geo/building/separation.json",
+          "sha256": "cd3cda185655e2b361a329c6f79664687f0e446b4d12ba0a056c87c46ae6efa8"
+        },
+        {
+          "bytes": 111033,
+          "path": "national-building/run/geo/building/solve.json",
+          "sha256": "aaa98234cb378dec1d035fa92aa999c44e1148bf3a74e314fe099dba31ac5f11"
+        },
+        {
+          "bytes": 27168,
+          "path": "national-building/run.json",
+          "sha256": "8f81515628d8eff42e82aea3f70f971088001d1553f6b5e079a6f5fdfd70c192"
+        },
+        {
+          "bytes": 0,
+          "path": "national-building/run.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 215284,
+          "path": "national-building/section.json",
+          "sha256": "6ea6ac97ae323f54285dd8d032a14e07b967e38a372ac05c20138f013d64323b"
+        },
+        {
+          "bytes": 14561,
+          "path": "national-building/separation.json",
+          "sha256": "a205d7c582fb50ca9ace9c8625d28cce912c428d279b8d4952e6d4d2d4f9861f"
+        },
+        {
+          "bytes": 1352,
+          "path": "national-building-supported/budget.json",
+          "sha256": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6"
+        },
+        {
+          "bytes": 35279,
+          "path": "national-building-supported/capabilities.json",
+          "sha256": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf"
+        },
+        {
+          "bytes": 0,
+          "path": "national-building-supported/capabilities.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 1789,
+          "path": "national-building-supported/execution.json",
+          "sha256": "f560ad3fa94551f9e339d2fff95bdc3899b081830484fd6609479bc7e81f16c1"
+        },
+        {
+          "bytes": 307960,
+          "path": "national-building-supported/home.json",
+          "sha256": "f1ae457fdfbe5f34c1ea824e79413cf8bcd40f0c6b7aab9c4cf3905071f2bb10"
+        },
+        {
+          "bytes": 10122,
+          "path": "national-building-supported/inspect.json",
+          "sha256": "a85574af0582c6579b8668094c52528583a537e45cd15103576b970c8f58979e"
+        },
+        {
+          "bytes": 0,
+          "path": "national-building-supported/inspect.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 4031,
+          "path": "national-building-supported/inventory.json",
+          "sha256": "5eb767c79c5ed84dbea6a304da9f246f762dfac5b3c75a5eb512e68d3f89de51"
+        },
+        {
+          "bytes": 1658,
+          "path": "national-building-supported/next.json",
+          "sha256": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c"
+        },
+        {
+          "bytes": 55229,
+          "path": "national-building-supported/plan.json",
+          "sha256": "ecdd5f42bf74af6dafd6e41b790e5862fe8a66a4a459c32c309f94ab6d692f82"
+        },
+        {
+          "bytes": 0,
+          "path": "national-building-supported/plan.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 76,
+          "path": "national-building-supported/profile.json",
+          "sha256": "2cb99c3924cbe9df8b9ceb6ab9e5402b7f65c275ec2f97b099929bb28e459c7a"
+        },
+        {
+          "bytes": 937,
+          "path": "national-building-supported/question.json",
+          "sha256": "2c37fe962c998779b9643a35eaa7576ffc5533dae7961cbf4d551220a5756f25"
+        },
+        {
+          "bytes": 3060,
+          "path": "national-building-supported/readback.json",
+          "sha256": "625cf452243359684a6c69786c78453eeb0478b2f21d245aeea8cb0d5aa74512"
+        },
+        {
+          "bytes": 28861,
+          "path": "national-building-supported/resume.json",
+          "sha256": "b6b8d3c5acf7ce5aec8cf78c53d669d70704e0125a024ed5ef02da52c5929a08"
+        },
+        {
+          "bytes": 0,
+          "path": "national-building-supported/resume.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 32915,
+          "path": "national-building-supported/rows.json",
+          "sha256": "beb223c612c1c25d7acd3903dc97842ea8f8e8b00eefa91c97b0ed1f2ef3b918"
+        },
+        {
+          "bytes": 422,
+          "path": "national-building-supported/run/.canon/geo-run/artifacts/cas/173a49248f9ca4201bd295ddb074a3c53cc5128470b99d1172119753e377b5f5.bin",
+          "sha256": "7ec69d2c8d6f701180e70276037073034d8d17d536bc545496fa38fb5cfa1a5b"
+        },
+        {
+          "bytes": 26443,
+          "path": "national-building-supported/run/.canon/geo-run/artifacts/cas/40318d421043648dcceb866cf410138093851a94298be4cd560bb6be301cc8c5.bin",
+          "sha256": "dda714d974736cb5d98534e3ab70a45137121e163ed1ce4c794a857716748c57"
+        },
+        {
+          "bytes": 27341,
+          "path": "national-building-supported/run/.canon/geo-run/artifacts/cas/469ef56590c3e6ff66e4e78cbf3546a70f31616afc0d87d8eb42cf724f3349a4.bin",
+          "sha256": "9c152a3813f7d78d8c7be363ba1f2f43df750d89de2d26e95afeb20385b5ee96"
+        },
+        {
+          "bytes": 471,
+          "path": "national-building-supported/run/.canon/geo-run/artifacts/cas/5bff32f6935aa415d0a7009e472b387e2221efb92d0b944cac85da061e943aa2.bin",
+          "sha256": "e104413012c94a80d290eb7ef2fd77bc85603bfcd24d53a59a024a9d08e538c4"
+        },
+        {
+          "bytes": 111033,
+          "path": "national-building-supported/run/.canon/geo-run/artifacts/cas/6342c0b4d8790437be4e2604a30c5b3ecf09e6d763527f0eb117689fad961e12.bin",
+          "sha256": "e1cda39a919f57ff5c06a2545c99af988884cbe229b07ab38220500af9676d9d"
+        },
+        {
+          "bytes": 1181,
+          "path": "national-building-supported/run/.canon/geo-run/artifacts/cas/70b91f092e6030718c3a52f7b28479e240ee3357e258f7e1810382b4e10c3d06.bin",
+          "sha256": "28950a32950f7127faa91b17cf41668e01048eb3b27d06af296d0c98df7528df"
+        },
+        {
+          "bytes": 412,
+          "path": "national-building-supported/run/.canon/geo-run/artifacts/cas/b81795f231005e6b7be462221e2eda6d4837fb80d92991f5d1934fa3601490a1.bin",
+          "sha256": "e2eb1b0160831876766380030483b48ce6506875127df7f8a4471c48732e3d8c"
+        },
+        {
+          "bytes": 571534,
+          "path": "national-building-supported/run/.canon/geo-run/artifacts/cas/c7f225275243ecf120760e5f1d0d043946371cdb25ebe11abd231372ce40fe0a.bin",
+          "sha256": "540084e3b6d17498593a303d4fca33a900283d047c7b5c8e96453314e5d8844a"
+        },
+        {
+          "bytes": 223217,
+          "path": "national-building-supported/run/.canon/geo-run/artifacts/cas/cfeb94b5684902d1074c6074cfa8c646f182d463b256db28c071cd53b005444b.bin",
+          "sha256": "8c4333fcb1284412bd542b9f41a343e3bbf40151e2bc4a6c137fd358559583f9"
+        },
+        {
+          "bytes": 28860,
+          "path": "national-building-supported/run/.canon/geo-run/geo-run-manifest/head.json",
+          "sha256": "3814a69a056060c0cfdb3d05fafdae870de784d041175e3a8d438ce4bdbb1804"
+        },
+        {
+          "bytes": 27167,
+          "path": "national-building-supported/run/.canon/geo-run/geo-run-manifest/revisions/8e87ba12b5dba7c85b12d66c1dfbdf903c7dcee2e581d861c918bfe8e28f842c.json",
+          "sha256": "2fbc7598d9521b710717b7aafeedb6664b6e9d54c4ac1dda2c1a16274795b7cf"
+        },
+        {
+          "bytes": 28860,
+          "path": "national-building-supported/run/.canon/geo-run/geo-run-manifest/revisions/c3eb0c478b7edca3c012770f79d5a572b6418f7037992ab9d9debdb0dd4c1140.json",
+          "sha256": "3814a69a056060c0cfdb3d05fafdae870de784d041175e3a8d438ce4bdbb1804"
+        },
+        {
+          "bytes": 2332,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_0080539fca4879a59c6dedd6895e33f09c051c50cf0f38e1ec4777467a57e721.json",
+          "sha256": "5040125762a99167d3839b20c5bda5654e15d1ee57c890c81f122913fab493da"
+        },
+        {
+          "bytes": 2377,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_14ad0b2c4a914aca25179d7268e011b5eba8360a242d5671e8cc7cac2615c64c.json",
+          "sha256": "54f75047e473bd3586088406c972b8af5b7001a7fe6453a071a2574b30df8f63"
+        },
+        {
+          "bytes": 1606,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_25262b89f2c38614830e2ed6042d387b26a3dbd72e8bd3686db0bac2cf9dd95b.json",
+          "sha256": "7ded96b3fcca3bcdc8a02b934a8b2c3a148804e12928dd9e5d5cb56fd0683d98"
+        },
+        {
+          "bytes": 1671,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_32847b5a84859db396921c082172c371ffd45e72b6bf4ae520e762bcc162ef90.json",
+          "sha256": "5ad90c80224d67f287e351b0a9f3cea9b60a01bcb76bd05cc5ac3b77f0a1a41e"
+        },
+        {
+          "bytes": 1792,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_33745ab93653767578a148b0a56e232245c0ddb37db322d658c5ba532e84b579.json",
+          "sha256": "9c6f1c51686394c8712688bc7eb02939bc204c1c9d1d0bb4911a76f4c2fa6b0c"
+        },
+        {
+          "bytes": 1535,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_3a623f094d96e545ea5820c00ff830c91f0fa95a6025a1d356044750a304d674.json",
+          "sha256": "5af75cc6163375a8f00805191313d51bbecab684c1dcd2bbd4e8b395122397a6"
+        },
+        {
+          "bytes": 1480,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_5a884d3a69f9461ab85c665b7757de7cf5fd614a70eb5a8ac9803f6ae2d01917.json",
+          "sha256": "fe977c0f5f19ad0eb63edf4fc44ef2f900398c1517aa1a0409411b40afc69bd9"
+        },
+        {
+          "bytes": 1966,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_7ec758f00b93703ff479f5ad3ce2a64847861285585cc099211705e002c60399.json",
+          "sha256": "c26be45b248f3705f3f160af78d80f3a795e89198458e2b3cfea5c14108dcbb9"
+        },
+        {
+          "bytes": 2226,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_e68e3960b28082c8285cd8e41d9bcc3262db1565bd006a348c1cf2bb2bb520fa.json",
+          "sha256": "ae162a3aff1dbbc1b1445020dbc154d24f64fa46f149823f3b260fba243f987f"
+        },
+        {
+          "bytes": 1671,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_20f04ce0a10f4fe178f73960b45f490691e096053cebf5840da7f2691d14e8e4.json",
+          "sha256": "5ad90c80224d67f287e351b0a9f3cea9b60a01bcb76bd05cc5ac3b77f0a1a41e"
+        },
+        {
+          "bytes": 2377,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_45bdc3a562be1501cc4b146699db6da287ce2c7b8fe6c6496913785f1ef67374.json",
+          "sha256": "54f75047e473bd3586088406c972b8af5b7001a7fe6453a071a2574b30df8f63"
+        },
+        {
+          "bytes": 1966,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_5c79236468f92b18292bdf348b85d3a847e8045676957f043d9d237016875c6d.json",
+          "sha256": "c26be45b248f3705f3f160af78d80f3a795e89198458e2b3cfea5c14108dcbb9"
+        },
+        {
+          "bytes": 1606,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_8170bfebf60ce71e67cbcb7f0edfb5f6f37294c3d91bc984f8976c514d87178c.json",
+          "sha256": "7ded96b3fcca3bcdc8a02b934a8b2c3a148804e12928dd9e5d5cb56fd0683d98"
+        },
+        {
+          "bytes": 1535,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_932e707833dfff3c33d0677404a7b01f7f7826fe966afc3c19c411337a8368fb.json",
+          "sha256": "5af75cc6163375a8f00805191313d51bbecab684c1dcd2bbd4e8b395122397a6"
+        },
+        {
+          "bytes": 1792,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_a1c0d548dff8646cad23223478684c9894f44c5821bd5f86ad65e8b89a3956b0.json",
+          "sha256": "9c6f1c51686394c8712688bc7eb02939bc204c1c9d1d0bb4911a76f4c2fa6b0c"
+        },
+        {
+          "bytes": 1480,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_cccb167ebc5cc95cf148969f777ebead0f87d1175c184ac69880c47eef3508db.json",
+          "sha256": "fe977c0f5f19ad0eb63edf4fc44ef2f900398c1517aa1a0409411b40afc69bd9"
+        },
+        {
+          "bytes": 2332,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_ebb9b060582c64fccec365ab7aaee1a618f3242793336aeeb9f818635d84abe5.json",
+          "sha256": "5040125762a99167d3839b20c5bda5654e15d1ee57c890c81f122913fab493da"
+        },
+        {
+          "bytes": 2226,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_f14876c62a3d712c487b2b43d2f15a0719e2cde76286700925d1bd43d2617692.json",
+          "sha256": "ae162a3aff1dbbc1b1445020dbc154d24f64fa46f149823f3b260fba243f987f"
+        },
+        {
+          "bytes": 1671,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/cas/blake3_20f04ce0a10f4fe178f73960b45f490691e096053cebf5840da7f2691d14e8e4.json",
+          "sha256": "5ad90c80224d67f287e351b0a9f3cea9b60a01bcb76bd05cc5ac3b77f0a1a41e"
+        },
+        {
+          "bytes": 2377,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/cas/blake3_45bdc3a562be1501cc4b146699db6da287ce2c7b8fe6c6496913785f1ef67374.json",
+          "sha256": "54f75047e473bd3586088406c972b8af5b7001a7fe6453a071a2574b30df8f63"
+        },
+        {
+          "bytes": 1966,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/cas/blake3_5c79236468f92b18292bdf348b85d3a847e8045676957f043d9d237016875c6d.json",
+          "sha256": "c26be45b248f3705f3f160af78d80f3a795e89198458e2b3cfea5c14108dcbb9"
+        },
+        {
+          "bytes": 1606,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/cas/blake3_8170bfebf60ce71e67cbcb7f0edfb5f6f37294c3d91bc984f8976c514d87178c.json",
+          "sha256": "7ded96b3fcca3bcdc8a02b934a8b2c3a148804e12928dd9e5d5cb56fd0683d98"
+        },
+        {
+          "bytes": 1535,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/cas/blake3_932e707833dfff3c33d0677404a7b01f7f7826fe966afc3c19c411337a8368fb.json",
+          "sha256": "5af75cc6163375a8f00805191313d51bbecab684c1dcd2bbd4e8b395122397a6"
+        },
+        {
+          "bytes": 1792,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/cas/blake3_a1c0d548dff8646cad23223478684c9894f44c5821bd5f86ad65e8b89a3956b0.json",
+          "sha256": "9c6f1c51686394c8712688bc7eb02939bc204c1c9d1d0bb4911a76f4c2fa6b0c"
+        },
+        {
+          "bytes": 1480,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/cas/blake3_cccb167ebc5cc95cf148969f777ebead0f87d1175c184ac69880c47eef3508db.json",
+          "sha256": "fe977c0f5f19ad0eb63edf4fc44ef2f900398c1517aa1a0409411b40afc69bd9"
+        },
+        {
+          "bytes": 2332,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/cas/blake3_ebb9b060582c64fccec365ab7aaee1a618f3242793336aeeb9f818635d84abe5.json",
+          "sha256": "5040125762a99167d3839b20c5bda5654e15d1ee57c890c81f122913fab493da"
+        },
+        {
+          "bytes": 2226,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/cas/blake3_f14876c62a3d712c487b2b43d2f15a0719e2cde76286700925d1bd43d2617692.json",
+          "sha256": "ae162a3aff1dbbc1b1445020dbc154d24f64fa46f149823f3b260fba243f987f"
+        },
+        {
+          "bytes": 1535,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/geo_building_compile_evidence.json",
+          "sha256": "5af75cc6163375a8f00805191313d51bbecab684c1dcd2bbd4e8b395122397a6"
+        },
+        {
+          "bytes": 2377,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/geo_building_explain.json",
+          "sha256": "54f75047e473bd3586088406c972b8af5b7001a7fe6453a071a2574b30df8f63"
+        },
+        {
+          "bytes": 1792,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/geo_building_home_cells.json",
+          "sha256": "9c6f1c51686394c8712688bc7eb02939bc204c1c9d1d0bb4911a76f4c2fa6b0c"
+        },
+        {
+          "bytes": 1671,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/geo_building_materialize_evidence.json",
+          "sha256": "5ad90c80224d67f287e351b0a9f3cea9b60a01bcb76bd05cc5ac3b77f0a1a41e"
+        },
+        {
+          "bytes": 1966,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/geo_building_next_evidence.json",
+          "sha256": "c26be45b248f3705f3f160af78d80f3a795e89198458e2b3cfea5c14108dcbb9"
+        },
+        {
+          "bytes": 1480,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/geo_building_propagate.json",
+          "sha256": "fe977c0f5f19ad0eb63edf4fc44ef2f900398c1517aa1a0409411b40afc69bd9"
+        },
+        {
+          "bytes": 1606,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/geo_building_section.json",
+          "sha256": "7ded96b3fcca3bcdc8a02b934a8b2c3a148804e12928dd9e5d5cb56fd0683d98"
+        },
+        {
+          "bytes": 2332,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/geo_building_separation.json",
+          "sha256": "5040125762a99167d3839b20c5bda5654e15d1ee57c890c81f122913fab493da"
+        },
+        {
+          "bytes": 2226,
+          "path": "national-building-supported/run/.canon/geo-run/receipts/geo_building_solve.json",
+          "sha256": "ae162a3aff1dbbc1b1445020dbc154d24f64fa46f149823f3b260fba243f987f"
+        },
+        {
+          "bytes": 4252,
+          "path": "national-building-supported/run/.canon/geo-run/run-manifest/head.json",
+          "sha256": "f9d96a0dea10719bfa082f7390c75c53838e3971cec49ad35d2385529ebf9348"
+        },
+        {
+          "bytes": 4153,
+          "path": "national-building-supported/run/.canon/geo-run/run-manifest/revisions/0f5da7dd76e48c2f988a40dae80f3905278dab966f388679a202905da2a15406.json",
+          "sha256": "2dd9c4fc670db4be7a894b689c7fab5ef20ac1c8d8fdf6e12bf525d1b7f7bce4"
+        },
+        {
+          "bytes": 4252,
+          "path": "national-building-supported/run/.canon/geo-run/run-manifest/revisions/e34f7274342be20f6beba63d8b122afc5963bc681fed0e65d7c199abbb93764f.json",
+          "sha256": "f9d96a0dea10719bfa082f7390c75c53838e3971cec49ad35d2385529ebf9348"
+        },
+        {
+          "bytes": 27341,
+          "path": "national-building-supported/run/geo/building/compile_evidence.json",
+          "sha256": "9c152a3813f7d78d8c7be363ba1f2f43df750d89de2d26e95afeb20385b5ee96"
+        },
+        {
+          "bytes": 471,
+          "path": "national-building-supported/run/geo/building/explanation.json",
+          "sha256": "e104413012c94a80d290eb7ef2fd77bc85603bfcd24d53a59a024a9d08e538c4"
+        },
+        {
+          "bytes": 571534,
+          "path": "national-building-supported/run/geo/building/home_cells.json",
+          "sha256": "540084e3b6d17498593a303d4fca33a900283d047c7b5c8e96453314e5d8844a"
+        },
+        {
+          "bytes": 26443,
+          "path": "national-building-supported/run/geo/building/materialize_evidence.json",
+          "sha256": "dda714d974736cb5d98534e3ab70a45137121e163ed1ce4c794a857716748c57"
+        },
+        {
+          "bytes": 1181,
+          "path": "national-building-supported/run/geo/building/next_evidence.json",
+          "sha256": "28950a32950f7127faa91b17cf41668e01048eb3b27d06af296d0c98df7528df"
+        },
+        {
+          "bytes": 422,
+          "path": "national-building-supported/run/geo/building/propagation.json",
+          "sha256": "7ec69d2c8d6f701180e70276037073034d8d17d536bc545496fa38fb5cfa1a5b"
+        },
+        {
+          "bytes": 223217,
+          "path": "national-building-supported/run/geo/building/section.json",
+          "sha256": "8c4333fcb1284412bd542b9f41a343e3bbf40151e2bc4a6c137fd358559583f9"
+        },
+        {
+          "bytes": 412,
+          "path": "national-building-supported/run/geo/building/separation.json",
+          "sha256": "e2eb1b0160831876766380030483b48ce6506875127df7f8a4471c48732e3d8c"
+        },
+        {
+          "bytes": 111033,
+          "path": "national-building-supported/run/geo/building/solve.json",
+          "sha256": "e1cda39a919f57ff5c06a2545c99af988884cbe229b07ab38220500af9676d9d"
+        },
+        {
+          "bytes": 27168,
+          "path": "national-building-supported/run.json",
+          "sha256": "f9fda1bef8029b5bdee670dda9946200a021628d8c60f682bc1c6335ebe1d704"
+        },
+        {
+          "bytes": 0,
+          "path": "national-building-supported/run.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 215284,
+          "path": "national-building-supported/section.json",
+          "sha256": "139e3628aee9d65fbba1416da5eda13bef43baf5c826fd9244699cd20399539e"
+        },
+        {
+          "bytes": 14561,
+          "path": "national-building-supported/separation.json",
+          "sha256": "a205d7c582fb50ca9ace9c8625d28cce912c428d279b8d4952e6d4d2d4f9861f"
+        },
+        {
+          "bytes": 1352,
+          "path": "national-parcel/budget.json",
+          "sha256": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6"
+        },
+        {
+          "bytes": 35279,
+          "path": "national-parcel/capabilities.json",
+          "sha256": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf"
+        },
+        {
+          "bytes": 0,
+          "path": "national-parcel/capabilities.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 1696,
+          "path": "national-parcel/execution.json",
+          "sha256": "8dc672bb1f5aa5099f6a8608c1444ca6d25f84a9d43a6cf62efdbcae833d2d7a"
+        },
+        {
+          "bytes": 2601148,
+          "path": "national-parcel/home.json",
+          "sha256": "bf770dfb1fc71f556925ff3a1fa692667e2dad8bbd553e0a933b1ea7a3fd777a"
+        },
+        {
+          "bytes": 10052,
+          "path": "national-parcel/inspect.json",
+          "sha256": "4866fffd97d50e56dc648667debd3ac2ce47ca5ca83bcbf5917b54ebc4ac3bdb"
+        },
+        {
+          "bytes": 0,
+          "path": "national-parcel/inspect.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 3969,
+          "path": "national-parcel/inventory.json",
+          "sha256": "192b933483c5a8edb0b813e9cd2d6313ae613f35fb3f86b6917149e135f86802"
+        },
+        {
+          "bytes": 1658,
+          "path": "national-parcel/next.json",
+          "sha256": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c"
+        },
+        {
+          "bytes": 55008,
+          "path": "national-parcel/plan.json",
+          "sha256": "834f3fd9054ba79172ddad3cefa52698bcb9786df4c694df0c132a099aced9ff"
+        },
+        {
+          "bytes": 0,
+          "path": "national-parcel/plan.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 74,
+          "path": "national-parcel/profile.json",
+          "sha256": "9fe5908406e293ba1900ef8c880fddfd6bea62d61bd053bd7ff7db76b959920b"
+        },
+        {
+          "bytes": 929,
+          "path": "national-parcel/question.json",
+          "sha256": "f9a289a1c04f357ab9b3e79298a1908296b139a32574984da3b870944ea76877"
+        },
+        {
+          "bytes": 3818,
+          "path": "national-parcel/readback.json",
+          "sha256": "0ca4ca55d445b6abebcd1ee5cb77b0248f72b3e4000080cded72756dc472a426"
+        },
+        {
+          "bytes": 28654,
+          "path": "national-parcel/resume.json",
+          "sha256": "ff89892f99faebd5d00ea4bed72ec77e9eb4d60d7cf25aab20b595fa7fbc1ae8"
+        },
+        {
+          "bytes": 0,
+          "path": "national-parcel/resume.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 102236,
+          "path": "national-parcel/rows.json",
+          "sha256": "e0ad901a5fd16d0b0e919252af2c2b8e79b7e0576a2525f5c8841e4f91529efc"
+        },
+        {
+          "bytes": 471,
+          "path": "national-parcel/run/.canon/geo-run/artifacts/cas/2cb9fbf4a4dd3492f463bc48f60be8c4096ca5f5ec8268d79d056eb23a82047b.bin",
+          "sha256": "e24e9f41de22f3bdf17a9d068c70cd2afe8a977861308f0686c76e0f4139b25e"
+        },
+        {
+          "bytes": 416,
+          "path": "national-parcel/run/.canon/geo-run/artifacts/cas/3358c01eb99fb32a6b11d4c03d875ff352754e6ce163f6a2273a3098bea640df.bin",
+          "sha256": "7d59c770b93c9d8bb16ada33919254d3c6236a71237ab1b560b68879365ef348"
+        },
+        {
+          "bytes": 4850534,
+          "path": "national-parcel/run/.canon/geo-run/artifacts/cas/4460c3f4b45104ab0330b6ab83dcfa617361c2e1ce59638a403326ee2050b295.bin",
+          "sha256": "159367513e61510118d7e8a256bde8f02f8f68ab4ab7431f4e1384c47811765f"
+        },
+        {
+          "bytes": 1184,
+          "path": "national-parcel/run/.canon/geo-run/artifacts/cas/5abaa0a7058f7bfdb16ad41f5247052721dbe59506d58a5214c535ace30a21d7.bin",
+          "sha256": "0ac3ddb3416bf19f5b8415c15acd550a143e3384cd0953d63fbd230a271682ab"
+        },
+        {
+          "bytes": 58234,
+          "path": "national-parcel/run/.canon/geo-run/artifacts/cas/640b283dd4d6197347fb564eb062d175adb5912e9141ca2b9205841e5df8fe3e.bin",
+          "sha256": "8a688a6f1ba77f8c3cd5a46577168b785fb443c75dd9dfdf6ecd73ca88aae098"
+        },
+        {
+          "bytes": 58797,
+          "path": "national-parcel/run/.canon/geo-run/artifacts/cas/6d43a2c97e4ce1966fa42d8d48a309045b779fe8843cdb5ddc6d4e357426acbd.bin",
+          "sha256": "d171bbe68c47a00e236f9eb543965b341c92fbce1bf2e35afc245a4cd7276743"
+        },
+        {
+          "bytes": 1906785,
+          "path": "national-parcel/run/.canon/geo-run/artifacts/cas/7d7bf0164411093fed2e8235243a37aa36a82468f516f1f89c6bcb9996dc5ef3.bin",
+          "sha256": "1ef056a4badaab60fc375dd395c6ce8c595dccd02beede2228cd126dc391e9d7"
+        },
+        {
+          "bytes": 423,
+          "path": "national-parcel/run/.canon/geo-run/artifacts/cas/8e94be56fe23a486170d0a907776a9f38ec8c7b6319339b2fe28f117fa20bdc6.bin",
+          "sha256": "6f7dbaaf383a03276881d93c0f96f14740c6610fe8dfaf5459bd59c6c99a1883"
+        },
+        {
+          "bytes": 498579,
+          "path": "national-parcel/run/.canon/geo-run/artifacts/cas/e88651f2b30f455a1c7a55d7231ea1b2cd5f1a3b8044e1fbeb40a15247626ce1.bin",
+          "sha256": "18ca756b4a614e35d2d9e6998c1d119a5698a276f1b51e18be2a3d9bb06f92cc"
+        },
+        {
+          "bytes": 28653,
+          "path": "national-parcel/run/.canon/geo-run/geo-run-manifest/head.json",
+          "sha256": "529d3511fa01f5b5c6f1a78937b936b4fe7d2f61e73c4046ee14639249377030"
+        },
+        {
+          "bytes": 28653,
+          "path": "national-parcel/run/.canon/geo-run/geo-run-manifest/revisions/714dcc1dda13aaf26bf5d0f84af54b0073d4148fe42588b789293ea5a228bfaf.json",
+          "sha256": "529d3511fa01f5b5c6f1a78937b936b4fe7d2f61e73c4046ee14639249377030"
+        },
+        {
+          "bytes": 26924,
+          "path": "national-parcel/run/.canon/geo-run/geo-run-manifest/revisions/7b9162d0dea1c3b4c28d8f724915fe636cca6f3ea88697aaed1199ef042963e3.json",
+          "sha256": "018997973063b62f9359a49aeb13dad9a9eb9ba3daba592ce9e3e84591fc1bb6"
+        },
+        {
+          "bytes": 1789,
+          "path": "national-parcel/run/.canon/geo-run/receipts/by-cache-key/blake3_17edc658fdf0eb88deb20632acb96610ab9c61fd51559415672550615ccd6c6d.json",
+          "sha256": "cc651acc16cd317882e344c4a53b3fc670c90db625790c56f8ddeff7efd9a4e7"
+        },
+        {
+          "bytes": 1525,
+          "path": "national-parcel/run/.canon/geo-run/receipts/by-cache-key/blake3_278efe053a3917a773fc7f3eaa00e0a5b4934d58bec8b8435cd051f66d9dcf63.json",
+          "sha256": "09ac31737164168a0d0d42f0354b463ee79e2af867d772aff1aeb65cfe24b21d"
+        },
+        {
+          "bytes": 1948,
+          "path": "national-parcel/run/.canon/geo-run/receipts/by-cache-key/blake3_4a67b70178e616c32f9ec36b465c39a1ae19a08fe4264da50b2f556154ee3258.json",
+          "sha256": "ad90df70625fee0db8cee91f050eeeed8449cba8baec582e0c28644da5e9675a"
+        },
+        {
+          "bytes": 1597,
+          "path": "national-parcel/run/.canon/geo-run/receipts/by-cache-key/blake3_80fbba683e64f6b0b3850568458e8dc9a6c50b88f9c9c9166a7bd8db5b77657f.json",
+          "sha256": "69607bb0462f5ece36b1ca76c5e620f4374c1266c42c181f0b79d3dacfb616fb"
+        },
+        {
+          "bytes": 2355,
+          "path": "national-parcel/run/.canon/geo-run/receipts/by-cache-key/blake3_9210fb191d8db3e7c9090f9c02ed0705cdf2bcc3f17ad47026c0ca8c994161ca.json",
+          "sha256": "001445a8c20f0914908b5eee1b5d7fb7ffb91a580a5356bbf6f0974aed2427e2"
+        },
+        {
+          "bytes": 2208,
+          "path": "national-parcel/run/.canon/geo-run/receipts/by-cache-key/blake3_9c083a9a0c4268bbe1879c101b0dda3bdbbb7b31ae4db96def2659f7ebadaebf.json",
+          "sha256": "e7ca0d9d6dc892ed7e005fc8b44f6941c645c4787628d329e729fe8bc1515394"
+        },
+        {
+          "bytes": 1660,
+          "path": "national-parcel/run/.canon/geo-run/receipts/by-cache-key/blake3_9d50694b152ee60fb7e9b47cb332e6cc6d08afaa8b814984dfca15727de1c2db.json",
+          "sha256": "6f0c8bf284da79f979ae614132d1c9530f0c031d6d9b53b09a5a0b3582044c52"
+        },
+        {
+          "bytes": 2308,
+          "path": "national-parcel/run/.canon/geo-run/receipts/by-cache-key/blake3_ac5d119bdb00dd91b61a76e9bb148d143a0af3938f3eb66db11600a030f7155a.json",
+          "sha256": "1819c3d8de952294829c10ca621bdba3fe8d49f8f4c349b599ff10e4546c13cf"
+        },
+        {
+          "bytes": 1470,
+          "path": "national-parcel/run/.canon/geo-run/receipts/by-cache-key/blake3_cb5cf2b0be796ebbea4e97e9d648bbb77f0c6339a99fb67ffe9768c0ba4327f8.json",
+          "sha256": "8b4989a2d0f41f67ccd936720ce73d9bcac655f7bcb67ce794dab4e91db699c9"
+        },
+        {
+          "bytes": 1470,
+          "path": "national-parcel/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_2592a3c758c1655a51e94bd84691fee16cc78e8841443e3d25bd1a72df048414.json",
+          "sha256": "8b4989a2d0f41f67ccd936720ce73d9bcac655f7bcb67ce794dab4e91db699c9"
+        },
+        {
+          "bytes": 2355,
+          "path": "national-parcel/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_30b386f24ea9e27ab853242ac96f9aac6800fe672faab94054dfb561eb28aa53.json",
+          "sha256": "001445a8c20f0914908b5eee1b5d7fb7ffb91a580a5356bbf6f0974aed2427e2"
+        },
+        {
+          "bytes": 1525,
+          "path": "national-parcel/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_4cf7b8040077fdc7f9a8126542e1fbd893d683debf62164bff47bb2684245e0f.json",
+          "sha256": "09ac31737164168a0d0d42f0354b463ee79e2af867d772aff1aeb65cfe24b21d"
+        },
+        {
+          "bytes": 2208,
+          "path": "national-parcel/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_52efb9ed5d50898ebb28d678c775a14070ae69ccbf606f589142ca6a825ed48a.json",
+          "sha256": "e7ca0d9d6dc892ed7e005fc8b44f6941c645c4787628d329e729fe8bc1515394"
+        },
+        {
+          "bytes": 1789,
+          "path": "national-parcel/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_7ea6027692d5436cc84d99d92e40b933eeabdc5f378b4ad610239173446d517a.json",
+          "sha256": "cc651acc16cd317882e344c4a53b3fc670c90db625790c56f8ddeff7efd9a4e7"
+        },
+        {
+          "bytes": 1597,
+          "path": "national-parcel/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_95bdf7e214a60610b424bb21d9cf1e8d2d78b2e204fe2c1cdd586b6bf639728b.json",
+          "sha256": "69607bb0462f5ece36b1ca76c5e620f4374c1266c42c181f0b79d3dacfb616fb"
+        },
+        {
+          "bytes": 1948,
+          "path": "national-parcel/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_b0bfa5ef68b041c7fa3529b8e71fc69714dc91338e712cd2f65eb41730358871.json",
+          "sha256": "ad90df70625fee0db8cee91f050eeeed8449cba8baec582e0c28644da5e9675a"
+        },
+        {
+          "bytes": 1660,
+          "path": "national-parcel/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_bc5348af8e0eb32f9df957128a0769f974aabed4274abb6f6ccf98a06b7e5ba5.json",
+          "sha256": "6f0c8bf284da79f979ae614132d1c9530f0c031d6d9b53b09a5a0b3582044c52"
+        },
+        {
+          "bytes": 2308,
+          "path": "national-parcel/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_ce99cddaf2c35a6240fe566842c54a3d0266cfb6f6c7c5dfea55a161b0589648.json",
+          "sha256": "1819c3d8de952294829c10ca621bdba3fe8d49f8f4c349b599ff10e4546c13cf"
+        },
+        {
+          "bytes": 1470,
+          "path": "national-parcel/run/.canon/geo-run/receipts/cas/blake3_2592a3c758c1655a51e94bd84691fee16cc78e8841443e3d25bd1a72df048414.json",
+          "sha256": "8b4989a2d0f41f67ccd936720ce73d9bcac655f7bcb67ce794dab4e91db699c9"
+        },
+        {
+          "bytes": 2355,
+          "path": "national-parcel/run/.canon/geo-run/receipts/cas/blake3_30b386f24ea9e27ab853242ac96f9aac6800fe672faab94054dfb561eb28aa53.json",
+          "sha256": "001445a8c20f0914908b5eee1b5d7fb7ffb91a580a5356bbf6f0974aed2427e2"
+        },
+        {
+          "bytes": 1525,
+          "path": "national-parcel/run/.canon/geo-run/receipts/cas/blake3_4cf7b8040077fdc7f9a8126542e1fbd893d683debf62164bff47bb2684245e0f.json",
+          "sha256": "09ac31737164168a0d0d42f0354b463ee79e2af867d772aff1aeb65cfe24b21d"
+        },
+        {
+          "bytes": 2208,
+          "path": "national-parcel/run/.canon/geo-run/receipts/cas/blake3_52efb9ed5d50898ebb28d678c775a14070ae69ccbf606f589142ca6a825ed48a.json",
+          "sha256": "e7ca0d9d6dc892ed7e005fc8b44f6941c645c4787628d329e729fe8bc1515394"
+        },
+        {
+          "bytes": 1789,
+          "path": "national-parcel/run/.canon/geo-run/receipts/cas/blake3_7ea6027692d5436cc84d99d92e40b933eeabdc5f378b4ad610239173446d517a.json",
+          "sha256": "cc651acc16cd317882e344c4a53b3fc670c90db625790c56f8ddeff7efd9a4e7"
+        },
+        {
+          "bytes": 1597,
+          "path": "national-parcel/run/.canon/geo-run/receipts/cas/blake3_95bdf7e214a60610b424bb21d9cf1e8d2d78b2e204fe2c1cdd586b6bf639728b.json",
+          "sha256": "69607bb0462f5ece36b1ca76c5e620f4374c1266c42c181f0b79d3dacfb616fb"
+        },
+        {
+          "bytes": 1948,
+          "path": "national-parcel/run/.canon/geo-run/receipts/cas/blake3_b0bfa5ef68b041c7fa3529b8e71fc69714dc91338e712cd2f65eb41730358871.json",
+          "sha256": "ad90df70625fee0db8cee91f050eeeed8449cba8baec582e0c28644da5e9675a"
+        },
+        {
+          "bytes": 1660,
+          "path": "national-parcel/run/.canon/geo-run/receipts/cas/blake3_bc5348af8e0eb32f9df957128a0769f974aabed4274abb6f6ccf98a06b7e5ba5.json",
+          "sha256": "6f0c8bf284da79f979ae614132d1c9530f0c031d6d9b53b09a5a0b3582044c52"
+        },
+        {
+          "bytes": 2308,
+          "path": "national-parcel/run/.canon/geo-run/receipts/cas/blake3_ce99cddaf2c35a6240fe566842c54a3d0266cfb6f6c7c5dfea55a161b0589648.json",
+          "sha256": "1819c3d8de952294829c10ca621bdba3fe8d49f8f4c349b599ff10e4546c13cf"
+        },
+        {
+          "bytes": 1525,
+          "path": "national-parcel/run/.canon/geo-run/receipts/geo_parcel_compile_evidence.json",
+          "sha256": "09ac31737164168a0d0d42f0354b463ee79e2af867d772aff1aeb65cfe24b21d"
+        },
+        {
+          "bytes": 2355,
+          "path": "national-parcel/run/.canon/geo-run/receipts/geo_parcel_explain.json",
+          "sha256": "001445a8c20f0914908b5eee1b5d7fb7ffb91a580a5356bbf6f0974aed2427e2"
+        },
+        {
+          "bytes": 1789,
+          "path": "national-parcel/run/.canon/geo-run/receipts/geo_parcel_home_cells.json",
+          "sha256": "cc651acc16cd317882e344c4a53b3fc670c90db625790c56f8ddeff7efd9a4e7"
+        },
+        {
+          "bytes": 1660,
+          "path": "national-parcel/run/.canon/geo-run/receipts/geo_parcel_materialize_evidence.json",
+          "sha256": "6f0c8bf284da79f979ae614132d1c9530f0c031d6d9b53b09a5a0b3582044c52"
+        },
+        {
+          "bytes": 1948,
+          "path": "national-parcel/run/.canon/geo-run/receipts/geo_parcel_next_evidence.json",
+          "sha256": "ad90df70625fee0db8cee91f050eeeed8449cba8baec582e0c28644da5e9675a"
+        },
+        {
+          "bytes": 1470,
+          "path": "national-parcel/run/.canon/geo-run/receipts/geo_parcel_propagate.json",
+          "sha256": "8b4989a2d0f41f67ccd936720ce73d9bcac655f7bcb67ce794dab4e91db699c9"
+        },
+        {
+          "bytes": 1597,
+          "path": "national-parcel/run/.canon/geo-run/receipts/geo_parcel_section.json",
+          "sha256": "69607bb0462f5ece36b1ca76c5e620f4374c1266c42c181f0b79d3dacfb616fb"
+        },
+        {
+          "bytes": 2308,
+          "path": "national-parcel/run/.canon/geo-run/receipts/geo_parcel_separation.json",
+          "sha256": "1819c3d8de952294829c10ca621bdba3fe8d49f8f4c349b599ff10e4546c13cf"
+        },
+        {
+          "bytes": 2208,
+          "path": "national-parcel/run/.canon/geo-run/receipts/geo_parcel_solve.json",
+          "sha256": "e7ca0d9d6dc892ed7e005fc8b44f6941c645c4787628d329e729fe8bc1515394"
+        },
+        {
+          "bytes": 4189,
+          "path": "national-parcel/run/.canon/geo-run/run-manifest/head.json",
+          "sha256": "fdd6d56f4936b65b04c064136d092d7e92efc8d6b0870f4ddffcd38bffad8c37"
+        },
+        {
+          "bytes": 4189,
+          "path": "national-parcel/run/.canon/geo-run/run-manifest/revisions/616de3f81b11a506cce8620e0936f3cdd03c2b5a0d71d16194ed8dd85662df52.json",
+          "sha256": "fdd6d56f4936b65b04c064136d092d7e92efc8d6b0870f4ddffcd38bffad8c37"
+        },
+        {
+          "bytes": 4090,
+          "path": "national-parcel/run/.canon/geo-run/run-manifest/revisions/8dd05d6b17beeb502f305570e05095f05d062535772aeedf10b19a8a69b2b070.json",
+          "sha256": "15eb605a52dffd21a109025d5bf90fad1a9ada3ba77f60706be26882e8e8efb6"
+        },
+        {
+          "bytes": 58797,
+          "path": "national-parcel/run/geo/parcel/compile_evidence.json",
+          "sha256": "d171bbe68c47a00e236f9eb543965b341c92fbce1bf2e35afc245a4cd7276743"
+        },
+        {
+          "bytes": 471,
+          "path": "national-parcel/run/geo/parcel/explanation.json",
+          "sha256": "e24e9f41de22f3bdf17a9d068c70cd2afe8a977861308f0686c76e0f4139b25e"
+        },
+        {
+          "bytes": 4850534,
+          "path": "national-parcel/run/geo/parcel/home_cells.json",
+          "sha256": "159367513e61510118d7e8a256bde8f02f8f68ab4ab7431f4e1384c47811765f"
+        },
+        {
+          "bytes": 58234,
+          "path": "national-parcel/run/geo/parcel/materialize_evidence.json",
+          "sha256": "8a688a6f1ba77f8c3cd5a46577168b785fb443c75dd9dfdf6ecd73ca88aae098"
+        },
+        {
+          "bytes": 1184,
+          "path": "national-parcel/run/geo/parcel/next_evidence.json",
+          "sha256": "0ac3ddb3416bf19f5b8415c15acd550a143e3384cd0953d63fbd230a271682ab"
+        },
+        {
+          "bytes": 423,
+          "path": "national-parcel/run/geo/parcel/propagation.json",
+          "sha256": "6f7dbaaf383a03276881d93c0f96f14740c6610fe8dfaf5459bd59c6c99a1883"
+        },
+        {
+          "bytes": 1906785,
+          "path": "national-parcel/run/geo/parcel/section.json",
+          "sha256": "1ef056a4badaab60fc375dd395c6ce8c595dccd02beede2228cd126dc391e9d7"
+        },
+        {
+          "bytes": 416,
+          "path": "national-parcel/run/geo/parcel/separation.json",
+          "sha256": "7d59c770b93c9d8bb16ada33919254d3c6236a71237ab1b560b68879365ef348"
+        },
+        {
+          "bytes": 498579,
+          "path": "national-parcel/run/geo/parcel/solve.json",
+          "sha256": "18ca756b4a614e35d2d9e6998c1d119a5698a276f1b51e18be2a3d9bb06f92cc"
+        },
+        {
+          "bytes": 26925,
+          "path": "national-parcel/run.json",
+          "sha256": "8bef2e9d64fc5ab8e2ef0b3580434514e81d9e00d1ac4c25780795666309015c"
+        },
+        {
+          "bytes": 0,
+          "path": "national-parcel/run.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 1834690,
+          "path": "national-parcel/section.json",
+          "sha256": "af330f3c397e5e27348c89b89d472334402ecaddec7a805a41a9d0779c0b65fc"
+        },
+        {
+          "bytes": 59990,
+          "path": "national-parcel/separation.json",
+          "sha256": "cfb74aa45a31b010dcdfbd662f06ca4a0d63ceca8d06f309f6171688ee32e3d4"
+        },
+        {
+          "bytes": 1352,
+          "path": "national-parcel-supported/budget.json",
+          "sha256": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6"
+        },
+        {
+          "bytes": 35279,
+          "path": "national-parcel-supported/capabilities.json",
+          "sha256": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf"
+        },
+        {
+          "bytes": 0,
+          "path": "national-parcel-supported/capabilities.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 1767,
+          "path": "national-parcel-supported/execution.json",
+          "sha256": "ed0f71b66ca48a474ac1a6677f8276c400cfef086916d21b215f43fb24e2f572"
+        },
+        {
+          "bytes": 2601148,
+          "path": "national-parcel-supported/home.json",
+          "sha256": "45b4254c4e1292f577c2b00ed48897647afd73e1521e09b01ad45fc9c2bc240c"
+        },
+        {
+          "bytes": 10052,
+          "path": "national-parcel-supported/inspect.json",
+          "sha256": "79a556100d39c0fa521068e611ea19ceacc255bf92850ddd47b56c9f65916658"
+        },
+        {
+          "bytes": 0,
+          "path": "national-parcel-supported/inspect.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 3969,
+          "path": "national-parcel-supported/inventory.json",
+          "sha256": "bedd6b905cf8fd1e85ada387fed31a1140b35da85cef7889664ad7f8457d93f7"
+        },
+        {
+          "bytes": 1658,
+          "path": "national-parcel-supported/next.json",
+          "sha256": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c"
+        },
+        {
+          "bytes": 55008,
+          "path": "national-parcel-supported/plan.json",
+          "sha256": "1a7f9e7bb2061d33c814ebd87470ee907cb0f2a70ae19ae26cbc632c8a4c0a2f"
+        },
+        {
+          "bytes": 0,
+          "path": "national-parcel-supported/plan.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 74,
+          "path": "national-parcel-supported/profile.json",
+          "sha256": "9fe5908406e293ba1900ef8c880fddfd6bea62d61bd053bd7ff7db76b959920b"
+        },
+        {
+          "bytes": 929,
+          "path": "national-parcel-supported/question.json",
+          "sha256": "f9a289a1c04f357ab9b3e79298a1908296b139a32574984da3b870944ea76877"
+        },
+        {
+          "bytes": 2816,
+          "path": "national-parcel-supported/readback.json",
+          "sha256": "aca28a3182e3e1cea1eaf68602266f5f23c40b7024d15c7e53dfd81679e59c85"
+        },
+        {
+          "bytes": 28654,
+          "path": "national-parcel-supported/resume.json",
+          "sha256": "bd2584d89e5839b2f4c2d749491842202e86b550c197d1330e3fac7757c80ad6"
+        },
+        {
+          "bytes": 0,
+          "path": "national-parcel-supported/resume.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 102320,
+          "path": "national-parcel-supported/rows.json",
+          "sha256": "fe6742baaeb22143c7874940f901c556ab54bf1a2ed85638c933ce92c17f7eb3"
+        },
+        {
+          "bytes": 1906785,
+          "path": "national-parcel-supported/run/.canon/geo-run/artifacts/cas/08b537c4a1d0542c6d0c19ee2e4260b08e96a0143985536f88c6918ed2ce35ba.bin",
+          "sha256": "dc2624a89c8fb5807766bf94eed66e684d94241f0fe989dc7f95e8eae02cd09b"
+        },
+        {
+          "bytes": 416,
+          "path": "national-parcel-supported/run/.canon/geo-run/artifacts/cas/1981c55d31bddd2623731c32bee69baaa503850405245f0161a3c3485a62b774.bin",
+          "sha256": "e256e9a81bcd8c30d2773ad719a90a2b900f4863320ca9e50bf6978c520961e7"
+        },
+        {
+          "bytes": 1184,
+          "path": "national-parcel-supported/run/.canon/geo-run/artifacts/cas/280d0b4d500fc805e9e029ba34c83d192ae8486badb173d87b6f821eb3dee032.bin",
+          "sha256": "6d6078b8fdf7fc21c8dbaa35a79d0649229be209a14651ce68d2c52958723b73"
+        },
+        {
+          "bytes": 423,
+          "path": "national-parcel-supported/run/.canon/geo-run/artifacts/cas/39762cfe210dee6d8841f0bcc4c2bf3e58472a95979d0557ec7c14e1e4934d8d.bin",
+          "sha256": "b2a86215d57a9955cb25b80bab8bbd406be3891ff7f8fda17881aadbc3bfc948"
+        },
+        {
+          "bytes": 58248,
+          "path": "national-parcel-supported/run/.canon/geo-run/artifacts/cas/54338232952d0fcd4b397eabb0a66820a461246d1c98cfa70165a221c32f9466.bin",
+          "sha256": "76fecf90bf2c766ff92ac0100cbd3728bd25621cf086312cfc295d1db61678c7"
+        },
+        {
+          "bytes": 471,
+          "path": "national-parcel-supported/run/.canon/geo-run/artifacts/cas/5a2f1f1f172a9b94c4e7b7489ef697c8e514d0edafa8c9028188864e4d8c20bd.bin",
+          "sha256": "15be1070f18e3e09785ec19146ddaaf4902a2c9ccdf01949371237228dacdba9"
+        },
+        {
+          "bytes": 498579,
+          "path": "national-parcel-supported/run/.canon/geo-run/artifacts/cas/7af7c8b02c99ecf835dd12fe6ad8643e1430db5631235c231838fb4b1e8c9048.bin",
+          "sha256": "4927ee338d1fc4e59d0c0bc86cb6fb03d33ac92dd29f0b29f0722022ec69f87a"
+        },
+        {
+          "bytes": 59098,
+          "path": "national-parcel-supported/run/.canon/geo-run/artifacts/cas/de5a04edb9f01bcc071820ff2c8dfff57632c2ca64bb1cc22f4f029e34789f9c.bin",
+          "sha256": "a7d95251dde3ef7386322f11fb70994cfe911b76c7655449d50d59f6b5e60f42"
+        },
+        {
+          "bytes": 4850534,
+          "path": "national-parcel-supported/run/.canon/geo-run/artifacts/cas/ed14ae1959738481293395a223140e2f602adc5512bdaf57f901747a9d9000fd.bin",
+          "sha256": "13241204e00c642181ed18d163e99ccaf853af93bcc66346a7daad540dd48ffd"
+        },
+        {
+          "bytes": 28653,
+          "path": "national-parcel-supported/run/.canon/geo-run/geo-run-manifest/head.json",
+          "sha256": "15e0c1cda286d5bae9c9f9339d27551882b0724d553338dd317fbd315bf5d859"
+        },
+        {
+          "bytes": 26924,
+          "path": "national-parcel-supported/run/.canon/geo-run/geo-run-manifest/revisions/07ae4e28e47e80b1960b568c9d37a9ffecf9396ea8c3fbf084090902ccaf5a9e.json",
+          "sha256": "4969c4ba328784f168499fa38e06c44afd42ee47324bd0992797abd156d08832"
+        },
+        {
+          "bytes": 28653,
+          "path": "national-parcel-supported/run/.canon/geo-run/geo-run-manifest/revisions/e49e9136fcc3857241cb4443f73c9bcf0f693711d0965bc55d87b11365c5c799.json",
+          "sha256": "15e0c1cda286d5bae9c9f9339d27551882b0724d553338dd317fbd315bf5d859"
+        },
+        {
+          "bytes": 1525,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_04322833916022fe64a51eda5872b6a0b6b8b4715e772caf99f6eb85e1c62526.json",
+          "sha256": "1e58f3344f745556aa702d3a8de7caaca042bea46d0613d4b2666163027dcbec"
+        },
+        {
+          "bytes": 2208,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_0e9be9b2bf9bb5513d09b28ef606e5fbd9a515a2aa3b41e87453f1cc95d127d9.json",
+          "sha256": "f1f8b5d13c656f14f21871ece48d1c638d9eb4da3b5be28ea7238be6432786d1"
+        },
+        {
+          "bytes": 1660,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_14954d19cb66e8e6c7c0eefb487d8d76a83abab87e0b423117f33ba3bed253f4.json",
+          "sha256": "c30231591d3f0a182bac89f0ca8fba414b46a341e81ca072abf2118e60431ad4"
+        },
+        {
+          "bytes": 1948,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_22114b2f29b53b2e154573cdcb0837dab7ad1bbb475511924eceb8e3dc212121.json",
+          "sha256": "454c7b7687e06d9cc1b4daea9a1278a6f722cd5a334cbc124c68082f08fd8151"
+        },
+        {
+          "bytes": 1597,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_50042b22c718a8b05c7dc74887905d75c3cbeb256abee57a9c64c188e14e80d1.json",
+          "sha256": "ad9617c727d845ad2dc7582e22399da365e5e1e2cd0c8e7dde978c6c54a11099"
+        },
+        {
+          "bytes": 2308,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_591ad1ac16ac252d2e337a14c238f23507d63d285b9f31903ec4d39462f03eb7.json",
+          "sha256": "f4f7a877f6460a01b9edce319c7a5c890e145f16cc6e8108915dd44e17b60aeb"
+        },
+        {
+          "bytes": 1789,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_890d6681c69eb7b61109484f4b38b43e1580900b64b11e75bc6938117893593c.json",
+          "sha256": "2a7c8b48814a77809d46107e9cfc387858d71afa6d77c60d5a53a7c5ef1a32ca"
+        },
+        {
+          "bytes": 1470,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_98767fce906b980802185b298871b33960b501ead33ee42a5a48605fe182847b.json",
+          "sha256": "33f8baa1ea585a265e08680ff983e09c4f2cf694fe39fca58aa97f706ade6ad0"
+        },
+        {
+          "bytes": 2355,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/blake3_c86687efea1098ad9163a7a4450cc2450592e6798f010aa5031d4ed062715a91.json",
+          "sha256": "fa5f58ca884ebf650dd879570de2d58fc97639c4b406820a731c9e06aaf4da66"
+        },
+        {
+          "bytes": 1597,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_01436f47427853c95ff560343211ad67c3422e9dbee91c81ef607af9fde64cae.json",
+          "sha256": "ad9617c727d845ad2dc7582e22399da365e5e1e2cd0c8e7dde978c6c54a11099"
+        },
+        {
+          "bytes": 2308,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_03ce71e57afe5e0cfaa6128b0a608cc33c6b3e5dd2f7ce1e86077108d900d160.json",
+          "sha256": "f4f7a877f6460a01b9edce319c7a5c890e145f16cc6e8108915dd44e17b60aeb"
+        },
+        {
+          "bytes": 2208,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_1c40c5fd3ac260621c6e689147c232d97aab3f35012937b00f1ba30274296c51.json",
+          "sha256": "f1f8b5d13c656f14f21871ece48d1c638d9eb4da3b5be28ea7238be6432786d1"
+        },
+        {
+          "bytes": 1470,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_247db0d22216436cd19c7f5d0b82362800040e2f3b41543cb06120068e948f49.json",
+          "sha256": "33f8baa1ea585a265e08680ff983e09c4f2cf694fe39fca58aa97f706ade6ad0"
+        },
+        {
+          "bytes": 1789,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_4695097063628fa19281ad101745404a418690b277b918f40d2c8e81338de6d7.json",
+          "sha256": "2a7c8b48814a77809d46107e9cfc387858d71afa6d77c60d5a53a7c5ef1a32ca"
+        },
+        {
+          "bytes": 1525,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_4ab25c86c24a055d6c91d332f5e62e01cb0a23b1488262fd57c90b30c8242577.json",
+          "sha256": "1e58f3344f745556aa702d3a8de7caaca042bea46d0613d4b2666163027dcbec"
+        },
+        {
+          "bytes": 2355,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_b302f93e8f6670b06566885c6aaaa698a25db09bd1823f7c749aee4d18abc65a.json",
+          "sha256": "fa5f58ca884ebf650dd879570de2d58fc97639c4b406820a731c9e06aaf4da66"
+        },
+        {
+          "bytes": 1660,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_c1e9dcdb4b94aaa82de2776c782d6ff82735a1d86be38668d16761d0ce60cb7c.json",
+          "sha256": "c30231591d3f0a182bac89f0ca8fba414b46a341e81ca072abf2118e60431ad4"
+        },
+        {
+          "bytes": 1948,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/by-cache-key/cas/blake3_e26d55932d8e0fdeb746eff778e23f20dfb50e4530ad3349f9382ff2fa7ac301.json",
+          "sha256": "454c7b7687e06d9cc1b4daea9a1278a6f722cd5a334cbc124c68082f08fd8151"
+        },
+        {
+          "bytes": 1597,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/cas/blake3_01436f47427853c95ff560343211ad67c3422e9dbee91c81ef607af9fde64cae.json",
+          "sha256": "ad9617c727d845ad2dc7582e22399da365e5e1e2cd0c8e7dde978c6c54a11099"
+        },
+        {
+          "bytes": 2308,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/cas/blake3_03ce71e57afe5e0cfaa6128b0a608cc33c6b3e5dd2f7ce1e86077108d900d160.json",
+          "sha256": "f4f7a877f6460a01b9edce319c7a5c890e145f16cc6e8108915dd44e17b60aeb"
+        },
+        {
+          "bytes": 2208,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/cas/blake3_1c40c5fd3ac260621c6e689147c232d97aab3f35012937b00f1ba30274296c51.json",
+          "sha256": "f1f8b5d13c656f14f21871ece48d1c638d9eb4da3b5be28ea7238be6432786d1"
+        },
+        {
+          "bytes": 1470,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/cas/blake3_247db0d22216436cd19c7f5d0b82362800040e2f3b41543cb06120068e948f49.json",
+          "sha256": "33f8baa1ea585a265e08680ff983e09c4f2cf694fe39fca58aa97f706ade6ad0"
+        },
+        {
+          "bytes": 1789,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/cas/blake3_4695097063628fa19281ad101745404a418690b277b918f40d2c8e81338de6d7.json",
+          "sha256": "2a7c8b48814a77809d46107e9cfc387858d71afa6d77c60d5a53a7c5ef1a32ca"
+        },
+        {
+          "bytes": 1525,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/cas/blake3_4ab25c86c24a055d6c91d332f5e62e01cb0a23b1488262fd57c90b30c8242577.json",
+          "sha256": "1e58f3344f745556aa702d3a8de7caaca042bea46d0613d4b2666163027dcbec"
+        },
+        {
+          "bytes": 2355,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/cas/blake3_b302f93e8f6670b06566885c6aaaa698a25db09bd1823f7c749aee4d18abc65a.json",
+          "sha256": "fa5f58ca884ebf650dd879570de2d58fc97639c4b406820a731c9e06aaf4da66"
+        },
+        {
+          "bytes": 1660,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/cas/blake3_c1e9dcdb4b94aaa82de2776c782d6ff82735a1d86be38668d16761d0ce60cb7c.json",
+          "sha256": "c30231591d3f0a182bac89f0ca8fba414b46a341e81ca072abf2118e60431ad4"
+        },
+        {
+          "bytes": 1948,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/cas/blake3_e26d55932d8e0fdeb746eff778e23f20dfb50e4530ad3349f9382ff2fa7ac301.json",
+          "sha256": "454c7b7687e06d9cc1b4daea9a1278a6f722cd5a334cbc124c68082f08fd8151"
+        },
+        {
+          "bytes": 1525,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/geo_parcel_compile_evidence.json",
+          "sha256": "1e58f3344f745556aa702d3a8de7caaca042bea46d0613d4b2666163027dcbec"
+        },
+        {
+          "bytes": 2355,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/geo_parcel_explain.json",
+          "sha256": "fa5f58ca884ebf650dd879570de2d58fc97639c4b406820a731c9e06aaf4da66"
+        },
+        {
+          "bytes": 1789,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/geo_parcel_home_cells.json",
+          "sha256": "2a7c8b48814a77809d46107e9cfc387858d71afa6d77c60d5a53a7c5ef1a32ca"
+        },
+        {
+          "bytes": 1660,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/geo_parcel_materialize_evidence.json",
+          "sha256": "c30231591d3f0a182bac89f0ca8fba414b46a341e81ca072abf2118e60431ad4"
+        },
+        {
+          "bytes": 1948,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/geo_parcel_next_evidence.json",
+          "sha256": "454c7b7687e06d9cc1b4daea9a1278a6f722cd5a334cbc124c68082f08fd8151"
+        },
+        {
+          "bytes": 1470,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/geo_parcel_propagate.json",
+          "sha256": "33f8baa1ea585a265e08680ff983e09c4f2cf694fe39fca58aa97f706ade6ad0"
+        },
+        {
+          "bytes": 1597,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/geo_parcel_section.json",
+          "sha256": "ad9617c727d845ad2dc7582e22399da365e5e1e2cd0c8e7dde978c6c54a11099"
+        },
+        {
+          "bytes": 2308,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/geo_parcel_separation.json",
+          "sha256": "f4f7a877f6460a01b9edce319c7a5c890e145f16cc6e8108915dd44e17b60aeb"
+        },
+        {
+          "bytes": 2208,
+          "path": "national-parcel-supported/run/.canon/geo-run/receipts/geo_parcel_solve.json",
+          "sha256": "f1f8b5d13c656f14f21871ece48d1c638d9eb4da3b5be28ea7238be6432786d1"
+        },
+        {
+          "bytes": 4189,
+          "path": "national-parcel-supported/run/.canon/geo-run/run-manifest/head.json",
+          "sha256": "5c55314ee4fc2c7d1784987ba3cfbdc1f798412ead0f83b1517dc76aa3a8d90f"
+        },
+        {
+          "bytes": 4189,
+          "path": "national-parcel-supported/run/.canon/geo-run/run-manifest/revisions/31f03ca439e37182aab9a60e52062e616c3dc10d88826a2d9dee8164fa4bcb4e.json",
+          "sha256": "5c55314ee4fc2c7d1784987ba3cfbdc1f798412ead0f83b1517dc76aa3a8d90f"
+        },
+        {
+          "bytes": 4090,
+          "path": "national-parcel-supported/run/.canon/geo-run/run-manifest/revisions/98e907f9659b46032262c7326b7f8177af2004b302c0a7c54ce04166bbaad160.json",
+          "sha256": "a62463e2c5c2feee80dad4c8168b083e2cc94c17ca548b6adde82d76fb46c6fe"
+        },
+        {
+          "bytes": 59098,
+          "path": "national-parcel-supported/run/geo/parcel/compile_evidence.json",
+          "sha256": "a7d95251dde3ef7386322f11fb70994cfe911b76c7655449d50d59f6b5e60f42"
+        },
+        {
+          "bytes": 471,
+          "path": "national-parcel-supported/run/geo/parcel/explanation.json",
+          "sha256": "15be1070f18e3e09785ec19146ddaaf4902a2c9ccdf01949371237228dacdba9"
+        },
+        {
+          "bytes": 4850534,
+          "path": "national-parcel-supported/run/geo/parcel/home_cells.json",
+          "sha256": "13241204e00c642181ed18d163e99ccaf853af93bcc66346a7daad540dd48ffd"
+        },
+        {
+          "bytes": 58248,
+          "path": "national-parcel-supported/run/geo/parcel/materialize_evidence.json",
+          "sha256": "76fecf90bf2c766ff92ac0100cbd3728bd25621cf086312cfc295d1db61678c7"
+        },
+        {
+          "bytes": 1184,
+          "path": "national-parcel-supported/run/geo/parcel/next_evidence.json",
+          "sha256": "6d6078b8fdf7fc21c8dbaa35a79d0649229be209a14651ce68d2c52958723b73"
+        },
+        {
+          "bytes": 423,
+          "path": "national-parcel-supported/run/geo/parcel/propagation.json",
+          "sha256": "b2a86215d57a9955cb25b80bab8bbd406be3891ff7f8fda17881aadbc3bfc948"
+        },
+        {
+          "bytes": 1906785,
+          "path": "national-parcel-supported/run/geo/parcel/section.json",
+          "sha256": "dc2624a89c8fb5807766bf94eed66e684d94241f0fe989dc7f95e8eae02cd09b"
+        },
+        {
+          "bytes": 416,
+          "path": "national-parcel-supported/run/geo/parcel/separation.json",
+          "sha256": "e256e9a81bcd8c30d2773ad719a90a2b900f4863320ca9e50bf6978c520961e7"
+        },
+        {
+          "bytes": 498579,
+          "path": "national-parcel-supported/run/geo/parcel/solve.json",
+          "sha256": "4927ee338d1fc4e59d0c0bc86cb6fb03d33ac92dd29f0b29f0722022ec69f87a"
+        },
+        {
+          "bytes": 26925,
+          "path": "national-parcel-supported/run.json",
+          "sha256": "22b11da5f5cf6190280ae5c7a357d2bf3e6970669c3d8a80341336a6cbe10521"
+        },
+        {
+          "bytes": 0,
+          "path": "national-parcel-supported/run.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 1834690,
+          "path": "national-parcel-supported/section.json",
+          "sha256": "6b96c9155f5923bba6bdf64c6d027ee62085bb5f811e4f0857c0e913ee99e72b"
+        },
+        {
+          "bytes": 59990,
+          "path": "national-parcel-supported/separation.json",
+          "sha256": "cfb74aa45a31b010dcdfbd662f06ca4a0d63ceca8d06f309f6171688ee32e3d4"
+        },
+        {
+          "bytes": 333,
+          "path": "projection.json",
+          "sha256": "1e0f14adc7b9140c3b2c1cf70560dfaed753566a1a02989edf3c0048971a9f24"
+        },
+        {
+          "bytes": 36211,
+          "path": "support.json",
+          "sha256": "2ed5193bfbdc1862dbd5951cafe8cafd11bfc077cc1edd855c65633f3bdc76a4"
+        },
+        {
+          "bytes": 7396,
+          "path": "verification/adapter-replay.json",
+          "sha256": "1c334f25170e6354cc73eea65a20173bbda6155f008fccd60c197b741577b190"
+        },
+        {
+          "bytes": 121871,
+          "path": "verification/build-messages.jsonl",
+          "sha256": "3dc417dfb837a2915de289a230a908afa05446d37b8b6747879388aa63dc6936"
+        },
+        {
+          "bytes": 72,
+          "path": "verification/clippy.log",
+          "sha256": "132d8f9813fd0518ff77c1a062a2e99512c1239c3e418eef63423374de32ac3b"
+        },
+        {
+          "bytes": 0,
+          "path": "verification/fmt.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "bytes": 157504,
+          "path": "verification/footprints.png",
+          "sha256": "123a52f40b957ce6ee83acef9a86f9c1eba809264267c39421e0848d552d5720"
+        },
+        {
+          "bytes": 485,
+          "path": "verification/harness-rebuild.json",
+          "sha256": "6db857a7984819c83a286477aebc3ccc0c0435e0676e98aa61a8d13b94b5c4b9"
+        },
+        {
+          "bytes": 509,
+          "path": "verification/quality-gate.json",
+          "sha256": "64895b486958233e33b61787e8fcacf4b3394f773b3c8a858a1cabe4a6d1b497"
+        },
+        {
+          "bytes": 62,
+          "path": "verification/release-build.log",
+          "sha256": "9a37812c135c5e82e96a6c59a266592728a1efd091d11994a459bbcc3d1dfd5f"
+        },
+        {
+          "bytes": 590,
+          "path": "verification/retained-library-paths.jsonl",
+          "sha256": "c7f04bd6dbca6ff71db01605cb38861d6331cb3565fa84e9f9727375acb516cb"
+        },
+        {
+          "bytes": 315920,
+          "path": "verification/tests.log",
+          "sha256": "2e26ec035ab8542832e874e0ad2b68fbb7d5528c7fc7a315196a7944d383093d"
+        }
+      ],
+      "sha256": "38d3950f65e2a8f6c18dfa334ad69553d3c57c4a8ea33096ebf00f9f8408676d"
+    },
+    "sources.tar.gz": {
+      "bytes": 3318219,
+      "files": [
+        {
+          "bytes": 1157,
+          "path": "build_predicate.py",
+          "sha256": "6a56b4cfcb39508d663f8326d1d2c9ddad0943e5356b3a5b96f0c1e8a993a0c3"
+        },
+        {
+          "bytes": 6554,
+          "path": "bundle.py",
+          "sha256": "2f67115a3050feb6c794654dbc6f0384fb1e0d4f1cf1b99b39315c26ad272de6"
+        },
+        {
+          "bytes": 4354,
+          "path": "check_adapter.py",
+          "sha256": "b9507f037ea334bfc0afbe9c9cb9d9036596bc0ea6ef09df46298c571cd6e54f"
+        },
+        {
+          "bytes": 732,
+          "path": "national-profile.json",
+          "sha256": "2eb933f94638cd8ccf0cb230319fa19cd2366ee82410abee7ae6d88ba4cb37f5"
+        },
+        {
+          "bytes": 4136,
+          "path": "plot.py",
+          "sha256": "863235630f94a8fbaf6083e9b4a57d981154be12c5af2589fa24a73ad838c890"
+        },
+        {
+          "bytes": 3236,
+          "path": "predicate.rs",
+          "sha256": "6dfa415fd5d62f3f5cfce90861f0edcfa864ccb74f6f194bb207a09c7d241750"
+        },
+        {
+          "bytes": 26610,
+          "path": "prepare.py",
+          "sha256": "82d7012365ffc2fd35c599f25eee40e14231afe016f9058fd20d476eb0974b82"
+        },
+        {
+          "bytes": 4088,
+          "path": "run_native.py",
+          "sha256": "214de897cbcb883dc9f83d368f8915313c9f82c63b74718efd706fa42afad922"
+        },
+        {
+          "bytes": 1138632,
+          "path": "sources/baseline-evidence.json",
+          "sha256": "3845fa9f2d6bdab3ad2cb82e75a1cefab4a2bfe1e64713a8df1d8160d39e79e8"
+        },
+        {
+          "bytes": 9058418,
+          "path": "sources/candidate-parcels.json",
+          "sha256": "cb6b07043b9e8603a6cc27ab9e3e798e55855d441f2520f1d38ac4e08c3542f7"
+        },
+        {
+          "bytes": 4891,
+          "path": "sources/city_address_2409.json",
+          "sha256": "cb2f3ac8af87de6789cd45249af42fad160a88b951aeaf2280b4b1487ecd992d"
+        },
+        {
+          "bytes": 623,
+          "path": "sources/city_address_2409.receipt.json",
+          "sha256": "2298c38ade565911170acf6dcc37aa5cdde3ca7dd1a07018bf5073921267aa30"
+        },
+        {
+          "bytes": 21417,
+          "path": "sources/city_conway_streets.json",
+          "sha256": "b6c862a60195c0e8acdf989b2ebc0005b1ab6b89a147c0aa21bbeadb837d4283"
+        },
+        {
+          "bytes": 536,
+          "path": "sources/city_conway_streets.receipt.json",
+          "sha256": "1cbd21301a980ca17fda0b41bd314d3e6b22ac306a893a8b211ca6eaec65acd1"
+        },
+        {
+          "bytes": 3479,
+          "path": "sources/county-address-points.json",
+          "sha256": "d606f4f37ce1c6cce82303a5103f3943c26294ad15d3543a188fb147d804d517"
+        },
+        {
+          "bytes": 31451,
+          "path": "sources/national-dataset-results.json",
+          "sha256": "dfca555b229dc6a22c06e9149cebfe339f850fceff0e61160f5f21c84a74d46f"
+        },
+        {
+          "bytes": 1352,
+          "path": "sources/native-templates/budget.json",
+          "sha256": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6"
+        },
+        {
+          "bytes": 2601148,
+          "path": "sources/native-templates/home.json",
+          "sha256": "74044bbe493db528c685023d9794013fa6a03045ce9fa0c276e930e46a973b47"
+        },
+        {
+          "bytes": 95716,
+          "path": "sources/native-templates/inventory-rows.json",
+          "sha256": "1d92ad66800ea4d944142ab3d5030b8e898a81a7cf34d8a8add652d9ad9583fd"
+        },
+        {
+          "bytes": 1716,
+          "path": "sources/native-templates/inventory.json",
+          "sha256": "10f0e4929aca9d839dfbcfda20dd549fd592fc7e285ff84ff8c5affb0f89e08f"
+        },
+        {
+          "bytes": 1658,
+          "path": "sources/native-templates/next.json",
+          "sha256": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c"
+        },
+        {
+          "bytes": 74,
+          "path": "sources/native-templates/profile.json",
+          "sha256": "9fe5908406e293ba1900ef8c880fddfd6bea62d61bd053bd7ff7db76b959920b"
+        },
+        {
+          "bytes": 782,
+          "path": "sources/native-templates/question.json",
+          "sha256": "e8208fb848d0e77abd1c6f0520bb11369723a8f8c15a6528c711121663d27a72"
+        },
+        {
+          "bytes": 1834690,
+          "path": "sources/native-templates/section.json",
+          "sha256": "de0a4edcc4d3a4572d50fb6d8c1fca6b0a972f68f9bae328eca5d5774ff1e453"
+        },
+        {
+          "bytes": 60012,
+          "path": "sources/native-templates/separation.json",
+          "sha256": "3f7c995a75a1a46942decd910fc707d651aa09e1aa5b72001fe72e5f3aecbfc0"
+        },
+        {
+          "bytes": 419010,
+          "path": "sources/operator.html",
+          "sha256": "57b1c043c03b5dfb64ec8e9e3140e16768496e372a0f063859ddd9cf95c07ead"
+        },
+        {
+          "bytes": 1208456,
+          "path": "sources/overture-buildings.json",
+          "sha256": "af385fd5e231495d7b775b52ac26fc1bd19fe5d738437001bb5eab2d7a82564a"
+        },
+        {
+          "bytes": 2948,
+          "path": "sources/prior-acquisition/acquisition.json",
+          "sha256": "e1150ff15447780e3728f18d08a0b1780865ca86bbda68cba178add1a2f873be"
+        },
+        {
+          "bytes": 2487,
+          "path": "sources/prior-acquisition/address-point-acquisition.json",
+          "sha256": "7be552ea68246da5676c8c9a03767b7b768de27c4ef8f368fd10d2a0b3b0951c"
+        },
+        {
+          "bytes": 14,
+          "path": "sources/prior-acquisition/candidate-count.json",
+          "sha256": "7486e5fde3e42c9ca276f21f82f8aceee9825f733faacdb8699678b46ca7abdc"
+        },
+        {
+          "bytes": 20728,
+          "path": "sources/prior-acquisition/candidate-ids.json",
+          "sha256": "dcfa1543725b95a77f578ab3df8e6edad70d3fe006685d0c5dbf48f3e5889044"
+        },
+        {
+          "bytes": 25059,
+          "path": "sources/prior-acquisition/layer-metadata.json",
+          "sha256": "131ca4a60824c580c619d6cf3015e85db88d07f78bfea2bda8128495c20d1a03"
+        },
+        {
+          "bytes": 809,
+          "path": "sources/prior-acquisition/operator-acquisition.json",
+          "sha256": "1969af031951954a1f1f7b3cf80b141c93adedc4f0d45a076b38f8ec1728d706"
+        },
+        {
+          "bytes": 566,
+          "path": "sources/prior-experiment.json",
+          "sha256": "4545410948c657238f6b5a5f20a992c6893a440313d459895fb7ef9d9bcda625"
+        },
+        {
+          "bytes": 1482,
+          "path": "sources/selection.json",
+          "sha256": "32c6fc37140b6e58a23ee5df8ec6b19d2fbc3fdef0811e8e027e5299f38e8226"
+        },
+        {
+          "bytes": 734,
+          "path": "sources/supplied-address.json",
+          "sha256": "35678237dd73a66ecc05ca397c6a3d5e178ad1b2ca446677cb0b99aafefd0cdd"
+        }
+      ],
+      "sha256": "99c98f26bdb7e7a7879a873053bbdb9a2eeb4da482a3410b08e9146a5a5ba1f0"
+    }
+  },
+  "bead": "bd-ie4t",
+  "building_inventory_count": 347,
+  "complete_property_building_set_claimed": false,
+  "cost_limitation": "Concurrent runs and tests; timings are observations, not throughput/scale proof. Initial diagnostic attempts are included separately.",
+  "experiment": "cornerstone_national_2026-09-17",
+  "final_runs": {
+    "foursquare-parcel-supported": {
+      "best_candidates": [
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "302304550403000"
+            ]
+          },
+          "rank": 1
+        }
+      ],
+      "best_count": 1,
+      "cost_histogram": {
+        "0": 1,
+        "1": 2982
+      },
+      "execution": {
+        "argv": [
+          "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon",
+          "geo",
+          "run",
+          "--plan",
+          "/private/tmp/canon-cornerstone-national-20260917/foursquare-parcel-supported/plan.json",
+          "--work-dir",
+          "/private/tmp/canon-cornerstone-national-20260917/foursquare-parcel-supported/run",
+          "--input",
+          "geo.parcel.home_cells:rows=/private/tmp/canon-cornerstone-national-20260917/foursquare-parcel-supported/home.json",
+          "--input",
+          "geo.parcel.section:request=/private/tmp/canon-cornerstone-national-20260917/foursquare-parcel-supported/section.json",
+          "--input",
+          "geo.parcel.materialize_evidence:rows=/private/tmp/canon-cornerstone-national-20260917/foursquare-parcel-supported/rows.json",
+          "--input",
+          "geo.parcel.separation:request=/private/tmp/canon-cornerstone-national-20260917/foursquare-parcel-supported/separation.json",
+          "--input",
+          "geo.parcel.next_evidence:request=/private/tmp/canon-cornerstone-national-20260917/foursquare-parcel-supported/next.json"
+        ],
+        "binary_sha256": "5869fd75f5550220f7e497c1946590a4b9a423dae484ab2a508cea97d6e09a24",
+        "elapsed_seconds": 320.775110488059,
+        "exit_code": 0,
+        "input_sha256": {
+          "home.json": "a7018dd5abc6ced82e29d4e7a382823e74f38325b2e4e0ba88ab98aecc49aeac",
+          "next.json": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+          "plan.json": "2330bbfe64da89c4b40aa069b6f61892e5c172a924da8d50361f195aec59621d",
+          "rows.json": "690a9353e39ffae11318a9f752307ded7ed88f24f6fb0b61eb6fda658e13e7ed",
+          "section.json": "ce82b72ee0746ce62bfa5089ff8eb5a813ddb143790b2417cdcad64b6bcc8452",
+          "separation.json": "cfb74aa45a31b010dcdfbd662f06ca4a0d63ceca8d06f309f6171688ee32e3d4"
+        },
+        "started_at": "2026-09-17T18:47:57.566885+00:00"
+      },
+      "hard_constraints": [
+        {
+          "constraint": {
+            "kind": "cardinality",
+            "level": "parcel",
+            "max": 1,
+            "min": 1
+          },
+          "id": "rho:national:single-association-hypothesis@1:national:single-association-hypothesis"
+        }
+      ],
+      "level": "parcel",
+      "ranked_count": 2983,
+      "read_at": "2026-09-17T18:53:18.772634+00:00",
+      "resume_stage_bytes_unchanged": true,
+      "resume_status": "ABSTAINED",
+      "resumed_nodes": 9,
+      "run_status": "ABSTAINED",
+      "soft_preferences": [
+        {
+          "cost_if_absent": 1,
+          "id": "rho:national:foursquare@1:national:foursquare",
+          "member": {
+            "id": "302304550403000",
+            "level": "parcel"
+          }
+        }
+      ],
+      "solver_status": "ambiguous",
+      "solver_summary": {
+        "building_candidates": 0,
+        "candidate_assignments": 18446744073709551615,
+        "candidate_assignments_saturated": true,
+        "component_count": 1,
+        "hard_constraint_evaluations": 2983,
+        "hard_constraint_evaluations_complete": true,
+        "hard_constraint_evaluations_saturated": false,
+        "model_count_scope": "entity_selection",
+        "parcel_candidates": 2983,
+        "residual_model_count": 2983,
+        "residual_model_count_complete": true,
+        "residual_model_count_saturated": false,
+        "residual_models_materialized": true,
+        "structurally_feasible_assignments": 2983,
+        "structurally_feasible_assignments_complete": true,
+        "structurally_feasible_assignments_saturated": false,
+        "summary_counts_saturated": true
+      },
+      "stage_sha256": {
+        "compile_evidence.json": "052ae2f07b4e5ded034f604f320068f719125bed75453e2a31cd3933a90cac92",
+        "explanation.json": "ddd6c48d58808d17c57be9e1dffdb023808c32e7789a27f87d78f438f8596540",
+        "home_cells.json": "0f51f8162fe71563900169a00903d56e5191a5f702f137a2761b02bd20e63b77",
+        "materialize_evidence.json": "5d45aba87b410dc608fb68ee5258d45eaba1eb7e20377616b6e504afc6ffad46",
+        "next_evidence.json": "f4b86d9745bc5228eac568fe9fa74932e8112bc2a42f42de319b37ffd913a18a",
+        "propagation.json": "9ec5278d0dc8ffa3033d2478f62f39af6d945a03568ca681171a61109e9aeb47",
+        "section.json": "3a1bc6ad4ba7883aba4ade8bc15b1f8d7c9e6000c33c9d6a2eb88a77df0fb016",
+        "separation.json": "54b84bf6b4014a4d4b484cfa443396f359c3e09d64fdde559a8171dcf7b80f5d",
+        "solve.json": "e8b464894ec0dbfae11000e14655b25134bafef815979fd413c630b1fe8f7707"
+      },
+      "variant": "foursquare-parcel-supported"
+    },
+    "national-building-supported": {
+      "best_candidates": [
+        {
+          "cost": 1,
+          "model": {
+            "buildings": [
+              "0a5045cd-8321-429b-b0b7-0f3f24b6e615"
+            ],
+            "parcels": []
+          },
+          "rank": 1
+        },
+        {
+          "cost": 1,
+          "model": {
+            "buildings": [
+              "a6145c70-10cb-46d0-95b8-b85ff82ac700"
+            ],
+            "parcels": []
+          },
+          "rank": 2
+        }
+      ],
+      "best_count": 2,
+      "cost_histogram": {
+        "1": 2,
+        "2": 345
+      },
+      "execution": {
+        "argv": [
+          "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon",
+          "geo",
+          "run",
+          "--plan",
+          "/private/tmp/canon-cornerstone-national-20260917/national-building-supported/plan.json",
+          "--work-dir",
+          "/private/tmp/canon-cornerstone-national-20260917/national-building-supported/run",
+          "--input",
+          "geo.building.home_cells:rows=/private/tmp/canon-cornerstone-national-20260917/national-building-supported/home.json",
+          "--input",
+          "geo.building.section:request=/private/tmp/canon-cornerstone-national-20260917/national-building-supported/section.json",
+          "--input",
+          "geo.building.materialize_evidence:rows=/private/tmp/canon-cornerstone-national-20260917/national-building-supported/rows.json",
+          "--input",
+          "geo.building.separation:request=/private/tmp/canon-cornerstone-national-20260917/national-building-supported/separation.json",
+          "--input",
+          "geo.building.next_evidence:request=/private/tmp/canon-cornerstone-national-20260917/national-building-supported/next.json"
+        ],
+        "binary_sha256": "5869fd75f5550220f7e497c1946590a4b9a423dae484ab2a508cea97d6e09a24",
+        "elapsed_seconds": 7.50342528289184,
+        "exit_code": 0,
+        "input_sha256": {
+          "home.json": "f1ae457fdfbe5f34c1ea824e79413cf8bcd40f0c6b7aab9c4cf3905071f2bb10",
+          "next.json": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+          "plan.json": "ecdd5f42bf74af6dafd6e41b790e5862fe8a66a4a459c32c309f94ab6d692f82",
+          "rows.json": "beb223c612c1c25d7acd3903dc97842ea8f8e8b00eefa91c97b0ed1f2ef3b918",
+          "section.json": "139e3628aee9d65fbba1416da5eda13bef43baf5c826fd9244699cd20399539e",
+          "separation.json": "a205d7c582fb50ca9ace9c8625d28cce912c428d279b8d4952e6d4d2d4f9861f"
+        },
+        "started_at": "2026-09-17T18:47:57.564031+00:00"
+      },
+      "hard_constraints": [
+        {
+          "constraint": {
+            "kind": "cardinality",
+            "level": "building",
+            "max": 1,
+            "min": 1
+          },
+          "id": "rho:national:single-association-hypothesis@1:national:single-association-hypothesis"
+        }
+      ],
+      "level": "building",
+      "ranked_count": 347,
+      "read_at": "2026-09-17T18:48:05.186155+00:00",
+      "resume_stage_bytes_unchanged": true,
+      "resume_status": "ABSTAINED",
+      "resumed_nodes": 9,
+      "run_status": "ABSTAINED",
+      "soft_preferences": [
+        {
+          "cost_if_absent": 1,
+          "id": "rho:national:foursquare@1:national:foursquare",
+          "member": {
+            "id": "a6145c70-10cb-46d0-95b8-b85ff82ac700",
+            "level": "building"
+          }
+        },
+        {
+          "cost_if_absent": 1,
+          "id": "rho:national:overture_places@1:national:overture_places",
+          "member": {
+            "id": "0a5045cd-8321-429b-b0b7-0f3f24b6e615",
+            "level": "building"
+          }
+        }
+      ],
+      "solver_status": "ambiguous",
+      "solver_summary": {
+        "building_candidates": 347,
+        "candidate_assignments": 18446744073709551615,
+        "candidate_assignments_saturated": true,
+        "component_count": 1,
+        "hard_constraint_evaluations": 347,
+        "hard_constraint_evaluations_complete": true,
+        "hard_constraint_evaluations_saturated": false,
+        "model_count_scope": "entity_selection",
+        "parcel_candidates": 0,
+        "residual_model_count": 347,
+        "residual_model_count_complete": true,
+        "residual_model_count_saturated": false,
+        "residual_models_materialized": true,
+        "structurally_feasible_assignments": 347,
+        "structurally_feasible_assignments_complete": true,
+        "structurally_feasible_assignments_saturated": false,
+        "summary_counts_saturated": true
+      },
+      "stage_sha256": {
+        "compile_evidence.json": "9c152a3813f7d78d8c7be363ba1f2f43df750d89de2d26e95afeb20385b5ee96",
+        "explanation.json": "e104413012c94a80d290eb7ef2fd77bc85603bfcd24d53a59a024a9d08e538c4",
+        "home_cells.json": "540084e3b6d17498593a303d4fca33a900283d047c7b5c8e96453314e5d8844a",
+        "materialize_evidence.json": "dda714d974736cb5d98534e3ab70a45137121e163ed1ce4c794a857716748c57",
+        "next_evidence.json": "28950a32950f7127faa91b17cf41668e01048eb3b27d06af296d0c98df7528df",
+        "propagation.json": "7ec69d2c8d6f701180e70276037073034d8d17d536bc545496fa38fb5cfa1a5b",
+        "section.json": "8c4333fcb1284412bd542b9f41a343e3bbf40151e2bc4a6c137fd358559583f9",
+        "separation.json": "e2eb1b0160831876766380030483b48ce6506875127df7f8a4471c48732e3d8c",
+        "solve.json": "e1cda39a919f57ff5c06a2545c99af988884cbe229b07ab38220500af9676d9d"
+      },
+      "variant": "national-building-supported"
+    },
+    "national-parcel-supported": {
+      "best_candidates": [
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "302304550403000"
+            ]
+          },
+          "rank": 1
+        }
+      ],
+      "best_count": 1,
+      "cost_histogram": {
+        "0": 1,
+        "2": 2982
+      },
+      "execution": {
+        "argv": [
+          "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon",
+          "geo",
+          "run",
+          "--plan",
+          "/private/tmp/canon-cornerstone-national-20260917/national-parcel-supported/plan.json",
+          "--work-dir",
+          "/private/tmp/canon-cornerstone-national-20260917/national-parcel-supported/run",
+          "--input",
+          "geo.parcel.home_cells:rows=/private/tmp/canon-cornerstone-national-20260917/national-parcel-supported/home.json",
+          "--input",
+          "geo.parcel.section:request=/private/tmp/canon-cornerstone-national-20260917/national-parcel-supported/section.json",
+          "--input",
+          "geo.parcel.materialize_evidence:rows=/private/tmp/canon-cornerstone-national-20260917/national-parcel-supported/rows.json",
+          "--input",
+          "geo.parcel.separation:request=/private/tmp/canon-cornerstone-national-20260917/national-parcel-supported/separation.json",
+          "--input",
+          "geo.parcel.next_evidence:request=/private/tmp/canon-cornerstone-national-20260917/national-parcel-supported/next.json"
+        ],
+        "binary_sha256": "5869fd75f5550220f7e497c1946590a4b9a423dae484ab2a508cea97d6e09a24",
+        "elapsed_seconds": 320.89514331519604,
+        "exit_code": 0,
+        "input_sha256": {
+          "home.json": "45b4254c4e1292f577c2b00ed48897647afd73e1521e09b01ad45fc9c2bc240c",
+          "next.json": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+          "plan.json": "1a7f9e7bb2061d33c814ebd87470ee907cb0f2a70ae19ae26cbc632c8a4c0a2f",
+          "rows.json": "fe6742baaeb22143c7874940f901c556ab54bf1a2ed85638c933ce92c17f7eb3",
+          "section.json": "6b96c9155f5923bba6bdf64c6d027ee62085bb5f811e4f0857c0e913ee99e72b",
+          "separation.json": "cfb74aa45a31b010dcdfbd662f06ca4a0d63ceca8d06f309f6171688ee32e3d4"
+        },
+        "started_at": "2026-09-17T18:47:57.575348+00:00"
+      },
+      "hard_constraints": [
+        {
+          "constraint": {
+            "kind": "cardinality",
+            "level": "parcel",
+            "max": 1,
+            "min": 1
+          },
+          "id": "rho:national:single-association-hypothesis@1:national:single-association-hypothesis"
+        }
+      ],
+      "level": "parcel",
+      "ranked_count": 2983,
+      "read_at": "2026-09-17T18:53:18.835382+00:00",
+      "resume_stage_bytes_unchanged": true,
+      "resume_status": "ABSTAINED",
+      "resumed_nodes": 9,
+      "run_status": "ABSTAINED",
+      "soft_preferences": [
+        {
+          "cost_if_absent": 1,
+          "id": "rho:national:foursquare@1:national:foursquare",
+          "member": {
+            "id": "302304550403000",
+            "level": "parcel"
+          }
+        },
+        {
+          "cost_if_absent": 1,
+          "id": "rho:national:overture_places@1:national:overture_places",
+          "member": {
+            "id": "302304550403000",
+            "level": "parcel"
+          }
+        }
+      ],
+      "solver_status": "ambiguous",
+      "solver_summary": {
+        "building_candidates": 0,
+        "candidate_assignments": 18446744073709551615,
+        "candidate_assignments_saturated": true,
+        "component_count": 1,
+        "hard_constraint_evaluations": 2983,
+        "hard_constraint_evaluations_complete": true,
+        "hard_constraint_evaluations_saturated": false,
+        "model_count_scope": "entity_selection",
+        "parcel_candidates": 2983,
+        "residual_model_count": 2983,
+        "residual_model_count_complete": true,
+        "residual_model_count_saturated": false,
+        "residual_models_materialized": true,
+        "structurally_feasible_assignments": 2983,
+        "structurally_feasible_assignments_complete": true,
+        "structurally_feasible_assignments_saturated": false,
+        "summary_counts_saturated": true
+      },
+      "stage_sha256": {
+        "compile_evidence.json": "a7d95251dde3ef7386322f11fb70994cfe911b76c7655449d50d59f6b5e60f42",
+        "explanation.json": "15be1070f18e3e09785ec19146ddaaf4902a2c9ccdf01949371237228dacdba9",
+        "home_cells.json": "13241204e00c642181ed18d163e99ccaf853af93bcc66346a7daad540dd48ffd",
+        "materialize_evidence.json": "76fecf90bf2c766ff92ac0100cbd3728bd25621cf086312cfc295d1db61678c7",
+        "next_evidence.json": "6d6078b8fdf7fc21c8dbaa35a79d0649229be209a14651ce68d2c52958723b73",
+        "propagation.json": "b2a86215d57a9955cb25b80bab8bbd406be3891ff7f8fda17881aadbc3bfc948",
+        "section.json": "dc2624a89c8fb5807766bf94eed66e684d94241f0fe989dc7f95e8eae02cd09b",
+        "separation.json": "e256e9a81bcd8c30d2773ad719a90a2b900f4863320ca9e50bf6978c520961e7",
+        "solve.json": "4927ee338d1fc4e59d0c0bc86cb6fb03d33ac92dd29f0b29f0722022ec69f87a"
+      },
+      "variant": "national-parcel-supported"
+    }
+  },
+  "geometry_kernel": "existing canon::geo materialize_geometry_tile and GeoLinearRingMm::locate_point, invoked by retained Rust measurement harness",
+  "geometry_memberships": {
+    "county-address:367667": [
+      {
+        "location": "interior",
+        "polygon_id": "building:0a5045cd-8321-429b-b0b7-0f3f24b6e615"
+      },
+      {
+        "location": "interior",
+        "polygon_id": "parcel:302304550403000"
+      }
+    ],
+    "fsq:4c61282fb6f3be9aa7f36073": [
+      {
+        "location": "interior",
+        "polygon_id": "building:a6145c70-10cb-46d0-95b8-b85ff82ac700"
+      },
+      {
+        "location": "interior",
+        "polygon_id": "parcel:302304550403000"
+      }
+    ],
+    "overture:7bef8d4a-8fe2-4ae5-adae-02db204536bb:0": [
+      {
+        "location": "interior",
+        "polygon_id": "parcel:302304550403000"
+      }
+    ]
+  },
+  "hard_narrowing_criterion_met": false,
+  "harness_rebuild": {
+    "binary_sha256": "6865104673dbaf67738ff03c07c89cdfc613255164526d4e29e4f9f2126f08d1",
+    "cargo_messages_sha256": "3dc417dfb837a2915de289a230a908afa05446d37b8b6747879388aa63dc6936",
+    "command": "Actual cargo build --release --lib --bin canon --message-format=json, then build_predicate.py; cached unchanged runtime artifacts",
+    "runtime_binary_unchanged": true,
+    "same_geometry_bytes": true,
+    "source_sha256": "6dfa415fd5d62f3f5cfce90861f0edcfa864ccb74f6f194bb207a09c7d241750"
+  },
+  "initial_diagnostic_runs": {
+    "foursquare-parcel": {
+      "best_candidates": [
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "272011430202000"
+            ]
+          },
+          "rank": 1
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "272011430203000"
+            ]
+          },
+          "rank": 2
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "272212649604002"
+            ]
+          },
+          "rank": 3
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "272213000000035"
+            ]
+          },
+          "rank": 4
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "272213372100010"
+            ]
+          },
+          "rank": 5
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "272213372100090"
+            ]
+          },
+          "rank": 6
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "272213526000113"
+            ]
+          },
+          "rank": 7
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "272214000000008"
+            ]
+          },
+          "rank": 8
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "272215865600090"
+            ]
+          },
+          "rank": 9
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "272219000000082"
+            ]
+          },
+          "rank": 10
+        }
+      ],
+      "best_count": 2983,
+      "cost_histogram": {
+        "0": 2983
+      },
+      "execution": {
+        "argv": [
+          "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon",
+          "geo",
+          "run",
+          "--plan",
+          "/private/tmp/canon-cornerstone-national-20260917/foursquare-parcel/plan.json",
+          "--work-dir",
+          "/private/tmp/canon-cornerstone-national-20260917/foursquare-parcel/run",
+          "--input",
+          "geo.parcel.home_cells:rows=/private/tmp/canon-cornerstone-national-20260917/foursquare-parcel/home.json",
+          "--input",
+          "geo.parcel.section:request=/private/tmp/canon-cornerstone-national-20260917/foursquare-parcel/section.json",
+          "--input",
+          "geo.parcel.materialize_evidence:rows=/private/tmp/canon-cornerstone-national-20260917/foursquare-parcel/rows.json",
+          "--input",
+          "geo.parcel.separation:request=/private/tmp/canon-cornerstone-national-20260917/foursquare-parcel/separation.json",
+          "--input",
+          "geo.parcel.next_evidence:request=/private/tmp/canon-cornerstone-national-20260917/foursquare-parcel/next.json"
+        ],
+        "binary_sha256": "5869fd75f5550220f7e497c1946590a4b9a423dae484ab2a508cea97d6e09a24",
+        "elapsed_seconds": 313.51757713989355,
+        "exit_code": 0,
+        "input_sha256": {
+          "home.json": "ce00f16f767fe9b730678e8c7463f7f0250aa37ac3b0c7887039b87206ea95bd",
+          "next.json": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+          "plan.json": "23dfb8edfb525d0ad55e232b1a4d82d89158e045b74a55ad263f5d700b7357ab",
+          "rows.json": "793932e888cab0dfaba47e0ea343ee0cff499137e9874abb4f8b3786be3fa48c",
+          "section.json": "8b676998da06599911fd21e92d71396f9e5a8d77a34dec4125266824d9df6e17",
+          "separation.json": "cfb74aa45a31b010dcdfbd662f06ca4a0d63ceca8d06f309f6171688ee32e3d4"
+        },
+        "started_at": "2026-09-17T18:45:21.774439+00:00"
+      },
+      "hard_constraints": [
+        {
+          "constraint": {
+            "kind": "cardinality",
+            "level": "parcel",
+            "max": 1,
+            "min": 1
+          },
+          "id": "rho:national:single-association-hypothesis@1:national:single-association-hypothesis"
+        }
+      ],
+      "level": "parcel",
+      "ranked_count": 2983,
+      "read_at": "2026-09-17T18:50:37.301234+00:00",
+      "resume_stage_bytes_unchanged": true,
+      "resume_status": "ABSTAINED",
+      "resumed_nodes": 9,
+      "run_status": "ABSTAINED",
+      "soft_preferences": [],
+      "solver_status": "ambiguous",
+      "solver_summary": {
+        "building_candidates": 0,
+        "candidate_assignments": 18446744073709551615,
+        "candidate_assignments_saturated": true,
+        "component_count": 1,
+        "hard_constraint_evaluations": 2983,
+        "hard_constraint_evaluations_complete": true,
+        "hard_constraint_evaluations_saturated": false,
+        "model_count_scope": "entity_selection",
+        "parcel_candidates": 2983,
+        "residual_model_count": 2983,
+        "residual_model_count_complete": true,
+        "residual_model_count_saturated": false,
+        "residual_models_materialized": true,
+        "structurally_feasible_assignments": 2983,
+        "structurally_feasible_assignments_complete": true,
+        "structurally_feasible_assignments_saturated": false,
+        "summary_counts_saturated": true
+      },
+      "stage_sha256": {
+        "compile_evidence.json": "b1be588f1af99bf750ad5ba927300bed3c6f357d7b9c14702739e206e4986105",
+        "explanation.json": "43dca5dcd53e0f775dc61527f0b9b21203b3c14ba04b4fc09d112635e45f1d0a",
+        "home_cells.json": "36a3b8d6ff02f527df98365256ae5f703be4322d373385a6dcfac9963899e873",
+        "materialize_evidence.json": "1dd4101e12bae0cff918d5803befe3fbbac83b0be15d6e61b740fa3720b80b55",
+        "next_evidence.json": "2e376e7d21ce16338257fb6efd7633cc525dfa7f911adb7b576a5a0ddde9d175",
+        "propagation.json": "6f7dbaaf383a03276881d93c0f96f14740c6610fe8dfaf5459bd59c6c99a1883",
+        "section.json": "c5195643c941bcf72fbd998dabba0ab4cd1ecb8b7d779d5f6dc6bf5634cbce9e",
+        "separation.json": "7d59c770b93c9d8bb16ada33919254d3c6236a71237ab1b560b68879365ef348",
+        "solve.json": "bc65f819adf4e29ee8b091675e8b1c1c475bd49a0a25eb976afa9832ee3671da"
+      },
+      "variant": "foursquare-parcel"
+    },
+    "national-building": {
+      "best_candidates": [
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [
+              "01265d08-644f-434f-8562-42efead92b05"
+            ],
+            "parcels": []
+          },
+          "rank": 1
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [
+              "0173197c-cf85-42e6-9283-3592e04360bc"
+            ],
+            "parcels": []
+          },
+          "rank": 2
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [
+              "026b0f0a-0a66-42fe-aac7-a89812b3b83f"
+            ],
+            "parcels": []
+          },
+          "rank": 3
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [
+              "027686e5-f0d4-46dd-9ee4-749e09116424"
+            ],
+            "parcels": []
+          },
+          "rank": 4
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [
+              "03fa0544-ee7c-4693-9b7f-b176ab07c88a"
+            ],
+            "parcels": []
+          },
+          "rank": 5
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [
+              "04066f42-c9a9-4f77-9552-0c6b53b1b72f"
+            ],
+            "parcels": []
+          },
+          "rank": 6
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [
+              "04314f15-ba60-446c-9a6e-8e25c07759f0"
+            ],
+            "parcels": []
+          },
+          "rank": 7
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [
+              "046d9234-cba9-4d79-a8d4-262cc41c8bc5"
+            ],
+            "parcels": []
+          },
+          "rank": 8
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [
+              "0497d854-aa50-41d3-ab84-c6b1e48a9e9f"
+            ],
+            "parcels": []
+          },
+          "rank": 9
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [
+              "055fbc4b-c8e9-4ee2-bc93-e7a944b85c67"
+            ],
+            "parcels": []
+          },
+          "rank": 10
+        }
+      ],
+      "best_count": 347,
+      "cost_histogram": {
+        "0": 347
+      },
+      "execution": {
+        "argv": [
+          "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon",
+          "geo",
+          "run",
+          "--plan",
+          "/private/tmp/canon-cornerstone-national-20260917/national-building/plan.json",
+          "--work-dir",
+          "/private/tmp/canon-cornerstone-national-20260917/national-building/run",
+          "--input",
+          "geo.building.home_cells:rows=/private/tmp/canon-cornerstone-national-20260917/national-building/home.json",
+          "--input",
+          "geo.building.section:request=/private/tmp/canon-cornerstone-national-20260917/national-building/section.json",
+          "--input",
+          "geo.building.materialize_evidence:rows=/private/tmp/canon-cornerstone-national-20260917/national-building/rows.json",
+          "--input",
+          "geo.building.separation:request=/private/tmp/canon-cornerstone-national-20260917/national-building/separation.json",
+          "--input",
+          "geo.building.next_evidence:request=/private/tmp/canon-cornerstone-national-20260917/national-building/next.json"
+        ],
+        "binary_sha256": "5869fd75f5550220f7e497c1946590a4b9a423dae484ab2a508cea97d6e09a24",
+        "elapsed_seconds": 10.833560302155092,
+        "exit_code": 0,
+        "input_sha256": {
+          "home.json": "746c42383c66e573ac5897784b63fe9b0449e7301d1b550598cd0768442e6a84",
+          "next.json": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+          "plan.json": "872dc4e48c1cfa6de2b469499e1b4b9e6c9823581bdb6d2e18a2319f734918f2",
+          "rows.json": "f4aae667847f5e9aa54c2504ec700d42b43596db9966838319c2b4d253f3b27f",
+          "section.json": "6ea6ac97ae323f54285dd8d032a14e07b967e38a372ac05c20138f013d64323b",
+          "separation.json": "a205d7c582fb50ca9ace9c8625d28cce912c428d279b8d4952e6d4d2d4f9861f"
+        },
+        "started_at": "2026-09-17T18:45:21.774858+00:00"
+      },
+      "hard_constraints": [
+        {
+          "constraint": {
+            "kind": "cardinality",
+            "level": "building",
+            "max": 1,
+            "min": 1
+          },
+          "id": "rho:national:single-association-hypothesis@1:national:single-association-hypothesis"
+        }
+      ],
+      "level": "building",
+      "ranked_count": 347,
+      "read_at": "2026-09-17T18:45:32.693962+00:00",
+      "resume_stage_bytes_unchanged": true,
+      "resume_status": "ABSTAINED",
+      "resumed_nodes": 9,
+      "run_status": "ABSTAINED",
+      "soft_preferences": [],
+      "solver_status": "ambiguous",
+      "solver_summary": {
+        "building_candidates": 347,
+        "candidate_assignments": 18446744073709551615,
+        "candidate_assignments_saturated": true,
+        "component_count": 1,
+        "hard_constraint_evaluations": 347,
+        "hard_constraint_evaluations_complete": true,
+        "hard_constraint_evaluations_saturated": false,
+        "model_count_scope": "entity_selection",
+        "parcel_candidates": 0,
+        "residual_model_count": 347,
+        "residual_model_count_complete": true,
+        "residual_model_count_saturated": false,
+        "residual_models_materialized": true,
+        "structurally_feasible_assignments": 347,
+        "structurally_feasible_assignments_complete": true,
+        "structurally_feasible_assignments_saturated": false,
+        "summary_counts_saturated": true
+      },
+      "stage_sha256": {
+        "compile_evidence.json": "aacaabec2de37d7deb7e6f8288f2031abc1b3f96c260987c8dc71b0cc14a409b",
+        "explanation.json": "4b50f9deeeaf887a1ba6bc3c42c7ff0e91e1fb17c6e1525484472e4323060124",
+        "home_cells.json": "743626ce99efd36fcd3fdeff861214f11e04962dc0035def6593f99674850f6b",
+        "materialize_evidence.json": "aa4b7c9f457435dc3df1e90a8993d313d82df2e1ad39e45bc7cc3d9f87c4698e",
+        "next_evidence.json": "bb9f0ba381a0e8f7790270cce77ac462fe758690474ae9e42ede8b6bfd5f4bac",
+        "propagation.json": "aeb39359cf4007d6923eaecf691ac56ed523f7218062ae9ce951e5e578385887",
+        "section.json": "957981ba8167066236c679115a181e3da18cd639f1923cf07049b532d44f3ea1",
+        "separation.json": "cd3cda185655e2b361a329c6f79664687f0e446b4d12ba0a056c87c46ae6efa8",
+        "solve.json": "aaa98234cb378dec1d035fa92aa999c44e1148bf3a74e314fe099dba31ac5f11"
+      },
+      "variant": "national-building"
+    },
+    "national-parcel": {
+      "best_candidates": [
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "272011430202000"
+            ]
+          },
+          "rank": 1
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "272011430203000"
+            ]
+          },
+          "rank": 2
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "272212649604002"
+            ]
+          },
+          "rank": 3
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "272213000000035"
+            ]
+          },
+          "rank": 4
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "272213372100010"
+            ]
+          },
+          "rank": 5
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "272213372100090"
+            ]
+          },
+          "rank": 6
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "272213526000113"
+            ]
+          },
+          "rank": 7
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "272214000000008"
+            ]
+          },
+          "rank": 8
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "272215865600090"
+            ]
+          },
+          "rank": 9
+        },
+        {
+          "cost": 0,
+          "model": {
+            "buildings": [],
+            "parcels": [
+              "272219000000082"
+            ]
+          },
+          "rank": 10
+        }
+      ],
+      "best_count": 2983,
+      "cost_histogram": {
+        "0": 2983
+      },
+      "execution": {
+        "argv": [
+          "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon",
+          "geo",
+          "run",
+          "--plan",
+          "/private/tmp/canon-cornerstone-national-20260917/national-parcel/plan.json",
+          "--work-dir",
+          "/private/tmp/canon-cornerstone-national-20260917/national-parcel/run",
+          "--input",
+          "geo.parcel.home_cells:rows=/private/tmp/canon-cornerstone-national-20260917/national-parcel/home.json",
+          "--input",
+          "geo.parcel.section:request=/private/tmp/canon-cornerstone-national-20260917/national-parcel/section.json",
+          "--input",
+          "geo.parcel.materialize_evidence:rows=/private/tmp/canon-cornerstone-national-20260917/national-parcel/rows.json",
+          "--input",
+          "geo.parcel.separation:request=/private/tmp/canon-cornerstone-national-20260917/national-parcel/separation.json",
+          "--input",
+          "geo.parcel.next_evidence:request=/private/tmp/canon-cornerstone-national-20260917/national-parcel/next.json"
+        ],
+        "binary_sha256": "5869fd75f5550220f7e497c1946590a4b9a423dae484ab2a508cea97d6e09a24",
+        "elapsed_seconds": 313.4336499138735,
+        "exit_code": 0,
+        "input_sha256": {
+          "home.json": "bf770dfb1fc71f556925ff3a1fa692667e2dad8bbd553e0a933b1ea7a3fd777a",
+          "next.json": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+          "plan.json": "834f3fd9054ba79172ddad3cefa52698bcb9786df4c694df0c132a099aced9ff",
+          "rows.json": "e0ad901a5fd16d0b0e919252af2c2b8e79b7e0576a2525f5c8841e4f91529efc",
+          "section.json": "af330f3c397e5e27348c89b89d472334402ecaddec7a805a41a9d0779c0b65fc",
+          "separation.json": "cfb74aa45a31b010dcdfbd662f06ca4a0d63ceca8d06f309f6171688ee32e3d4"
+        },
+        "started_at": "2026-09-17T18:45:21.776126+00:00"
+      },
+      "hard_constraints": [
+        {
+          "constraint": {
+            "kind": "cardinality",
+            "level": "parcel",
+            "max": 1,
+            "min": 1
+          },
+          "id": "rho:national:single-association-hypothesis@1:national:single-association-hypothesis"
+        }
+      ],
+      "level": "parcel",
+      "ranked_count": 2983,
+      "read_at": "2026-09-17T18:50:35.437998+00:00",
+      "resume_stage_bytes_unchanged": true,
+      "resume_status": "ABSTAINED",
+      "resumed_nodes": 9,
+      "run_status": "ABSTAINED",
+      "soft_preferences": [],
+      "solver_status": "ambiguous",
+      "solver_summary": {
+        "building_candidates": 0,
+        "candidate_assignments": 18446744073709551615,
+        "candidate_assignments_saturated": true,
+        "component_count": 1,
+        "hard_constraint_evaluations": 2983,
+        "hard_constraint_evaluations_complete": true,
+        "hard_constraint_evaluations_saturated": false,
+        "model_count_scope": "entity_selection",
+        "parcel_candidates": 2983,
+        "residual_model_count": 2983,
+        "residual_model_count_complete": true,
+        "residual_model_count_saturated": false,
+        "residual_models_materialized": true,
+        "structurally_feasible_assignments": 2983,
+        "structurally_feasible_assignments_complete": true,
+        "structurally_feasible_assignments_saturated": false,
+        "summary_counts_saturated": true
+      },
+      "stage_sha256": {
+        "compile_evidence.json": "d171bbe68c47a00e236f9eb543965b341c92fbce1bf2e35afc245a4cd7276743",
+        "explanation.json": "e24e9f41de22f3bdf17a9d068c70cd2afe8a977861308f0686c76e0f4139b25e",
+        "home_cells.json": "159367513e61510118d7e8a256bde8f02f8f68ab4ab7431f4e1384c47811765f",
+        "materialize_evidence.json": "8a688a6f1ba77f8c3cd5a46577168b785fb443c75dd9dfdf6ecd73ca88aae098",
+        "next_evidence.json": "0ac3ddb3416bf19f5b8415c15acd550a143e3384cd0953d63fbd230a271682ab",
+        "propagation.json": "6f7dbaaf383a03276881d93c0f96f14740c6610fe8dfaf5459bd59c6c99a1883",
+        "section.json": "1ef056a4badaab60fc375dd395c6ce8c595dccd02beede2228cd126dc391e9d7",
+        "separation.json": "7d59c770b93c9d8bb16ada33919254d3c6236a71237ab1b560b68879365ef348",
+        "solve.json": "18ca756b4a614e35d2d9e6998c1d119a5698a276f1b51e18be2a3d9bb06f92cc"
+      },
+      "variant": "national-parcel"
+    }
+  },
+  "map_sha256": "0b2a35dca3ad6810e19b614e6682f0906be4c8139e91b104c18e6535ce2df4f2",
+  "matched_place_readings": [
+    {
+      "address": "2409 S Conway Rd",
+      "family": "foursquare",
+      "id": "fsq:4c61282fb6f3be9aa7f36073",
+      "lineage": [
+        "foursquare"
+      ],
+      "match_reasons": [
+        "exact_name_after_case_whitespace",
+        "declared_us_direction_suffix_address_agreement"
+      ],
+      "name": "Cornerstone",
+      "ref": {
+        "record_blake3": "270aa696a91f28766ac71bb7b8de7c0b5da03c539999bd85fc5a05859ff73fbe",
+        "source_record_id": "foursquare:4c61282fb6f3be9aa7f36073",
+        "source_vintage": "2026-08-11"
+      }
+    },
+    {
+      "address": "2409 Conway Rd",
+      "family": "overture_places",
+      "id": "overture:7bef8d4a-8fe2-4ae5-adae-02db204536bb:0",
+      "lineage": [
+        "meta"
+      ],
+      "match_reasons": [
+        "exact_supplied_operator_url"
+      ],
+      "name": "The Cornerstone Apartments",
+      "ref": {
+        "record_blake3": "5c05f771a97b97a50889f58f3d10577c973cbb080f98a59752db9830b05805af",
+        "source_record_id": "overture.places:7bef8d4a-8fe2-4ae5-adae-02db204536bb",
+        "source_vintage": "2026-07-22.0"
+      }
+    }
+  ],
+  "native_status": "ABSTAINED; preferences do not force identity",
+  "prior_experiment": {
+    "files": {
+      "README.md": "15f8fd4ead91cab26264ff349202aa84fb743bdc544b703fe1541e2341a10a42",
+      "measurement.json": "62f2d68598e2abc3f89f0e3650ad14b93aa3f7cb51c6df23d6acd3c773c5866e",
+      "run.tar.gz": "bdae49855fa385dfbefe73350240809351250ad5cdd0d4e56dfbbd1003d21524",
+      "sources.tar.gz": "388b97ce4c69ff9e75a9a29ef25472ed34bae4667689a677fc98dac3b70b9454"
+    },
+    "fixture": "scripts/geo_measurements/fixtures/addressless_orlando_2026-09-17",
+    "scope": "Known-subject follow-up; the original frozen three-property selection and baseline are unchanged."
+  },
+  "profile": {
+    "address_comparison": "declared first directional and final suffix abbreviations; preserve absence, units, ranges",
+    "admission": "uncalibrated soft; one preference per upstream place family when its supported member set is a singleton; ambiguous family support stays diagnostic",
+    "county_address_mirror": "shared lineage, no extra preference",
+    "geometry": "Canon integer predicates after explicit external projection; no point accuracy inferred",
+    "mode": "experimental_offline_adapter",
+    "name_comparison": "Unicode lowercase and whitespace; no article removal",
+    "profile_id": "national_place_support.v0",
+    "scope": "one associated parcel/building hypothesis; no complete-property cardinality claim",
+    "url_comparison": "exact supplied property URL"
+  },
+  "projection": {
+    "decimal_places": 6,
+    "definition": "proj=pipeline step proj=unitconvert xy_in=deg xy_out=rad step proj=utm zone=17 ellps=WGS84",
+    "proj_version": "9.5.1",
+    "pyproj_version": "3.7.1",
+    "source_crs": "EPSG:4326",
+    "source_point_accuracy": "unknown; containment support stays soft",
+    "target_crs": "EPSG:32617",
+    "upstream_transform_accuracy_metres": 0.0
+  },
+  "proof_class": "known-subject diagnostic using freshly acquired national rows and retained regional inputs; offline native replay",
+  "quality_gate": [
+    {
+      "argv": [
+        "cargo",
+        "fmt",
+        "--check"
+      ],
+      "check": "fmt",
+      "elapsed_seconds": 8.536450020968914,
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "cargo",
+        "clippy",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "check": "clippy",
+      "elapsed_seconds": 1.2966374210081995,
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "cargo",
+        "test"
+      ],
+      "check": "tests",
+      "elapsed_seconds": 1649.952768258052,
+      "exit_code": 0
+    }
+  ],
+  "runtime_changed": false,
+  "runtime_revision": "db72dfac5d6689bb8789f81ad93c5dad9339601e",
+  "rust_test_totals": {
+    "failed": 0,
+    "ignored": 11,
+    "passed": 3158
+  },
+  "source_count_is_confidence": false,
+  "source_place_readings": 27,
+  "subject": {
+    "address": "2409 South Conway Rd",
+    "extraction": "Named property header/footer street address; preserve directional words and suffixes without rewriting. The page also contains other property cards, which are not this subject.",
+    "geography_id": "us.fl.orange.dor03",
+    "lineage_id": "bh-property-operator",
+    "locality": "Orlando",
+    "postal_code": "32812",
+    "property_name": "Cornerstone",
+    "raw_address": "2409 South Conway Rd",
+    "region": "FL",
+    "source_file": "operator.html",
+    "source_sha256": "57b1c043c03b5dfb64ec8e9e3140e16768496e372a0f063859ddd9cf95c07ead",
+    "source_url": "https://livebh.com/apartments/the-cornerstone/",
+    "source_vintage": "2026-09-17",
+    "supplied_at": "2026-09-17T17:36:21.828636+00:00"
+  },
+  "workspace_head_before_measurement": "9955498"
+}

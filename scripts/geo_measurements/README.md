@@ -24,6 +24,12 @@ unranked because its source name and directional address differ. All hard
 residuals remain 2,983; no identity is forced. This is another retained
 public-data experiment, with no Canon runtime changes or scale claim.
 
+The [Cornerstone national-evidence follow-up](fixtures/cornerstone_national_2026-09-17/README.md)
+adds supplied Foursquare and Overture records through an experimental offline
+adapter. Foursquare uniquely prefers parcel `302304550403000` within the same
+2,983 candidates; Overture corroborates it. Two buildings tie at building grain.
+The hard residuals stay unchanged and the native runs abstain from forced identity.
+
 ## Execution contract
 
 1. Call the cmdrvl-data MCP table list and describe operations first. Use the
