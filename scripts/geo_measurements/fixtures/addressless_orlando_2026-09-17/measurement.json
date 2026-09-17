@@ -1,0 +1,2353 @@
+{
+  "proof_class": "retained-public-data-experiment",
+  "code": {
+    "source_revision": "db72dfac5d6689bb8789f81ad93c5dad9339601e",
+    "sha256": "5869fd75f5550220f7e497c1946590a4b9a423dae484ab2a508cea97d6e09a24",
+    "bytes": 34203264,
+    "built_at": "2026-09-17T17:31:02.042230+00:00",
+    "build_command": "CARGO_TARGET_DIR=/tmp/canon-reit-orlando-20260917/release-target CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 CARGO_PROFILE_RELEASE_OPT_LEVEL=2 cargo build --release --bin canon",
+    "rustc": "rustc 1.98.0-nightly (13f1859f2 2026-06-27)"
+  },
+  "selection": {
+    "selection_seed": "081c7912a638242815e3eda4ea15dfce",
+    "selected_at": "2026-09-17T17:18:47.036602+00:00",
+    "algorithm": "all three Orlando members of retained NXRT Q4 2025 property table; order by SHA256(seed + property_name)",
+    "cohort": [
+      {
+        "property_name": "Sabal Palm at Lake Buena Vista",
+        "city": "Orlando",
+        "state": "FL",
+        "unit_count": 400
+      },
+      {
+        "property_name": "Cornerstone",
+        "city": "Orlando",
+        "state": "FL",
+        "unit_count": 430
+      },
+      {
+        "property_name": "Residences at West Place",
+        "city": "Orlando",
+        "state": "FL",
+        "unit_count": 342
+      }
+    ],
+    "ordered_subjects": [
+      {
+        "property_name": "Residences at West Place",
+        "city": "Orlando",
+        "state": "FL",
+        "unit_count": 342
+      },
+      {
+        "property_name": "Cornerstone",
+        "city": "Orlando",
+        "state": "FL",
+        "unit_count": 430
+      },
+      {
+        "property_name": "Sabal Palm at Lake Buena Vista",
+        "city": "Orlando",
+        "state": "FL",
+        "unit_count": 400
+      }
+    ],
+    "selection_limit": "census of disclosed Orlando cohort; geography chosen for bounded three-case replication, not random portfolio sample",
+    "unit_tolerance": 0,
+    "year_tolerance": 0,
+    "policy": "unchanged: name, units and separately supplied address known agreements soft weight 1; type/year diagnostic; no address in hints; no truth lookup before native hints readback",
+    "truth_not_yet_acquired": true
+  },
+  "initial_geometry_rows": 2992,
+  "distinct_parcel_candidates": 2983,
+  "property_denominator": 3,
+  "hints_discovery_and_address_corroboration_count": 2,
+  "accepted_identity_count": 0,
+  "native_policy": "Same soft name/address policy as db72dfa; all candidate residential unit counts unknown; no target alias or directional rewrite",
+  "assembly_replay": [
+    {
+      "case": 0,
+      "identical_input_files": [
+        "question.json",
+        "inventory.json",
+        "inventory-rows.json",
+        "home.json",
+        "section.json",
+        "budget.json",
+        "profile.json",
+        "plan.json",
+        "separation.json",
+        "next.json",
+        "descriptive.json",
+        "capabilities.json",
+        "adapter-observations.json"
+      ],
+      "prospective_encoding": "explicit singleton sets; equivalent to interrupted numeric masks"
+    },
+    {
+      "case": 1,
+      "identical_input_files": [
+        "question.json",
+        "inventory.json",
+        "inventory-rows.json",
+        "home.json",
+        "section.json",
+        "budget.json",
+        "profile.json",
+        "plan.json",
+        "separation.json",
+        "next.json",
+        "descriptive.json",
+        "capabilities.json",
+        "adapter-observations.json"
+      ],
+      "prospective_encoding": "explicit singleton sets; equivalent to interrupted numeric masks"
+    },
+    {
+      "case": 2,
+      "identical_input_files": [
+        "question.json",
+        "inventory.json",
+        "inventory-rows.json",
+        "home.json",
+        "section.json",
+        "budget.json",
+        "profile.json",
+        "plan.json",
+        "separation.json",
+        "next.json",
+        "descriptive.json",
+        "capabilities.json",
+        "adapter-observations.json"
+      ],
+      "prospective_encoding": "explicit singleton sets; equivalent to interrupted numeric masks"
+    }
+  ],
+  "comparison_checks": [
+    {
+      "case": 0,
+      "same_candidates": true,
+      "same_hard_question_and_budget": true,
+      "same_non_address_channels": true,
+      "only_address_and_its_source_binding_added": true,
+      "prelookup_solve_unchanged": true,
+      "native_hard_constraints_unchanged": true,
+      "existing_native_soft_preferences_unchanged": true,
+      "added_native_address_preferences": [
+        {
+          "id": "rho:rho.descriptive.address@1:descriptive:address:282223920000100",
+          "member": {
+            "level": "parcel",
+            "id": "282223920000100"
+          },
+          "cost_if_absent": 1
+        }
+      ],
+      "prospective_partition_unchanged_between_hints_and_address": true
+    },
+    {
+      "case": 1,
+      "same_candidates": true,
+      "same_hard_question_and_budget": true,
+      "same_non_address_channels": true,
+      "only_address_and_its_source_binding_added": true,
+      "prelookup_solve_unchanged": true,
+      "native_hard_constraints_unchanged": true,
+      "existing_native_soft_preferences_unchanged": true,
+      "added_native_address_preferences": [],
+      "prospective_partition_unchanged_between_hints_and_address": true
+    },
+    {
+      "case": 2,
+      "same_candidates": true,
+      "same_hard_question_and_budget": true,
+      "same_non_address_channels": true,
+      "only_address_and_its_source_binding_added": true,
+      "prelookup_solve_unchanged": true,
+      "native_hard_constraints_unchanged": true,
+      "existing_native_soft_preferences_unchanged": true,
+      "added_native_address_preferences": [
+        {
+          "id": "rho:rho.descriptive.address@1:descriptive:address:282427000000023",
+          "member": {
+            "level": "parcel",
+            "id": "282427000000023"
+          },
+          "cost_if_absent": 1
+        }
+      ],
+      "prospective_partition_unchanged_between_hints_and_address": true
+    }
+  ],
+  "cases": [
+    {
+      "index": 0,
+      "property": "Residences at West Place",
+      "operator_address": {
+        "property_name": "Residences at West Place",
+        "geography_id": "us.fl.orange.dor03",
+        "address": "753 Sherwood Terrace Dr",
+        "raw_address": "753 Sherwood Terrace Dr",
+        "locality": "Orlando",
+        "region": "FL",
+        "postal_code": "32818",
+        "source_url": "https://livebh.com/apartments/residences-at-west-place-apartments/",
+        "source_vintage": "2026-09-17",
+        "lineage_id": "bh-property-operator",
+        "source_file": "operator.html",
+        "source_sha256": "b1fb3ab2651d1875db06507f1496051f48e37bc70dbdcbf8a8a67e374efd4146",
+        "extraction": "Named property header/footer street address; preserve directional words and suffixes without rewriting. The page also contains other property cards, which are not this subject.",
+        "supplied_at": "2026-09-17T17:36:21.828032+00:00"
+      },
+      "county_address_reference": {
+        "OBJECTID": 243088,
+        "ENTERPRISE_ADDRESS_ID": 304448,
+        "OFFICIAL_PARCEL_ID": "282223920000100",
+        "COMPLETE_ADDRESS": "753 Sherwood Terrace Dr",
+        "FULL_ADDRESS_NUMBER": "753",
+        "COMPLETE_STREETNAME": "Sherwood Terrace Dr",
+        "ADDRESS_NUMBER": 753,
+        "UNIT": null,
+        "PRE_DIRECTION": null,
+        "BASENAME": "SHERWOOD TERRACE",
+        "POST_TYPE": "DRIVE",
+        "POST_DIRECTION": null,
+        "MUNICIPAL_JURISDICTION": "Unincorporated",
+        "ZIPCODE": "32818",
+        "ADDRESS_TYPE": "Structure",
+        "ADDRESS_SUBTYPE": null,
+        "ADDRESS_STATUS": "Active",
+        "DOR_USE_CODE": "0310",
+        "DOR_SHORT_DESC": "MULTI-FAMILY II",
+        "LANDMARK_NAME": null,
+        "DT_CREATED": 1285011885000,
+        "DT_LAST_MOD": 1285011886000
+      },
+      "reference_limit": "Exact recorded street address linked to parcel by county source; no complete property extent claim",
+      "prelookup_readback": {
+        "case": 0,
+        "property": "Residences at West Place",
+        "read_at": "2026-09-17T17:34:51.286454+00:00",
+        "reader": "fresh Python process reads actual native solve artifact; full native inspect/resume follows run completion",
+        "descriptive_sha256": "8690ecf199da776ec43a9019971a6062257c48a0d27ba48973d0c560d387efd6",
+        "solve_sha256": "d48f31f99c9352a9b80d0e4a0ad1328b628caf0b38fb75c1da37761cbadfd288",
+        "best_count": 1,
+        "best_candidates": [
+          {
+            "ids": [
+              "282223920000100"
+            ],
+            "attributes": [
+              {
+                "address": "753 SHERWOOD TERRACE DR",
+                "property_name": "RESIDENCES AT WEST PLACE",
+                "property_type": "multifamily",
+                "unit_count": null,
+                "year_built": 2002
+              }
+            ]
+          }
+        ],
+        "summary": {
+          "parcel_candidates": 2983,
+          "building_candidates": 0,
+          "candidate_assignments": 18446744073709551615,
+          "candidate_assignments_saturated": true,
+          "structurally_feasible_assignments": 2983,
+          "structurally_feasible_assignments_complete": true,
+          "structurally_feasible_assignments_saturated": false,
+          "hard_constraint_evaluations": 2983,
+          "hard_constraint_evaluations_complete": true,
+          "hard_constraint_evaluations_saturated": false,
+          "residual_model_count": 2983,
+          "model_count_scope": "entity_selection",
+          "residual_model_count_complete": true,
+          "residual_model_count_saturated": false,
+          "summary_counts_saturated": true,
+          "component_count": 1,
+          "residual_models_materialized": true
+        },
+        "truth_not_yet_acquired": true
+      },
+      "runs": {
+        "hints": {
+          "status": "ABSTAINED",
+          "solver_status": "ambiguous",
+          "exact_hard_residual": 2983,
+          "residual_count_complete": true,
+          "residual_count_saturated": false,
+          "theoretical_assignment_count_saturated": true,
+          "all_inventory_parcels_retained": true,
+          "reference_candidate_retained": true,
+          "hard_forced": {
+            "parcels": [],
+            "buildings": []
+          },
+          "hard_constraint_count": 1,
+          "unknown_candidate_unit_counts": 2983,
+          "soft_preference_count": 1,
+          "best_model_count": 1,
+          "best_and_next_distinct_cost": [
+            0,
+            1
+          ],
+          "unique_best_is_reference": true,
+          "best_candidates": [
+            {
+              "parcel_ids": [
+                "282223920000100"
+              ],
+              "cost": 0,
+              "attributes": [
+                {
+                  "address": "753 SHERWOOD TERRACE DR",
+                  "property_name": "RESIDENCES AT WEST PLACE",
+                  "property_type": "multifamily",
+                  "unit_count": null,
+                  "year_built": 2002
+                }
+              ]
+            }
+          ],
+          "blind_experiment_success": false,
+          "admissions": [
+            {
+              "observation_id": "descriptive:property_name:282223920000100",
+              "disposition": "soft_preference",
+              "generated_ids": [
+                "rho:rho.descriptive.property_name@1:descriptive:property_name:282223920000100"
+              ],
+              "contract": {
+                "id": "rho.descriptive.property_name",
+                "version": "1",
+                "source_dataset": "retained-assessor-and-disclosure",
+                "source_release": "retained-15c955534c9b4c64",
+                "source_lineage_ids": [
+                  "nxrt-company-disclosure",
+                  "orange-county-property-appraiser"
+                ],
+                "method_id": "known-attribute-agreement",
+                "method_version": "2",
+                "claim_role": "attribute_observation",
+                "basis": {
+                  "kind": "uncalibrated",
+                  "reason": "No validated cross-source measure, grain or vintage error model",
+                  "admission_policy": {
+                    "kind": "soft_with_weight",
+                    "cost_if_absent": 1
+                  }
+                }
+              },
+              "source_record_count_provenance_only": 4
+            },
+            {
+              "observation_id": "descriptive:property_type",
+              "disposition": "diagnostic_only",
+              "generated_ids": [],
+              "contract": {
+                "id": "rho.descriptive.property_type",
+                "version": "1",
+                "source_dataset": "retained-assessor-and-disclosure",
+                "source_release": "retained-15c955534c9b4c64",
+                "source_lineage_ids": [
+                  "nxrt-company-disclosure",
+                  "orange-county-property-appraiser"
+                ],
+                "method_id": "known-attribute-agreement",
+                "method_version": "2",
+                "claim_role": "attribute_observation",
+                "basis": {
+                  "kind": "uncalibrated",
+                  "reason": "No validated cross-source measure, grain or vintage error model",
+                  "admission_policy": {
+                    "kind": "diagnostic_only",
+                    "reason": "Source category/year comparability has not been calibrated"
+                  }
+                }
+              },
+              "source_record_count_provenance_only": 2996
+            },
+            {
+              "observation_id": "descriptive:single_member",
+              "disposition": "hard_constraint",
+              "generated_ids": [
+                "rho:descriptive:single_member@1:descriptive:single_member"
+              ],
+              "contract": {
+                "id": "descriptive:single_member",
+                "version": "1",
+                "source_dataset": "orange.assessor.parcels",
+                "source_release": "retained-15c955534c9b4c64",
+                "source_lineage_ids": [
+                  "blake3:15c955534c9b4c640ed2ef3f30d3d6ab9003fe66502cf4a66a17edf57468857c"
+                ],
+                "method_id": "descriptive_asset_single_member_v0",
+                "method_version": "1",
+                "claim_role": "attribute_observation",
+                "basis": {
+                  "kind": "logical_relaxation",
+                  "invariant_id": "declared-single-member-question-relative-to-bounded-inventory"
+                }
+              },
+              "source_record_count_provenance_only": 2996
+            }
+          ],
+          "execution": {
+            "argv": [
+              "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon",
+              "geo",
+              "run",
+              "--plan",
+              "/private/tmp/canon-reit-orlando-20260917/case-0/hints/plan.json",
+              "--work-dir",
+              "/private/tmp/canon-reit-orlando-20260917/case-0/hints/run",
+              "--input",
+              "geo.parcel.home_cells:rows=/private/tmp/canon-reit-orlando-20260917/case-0/hints/home.json",
+              "--input",
+              "geo.parcel.section:request=/private/tmp/canon-reit-orlando-20260917/case-0/hints/section.json",
+              "--input",
+              "geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-orlando-20260917/case-0/hints/descriptive.json",
+              "--input",
+              "geo.parcel.separation:request=/private/tmp/canon-reit-orlando-20260917/case-0/hints/separation.json",
+              "--input",
+              "geo.parcel.next_evidence:request=/private/tmp/canon-reit-orlando-20260917/case-0/hints/next.json"
+            ],
+            "binary_sha256": "5869fd75f5550220f7e497c1946590a4b9a423dae484ab2a508cea97d6e09a24",
+            "started_at": "2026-09-17T17:49:00.987884+00:00",
+            "input_sha256": {
+              "adapter-observations.json": "7217f0dc3ae4949b7f0b438ddf9cb11b4da38f7a9a46336442ac5944ce10dea1",
+              "budget.json": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6",
+              "capabilities.json": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf",
+              "descriptive.json": "8690ecf199da776ec43a9019971a6062257c48a0d27ba48973d0c560d387efd6",
+              "home.json": "74044bbe493db528c685023d9794013fa6a03045ce9fa0c276e930e46a973b47",
+              "inventory-rows.json": "1d92ad66800ea4d944142ab3d5030b8e898a81a7cf34d8a8add652d9ad9583fd",
+              "inventory.json": "10f0e4929aca9d839dfbcfda20dd549fd592fc7e285ff84ff8c5affb0f89e08f",
+              "next.json": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+              "plan.json": "7757b0eeb608de0bafb58a6a10afd2394d2525bebf8fa7c48e0431bb6f054643",
+              "prelookup-readback.json": "faaa75b8f9a6858e207484e6f0e5e0cedf059b24e2516626714be42f58d12746",
+              "profile.json": "9fe5908406e293ba1900ef8c880fddfd6bea62d61bd053bd7ff7db76b959920b",
+              "question.json": "370a93752c2c0e895e1851e957d307869c2e8b56ca865cd04d15229af147b5e2",
+              "section.json": "de0a4edcc4d3a4572d50fb6d8c1fca6b0a972f68f9bae328eca5d5774ff1e453",
+              "separation.json": "3f7c995a75a1a46942decd910fc707d651aa09e1aa5b72001fe72e5f3aecbfc0"
+            },
+            "exit_code": 0,
+            "elapsed_seconds": 322.1460355881136
+          },
+          "interrupted_numeric_mask_execution": {
+            "argv": [
+              "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon",
+              "geo",
+              "run",
+              "--plan",
+              "/private/tmp/canon-reit-orlando-20260917/case-0/hints/plan.json",
+              "--work-dir",
+              "/private/tmp/canon-reit-orlando-20260917/case-0/hints/run",
+              "--input",
+              "geo.parcel.home_cells:rows=/private/tmp/canon-reit-orlando-20260917/case-0/hints/home.json",
+              "--input",
+              "geo.parcel.section:request=/private/tmp/canon-reit-orlando-20260917/case-0/hints/section.json",
+              "--input",
+              "geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-orlando-20260917/case-0/hints/descriptive.json",
+              "--input",
+              "geo.parcel.separation:request=/private/tmp/canon-reit-orlando-20260917/case-0/hints/separation.json",
+              "--input",
+              "geo.parcel.next_evidence:request=/private/tmp/canon-reit-orlando-20260917/case-0/hints/next.json"
+            ],
+            "binary_sha256": "5869fd75f5550220f7e497c1946590a4b9a423dae484ab2a508cea97d6e09a24",
+            "started_at": "2026-09-17T17:32:33.148111+00:00",
+            "input_sha256": {
+              "adapter-observations.json": "7217f0dc3ae4949b7f0b438ddf9cb11b4da38f7a9a46336442ac5944ce10dea1",
+              "budget.json": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6",
+              "capabilities.json": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf",
+              "descriptive.json": "8690ecf199da776ec43a9019971a6062257c48a0d27ba48973d0c560d387efd6",
+              "home.json": "74044bbe493db528c685023d9794013fa6a03045ce9fa0c276e930e46a973b47",
+              "inventory-rows.json": "1d92ad66800ea4d944142ab3d5030b8e898a81a7cf34d8a8add652d9ad9583fd",
+              "inventory.json": "10f0e4929aca9d839dfbcfda20dd549fd592fc7e285ff84ff8c5affb0f89e08f",
+              "next.json": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+              "plan.json": "7757b0eeb608de0bafb58a6a10afd2394d2525bebf8fa7c48e0431bb6f054643",
+              "profile.json": "9fe5908406e293ba1900ef8c880fddfd6bea62d61bd053bd7ff7db76b959920b",
+              "question.json": "370a93752c2c0e895e1851e957d307869c2e8b56ca865cd04d15229af147b5e2",
+              "section.json": "de0a4edcc4d3a4572d50fb6d8c1fca6b0a972f68f9bae328eca5d5774ff1e453",
+              "separation.json": "e28969776673a21989261b907e41e25a278fe669719d1ec33b2ad273c8ec45a9"
+            },
+            "exit_code": -15,
+            "elapsed_seconds": 969.7887107899878
+          },
+          "executed_stages": [
+            "geo.parcel.next_evidence",
+            "geo.parcel.separation"
+          ],
+          "resumed_stages": [
+            "geo.parcel.compile_evidence",
+            "geo.parcel.explain",
+            "geo.parcel.home_cells",
+            "geo.parcel.materialize_evidence",
+            "geo.parcel.propagate",
+            "geo.parcel.section",
+            "geo.parcel.solve"
+          ],
+          "resume_reused_stages": [
+            "geo.parcel.compile_evidence",
+            "geo.parcel.explain",
+            "geo.parcel.home_cells",
+            "geo.parcel.materialize_evidence",
+            "geo.parcel.next_evidence",
+            "geo.parcel.propagate",
+            "geo.parcel.section",
+            "geo.parcel.separation",
+            "geo.parcel.solve"
+          ],
+          "stage_sha256": {
+            "compile_evidence.json": "3565c7ba718a28d64abd7a6439a2186dab0f9904dc23439b0577e44ddd4769ff",
+            "explanation.json": "9d9570fe9446dd305caae7186c79b028dbe4dc39575dcdbc8f35cc52ad0ffa26",
+            "home_cells.json": "a3bb715ac33fee1153a401f6f4a52467f0307230bf0ed22250cb620107cd476d",
+            "materialize_evidence.json": "cf8ac7f5d3ef95e1d44d315971914010a14588dc059876983c909efb0becd6fc",
+            "next_evidence.json": "6744921d5d506f866fb1392cdf2ddacb1b27594ba6c8d8404f2857f345a7f04c",
+            "propagation.json": "2de8b9b5188ba538f3d68a2ddbbc4fb181dfd0f6b145a41b094053ed3ba55e7f",
+            "section.json": "14d64aca8db017461c9589fa7387454eb8c4ea927ca078a9a38fda422490bea1",
+            "separation.json": "f90736dadf5d8787b8785d5a1363b0a930239a2c786f8dceeebff8284fa7b6ba",
+            "solve.json": "d48f31f99c9352a9b80d0e4a0ad1328b628caf0b38fb75c1da37761cbadfd288"
+          },
+          "resume_stage_bytes_unchanged": true,
+          "inspection_sha256": "65d446e0ce695e59df856072757ae656af30eecacdb0bcd6b7302bbb1b529764",
+          "next_evidence": {
+            "version": "canon_geo_next_evidence.v0",
+            "run_id": "canon_geo_next_evidence.v0:4414d596a806633f797c33a9ee81c9cdbe6a96bd1f3f17bb7ed5f988662e44bd",
+            "composition_blake3": "blake3:4c0ba0f726b9a4645d74e2579c88c490b8f914b3ce16662251064edadff1b003",
+            "separation_blake3": "blake3:9c647b5ff0a87fc4d294c03e457eb0169e26ba5d7a8d1d7dd355e85129c6ed1c",
+            "frontier": [
+              {
+                "action_id": "acquire-source-parcel-membership",
+                "class": "separate_residual",
+                "kind": {
+                  "kind": "observe",
+                  "payload": "future-parcel-membership"
+                },
+                "observation_id": "future-parcel-membership",
+                "cost_units": 1,
+                "separation": [
+                  {
+                    "outcome_id": "first_half",
+                    "residual_model_count": 1491,
+                    "count_exact": true
+                  },
+                  {
+                    "outcome_id": "second_half",
+                    "residual_model_count": 1492,
+                    "count_exact": true
+                  }
+                ],
+                "worst_case_remaining": 1492,
+                "redundant": false
+              }
+            ],
+            "dominated": [],
+            "ranking_abstention": {
+              "code": "next_evidence_no_loss_model",
+              "message": "Total ranking requires a versioned loss model",
+              "detail": {
+                "policy": "none"
+              }
+            },
+            "budget_remaining": {
+              "max_bytes": 100000000,
+              "max_candidates": 4000,
+              "max_cells": 10000,
+              "max_models": 4000,
+              "max_operations": 200000000,
+              "max_rows": 10000,
+              "max_states": 20000000,
+              "max_variables": 4000
+            },
+            "counters": {
+              "budget_exhausted": 0,
+              "candidate_actions": 1,
+              "dominated_actions": 0,
+              "frontier_actions": 1
+            }
+          }
+        },
+        "address": {
+          "status": "ABSTAINED",
+          "solver_status": "ambiguous",
+          "exact_hard_residual": 2983,
+          "residual_count_complete": true,
+          "residual_count_saturated": false,
+          "theoretical_assignment_count_saturated": true,
+          "all_inventory_parcels_retained": true,
+          "reference_candidate_retained": true,
+          "hard_forced": {
+            "parcels": [],
+            "buildings": []
+          },
+          "hard_constraint_count": 1,
+          "unknown_candidate_unit_counts": 2983,
+          "soft_preference_count": 2,
+          "best_model_count": 1,
+          "best_and_next_distinct_cost": [
+            0,
+            2
+          ],
+          "unique_best_is_reference": true,
+          "best_candidates": [
+            {
+              "parcel_ids": [
+                "282223920000100"
+              ],
+              "cost": 0,
+              "attributes": [
+                {
+                  "address": "753 SHERWOOD TERRACE DR",
+                  "property_name": "RESIDENCES AT WEST PLACE",
+                  "property_type": "multifamily",
+                  "unit_count": null,
+                  "year_built": 2002
+                }
+              ]
+            }
+          ],
+          "blind_experiment_success": false,
+          "admissions": [
+            {
+              "observation_id": "descriptive:address:282223920000100",
+              "disposition": "soft_preference",
+              "generated_ids": [
+                "rho:rho.descriptive.address@1:descriptive:address:282223920000100"
+              ],
+              "contract": {
+                "id": "rho.descriptive.address",
+                "version": "1",
+                "source_dataset": "retained-assessor-and-disclosure",
+                "source_release": "retained-15c955534c9b4c64",
+                "source_lineage_ids": [
+                  "bh-property-operator",
+                  "orange-county-property-appraiser"
+                ],
+                "method_id": "known-attribute-agreement",
+                "method_version": "2",
+                "claim_role": "attribute_observation",
+                "basis": {
+                  "kind": "uncalibrated",
+                  "reason": "No validated cross-source measure, grain or vintage error model",
+                  "admission_policy": {
+                    "kind": "soft_with_weight",
+                    "cost_if_absent": 1
+                  }
+                }
+              },
+              "source_record_count_provenance_only": 5
+            },
+            {
+              "observation_id": "descriptive:property_name:282223920000100",
+              "disposition": "soft_preference",
+              "generated_ids": [
+                "rho:rho.descriptive.property_name@1:descriptive:property_name:282223920000100"
+              ],
+              "contract": {
+                "id": "rho.descriptive.property_name",
+                "version": "1",
+                "source_dataset": "retained-assessor-and-disclosure",
+                "source_release": "retained-15c955534c9b4c64",
+                "source_lineage_ids": [
+                  "nxrt-company-disclosure",
+                  "orange-county-property-appraiser"
+                ],
+                "method_id": "known-attribute-agreement",
+                "method_version": "2",
+                "claim_role": "attribute_observation",
+                "basis": {
+                  "kind": "uncalibrated",
+                  "reason": "No validated cross-source measure, grain or vintage error model",
+                  "admission_policy": {
+                    "kind": "soft_with_weight",
+                    "cost_if_absent": 1
+                  }
+                }
+              },
+              "source_record_count_provenance_only": 5
+            },
+            {
+              "observation_id": "descriptive:property_type",
+              "disposition": "diagnostic_only",
+              "generated_ids": [],
+              "contract": {
+                "id": "rho.descriptive.property_type",
+                "version": "1",
+                "source_dataset": "retained-assessor-and-disclosure",
+                "source_release": "retained-15c955534c9b4c64",
+                "source_lineage_ids": [
+                  "nxrt-company-disclosure",
+                  "orange-county-property-appraiser"
+                ],
+                "method_id": "known-attribute-agreement",
+                "method_version": "2",
+                "claim_role": "attribute_observation",
+                "basis": {
+                  "kind": "uncalibrated",
+                  "reason": "No validated cross-source measure, grain or vintage error model",
+                  "admission_policy": {
+                    "kind": "diagnostic_only",
+                    "reason": "Source category/year comparability has not been calibrated"
+                  }
+                }
+              },
+              "source_record_count_provenance_only": 2997
+            },
+            {
+              "observation_id": "descriptive:single_member",
+              "disposition": "hard_constraint",
+              "generated_ids": [
+                "rho:descriptive:single_member@1:descriptive:single_member"
+              ],
+              "contract": {
+                "id": "descriptive:single_member",
+                "version": "1",
+                "source_dataset": "orange.assessor.parcels",
+                "source_release": "retained-15c955534c9b4c64",
+                "source_lineage_ids": [
+                  "blake3:15c955534c9b4c640ed2ef3f30d3d6ab9003fe66502cf4a66a17edf57468857c"
+                ],
+                "method_id": "descriptive_asset_single_member_v0",
+                "method_version": "1",
+                "claim_role": "attribute_observation",
+                "basis": {
+                  "kind": "logical_relaxation",
+                  "invariant_id": "declared-single-member-question-relative-to-bounded-inventory"
+                }
+              },
+              "source_record_count_provenance_only": 2997
+            }
+          ],
+          "execution": {
+            "argv": [
+              "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon",
+              "geo",
+              "run",
+              "--plan",
+              "/private/tmp/canon-reit-orlando-20260917/case-0/address/plan.json",
+              "--work-dir",
+              "/private/tmp/canon-reit-orlando-20260917/case-0/address/run",
+              "--input",
+              "geo.parcel.home_cells:rows=/private/tmp/canon-reit-orlando-20260917/case-0/address/home.json",
+              "--input",
+              "geo.parcel.section:request=/private/tmp/canon-reit-orlando-20260917/case-0/address/section.json",
+              "--input",
+              "geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-orlando-20260917/case-0/address/descriptive.json",
+              "--input",
+              "geo.parcel.separation:request=/private/tmp/canon-reit-orlando-20260917/case-0/address/separation.json",
+              "--input",
+              "geo.parcel.next_evidence:request=/private/tmp/canon-reit-orlando-20260917/case-0/address/next.json"
+            ],
+            "binary_sha256": "5869fd75f5550220f7e497c1946590a4b9a423dae484ab2a508cea97d6e09a24",
+            "started_at": "2026-09-17T17:49:00.991181+00:00",
+            "input_sha256": {
+              "adapter-observations.json": "7217f0dc3ae4949b7f0b438ddf9cb11b4da38f7a9a46336442ac5944ce10dea1",
+              "budget.json": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6",
+              "capabilities.json": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf",
+              "descriptive.json": "b95edf525f07445be91d335ea2b69c849d4182651c2c583f759215804e3344cf",
+              "home.json": "74044bbe493db528c685023d9794013fa6a03045ce9fa0c276e930e46a973b47",
+              "inventory-rows.json": "1d92ad66800ea4d944142ab3d5030b8e898a81a7cf34d8a8add652d9ad9583fd",
+              "inventory.json": "10f0e4929aca9d839dfbcfda20dd549fd592fc7e285ff84ff8c5affb0f89e08f",
+              "next.json": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+              "plan.json": "7757b0eeb608de0bafb58a6a10afd2394d2525bebf8fa7c48e0431bb6f054643",
+              "profile.json": "9fe5908406e293ba1900ef8c880fddfd6bea62d61bd053bd7ff7db76b959920b",
+              "question.json": "370a93752c2c0e895e1851e957d307869c2e8b56ca865cd04d15229af147b5e2",
+              "section.json": "de0a4edcc4d3a4572d50fb6d8c1fca6b0a972f68f9bae328eca5d5774ff1e453",
+              "separation.json": "3f7c995a75a1a46942decd910fc707d651aa09e1aa5b72001fe72e5f3aecbfc0"
+            },
+            "exit_code": 0,
+            "elapsed_seconds": 321.94404074782506
+          },
+          "interrupted_numeric_mask_execution": {
+            "argv": [
+              "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon",
+              "geo",
+              "run",
+              "--plan",
+              "/private/tmp/canon-reit-orlando-20260917/case-0/address/plan.json",
+              "--work-dir",
+              "/private/tmp/canon-reit-orlando-20260917/case-0/address/run",
+              "--input",
+              "geo.parcel.home_cells:rows=/private/tmp/canon-reit-orlando-20260917/case-0/address/home.json",
+              "--input",
+              "geo.parcel.section:request=/private/tmp/canon-reit-orlando-20260917/case-0/address/section.json",
+              "--input",
+              "geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-orlando-20260917/case-0/address/descriptive.json",
+              "--input",
+              "geo.parcel.separation:request=/private/tmp/canon-reit-orlando-20260917/case-0/address/separation.json",
+              "--input",
+              "geo.parcel.next_evidence:request=/private/tmp/canon-reit-orlando-20260917/case-0/address/next.json"
+            ],
+            "binary_sha256": "5869fd75f5550220f7e497c1946590a4b9a423dae484ab2a508cea97d6e09a24",
+            "started_at": "2026-09-17T17:36:24.763871+00:00",
+            "input_sha256": {
+              "adapter-observations.json": "7217f0dc3ae4949b7f0b438ddf9cb11b4da38f7a9a46336442ac5944ce10dea1",
+              "budget.json": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6",
+              "capabilities.json": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf",
+              "descriptive.json": "b95edf525f07445be91d335ea2b69c849d4182651c2c583f759215804e3344cf",
+              "home.json": "74044bbe493db528c685023d9794013fa6a03045ce9fa0c276e930e46a973b47",
+              "inventory-rows.json": "1d92ad66800ea4d944142ab3d5030b8e898a81a7cf34d8a8add652d9ad9583fd",
+              "inventory.json": "10f0e4929aca9d839dfbcfda20dd549fd592fc7e285ff84ff8c5affb0f89e08f",
+              "next.json": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+              "plan.json": "7757b0eeb608de0bafb58a6a10afd2394d2525bebf8fa7c48e0431bb6f054643",
+              "profile.json": "9fe5908406e293ba1900ef8c880fddfd6bea62d61bd053bd7ff7db76b959920b",
+              "question.json": "370a93752c2c0e895e1851e957d307869c2e8b56ca865cd04d15229af147b5e2",
+              "section.json": "de0a4edcc4d3a4572d50fb6d8c1fca6b0a972f68f9bae328eca5d5774ff1e453",
+              "separation.json": "e28969776673a21989261b907e41e25a278fe669719d1ec33b2ad273c8ec45a9"
+            },
+            "exit_code": -15,
+            "elapsed_seconds": 738.2026784368791
+          },
+          "executed_stages": [
+            "geo.parcel.next_evidence",
+            "geo.parcel.separation"
+          ],
+          "resumed_stages": [
+            "geo.parcel.compile_evidence",
+            "geo.parcel.explain",
+            "geo.parcel.home_cells",
+            "geo.parcel.materialize_evidence",
+            "geo.parcel.propagate",
+            "geo.parcel.section",
+            "geo.parcel.solve"
+          ],
+          "resume_reused_stages": [
+            "geo.parcel.compile_evidence",
+            "geo.parcel.explain",
+            "geo.parcel.home_cells",
+            "geo.parcel.materialize_evidence",
+            "geo.parcel.next_evidence",
+            "geo.parcel.propagate",
+            "geo.parcel.section",
+            "geo.parcel.separation",
+            "geo.parcel.solve"
+          ],
+          "stage_sha256": {
+            "compile_evidence.json": "eff7902eefa9cc2c8a9cb61bea1bf0de3391fbb2e4012c4647cd6413c1218895",
+            "explanation.json": "081c624b4a8c77905cddf23999a691d8faf83208fe57fea2f75a1b7b959693c7",
+            "home_cells.json": "a3bb715ac33fee1153a401f6f4a52467f0307230bf0ed22250cb620107cd476d",
+            "materialize_evidence.json": "30486b495f66190fc9c24a803168835bba71f943f229d178700f1347c4e93944",
+            "next_evidence.json": "ac0ca891bc57e25d5fc871e69a4da78e7b99e00fc42717611cc28d37d7811a04",
+            "propagation.json": "04069b84dbe5a305b42958dbfa5c77118e1138c2126400bfc9987baff33d4a27",
+            "section.json": "14d64aca8db017461c9589fa7387454eb8c4ea927ca078a9a38fda422490bea1",
+            "separation.json": "afc1dd3c35dbc456dc2d92d78f64c4db8343be23c3346a43f2bdb956ee1ca1b5",
+            "solve.json": "62e6710423c8b6b0d28b07df252ed3433e26a66134f5a1ad15aac02a8c9a87f1"
+          },
+          "resume_stage_bytes_unchanged": true,
+          "inspection_sha256": "4100ecd1b07960d5d8d26889972555f9d6d90d6435371c3eda283948c140b3b0",
+          "next_evidence": {
+            "version": "canon_geo_next_evidence.v0",
+            "run_id": "canon_geo_next_evidence.v0:4e9aecaffabb934705f49e049d478d769549341e503bab80465e53514bf8b719",
+            "composition_blake3": "blake3:81150c4f1b56025dc48c8221c2b5044d8f63047d2c92e61a5bc546b1cc9385ab",
+            "separation_blake3": "blake3:9726899a332fe6579e801e18eaedba12bbe53b8c5265622316fcac5c0691a04d",
+            "frontier": [
+              {
+                "action_id": "acquire-source-parcel-membership",
+                "class": "separate_residual",
+                "kind": {
+                  "kind": "observe",
+                  "payload": "future-parcel-membership"
+                },
+                "observation_id": "future-parcel-membership",
+                "cost_units": 1,
+                "separation": [
+                  {
+                    "outcome_id": "first_half",
+                    "residual_model_count": 1491,
+                    "count_exact": true
+                  },
+                  {
+                    "outcome_id": "second_half",
+                    "residual_model_count": 1492,
+                    "count_exact": true
+                  }
+                ],
+                "worst_case_remaining": 1492,
+                "redundant": false
+              }
+            ],
+            "dominated": [],
+            "ranking_abstention": {
+              "code": "next_evidence_no_loss_model",
+              "message": "Total ranking requires a versioned loss model",
+              "detail": {
+                "policy": "none"
+              }
+            },
+            "budget_remaining": {
+              "max_bytes": 100000000,
+              "max_candidates": 4000,
+              "max_cells": 10000,
+              "max_models": 4000,
+              "max_operations": 200000000,
+              "max_rows": 10000,
+              "max_states": 20000000,
+              "max_variables": 4000
+            },
+            "counters": {
+              "budget_exhausted": 0,
+              "candidate_actions": 1,
+              "dominated_actions": 0,
+              "frontier_actions": 1
+            }
+          }
+        }
+      },
+      "hints_discovery_and_supplied_address_corroboration": true
+    },
+    {
+      "index": 1,
+      "property": "Cornerstone",
+      "operator_address": {
+        "property_name": "Cornerstone",
+        "geography_id": "us.fl.orange.dor03",
+        "address": "2409 South Conway Rd",
+        "raw_address": "2409 South Conway Rd",
+        "locality": "Orlando",
+        "region": "FL",
+        "postal_code": "32812",
+        "source_url": "https://livebh.com/apartments/the-cornerstone/",
+        "source_vintage": "2026-09-17",
+        "lineage_id": "bh-property-operator",
+        "source_file": "operator.html",
+        "source_sha256": "57b1c043c03b5dfb64ec8e9e3140e16768496e372a0f063859ddd9cf95c07ead",
+        "extraction": "Named property header/footer street address; preserve directional words and suffixes without rewriting. The page also contains other property cards, which are not this subject.",
+        "supplied_at": "2026-09-17T17:36:21.828636+00:00"
+      },
+      "county_address_reference": {
+        "OBJECTID": 367667,
+        "ENTERPRISE_ADDRESS_ID": 575945,
+        "OFFICIAL_PARCEL_ID": "302304550403000",
+        "COMPLETE_ADDRESS": "2409 Conway Rd",
+        "FULL_ADDRESS_NUMBER": "2409",
+        "COMPLETE_STREETNAME": "Conway Rd",
+        "ADDRESS_NUMBER": 2409,
+        "UNIT": null,
+        "PRE_DIRECTION": null,
+        "BASENAME": "CONWAY",
+        "POST_TYPE": "ROAD",
+        "POST_DIRECTION": null,
+        "MUNICIPAL_JURISDICTION": "Orlando",
+        "ZIPCODE": "32812",
+        "ADDRESS_TYPE": "Structure",
+        "ADDRESS_SUBTYPE": null,
+        "ADDRESS_STATUS": "Active",
+        "DOR_USE_CODE": "0310",
+        "DOR_SHORT_DESC": "MULTI-FAMILY II",
+        "LANDMARK_NAME": null,
+        "DT_CREATED": 315550800000,
+        "DT_LAST_MOD": 315550800000
+      },
+      "reference_limit": "Number/basename query; missing South makes Cornerstone a diagnostic reference candidate, not exact operator-address membership",
+      "prelookup_readback": {
+        "case": 1,
+        "property": "Cornerstone",
+        "read_at": "2026-09-17T17:34:51.374977+00:00",
+        "reader": "fresh Python process reads actual native solve artifact; full native inspect/resume follows run completion",
+        "descriptive_sha256": "0e844061b375606dc81359771f30275fc6a8ca81aa1277312d480b91ea42afd1",
+        "solve_sha256": "569935eed97795aceca624057448cfbb782f875e9974f0d64662fd1f81af0794",
+        "best_count": 2983,
+        "best_candidates": [],
+        "summary": {
+          "parcel_candidates": 2983,
+          "building_candidates": 0,
+          "candidate_assignments": 18446744073709551615,
+          "candidate_assignments_saturated": true,
+          "structurally_feasible_assignments": 2983,
+          "structurally_feasible_assignments_complete": true,
+          "structurally_feasible_assignments_saturated": false,
+          "hard_constraint_evaluations": 2983,
+          "hard_constraint_evaluations_complete": true,
+          "hard_constraint_evaluations_saturated": false,
+          "residual_model_count": 2983,
+          "model_count_scope": "entity_selection",
+          "residual_model_count_complete": true,
+          "residual_model_count_saturated": false,
+          "summary_counts_saturated": true,
+          "component_count": 1,
+          "residual_models_materialized": true
+        },
+        "truth_not_yet_acquired": true
+      },
+      "runs": {
+        "hints": {
+          "status": "ABSTAINED",
+          "solver_status": "ambiguous",
+          "exact_hard_residual": 2983,
+          "residual_count_complete": true,
+          "residual_count_saturated": false,
+          "theoretical_assignment_count_saturated": true,
+          "all_inventory_parcels_retained": true,
+          "reference_candidate_retained": true,
+          "hard_forced": {
+            "parcels": [],
+            "buildings": []
+          },
+          "hard_constraint_count": 1,
+          "unknown_candidate_unit_counts": 2983,
+          "soft_preference_count": 0,
+          "best_model_count": 2983,
+          "best_and_next_distinct_cost": [
+            0
+          ],
+          "unique_best_is_reference": false,
+          "best_candidates": [],
+          "blind_experiment_success": false,
+          "admissions": [
+            {
+              "observation_id": "descriptive:property_type",
+              "disposition": "diagnostic_only",
+              "generated_ids": [],
+              "contract": {
+                "id": "rho.descriptive.property_type",
+                "version": "1",
+                "source_dataset": "retained-assessor-and-disclosure",
+                "source_release": "retained-15c955534c9b4c64",
+                "source_lineage_ids": [
+                  "nxrt-company-disclosure",
+                  "orange-county-property-appraiser"
+                ],
+                "method_id": "known-attribute-agreement",
+                "method_version": "2",
+                "claim_role": "attribute_observation",
+                "basis": {
+                  "kind": "uncalibrated",
+                  "reason": "No validated cross-source measure, grain or vintage error model",
+                  "admission_policy": {
+                    "kind": "diagnostic_only",
+                    "reason": "Source category/year comparability has not been calibrated"
+                  }
+                }
+              },
+              "source_record_count_provenance_only": 2996
+            },
+            {
+              "observation_id": "descriptive:single_member",
+              "disposition": "hard_constraint",
+              "generated_ids": [
+                "rho:descriptive:single_member@1:descriptive:single_member"
+              ],
+              "contract": {
+                "id": "descriptive:single_member",
+                "version": "1",
+                "source_dataset": "orange.assessor.parcels",
+                "source_release": "retained-15c955534c9b4c64",
+                "source_lineage_ids": [
+                  "blake3:15c955534c9b4c640ed2ef3f30d3d6ab9003fe66502cf4a66a17edf57468857c"
+                ],
+                "method_id": "descriptive_asset_single_member_v0",
+                "method_version": "1",
+                "claim_role": "attribute_observation",
+                "basis": {
+                  "kind": "logical_relaxation",
+                  "invariant_id": "declared-single-member-question-relative-to-bounded-inventory"
+                }
+              },
+              "source_record_count_provenance_only": 2996
+            }
+          ],
+          "execution": {
+            "argv": [
+              "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon",
+              "geo",
+              "run",
+              "--plan",
+              "/private/tmp/canon-reit-orlando-20260917/case-1/hints/plan.json",
+              "--work-dir",
+              "/private/tmp/canon-reit-orlando-20260917/case-1/hints/run",
+              "--input",
+              "geo.parcel.home_cells:rows=/private/tmp/canon-reit-orlando-20260917/case-1/hints/home.json",
+              "--input",
+              "geo.parcel.section:request=/private/tmp/canon-reit-orlando-20260917/case-1/hints/section.json",
+              "--input",
+              "geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-orlando-20260917/case-1/hints/descriptive.json",
+              "--input",
+              "geo.parcel.separation:request=/private/tmp/canon-reit-orlando-20260917/case-1/hints/separation.json",
+              "--input",
+              "geo.parcel.next_evidence:request=/private/tmp/canon-reit-orlando-20260917/case-1/hints/next.json"
+            ],
+            "binary_sha256": "5869fd75f5550220f7e497c1946590a4b9a423dae484ab2a508cea97d6e09a24",
+            "started_at": "2026-09-17T17:49:00.982774+00:00",
+            "input_sha256": {
+              "adapter-observations.json": "7217f0dc3ae4949b7f0b438ddf9cb11b4da38f7a9a46336442ac5944ce10dea1",
+              "budget.json": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6",
+              "capabilities.json": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf",
+              "descriptive.json": "0e844061b375606dc81359771f30275fc6a8ca81aa1277312d480b91ea42afd1",
+              "home.json": "74044bbe493db528c685023d9794013fa6a03045ce9fa0c276e930e46a973b47",
+              "inventory-rows.json": "1d92ad66800ea4d944142ab3d5030b8e898a81a7cf34d8a8add652d9ad9583fd",
+              "inventory.json": "10f0e4929aca9d839dfbcfda20dd549fd592fc7e285ff84ff8c5affb0f89e08f",
+              "next.json": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+              "plan.json": "edb2edde6d44d52be742dd6c38ec3e4d1302d3a8cbba7c03d6e5b129e2412bad",
+              "prelookup-readback.json": "c26a5dcb6a40eaaa0a8560bc4025245dd03e040bca5619b0cd775c11d74e35d9",
+              "profile.json": "9fe5908406e293ba1900ef8c880fddfd6bea62d61bd053bd7ff7db76b959920b",
+              "question.json": "e8208fb848d0e77abd1c6f0520bb11369723a8f8c15a6528c711121663d27a72",
+              "section.json": "de0a4edcc4d3a4572d50fb6d8c1fca6b0a972f68f9bae328eca5d5774ff1e453",
+              "separation.json": "3f7c995a75a1a46942decd910fc707d651aa09e1aa5b72001fe72e5f3aecbfc0"
+            },
+            "exit_code": 0,
+            "elapsed_seconds": 322.19134313007817
+          },
+          "interrupted_numeric_mask_execution": {
+            "argv": [
+              "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon",
+              "geo",
+              "run",
+              "--plan",
+              "/private/tmp/canon-reit-orlando-20260917/case-1/hints/plan.json",
+              "--work-dir",
+              "/private/tmp/canon-reit-orlando-20260917/case-1/hints/run",
+              "--input",
+              "geo.parcel.home_cells:rows=/private/tmp/canon-reit-orlando-20260917/case-1/hints/home.json",
+              "--input",
+              "geo.parcel.section:request=/private/tmp/canon-reit-orlando-20260917/case-1/hints/section.json",
+              "--input",
+              "geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-orlando-20260917/case-1/hints/descriptive.json",
+              "--input",
+              "geo.parcel.separation:request=/private/tmp/canon-reit-orlando-20260917/case-1/hints/separation.json",
+              "--input",
+              "geo.parcel.next_evidence:request=/private/tmp/canon-reit-orlando-20260917/case-1/hints/next.json"
+            ],
+            "binary_sha256": "5869fd75f5550220f7e497c1946590a4b9a423dae484ab2a508cea97d6e09a24",
+            "started_at": "2026-09-17T17:32:33.123089+00:00",
+            "input_sha256": {
+              "adapter-observations.json": "7217f0dc3ae4949b7f0b438ddf9cb11b4da38f7a9a46336442ac5944ce10dea1",
+              "budget.json": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6",
+              "capabilities.json": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf",
+              "descriptive.json": "0e844061b375606dc81359771f30275fc6a8ca81aa1277312d480b91ea42afd1",
+              "home.json": "74044bbe493db528c685023d9794013fa6a03045ce9fa0c276e930e46a973b47",
+              "inventory-rows.json": "1d92ad66800ea4d944142ab3d5030b8e898a81a7cf34d8a8add652d9ad9583fd",
+              "inventory.json": "10f0e4929aca9d839dfbcfda20dd549fd592fc7e285ff84ff8c5affb0f89e08f",
+              "next.json": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+              "plan.json": "edb2edde6d44d52be742dd6c38ec3e4d1302d3a8cbba7c03d6e5b129e2412bad",
+              "profile.json": "9fe5908406e293ba1900ef8c880fddfd6bea62d61bd053bd7ff7db76b959920b",
+              "question.json": "e8208fb848d0e77abd1c6f0520bb11369723a8f8c15a6528c711121663d27a72",
+              "section.json": "de0a4edcc4d3a4572d50fb6d8c1fca6b0a972f68f9bae328eca5d5774ff1e453",
+              "separation.json": "e28969776673a21989261b907e41e25a278fe669719d1ec33b2ad273c8ec45a9"
+            },
+            "exit_code": -15,
+            "elapsed_seconds": 969.8223825700115
+          },
+          "executed_stages": [
+            "geo.parcel.next_evidence",
+            "geo.parcel.separation"
+          ],
+          "resumed_stages": [
+            "geo.parcel.compile_evidence",
+            "geo.parcel.explain",
+            "geo.parcel.home_cells",
+            "geo.parcel.materialize_evidence",
+            "geo.parcel.propagate",
+            "geo.parcel.section",
+            "geo.parcel.solve"
+          ],
+          "resume_reused_stages": [
+            "geo.parcel.compile_evidence",
+            "geo.parcel.explain",
+            "geo.parcel.home_cells",
+            "geo.parcel.materialize_evidence",
+            "geo.parcel.next_evidence",
+            "geo.parcel.propagate",
+            "geo.parcel.section",
+            "geo.parcel.separation",
+            "geo.parcel.solve"
+          ],
+          "stage_sha256": {
+            "compile_evidence.json": "d6fce56f2530f7f7c8d0627dd89b2ebfbc16a182c3ab819fe6160bb533499e27",
+            "explanation.json": "a395aa3b77403152106aec99185156d19ccd926e543bcbfab2220103976da503",
+            "home_cells.json": "a3bb715ac33fee1153a401f6f4a52467f0307230bf0ed22250cb620107cd476d",
+            "materialize_evidence.json": "b010ed2f5884a73ae4695576742b89d2f3aa3c14a8de8957ff94dc558f2142bb",
+            "next_evidence.json": "0e6b749ca5f3405ed24b90f1a1bb483475fe6d3bcf4857dc3eda5887ac91453e",
+            "propagation.json": "1d7f4b3cec074d303067a6d94a8e3bc9fca323a0afd340c9a8e9803e0903bf3f",
+            "section.json": "14d64aca8db017461c9589fa7387454eb8c4ea927ca078a9a38fda422490bea1",
+            "separation.json": "98d3a99937fdae7bc9cd926b9ad0da696837e80ab81633962b8349f6847229d0",
+            "solve.json": "569935eed97795aceca624057448cfbb782f875e9974f0d64662fd1f81af0794"
+          },
+          "resume_stage_bytes_unchanged": true,
+          "inspection_sha256": "b9918e6c1256b956d6f1916707b4bb73b16024d1c0e4c9816bcc2ca6bf9d8381",
+          "next_evidence": {
+            "version": "canon_geo_next_evidence.v0",
+            "run_id": "canon_geo_next_evidence.v0:ff2374d171db7515a37fa8c3c19a50fb7b34463878673beb4d2216b8dd02551b",
+            "composition_blake3": "blake3:8c006356679a0098ecabb17953ab0e496fd51457addb9bb31d39ac89f0fbd26a",
+            "separation_blake3": "blake3:9618781e3c5cbfa76071400c716442c8271bb51ef7e3b8a05381082afbf0a3bb",
+            "frontier": [
+              {
+                "action_id": "acquire-source-parcel-membership",
+                "class": "separate_residual",
+                "kind": {
+                  "kind": "observe",
+                  "payload": "future-parcel-membership"
+                },
+                "observation_id": "future-parcel-membership",
+                "cost_units": 1,
+                "separation": [
+                  {
+                    "outcome_id": "first_half",
+                    "residual_model_count": 1491,
+                    "count_exact": true
+                  },
+                  {
+                    "outcome_id": "second_half",
+                    "residual_model_count": 1492,
+                    "count_exact": true
+                  }
+                ],
+                "worst_case_remaining": 1492,
+                "redundant": false
+              }
+            ],
+            "dominated": [],
+            "ranking_abstention": {
+              "code": "next_evidence_no_loss_model",
+              "message": "Total ranking requires a versioned loss model",
+              "detail": {
+                "policy": "none"
+              }
+            },
+            "budget_remaining": {
+              "max_bytes": 100000000,
+              "max_candidates": 4000,
+              "max_cells": 10000,
+              "max_models": 4000,
+              "max_operations": 200000000,
+              "max_rows": 10000,
+              "max_states": 20000000,
+              "max_variables": 4000
+            },
+            "counters": {
+              "budget_exhausted": 0,
+              "candidate_actions": 1,
+              "dominated_actions": 0,
+              "frontier_actions": 1
+            }
+          }
+        },
+        "address": {
+          "status": "ABSTAINED",
+          "solver_status": "ambiguous",
+          "exact_hard_residual": 2983,
+          "residual_count_complete": true,
+          "residual_count_saturated": false,
+          "theoretical_assignment_count_saturated": true,
+          "all_inventory_parcels_retained": true,
+          "reference_candidate_retained": true,
+          "hard_forced": {
+            "parcels": [],
+            "buildings": []
+          },
+          "hard_constraint_count": 1,
+          "unknown_candidate_unit_counts": 2983,
+          "soft_preference_count": 0,
+          "best_model_count": 2983,
+          "best_and_next_distinct_cost": [
+            0
+          ],
+          "unique_best_is_reference": false,
+          "best_candidates": [],
+          "blind_experiment_success": false,
+          "admissions": [
+            {
+              "observation_id": "descriptive:property_type",
+              "disposition": "diagnostic_only",
+              "generated_ids": [],
+              "contract": {
+                "id": "rho.descriptive.property_type",
+                "version": "1",
+                "source_dataset": "retained-assessor-and-disclosure",
+                "source_release": "retained-15c955534c9b4c64",
+                "source_lineage_ids": [
+                  "nxrt-company-disclosure",
+                  "orange-county-property-appraiser"
+                ],
+                "method_id": "known-attribute-agreement",
+                "method_version": "2",
+                "claim_role": "attribute_observation",
+                "basis": {
+                  "kind": "uncalibrated",
+                  "reason": "No validated cross-source measure, grain or vintage error model",
+                  "admission_policy": {
+                    "kind": "diagnostic_only",
+                    "reason": "Source category/year comparability has not been calibrated"
+                  }
+                }
+              },
+              "source_record_count_provenance_only": 2997
+            },
+            {
+              "observation_id": "descriptive:single_member",
+              "disposition": "hard_constraint",
+              "generated_ids": [
+                "rho:descriptive:single_member@1:descriptive:single_member"
+              ],
+              "contract": {
+                "id": "descriptive:single_member",
+                "version": "1",
+                "source_dataset": "orange.assessor.parcels",
+                "source_release": "retained-15c955534c9b4c64",
+                "source_lineage_ids": [
+                  "blake3:15c955534c9b4c640ed2ef3f30d3d6ab9003fe66502cf4a66a17edf57468857c"
+                ],
+                "method_id": "descriptive_asset_single_member_v0",
+                "method_version": "1",
+                "claim_role": "attribute_observation",
+                "basis": {
+                  "kind": "logical_relaxation",
+                  "invariant_id": "declared-single-member-question-relative-to-bounded-inventory"
+                }
+              },
+              "source_record_count_provenance_only": 2997
+            }
+          ],
+          "execution": {
+            "argv": [
+              "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon",
+              "geo",
+              "run",
+              "--plan",
+              "/private/tmp/canon-reit-orlando-20260917/case-1/address/plan.json",
+              "--work-dir",
+              "/private/tmp/canon-reit-orlando-20260917/case-1/address/run",
+              "--input",
+              "geo.parcel.home_cells:rows=/private/tmp/canon-reit-orlando-20260917/case-1/address/home.json",
+              "--input",
+              "geo.parcel.section:request=/private/tmp/canon-reit-orlando-20260917/case-1/address/section.json",
+              "--input",
+              "geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-orlando-20260917/case-1/address/descriptive.json",
+              "--input",
+              "geo.parcel.separation:request=/private/tmp/canon-reit-orlando-20260917/case-1/address/separation.json",
+              "--input",
+              "geo.parcel.next_evidence:request=/private/tmp/canon-reit-orlando-20260917/case-1/address/next.json"
+            ],
+            "binary_sha256": "5869fd75f5550220f7e497c1946590a4b9a423dae484ab2a508cea97d6e09a24",
+            "started_at": "2026-09-17T17:49:00.986039+00:00",
+            "input_sha256": {
+              "adapter-observations.json": "7217f0dc3ae4949b7f0b438ddf9cb11b4da38f7a9a46336442ac5944ce10dea1",
+              "budget.json": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6",
+              "capabilities.json": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf",
+              "descriptive.json": "2a85167b8bed8b3b300b3fca425690942e4217db4e9761ed85c5f533c5cd02e4",
+              "home.json": "74044bbe493db528c685023d9794013fa6a03045ce9fa0c276e930e46a973b47",
+              "inventory-rows.json": "1d92ad66800ea4d944142ab3d5030b8e898a81a7cf34d8a8add652d9ad9583fd",
+              "inventory.json": "10f0e4929aca9d839dfbcfda20dd549fd592fc7e285ff84ff8c5affb0f89e08f",
+              "next.json": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+              "plan.json": "edb2edde6d44d52be742dd6c38ec3e4d1302d3a8cbba7c03d6e5b129e2412bad",
+              "profile.json": "9fe5908406e293ba1900ef8c880fddfd6bea62d61bd053bd7ff7db76b959920b",
+              "question.json": "e8208fb848d0e77abd1c6f0520bb11369723a8f8c15a6528c711121663d27a72",
+              "section.json": "de0a4edcc4d3a4572d50fb6d8c1fca6b0a972f68f9bae328eca5d5774ff1e453",
+              "separation.json": "3f7c995a75a1a46942decd910fc707d651aa09e1aa5b72001fe72e5f3aecbfc0"
+            },
+            "exit_code": 0,
+            "elapsed_seconds": 322.2115410990082
+          },
+          "interrupted_numeric_mask_execution": {
+            "argv": [
+              "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon",
+              "geo",
+              "run",
+              "--plan",
+              "/private/tmp/canon-reit-orlando-20260917/case-1/address/plan.json",
+              "--work-dir",
+              "/private/tmp/canon-reit-orlando-20260917/case-1/address/run",
+              "--input",
+              "geo.parcel.home_cells:rows=/private/tmp/canon-reit-orlando-20260917/case-1/address/home.json",
+              "--input",
+              "geo.parcel.section:request=/private/tmp/canon-reit-orlando-20260917/case-1/address/section.json",
+              "--input",
+              "geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-orlando-20260917/case-1/address/descriptive.json",
+              "--input",
+              "geo.parcel.separation:request=/private/tmp/canon-reit-orlando-20260917/case-1/address/separation.json",
+              "--input",
+              "geo.parcel.next_evidence:request=/private/tmp/canon-reit-orlando-20260917/case-1/address/next.json"
+            ],
+            "binary_sha256": "5869fd75f5550220f7e497c1946590a4b9a423dae484ab2a508cea97d6e09a24",
+            "started_at": "2026-09-17T17:36:24.764038+00:00",
+            "input_sha256": {
+              "adapter-observations.json": "7217f0dc3ae4949b7f0b438ddf9cb11b4da38f7a9a46336442ac5944ce10dea1",
+              "budget.json": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6",
+              "capabilities.json": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf",
+              "descriptive.json": "2a85167b8bed8b3b300b3fca425690942e4217db4e9761ed85c5f533c5cd02e4",
+              "home.json": "74044bbe493db528c685023d9794013fa6a03045ce9fa0c276e930e46a973b47",
+              "inventory-rows.json": "1d92ad66800ea4d944142ab3d5030b8e898a81a7cf34d8a8add652d9ad9583fd",
+              "inventory.json": "10f0e4929aca9d839dfbcfda20dd549fd592fc7e285ff84ff8c5affb0f89e08f",
+              "next.json": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+              "plan.json": "edb2edde6d44d52be742dd6c38ec3e4d1302d3a8cbba7c03d6e5b129e2412bad",
+              "profile.json": "9fe5908406e293ba1900ef8c880fddfd6bea62d61bd053bd7ff7db76b959920b",
+              "question.json": "e8208fb848d0e77abd1c6f0520bb11369723a8f8c15a6528c711121663d27a72",
+              "section.json": "de0a4edcc4d3a4572d50fb6d8c1fca6b0a972f68f9bae328eca5d5774ff1e453",
+              "separation.json": "e28969776673a21989261b907e41e25a278fe669719d1ec33b2ad273c8ec45a9"
+            },
+            "exit_code": -15,
+            "elapsed_seconds": 738.203144808067
+          },
+          "executed_stages": [
+            "geo.parcel.next_evidence",
+            "geo.parcel.separation"
+          ],
+          "resumed_stages": [
+            "geo.parcel.compile_evidence",
+            "geo.parcel.explain",
+            "geo.parcel.home_cells",
+            "geo.parcel.materialize_evidence",
+            "geo.parcel.propagate",
+            "geo.parcel.section",
+            "geo.parcel.solve"
+          ],
+          "resume_reused_stages": [
+            "geo.parcel.compile_evidence",
+            "geo.parcel.explain",
+            "geo.parcel.home_cells",
+            "geo.parcel.materialize_evidence",
+            "geo.parcel.next_evidence",
+            "geo.parcel.propagate",
+            "geo.parcel.section",
+            "geo.parcel.separation",
+            "geo.parcel.solve"
+          ],
+          "stage_sha256": {
+            "compile_evidence.json": "583b71c1ea4d5c831a04aaf9fb9412dd8f3dc11fc2240189288e52a6a19634f4",
+            "explanation.json": "dc7d0aa1985c524714922412301f7ecea5381d8b8f6a1f86890ae7e52498ec82",
+            "home_cells.json": "a3bb715ac33fee1153a401f6f4a52467f0307230bf0ed22250cb620107cd476d",
+            "materialize_evidence.json": "3845fa9f2d6bdab3ad2cb82e75a1cefab4a2bfe1e64713a8df1d8160d39e79e8",
+            "next_evidence.json": "bafb121ef63cbb8e812b02bbbebe5c616f0c6df25f4bbcaae40e97c2313b7533",
+            "propagation.json": "1d7f4b3cec074d303067a6d94a8e3bc9fca323a0afd340c9a8e9803e0903bf3f",
+            "section.json": "14d64aca8db017461c9589fa7387454eb8c4ea927ca078a9a38fda422490bea1",
+            "separation.json": "98d3a99937fdae7bc9cd926b9ad0da696837e80ab81633962b8349f6847229d0",
+            "solve.json": "0a5ba1ddb731e9be8673e2a5f2d7600176ccf77dcb9a807b208fd7c602357bf7"
+          },
+          "resume_stage_bytes_unchanged": true,
+          "inspection_sha256": "91f88ebfb1427baddf48bc95e148035e6f43d7f459e68096133d83ec185dd87f",
+          "next_evidence": {
+            "version": "canon_geo_next_evidence.v0",
+            "run_id": "canon_geo_next_evidence.v0:04fb8a96a9f4a68b723a7155bf9a6536404764520000380a20aaef20a37c6283",
+            "composition_blake3": "blake3:cd3179f944ff3f66831ed4583b6950386365b2963910d5bf5a5e4fb962238d22",
+            "separation_blake3": "blake3:9618781e3c5cbfa76071400c716442c8271bb51ef7e3b8a05381082afbf0a3bb",
+            "frontier": [
+              {
+                "action_id": "acquire-source-parcel-membership",
+                "class": "separate_residual",
+                "kind": {
+                  "kind": "observe",
+                  "payload": "future-parcel-membership"
+                },
+                "observation_id": "future-parcel-membership",
+                "cost_units": 1,
+                "separation": [
+                  {
+                    "outcome_id": "first_half",
+                    "residual_model_count": 1491,
+                    "count_exact": true
+                  },
+                  {
+                    "outcome_id": "second_half",
+                    "residual_model_count": 1492,
+                    "count_exact": true
+                  }
+                ],
+                "worst_case_remaining": 1492,
+                "redundant": false
+              }
+            ],
+            "dominated": [],
+            "ranking_abstention": {
+              "code": "next_evidence_no_loss_model",
+              "message": "Total ranking requires a versioned loss model",
+              "detail": {
+                "policy": "none"
+              }
+            },
+            "budget_remaining": {
+              "max_bytes": 100000000,
+              "max_candidates": 4000,
+              "max_cells": 10000,
+              "max_models": 4000,
+              "max_operations": 200000000,
+              "max_rows": 10000,
+              "max_states": 20000000,
+              "max_variables": 4000
+            },
+            "counters": {
+              "budget_exhausted": 0,
+              "candidate_actions": 1,
+              "dominated_actions": 0,
+              "frontier_actions": 1
+            }
+          }
+        }
+      },
+      "hints_discovery_and_supplied_address_corroboration": false
+    },
+    {
+      "index": 2,
+      "property": "Sabal Palm at Lake Buena Vista",
+      "operator_address": {
+        "property_name": "Sabal Palm at Lake Buena Vista",
+        "geography_id": "us.fl.orange.dor03",
+        "address": "13675 Lake Vining Dr",
+        "raw_address": "13675 Lake Vining Dr",
+        "locality": "Orlando",
+        "region": "FL",
+        "postal_code": "32821",
+        "source_url": "https://livebh.com/apartments/sabal-palm-at-lake-buena-vista/",
+        "source_vintage": "2026-09-17",
+        "lineage_id": "bh-property-operator",
+        "source_file": "operator.html",
+        "source_sha256": "7b86aeabc52af81080e74c8fb5200257c36fe6df7781ac81162dadf418271695",
+        "extraction": "Named property header/footer street address; preserve directional words and suffixes without rewriting. The page also contains other property cards, which are not this subject.",
+        "supplied_at": "2026-09-17T17:36:21.828889+00:00"
+      },
+      "county_address_reference": {
+        "OBJECTID": 318023,
+        "ENTERPRISE_ADDRESS_ID": 425890,
+        "OFFICIAL_PARCEL_ID": "282427000000023",
+        "COMPLETE_ADDRESS": "13675 Lake Vining Dr",
+        "FULL_ADDRESS_NUMBER": "13675",
+        "COMPLETE_STREETNAME": "Lake Vining Dr",
+        "ADDRESS_NUMBER": 13675,
+        "UNIT": null,
+        "PRE_DIRECTION": null,
+        "BASENAME": "LAKE VINING",
+        "POST_TYPE": "DRIVE",
+        "POST_DIRECTION": null,
+        "MUNICIPAL_JURISDICTION": "Unincorporated",
+        "ZIPCODE": "32821",
+        "ADDRESS_TYPE": "Structure",
+        "ADDRESS_SUBTYPE": null,
+        "ADDRESS_STATUS": "Active",
+        "DOR_USE_CODE": "0310",
+        "DOR_SHORT_DESC": "MULTI-FAMILY II",
+        "LANDMARK_NAME": null,
+        "DT_CREATED": 315550800000,
+        "DT_LAST_MOD": 1741797808000
+      },
+      "reference_limit": "Exact recorded street address linked to parcel by county source; no complete property extent claim",
+      "prelookup_readback": {
+        "case": 2,
+        "property": "Sabal Palm at Lake Buena Vista",
+        "read_at": "2026-09-17T17:34:51.414285+00:00",
+        "reader": "fresh Python process reads actual native solve artifact; full native inspect/resume follows run completion",
+        "descriptive_sha256": "bef7eb541c02118e69877ecbca665ccb644f71c3fa26873c0bd879404305ab56",
+        "solve_sha256": "2800d11e130bd1fd3d3343825173cb8496824b5ca7883338a22e1407866f4b8c",
+        "best_count": 1,
+        "best_candidates": [
+          {
+            "ids": [
+              "282427000000023"
+            ],
+            "attributes": [
+              {
+                "address": "13675 LAKE VINING DR",
+                "property_name": "SABAL PALM AT LAKE BUENA VISTA",
+                "property_type": "multifamily",
+                "unit_count": null,
+                "year_built": 1988
+              }
+            ]
+          }
+        ],
+        "summary": {
+          "parcel_candidates": 2983,
+          "building_candidates": 0,
+          "candidate_assignments": 18446744073709551615,
+          "candidate_assignments_saturated": true,
+          "structurally_feasible_assignments": 2983,
+          "structurally_feasible_assignments_complete": true,
+          "structurally_feasible_assignments_saturated": false,
+          "hard_constraint_evaluations": 2983,
+          "hard_constraint_evaluations_complete": true,
+          "hard_constraint_evaluations_saturated": false,
+          "residual_model_count": 2983,
+          "model_count_scope": "entity_selection",
+          "residual_model_count_complete": true,
+          "residual_model_count_saturated": false,
+          "summary_counts_saturated": true,
+          "component_count": 1,
+          "residual_models_materialized": true
+        },
+        "truth_not_yet_acquired": true
+      },
+      "runs": {
+        "hints": {
+          "status": "ABSTAINED",
+          "solver_status": "ambiguous",
+          "exact_hard_residual": 2983,
+          "residual_count_complete": true,
+          "residual_count_saturated": false,
+          "theoretical_assignment_count_saturated": true,
+          "all_inventory_parcels_retained": true,
+          "reference_candidate_retained": true,
+          "hard_forced": {
+            "parcels": [],
+            "buildings": []
+          },
+          "hard_constraint_count": 1,
+          "unknown_candidate_unit_counts": 2983,
+          "soft_preference_count": 1,
+          "best_model_count": 1,
+          "best_and_next_distinct_cost": [
+            0,
+            1
+          ],
+          "unique_best_is_reference": true,
+          "best_candidates": [
+            {
+              "parcel_ids": [
+                "282427000000023"
+              ],
+              "cost": 0,
+              "attributes": [
+                {
+                  "address": "13675 LAKE VINING DR",
+                  "property_name": "SABAL PALM AT LAKE BUENA VISTA",
+                  "property_type": "multifamily",
+                  "unit_count": null,
+                  "year_built": 1988
+                }
+              ]
+            }
+          ],
+          "blind_experiment_success": false,
+          "admissions": [
+            {
+              "observation_id": "descriptive:property_name:282427000000023",
+              "disposition": "soft_preference",
+              "generated_ids": [
+                "rho:rho.descriptive.property_name@1:descriptive:property_name:282427000000023"
+              ],
+              "contract": {
+                "id": "rho.descriptive.property_name",
+                "version": "1",
+                "source_dataset": "retained-assessor-and-disclosure",
+                "source_release": "retained-15c955534c9b4c64",
+                "source_lineage_ids": [
+                  "nxrt-company-disclosure",
+                  "orange-county-property-appraiser"
+                ],
+                "method_id": "known-attribute-agreement",
+                "method_version": "2",
+                "claim_role": "attribute_observation",
+                "basis": {
+                  "kind": "uncalibrated",
+                  "reason": "No validated cross-source measure, grain or vintage error model",
+                  "admission_policy": {
+                    "kind": "soft_with_weight",
+                    "cost_if_absent": 1
+                  }
+                }
+              },
+              "source_record_count_provenance_only": 4
+            },
+            {
+              "observation_id": "descriptive:property_type",
+              "disposition": "diagnostic_only",
+              "generated_ids": [],
+              "contract": {
+                "id": "rho.descriptive.property_type",
+                "version": "1",
+                "source_dataset": "retained-assessor-and-disclosure",
+                "source_release": "retained-15c955534c9b4c64",
+                "source_lineage_ids": [
+                  "nxrt-company-disclosure",
+                  "orange-county-property-appraiser"
+                ],
+                "method_id": "known-attribute-agreement",
+                "method_version": "2",
+                "claim_role": "attribute_observation",
+                "basis": {
+                  "kind": "uncalibrated",
+                  "reason": "No validated cross-source measure, grain or vintage error model",
+                  "admission_policy": {
+                    "kind": "diagnostic_only",
+                    "reason": "Source category/year comparability has not been calibrated"
+                  }
+                }
+              },
+              "source_record_count_provenance_only": 2996
+            },
+            {
+              "observation_id": "descriptive:single_member",
+              "disposition": "hard_constraint",
+              "generated_ids": [
+                "rho:descriptive:single_member@1:descriptive:single_member"
+              ],
+              "contract": {
+                "id": "descriptive:single_member",
+                "version": "1",
+                "source_dataset": "orange.assessor.parcels",
+                "source_release": "retained-15c955534c9b4c64",
+                "source_lineage_ids": [
+                  "blake3:15c955534c9b4c640ed2ef3f30d3d6ab9003fe66502cf4a66a17edf57468857c"
+                ],
+                "method_id": "descriptive_asset_single_member_v0",
+                "method_version": "1",
+                "claim_role": "attribute_observation",
+                "basis": {
+                  "kind": "logical_relaxation",
+                  "invariant_id": "declared-single-member-question-relative-to-bounded-inventory"
+                }
+              },
+              "source_record_count_provenance_only": 2996
+            }
+          ],
+          "execution": {
+            "argv": [
+              "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon",
+              "geo",
+              "run",
+              "--plan",
+              "/private/tmp/canon-reit-orlando-20260917/case-2/hints/plan.json",
+              "--work-dir",
+              "/private/tmp/canon-reit-orlando-20260917/case-2/hints/run",
+              "--input",
+              "geo.parcel.home_cells:rows=/private/tmp/canon-reit-orlando-20260917/case-2/hints/home.json",
+              "--input",
+              "geo.parcel.section:request=/private/tmp/canon-reit-orlando-20260917/case-2/hints/section.json",
+              "--input",
+              "geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-orlando-20260917/case-2/hints/descriptive.json",
+              "--input",
+              "geo.parcel.separation:request=/private/tmp/canon-reit-orlando-20260917/case-2/hints/separation.json",
+              "--input",
+              "geo.parcel.next_evidence:request=/private/tmp/canon-reit-orlando-20260917/case-2/hints/next.json"
+            ],
+            "binary_sha256": "5869fd75f5550220f7e497c1946590a4b9a423dae484ab2a508cea97d6e09a24",
+            "started_at": "2026-09-17T17:49:00.990494+00:00",
+            "input_sha256": {
+              "adapter-observations.json": "7217f0dc3ae4949b7f0b438ddf9cb11b4da38f7a9a46336442ac5944ce10dea1",
+              "budget.json": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6",
+              "capabilities.json": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf",
+              "descriptive.json": "bef7eb541c02118e69877ecbca665ccb644f71c3fa26873c0bd879404305ab56",
+              "home.json": "74044bbe493db528c685023d9794013fa6a03045ce9fa0c276e930e46a973b47",
+              "inventory-rows.json": "1d92ad66800ea4d944142ab3d5030b8e898a81a7cf34d8a8add652d9ad9583fd",
+              "inventory.json": "10f0e4929aca9d839dfbcfda20dd549fd592fc7e285ff84ff8c5affb0f89e08f",
+              "next.json": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+              "plan.json": "296b083af9d712d17d0c34484a7f0f6bc31d22569e625693bff27f4555180c4b",
+              "prelookup-readback.json": "2c5787f647f6fb43c0d2cdf4b64584367ce5e25e0b04d40324f6656b09b1d9f8",
+              "profile.json": "9fe5908406e293ba1900ef8c880fddfd6bea62d61bd053bd7ff7db76b959920b",
+              "question.json": "5b9d8df047d96f66b73163bda2c7b168da4e0cbdc59200a6648f7b54f3d4c12b",
+              "section.json": "de0a4edcc4d3a4572d50fb6d8c1fca6b0a972f68f9bae328eca5d5774ff1e453",
+              "separation.json": "3f7c995a75a1a46942decd910fc707d651aa09e1aa5b72001fe72e5f3aecbfc0"
+            },
+            "exit_code": 0,
+            "elapsed_seconds": 322.20568518014625
+          },
+          "interrupted_numeric_mask_execution": {
+            "argv": [
+              "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon",
+              "geo",
+              "run",
+              "--plan",
+              "/private/tmp/canon-reit-orlando-20260917/case-2/hints/plan.json",
+              "--work-dir",
+              "/private/tmp/canon-reit-orlando-20260917/case-2/hints/run",
+              "--input",
+              "geo.parcel.home_cells:rows=/private/tmp/canon-reit-orlando-20260917/case-2/hints/home.json",
+              "--input",
+              "geo.parcel.section:request=/private/tmp/canon-reit-orlando-20260917/case-2/hints/section.json",
+              "--input",
+              "geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-orlando-20260917/case-2/hints/descriptive.json",
+              "--input",
+              "geo.parcel.separation:request=/private/tmp/canon-reit-orlando-20260917/case-2/hints/separation.json",
+              "--input",
+              "geo.parcel.next_evidence:request=/private/tmp/canon-reit-orlando-20260917/case-2/hints/next.json"
+            ],
+            "binary_sha256": "5869fd75f5550220f7e497c1946590a4b9a423dae484ab2a508cea97d6e09a24",
+            "started_at": "2026-09-17T17:32:33.158506+00:00",
+            "input_sha256": {
+              "adapter-observations.json": "7217f0dc3ae4949b7f0b438ddf9cb11b4da38f7a9a46336442ac5944ce10dea1",
+              "budget.json": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6",
+              "capabilities.json": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf",
+              "descriptive.json": "bef7eb541c02118e69877ecbca665ccb644f71c3fa26873c0bd879404305ab56",
+              "home.json": "74044bbe493db528c685023d9794013fa6a03045ce9fa0c276e930e46a973b47",
+              "inventory-rows.json": "1d92ad66800ea4d944142ab3d5030b8e898a81a7cf34d8a8add652d9ad9583fd",
+              "inventory.json": "10f0e4929aca9d839dfbcfda20dd549fd592fc7e285ff84ff8c5affb0f89e08f",
+              "next.json": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+              "plan.json": "296b083af9d712d17d0c34484a7f0f6bc31d22569e625693bff27f4555180c4b",
+              "profile.json": "9fe5908406e293ba1900ef8c880fddfd6bea62d61bd053bd7ff7db76b959920b",
+              "question.json": "5b9d8df047d96f66b73163bda2c7b168da4e0cbdc59200a6648f7b54f3d4c12b",
+              "section.json": "de0a4edcc4d3a4572d50fb6d8c1fca6b0a972f68f9bae328eca5d5774ff1e453",
+              "separation.json": "e28969776673a21989261b907e41e25a278fe669719d1ec33b2ad273c8ec45a9"
+            },
+            "exit_code": -15,
+            "elapsed_seconds": 969.7852238351479
+          },
+          "executed_stages": [
+            "geo.parcel.next_evidence",
+            "geo.parcel.separation"
+          ],
+          "resumed_stages": [
+            "geo.parcel.compile_evidence",
+            "geo.parcel.explain",
+            "geo.parcel.home_cells",
+            "geo.parcel.materialize_evidence",
+            "geo.parcel.propagate",
+            "geo.parcel.section",
+            "geo.parcel.solve"
+          ],
+          "resume_reused_stages": [
+            "geo.parcel.compile_evidence",
+            "geo.parcel.explain",
+            "geo.parcel.home_cells",
+            "geo.parcel.materialize_evidence",
+            "geo.parcel.next_evidence",
+            "geo.parcel.propagate",
+            "geo.parcel.section",
+            "geo.parcel.separation",
+            "geo.parcel.solve"
+          ],
+          "stage_sha256": {
+            "compile_evidence.json": "a769af7d92aa63f42ea6e60a83010022d0df62d6365a7f737f5122f221e37f88",
+            "explanation.json": "002286c6c60ae6051fac5d39558bedf900a74f5bdd9d37fb24c260a60d86d95e",
+            "home_cells.json": "a3bb715ac33fee1153a401f6f4a52467f0307230bf0ed22250cb620107cd476d",
+            "materialize_evidence.json": "5ee19a3eda1b05f1f69f253d7c7f8096952fcd05cefc55f3a639d1ed2cf28185",
+            "next_evidence.json": "746e700f6063ff1197b47d559b7723b270181a993db151f7657eb505800337d7",
+            "propagation.json": "789afe58ca01c8df496aeb6d4c735b7769a043f554d2ada33c5752bc96235eb7",
+            "section.json": "14d64aca8db017461c9589fa7387454eb8c4ea927ca078a9a38fda422490bea1",
+            "separation.json": "f6f1dd78952ceab7d4e1cbda83738fd2dcd79ec44b19ba904bc8adf50c91ed19",
+            "solve.json": "2800d11e130bd1fd3d3343825173cb8496824b5ca7883338a22e1407866f4b8c"
+          },
+          "resume_stage_bytes_unchanged": true,
+          "inspection_sha256": "55adddd72a819d9e115422365321f0facb46fd24c4c128f42f5ee0a311c5bc77",
+          "next_evidence": {
+            "version": "canon_geo_next_evidence.v0",
+            "run_id": "canon_geo_next_evidence.v0:2d92b080d5720b0aaa9bd7a8157ac26d83436eb832d3a0f8283ca2aac7406cdc",
+            "composition_blake3": "blake3:1dfacc0717aff841a863f84539ab31411979cb80c9736e972292bbe28ef36136",
+            "separation_blake3": "blake3:58ee3afb26d6a0109f3839e3c2c8b2d15a437559639311b64c2545e1ad50b957",
+            "frontier": [
+              {
+                "action_id": "acquire-source-parcel-membership",
+                "class": "separate_residual",
+                "kind": {
+                  "kind": "observe",
+                  "payload": "future-parcel-membership"
+                },
+                "observation_id": "future-parcel-membership",
+                "cost_units": 1,
+                "separation": [
+                  {
+                    "outcome_id": "first_half",
+                    "residual_model_count": 1491,
+                    "count_exact": true
+                  },
+                  {
+                    "outcome_id": "second_half",
+                    "residual_model_count": 1492,
+                    "count_exact": true
+                  }
+                ],
+                "worst_case_remaining": 1492,
+                "redundant": false
+              }
+            ],
+            "dominated": [],
+            "ranking_abstention": {
+              "code": "next_evidence_no_loss_model",
+              "message": "Total ranking requires a versioned loss model",
+              "detail": {
+                "policy": "none"
+              }
+            },
+            "budget_remaining": {
+              "max_bytes": 100000000,
+              "max_candidates": 4000,
+              "max_cells": 10000,
+              "max_models": 4000,
+              "max_operations": 200000000,
+              "max_rows": 10000,
+              "max_states": 20000000,
+              "max_variables": 4000
+            },
+            "counters": {
+              "budget_exhausted": 0,
+              "candidate_actions": 1,
+              "dominated_actions": 0,
+              "frontier_actions": 1
+            }
+          }
+        },
+        "address": {
+          "status": "ABSTAINED",
+          "solver_status": "ambiguous",
+          "exact_hard_residual": 2983,
+          "residual_count_complete": true,
+          "residual_count_saturated": false,
+          "theoretical_assignment_count_saturated": true,
+          "all_inventory_parcels_retained": true,
+          "reference_candidate_retained": true,
+          "hard_forced": {
+            "parcels": [],
+            "buildings": []
+          },
+          "hard_constraint_count": 1,
+          "unknown_candidate_unit_counts": 2983,
+          "soft_preference_count": 2,
+          "best_model_count": 1,
+          "best_and_next_distinct_cost": [
+            0,
+            2
+          ],
+          "unique_best_is_reference": true,
+          "best_candidates": [
+            {
+              "parcel_ids": [
+                "282427000000023"
+              ],
+              "cost": 0,
+              "attributes": [
+                {
+                  "address": "13675 LAKE VINING DR",
+                  "property_name": "SABAL PALM AT LAKE BUENA VISTA",
+                  "property_type": "multifamily",
+                  "unit_count": null,
+                  "year_built": 1988
+                }
+              ]
+            }
+          ],
+          "blind_experiment_success": false,
+          "admissions": [
+            {
+              "observation_id": "descriptive:address:282427000000023",
+              "disposition": "soft_preference",
+              "generated_ids": [
+                "rho:rho.descriptive.address@1:descriptive:address:282427000000023"
+              ],
+              "contract": {
+                "id": "rho.descriptive.address",
+                "version": "1",
+                "source_dataset": "retained-assessor-and-disclosure",
+                "source_release": "retained-15c955534c9b4c64",
+                "source_lineage_ids": [
+                  "bh-property-operator",
+                  "orange-county-property-appraiser"
+                ],
+                "method_id": "known-attribute-agreement",
+                "method_version": "2",
+                "claim_role": "attribute_observation",
+                "basis": {
+                  "kind": "uncalibrated",
+                  "reason": "No validated cross-source measure, grain or vintage error model",
+                  "admission_policy": {
+                    "kind": "soft_with_weight",
+                    "cost_if_absent": 1
+                  }
+                }
+              },
+              "source_record_count_provenance_only": 5
+            },
+            {
+              "observation_id": "descriptive:property_name:282427000000023",
+              "disposition": "soft_preference",
+              "generated_ids": [
+                "rho:rho.descriptive.property_name@1:descriptive:property_name:282427000000023"
+              ],
+              "contract": {
+                "id": "rho.descriptive.property_name",
+                "version": "1",
+                "source_dataset": "retained-assessor-and-disclosure",
+                "source_release": "retained-15c955534c9b4c64",
+                "source_lineage_ids": [
+                  "nxrt-company-disclosure",
+                  "orange-county-property-appraiser"
+                ],
+                "method_id": "known-attribute-agreement",
+                "method_version": "2",
+                "claim_role": "attribute_observation",
+                "basis": {
+                  "kind": "uncalibrated",
+                  "reason": "No validated cross-source measure, grain or vintage error model",
+                  "admission_policy": {
+                    "kind": "soft_with_weight",
+                    "cost_if_absent": 1
+                  }
+                }
+              },
+              "source_record_count_provenance_only": 5
+            },
+            {
+              "observation_id": "descriptive:property_type",
+              "disposition": "diagnostic_only",
+              "generated_ids": [],
+              "contract": {
+                "id": "rho.descriptive.property_type",
+                "version": "1",
+                "source_dataset": "retained-assessor-and-disclosure",
+                "source_release": "retained-15c955534c9b4c64",
+                "source_lineage_ids": [
+                  "nxrt-company-disclosure",
+                  "orange-county-property-appraiser"
+                ],
+                "method_id": "known-attribute-agreement",
+                "method_version": "2",
+                "claim_role": "attribute_observation",
+                "basis": {
+                  "kind": "uncalibrated",
+                  "reason": "No validated cross-source measure, grain or vintage error model",
+                  "admission_policy": {
+                    "kind": "diagnostic_only",
+                    "reason": "Source category/year comparability has not been calibrated"
+                  }
+                }
+              },
+              "source_record_count_provenance_only": 2997
+            },
+            {
+              "observation_id": "descriptive:single_member",
+              "disposition": "hard_constraint",
+              "generated_ids": [
+                "rho:descriptive:single_member@1:descriptive:single_member"
+              ],
+              "contract": {
+                "id": "descriptive:single_member",
+                "version": "1",
+                "source_dataset": "orange.assessor.parcels",
+                "source_release": "retained-15c955534c9b4c64",
+                "source_lineage_ids": [
+                  "blake3:15c955534c9b4c640ed2ef3f30d3d6ab9003fe66502cf4a66a17edf57468857c"
+                ],
+                "method_id": "descriptive_asset_single_member_v0",
+                "method_version": "1",
+                "claim_role": "attribute_observation",
+                "basis": {
+                  "kind": "logical_relaxation",
+                  "invariant_id": "declared-single-member-question-relative-to-bounded-inventory"
+                }
+              },
+              "source_record_count_provenance_only": 2997
+            }
+          ],
+          "execution": {
+            "argv": [
+              "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon",
+              "geo",
+              "run",
+              "--plan",
+              "/private/tmp/canon-reit-orlando-20260917/case-2/address/plan.json",
+              "--work-dir",
+              "/private/tmp/canon-reit-orlando-20260917/case-2/address/run",
+              "--input",
+              "geo.parcel.home_cells:rows=/private/tmp/canon-reit-orlando-20260917/case-2/address/home.json",
+              "--input",
+              "geo.parcel.section:request=/private/tmp/canon-reit-orlando-20260917/case-2/address/section.json",
+              "--input",
+              "geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-orlando-20260917/case-2/address/descriptive.json",
+              "--input",
+              "geo.parcel.separation:request=/private/tmp/canon-reit-orlando-20260917/case-2/address/separation.json",
+              "--input",
+              "geo.parcel.next_evidence:request=/private/tmp/canon-reit-orlando-20260917/case-2/address/next.json"
+            ],
+            "binary_sha256": "5869fd75f5550220f7e497c1946590a4b9a423dae484ab2a508cea97d6e09a24",
+            "started_at": "2026-09-17T17:49:00.982281+00:00",
+            "input_sha256": {
+              "adapter-observations.json": "7217f0dc3ae4949b7f0b438ddf9cb11b4da38f7a9a46336442ac5944ce10dea1",
+              "budget.json": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6",
+              "capabilities.json": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf",
+              "descriptive.json": "afeb1a959ffbc7589a61dc30c154c8cf2092e1121bef4985e980ea8b2c42f46d",
+              "home.json": "74044bbe493db528c685023d9794013fa6a03045ce9fa0c276e930e46a973b47",
+              "inventory-rows.json": "1d92ad66800ea4d944142ab3d5030b8e898a81a7cf34d8a8add652d9ad9583fd",
+              "inventory.json": "10f0e4929aca9d839dfbcfda20dd549fd592fc7e285ff84ff8c5affb0f89e08f",
+              "next.json": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+              "plan.json": "296b083af9d712d17d0c34484a7f0f6bc31d22569e625693bff27f4555180c4b",
+              "profile.json": "9fe5908406e293ba1900ef8c880fddfd6bea62d61bd053bd7ff7db76b959920b",
+              "question.json": "5b9d8df047d96f66b73163bda2c7b168da4e0cbdc59200a6648f7b54f3d4c12b",
+              "section.json": "de0a4edcc4d3a4572d50fb6d8c1fca6b0a972f68f9bae328eca5d5774ff1e453",
+              "separation.json": "3f7c995a75a1a46942decd910fc707d651aa09e1aa5b72001fe72e5f3aecbfc0"
+            },
+            "exit_code": 0,
+            "elapsed_seconds": 321.85940135410056
+          },
+          "interrupted_numeric_mask_execution": {
+            "argv": [
+              "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon",
+              "geo",
+              "run",
+              "--plan",
+              "/private/tmp/canon-reit-orlando-20260917/case-2/address/plan.json",
+              "--work-dir",
+              "/private/tmp/canon-reit-orlando-20260917/case-2/address/run",
+              "--input",
+              "geo.parcel.home_cells:rows=/private/tmp/canon-reit-orlando-20260917/case-2/address/home.json",
+              "--input",
+              "geo.parcel.section:request=/private/tmp/canon-reit-orlando-20260917/case-2/address/section.json",
+              "--input",
+              "geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-orlando-20260917/case-2/address/descriptive.json",
+              "--input",
+              "geo.parcel.separation:request=/private/tmp/canon-reit-orlando-20260917/case-2/address/separation.json",
+              "--input",
+              "geo.parcel.next_evidence:request=/private/tmp/canon-reit-orlando-20260917/case-2/address/next.json"
+            ],
+            "binary_sha256": "5869fd75f5550220f7e497c1946590a4b9a423dae484ab2a508cea97d6e09a24",
+            "started_at": "2026-09-17T17:36:24.768559+00:00",
+            "input_sha256": {
+              "adapter-observations.json": "7217f0dc3ae4949b7f0b438ddf9cb11b4da38f7a9a46336442ac5944ce10dea1",
+              "budget.json": "d84a25c730f348f2eacabe47942d39f8e444c19d4dd9c9b64520406a5d14b1c6",
+              "capabilities.json": "06b801dbbf40b2309c122e6561280a4c3104f9208b1eb1d9c0b81e6bce240baf",
+              "descriptive.json": "afeb1a959ffbc7589a61dc30c154c8cf2092e1121bef4985e980ea8b2c42f46d",
+              "home.json": "74044bbe493db528c685023d9794013fa6a03045ce9fa0c276e930e46a973b47",
+              "inventory-rows.json": "1d92ad66800ea4d944142ab3d5030b8e898a81a7cf34d8a8add652d9ad9583fd",
+              "inventory.json": "10f0e4929aca9d839dfbcfda20dd549fd592fc7e285ff84ff8c5affb0f89e08f",
+              "next.json": "3df6fa73e836d4236aa6543ce900e6559073ded1a27199bd6304745a6ca1265c",
+              "plan.json": "296b083af9d712d17d0c34484a7f0f6bc31d22569e625693bff27f4555180c4b",
+              "profile.json": "9fe5908406e293ba1900ef8c880fddfd6bea62d61bd053bd7ff7db76b959920b",
+              "question.json": "5b9d8df047d96f66b73163bda2c7b168da4e0cbdc59200a6648f7b54f3d4c12b",
+              "section.json": "de0a4edcc4d3a4572d50fb6d8c1fca6b0a972f68f9bae328eca5d5774ff1e453",
+              "separation.json": "e28969776673a21989261b907e41e25a278fe669719d1ec33b2ad273c8ec45a9"
+            },
+            "exit_code": -15,
+            "elapsed_seconds": 738.1988909260835
+          },
+          "executed_stages": [
+            "geo.parcel.next_evidence",
+            "geo.parcel.separation"
+          ],
+          "resumed_stages": [
+            "geo.parcel.compile_evidence",
+            "geo.parcel.explain",
+            "geo.parcel.home_cells",
+            "geo.parcel.materialize_evidence",
+            "geo.parcel.propagate",
+            "geo.parcel.section",
+            "geo.parcel.solve"
+          ],
+          "resume_reused_stages": [
+            "geo.parcel.compile_evidence",
+            "geo.parcel.explain",
+            "geo.parcel.home_cells",
+            "geo.parcel.materialize_evidence",
+            "geo.parcel.next_evidence",
+            "geo.parcel.propagate",
+            "geo.parcel.section",
+            "geo.parcel.separation",
+            "geo.parcel.solve"
+          ],
+          "stage_sha256": {
+            "compile_evidence.json": "a135c74311235bab2ccab3d26c4d1c8ad5bb088478ea4cc109a2672d0e0cd577",
+            "explanation.json": "5e3cc73fad2bebe6fe4a4b3c2413efb7841a8528fef39d1cbddf73a7f5ec71c0",
+            "home_cells.json": "a3bb715ac33fee1153a401f6f4a52467f0307230bf0ed22250cb620107cd476d",
+            "materialize_evidence.json": "ccdc3bd992902616657a4d8d283eae071f63bd2a7b6cbec71e83e66c8704c602",
+            "next_evidence.json": "ad2c470e3710afdd655c61ced3c0ee8fec91a66c528a0c8f7a9d53ffc57de521",
+            "propagation.json": "7f746207b86799b825ffcdc85961da1fe8882456da0335debcd56b971b55631e",
+            "section.json": "14d64aca8db017461c9589fa7387454eb8c4ea927ca078a9a38fda422490bea1",
+            "separation.json": "27168de82e2d67c20c542710a10df34f9fd780561010acb64afa88cfc0733d3d",
+            "solve.json": "baeecd1621396be62a26cb84b40df496af68f8fecdb61d30d5e18119cd1f9b22"
+          },
+          "resume_stage_bytes_unchanged": true,
+          "inspection_sha256": "6dfdaab7a09e091b1f352367c7e030e6699a4543677d45ac6f8ef677e7ac55a7",
+          "next_evidence": {
+            "version": "canon_geo_next_evidence.v0",
+            "run_id": "canon_geo_next_evidence.v0:82b14704babcc48a7a3cf578b1d7240932f752191b7050931ebc729011a49992",
+            "composition_blake3": "blake3:8e79755d2823989cfe75720c44195ffb648af59e3d9d45d6af2aca16a9a7af05",
+            "separation_blake3": "blake3:c098f6f4df47df4d99dfbc2de245cbd9f5a8811df460bdf27bb3e45421a08e77",
+            "frontier": [
+              {
+                "action_id": "acquire-source-parcel-membership",
+                "class": "separate_residual",
+                "kind": {
+                  "kind": "observe",
+                  "payload": "future-parcel-membership"
+                },
+                "observation_id": "future-parcel-membership",
+                "cost_units": 1,
+                "separation": [
+                  {
+                    "outcome_id": "first_half",
+                    "residual_model_count": 1491,
+                    "count_exact": true
+                  },
+                  {
+                    "outcome_id": "second_half",
+                    "residual_model_count": 1492,
+                    "count_exact": true
+                  }
+                ],
+                "worst_case_remaining": 1492,
+                "redundant": false
+              }
+            ],
+            "dominated": [],
+            "ranking_abstention": {
+              "code": "next_evidence_no_loss_model",
+              "message": "Total ranking requires a versioned loss model",
+              "detail": {
+                "policy": "none"
+              }
+            },
+            "budget_remaining": {
+              "max_bytes": 100000000,
+              "max_candidates": 4000,
+              "max_cells": 10000,
+              "max_models": 4000,
+              "max_operations": 200000000,
+              "max_rows": 10000,
+              "max_states": 20000000,
+              "max_variables": 4000
+            },
+            "counters": {
+              "budget_exhausted": 0,
+              "candidate_actions": 1,
+              "dominated_actions": 0,
+              "frontier_actions": 1
+            }
+          }
+        }
+      },
+      "hints_discovery_and_supplied_address_corroboration": true
+    }
+  ],
+  "prospective_representation_equivalence": [
+    {
+      "case": 0,
+      "variant": "hints",
+      "singleton_members_checked": 2983,
+      "outcome_sizes": [
+        1491,
+        1492
+      ],
+      "exhaustive_disjoint_same_partition": true,
+      "descriptive_sha256": "8690ecf199da776ec43a9019971a6062257c48a0d27ba48973d0c560d387efd6",
+      "solve_sha256": "d48f31f99c9352a9b80d0e4a0ad1328b628caf0b38fb75c1da37761cbadfd288"
+    },
+    {
+      "case": 0,
+      "variant": "address",
+      "singleton_members_checked": 2983,
+      "outcome_sizes": [
+        1491,
+        1492
+      ],
+      "exhaustive_disjoint_same_partition": true,
+      "descriptive_sha256": "b95edf525f07445be91d335ea2b69c849d4182651c2c583f759215804e3344cf",
+      "solve_sha256": "62e6710423c8b6b0d28b07df252ed3433e26a66134f5a1ad15aac02a8c9a87f1"
+    },
+    {
+      "case": 1,
+      "variant": "hints",
+      "singleton_members_checked": 2983,
+      "outcome_sizes": [
+        1491,
+        1492
+      ],
+      "exhaustive_disjoint_same_partition": true,
+      "descriptive_sha256": "0e844061b375606dc81359771f30275fc6a8ca81aa1277312d480b91ea42afd1",
+      "solve_sha256": "569935eed97795aceca624057448cfbb782f875e9974f0d64662fd1f81af0794"
+    },
+    {
+      "case": 1,
+      "variant": "address",
+      "singleton_members_checked": 2983,
+      "outcome_sizes": [
+        1491,
+        1492
+      ],
+      "exhaustive_disjoint_same_partition": true,
+      "descriptive_sha256": "2a85167b8bed8b3b300b3fca425690942e4217db4e9761ed85c5f533c5cd02e4",
+      "solve_sha256": "0a5ba1ddb731e9be8673e2a5f2d7600176ccf77dcb9a807b208fd7c602357bf7"
+    },
+    {
+      "case": 2,
+      "variant": "hints",
+      "singleton_members_checked": 2983,
+      "outcome_sizes": [
+        1491,
+        1492
+      ],
+      "exhaustive_disjoint_same_partition": true,
+      "descriptive_sha256": "bef7eb541c02118e69877ecbca665ccb644f71c3fa26873c0bd879404305ab56",
+      "solve_sha256": "2800d11e130bd1fd3d3343825173cb8496824b5ca7883338a22e1407866f4b8c"
+    },
+    {
+      "case": 2,
+      "variant": "address",
+      "singleton_members_checked": 2983,
+      "outcome_sizes": [
+        1491,
+        1492
+      ],
+      "exhaustive_disjoint_same_partition": true,
+      "descriptive_sha256": "afeb1a959ffbc7589a61dc30c154c8cf2092e1121bef4985e980ea8b2c42f46d",
+      "solve_sha256": "baeecd1621396be62a26cb84b40df496af68f8fecdb61d30d5e18119cd1f9b22"
+    }
+  ],
+  "interruption": {
+    "reason": "Observed excessive CPU cost in hypothetical separation; replace 0/1 masks with mathematically equivalent explicit singleton allowed sets under the unchanged exactly-one-parcel premise. No current evidence or solve changes.",
+    "processes": [
+      {
+        "pid": 84494,
+        "elapsed": "16:09",
+        "args": "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon geo run --plan /private/tmp/canon-reit-orlando-20260917/case-1/hints/plan.json --work-dir /private/tmp/canon-reit-orlando-20260917/case-1/hints/run --input geo.parcel.home_cells:rows=/private/tmp/canon-reit-orlando-20260917/case-1/hints/home.json --input geo.parcel.section:request=/private/tmp/canon-reit-orlando-20260917/case-1/hints/section.json --input geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-orlando-20260917/case-1/hints/descriptive.json --input geo.parcel.separation:request=/private/tmp/canon-reit-orlando-20260917/case-1/hints/separation.json --input geo.parcel.next_evidence:request=/private/tmp/canon-reit-orlando-20260917/case-1/hints/next.json",
+        "interrupted_at": "2026-09-17T17:48:42.899744+00:00"
+      },
+      {
+        "pid": 84495,
+        "elapsed": "16:09",
+        "args": "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon geo run --plan /private/tmp/canon-reit-orlando-20260917/case-0/hints/plan.json --work-dir /private/tmp/canon-reit-orlando-20260917/case-0/hints/run --input geo.parcel.home_cells:rows=/private/tmp/canon-reit-orlando-20260917/case-0/hints/home.json --input geo.parcel.section:request=/private/tmp/canon-reit-orlando-20260917/case-0/hints/section.json --input geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-orlando-20260917/case-0/hints/descriptive.json --input geo.parcel.separation:request=/private/tmp/canon-reit-orlando-20260917/case-0/hints/separation.json --input geo.parcel.next_evidence:request=/private/tmp/canon-reit-orlando-20260917/case-0/hints/next.json",
+        "interrupted_at": "2026-09-17T17:48:42.900416+00:00"
+      },
+      {
+        "pid": 84496,
+        "elapsed": "16:09",
+        "args": "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon geo run --plan /private/tmp/canon-reit-orlando-20260917/case-2/hints/plan.json --work-dir /private/tmp/canon-reit-orlando-20260917/case-2/hints/run --input geo.parcel.home_cells:rows=/private/tmp/canon-reit-orlando-20260917/case-2/hints/home.json --input geo.parcel.section:request=/private/tmp/canon-reit-orlando-20260917/case-2/hints/section.json --input geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-orlando-20260917/case-2/hints/descriptive.json --input geo.parcel.separation:request=/private/tmp/canon-reit-orlando-20260917/case-2/hints/separation.json --input geo.parcel.next_evidence:request=/private/tmp/canon-reit-orlando-20260917/case-2/hints/next.json",
+        "interrupted_at": "2026-09-17T17:48:42.900537+00:00"
+      },
+      {
+        "pid": 87200,
+        "elapsed": "12:18",
+        "args": "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon geo run --plan /private/tmp/canon-reit-orlando-20260917/case-0/address/plan.json --work-dir /private/tmp/canon-reit-orlando-20260917/case-0/address/run --input geo.parcel.home_cells:rows=/private/tmp/canon-reit-orlando-20260917/case-0/address/home.json --input geo.parcel.section:request=/private/tmp/canon-reit-orlando-20260917/case-0/address/section.json --input geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-orlando-20260917/case-0/address/descriptive.json --input geo.parcel.separation:request=/private/tmp/canon-reit-orlando-20260917/case-0/address/separation.json --input geo.parcel.next_evidence:request=/private/tmp/canon-reit-orlando-20260917/case-0/address/next.json",
+        "interrupted_at": "2026-09-17T17:48:42.901020+00:00"
+      },
+      {
+        "pid": 87201,
+        "elapsed": "12:18",
+        "args": "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon geo run --plan /private/tmp/canon-reit-orlando-20260917/case-1/address/plan.json --work-dir /private/tmp/canon-reit-orlando-20260917/case-1/address/run --input geo.parcel.home_cells:rows=/private/tmp/canon-reit-orlando-20260917/case-1/address/home.json --input geo.parcel.section:request=/private/tmp/canon-reit-orlando-20260917/case-1/address/section.json --input geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-orlando-20260917/case-1/address/descriptive.json --input geo.parcel.separation:request=/private/tmp/canon-reit-orlando-20260917/case-1/address/separation.json --input geo.parcel.next_evidence:request=/private/tmp/canon-reit-orlando-20260917/case-1/address/next.json",
+        "interrupted_at": "2026-09-17T17:48:42.901114+00:00"
+      },
+      {
+        "pid": 87202,
+        "elapsed": "12:18",
+        "args": "/private/tmp/canon-reit-orlando-20260917/release-target/release/canon geo run --plan /private/tmp/canon-reit-orlando-20260917/case-2/address/plan.json --work-dir /private/tmp/canon-reit-orlando-20260917/case-2/address/run --input geo.parcel.home_cells:rows=/private/tmp/canon-reit-orlando-20260917/case-2/address/home.json --input geo.parcel.section:request=/private/tmp/canon-reit-orlando-20260917/case-2/address/section.json --input geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-orlando-20260917/case-2/address/descriptive.json --input geo.parcel.separation:request=/private/tmp/canon-reit-orlando-20260917/case-2/address/separation.json --input geo.parcel.next_evidence:request=/private/tmp/canon-reit-orlando-20260917/case-2/address/next.json",
+        "interrupted_at": "2026-09-17T17:48:42.901230+00:00"
+      }
+    ]
+  },
+  "limits": [
+    "Geography-selected three-property replication, not portfolio accuracy or scale acceptance",
+    "Current assessor snapshot does not establish December 2025 physical truth",
+    "DOR03 county subset and single-parcel premise do not establish complete reach or property extent",
+    "Native statuses remain ABSTAINED; soft costs are neither probabilities nor independent source counts",
+    "Cornerstone's directional mismatch is unresolved, not normalized away",
+    "Source-count/measure calibration, source-neutral accepted membership, and automated accepted identity remain open"
+  ],
+  "archives": [
+    {
+      "path": "sources.tar.gz",
+      "sha256": "388b97ce4c69ff9e75a9a29ef25472ed34bae4667689a677fc98dac3b70b9454",
+      "bytes": 7625561,
+      "files": 43
+    },
+    {
+      "path": "run.tar.gz",
+      "sha256": "bdae49855fa385dfbefe73350240809351250ad5cdd0d4e56dfbbd1003d21524",
+      "bytes": 12420156,
+      "files": 592
+    }
+  ],
+  "validation": {
+    "code_revision": "db72dfac5d6689bb8789f81ad93c5dad9339601e",
+    "cargo_fmt_check": "passed",
+    "cargo_clippy_all_targets_deny_warnings": "passed",
+    "cargo_test_exit_code": 0,
+    "passed": 3158,
+    "failed": 0,
+    "ignored": 11,
+    "logs": [
+      {
+        "path": "clippy.log",
+        "sha256": "3baac1f49b765bdeafa5d323244ba090d2f2561ec843c902ab9d5d8ed0a76aad"
+      },
+      {
+        "path": "full-tests.log",
+        "sha256": "b0fd45c67d529416e147475ae06d48d0ac063e4d00713696190ecae3c6bc3c33"
+      },
+      {
+        "path": "release-build.log",
+        "sha256": "adac41912b9ba99326618c8e42cb7e6775e2e097f47da4ed2eb77120c086f412"
+      }
+    ]
+  }
+}

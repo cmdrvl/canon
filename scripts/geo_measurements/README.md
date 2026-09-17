@@ -16,6 +16,14 @@ remain feasible; no name score forces identity. The retained sources,
 native receipts, withheld-truth evaluation, limits, and replay command are
 linked from the experiment notes. This is not E4/E5 acceptance.
 
+The [three-property Orlando replication](fixtures/addressless_orlando_2026-09-17/README.md)
+uses the corrected soft policy on 2,983 Orange County parcel candidates. Hints
+uniquely rank Residences at West Place and Sabal Palm at Lake Buena Vista;
+separately supplied operator addresses corroborate both. Cornerstone remains
+unranked because its source name and directional address differ. All hard
+residuals remain 2,983; no identity is forced. This is another retained
+public-data experiment, with no Canon runtime changes or scale claim.
+
 ## Execution contract
 
 1. Call the cmdrvl-data MCP table list and describe operations first. Use the
