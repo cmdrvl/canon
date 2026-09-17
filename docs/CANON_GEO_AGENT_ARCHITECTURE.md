@@ -38,9 +38,19 @@
 
 ## 1. Purpose
 
-Canon Geo should let an agent answer a bounded location question accurately without
-having to memorize pipeline choreography, infer state from filenames, or confuse the
-availability of a source with evidence that changes an answer.
+**Canon Geo is an agent tool for evidence-backed geographic association.** It should
+help an agent answer: **which real-world entity does this evidence identify, at what
+grain, as of when, and why should I trust that association?** The agent may be discovering
+a property from hints, corroborating a supplied address, or evaluating a source-asserted
+relationship. Useful results include supported associations, alternatives, contradictions,
+and specific missing evidence.
+
+The agent should obtain those results without memorizing pipeline choreography, inferring
+state from filenames, or manually joining unrelated artifacts. Exact constraint solving
+supports this product by checking consistency, preserving alternatives, explaining
+conflicts, and establishing forced conclusions when the evidence permits. Its strongest
+guarantee is one part of the answer. Supported association, acceptance under a declared
+policy, solver exactness, and complete property or collateral extent are distinct claims.
 
 The system takes a question, a resolution profile, a resource budget, and either a regional
 inventory or enough declared gaps to request one:
@@ -63,12 +73,76 @@ The agent-facing system is successful when an agent can answer, in one bounded i
 3. Which evidence was admitted, kept diagnostic, or rejected, and why?
 4. Did the true candidate have a route into the bounded universe?
 5. Which local components were solved exactly, approximated, or left unresolved?
-6. What is forced, ambiguous, contradictory, or unsupported?
+6. Which associations are supported at each requested grain, by which evidence, and what
+   is accepted under policy, hard-forced, ambiguous, contradictory, or unsupported?
 7. Which prior work is reusable after new evidence arrives?
 8. What is the cheapest next action that can materially change the answer?
 
 No agent should have to reconstruct those answers by reading logs or joining unrelated
 artifacts manually.
+
+### 1.1 Agents bring evidence; Geo makes the association inspectable
+
+The MCP-accessible data estate supplies a broad evidence inventory: national place,
+address, and building datasets; regional parcels and address points; and source-specific
+records with explicit identifiers and relationships. An agent can combine those landed
+datasets with externally sourced property evidence. This gives it several routes to a
+geographic association and opportunities to check a proposed address against other records.
+Regional availability and source semantics still determine which routes are usable.
+
+The intended division of work is:
+
+1. The agent states the subject, requested grain, geography, temporal scope, and budget.
+2. The agent uses MCP tools or other external acquisition to obtain relevant records,
+   retaining source bytes or declared projections, release pins, query bounds, and lineage.
+3. Versioned adapters/profiles express names, addresses, points, geometries, and explicit
+   source links as typed evidence. Canon plans and runs bounded offline work over it.
+4. Canon exposes the supported association, competing interpretations, evidence that
+   changed the result, acceptance limits, and next useful evidence. The agent can inspect
+   the source trail, provide another observation, or take an eligible result to review.
+
+This is useful both for discovery from descriptive hints and for corroboration after an
+agent supplies an address or a source lookup. Canon does not perform those source lookups.
+Provider names and regional interpretation belong in adapters and inventories; core
+dispatches evidence classes and relations. A national profile can combine national and
+local sources, while a NYC profile can preserve PAD-specific semantics. Their contracts
+must identify the actual jurisdiction, grammar, grain, vintage, and evidence authority.
+Neither the number of available datasets nor repeated copies of one upstream record
+constitutes independent corroboration or a confidence score.
+
+### 1.2 What the REIT experiments demonstrate
+
+The retained [Courtney Cove](../scripts/geo_measurements/fixtures/addressless_courtney_2026-09-17/README.md)
+and [Orlando](../scripts/geo_measurements/fixtures/addressless_orlando_2026-09-17/README.md)
+experiments demonstrate useful candidate discovery from hints followed by corroboration
+using separately supplied operator addresses. They also exposed admission errors and
+representation gaps: conflicting unit counts must not exclude truth without justified
+comparability, and different source names or address directionals require explicit evidence.
+
+The known-subject [Cornerstone national-evidence follow-up](../scripts/geo_measurements/fixtures/cornerstone_national_2026-09-17/README.md)
+adds supplied Foursquare and Overture records to the same 2,983-parcel universe.
+Foursquare uniquely prefers parcel `302304550403000`; Overture corroborates that parcel.
+Geometry and explicit source address links provide the connection without silently
+dropping the operator address's `South` directional. The county-derived Overture address
+mirror extends provenance and earns no extra preference.
+
+| Requested claim | Observed support | Remaining boundary |
+|---|---|---|
+| Cornerstone/address to parcel | One uniquely preferred parcel, supported by both place families | Soft evidence; all 2,983 hard-feasible parcel models remain |
+| Address to a particular building | Two tied preferred buildings among 347 bounded candidates | Evidence points land on different roofs; the Overture place point is off the retained roofs |
+| Complete property or collateral extent | Not established by this experiment | Requires its own membership/completeness evidence |
+
+All three final native runs complete the nine-stage DAG and report `ABSTAINED`.
+The agent-facing target must make their useful per-claim results visible alongside that
+status. It must preserve the distinction between a corroborated candidate, an association
+accepted under a declared policy, and a fact forced by every hard-feasible model.
+A new label or a larger preference weight cannot supply missing acceptance justification.
+
+These measurements use an experimental offline adapter and manually assembled inputs.
+They demonstrate that supplied national and local evidence can materially improve a
+bounded answer. General source-neutral association acceptance, the integrated agent
+journey, population accuracy, and live scale remain open. The architecture work is to make
+the demonstrated reasoning repeatable and accessible through the existing primary surface.
 
 ## 2. The system in one equation
 
@@ -99,6 +173,7 @@ The control plane exists primarily to keep these distinctions visible.
 | Coverage | Does the declared subset predicate cover the bounded question? | That a row is correct or useful |
 | Candidate reach | Can the labeled or intended entity enter the candidate universe, and against what bounded reference is that known? | That the solver will choose it; that unlabeled production reach is empirically proven |
 | Admission | Does a versioned `rho` justify a logical constraint? | That the source is world-truth |
+| Association support and acceptance | Which entity-grain relationship is supported, what competes with it, and what declared policy permits acceptance? | That a soft preference is hard-forced, that source count is confidence, or that an association proves complete extent |
 | Constraint effect | How did the admitted constraint change the model set? | That source count is independent information |
 | Solver correctness | Is the residual exact relative to the quantized representation and budgets? | That the representation equals world-truth |
 | Reconciliation | Did independently solved sections produce one confluent owned decision? | That matching payload digests prove payload semantics |
@@ -411,12 +486,30 @@ The answer projects the residual into requested entity grains and claim classes.
 unavailable parcel alias does not erase a resolved building entity. A profile that lacks
 the requested grain reports that grain as unsupported while preserving supported answers.
 
+The target answer also exposes evidence-backed associations that are useful without a
+singleton hard residual. For each requested relationship, retain the subject and candidate
+entities, grain and temporal scope, supporting and conflicting observations, direct versus
+derived source links, shared lineage, alternative candidates, and the reason acceptance is
+permitted or still pending. Report hard-backbone membership and residual exactness alongside
+that association. A run-level abstention or unresolved wider composition must not erase a
+supported narrower claim, and that claim must not inherit stronger acceptance from its
+presentation. These are target output requirements, not new shipped status values or a
+change to the current composition contract.
+
 ### 4.12 Evaluation
 
 Evaluation reports the planes in §3 with predeclared denominators. Labels never enter
 candidate generation, admission, compilation, or solving. Fixtures prove contracts, not
 live coverage or precision. Retained measurements remain retained proof and are never
 presented as fresh warehouse execution.
+
+Agent-facing evaluation measures correct associations at the requested grain, wrong
+associations, grain errors, coverage, justified abstentions, evidence traceability, and
+review burden. Evidence ablations should show what each added observation contributes,
+including unchanged or contradictory results. A useful corroborated candidate and an exact
+hard singleton earn different claims; report each under its own predeclared denominator.
+These association metrics complement the existing E1–E5/G3 and hard-forced gates without
+weakening them or allowing a successful example to stand in for held-out truth evaluation.
 
 ### 4.13 Inspection, explanation, and next evidence
 
@@ -427,6 +520,8 @@ The final layer is the agent control surface. It exposes:
 - pinned inputs and reusable artifact hashes;
 - coverage and candidate-reach gaps;
 - admitted/diagnostic/rejected evidence;
+- supported associations and alternatives per requested grain, their source trail, and
+  acceptance under the declared policy;
 - component-size distribution and exactness;
 - answer/backbone/residual/conflict state;
 - resource estimates, actual deterministic counters, and budget remaining;
@@ -728,9 +823,10 @@ Every Geo command and artifact must satisfy these rules:
 
 ## 11. Promotion is part of the system, not part of the solver
 
-The final customer value is durable accepted knowledge, not a directory of workbench
-artifacts. The control plane therefore makes promotion readiness visible while preserving
-the firewall:
+The immediate agent value is an inspectable, evidence-backed answer at the requested grain.
+Reviewed promotion turns eligible associations into durable accepted knowledge for future
+exact replay. The control plane makes both the useful current answer and its promotion
+readiness visible while preserving the firewall:
 
 ```text
 uncertain regional evidence

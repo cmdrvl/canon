@@ -126,6 +126,18 @@ before changing Geo orchestration or contracts, and use
 [`docs/PLAN_CANON_GEO.md`](./docs/PLAN_CANON_GEO.md) for the governing mathematics,
 measurements, and E1–E5 gates.
 
+Canon Geo is an **agent tool for evidence-backed geographic association**. Its
+product question is: which entity does the supplied evidence identify, at what
+grain, as of when, and why should the agent trust that association? Agents may
+obtain evidence through MCP-accessible national and local datasets, source
+lookups, or supplied documents; Canon consumes the retained evidence offline.
+Make supported associations, alternatives, contradictions, provenance, and the
+next missing evidence visible. Report acceptance under a declared policy and
+solver exactness separately. A useful parcel association need not establish one
+building or the complete property/collateral extent. A soft winner remains a
+soft winner until justified acceptance; neither a source count nor a renamed
+`ABSTAINED` status supplies that justification.
+
 Operate Geo as one bounded, source-generic system:
 
 ```text
@@ -152,6 +164,10 @@ question + capabilities + regional inventory + resolution profile + budget
   provenance, not independent information or confidence.
 - Report availability, candidate reach, rho soundness, solver exactness, reconciliation,
   truth quality, and cost as different planes.
+- Evaluate the agent-facing result at the requested grain: correct associations,
+  wrong associations, grain errors, coverage, and justified abstentions. Preserve
+  hard-backbone and exactness gates for the claims they govern; those gates do
+  not measure the whole value of candidate discovery or corroboration.
 - Distinguish structural candidate completeness relative to declared inputs from empirical
   truth reach. Unverified reach can coexist with an exact representation-relative solve;
   failed reach blocks the affected claim and exactness does not repair it.

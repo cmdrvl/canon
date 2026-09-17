@@ -1,6 +1,14 @@
 # PLAN_CANON_GEO — The Tile as a Compiled Constraint Object
 
 > Status: **proposed full architecture with a partial E4 walking skeleton implemented**.
+> **Agent product direction, 2026-09-17:** Canon Geo helps agents establish and explain
+> geographic associations from supplied evidence at an explicit entity grain. Agents can
+> bring records from MCP-accessible national/local datasets and external source lookups;
+> Canon's run remains offline. §16.1.3 distinguishes supported association, acceptance
+> under policy, exact solver guarantees, and complete property/collateral extent. The
+> REIT experiments demonstrate useful discovery and corroboration; general source-neutral
+> acceptance and the integrated agent journey remain open. Existing mathematics,
+> admission rules, scope decisions, and E1–E5/G3 gates remain unchanged.
 > **Course correction 2026-09-01:** §18 restates the product as collateral composition,
 > evidence-dated existence, and named conflicts, and places every proposal in `IN`,
 > `DEFERRED`, or `CUT`; §19 is the staged execution plan with frozen gates. Where §18
@@ -26,13 +34,14 @@
 > profile, emits typed external requests for missing inputs, and never executes work or
 > proves live source truth. Bounded offline `canon geo run` now consumes that plan,
 > explicit local `NODE_ID:BINDING_ID=PATH` inputs, and optional `--satisfy`
-> receipt checks, then delegates the five implemented Geo stages to the shared
+> receipt checks, then delegates the nine default Geo stages to the shared
 > `canon.project.run.v2` runner and emits `canon_geo_run.v0`. The shared runner publishes
 > immutable content-addressed manifest revisions with full-plan receipt prevalidation, but
 > Geo run does not perform live acquisition, prove live source truth, mutate the immutable
 > plan, clear acquisition blockers, or automatically replan during `geo run`,
-> schedule concurrently across agents, recover crash-stale locks, or provide an
-> inspection/next-evidence surface. The public CLI `--satisfy`
+> schedule concurrently across agents, or recover crash-stale locks. Stored-run
+> inspection is implemented by `geo inspect`; the default DAG includes separation and
+> next-evidence stages requiring explicit prospective inputs. The public CLI `--satisfy`
 > check only validates an explicit acquisition receipt against explicit local input bytes.
 > `canon geo replan-from-acquisition` can additionally materialize an immutable, plan-bound regional-inventory
 > advancement for `live`, `COMPLETE`, full-region `canon_geo_warehouse_rows.v0` JSON artifacts
@@ -43,10 +52,11 @@
 > retained/fixture proof, untyped artifacts, and narrower subsets stay non-advancing. That
 > artifact still does not mutate the base plan or clear its blockers in place: the command
 > atomically writes the separate advancement sidecar and emits a new base-inventory-bound
-> `canon_geo_plan.v0`. Geo inspect and
-> residual-aware next-evidence control remain open. Geometry
-> acquisition/ingest, temporal solving, knowledge compilation, and
-> the complete E4/E5 populations do not exist. This does not change canon core: runtime
+> `canon_geo_plan.v0`. Richer per-claim association/explanation and the integrated
+> source-neutral address journey remain open. Integrated live acquisition, general
+> knowledge compilation, and the complete E4/E5 populations remain open; bounded
+> geometry and lifecycle/temporal contracts have their own implemented scopes below.
+> This does not change canon core: runtime
 > lookup remains exact registry lookup.
 >
 > Date: 2026-08-15. Derived from an adversarial multi-model design session (see
@@ -86,7 +96,7 @@ The controlling state entering the main review is:
 | Measurement receipt integrity | The companion `canon_geo_measurements` binary emits a deterministic offline plan or checks supplied result artifacts and receipts against the pinned B/C/D/F manifest. It recomputes local source-SQL bytes, normalized executed-query-text bytes, artifact bytes, an unordered canonical result-set digest, row-derived denominators, and declared sanity fields. A successful row is only `receipt_consistent`: the operator-supplied proof class is reported separately, and the runner does not attest live execution, query-history provenance, or source authenticity. | `src/bin/canon_geo_measurements.rs`, `scripts/geo_measurements/manifest.json`; offline integrity contract `IMPLEMENTED`, live provenance `OPEN` |
 | Tile work and boundary ownership | `canon geo materialize-home-cells` derives release-bound h3o cells from fixed-decimal WGS84 representative points, retains geometry/transform bindings, nine-point coordinate-envelope probes, the minimum probe-covering halo, and claimed-cell parity. The current v1 tile contracts also preserve each source instance's pinned release, native entity level, identity participation, and plan-shaped inventory reference through home-cell assignment, center-plus-halo work, and reconciliation; one source instance cannot silently mix release/scope/inventory/method/transform bindings, observation-only features cannot become candidate members, and a feature cannot be promoted across entity levels. Decision semantics are explicit: `composition` may contain mixed native levels and EvidenceOnly-only membership but carries no alias-mint authority and remains available without inventory-lineage validation. `stable_identity` names one entity level, requires every member at that native/candidate level and at least one StableAlias participant there, recomputes the supplied canonical regional inventory's semantic and planning hashes, and requires every member's source instance, release, native scope, and inventory reference to agree exactly. Stable decisions and their artifact retain those hashes as an inventory-relative authority boundary, not external or world truth. The geometry digest is validated as a binding but cannot be recomputed because this artifact intentionally omits geometry bytes. `canon geo tile-work` materializes one budgeted H3 center-plus-halo work unit. Each reconciliation proposal repeats and is checked against the domain-separated digest of its embedded canonical work unit, and `canon geo reconcile-tiles` emits one owned decision per declared semantics plus canonical member set. That check proves deterministic association to caller-supplied bytes; without an executor-issued receipt it does not prove an external solver consumed the work unit. Reconciliation refuses missing owners, halo-only decisions, unavailable or relabeled members, inventory-authority laundering, cross-level stable-identity laundering, and differing payload digests for the same semantic scope. H3 supplies blocking and ownership only, never geometric truth. Historical v0 schemas remain published but are not accepted by the current v1 command surface. Fresh v3 rows expose complete centroids but null source-plane H3 fields, correctly requiring this derived sibling. D.11 finds positive k1 reach in six r8 strata and one deliberately dense r9 child per stratum, with explicit Canon neighbor disks. It does not establish citywide recall, global h3o parity, client-layer coverage, or solver-payload interpretation. | `src/geo/tile.rs`, `canon_geo_home_cell_*.v1`, `canon_geo_tile_work_*.v1`, `canon_geo_tile_reconciliation*.v1`; executable assignment/ownership contract `IMPLEMENTED`, stratified bounded reach `MEASURED`, generalization `OPEN` |
 | Decision object | Entity-grain backbone and residual count with explicit scope and exactness; typed fallback when either is incomplete. Ledger keys are alias projections. | §§9, 10.2, 16.1; Appendix L.5 |
-| Candidate problem | Point re-ranking is not the dominant measured failure. The unresolved solver question is collateral composition over parcel/building sets. | Appendices L–M; `MEASURED`, with E4 `OPEN` |
+| Candidate problem | Point re-ranking is not the dominant failure in the populations measured in Appendices L–M. The H.7 solver question is collateral composition over parcel/building sets. The REIT experiments additionally measure candidate discovery and supplied-address corroboration at explicit grains. | Appendices L–M; §16.1.3; scoped `MEASURED`, with E4 `OPEN` |
 | Footprint→parcel predicate | Strictly more than 50% of computed footprint geometry inside computed parcel geometry, within an explicitly interior-disjoint parcel stratum; asserted area fields are observations, never denominators. Candidate reach is independent: a footprint and its majority parcel may have different H3 home cells. The fresh NYC+Overture rerun finds k1 equal to the complete parcel reference in all twelve measured strata for both footprint planes. Overlapping legal parcel hierarchies still require typed crosswalks. | Appendices D.9–D.11 and F.6; corrected predicate/reach split and stratified two-footprint-source halo `MEASURED`, FEMA/client rerun `OPEN` |
 | Decomposition | Legacy mixed-denominator runs produced forests and parcel stars up to 71 variables. D.11's fresh geom-v3 NYC-footprint graph remains a forest in all twelve measured r8/r9 strata, with maxima 3–65 at r9 and 4–71 at r8. F.6 adds Overture observations and remains a forest, but raw observation maxima rise to 5–118 at r9 and 7–128 at r8. Those are parcel/center-observation predicate-incidence components, not deduplicated latent buildings or final solver widths: source reconciliation and additional evidence may merge or couple them. Canonical overlap-aware solver decomposition remains open; solver incidence factorization is implemented independently. | Appendices D.11 and F.6; stratified multi-source predicate incidence `MEASURED`, multi-source solver incidence `OPEN` |
 | Work-unit cost | The 200-feature, 0.5 s/tile, and 140 CPU-hour national figures are not supported. D.11 measures two-source r9+k1 work units of 378–4,670 nodes. F.6's raw three-plane work units are 596–7,015 nodes at r9, while predicate-incidence maxima are 5–118. This supports component-wise solving but also proves that raw source rows must not be mistaken for latent-building variables; compilation, source reconciliation, FEMA, and client-layer costs remain unbenchmarked. | Appendices B, C, D.11, F.6, G; original figures `FALSIFIED`, replacement runtime model `OPEN` |
@@ -95,7 +105,7 @@ The controlling state entering the main review is:
 | E5 geography preflight | Franklin County, Ohio (`39049`) now has a real parcel-backed successor to the immutable 2026-08-31 thin-tier preflight. Pinned current inputs are bridge build `80d0ea39-a5aa-4c27-a8d7-f662a4507257` and Franklin parcel release `hub-de09f99cce0bcae7142d6d2e26582fd3-25` / `2026-09-01`. Of 494,704 landed parcels, 494,043 pass the declared source/derived geometry admission. H3 feature coverage gives every one of 151 property subjects a nonempty block; Snowflake GEOGRAPHY PIP reaches 147, with 146 unique and one two-parcel case. The four misses are 3.006–22.221 m from the nearest blocked parcel and none is rescued by invalid-retained geometry. Microsoft GlobalML `2026-07-24` footprint coverage over the same current bridge contributes 168,778 features across 581 of 585 center+k1 r8 work cells, with zero HOT-geometry misses. A seeded live row also traversed original EPSG:3735 WKB → independent digest verification → Canon fixed-point materialization: 29 decoded / 28 canonical vertices, ≤1 µm decimal admission loss and ≤499 µm lattice snapping. These are candidate-reach, source-availability, and source-byte transport results, not precision, exact-local parity, solver correctness, or an evidence-tier operating point. Successful MCP envelopes still omit query ids, so durable live receipt promotion remains open. The applicable FEMA Ohio partition remains `2023-05-02`; vintages are pinned per geography. | `e5_franklin_county_parcel_candidate_reach.sql`, `e5_microsoft_globalml_franklin_h3_coverage.sql`, `e5_franklin_county_live_geometry_probe.sql`; parcel candidate reach, Microsoft current-bridge coverage, and one seeded source-byte path `MEASURED`, generic core isolation `TESTED`, E5 `OPEN` |
 | Time semantics | Bounded lifecycle/as-of resolution, temporal containment/property membership and declared interval-constraint projection are implemented in `lifecycle.rs`. Timeless composition does not acquire historical validity from a release date. A characterized absence can emit the declared hard constraint only with an authoritative lifecycle death separator and valid scope; presence alone and unseparated absence remain diagnostic/abstained. No historical Brooklyn boundary was measured. | bd-12gh and promoted bd-1oy8; bounded contracts `IMPLEMENTED`, dated population/real-case proof remains separate (bd-1ehd) |
 | Current precision claim | The 96–98% entity-grain answered-point estimate is provisional and truth-instrument-limited; Appendix M indicates residual contamination. | Appendices L.6 and M.5; `MEASURED`, not a release claim |
-| Product thesis | Collateral composition at parcel and building grain, evidence-dated physical existence, and named source conflicts (§18.2). Point re-ranking is `CUT`. Honest abstention is required but not differentiating. | §18; binding scope |
+| Product thesis | Agent-facing geographic association from supplied evidence, with provenance, alternatives, and acceptance/exactness reported separately (§16.1.3). Collateral composition, dated existence, and named conflicts remain specialized deliverables (§18.2). Point re-ranking remains `CUT`; supported association does not imply complete extent or hard-forced identity. | §16.1.3 and §18 operator clarification; existing scope/gates preserved |
 | Solver scope | Extensional exact kernel retained as backend. Propagators (additive band, cardinality, exclusivity) and explanation artifacts (minimal core, correction sets, counterfactual separation) are `IN`; compiled representations, latent-slot symmetry breaking and VeriPB remain `DEFERRED`. The original temporal deferral was promoted on 2026-09-09; bounded lifecycle/as-of/declared temporal constraints are implemented, not historical population proof. | §18.3, §18.5; bd-1oy8 promotion/closure records the temporal amendment |
 | Imagery and map evidence | Licensed orthos, 3DEP, NAIP, NOAA ERI as pinned observer inputs; observers emit typed observations with characterized error through `rho`; first uses are truth adjudication and the evidence card, solver input third. Commercial basemaps and location-proposing models are `CUT`. | §18.4, Appendix J; `PROPOSED`, beads created 2026-09-01 |
 
@@ -1167,6 +1177,51 @@ bd-1ehd. It must demonstrate useful additional evidence under unchanged admissio
 truth gates; highlighted outlines alone neither repair command usability nor establish
 ownership or historical extent. E1–E5, G3 and the seven-primary-verb boundary are unchanged.
 
+#### 16.1.3 Agent-facing association and evidence value
+
+**Operator direction, 2026-09-17:** Canon Geo is a tool for agents to identify and
+corroborate geographic entities using supplied evidence. The product question is which
+entity is supported, at what grain and time, by which observations, and under what
+acceptance policy. An address, descriptive property profile, or source lookup is a valid
+starting point; a loan or complete collateral-composition question is optional.
+
+Agents can draw on the landed national and local datasets exposed through MCP, add
+externally sourced evidence, and supply bounded, source-pinned records to Canon. Versioned
+adapters/profiles interpret their semantics. Canon compiles and relates that evidence,
+checks consistency, preserves alternatives and contradictions, and exposes an inspectable
+answer. Network acquisition stays with the agent. Availability, shared lineage, grain,
+vintage, reach, and admission remain explicit; more source rows do not imply independent
+information or calibrated confidence. National and NYC profiles are source interpretations
+within this architecture, not vendor branches in the generic engine.
+
+The retained [Courtney Cove](../scripts/geo_measurements/fixtures/addressless_courtney_2026-09-17/README.md)
+and [Orlando](../scripts/geo_measurements/fixtures/addressless_orlando_2026-09-17/README.md)
+experiments demonstrate discovery from hints and corroboration from supplied addresses.
+The known-subject [Cornerstone follow-up](../scripts/geo_measurements/fixtures/cornerstone_national_2026-09-17/README.md)
+shows the value of national evidence: Foursquare gives one preferred parcel among the same
+2,983 candidates, Overture corroborates it, and two buildings remain tied among 347
+bounded building candidates. These are experimental offline adapters and native runs;
+they do not ship a general national acceptance profile. Hard residuals remain unchanged,
+the final runs report `ABSTAINED`, and no forced identity or complete extent is established.
+
+The target agent answer must expose each supported association and its evidence trail,
+competing candidates, conflicts, shared lineage, acceptance state, and next useful evidence.
+Report solver exactness and hard-backbone claims separately. A supported parcel association
+can be useful while a particular building or complete property set remains unresolved.
+Changing the overall status or increasing a soft weight cannot replace the missing
+acceptance contract. Reviewed registry promotion and exact runtime replay remain separate.
+
+Evaluate this interface on correct and incorrect associations at the requested grain,
+grain errors, coverage, justified abstentions, and inspectable evidence. Use evidence
+ablations and predeclared held-out truth evaluation; preserve the existing denominators
+and gates for hard-forced claims, composition, and scale. The examples demonstrate utility
+and guide implementation; they do not establish population precision or close E1–E5/G3.
+
+The [agent architecture](./CANON_GEO_AGENT_ARCHITECTURE.md#1-purpose) owns the detailed
+operating model. Existing feature owners remain bd-3mft for source-neutral membership and
+acceptance contracts, bd-1g18 for per-claim inspection/explanation, and bd-33hh for the
+integrated agent journey. This documentation clarification implements none of those gaps.
+
 ### 16.2 Candidate enumeration
 
 Candidates are never proposed by a channel (§2: there is no proposer). The generic
@@ -1335,6 +1390,13 @@ Added 2026-09-01 after the reality check of the implemented workbench against th
 This section is normative for scope. Where an earlier section proposes machinery this
 section defers or cuts, this section controls. Nothing here weakens a gate, a denominator,
 or a measurement; it changes what the gates are for.
+
+**Operator clarification, 2026-09-17:** the broader agent-facing product question is
+evidence-backed geographic association, as specified in §16.1.3. The P1–P3 deliverables
+below retain their CMBS/composition scope and gates. Their prerequisites do not become
+prerequisites for a standalone address or property association, and a successful
+association does not establish complete collateral extent. The `IN`/`DEFERRED`/`CUT`
+decisions below and the point-re-ranking cut remain in force.
 
 ### 18.1 What the measurements already decided
 

@@ -47,6 +47,7 @@ for the boundary.
 - **Deduplication built in** — input values are deduplicated before lookup. 500 unique CUSIPs produce 500 mapping entries whether your file has 500 rows or 500,000.
 - **Self-authored registries** — use `canon registry default-id-scheme`, `next-id`, `add-entry`, and `mint` to maintain local alias registries without hand-editing mapping JSON.
 - **Evidence workbenches** — `canon entity` compiles profiled observations into registry proposals. Cluster mode finds same-entity groups within one corpus; link mode aligns a reference corpus to a target corpus through the same artifact path. Both keep relationship evidence separate from equivalence merge evidence.
+- **Geographic evidence for agents** — `canon geo` connects supplied property hints, addresses, source records, and geometry in bounded offline runs. Agents bring evidence from MCP-accessible datasets and source lookups; Geo preserves the supporting records, entity grain, alternatives, and solver guarantees. [REIT experiments](scripts/geo_measurements/fixtures/cornerstone_national_2026-09-17/README.md) demonstrate candidate discovery and corroboration; general source-neutral association acceptance remains in development.
 - **Cross-source structural linkage** — `canon entity link` aligns two local row sets under an explicit YAML strategy and emits hash-bound `canon_entity_link.v1` decisions plus observation/surface bindings. Accepted knowledge enters registries through review, audit, promotion, and exact apply; direct `--write-back` currently refuses before mutation.
 - **Distribution surfaces** — `canon registry export` preserves dbt seed and SQLite search-index consumers; package, project, and temporal workflows move the same registry knowledge through reproducible deployment and snapshot checks.
 
@@ -1669,6 +1670,30 @@ Special reasons (`empty_value`, `null_value`, `missing_field`, `non_scalar_value
 
 For the full toolchain guide, see the [Agent Operator Guide](https://github.com/cmdrvl/.github/blob/main/profile/AGENT_PROMPT.md). Shared repo instructions live in [AGENTS.md](./AGENTS.md); harness-specific notes live in [CODEX.md](./CODEX.md), [CLAUDE.md](./CLAUDE.md), and [GEMINI.md](./GEMINI.md). Run `canon --describe` for this tool's machine-readable contract.
 
+### Canon Geo: supported geographic associations for agents
+
+Canon Geo's product question is **“Which geographic entity does this evidence
+identify, at what grain, and why should I trust that association?”** An agent may
+start with property hints, an address to corroborate, or source evidence it has
+already collected. Landed national and local datasets available through MCP give
+the agent multiple ways to connect names, addresses, identifiers, and geometry.
+The agent obtains and pins relevant evidence; Canon's deterministic run stays offline.
+
+The [Cornerstone experiment](scripts/geo_measurements/fixtures/cornerstone_national_2026-09-17/README.md)
+shows this value concretely. Adding supplied Foursquare and Overture evidence
+changes 2,983 tied parcel candidates into one preferred parcel association.
+At building grain, two buildings tie because the evidence points occupy different
+roofs. Those conclusions belong together in the agent's answer: supported parcel
+association, building alternatives, and unproven complete property extent.
+
+The target interface presents each claim with its supporting and conflicting
+evidence, source lineage and vintage, acceptance policy, and next useful evidence.
+Solver exactness and hard-forced identity remain separate guarantees. Current
+runs can retain a useful soft-ranked result while reporting `ABSTAINED`; the
+experimental national adapter and manually assembled runs do not yet implement
+general source-neutral acceptance. Reviewed registry promotion and exact replay
+keep their existing boundaries.
+
 For Geo work, read the [agent operating architecture](./docs/CANON_GEO_AGENT_ARCHITECTURE.md)
 and then the [mathematical and empirical plan](./docs/PLAN_CANON_GEO.md). The operating
 order is question/profile/inventory -> bounded tile+halo -> candidate reach -> rho
@@ -1681,9 +1706,11 @@ The Geo planner and target run view reuse Canon's shared project
 manifest/lock/plan/run/receipt substrate; they are not a second orchestration engine.
 `canon geo plan` now ships as an offline/read-only planner over one validated
 `canon.project.plan.v1` DAG. `canon geo run` now ships as the bounded offline run
-projection over that DAG: with optional explicit local home-cell rows, tile-work request,
-and warehouse rows, it runs materialize-home-cells -> tile-work -> materialize-evidence ->
-compile-evidence -> solve through the shared project runner and emits `canon_geo_run.v0`
+projection over that DAG. Explicit local bindings supply home-cell rows, the tile-work
+request, warehouse rows, and prospective separation/next-evidence inputs. It runs
+materialize-home-cells -> tile-work -> materialize-evidence ->
+compile-evidence -> propagate -> solve -> explain -> separate-residual -> next-evidence
+through the shared project runner and emits `canon_geo_run.v0`
 over `canon.project.run.v2` receipts. Without required local inputs, it can still return a
 typed `WAITING_FOR_INPUT` run. It resumes validated completed outputs, refuses undeclared
 commands or compile/solve input overrides, and treats `--satisfy` as receipt/explicit-byte
