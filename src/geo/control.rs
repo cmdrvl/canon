@@ -1021,6 +1021,7 @@ pub fn default_geo_capabilities() -> Result<GeoCapabilities, GeoControlError> {
                 implemented: vec![
                     "logical_relaxation".to_string(),
                     "empirical_calibration_diagnostic".to_string(),
+                    "uncalibrated_diagnostic_or_soft".to_string(),
                 ],
                 diagnostic_only: vec![
                     "time_scoped_observation_without_temporal_solver".to_string(),
@@ -1060,7 +1061,7 @@ pub fn default_geo_capabilities() -> Result<GeoCapabilities, GeoControlError> {
                     .to_string(),
         }, GeoProfileTemplateCapability {
             profile_id: super::descriptive::GEO_DESCRIPTIVE_ASSET_PROFILE_ID.to_string(),
-            description: "Experimental single-parcel descriptive profile: bounded geography seeds inventory; bind canon_geo_descriptive_asset_request.v0 at materialize_evidence:rows; name is soft, missing attributes do not exclude; no collateral-completeness claim".to_string(),
+            description: "Experimental single-member descriptive profile: bounded geography seeds inventory; bind canon_geo_descriptive_asset_request.v0 at materialize_evidence:rows; supplied name/address are soft, uncalibrated attributes cannot exclude, missing values earn no support; no collateral-completeness claim".to_string(),
             template: GeoCompositionProfile::default(),
             validation_command: "canon geo run --plan <PLAN.json> --work-dir <DIR> --input geo.parcel.materialize_evidence:rows=<DESCRIPTIVE.json>".to_string(),
         }],

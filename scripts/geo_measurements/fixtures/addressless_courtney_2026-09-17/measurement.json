@@ -1,0 +1,1910 @@
+{
+  "archives": {
+    "run.tar.gz": {
+      "bytes": 3010742,
+      "sha256": "9d0168b7ebcff539e12a6564985c16b387567e2d99ff301392bd202854ef62e4"
+    },
+    "sources.tar.gz": {
+      "bytes": 1584122,
+      "sha256": "41f6b2a7ce1d13eedf0686f47cf0c658b693f226ebe1edc70d3e657f58a26b94"
+    }
+  },
+  "boundaries": [
+    "Canon consumed pinned local artifacts; all source acquisition was external.",
+    "No candidate was hard-excluded by uncalibrated name, units, type, year or address.",
+    "Native soft costs are not probabilities or counts of independent sources.",
+    "The DOR-filtered inventory and single-parcel hypothesis do not prove complete property or building extent.",
+    "Source-neutral accepted address membership remains open; the hard-narrowing experiment gate is false."
+  ],
+  "comparison": {
+    "additional_address_preference": {
+      "cost_if_absent": 1,
+      "id": "rho:rho.descriptive.address@1:descriptive:address:1029330100",
+      "member": {
+        "id": "1029330100",
+        "level": "parcel"
+      }
+    },
+    "blind_solve_sha256": "291799f086bd80c4821d5fd9fb29a54b458f04f281ef6208a5cd21fcdd78af06",
+    "identical_candidate_inventory": true,
+    "identical_hard_constraints": true,
+    "initial_blind_request_and_final_request_byte_identical": true,
+    "initial_blind_solve_and_final_solve_byte_identical": true,
+    "supplied_address_solve_sha256": "410c3dc8c8e7fdff7b91a4132d82f266f2c40af0ad5b635d306e56c1464020cc"
+  },
+  "entity_grain": "parcel",
+  "fresh_process_readback": {
+    "final-address": {
+      "fresh_process_inspection": true,
+      "readback_time": "2026-09-17T16:07:10.890014+00:00",
+      "resumed_nodes": [
+        "geo.parcel.compile_evidence",
+        "geo.parcel.explain",
+        "geo.parcel.home_cells",
+        "geo.parcel.materialize_evidence",
+        "geo.parcel.next_evidence",
+        "geo.parcel.propagate",
+        "geo.parcel.section",
+        "geo.parcel.separation",
+        "geo.parcel.solve"
+      ],
+      "stage_bytes_unchanged": true,
+      "stage_sha256_after": {
+        "compile_evidence.json": "a17fadbc8e55b69a45520927950d1ca9a8d5ab83d68a788141c9147ab1cb2cb8",
+        "explanation.json": "4da171240d122bbcdd626333bc4b4baa5c5d6ccfe52f120940dc1a0045aa5d97",
+        "home_cells.json": "84fdc3663caa5fd7de32a586be121b51d0a9a8d49cf29643bbe135236d2119cf",
+        "materialize_evidence.json": "1b899bde7560c3be51a4b44fbdd60b7dd2f3bd370b738ef67b3734505619830f",
+        "next_evidence.json": "5895766ef2894cb01c02ee2d0ffd517e81e79136d5be63f74a79d5bebbc699bb",
+        "propagation.json": "cb08f5f670272d816857907660ba8622f80cff54f41221b9bc8d053a08f49795",
+        "section.json": "48f2c6774cd0d568d89fae846be781918ea21d7e619bce15a110d891557a8962",
+        "separation.json": "b48ce6526441e71ba11f7438ee07924d794a38e4f0f9835666b0c5e28dd80577",
+        "solve.json": "410c3dc8c8e7fdff7b91a4132d82f266f2c40af0ad5b635d306e56c1464020cc"
+      },
+      "stage_sha256_before": {
+        "compile_evidence.json": "a17fadbc8e55b69a45520927950d1ca9a8d5ab83d68a788141c9147ab1cb2cb8",
+        "explanation.json": "4da171240d122bbcdd626333bc4b4baa5c5d6ccfe52f120940dc1a0045aa5d97",
+        "home_cells.json": "84fdc3663caa5fd7de32a586be121b51d0a9a8d49cf29643bbe135236d2119cf",
+        "materialize_evidence.json": "1b899bde7560c3be51a4b44fbdd60b7dd2f3bd370b738ef67b3734505619830f",
+        "next_evidence.json": "5895766ef2894cb01c02ee2d0ffd517e81e79136d5be63f74a79d5bebbc699bb",
+        "propagation.json": "cb08f5f670272d816857907660ba8622f80cff54f41221b9bc8d053a08f49795",
+        "section.json": "48f2c6774cd0d568d89fae846be781918ea21d7e619bce15a110d891557a8962",
+        "separation.json": "b48ce6526441e71ba11f7438ee07924d794a38e4f0f9835666b0c5e28dd80577",
+        "solve.json": "410c3dc8c8e7fdff7b91a4132d82f266f2c40af0ad5b635d306e56c1464020cc"
+      }
+    },
+    "final-hints": {
+      "fresh_process_inspection": true,
+      "readback_time": "2026-09-17T16:07:07.752515+00:00",
+      "resumed_nodes": [
+        "geo.parcel.compile_evidence",
+        "geo.parcel.explain",
+        "geo.parcel.home_cells",
+        "geo.parcel.materialize_evidence",
+        "geo.parcel.next_evidence",
+        "geo.parcel.propagate",
+        "geo.parcel.section",
+        "geo.parcel.separation",
+        "geo.parcel.solve"
+      ],
+      "stage_bytes_unchanged": true,
+      "stage_sha256_after": {
+        "compile_evidence.json": "6eb61d60ff671d7a221ab4e4627e35c295980cbbab9a992376d4301e9363c5f6",
+        "explanation.json": "8e77ee5e58d2515848cb029121bfee2dfbe6a40a771d25fe8e76f3ddd7fe621f",
+        "home_cells.json": "84fdc3663caa5fd7de32a586be121b51d0a9a8d49cf29643bbe135236d2119cf",
+        "materialize_evidence.json": "1fcbe9a2c80a2e3dda3b5642f0d9ac8db3afcc29657388c81b4f4da643ed9eb6",
+        "next_evidence.json": "0f277ec66fbbe3dc5b2e1668011013026e5af56c8d06d26cb7a93c44e8ce920d",
+        "propagation.json": "71cd5c48068766ac0f50b9be0e13817de4ee4ac6245773ddff9bef67fb090721",
+        "section.json": "48f2c6774cd0d568d89fae846be781918ea21d7e619bce15a110d891557a8962",
+        "separation.json": "aafda844fc00c5f4495b34c31ca3512cf7698c8311f5b6be45a5807d32db5b1b",
+        "solve.json": "291799f086bd80c4821d5fd9fb29a54b458f04f281ef6208a5cd21fcdd78af06"
+      },
+      "stage_sha256_before": {
+        "compile_evidence.json": "6eb61d60ff671d7a221ab4e4627e35c295980cbbab9a992376d4301e9363c5f6",
+        "explanation.json": "8e77ee5e58d2515848cb029121bfee2dfbe6a40a771d25fe8e76f3ddd7fe621f",
+        "home_cells.json": "84fdc3663caa5fd7de32a586be121b51d0a9a8d49cf29643bbe135236d2119cf",
+        "materialize_evidence.json": "1fcbe9a2c80a2e3dda3b5642f0d9ac8db3afcc29657388c81b4f4da643ed9eb6",
+        "next_evidence.json": "0f277ec66fbbe3dc5b2e1668011013026e5af56c8d06d26cb7a93c44e8ce920d",
+        "propagation.json": "71cd5c48068766ac0f50b9be0e13817de4ee4ac6245773ddff9bef67fb090721",
+        "section.json": "48f2c6774cd0d568d89fae846be781918ea21d7e619bce15a110d891557a8962",
+        "separation.json": "aafda844fc00c5f4495b34c31ca3512cf7698c8311f5b6be45a5807d32db5b1b",
+        "solve.json": "291799f086bd80c4821d5fd9fb29a54b458f04f281ef6208a5cd21fcdd78af06"
+      }
+    },
+    "final-summit": {
+      "fresh_process_inspection": true,
+      "readback_time": "2026-09-17T16:09:51.581974+00:00",
+      "resumed_nodes": [
+        "geo.parcel.compile_evidence",
+        "geo.parcel.explain",
+        "geo.parcel.home_cells",
+        "geo.parcel.materialize_evidence",
+        "geo.parcel.next_evidence",
+        "geo.parcel.propagate",
+        "geo.parcel.section",
+        "geo.parcel.separation",
+        "geo.parcel.solve"
+      ],
+      "stage_bytes_unchanged": true,
+      "stage_sha256_after": {
+        "compile_evidence.json": "85c35ecc01d7b21381fb65db78aabe6b28e5047521d122d4e6cdb82df3abf6ab",
+        "explanation.json": "9782c88183599e121691de1960051708f44375c351b711f2869009a5b94d43a2",
+        "home_cells.json": "4ac34e3e534eb767675691228256df63771cf22808c722b7346695b7a03c2d80",
+        "materialize_evidence.json": "06e22d76cbf81eb6e77f0216404d3effdec0630e22f8b06dcc24db12a83e05d7",
+        "next_evidence.json": "5a78a9e9a908a0ebd71c4ac69f0ae214c50d25217de567aa3fad17eaf509f65f",
+        "propagation.json": "4620c50320c94d5c511eb3caaab132d4907b2d2bbef871c43be8867d15b3d9df",
+        "section.json": "6381a9102e6d02e5a0cec2a1944b7e81faab3bb780bf58f703f6e6c80c994dff",
+        "separation.json": "09bb880ff8518fb8f3ace932bcde9f98ae43cc03533b75ba9fc5970b981effc6",
+        "solve.json": "cb6ad29c55b8269f58b20f574d7e7d46d935552b94ec9ced3643ae4bd8c07ffa"
+      },
+      "stage_sha256_before": {
+        "compile_evidence.json": "85c35ecc01d7b21381fb65db78aabe6b28e5047521d122d4e6cdb82df3abf6ab",
+        "explanation.json": "9782c88183599e121691de1960051708f44375c351b711f2869009a5b94d43a2",
+        "home_cells.json": "4ac34e3e534eb767675691228256df63771cf22808c722b7346695b7a03c2d80",
+        "materialize_evidence.json": "06e22d76cbf81eb6e77f0216404d3effdec0630e22f8b06dcc24db12a83e05d7",
+        "next_evidence.json": "5a78a9e9a908a0ebd71c4ac69f0ae214c50d25217de567aa3fad17eaf509f65f",
+        "propagation.json": "4620c50320c94d5c511eb3caaab132d4907b2d2bbef871c43be8867d15b3d9df",
+        "section.json": "6381a9102e6d02e5a0cec2a1944b7e81faab3bb780bf58f703f6e6c80c994dff",
+        "separation.json": "09bb880ff8518fb8f3ace932bcde9f98ae43cc03533b75ba9fc5970b981effc6",
+        "solve.json": "cb6ad29c55b8269f58b20f574d7e7d46d935552b94ec9ced3643ae4bd8c07ffa"
+      }
+    }
+  },
+  "identity_claim_status": "soft_supported_candidate; no forced identity or complete-property extent",
+  "implementation": {
+    "base_revision": "0c618d19e67a494167182154b40181340dcbebf8",
+    "binary_sha256": "98fd98be2b8d432f3e08b2470888756393e7120c1016bb57e6db20cead49e4d1",
+    "source_sha256": {
+      "scripts/geo_measurements/addressless_asset.py": "617c0390876bc0db2ca348c1a2aa6e1ce9ba3805be497c2422644eaa2ed8427f",
+      "src/geo/composition.rs": "7bbbd65863510aad0dac2aa595c0f66b1f8c492c785a692d33cf8cd0343f204b",
+      "src/geo/control.rs": "d6774a1f537b50c1f343e9753407d6593175a980f1347b53a2bf6830449872de",
+      "src/geo/descriptive.rs": "e8bc4b7cd7b544484b8be03cb8caa669b51772d3f714d78aac1d47e3a556634e",
+      "src/geo/evidence.rs": "32c7adaf52bd0fe6f01df4364e753aa9186a565f098608a29a8925244162913e"
+    }
+  },
+  "initial_blind_readback": {
+    "candidate_attributes": {
+      "0031090000": {
+        "address": "7940 Citrus Garden Dr",
+        "property_name": "CITRUS VILLAGE",
+        "property_type": "multifamily",
+        "unit_count": 296,
+        "year_built": 2011
+      },
+      "0395740018": {
+        "address": "14976 Osprey Nest Loop",
+        "property_name": "SAGE AT CYPRESS CAY APARTMENTS",
+        "property_type": "multifamily",
+        "unit_count": 324,
+        "year_built": 2023
+      },
+      "0680523152": {
+        "address": "10011 Balaye Run Dr",
+        "property_name": "LAKES AT BRANDON WEST",
+        "property_type": "multifamily",
+        "unit_count": 324,
+        "year_built": 2001
+      },
+      "0723040700": {
+        "address": "1240 Astor Commons Pl",
+        "property_name": "ASPREY AT LAKE BRANDON",
+        "property_type": "multifamily",
+        "unit_count": 324,
+        "year_built": 2000
+      },
+      "0980820010": {
+        "address": "8402 N Waterford Ave",
+        "property_name": "BELARA LAKES",
+        "property_type": "multifamily",
+        "unit_count": 324,
+        "year_built": 1974
+      },
+      "1029330100": {
+        "address": "5510 N Himes Ave",
+        "property_name": "COURTNEY COVE",
+        "property_type": "multifamily",
+        "unit_count": 324,
+        "year_built": 1981
+      },
+      "1760830882": {
+        "address": "1115 E Twiggs St",
+        "property_name": "CHANNEL CLUB",
+        "property_type": "multifamily",
+        "unit_count": 324,
+        "year_built": 2019
+      },
+      "1897430000": {
+        "address": "601 N 12th St",
+        "property_name": "MAV",
+        "property_type": "multifamily",
+        "unit_count": 324,
+        "year_built": 2022
+      }
+    },
+    "claim": {
+      "property_name": "Courtney Cove",
+      "property_type": "multifamily",
+      "unit_count": 324,
+      "year_built": null
+    },
+    "readback_time": "2026-09-17T15:47:41.177951+00:00",
+    "solve_sha256": "291799f086bd80c4821d5fd9fb29a54b458f04f281ef6208a5cd21fcdd78af06",
+    "summary": {
+      "building_candidates": 0,
+      "candidate_assignments": 18446744073709551615,
+      "candidate_assignments_saturated": true,
+      "component_count": 1,
+      "hard_constraint_evaluations": 889,
+      "hard_constraint_evaluations_complete": true,
+      "hard_constraint_evaluations_saturated": false,
+      "model_count_scope": "entity_selection",
+      "parcel_candidates": 889,
+      "residual_model_count": 889,
+      "residual_model_count_complete": true,
+      "residual_model_count_saturated": false,
+      "residual_models_materialized": true,
+      "structurally_feasible_assignments": 889,
+      "structurally_feasible_assignments_complete": true,
+      "structurally_feasible_assignments_saturated": false,
+      "summary_counts_saturated": true
+    },
+    "top_ranked": [
+      {
+        "cost": 6,
+        "model": {
+          "buildings": [],
+          "parcels": [
+            "1029330100"
+          ]
+        },
+        "rank": 1
+      },
+      {
+        "cost": 7,
+        "model": {
+          "buildings": [],
+          "parcels": [
+            "0395740018"
+          ]
+        },
+        "rank": 2
+      },
+      {
+        "cost": 7,
+        "model": {
+          "buildings": [],
+          "parcels": [
+            "0680523152"
+          ]
+        },
+        "rank": 3
+      },
+      {
+        "cost": 7,
+        "model": {
+          "buildings": [],
+          "parcels": [
+            "0723040700"
+          ]
+        },
+        "rank": 4
+      },
+      {
+        "cost": 7,
+        "model": {
+          "buildings": [],
+          "parcels": [
+            "0980820010"
+          ]
+        },
+        "rank": 5
+      },
+      {
+        "cost": 7,
+        "model": {
+          "buildings": [],
+          "parcels": [
+            "1760830882"
+          ]
+        },
+        "rank": 6
+      },
+      {
+        "cost": 7,
+        "model": {
+          "buildings": [],
+          "parcels": [
+            "1897430000"
+          ]
+        },
+        "rank": 7
+      },
+      {
+        "cost": 8,
+        "model": {
+          "buildings": [],
+          "parcels": [
+            "0031090000"
+          ]
+        },
+        "rank": 8
+      }
+    ],
+    "truth_lookup_started": false
+  },
+  "native_runs": {
+    "final-address": {
+      "admissions": [
+        {
+          "disposition": "soft_preference",
+          "generated_ids": [
+            "rho:rho.descriptive.address@1:descriptive:address:1029330100"
+          ],
+          "observation_id": "descriptive:address:1029330100"
+        },
+        {
+          "disposition": "soft_preference",
+          "generated_ids": [
+            "rho:rho.descriptive.property_name@1:descriptive:property_name:1029330100"
+          ],
+          "observation_id": "descriptive:property_name:1029330100"
+        },
+        {
+          "disposition": "diagnostic_only",
+          "generated_ids": [],
+          "observation_id": "descriptive:property_type"
+        },
+        {
+          "disposition": "hard_constraint",
+          "generated_ids": [
+            "rho:descriptive:single_member@1:descriptive:single_member"
+          ],
+          "observation_id": "descriptive:single_member"
+        },
+        {
+          "disposition": "soft_preference",
+          "generated_ids": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:0395740018"
+          ],
+          "observation_id": "descriptive:unit_count:0395740018"
+        },
+        {
+          "disposition": "soft_preference",
+          "generated_ids": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:0680523152"
+          ],
+          "observation_id": "descriptive:unit_count:0680523152"
+        },
+        {
+          "disposition": "soft_preference",
+          "generated_ids": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:0723040700"
+          ],
+          "observation_id": "descriptive:unit_count:0723040700"
+        },
+        {
+          "disposition": "soft_preference",
+          "generated_ids": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:0980820010"
+          ],
+          "observation_id": "descriptive:unit_count:0980820010"
+        },
+        {
+          "disposition": "soft_preference",
+          "generated_ids": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:1029330100"
+          ],
+          "observation_id": "descriptive:unit_count:1029330100"
+        },
+        {
+          "disposition": "soft_preference",
+          "generated_ids": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:1760830882"
+          ],
+          "observation_id": "descriptive:unit_count:1760830882"
+        },
+        {
+          "disposition": "soft_preference",
+          "generated_ids": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:1897430000"
+          ],
+          "observation_id": "descriptive:unit_count:1897430000"
+        }
+      ],
+      "best_ranked_model_count": 1,
+      "blind_experiment_success": false,
+      "candidate_reach": true,
+      "entity_grain": "parcel",
+      "evaluation_next_action": "Supply independently justified separating evidence",
+      "exact_residual": true,
+      "execution": {
+        "argv": [
+          "/private/tmp/canon-reit-second-20260917/canon-final",
+          "geo",
+          "run",
+          "--plan",
+          "/private/tmp/canon-reit-second-20260917/final-address/plan.json",
+          "--work-dir",
+          "/private/tmp/canon-reit-second-20260917/final-address/run",
+          "--input",
+          "geo.parcel.home_cells:rows=/private/tmp/canon-reit-second-20260917/final-address/home.json",
+          "--input",
+          "geo.parcel.section:request=/private/tmp/canon-reit-second-20260917/final-address/section.json",
+          "--input",
+          "geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-second-20260917/final-address/descriptive.json",
+          "--input",
+          "geo.parcel.separation:request=/private/tmp/canon-reit-second-20260917/final-address/separation.json",
+          "--input",
+          "geo.parcel.next_evidence:request=/private/tmp/canon-reit-second-20260917/final-address/next.json"
+        ],
+        "binary_blake3": "57d580698e23d70b19a99f004861eb74fab88febdd8c9357f0a2759b7efca64e",
+        "elapsed_seconds": 560.5379306050017,
+        "exit_code": 0,
+        "source_manifest_blake3": "2fe7871da1de4bec54aa5a3591c71656baa4059749f740f55a7c424d4d41f764"
+      },
+      "final_residual_size": 889,
+      "forced_identity": false,
+      "hard_constraint_count": 1,
+      "identity_claim_status": "unresolved",
+      "initial_candidates": 889,
+      "limits": [
+        "Uncalibrated descriptive agreements rank only; no population calibration or independent truth precision claim.",
+        "Regional inventory is restricted to declared DOR 03xx parcels, not all county physical assets.",
+        "Single-parcel hypothesis; complete collateral/building composition is not established.",
+        "Current assessor snapshot versus 2025 disclosure: historical coverage is unverified.",
+        "Claim year built absent; source unit-count sentinels stay unknown; names never harden identity."
+      ],
+      "materialization_usage": {
+        "dependency_output_count": 1,
+        "descriptive_address_claim_present": 1,
+        "descriptive_address_compatible": 1,
+        "descriptive_address_incompatible": 888,
+        "descriptive_address_unknown": 0,
+        "descriptive_candidates": 889,
+        "descriptive_property_name_claim_present": 1,
+        "descriptive_property_name_compatible": 1,
+        "descriptive_property_name_incompatible": 887,
+        "descriptive_property_name_unknown": 1,
+        "descriptive_property_type_claim_present": 1,
+        "descriptive_property_type_compatible": 889,
+        "descriptive_property_type_incompatible": 0,
+        "descriptive_property_type_unknown": 0,
+        "descriptive_unit_count_claim_present": 1,
+        "descriptive_unit_count_compatible": 7,
+        "descriptive_unit_count_incompatible": 749,
+        "descriptive_unit_count_unknown": 133,
+        "descriptive_year_built_claim_present": 0,
+        "descriptive_year_built_compatible": 0,
+        "descriptive_year_built_incompatible": 0,
+        "descriptive_year_built_unknown": 889,
+        "executor_supported_command_count": 18,
+        "input_binding_count": 1,
+        "materialized_observations": 11
+      },
+      "next_evidence": {
+        "budget_remaining": {
+          "max_bytes": 100000000,
+          "max_candidates": 2000,
+          "max_cells": 10000,
+          "max_models": 2000,
+          "max_operations": 50000000,
+          "max_rows": 10000,
+          "max_states": 5000000,
+          "max_variables": 2000
+        },
+        "composition_blake3": "blake3:1b5288449201e21c116e28addbedc56a1aa89e59c7d919b2f2f0a1f3fdebc0ac",
+        "counters": {
+          "budget_exhausted": 0,
+          "candidate_actions": 1,
+          "dominated_actions": 0,
+          "frontier_actions": 1
+        },
+        "dominated": [],
+        "frontier": [
+          {
+            "action_id": "acquire-independent-unit-count-support",
+            "class": "separate_residual",
+            "cost_units": 1,
+            "kind": {
+              "kind": "observe",
+              "payload": "independent-units-record-completeness"
+            },
+            "observation_id": "independent-units-record-completeness",
+            "redundant": false,
+            "separation": [
+              {
+                "count_exact": true,
+                "outcome_id": "known_units",
+                "residual_model_count": 756
+              },
+              {
+                "count_exact": true,
+                "outcome_id": "unknown_units",
+                "residual_model_count": 133
+              }
+            ],
+            "worst_case_remaining": 756
+          }
+        ],
+        "ranking_abstention": {
+          "code": "next_evidence_no_loss_model",
+          "detail": {
+            "policy": "none"
+          },
+          "message": "Total ranking requires a versioned loss model"
+        },
+        "run_id": "canon_geo_next_evidence.v0:5ea9d42d2270df15f5d77a1556ebf1e4dfbca1af886a0dfb3c009faa2762bbcd",
+        "separation_blake3": "blake3:1f199f78480c2a76a23d033d2c12ad9785d0db6be96d6b6bbd6964d40dc5ba09",
+        "version": "canon_geo_next_evidence.v0"
+      },
+      "proof_class": "retained-public-data-experiment",
+      "property": "Courtney Cove",
+      "prospective_separation": {
+        "baseline_model_count": 889,
+        "per_observation": [
+          {
+            "observation_id": "independent-units-record-completeness",
+            "per_outcome": [
+              {
+                "count_exact": true,
+                "outcome_id": "known_units",
+                "residual_model_count": 756
+              },
+              {
+                "count_exact": true,
+                "outcome_id": "unknown_units",
+                "residual_model_count": 133
+              }
+            ],
+            "redundant": false,
+            "worst_case_remaining": 756
+          }
+        ],
+        "request_blake3": "blake3:76a6d4c1fbf0cf39c4d4e359aff5ce73edaa89cc4c694b7d71897f9d252f1c74",
+        "version": "canon_geo_separation.v0"
+      },
+      "ranked_candidates": [
+        {
+          "cost": 6,
+          "parcel_ids": [
+            "1029330100"
+          ],
+          "rank": 1,
+          "source_attributes": [
+            {
+              "address": "5510 N Himes Ave",
+              "property_name": "COURTNEY COVE",
+              "property_type": "multifamily",
+              "unit_count": 324,
+              "year_built": 1981
+            }
+          ],
+          "supporting_preferences": [
+            "rho:rho.descriptive.address@1:descriptive:address:1029330100",
+            "rho:rho.descriptive.property_name@1:descriptive:property_name:1029330100",
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:1029330100"
+          ]
+        },
+        {
+          "cost": 8,
+          "parcel_ids": [
+            "0395740018"
+          ],
+          "rank": 2,
+          "source_attributes": [
+            {
+              "address": "14976 Osprey Nest Loop",
+              "property_name": "SAGE AT CYPRESS CAY APARTMENTS",
+              "property_type": "multifamily",
+              "unit_count": 324,
+              "year_built": 2023
+            }
+          ],
+          "supporting_preferences": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:0395740018"
+          ]
+        },
+        {
+          "cost": 8,
+          "parcel_ids": [
+            "0680523152"
+          ],
+          "rank": 3,
+          "source_attributes": [
+            {
+              "address": "10011 Balaye Run Dr",
+              "property_name": "LAKES AT BRANDON WEST",
+              "property_type": "multifamily",
+              "unit_count": 324,
+              "year_built": 2001
+            }
+          ],
+          "supporting_preferences": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:0680523152"
+          ]
+        },
+        {
+          "cost": 8,
+          "parcel_ids": [
+            "0723040700"
+          ],
+          "rank": 4,
+          "source_attributes": [
+            {
+              "address": "1240 Astor Commons Pl",
+              "property_name": "ASPREY AT LAKE BRANDON",
+              "property_type": "multifamily",
+              "unit_count": 324,
+              "year_built": 2000
+            }
+          ],
+          "supporting_preferences": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:0723040700"
+          ]
+        },
+        {
+          "cost": 8,
+          "parcel_ids": [
+            "0980820010"
+          ],
+          "rank": 5,
+          "source_attributes": [
+            {
+              "address": "8402 N Waterford Ave",
+              "property_name": "BELARA LAKES",
+              "property_type": "multifamily",
+              "unit_count": 324,
+              "year_built": 1974
+            }
+          ],
+          "supporting_preferences": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:0980820010"
+          ]
+        },
+        {
+          "cost": 8,
+          "parcel_ids": [
+            "1760830882"
+          ],
+          "rank": 6,
+          "source_attributes": [
+            {
+              "address": "1115 E Twiggs St",
+              "property_name": "CHANNEL CLUB",
+              "property_type": "multifamily",
+              "unit_count": 324,
+              "year_built": 2019
+            }
+          ],
+          "supporting_preferences": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:1760830882"
+          ]
+        },
+        {
+          "cost": 8,
+          "parcel_ids": [
+            "1897430000"
+          ],
+          "rank": 7,
+          "source_attributes": [
+            {
+              "address": "601 N 12th St",
+              "property_name": "MAV",
+              "property_type": "multifamily",
+              "unit_count": 324,
+              "year_built": 2022
+            }
+          ],
+          "supporting_preferences": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:1897430000"
+          ]
+        },
+        {
+          "cost": 9,
+          "parcel_ids": [
+            "0031090000"
+          ],
+          "rank": 8,
+          "source_attributes": [
+            {
+              "address": "7940 Citrus Garden Dr",
+              "property_name": "CITRUS VILLAGE",
+              "property_type": "multifamily",
+              "unit_count": 296,
+              "year_built": 2011
+            }
+          ],
+          "supporting_preferences": []
+        },
+        {
+          "cost": 9,
+          "parcel_ids": [
+            "0031435050"
+          ],
+          "rank": 9,
+          "source_attributes": [
+            {
+              "address": "8134 Colonial Village Dr",
+              "property_name": "CYPRESS GRAND",
+              "property_type": "multifamily",
+              "unit_count": 176,
+              "year_built": 1998
+            }
+          ],
+          "supporting_preferences": []
+        },
+        {
+          "cost": 9,
+          "parcel_ids": [
+            "0035130000"
+          ],
+          "rank": 10,
+          "source_attributes": [
+            {
+              "address": "11591 Fountainhead Dr",
+              "property_name": "MARQ AT HIGHLAND PARK",
+              "property_type": "multifamily",
+              "unit_count": 239,
+              "year_built": 2014
+            }
+          ],
+          "supporting_preferences": []
+        }
+      ],
+      "ranking_semantics": "Native additive soft preference ordering, not probability, independent source count, or forced identity",
+      "resource_budget": {
+        "budget_id": "addressless.budget",
+        "deterministic_bounds": [
+          {
+            "action": "report_budget_fallback",
+            "counter": "bytes",
+            "origin": "caller_declared",
+            "semantic_id": "max_bytes",
+            "unit": "bytes",
+            "value": 100000000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "rows",
+            "origin": "caller_declared",
+            "semantic_id": "max_rows",
+            "unit": "rows",
+            "value": 10000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "cells",
+            "origin": "caller_declared",
+            "semantic_id": "max_cells",
+            "unit": "cells",
+            "value": 10000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "candidates",
+            "origin": "caller_declared",
+            "semantic_id": "max_candidates",
+            "unit": "candidates",
+            "value": 2000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "variables",
+            "origin": "caller_declared",
+            "semantic_id": "max_variables",
+            "unit": "variables",
+            "value": 2000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "states",
+            "origin": "caller_declared",
+            "semantic_id": "max_states",
+            "unit": "states",
+            "value": 5000000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "models",
+            "origin": "caller_declared",
+            "semantic_id": "max_models",
+            "unit": "models",
+            "value": 2000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "operations",
+            "origin": "caller_declared",
+            "semantic_id": "max_operations",
+            "unit": "operations",
+            "value": 50000000
+          }
+        ],
+        "telemetry": [
+          {
+            "metric": "wall_time",
+            "origin": "operator_policy",
+            "semantic_effect": "none",
+            "unit": "millisecond"
+          }
+        ],
+        "version": "canon_geo_resource_budget.v0"
+      },
+      "run_status": "ABSTAINED",
+      "soft_preference_count": 9,
+      "solver_summary": {
+        "building_candidates": 0,
+        "candidate_assignments": 18446744073709551615,
+        "candidate_assignments_saturated": true,
+        "component_count": 1,
+        "hard_constraint_evaluations": 889,
+        "hard_constraint_evaluations_complete": true,
+        "hard_constraint_evaluations_saturated": false,
+        "model_count_scope": "entity_selection",
+        "parcel_candidates": 889,
+        "residual_model_count": 889,
+        "residual_model_count_complete": true,
+        "residual_model_count_saturated": false,
+        "residual_models_materialized": true,
+        "structurally_feasible_assignments": 889,
+        "structurally_feasible_assignments_complete": true,
+        "structurally_feasible_assignments_saturated": false,
+        "summary_counts_saturated": true
+      },
+      "supplied_address": "5510 N Himes Ave",
+      "truth_attributes_evaluation_only": [
+        {
+          "attributes": {
+            "address": "5510 N Himes Ave",
+            "property_name": "COURTNEY COVE",
+            "property_type": "multifamily",
+            "unit_count": 324,
+            "year_built": 1981
+          },
+          "id": "1029330100"
+        }
+      ],
+      "truth_in_best_ranked_models": true,
+      "truth_parcel_ids": [
+        "1029330100"
+      ],
+      "withheld_truth_reachable": true
+    },
+    "final-hints": {
+      "admissions": [
+        {
+          "disposition": "soft_preference",
+          "generated_ids": [
+            "rho:rho.descriptive.property_name@1:descriptive:property_name:1029330100"
+          ],
+          "observation_id": "descriptive:property_name:1029330100"
+        },
+        {
+          "disposition": "diagnostic_only",
+          "generated_ids": [],
+          "observation_id": "descriptive:property_type"
+        },
+        {
+          "disposition": "hard_constraint",
+          "generated_ids": [
+            "rho:descriptive:single_member@1:descriptive:single_member"
+          ],
+          "observation_id": "descriptive:single_member"
+        },
+        {
+          "disposition": "soft_preference",
+          "generated_ids": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:0395740018"
+          ],
+          "observation_id": "descriptive:unit_count:0395740018"
+        },
+        {
+          "disposition": "soft_preference",
+          "generated_ids": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:0680523152"
+          ],
+          "observation_id": "descriptive:unit_count:0680523152"
+        },
+        {
+          "disposition": "soft_preference",
+          "generated_ids": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:0723040700"
+          ],
+          "observation_id": "descriptive:unit_count:0723040700"
+        },
+        {
+          "disposition": "soft_preference",
+          "generated_ids": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:0980820010"
+          ],
+          "observation_id": "descriptive:unit_count:0980820010"
+        },
+        {
+          "disposition": "soft_preference",
+          "generated_ids": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:1029330100"
+          ],
+          "observation_id": "descriptive:unit_count:1029330100"
+        },
+        {
+          "disposition": "soft_preference",
+          "generated_ids": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:1760830882"
+          ],
+          "observation_id": "descriptive:unit_count:1760830882"
+        },
+        {
+          "disposition": "soft_preference",
+          "generated_ids": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:1897430000"
+          ],
+          "observation_id": "descriptive:unit_count:1897430000"
+        }
+      ],
+      "best_ranked_model_count": 1,
+      "blind_experiment_success": false,
+      "candidate_reach": true,
+      "entity_grain": "parcel",
+      "evaluation_next_action": "Supply independently justified separating evidence",
+      "exact_residual": true,
+      "execution": {
+        "argv": [
+          "/private/tmp/canon-reit-second-20260917/canon-final",
+          "geo",
+          "run",
+          "--plan",
+          "/private/tmp/canon-reit-second-20260917/final-hints/plan.json",
+          "--work-dir",
+          "/private/tmp/canon-reit-second-20260917/final-hints/run",
+          "--input",
+          "geo.parcel.home_cells:rows=/private/tmp/canon-reit-second-20260917/final-hints/home.json",
+          "--input",
+          "geo.parcel.section:request=/private/tmp/canon-reit-second-20260917/final-hints/section.json",
+          "--input",
+          "geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-second-20260917/final-hints/descriptive.json",
+          "--input",
+          "geo.parcel.separation:request=/private/tmp/canon-reit-second-20260917/final-hints/separation.json",
+          "--input",
+          "geo.parcel.next_evidence:request=/private/tmp/canon-reit-second-20260917/final-hints/next.json"
+        ],
+        "binary_blake3": "57d580698e23d70b19a99f004861eb74fab88febdd8c9357f0a2759b7efca64e",
+        "elapsed_seconds": 560.4661191781051,
+        "exit_code": 0,
+        "source_manifest_blake3": "2fe7871da1de4bec54aa5a3591c71656baa4059749f740f55a7c424d4d41f764"
+      },
+      "final_residual_size": 889,
+      "forced_identity": false,
+      "hard_constraint_count": 1,
+      "identity_claim_status": "unresolved",
+      "initial_candidates": 889,
+      "limits": [
+        "Uncalibrated descriptive agreements rank only; no population calibration or independent truth precision claim.",
+        "Regional inventory is restricted to declared DOR 03xx parcels, not all county physical assets.",
+        "Single-parcel hypothesis; complete collateral/building composition is not established.",
+        "Current assessor snapshot versus 2025 disclosure: historical coverage is unverified.",
+        "Claim year built absent; source unit-count sentinels stay unknown; names never harden identity."
+      ],
+      "materialization_usage": {
+        "dependency_output_count": 1,
+        "descriptive_address_claim_present": 0,
+        "descriptive_address_compatible": 0,
+        "descriptive_address_incompatible": 0,
+        "descriptive_address_unknown": 889,
+        "descriptive_candidates": 889,
+        "descriptive_property_name_claim_present": 1,
+        "descriptive_property_name_compatible": 1,
+        "descriptive_property_name_incompatible": 887,
+        "descriptive_property_name_unknown": 1,
+        "descriptive_property_type_claim_present": 1,
+        "descriptive_property_type_compatible": 889,
+        "descriptive_property_type_incompatible": 0,
+        "descriptive_property_type_unknown": 0,
+        "descriptive_unit_count_claim_present": 1,
+        "descriptive_unit_count_compatible": 7,
+        "descriptive_unit_count_incompatible": 749,
+        "descriptive_unit_count_unknown": 133,
+        "descriptive_year_built_claim_present": 0,
+        "descriptive_year_built_compatible": 0,
+        "descriptive_year_built_incompatible": 0,
+        "descriptive_year_built_unknown": 889,
+        "executor_supported_command_count": 18,
+        "input_binding_count": 1,
+        "materialized_observations": 10
+      },
+      "next_evidence": {
+        "budget_remaining": {
+          "max_bytes": 100000000,
+          "max_candidates": 2000,
+          "max_cells": 10000,
+          "max_models": 2000,
+          "max_operations": 50000000,
+          "max_rows": 10000,
+          "max_states": 5000000,
+          "max_variables": 2000
+        },
+        "composition_blake3": "blake3:ead25cf3c7437bf3a48d658cb2481f5ce6748c16020b3f3dda5ba3be0644fa64",
+        "counters": {
+          "budget_exhausted": 0,
+          "candidate_actions": 1,
+          "dominated_actions": 0,
+          "frontier_actions": 1
+        },
+        "dominated": [],
+        "frontier": [
+          {
+            "action_id": "acquire-independent-unit-count-support",
+            "class": "separate_residual",
+            "cost_units": 1,
+            "kind": {
+              "kind": "observe",
+              "payload": "independent-units-record-completeness"
+            },
+            "observation_id": "independent-units-record-completeness",
+            "redundant": false,
+            "separation": [
+              {
+                "count_exact": true,
+                "outcome_id": "known_units",
+                "residual_model_count": 756
+              },
+              {
+                "count_exact": true,
+                "outcome_id": "unknown_units",
+                "residual_model_count": 133
+              }
+            ],
+            "worst_case_remaining": 756
+          }
+        ],
+        "ranking_abstention": {
+          "code": "next_evidence_no_loss_model",
+          "detail": {
+            "policy": "none"
+          },
+          "message": "Total ranking requires a versioned loss model"
+        },
+        "run_id": "canon_geo_next_evidence.v0:8aa30909e66fe07f6b05332b4339e26d82da50826989ff695550bf2c80bc6dcb",
+        "separation_blake3": "blake3:6a06e5cbe3eb076323c7bb5126761bbbd2e49e371104c902feece4e19cf9ec35",
+        "version": "canon_geo_next_evidence.v0"
+      },
+      "proof_class": "retained-public-data-experiment",
+      "property": "Courtney Cove",
+      "prospective_separation": {
+        "baseline_model_count": 889,
+        "per_observation": [
+          {
+            "observation_id": "independent-units-record-completeness",
+            "per_outcome": [
+              {
+                "count_exact": true,
+                "outcome_id": "known_units",
+                "residual_model_count": 756
+              },
+              {
+                "count_exact": true,
+                "outcome_id": "unknown_units",
+                "residual_model_count": 133
+              }
+            ],
+            "redundant": false,
+            "worst_case_remaining": 756
+          }
+        ],
+        "request_blake3": "blake3:cd376b97d3ed310f2beb66b1649b6cd554a48b8c3a2e772c0d73bda93b6d10fc",
+        "version": "canon_geo_separation.v0"
+      },
+      "ranked_candidates": [
+        {
+          "cost": 6,
+          "parcel_ids": [
+            "1029330100"
+          ],
+          "rank": 1,
+          "source_attributes": [
+            {
+              "address": "5510 N Himes Ave",
+              "property_name": "COURTNEY COVE",
+              "property_type": "multifamily",
+              "unit_count": 324,
+              "year_built": 1981
+            }
+          ],
+          "supporting_preferences": [
+            "rho:rho.descriptive.property_name@1:descriptive:property_name:1029330100",
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:1029330100"
+          ]
+        },
+        {
+          "cost": 7,
+          "parcel_ids": [
+            "0395740018"
+          ],
+          "rank": 2,
+          "source_attributes": [
+            {
+              "address": "14976 Osprey Nest Loop",
+              "property_name": "SAGE AT CYPRESS CAY APARTMENTS",
+              "property_type": "multifamily",
+              "unit_count": 324,
+              "year_built": 2023
+            }
+          ],
+          "supporting_preferences": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:0395740018"
+          ]
+        },
+        {
+          "cost": 7,
+          "parcel_ids": [
+            "0680523152"
+          ],
+          "rank": 3,
+          "source_attributes": [
+            {
+              "address": "10011 Balaye Run Dr",
+              "property_name": "LAKES AT BRANDON WEST",
+              "property_type": "multifamily",
+              "unit_count": 324,
+              "year_built": 2001
+            }
+          ],
+          "supporting_preferences": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:0680523152"
+          ]
+        },
+        {
+          "cost": 7,
+          "parcel_ids": [
+            "0723040700"
+          ],
+          "rank": 4,
+          "source_attributes": [
+            {
+              "address": "1240 Astor Commons Pl",
+              "property_name": "ASPREY AT LAKE BRANDON",
+              "property_type": "multifamily",
+              "unit_count": 324,
+              "year_built": 2000
+            }
+          ],
+          "supporting_preferences": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:0723040700"
+          ]
+        },
+        {
+          "cost": 7,
+          "parcel_ids": [
+            "0980820010"
+          ],
+          "rank": 5,
+          "source_attributes": [
+            {
+              "address": "8402 N Waterford Ave",
+              "property_name": "BELARA LAKES",
+              "property_type": "multifamily",
+              "unit_count": 324,
+              "year_built": 1974
+            }
+          ],
+          "supporting_preferences": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:0980820010"
+          ]
+        },
+        {
+          "cost": 7,
+          "parcel_ids": [
+            "1760830882"
+          ],
+          "rank": 6,
+          "source_attributes": [
+            {
+              "address": "1115 E Twiggs St",
+              "property_name": "CHANNEL CLUB",
+              "property_type": "multifamily",
+              "unit_count": 324,
+              "year_built": 2019
+            }
+          ],
+          "supporting_preferences": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:1760830882"
+          ]
+        },
+        {
+          "cost": 7,
+          "parcel_ids": [
+            "1897430000"
+          ],
+          "rank": 7,
+          "source_attributes": [
+            {
+              "address": "601 N 12th St",
+              "property_name": "MAV",
+              "property_type": "multifamily",
+              "unit_count": 324,
+              "year_built": 2022
+            }
+          ],
+          "supporting_preferences": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:1897430000"
+          ]
+        },
+        {
+          "cost": 8,
+          "parcel_ids": [
+            "0031090000"
+          ],
+          "rank": 8,
+          "source_attributes": [
+            {
+              "address": "7940 Citrus Garden Dr",
+              "property_name": "CITRUS VILLAGE",
+              "property_type": "multifamily",
+              "unit_count": 296,
+              "year_built": 2011
+            }
+          ],
+          "supporting_preferences": []
+        },
+        {
+          "cost": 8,
+          "parcel_ids": [
+            "0031435050"
+          ],
+          "rank": 9,
+          "source_attributes": [
+            {
+              "address": "8134 Colonial Village Dr",
+              "property_name": "CYPRESS GRAND",
+              "property_type": "multifamily",
+              "unit_count": 176,
+              "year_built": 1998
+            }
+          ],
+          "supporting_preferences": []
+        },
+        {
+          "cost": 8,
+          "parcel_ids": [
+            "0035130000"
+          ],
+          "rank": 10,
+          "source_attributes": [
+            {
+              "address": "11591 Fountainhead Dr",
+              "property_name": "MARQ AT HIGHLAND PARK",
+              "property_type": "multifamily",
+              "unit_count": 239,
+              "year_built": 2014
+            }
+          ],
+          "supporting_preferences": []
+        }
+      ],
+      "ranking_semantics": "Native additive soft preference ordering, not probability, independent source count, or forced identity",
+      "resource_budget": {
+        "budget_id": "addressless.budget",
+        "deterministic_bounds": [
+          {
+            "action": "report_budget_fallback",
+            "counter": "bytes",
+            "origin": "caller_declared",
+            "semantic_id": "max_bytes",
+            "unit": "bytes",
+            "value": 100000000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "rows",
+            "origin": "caller_declared",
+            "semantic_id": "max_rows",
+            "unit": "rows",
+            "value": 10000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "cells",
+            "origin": "caller_declared",
+            "semantic_id": "max_cells",
+            "unit": "cells",
+            "value": 10000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "candidates",
+            "origin": "caller_declared",
+            "semantic_id": "max_candidates",
+            "unit": "candidates",
+            "value": 2000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "variables",
+            "origin": "caller_declared",
+            "semantic_id": "max_variables",
+            "unit": "variables",
+            "value": 2000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "states",
+            "origin": "caller_declared",
+            "semantic_id": "max_states",
+            "unit": "states",
+            "value": 5000000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "models",
+            "origin": "caller_declared",
+            "semantic_id": "max_models",
+            "unit": "models",
+            "value": 2000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "operations",
+            "origin": "caller_declared",
+            "semantic_id": "max_operations",
+            "unit": "operations",
+            "value": 50000000
+          }
+        ],
+        "telemetry": [
+          {
+            "metric": "wall_time",
+            "origin": "operator_policy",
+            "semantic_effect": "none",
+            "unit": "millisecond"
+          }
+        ],
+        "version": "canon_geo_resource_budget.v0"
+      },
+      "run_status": "ABSTAINED",
+      "soft_preference_count": 8,
+      "solver_summary": {
+        "building_candidates": 0,
+        "candidate_assignments": 18446744073709551615,
+        "candidate_assignments_saturated": true,
+        "component_count": 1,
+        "hard_constraint_evaluations": 889,
+        "hard_constraint_evaluations_complete": true,
+        "hard_constraint_evaluations_saturated": false,
+        "model_count_scope": "entity_selection",
+        "parcel_candidates": 889,
+        "residual_model_count": 889,
+        "residual_model_count_complete": true,
+        "residual_model_count_saturated": false,
+        "residual_models_materialized": true,
+        "structurally_feasible_assignments": 889,
+        "structurally_feasible_assignments_complete": true,
+        "structurally_feasible_assignments_saturated": false,
+        "summary_counts_saturated": true
+      },
+      "supplied_address": null,
+      "truth_attributes_evaluation_only": [
+        {
+          "attributes": {
+            "address": "5510 N Himes Ave",
+            "property_name": "COURTNEY COVE",
+            "property_type": "multifamily",
+            "unit_count": 324,
+            "year_built": 1981
+          },
+          "id": "1029330100"
+        }
+      ],
+      "truth_in_best_ranked_models": true,
+      "truth_parcel_ids": [
+        "1029330100"
+      ],
+      "withheld_truth_reachable": true
+    },
+    "final-summit": {
+      "admissions": [
+        {
+          "disposition": "diagnostic_only",
+          "generated_ids": [],
+          "observation_id": "descriptive:property_type"
+        },
+        {
+          "disposition": "hard_constraint",
+          "generated_ids": [
+            "rho:descriptive:single_member@1:descriptive:single_member"
+          ],
+          "observation_id": "descriptive:single_member"
+        },
+        {
+          "disposition": "soft_preference",
+          "generated_ids": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:0349070000"
+          ],
+          "observation_id": "descriptive:unit_count:0349070000"
+        },
+        {
+          "disposition": "soft_preference",
+          "generated_ids": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:0395740016"
+          ],
+          "observation_id": "descriptive:unit_count:0395740016"
+        }
+      ],
+      "best_ranked_model_count": 2,
+      "blind_experiment_success": false,
+      "candidate_reach": true,
+      "entity_grain": "parcel",
+      "evaluation_next_action": "Supply independently justified separating evidence",
+      "exact_residual": true,
+      "execution": {
+        "argv": [
+          "/private/tmp/canon-reit-second-20260917/canon-final",
+          "geo",
+          "run",
+          "--plan",
+          "/private/tmp/canon-reit-second-20260917/final-summit/plan.json",
+          "--work-dir",
+          "/private/tmp/canon-reit-second-20260917/final-summit/run",
+          "--input",
+          "geo.parcel.home_cells:rows=/private/tmp/canon-reit-second-20260917/final-summit/home.json",
+          "--input",
+          "geo.parcel.section:request=/private/tmp/canon-reit-second-20260917/final-summit/section.json",
+          "--input",
+          "geo.parcel.materialize_evidence:rows=/private/tmp/canon-reit-second-20260917/final-summit/descriptive.json",
+          "--input",
+          "geo.parcel.separation:request=/private/tmp/canon-reit-second-20260917/final-summit/separation.json",
+          "--input",
+          "geo.parcel.next_evidence:request=/private/tmp/canon-reit-second-20260917/final-summit/next.json"
+        ],
+        "binary_blake3": "57d580698e23d70b19a99f004861eb74fab88febdd8c9357f0a2759b7efca64e",
+        "elapsed_seconds": 558.2321781020146,
+        "exit_code": 0,
+        "source_manifest_blake3": "71ecaa0825a792b6c4270b43b7088bd5c77e16276fc4c58037a6ff777629593f"
+      },
+      "final_residual_size": 889,
+      "forced_identity": false,
+      "hard_constraint_count": 1,
+      "identity_claim_status": "unresolved",
+      "initial_candidates": 889,
+      "limits": [
+        "Uncalibrated descriptive agreements rank only; no population calibration or independent truth precision claim.",
+        "Regional inventory is restricted to declared DOR 03xx parcels, not all county physical assets.",
+        "Single-parcel hypothesis; complete collateral/building composition is not established.",
+        "Current assessor snapshot versus 2025 disclosure: historical coverage is unverified.",
+        "Claim year built absent; source unit-count sentinels stay unknown; names never harden identity."
+      ],
+      "materialization_usage": {
+        "dependency_output_count": 1,
+        "descriptive_address_claim_present": 0,
+        "descriptive_address_compatible": 0,
+        "descriptive_address_incompatible": 0,
+        "descriptive_address_unknown": 889,
+        "descriptive_candidates": 889,
+        "descriptive_property_name_claim_present": 1,
+        "descriptive_property_name_compatible": 0,
+        "descriptive_property_name_incompatible": 888,
+        "descriptive_property_name_unknown": 1,
+        "descriptive_property_type_claim_present": 1,
+        "descriptive_property_type_compatible": 889,
+        "descriptive_property_type_incompatible": 0,
+        "descriptive_property_type_unknown": 0,
+        "descriptive_unit_count_claim_present": 1,
+        "descriptive_unit_count_compatible": 2,
+        "descriptive_unit_count_incompatible": 754,
+        "descriptive_unit_count_unknown": 133,
+        "descriptive_year_built_claim_present": 0,
+        "descriptive_year_built_compatible": 0,
+        "descriptive_year_built_incompatible": 0,
+        "descriptive_year_built_unknown": 889,
+        "executor_supported_command_count": 18,
+        "input_binding_count": 1,
+        "materialized_observations": 4
+      },
+      "next_evidence": {
+        "budget_remaining": {
+          "max_bytes": 100000000,
+          "max_candidates": 2000,
+          "max_cells": 10000,
+          "max_models": 2000,
+          "max_operations": 50000000,
+          "max_rows": 10000,
+          "max_states": 5000000,
+          "max_variables": 2000
+        },
+        "composition_blake3": "blake3:6cfee704ff3db196ca59d0920070da86f9c75d5db12dc4607b3ef593768d8faf",
+        "counters": {
+          "budget_exhausted": 0,
+          "candidate_actions": 1,
+          "dominated_actions": 0,
+          "frontier_actions": 1
+        },
+        "dominated": [],
+        "frontier": [
+          {
+            "action_id": "acquire-independent-unit-count-support",
+            "class": "separate_residual",
+            "cost_units": 1,
+            "kind": {
+              "kind": "observe",
+              "payload": "independent-units-record-completeness"
+            },
+            "observation_id": "independent-units-record-completeness",
+            "redundant": false,
+            "separation": [
+              {
+                "count_exact": true,
+                "outcome_id": "known_units",
+                "residual_model_count": 756
+              },
+              {
+                "count_exact": true,
+                "outcome_id": "unknown_units",
+                "residual_model_count": 133
+              }
+            ],
+            "worst_case_remaining": 756
+          }
+        ],
+        "ranking_abstention": {
+          "code": "next_evidence_no_loss_model",
+          "detail": {
+            "policy": "none"
+          },
+          "message": "Total ranking requires a versioned loss model"
+        },
+        "run_id": "canon_geo_next_evidence.v0:46da829c5859718a75ccff174170763ecd051f7fc2c8a16314e3fa0694bd9ec5",
+        "separation_blake3": "blake3:23f1a17242129db07cac6eaa138d1985fdc813b1d4dcc30cada58bdc7a28a2cd",
+        "version": "canon_geo_next_evidence.v0"
+      },
+      "proof_class": "retained-public-data-experiment",
+      "property": "The Summit at Sabal Park",
+      "prospective_separation": {
+        "baseline_model_count": 889,
+        "per_observation": [
+          {
+            "observation_id": "independent-units-record-completeness",
+            "per_outcome": [
+              {
+                "count_exact": true,
+                "outcome_id": "known_units",
+                "residual_model_count": 756
+              },
+              {
+                "count_exact": true,
+                "outcome_id": "unknown_units",
+                "residual_model_count": 133
+              }
+            ],
+            "redundant": false,
+            "worst_case_remaining": 756
+          }
+        ],
+        "request_blake3": "blake3:fa1cee46855b7e863d44f8677401eb325597834342fbb672368cbd3a0df9de6c",
+        "version": "canon_geo_separation.v0"
+      },
+      "ranked_candidates": [
+        {
+          "cost": 1,
+          "parcel_ids": [
+            "0349070000"
+          ],
+          "rank": 1,
+          "source_attributes": [
+            {
+              "address": null,
+              "property_name": "LAKEVIEW OAKS",
+              "property_type": "multifamily",
+              "unit_count": 252,
+              "year_built": 1998
+            }
+          ],
+          "supporting_preferences": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:0349070000"
+          ]
+        },
+        {
+          "cost": 1,
+          "parcel_ids": [
+            "0395740016"
+          ],
+          "rank": 2,
+          "source_attributes": [
+            {
+              "address": null,
+              "property_name": "GRAND CYPRESS APARTMENTS",
+              "property_type": "multifamily",
+              "unit_count": 252,
+              "year_built": 2023
+            }
+          ],
+          "supporting_preferences": [
+            "rho:rho.descriptive.unit_count@1:descriptive:unit_count:0395740016"
+          ]
+        },
+        {
+          "cost": 2,
+          "parcel_ids": [
+            "0031090000"
+          ],
+          "rank": 3,
+          "source_attributes": [
+            {
+              "address": null,
+              "property_name": "CITRUS VILLAGE",
+              "property_type": "multifamily",
+              "unit_count": 296,
+              "year_built": 2011
+            }
+          ],
+          "supporting_preferences": []
+        },
+        {
+          "cost": 2,
+          "parcel_ids": [
+            "0031435050"
+          ],
+          "rank": 4,
+          "source_attributes": [
+            {
+              "address": null,
+              "property_name": "CYPRESS GRAND",
+              "property_type": "multifamily",
+              "unit_count": 176,
+              "year_built": 1998
+            }
+          ],
+          "supporting_preferences": []
+        },
+        {
+          "cost": 2,
+          "parcel_ids": [
+            "0035130000"
+          ],
+          "rank": 5,
+          "source_attributes": [
+            {
+              "address": null,
+              "property_name": "MARQ AT HIGHLAND PARK",
+              "property_type": "multifamily",
+              "unit_count": 239,
+              "year_built": 2014
+            }
+          ],
+          "supporting_preferences": []
+        },
+        {
+          "cost": 2,
+          "parcel_ids": [
+            "0035300005"
+          ],
+          "rank": 6,
+          "source_attributes": [
+            {
+              "address": null,
+              "property_name": "AVANA WESTCHASE",
+              "property_type": "multifamily",
+              "unit_count": 400,
+              "year_built": 2001
+            }
+          ],
+          "supporting_preferences": []
+        },
+        {
+          "cost": 2,
+          "parcel_ids": [
+            "0035320020"
+          ],
+          "rank": 7,
+          "source_attributes": [
+            {
+              "address": null,
+              "property_name": "CAMDEN WESTCHASE PARK",
+              "property_type": "multifamily",
+              "unit_count": 348,
+              "year_built": 2012
+            }
+          ],
+          "supporting_preferences": []
+        },
+        {
+          "cost": 2,
+          "parcel_ids": [
+            "0035320035"
+          ],
+          "rank": 8,
+          "source_attributes": [
+            {
+              "address": null,
+              "property_name": "TUSCANY BAY",
+              "property_type": "multifamily",
+              "unit_count": 370,
+              "year_built": 2001
+            }
+          ],
+          "supporting_preferences": []
+        },
+        {
+          "cost": 2,
+          "parcel_ids": [
+            "0035330055"
+          ],
+          "rank": 9,
+          "source_attributes": [
+            {
+              "address": null,
+              "property_name": "PRESERVE AT WESTCHASE",
+              "property_type": "multifamily",
+              "unit_count": 300,
+              "year_built": 1999
+            }
+          ],
+          "supporting_preferences": []
+        },
+        {
+          "cost": 2,
+          "parcel_ids": [
+            "0035390310"
+          ],
+          "rank": 10,
+          "source_attributes": [
+            {
+              "address": null,
+              "property_name": "WESTWOOD RESERVE OF CITRUS PARK",
+              "property_type": "multifamily",
+              "unit_count": 340,
+              "year_built": 1999
+            }
+          ],
+          "supporting_preferences": []
+        }
+      ],
+      "ranking_semantics": "Native additive soft preference ordering, not probability, independent source count, or forced identity",
+      "resource_budget": {
+        "budget_id": "addressless.budget",
+        "deterministic_bounds": [
+          {
+            "action": "report_budget_fallback",
+            "counter": "bytes",
+            "origin": "caller_declared",
+            "semantic_id": "max_bytes",
+            "unit": "bytes",
+            "value": 100000000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "rows",
+            "origin": "caller_declared",
+            "semantic_id": "max_rows",
+            "unit": "rows",
+            "value": 10000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "cells",
+            "origin": "caller_declared",
+            "semantic_id": "max_cells",
+            "unit": "cells",
+            "value": 10000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "candidates",
+            "origin": "caller_declared",
+            "semantic_id": "max_candidates",
+            "unit": "candidates",
+            "value": 2000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "variables",
+            "origin": "caller_declared",
+            "semantic_id": "max_variables",
+            "unit": "variables",
+            "value": 2000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "states",
+            "origin": "caller_declared",
+            "semantic_id": "max_states",
+            "unit": "states",
+            "value": 5000000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "models",
+            "origin": "caller_declared",
+            "semantic_id": "max_models",
+            "unit": "models",
+            "value": 2000
+          },
+          {
+            "action": "report_budget_fallback",
+            "counter": "operations",
+            "origin": "caller_declared",
+            "semantic_id": "max_operations",
+            "unit": "operations",
+            "value": 50000000
+          }
+        ],
+        "telemetry": [
+          {
+            "metric": "wall_time",
+            "origin": "operator_policy",
+            "semantic_effect": "none",
+            "unit": "millisecond"
+          }
+        ],
+        "version": "canon_geo_resource_budget.v0"
+      },
+      "run_status": "ABSTAINED",
+      "soft_preference_count": 2,
+      "solver_summary": {
+        "building_candidates": 0,
+        "candidate_assignments": 18446744073709551615,
+        "candidate_assignments_saturated": true,
+        "component_count": 1,
+        "hard_constraint_evaluations": 889,
+        "hard_constraint_evaluations_complete": true,
+        "hard_constraint_evaluations_saturated": false,
+        "model_count_scope": "entity_selection",
+        "parcel_candidates": 889,
+        "residual_model_count": 889,
+        "residual_model_count_complete": true,
+        "residual_model_count_saturated": false,
+        "residual_models_materialized": true,
+        "structurally_feasible_assignments": 889,
+        "structurally_feasible_assignments_complete": true,
+        "structurally_feasible_assignments_saturated": false,
+        "summary_counts_saturated": true
+      },
+      "supplied_address": null,
+      "truth_attributes_evaluation_only": [
+        {
+          "attributes": {
+            "address": null,
+            "property_name": "SUMMIT AT SABAL PARK",
+            "property_type": "multifamily",
+            "unit_count": 254,
+            "year_built": 1989
+          },
+          "id": "0652990300"
+        }
+      ],
+      "truth_in_best_ranked_models": false,
+      "truth_parcel_ids": [
+        "0652990300"
+      ],
+      "withheld_truth_reachable": true
+    }
+  },
+  "observed_value": "Hints-only native ranking recovered the independently confirmed parcel and situs address; a separate supplied-address input corroborates the same candidate.",
+  "proof_class": "retained-public-data-experiment",
+  "property": "Courtney Cove",
+  "selection": {
+    "admission_policy": "No hard descriptive comparisons without empirical calibration. Unit and name known agreements weight 1; type and year diagnostic. Address supplied in a separate corroboration run and soft only.",
+    "algorithm": "minimum SHA256(seed + property_name) over untested Tampa cohort from retained NXRT Q4 2025 supplement",
+    "cohort": [
+      {
+        "city": "Tampa",
+        "property_name": "Courtney Cove",
+        "state": "FL",
+        "unit_count": 324
+      }
+    ],
+    "inventory_scope": "Hillsborough County parcels with DOR code 03xx; selected solely from public geography and property type",
+    "name_policy": "ASCII case and whitespace normalization; soft exact agreement only",
+    "selected": {
+      "city": "Tampa",
+      "property_name": "Courtney Cove",
+      "state": "FL",
+      "unit_count": 324
+    },
+    "selected_at": "2026-09-17T15:29:18.576913+00:00",
+    "selection_limit": "Only one untested member remains in the supported Hillsborough geography; this is a held-out case, not random population accuracy.",
+    "selection_seed": "31e0eb118b3166bc0f3dd2aaec9886c2",
+    "truth_not_yet_acquired": true,
+    "unit_tolerance": 0,
+    "year_tolerance": 0
+  },
+  "summit_sources": "../addressless_nxrt_2026-09-17/sources.tar.gz",
+  "timing_conditions": "Local debug build with concurrent experiment and quality-gate execution; timings are observations, not portfolio throughput estimates.",
+  "version": "reit_supplied_evidence_experiment.v0"
+}

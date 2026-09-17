@@ -112,8 +112,16 @@ unchanged. This cost observation is retained in the source manifest.
 
 ## Replay
 
-From the repository root, extract into a fresh directory and run the offline
-adapter. Acquisition is not repeated; replay has retained-data proof class.
+The archives preserve the failed baseline from revision `0c618d1`. The current
+adapter corrects its admission policy: uncalibrated attributes are diagnostic or
+soft, and the descriptive profile refuses the original logical-relaxation
+declaration. Running the commands below now produces a **corrected comparison**,
+not the archived 135-model result. Reproducing that historical failure requires
+the adapter and binary from `0c618d1` in a separate checkout. No tolerance is
+retuned and neither original archive is changed.
+
+From the repository root, extract into a fresh directory and run the corrected
+offline adapter. Acquisition is not repeated; replay has retained-data proof class.
 
 ```bash
 cargo build --bin canon

@@ -1956,7 +1956,8 @@ impl<'a> FactorizedSolver<'a> {
             return self.solve_component_dfs(members, constraints);
         };
         let ctx = ComponentContext::new(self, members)?;
-        let mut solution = ComponentSolution::new(ctx.width(), true);
+        let mut solution =
+            ComponentSolution::new(ctx.width(), self.request.max_materialized_models);
         for mask in 0..space {
             if !ctx.structurally_valid(mask) {
                 continue;
@@ -1992,7 +1993,8 @@ impl<'a> FactorizedSolver<'a> {
     /// space exceeds the declared budget. Variables are assigned in canonical
     /// ascending order, false before true; partial-feasibility pruning skips
     /// infeasible subtrees; a visit budget bounds the work. Completing the
-    /// search yields exact counts and backbone flags without storing models.
+    /// search yields exact counts and backbone flags. Retain solutions only
+    /// within the same presentation cap used by exhaustive enumeration.
     fn solve_component_dfs(
         &self,
         members: &[usize],
@@ -2007,7 +2009,7 @@ impl<'a> FactorizedSolver<'a> {
             visits: 0,
             values: vec![false; width],
             exhausted: false,
-            solution: ComponentSolution::new(width, false),
+            solution: ComponentSolution::new(width, self.request.max_materialized_models),
         };
         search.run(0);
         if search.exhausted {
@@ -2305,7 +2307,9 @@ impl<'a> FactorizedSolver<'a> {
         let materialized_capacity = usize::try_from(residual.value).ok();
         let can_materialize = !residual.saturated
             && residual.value <= self.request.max_materialized_models
-            && solutions.iter().all(|solution| solution.masks.is_some())
+            && solutions
+                .iter()
+                .all(|solution| solution.retained_selections(capable_components).is_some())
             && materialized_capacity.is_some();
         let residual_models = if can_materialize {
             let mut models = self.materialize(
@@ -2376,7 +2380,7 @@ impl<'a> FactorizedSolver<'a> {
     }
 
     /// Enumerate the combined residual by odometer over retained component
-    /// masks. Called only when every component retained its solutions and the
+    /// selections. Called only when every component retained its solutions and the
     /// exact total fits `max_materialized_models`.
     fn materialize(
         &self,
@@ -2384,6 +2388,7 @@ impl<'a> FactorizedSolver<'a> {
         solutions: &[ComponentSolution],
         residual_total: usize,
     ) -> Result<Vec<GeoCompositionModel>, GeoCompositionError> {
+        let capable_components = solutions.iter().filter(|s| s.positive_count > 0).count();
         let contexts = components
             .iter()
             .map(|members| ComponentContext::new(self, members))
@@ -2395,15 +2400,18 @@ impl<'a> FactorizedSolver<'a> {
             let mut parcels = Vec::new();
             let mut buildings = Vec::new();
             for (component_id, context) in contexts.iter().enumerate() {
-                let masks = solutions[component_id]
-                    .masks
-                    .as_deref()
-                    .expect("materialize requires retained masks");
-                let mask = masks[cursor[component_id]];
-                if context.mask_has_selection(mask) {
-                    any_selection = true;
+                let selections = solutions[component_id]
+                    .retained_selections(capable_components)
+                    .expect("materialize requires retained selections");
+                for slot in &selections[cursor[component_id]] {
+                    let variable = context.members[*slot];
+                    any_selection |=
+                        self.entity_level(variable) == self.request.profile.selection_level;
+                    match self.var_level(variable) {
+                        VarLevel::Parcel => parcels.push(self.var_id(variable).to_string()),
+                        VarLevel::Building => buildings.push(self.var_id(variable).to_string()),
+                    }
                 }
-                context.append_selection(mask, &mut parcels, &mut buildings);
             }
             if any_selection {
                 parcels.sort();
@@ -2413,7 +2421,12 @@ impl<'a> FactorizedSolver<'a> {
             let mut advanced = false;
             for index in (0..cursor.len()).rev() {
                 cursor[index] += 1;
-                if cursor[index] < solutions[index].masks.as_ref().expect("retained").len() {
+                if cursor[index]
+                    < solutions[index]
+                        .retained_selections(capable_components)
+                        .expect("retained")
+                        .len()
+                {
                     advanced = true;
                     break;
                 }
@@ -2738,10 +2751,8 @@ enum ComponentOutcome {
     },
 }
 
-/// Streaming per-component solution statistics. `masks` retains individual
-/// feasible assignments only when the component was enumerated with
-/// retention; the bounded search path reports counts and backbone flags
-/// without storing models.
+/// Streaming per-component statistics plus bounded sparse selections. Search
+/// strategy and variable width do not suppress otherwise affordable output.
 #[derive(Debug, Clone, Default)]
 struct ComponentSolution {
     count: u128,
@@ -2755,17 +2766,21 @@ struct ComponentSolution {
     seen_absent: Vec<bool>,
     positive_seen_selected: Vec<bool>,
     positive_seen_absent: Vec<bool>,
-    masks: Option<Vec<u128>>,
+    selections: Option<Vec<Vec<usize>>>,
+    positive_selections: Option<Vec<Vec<usize>>>,
+    retention_limit: usize,
 }
 
 impl ComponentSolution {
-    fn new(width: usize, retain_masks: bool) -> Self {
+    fn new(width: usize, max_materialized_models: u64) -> Self {
         Self {
             seen_selected: vec![false; width],
             seen_absent: vec![false; width],
             positive_seen_selected: vec![false; width],
             positive_seen_absent: vec![false; width],
-            masks: retain_masks.then(Vec::new),
+            selections: Some(Vec::new()),
+            positive_selections: Some(Vec::new()),
+            retention_limit: usize::try_from(max_materialized_models).unwrap_or(usize::MAX),
             ..Self::default()
         }
     }
@@ -2775,14 +2790,35 @@ impl ComponentSolution {
             .map(|slot| mask & (1_u128 << slot) != 0)
             .collect::<Vec<_>>();
         self.record_selection(&selection, context);
-        if let Some(masks) = self.masks.as_mut() {
-            masks.push(mask);
-        }
     }
 
     fn record_selection(&mut self, selection: &[bool], context: &ComponentContext<'_>) {
         self.count += 1;
         let has_selection = context.selection_has_selection(selection);
+        // Non-selected-level variables can produce many assignments with no
+        // selected entity. If this is the sole capable component, those rows
+        // never occur in the residual and must not consume its retention cap.
+        for retained in [
+            Some(&mut self.selections),
+            has_selection.then_some(&mut self.positive_selections),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if let Some(rows) = retained.as_mut() {
+                if rows.len() < self.retention_limit {
+                    rows.push(
+                        selection
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(slot, selected)| selected.then_some(slot))
+                            .collect(),
+                    );
+                } else {
+                    *retained = None;
+                }
+            }
+        }
         if has_selection {
             self.positive_count += 1;
         } else {
@@ -2800,6 +2836,14 @@ impl ComponentSolution {
                     self.positive_seen_absent[slot] = true;
                 }
             }
+        }
+    }
+
+    fn retained_selections(&self, capable_components: usize) -> Option<&[Vec<usize>]> {
+        if capable_components == 1 && self.positive_count > 0 {
+            self.positive_selections.as_deref()
+        } else {
+            self.selections.as_deref()
         }
     }
 }

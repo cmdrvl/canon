@@ -152,6 +152,7 @@
     },
     "rho_basis": {
       "oneOf": [
+        {"$ref": "canon.geo.evidence_request.v0.schema.json#/$defs/uncalibrated_rho_basis"},
         {
           "type": "object",
           "additionalProperties": false,

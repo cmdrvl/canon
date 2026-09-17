@@ -4732,6 +4732,38 @@ fn evidence_request_schema_matches_a_real_instance() {
 }
 
 #[test]
+fn uncalibrated_evidence_schemas_match_diagnostic_and_soft_admission() {
+    for policy in [
+        GeoRhoAdmissionPolicy::DiagnosticOnly {
+            reason: "No validated source comparability".to_string(),
+        },
+        GeoRhoAdmissionPolicy::SoftWithWeight { cost_if_absent: 2 },
+    ] {
+        let mut request = evidence_request();
+        for contract in &mut request.contracts {
+            contract.basis = GeoRhoBasis::Uncalibrated {
+                reason: "Source measures have not been calibrated".to_string(),
+                admission_policy: policy.clone(),
+            };
+        }
+        assert_drift_free(
+            EVIDENCE_REQUEST_SCHEMA,
+            "canon.geo.evidence_request.v0",
+            "canon_geo_evidence_request.v0",
+            &serde_json::to_value(&request).unwrap(),
+        );
+        let compiled = compile_evidence(&request).unwrap();
+        assert!(compiled.composition_request.hard_constraints.is_empty());
+        assert_drift_free(
+            EVIDENCE_COMPILATION_SCHEMA,
+            "canon.geo.evidence_compilation.v0",
+            "canon_geo_evidence_compilation.v0",
+            &serde_json::to_value(&compiled).unwrap(),
+        );
+    }
+}
+
+#[test]
 fn completeness_observation_schemas_match_real_instances() {
     let request = GeoEvidenceCompilationRequest {
         version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),

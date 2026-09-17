@@ -40,6 +40,12 @@ fn contract(id: &str, soundness: GeoRhoSoundness) -> GeoRhoContract {
         method_version: "v1".to_string(),
         claim_role: GeoEvidenceClaimRole::AttributeObservation,
         basis: match soundness {
+            GeoRhoSoundness::Uncalibrated => GeoRhoBasis::Uncalibrated {
+                reason: "fixture-no-error-model".to_string(),
+                admission_policy: GeoRhoAdmissionPolicy::DiagnosticOnly {
+                    reason: "fixture-unverified".to_string(),
+                },
+            },
             GeoRhoSoundness::LogicallySound => GeoRhoBasis::LogicalRelaxation {
                 invariant_id: format!("fixture:{id}:invariant"),
             },
@@ -1219,6 +1225,55 @@ fn evidence_compilation_is_byte_identical_under_equivalent_permutations() {
         canonical_evidence_compilation_bytes(&original).expect("must serialize"),
         canonical_evidence_compilation_bytes(&permuted).expect("must serialize")
     );
+}
+
+#[test]
+fn uncalibrated_contracts_are_diagnostic_or_soft_and_never_hard() {
+    let mut request = GeoEvidenceCompilationRequest {
+        version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
+        universe: universe(&["p1", "p2", "p3"]),
+        contracts: vec![contract("raw", GeoRhoSoundness::Uncalibrated)],
+        observations: vec![GeoRhoObservation {
+            id: "raw-row".to_string(),
+            contract_id: "raw".to_string(),
+            source_records: vec![source_record("raw")],
+            valid_time: None,
+            observation: GeoRhoObservationKind::PreferMember {
+                member: GeoEntityRef::new(GeoEntityLevel::Parcel, "p2"),
+                cost_if_absent: 2,
+            },
+        }],
+        max_assignments: 8,
+        max_materialized_models: 10,
+    };
+    let diagnostic = compile_evidence(&request).unwrap();
+    assert_eq!(
+        diagnostic.admissions[0].disposition,
+        GeoEvidenceDisposition::DiagnosticOnly
+    );
+    assert!(diagnostic.composition_request.hard_constraints.is_empty());
+    assert!(diagnostic.composition_request.soft_preferences.is_empty());
+    if let GeoRhoBasis::Uncalibrated {
+        admission_policy, ..
+    } = &mut request.contracts[0].basis
+    {
+        *admission_policy = GeoRhoAdmissionPolicy::SoftWithWeight { cost_if_absent: 2 };
+    }
+    let soft = compile_evidence(&request).unwrap();
+    assert!(soft.composition_request.hard_constraints.is_empty());
+    assert_eq!(soft.composition_request.soft_preferences.len(), 1);
+    validate_evidence_compilation_artifact(&soft).unwrap();
+    if let GeoRhoBasis::Uncalibrated {
+        admission_policy, ..
+    } = &mut request.contracts[0].basis
+    {
+        *admission_policy = GeoRhoAdmissionPolicy::HardOnlyWhenSupportedMembersAtLeast {
+            minimum_supported_members: 1,
+            fallback: GeoRhoAdmissionFallback::DiagnosticOnly,
+        };
+    }
+    assert!(compile_evidence(&request).is_err());
 }
 
 #[test]

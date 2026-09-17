@@ -3,7 +3,7 @@
 # requires-python = ">=3.12,<3.14"
 # dependencies = ["blake3==1.0.5", "h3==4.3.1", "shapely==2.1.1"]
 # ///
-"""Offline Hillsborough adapter for the first addressless experiment.
+"""Offline Hillsborough adapter for supplied REIT hints and address evidence.
 
 Acquisition is separate. `prepare` reads only the retained regional export and
 SEC descriptor selection; `evaluate` reads independently withheld truth after a
@@ -123,6 +123,7 @@ def prepare(args):
         if a["tunits"] is not None and a["tunits"] > 0 and a["tunits"] != int(a["tunits"]):
             raise ValueError(f"Nonintegral unit count on source parcel {id_}")
         attrs = {"property_name": a["dba"].strip() if a["dba"] and a["dba"].strip() else None,
+                 "address": a.get("site_addr") or None,
                  "property_type": "multifamily", "unit_count": int(a["tunits"]) if a["tunits"] and a["tunits"] > 0 else None,
                  "year_built": int(a["act"]) if a["act"] and a["act"] > 0 else None}
         candidates.append({"id": id_, "attributes": attrs, "source_records": [record("assessor:" + str(a["objectid"]), release["release_id"], encoded(feature))]})
@@ -134,12 +135,15 @@ def prepare(args):
     write(root, "section.json", {"version": "canon_geo_tile_work_request.v1", "center_cell": center, "halo_k": halo,
         "features": tile_features, "max_features": 2000, "max_work_cells": 10000})
     policies = []
-    for channel in ["property_name", "property_type", "unit_count", "year_built"]:
+    for channel in ["property_name", "address", "property_type", "unit_count", "year_built"]:
+        admission = {"kind": "soft_with_weight", "cost_if_absent": 1} if channel in ["property_name", "address", "unit_count"] else {
+            "kind": "diagnostic_only", "reason": "Source category/year comparability has not been calibrated"}
         policies.append({"channel": channel, "tolerance": selection["year_tolerance"] if channel == "year_built" else selection["unit_tolerance"] if channel == "unit_count" else 0,
+            "text_comparison": "ascii_case_whitespace" if channel in ["property_name", "address"] else "exact",
             "contract": {"id": "rho.descriptive." + channel, "version": "1", "source_dataset": "retained-assessor-and-disclosure", "source_release": release["release_id"],
                 "source_lineage_ids": ["hillsborough-property-appraiser", "nxrt-company-disclosure"],
-                "method_id": "declared-record-compatibility-experiment", "method_version": "1", "claim_role": "attribute_observation",
-                "basis": {"kind": "logical_relaxation", "invariant_id": "conditional-on-recorded-same-grain-attributes-being-correct-and-comparable"}}})
+                "method_id": "known-attribute-agreement", "method_version": "2", "claim_role": "attribute_observation",
+                "basis": {"kind": "uncalibrated", "reason": "No validated cross-source measure, grain or vintage error model", "admission_policy": admission}}})
     request = {"version": "canon_geo_descriptive_asset_request.v0",
         "profile": {"profile_id": "descriptive_asset_single_member_v0", "selection_level": "parcel", "channels": policies},
         "bounded_geography": region, "inventory_source": source,
@@ -149,6 +153,17 @@ def prepare(args):
                 record("sec:0001193125-26-065382:ex99.1:property-table", "2025-12-31", read(args.sources / "sec-nxrt-2025q4-ex991.html")),
                 record("frozen-selection", "2026-09-17", selection_bytes)]},
         "candidates": candidates, "max_candidates": 2000, "max_assignments": 5_000_000, "max_materialized_models": 2000}
+    if args.address_evidence:
+        # Acquisition is external. The hints run never opens this local input.
+        raw_address = args.address_evidence.read_bytes()
+        supplied = json.loads(raw_address)
+        assert supplied["property_name"] == claim["property_name"]
+        assert supplied["geography_id"] == region["geography_id"]
+        request["claim"]["attributes"]["address"] = supplied["address"]
+        request["claim"]["source_records"].append(record(supplied["source_url"], supplied["source_vintage"], raw_address))
+        for policy in policies:
+            if policy["channel"] == "address":
+                policy["contract"]["source_lineage_ids"] = sorted({"hillsborough-property-appraiser", supplied["lineage_id"]})
     write(root, "descriptive.json", request)
     # Modeled prospective outcomes, not acquired evidence: an independent
     # source locates the subject among parcels with/without recorded unit counts.
@@ -191,24 +206,40 @@ def evaluate(args):
     truth_reachable = feasible is not None and feasible["summary"]["residual_model_count_complete"] and feasible["summary"]["residual_model_count"] == 1
     separation = json.loads((root / "run/geo/parcel/separation.json").read_bytes())
     next_evidence = json.loads((root / "run/geo/parcel/next_evidence.json").read_bytes())
+    materialization_receipt = json.loads((root / "run/.canon/geo-run/receipts/geo_parcel_materialize_evidence.json").read_bytes())
+    ranked = solve["soft_ranked"]
+    best = [r for r in ranked if r["cost"] == ranked[0]["cost"]] if ranked else []
+    attributes = {c["id"]: c["attributes"] for c in request["candidates"]}
+    preferences = compiled["composition_request"]["soft_preferences"]
+    ranked_candidates = [{"rank": r["rank"], "cost": r["cost"], "parcel_ids": r["model"]["parcels"],
+        "source_attributes": [attributes[id_] for id_ in r["model"]["parcels"]],
+        "supporting_preferences": [p["id"] for p in preferences if p["member"]["id"] in r["model"]["parcels"]]}
+        for r in ranked[:10]]
     summary = {"property": request["claim"]["attributes"]["property_name"], "proof_class": "retained-public-data-experiment",
+        "entity_grain": request["profile"]["selection_level"],
+        "materialization_usage": materialization_receipt["deterministic_usage"],
         "initial_candidates": len(candidate_ids), "truth_parcel_ids": sorted(truth_ids), "candidate_reach": truth_ids <= candidate_ids,
         "exact_residual": solve["summary"]["residual_model_count_complete"] and not solve["summary"]["residual_model_count_saturated"],
         "final_residual_size": solve["summary"]["residual_model_count"], "withheld_truth_reachable": truth_reachable,
         "forced_identity": solve["status"] == "resolved", "run_status": run["status"],
+        "supplied_address": request["claim"]["attributes"].get("address"),
+        "best_ranked_model_count": len(best),
+        "truth_in_best_ranked_models": any(set(r["model"]["parcels"]) == truth_ids for r in best),
+        "ranked_candidates": ranked_candidates,
+        "ranking_semantics": "Native additive soft preference ordering, not probability, independent source count, or forced identity",
         "blind_experiment_success": truth_reachable and solve["summary"]["residual_model_count_complete"]
             and not solve["summary"]["residual_model_count_saturated"] and len(candidate_ids) > solve["summary"]["residual_model_count"],
         "identity_claim_status": "unresolved" if truth_reachable else "blocked_failed_truth_reach",
-        "evaluation_next_action": "Acquire independent separating evidence" if truth_reachable else
+        "evaluation_next_action": "Supply independently justified separating evidence" if truth_reachable else
             "Investigate source grain, vintage and attribute comparability; revoke truth-excluding hard assumptions before claiming identity. Do not tune the frozen tolerance to this subject.",
         "truth_attributes_evaluation_only": [{"id": c["id"], "attributes": c["attributes"]} for c in request["candidates"] if c["id"] in truth_ids],
-        "admissions": [{"observation_id": a["observation_id"], "disposition": a["disposition"], "generated_ids": a["generated_ids"]} for a in compiled["admissions"]],
+        "admissions": [{"observation_id": a["observation_id"], "disposition": a["disposition"], "generated_ids": a.get("generated_ids", [])} for a in compiled["admissions"]],
         "hard_constraint_count": len(compiled["composition_request"]["hard_constraints"]),
         "soft_preference_count": len(compiled["composition_request"]["soft_preferences"]),
         "solver_summary": solve["summary"], "prospective_separation": separation,
         "next_evidence": next_evidence, "execution": json.loads((root / "execution.json").read_bytes()),
         "resource_budget": json.loads((root / "budget.json").read_bytes()),
-        "limits": ["Conditional compatibility of recorded same-grain attributes; no population calibration or independent truth precision claim.",
+        "limits": ["Uncalibrated descriptive agreements rank only; no population calibration or independent truth precision claim.",
                    "Regional inventory is restricted to declared DOR 03xx parcels, not all county physical assets.",
                    "Single-parcel hypothesis; complete collateral/building composition is not established.",
                    "Current assessor snapshot versus 2025 disclosure: historical coverage is unverified.",
@@ -221,14 +252,16 @@ def run(args):
     """Launch the existing project runner once; no alternate scheduler/cache."""
     argv = json.loads((args.work_dir / "run-command.json").read_bytes())
     argv[0] = str(args.canon)
+    binary_digest = digest(args.canon.read_bytes())
+    manifest_digest = digest(read(args.sources / "source-manifest.json"))
     started = time.monotonic()
     result = subprocess.run(argv, capture_output=True)
     elapsed = time.monotonic() - started
     (args.work_dir / "run.json").write_bytes(result.stdout)
     (args.work_dir / "run.stderr").write_bytes(result.stderr)
     write(args.work_dir, "execution.json", {"argv": argv, "exit_code": result.returncode,
-        "elapsed_seconds": elapsed, "binary_blake3": digest(args.canon.read_bytes()),
-        "source_manifest_blake3": digest(read(args.sources / "source-manifest.json"))})
+        "elapsed_seconds": elapsed, "binary_blake3": binary_digest,
+        "source_manifest_blake3": manifest_digest})
     print(json.dumps({"exit_code": result.returncode, "elapsed_seconds": elapsed}))
     if result.returncode not in (0, 1):
         raise RuntimeError(result.stdout.decode() + result.stderr.decode())
@@ -240,6 +273,7 @@ if __name__ == "__main__":
     parser.add_argument("--sources", type=Path, required=True)
     parser.add_argument("--work-dir", type=Path, required=True)
     parser.add_argument("--canon", type=Path, default=Path("target/debug/canon"))
+    parser.add_argument("--address-evidence", type=Path, help="Optional supplied local address evidence for a separate corroboration run")
     options = parser.parse_args()
     options.canon = options.canon.resolve()
     options.work_dir = options.work_dir.resolve()

@@ -148,7 +148,8 @@ fn descriptive_asset_runs_through_shared_plan_and_rejects_wrong_inventory() {
             "channel": "unit_count", "tolerance": 0,
             "contract": {"id": "units", "version": "1", "source_dataset": "fixture", "source_release": "2026-08-31", "source_lineage_ids": ["fixture"],
                 "method_id": "exact-fixture-units", "method_version": "1", "claim_role": "attribute_observation",
-                "basis": {"kind": "logical_relaxation", "invariant_id": "fixture-exact-unit-count"}}
+                "basis": {"kind": "empirical_calibration", "population_id": "fixture-counts", "calibration_blake3": digest_hex("fixture-calibration"),
+                    "falsification_rule_id": "fixture-known-counts", "admissible_hard_band": true}}
         }]},
         "bounded_geography": region(), "inventory_source": source,
         "claim": {"claim_id": "blind-fixture", "as_of": "2026-08-31", "attributes": {"unit_count": 100}, "source_records": records},

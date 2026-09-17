@@ -158,8 +158,24 @@
       },
       "required": ["semantic_id", "unit", "value_origin"]
     },
+    "uncalibrated_rho_basis": {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "reason", "admission_policy"],
+          "properties": {
+            "kind": {"const": "uncalibrated"}, "reason": {"type": "string", "minLength": 1},
+            "admission_policy": {"oneOf": [
+              {"type": "object", "additionalProperties": false,
+                "required": ["kind", "reason"],
+                "properties": {"kind": {"const": "diagnostic_only"}, "reason": {"type": "string"}}},
+              {"type": "object", "additionalProperties": false,
+                "required": ["kind", "cost_if_absent"],
+                "properties": {"kind": {"const": "soft_with_weight"}, "cost_if_absent": {"type": "integer", "minimum": 0}}}
+            ]}
+          }
+    },
     "rho_basis": {
       "oneOf": [
+        {"$ref": "#/$defs/uncalibrated_rho_basis"},
         {
           "type": "object",
           "additionalProperties": false,

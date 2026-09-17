@@ -1182,6 +1182,102 @@ fn measured_block_shapes_solve_without_cartesian_refusal() {
 }
 
 #[test]
+fn bounded_dfs_retains_wide_models_for_soft_ranking_without_forcing_them() {
+    let mut request = GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
+        universe: GeoCompositionUniverse {
+            parcels: (0..129).map(|i| format!("p{i:03}")).collect(),
+            buildings: Vec::new(),
+        },
+        hard_constraints: vec![GeoHardConstraint {
+            id: "one-member-question".to_string(),
+            constraint: GeoHardConstraintKind::Cardinality {
+                level: GeoEntityLevel::Parcel,
+                min: 1,
+                max: 1,
+            },
+        }],
+        soft_preferences: vec![GeoSoftPreference {
+            id: "supplied-support".to_string(),
+            member: GeoEntityRef::new(GeoEntityLevel::Parcel, "p128"),
+            cost_if_absent: 4,
+        }],
+        max_assignments: 100_000,
+        max_materialized_models: 129,
+    };
+    let output = solve_composition(&request).unwrap();
+    assert_eq!(
+        output.factorization[0].strategy,
+        GeoCompositionSearchStrategy::PrunedDepthFirst
+    );
+    assert_eq!(output.summary.residual_model_count, 129);
+    assert!(output.summary.residual_models_materialized);
+    assert_eq!(output.residual_models.len(), 129);
+    assert_eq!(output.soft_ranked[0].model.parcels, ["p128"]);
+    assert_eq!(output.soft_ranked[0].cost, 0);
+    assert_eq!(output.soft_ranked[1].cost, 4);
+    assert!(output.hard_forced.parcels.is_empty());
+    assert_eq!(output.status, GeoCompositionStatus::Ambiguous);
+    request.max_materialized_models = 128;
+    let capped = solve_composition(&request).unwrap();
+    assert_eq!(capped.summary.residual_model_count, 129);
+    assert!(capped.summary.residual_model_count_complete);
+    assert!(!capped.summary.residual_models_materialized);
+    assert!(capped.residual_models.is_empty());
+    assert!(capped.soft_ranked.is_empty());
+    assert_eq!(output.hard_forced, capped.hard_forced);
+}
+
+#[test]
+fn retention_cap_ignores_assignments_without_any_selected_level_entity() {
+    let request = GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: GeoCompositionProfile::default(),
+        universe: GeoCompositionUniverse {
+            parcels: vec!["p1".to_string()],
+            buildings: ["b1", "b2"]
+                .into_iter()
+                .map(|id| GeoBuildingCandidate {
+                    id: id.to_string(),
+                    parcel_ids: Vec::new(),
+                })
+                .collect(),
+        },
+        hard_constraints: vec![
+            GeoHardConstraint {
+                id: "connected-component".to_string(),
+                constraint: GeoHardConstraintKind::AnyOf {
+                    members: vec![
+                        GeoEntityRef::new(GeoEntityLevel::Parcel, "p1"),
+                        GeoEntityRef::new(GeoEntityLevel::Building, "b1"),
+                        GeoEntityRef::new(GeoEntityLevel::Building, "b2"),
+                    ],
+                },
+            },
+            GeoHardConstraint {
+                id: "building-band".to_string(),
+                constraint: GeoHardConstraintKind::Cardinality {
+                    level: GeoEntityLevel::Building,
+                    min: 0,
+                    max: 2,
+                },
+            },
+        ],
+        soft_preferences: Vec::new(),
+        max_assignments: 8,
+        max_materialized_models: 4,
+    };
+    // Three feasible assignments select buildings but no parcel and are omitted.
+    // The four parcel-bearing assignments fit the presentation cap exactly.
+    let output = solve_composition(&request).unwrap();
+    assert_eq!(output.summary.residual_model_count, 4);
+    assert!(output.summary.residual_models_materialized);
+    assert_eq!(output.residual_models.len(), 4);
+    assert!(output.residual_models.iter().all(|m| m.parcels == ["p1"]));
+}
+
+#[test]
 fn extreme_universe_reports_saturated_lower_bound_instead_of_guessing() {
     // 46 stars = 92 variables, the measured maximum block shape. The exact
     // residual 3^46 - 1 exceeds u64 range; report the declared bound.

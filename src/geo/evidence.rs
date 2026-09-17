@@ -41,6 +41,7 @@ fn is_default_admission_policy(value: &GeoRhoAdmissionPolicy) -> bool {
 pub enum GeoRhoSoundness {
     LogicallySound,
     EmpiricalHighCoverage,
+    Uncalibrated,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -59,6 +60,12 @@ pub enum GeoEvidenceClaimRole {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum GeoRhoBasis {
+    /// Source observations without an established error model can diagnose or
+    /// rank alternatives, but can never eliminate a feasible world.
+    Uncalibrated {
+        reason: String,
+        admission_policy: GeoRhoAdmissionPolicy,
+    },
     LogicalRelaxation {
         invariant_id: String,
     },
@@ -135,6 +142,7 @@ pub struct GeoRhoContract {
 impl GeoRhoContract {
     pub fn soundness(&self) -> GeoRhoSoundness {
         match self.basis {
+            GeoRhoBasis::Uncalibrated { .. } => GeoRhoSoundness::Uncalibrated,
             GeoRhoBasis::LogicalRelaxation { .. } => GeoRhoSoundness::LogicallySound,
             GeoRhoBasis::EmpiricalCalibration { .. } => GeoRhoSoundness::EmpiricalHighCoverage,
         }
@@ -782,6 +790,23 @@ fn validate_contract(contract: &GeoRhoContract) -> Result<(), GeoEvidenceError> 
     validate_identifier("contracts[].method_id", &contract.method_id)?;
     validate_identifier("contracts[].method_version", &contract.method_version)?;
     match &contract.basis {
+        GeoRhoBasis::Uncalibrated {
+            reason,
+            admission_policy,
+        } => {
+            validate_identifier("contracts[].basis.reason", reason)?;
+            if !matches!(
+                admission_policy,
+                GeoRhoAdmissionPolicy::DiagnosticOnly { .. }
+                    | GeoRhoAdmissionPolicy::SoftWithWeight { .. }
+            ) {
+                return Err(GeoEvidenceError::invalid(
+                    "Uncalibrated evidence permits only diagnostic or soft admission",
+                    [("contract_id", contract.id.as_str())],
+                ));
+            }
+            validate_admission_policy(admission_policy)?;
+        }
         GeoRhoBasis::LogicalRelaxation { invariant_id } => {
             validate_identifier("contracts[].basis.invariant_id", invariant_id)?;
         }
@@ -1189,7 +1214,10 @@ fn soft_supported_members(values: &[GeoIntegerMemberValue]) -> Option<Vec<String
 
 fn empirical_admission_policy(contract: &GeoRhoContract) -> Option<&GeoRhoAdmissionPolicy> {
     match &contract.basis {
-        GeoRhoBasis::EmpiricalCalibration {
+        GeoRhoBasis::Uncalibrated {
+            admission_policy, ..
+        }
+        | GeoRhoBasis::EmpiricalCalibration {
             admission_policy, ..
         } => Some(admission_policy),
         GeoRhoBasis::LogicalRelaxation { .. } => None,

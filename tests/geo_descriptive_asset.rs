@@ -22,7 +22,9 @@ fn request() -> GeoDescriptiveAssetRequest {
         "contract": {"id": channel, "version": "1", "source_dataset": "synthetic-assessor",
             "source_release": "v1", "source_lineage_ids": ["synthetic"],
             "method_id": "fixture-declared-compatible-attributes", "method_version": "1",
-            "claim_role": "attribute_observation", "basis": {"kind": "logical_relaxation", "invariant_id": "synthetic-exact-values"}}
+            "claim_role": "attribute_observation", "basis": {"kind": "empirical_calibration", "population_id": "synthetic-same-grain-values",
+                "calibration_blake3": blake3::hash(b"fixture-calibration").to_hex().to_string(),
+                "falsification_rule_id": "fixture-known-counts", "admissible_hard_band": true}}
     })).collect();
     serde_json::from_value(json!({
         "version": CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION,
@@ -171,4 +173,117 @@ fn bounded_inventory_handles_hundreds_of_candidates_without_guessing() {
     assert_eq!(result.summary.residual_model_count, 1);
     assert!(result.backbone_complete);
     assert_eq!(result.hard_forced.parcels, vec!["p0020"]);
+}
+
+fn uncalibrated(input: &mut GeoDescriptiveAssetRequest, soft: bool) {
+    for policy in &mut input.profile.channels {
+        policy.contract.basis = GeoRhoBasis::Uncalibrated {
+            reason: "Source measure, grain and vintage comparability unverified".to_string(),
+            admission_policy: if soft {
+                GeoRhoAdmissionPolicy::SoftWithWeight { cost_if_absent: 3 }
+            } else {
+                GeoRhoAdmissionPolicy::DiagnosticOnly {
+                    reason: "No calibration supplied".to_string(),
+                }
+            },
+        };
+    }
+}
+
+#[test]
+fn unverified_disagreement_preserves_truth_and_unknowns_do_not_earn_support() {
+    let mut input = request();
+    // A known true candidate disagrees in units; another candidate lacks units.
+    input.candidates[0].attributes.unit_count = Some(122);
+    input.candidates[1].attributes.unit_count = None;
+    uncalibrated(&mut input, true);
+    let materialized = materialize_descriptive_asset(&input).unwrap();
+    let compiled = compile_evidence(&materialized.evidence).unwrap();
+    assert_eq!(compiled.composition_request.hard_constraints.len(), 1);
+    let unit_preferences: Vec<_> = compiled
+        .composition_request
+        .soft_preferences
+        .iter()
+        .filter(|p| p.id.contains("descriptive:unit_count:"))
+        .collect();
+    assert_eq!(
+        unit_preferences
+            .iter()
+            .map(|p| p.member.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["p3", "p5"]
+    );
+    assert!(unit_preferences.iter().all(|p| p.cost_if_absent == 3));
+    let output = solve(&input);
+    assert_eq!(output.summary.residual_model_count, 5);
+    assert!(output.hard_forced.parcels.is_empty());
+    assert!(output.residual_models.iter().any(|m| m.parcels == ["p1"]));
+    uncalibrated(&mut input, false);
+    let output = solve(&input);
+    assert_eq!(output.summary.residual_model_count, 5);
+    assert!(
+        compile_evidence(&materialize_descriptive_asset(&input).unwrap().evidence)
+            .unwrap()
+            .composition_request
+            .soft_preferences
+            .is_empty()
+    );
+}
+
+#[test]
+fn descriptive_logical_claim_cannot_bypass_calibration() {
+    let mut input = request();
+    input.profile.channels[2].contract.basis = GeoRhoBasis::LogicalRelaxation {
+        invariant_id: "conditional-on-source-being-correct".to_string(),
+    };
+    assert!(
+        materialize_descriptive_asset(&input)
+            .err()
+            .unwrap()
+            .message
+            .contains("comparability")
+    );
+    uncalibrated(&mut input, true);
+    if let GeoRhoBasis::Uncalibrated {
+        admission_policy, ..
+    } = &mut input.profile.channels[2].contract.basis
+    {
+        *admission_policy = GeoRhoAdmissionPolicy::Declared;
+    }
+    assert!(materialize_descriptive_asset(&input).is_err());
+}
+
+#[test]
+fn supplied_address_and_name_comparison_are_soft_and_preserve_directionals() {
+    let mut input = request();
+    uncalibrated(&mut input, true);
+    let mut address_policy = input.profile.channels[0].clone();
+    address_policy.channel = GeoDescriptiveChannel::Address;
+    address_policy.contract.id = "address".to_string();
+    address_policy.text_comparison = GeoDescriptiveTextComparison::AsciiCaseWhitespace;
+    input.profile.channels.push(address_policy);
+    input.profile.channels[0].text_comparison = GeoDescriptiveTextComparison::AsciiCaseWhitespace;
+    input.claim.attributes.property_name = Some(" NAMED  community ".to_string());
+    input.claim.attributes.address = Some("100 E Main St".to_string());
+    input.candidates[0].attributes.address = Some("100  E MAIN ST".to_string());
+    input.candidates[1].attributes.address = Some("100 MAIN ST".to_string());
+    let compiled =
+        compile_evidence(&materialize_descriptive_asset(&input).unwrap().evidence).unwrap();
+    assert_eq!(compiled.composition_request.hard_constraints.len(), 1);
+    let addresses: Vec<_> = compiled
+        .composition_request
+        .soft_preferences
+        .iter()
+        .filter(|p| p.id.contains("descriptive:address:"))
+        .map(|p| p.member.id.as_str())
+        .collect();
+    assert_eq!(addresses, vec!["p1"]);
+    assert!(
+        compiled
+            .composition_request
+            .soft_preferences
+            .iter()
+            .any(|p| p.id.contains("descriptive:property_name:p1"))
+    );
+    assert_eq!(solve(&input).summary.residual_model_count, 5);
 }

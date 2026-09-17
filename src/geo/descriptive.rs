@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Experimental addressless, single-member asset profile. Geography supplies
+//! Experimental hints/address, single-member asset profile. Geography supplies
 //! the inventory; attributes never supply candidate identifiers. Acquisition,
 //! category mapping, and source error models are explicitly upstream concerns.
 
@@ -9,8 +9,8 @@ use super::{
     GeoCompositionProfile, GeoCompositionUniverse, GeoEntityLevel, GeoEntityRef,
     GeoEvidenceClaimRole, GeoEvidenceCompilationRequest, GeoEvidenceError, GeoEvidenceErrorCode,
     GeoEvidenceRecordRef, GeoIntegerMeasure, GeoIntegerMemberValue, GeoIntegerValueOrigin,
-    GeoRhoBasis, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoTileSourceBinding,
-    compile_evidence,
+    GeoRhoAdmissionPolicy, GeoRhoBasis, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind,
+    GeoTileSourceBinding, compile_evidence,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -22,11 +22,15 @@ pub const GEO_DESCRIPTIVE_ASSET_PROFILE_ID: &str = "descriptive_asset_single_mem
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeoDescriptiveAttributes {
-    /// Exact source name only. Even byte equality is presentation-only evidence.
+    /// Source name; comparison is explicit and never a hard identity rule.
     pub property_name: Option<String>,
+    /// Supplied street address within the declared jurisdiction. Agreement is
+    /// soft evidence only; this profile does not infer address membership.
+    pub address: Option<String>,
     /// Neutral category from the mapping named by the channel's rho contract.
     pub property_type: Option<String>,
-    /// Total dwelling units at the selected candidate grain, never bedrooms.
+    /// Source-asserted units. Measure, aggregation and vintage comparability
+    /// require an explicit calibration; the field name does not establish them.
     pub unit_count: Option<u64>,
     /// Original construction year; effective/renovation/sentinel years are absent.
     pub year_built: Option<u16>,
@@ -54,6 +58,7 @@ pub struct GeoDescriptiveCandidate {
 #[serde(rename_all = "snake_case")]
 pub enum GeoDescriptiveChannel {
     PropertyName,
+    Address,
     PropertyType,
     UnitCount,
     YearBuilt,
@@ -63,6 +68,7 @@ impl GeoDescriptiveChannel {
     fn name(self) -> &'static str {
         match self {
             Self::PropertyName => "property_name",
+            Self::Address => "address",
             Self::PropertyType => "property_type",
             Self::UnitCount => "unit_count",
             Self::YearBuilt => "year_built",
@@ -74,12 +80,35 @@ impl GeoDescriptiveChannel {
 #[serde(deny_unknown_fields)]
 pub struct GeoDescriptiveChannelPolicy {
     pub channel: GeoDescriptiveChannel,
-    /// Inclusive absolute band in dwelling units or original construction years.
-    /// Must be zero for categorical/name channels. No implicit normalization.
+    /// Inclusive absolute band in asserted units or construction years.
+    /// Must be zero for text channels. No implicit normalization.
     pub tolerance: u64,
+    /// Explicit workbench text comparison; normal registry lookup is unchanged.
+    #[serde(default)]
+    pub text_comparison: GeoDescriptiveTextComparison,
     /// The existing compiler owns admission. Uncalibrated observations must be
     /// diagnostic or soft, not mislabeled logical facts by this adapter.
     pub contract: GeoRhoContract,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoDescriptiveTextComparison {
+    #[default]
+    Exact,
+    AsciiCaseWhitespace,
+}
+
+impl GeoDescriptiveTextComparison {
+    fn agrees(self, left: &str, right: &str) -> bool {
+        match self {
+            Self::Exact => left == right,
+            Self::AsciiCaseWhitespace => left
+                .split_ascii_whitespace()
+                .map(str::to_ascii_lowercase)
+                .eq(right.split_ascii_whitespace().map(str::to_ascii_lowercase)),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -139,7 +168,7 @@ fn text_present(value: &str) -> Result<(), GeoEvidenceError> {
 }
 
 fn validate_attributes(value: &GeoDescriptiveAttributes) -> Result<(), GeoEvidenceError> {
-    for text in [&value.property_name, &value.property_type]
+    for text in [&value.property_name, &value.address, &value.property_type]
         .into_iter()
         .flatten()
     {
@@ -158,10 +187,15 @@ fn comparison(
     claim: &GeoDescriptiveAttributes,
     candidate: &GeoDescriptiveAttributes,
     tolerance: u64,
+    text_comparison: GeoDescriptiveTextComparison,
 ) -> Option<bool> {
     match channel {
-        GeoDescriptiveChannel::PropertyName => {
-            Some(claim.property_name.as_ref()? == candidate.property_name.as_ref()?)
+        GeoDescriptiveChannel::PropertyName => Some(text_comparison.agrees(
+            claim.property_name.as_ref()?,
+            candidate.property_name.as_ref()?,
+        )),
+        GeoDescriptiveChannel::Address => {
+            Some(text_comparison.agrees(claim.address.as_ref()?, candidate.address.as_ref()?))
         }
         GeoDescriptiveChannel::PropertyType => {
             Some(claim.property_type.as_ref()? == candidate.property_type.as_ref()?)
@@ -333,9 +367,54 @@ pub fn materialize_descriptive_asset(
                 "Duplicate descriptive channel or reserved contract id",
             ));
         }
+        // All these values are source assertions, not logical invariants.
+        // Naming an assumption about their correctness must not bypass rho.
+        let admission = match &policy.contract.basis {
+            GeoRhoBasis::LogicalRelaxation { .. } => {
+                return Err(invalid(
+                    "Descriptive source attributes require uncalibrated or empirically calibrated admission; logical relaxation is not a comparability proof",
+                ));
+            }
+            GeoRhoBasis::Uncalibrated {
+                admission_policy, ..
+            }
+            | GeoRhoBasis::EmpiricalCalibration {
+                admission_policy, ..
+            } => admission_policy,
+        };
+        if !matches!(
+            admission,
+            GeoRhoAdmissionPolicy::Declared
+                | GeoRhoAdmissionPolicy::DiagnosticOnly { .. }
+                | GeoRhoAdmissionPolicy::SoftWithWeight { .. }
+        ) {
+            return Err(invalid(
+                "Descriptive channels support declared calibrated bands, diagnostic admission, or explicit soft agreement; conditional support-mask policies are not supported",
+            ));
+        }
+        let soft_weight = match admission {
+            GeoRhoAdmissionPolicy::SoftWithWeight { cost_if_absent } => Some(*cost_if_absent),
+            _ => None,
+        };
+        let soft_channel = matches!(
+            policy.channel,
+            GeoDescriptiveChannel::PropertyName | GeoDescriptiveChannel::Address
+        ) || soft_weight.is_some();
+        if policy.text_comparison != GeoDescriptiveTextComparison::Exact
+            && !matches!(
+                policy.channel,
+                GeoDescriptiveChannel::PropertyName | GeoDescriptiveChannel::Address
+            )
+        {
+            return Err(invalid(
+                "Text normalization is supported only for soft name/address channels",
+            ));
+        }
         if matches!(
             policy.channel,
-            GeoDescriptiveChannel::PropertyName | GeoDescriptiveChannel::PropertyType
+            GeoDescriptiveChannel::PropertyName
+                | GeoDescriptiveChannel::Address
+                | GeoDescriptiveChannel::PropertyType
         ) && policy.tolerance != 0
         {
             return Err(invalid(
@@ -347,6 +426,7 @@ pub fn materialize_descriptive_asset(
             &request.claim.attributes,
             &request.claim.attributes,
             policy.tolerance,
+            policy.text_comparison,
         )
         .is_some();
         let mut counts = GeoDescriptiveChannelCounts {
@@ -362,13 +442,14 @@ pub fn materialize_descriptive_asset(
                 &request.claim.attributes,
                 &candidate.attributes,
                 policy.tolerance,
+                policy.text_comparison,
             );
             match agrees {
                 Some(true) => counts.compatible += 1,
                 Some(false) => counts.incompatible += 1,
                 None => counts.unknown += 1,
             }
-            if policy.channel == GeoDescriptiveChannel::PropertyName {
+            if soft_channel {
                 if agrees == Some(true) {
                     let mut records = request.claim.source_records.clone();
                     records.extend(candidate.source_records.clone());
@@ -379,7 +460,7 @@ pub fn materialize_descriptive_asset(
                         &policy.contract.id,
                         GeoRhoObservationKind::PreferMember {
                             member: GeoEntityRef::new(level, &candidate.id),
-                            cost_if_absent: 1,
+                            cost_if_absent: soft_weight.unwrap_or(1),
                         },
                         &records,
                     );
@@ -393,7 +474,7 @@ pub fn materialize_descriptive_asset(
                 });
             }
         }
-        if present && policy.channel != GeoDescriptiveChannel::PropertyName {
+        if present && !soft_channel {
             emit(
                 &format!("descriptive:{name}"),
                 &policy.contract.id,
@@ -420,6 +501,7 @@ pub fn materialize_descriptive_asset(
     // Each present field needs an explicit policy, including a diagnostic policy.
     for channel in [
         GeoDescriptiveChannel::PropertyName,
+        GeoDescriptiveChannel::Address,
         GeoDescriptiveChannel::PropertyType,
         GeoDescriptiveChannel::UnitCount,
         GeoDescriptiveChannel::YearBuilt,
@@ -429,6 +511,7 @@ pub fn materialize_descriptive_asset(
             &request.claim.attributes,
             &request.claim.attributes,
             0,
+            GeoDescriptiveTextComparison::Exact,
         )
         .is_some()
             && !channels.contains_key(channel.name())

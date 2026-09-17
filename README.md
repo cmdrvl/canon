@@ -565,12 +565,22 @@ The experimental `descriptive_asset_single_member_v0` profile accepts a
 `canon_geo_descriptive_asset_request.v0` at the materialization node's `rows`
 binding. A pinned bounded inventory supplies the candidates; property type,
 unit count, and original construction year pass through declared rho policies.
-An exact property name match only ranks alternatives, and missing attributes
-never exclude a candidate. This profile asks for one parcel or one building;
-it does not prove complete collateral or a building assemblage. Its input has
-no address, target geocode, or target geometry fields. The six-field client
-profile is unchanged. See the [first addressless experiment plan](docs/PLAN_CANON_GEO_FIRST_ADDRESSLESS_EXPERIMENT.md),
+Source attributes cannot be labeled logical relaxations: hard bands require
+empirical calibration, while an explicit `uncalibrated` basis permits diagnostic
+or soft evidence. This profile supports declared calibrated bands, diagnostic
+policies, and explicit soft weights; conditional support-mask policies are not
+supported. Known agreements may rank alternatives; missing values neither
+exclude nor earn support. Supplied names and optional street addresses are soft
+only, with explicit exact or ASCII case/whitespace comparison. Street suffixes,
+directionals, and aliases are not silently rewritten. Acquisition stays external.
+This profile asks for one parcel or one building; it does not prove address
+membership, complete collateral, or a building assemblage. Target geocode and
+target geometry are not accepted. The six-field client profile is unchanged.
+The existing bounded search retains residual models and soft rankings when they
+fit `max_materialized_models`, including components wider than a machine word.
+See the [first addressless experiment plan](docs/PLAN_CANON_GEO_FIRST_ADDRESSLESS_EXPERIMENT.md),
 [retained NXRT experiment](scripts/geo_measurements/fixtures/addressless_nxrt_2026-09-17/README.md),
+[Courtney Cove hints/address comparison](scripts/geo_measurements/fixtures/addressless_courtney_2026-09-17/README.md),
 and [measurement runner](scripts/geo_measurements/addressless_asset.py).
 
 ##### Stage leaves
