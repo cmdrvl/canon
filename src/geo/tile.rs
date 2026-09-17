@@ -2294,7 +2294,7 @@ fn validate_source_signature(
     Ok(())
 }
 
-fn validate_source_binding(
+pub(super) fn validate_source_binding(
     field: &str,
     binding: &GeoTileSourceBinding,
 ) -> Result<(), GeoTileError> {

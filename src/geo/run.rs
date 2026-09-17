@@ -34,6 +34,7 @@ use crate::{
             CANON_GEO_ASSESSMENT_ROLL_OWNER_VERSION,
         },
         condo::{CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION, CANON_GEO_CONDO_BRIDGE_VERSION},
+        descriptive::{CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION, GeoDescriptiveAssetRequest},
         executor::CANON_GEO_CLIENT_TILE_SOURCE_VERSION,
         executor::GEO_AS_OF_RESOLUTION_OUTPUT_ID,
         executor::GEO_AS_OF_RESOLUTION_STAGE_COMMAND,
@@ -2391,8 +2392,11 @@ fn input_specs_for_command(command: &str) -> Option<Vec<GeoInputSpec>> {
         GEO_MATERIALIZE_EVIDENCE_COMMAND => Some(vec![GeoInputSpec {
             binding_id: GEO_ROWS_BINDING_ID,
             required: true,
-            accepted_contracts: &[CANON_GEO_WAREHOUSE_ROWS_VERSION],
-            reason: "materialize-evidence requires local typed warehouse rows",
+            accepted_contracts: &[
+                CANON_GEO_WAREHOUSE_ROWS_VERSION,
+                CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION,
+            ],
+            reason: "materialize-evidence requires local typed warehouse rows or a bounded descriptive asset request",
         }]),
         GEO_ASSESSMENT_ROLL_OWNER_STAGE_COMMAND => Some(vec![GeoInputSpec {
             binding_id: GEO_REQUEST_BINDING_ID,
@@ -2693,6 +2697,25 @@ fn validate_input_bindings_against_plan(
         .map(|node| (node.node_id.as_str(), node))
         .collect::<BTreeMap<_, _>>();
     for binding in bindings.values() {
+        if binding.contract_version == CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION {
+            let input: GeoDescriptiveAssetRequest = serde_json::from_slice(&binding.bytes)
+                .map_err(|e| {
+                    GeoRunError::new(
+                        GeoRunErrorCode::ArtifactContract,
+                        format!("Invalid descriptive asset input: {e}"),
+                        [("node_id", binding.node_id.as_str())],
+                    )
+                })?;
+            if input.inventory_source.inventory_ref != plan.inventory_ref
+                || input.profile.selection_level != plan.profile_ref.selection_level
+            {
+                return Err(GeoRunError::new(
+                    GeoRunErrorCode::ArtifactContract,
+                    "Descriptive asset inventory and selected grain must match the plan",
+                    [("node_id", binding.node_id.as_str())],
+                ));
+            }
+        }
         let Some(node) = nodes.get(binding.node_id.as_str()) else {
             return Err(GeoRunError::new(
                 GeoRunErrorCode::MissingInput,

@@ -2169,6 +2169,14 @@
       "crate_module": "canon::geo"
     },
     {
+      "id": "canon_geo_descriptive_asset_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo::descriptive",
+      "source_path": "schemas/canon.geo.descriptive_asset_request.v0.schema.json"
+    },
+    {
       "id": "canon_geo_h7_population_rows.v0",
       "family": "geo",
       "action": "preserve",

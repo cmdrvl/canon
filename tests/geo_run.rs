@@ -106,6 +106,131 @@ const OBSERVE_ADMIT_NODE_ID: &str = "geo.building.observe_admit";
 const OBSERVE_ADMIT_OUTPUT_PATH: &str = "geo/building/observation_rows.json";
 
 #[test]
+fn descriptive_asset_runs_through_shared_plan_and_rejects_wrong_inventory() {
+    use canon::geo::descriptive::{
+        CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION, GeoDescriptiveAssetRequest,
+    };
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    let mut bindings = run_bindings(warehouse_rows());
+    // The source binding names the plan's actual inventory. Keep all three
+    // linked inputs in agreement; no caller-authored solve output is supplied.
+    let mut source = building_tile_source();
+    source.inventory_ref = plan.inventory_ref.clone();
+    for binding in &mut bindings {
+        if binding.node_id.ends_with("home_cells") || binding.node_id.ends_with("section") {
+            let mut value: Value = serde_json::from_slice(&binding.bytes).unwrap();
+            let key = if binding.node_id.ends_with("home_cells") {
+                "rows"
+            } else {
+                "features"
+            };
+            for row in value[key].as_array_mut().unwrap() {
+                row["source"] = serde_json::to_value(&source).unwrap();
+            }
+            *binding = GeoRunArtifactBinding::from_json(
+                &binding.node_id,
+                &binding.binding_id,
+                &binding.contract_version,
+                &value,
+            )
+            .unwrap();
+        }
+    }
+    let records = json!([{"source_record_id": "fixture-descriptors", "source_vintage": "2026-08-31", "record_blake3": digest_hex("descriptors")}]);
+    let input: GeoDescriptiveAssetRequest = serde_json::from_value(json!({
+        "version": CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION,
+        "profile": {"profile_id": "descriptive_asset_single_member_v0", "selection_level": "building", "channels": [{
+            "channel": "unit_count", "tolerance": 0,
+            "contract": {"id": "units", "version": "1", "source_dataset": "fixture", "source_release": "2026-08-31", "source_lineage_ids": ["fixture"],
+                "method_id": "exact-fixture-units", "method_version": "1", "claim_role": "attribute_observation",
+                "basis": {"kind": "logical_relaxation", "invariant_id": "fixture-exact-unit-count"}}
+        }]},
+        "bounded_geography": region(), "inventory_source": source,
+        "claim": {"claim_id": "blind-fixture", "as_of": "2026-08-31", "attributes": {"unit_count": 100}, "source_records": records},
+        "candidates": [
+            {"id": "building-a", "attributes": {"unit_count": 100}, "source_records": records},
+            {"id": "building-b", "attributes": {"unit_count": 120}, "source_records": records}
+        ],
+        "max_candidates": 10, "max_assignments": 1000, "max_materialized_models": 10
+    })).unwrap();
+    let index = bindings
+        .iter()
+        .position(|b| b.node_id.ends_with("materialize_evidence"))
+        .unwrap();
+    bindings[index] = GeoRunArtifactBinding::from_json(
+        "geo.building.materialize_evidence",
+        GEO_ROWS_BINDING_ID,
+        CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION,
+        &input,
+    )
+    .unwrap();
+    let run = run_geo_plan(GeoRunRequest::new(
+        plan.clone(),
+        policy(temp.path()),
+        bindings.clone(),
+    ))
+    .unwrap();
+    assert_eq!(run.status, GeoRunStatus::Completed);
+    let solve = solve_output(temp.path());
+    assert_eq!(solve["summary"]["residual_model_count"], 1);
+    assert_eq!(
+        solve["residual_models"][0]["buildings"],
+        json!(["building-a"])
+    );
+    let resumed = run_geo_plan(GeoRunRequest::new(
+        plan.clone(),
+        policy(temp.path()),
+        bindings.clone(),
+    ))
+    .unwrap();
+    assert!(
+        resumed
+            .project_run_report
+            .unwrap()
+            .executed_nodes
+            .is_empty()
+    );
+    let mut missing = input.clone();
+    missing.candidates.pop();
+    bindings[index] = GeoRunArtifactBinding::from_json(
+        "geo.building.materialize_evidence",
+        GEO_ROWS_BINDING_ID,
+        CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION,
+        &missing,
+    )
+    .unwrap();
+    let rejected = run_geo_plan(GeoRunRequest::new(
+        plan.clone(),
+        policy(temp.path()),
+        bindings.clone(),
+    ))
+    .unwrap();
+    assert_ne!(rejected.status, GeoRunStatus::Completed);
+    assert!(
+        rejected
+            .project_run_report
+            .unwrap()
+            .failed_nodes
+            .contains(&"geo.building.materialize_evidence".to_string())
+    );
+    let mut wrong = input;
+    wrong.inventory_source.inventory_ref.inventory_id = "unrelated-inventory".to_string();
+    bindings[index] = GeoRunArtifactBinding::from_json(
+        "geo.building.materialize_evidence",
+        GEO_ROWS_BINDING_ID,
+        CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION,
+        &wrong,
+    )
+    .unwrap();
+    assert!(run_geo_plan(GeoRunRequest::new(plan, policy(temp.path()), bindings)).is_err());
+}
+
+#[test]
 fn geo_run_executes_real_kernels_and_folds_input_hashes() {
     let temp = tempfile::tempdir().expect("tempdir");
     let plan = building_plan(

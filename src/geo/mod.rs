@@ -15,6 +15,7 @@ pub mod collision;
 pub mod composition;
 pub mod condo;
 pub mod control;
+pub mod descriptive;
 pub mod discovery;
 pub mod e5_fuel;
 pub mod evaluation;

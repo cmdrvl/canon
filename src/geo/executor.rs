@@ -60,6 +60,10 @@ use crate::{
             canonical_condo_bridge_bytes, validate_condo_bridge_artifact,
         },
         correction_sets,
+        descriptive::{
+            CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION, GeoDescriptiveAssetRequest,
+            materialize_descriptive_asset,
+        },
         footprint_roll::{
             CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION, GeoFootprintRollEvidenceRequest,
             materialize_footprint_roll_evidence,
@@ -557,11 +561,19 @@ impl GeoProjectNodeExecutor {
         let section_artifact: GeoTileWorkUnitArtifact =
             parse_json(node, &section.bytes, CANON_GEO_TILE_WORK_UNIT_VERSION)?;
         validate_section_candidate_reach_allows_downstream(node, &section_artifact)?;
-        let rows: GeoWarehouseRowsRequest = self.required_binding_json(
+        let binding = self.required_binding(
             node,
             GEO_ROWS_BINDING_ID,
-            &[CANON_GEO_WAREHOUSE_ROWS_VERSION],
+            &[
+                CANON_GEO_WAREHOUSE_ROWS_VERSION,
+                CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION,
+            ],
         )?;
+        if binding.contract == CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION {
+            return self.execute_descriptive_evidence(node, &section_artifact, &binding.bytes);
+        }
+        let rows: GeoWarehouseRowsRequest =
+            parse_json(node, &binding.bytes, CANON_GEO_WAREHOUSE_ROWS_VERSION)?;
         self.validate_warehouse_rows_against_section(node, &section_artifact, &rows)?;
         let request = materialize_warehouse_rows(&rows)
             .map_err(|error| leaf_error(node, "materialize-evidence", error))?;
@@ -589,6 +601,84 @@ impl GeoProjectNodeExecutor {
             output_id: "materialize_evidence",
             output_contract: CANON_GEO_EVIDENCE_REQUEST_VERSION,
             output_bytes: bytes,
+            deterministic_usage: usage,
+        })
+    }
+
+    fn execute_descriptive_evidence(
+        &self,
+        node: &ProjectPlanNode,
+        section: &GeoTileWorkUnitArtifact,
+        bytes: &[u8],
+    ) -> ProjectRunResult<GeoLeafExecution> {
+        let input: GeoDescriptiveAssetRequest =
+            parse_json(node, bytes, CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION)?;
+        if section
+            .features
+            .iter()
+            .any(|feature| feature.source != input.inventory_source)
+        {
+            return Err(error(
+                node,
+                ProjectRunErrorCode::ArtifactContract,
+                "descriptive inventory source/release must equal every bounded-section source binding",
+            ));
+        }
+        let materialized = materialize_descriptive_asset(&input)
+            .map_err(|e| leaf_error(node, "descriptive-asset", e))?;
+        let request = materialized.evidence;
+        let rows = GeoWarehouseRowsRequest {
+            version: CANON_GEO_WAREHOUSE_ROWS_VERSION.to_string(),
+            profile: request.profile.clone(),
+            parcel_rows: request
+                .universe
+                .parcels
+                .iter()
+                .map(|id| crate::geo::GeoWarehouseParcelRow {
+                    parcel_id: id.clone(),
+                })
+                .collect(),
+            building_parcel_rows: request
+                .universe
+                .buildings
+                .iter()
+                .map(|building| crate::geo::GeoWarehouseBuildingParcelRow {
+                    building_id: building.id.clone(),
+                    parcel_id: None,
+                })
+                .collect(),
+            contracts: Vec::new(),
+            evidence_rows: Vec::new(),
+            max_assignments: request.max_assignments,
+            max_materialized_models: request.max_materialized_models,
+        };
+        self.validate_warehouse_rows_against_section(node, section, &rows)?;
+        let output_bytes = canonical_materialized_evidence_request_bytes(&request)
+            .map_err(|e| serialization_error(node, CANON_GEO_EVIDENCE_REQUEST_VERSION, e))?;
+        let mut usage = BTreeMap::from([
+            (
+                "descriptive_candidates".to_string(),
+                input.candidates.len() as u64,
+            ),
+            (
+                "materialized_observations".to_string(),
+                request.observations.len() as u64,
+            ),
+        ]);
+        for (channel, counts) in materialized.channels {
+            for (kind, count) in [
+                ("claim_present", u64::from(counts.claim_present)),
+                ("compatible", counts.compatible),
+                ("incompatible", counts.incompatible),
+                ("unknown", counts.unknown),
+            ] {
+                usage.insert(format!("descriptive_{channel}_{kind}"), count);
+            }
+        }
+        Ok(GeoLeafExecution {
+            output_id: "materialize_evidence",
+            output_contract: CANON_GEO_EVIDENCE_REQUEST_VERSION,
+            output_bytes,
             deterministic_usage: usage,
         })
     }

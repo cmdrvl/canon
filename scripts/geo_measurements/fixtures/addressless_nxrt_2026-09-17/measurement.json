@@ -1,0 +1,425 @@
+{
+  "acquisition_gaps": [
+    "No independent validation that disclosure dwelling units and assessor tUNITS share aggregation semantics or vintage.",
+    "Claim year built absent.",
+    "133 candidates have unknown unit counts.",
+    "No source neutral multi-parcel/building asset composition in this single-member profile."
+  ],
+  "archives": {
+    "run.tar.gz": {
+      "blake3": "6f3bd1d8fd685ab24962ca858831dcf3b8e0e7ee15cb22835543a73fe4ff6243",
+      "bytes": 925989
+    },
+    "sources.tar.gz": {
+      "blake3": "3e79590a54223556b23406cac24323ecfe3eb991b1f329f021d8c197141fde0a",
+      "bytes": 1657194
+    }
+  },
+  "base_revision": "243e618b24e11b988b9d677a90f4ce7790c78008",
+  "bead": "bd-11pt",
+  "count_basis": "889 is the source-row count. Type mask has no contradictions; unit mask retains 2 recorded-equal plus 133 unknown values. Final135 is independently counted exactly by the native solver. Year absent and no exact name observation add no constraints.",
+  "evaluation": {
+    "admissions": [
+      {
+        "disposition": "hard_constraint",
+        "generated_ids": [
+          "rho:rho.descriptive.property_type@1:descriptive:property_type"
+        ],
+        "observation_id": "descriptive:property_type"
+      },
+      {
+        "disposition": "hard_constraint",
+        "generated_ids": [
+          "rho:descriptive:single_member@1:descriptive:single_member"
+        ],
+        "observation_id": "descriptive:single_member"
+      },
+      {
+        "disposition": "hard_constraint",
+        "generated_ids": [
+          "rho:rho.descriptive.unit_count@1:descriptive:unit_count"
+        ],
+        "observation_id": "descriptive:unit_count"
+      }
+    ],
+    "blind_experiment_success": false,
+    "candidate_reach": true,
+    "evaluation_next_action": "Investigate source grain, vintage and attribute comparability; revoke truth-excluding hard assumptions before claiming identity. Do not tune the frozen tolerance to this subject.",
+    "exact_residual": true,
+    "execution": {
+      "argv": [
+        "/Users/zac/Source/cmdrvl/canon/target/debug/canon",
+        "geo",
+        "run",
+        "--plan",
+        "/private/tmp/canon-nxrt-20260917/final/plan.json",
+        "--work-dir",
+        "/private/tmp/canon-nxrt-20260917/final/run",
+        "--input",
+        "geo.parcel.home_cells:rows=/private/tmp/canon-nxrt-20260917/final/home.json",
+        "--input",
+        "geo.parcel.section:request=/private/tmp/canon-nxrt-20260917/final/section.json",
+        "--input",
+        "geo.parcel.materialize_evidence:rows=/private/tmp/canon-nxrt-20260917/final/descriptive.json",
+        "--input",
+        "geo.parcel.separation:request=/private/tmp/canon-nxrt-20260917/final/separation.json",
+        "--input",
+        "geo.parcel.next_evidence:request=/private/tmp/canon-nxrt-20260917/final/next.json"
+      ],
+      "binary_blake3": "45b56657cdcd9c0ebd58a35ef26c186df5243439c7466d6258df4dce877559b0",
+      "elapsed_seconds": 502.5451332000084,
+      "exit_code": 0,
+      "source_manifest_blake3": "71ecaa0825a792b6c4270b43b7088bd5c77e16276fc4c58037a6ff777629593f"
+    },
+    "final_residual_size": 135,
+    "forced_identity": false,
+    "hard_constraint_count": 3,
+    "identity_claim_status": "blocked_failed_truth_reach",
+    "initial_candidates": 889,
+    "limits": [
+      "Conditional compatibility of recorded same-grain attributes; no population calibration or independent truth precision claim.",
+      "Regional inventory is restricted to declared DOR 03xx parcels, not all county physical assets.",
+      "Single-parcel hypothesis; complete collateral/building composition is not established.",
+      "Current assessor snapshot versus 2025 disclosure: historical coverage is unverified.",
+      "Claim year built absent; source unit-count sentinels stay unknown; names never harden identity."
+    ],
+    "next_evidence": {
+      "budget_remaining": {
+        "max_bytes": 100000000,
+        "max_candidates": 2000,
+        "max_cells": 10000,
+        "max_models": 2000,
+        "max_operations": 50000000,
+        "max_rows": 10000,
+        "max_states": 5000000,
+        "max_variables": 2000
+      },
+      "composition_blake3": "blake3:faf25313f9d46512d8849465122042ba7af746b6bd47c0d7e867b362daf3c0e3",
+      "counters": {
+        "budget_exhausted": 0,
+        "candidate_actions": 1,
+        "dominated_actions": 0,
+        "frontier_actions": 1
+      },
+      "dominated": [],
+      "frontier": [
+        {
+          "action_id": "acquire-independent-unit-count-support",
+          "class": "separate_residual",
+          "cost_units": 1,
+          "kind": {
+            "kind": "observe",
+            "payload": "independent-units-record-completeness"
+          },
+          "observation_id": "independent-units-record-completeness",
+          "redundant": false,
+          "separation": [
+            {
+              "count_exact": true,
+              "outcome_id": "known_units",
+              "residual_model_count": 2
+            },
+            {
+              "count_exact": true,
+              "outcome_id": "unknown_units",
+              "residual_model_count": 133
+            }
+          ],
+          "worst_case_remaining": 133
+        }
+      ],
+      "ranking_abstention": {
+        "code": "next_evidence_no_loss_model",
+        "detail": {
+          "policy": "none"
+        },
+        "message": "Total ranking requires a versioned loss model"
+      },
+      "run_id": "canon_geo_next_evidence.v0:93c909255be3427d0d0703dd7dff37c4bac40ec3b1632d7be71b64cb57954562",
+      "separation_blake3": "blake3:20c9882a35eadd421600a7aa23521ec0988f166d4c77f90180695fa17a861b76",
+      "version": "canon_geo_next_evidence.v0"
+    },
+    "proof_class": "retained-public-data-experiment",
+    "property": "The Summit at Sabal Park",
+    "prospective_separation": {
+      "baseline_model_count": 135,
+      "per_observation": [
+        {
+          "observation_id": "independent-units-record-completeness",
+          "per_outcome": [
+            {
+              "count_exact": true,
+              "outcome_id": "known_units",
+              "residual_model_count": 2
+            },
+            {
+              "count_exact": true,
+              "outcome_id": "unknown_units",
+              "residual_model_count": 133
+            }
+          ],
+          "redundant": false,
+          "worst_case_remaining": 133
+        }
+      ],
+      "request_blake3": "blake3:08a27a7e7cf0f87e93b1c830e4ec7bd7e78004ef741775fb10e2a0f5d09261f6",
+      "version": "canon_geo_separation.v0"
+    },
+    "resource_budget": {
+      "budget_id": "addressless.budget",
+      "deterministic_bounds": [
+        {
+          "action": "report_budget_fallback",
+          "counter": "bytes",
+          "origin": "caller_declared",
+          "semantic_id": "max_bytes",
+          "unit": "bytes",
+          "value": 100000000
+        },
+        {
+          "action": "report_budget_fallback",
+          "counter": "rows",
+          "origin": "caller_declared",
+          "semantic_id": "max_rows",
+          "unit": "rows",
+          "value": 10000
+        },
+        {
+          "action": "report_budget_fallback",
+          "counter": "cells",
+          "origin": "caller_declared",
+          "semantic_id": "max_cells",
+          "unit": "cells",
+          "value": 10000
+        },
+        {
+          "action": "report_budget_fallback",
+          "counter": "candidates",
+          "origin": "caller_declared",
+          "semantic_id": "max_candidates",
+          "unit": "candidates",
+          "value": 2000
+        },
+        {
+          "action": "report_budget_fallback",
+          "counter": "variables",
+          "origin": "caller_declared",
+          "semantic_id": "max_variables",
+          "unit": "variables",
+          "value": 2000
+        },
+        {
+          "action": "report_budget_fallback",
+          "counter": "states",
+          "origin": "caller_declared",
+          "semantic_id": "max_states",
+          "unit": "states",
+          "value": 5000000
+        },
+        {
+          "action": "report_budget_fallback",
+          "counter": "models",
+          "origin": "caller_declared",
+          "semantic_id": "max_models",
+          "unit": "models",
+          "value": 2000
+        },
+        {
+          "action": "report_budget_fallback",
+          "counter": "operations",
+          "origin": "caller_declared",
+          "semantic_id": "max_operations",
+          "unit": "operations",
+          "value": 50000000
+        }
+      ],
+      "telemetry": [
+        {
+          "metric": "wall_time",
+          "origin": "operator_policy",
+          "semantic_effect": "none",
+          "unit": "millisecond"
+        }
+      ],
+      "version": "canon_geo_resource_budget.v0"
+    },
+    "run_status": "ABSTAINED",
+    "soft_preference_count": 0,
+    "solver_summary": {
+      "building_candidates": 0,
+      "candidate_assignments": 18446744073709551615,
+      "candidate_assignments_saturated": true,
+      "component_count": 1,
+      "hard_constraint_evaluations": 102195,
+      "hard_constraint_evaluations_complete": true,
+      "hard_constraint_evaluations_saturated": false,
+      "model_count_scope": "entity_selection",
+      "parcel_candidates": 889,
+      "residual_model_count": 135,
+      "residual_model_count_complete": true,
+      "residual_model_count_saturated": false,
+      "residual_models_materialized": false,
+      "structurally_feasible_assignments": 135,
+      "structurally_feasible_assignments_complete": true,
+      "structurally_feasible_assignments_saturated": false,
+      "summary_counts_saturated": true
+    },
+    "truth_attributes_evaluation_only": [
+      {
+        "attributes": {
+          "property_name": "SUMMIT AT SABAL PARK",
+          "property_type": "multifamily",
+          "unit_count": 254,
+          "year_built": 1989
+        },
+        "id": "0652990300"
+      }
+    ],
+    "truth_parcel_ids": [
+      "0652990300"
+    ],
+    "withheld_truth_reachable": false
+  },
+  "follow_up_bead": "bd-ie4t",
+  "forced_identity_correct": null,
+  "fresh_process_replay": {
+    "byte_identical": true,
+    "elapsed_seconds": 5.71243060589768,
+    "executed_nodes": [],
+    "exit_code": 0,
+    "resumed_nodes": [
+      "geo.parcel.compile_evidence",
+      "geo.parcel.explain",
+      "geo.parcel.home_cells",
+      "geo.parcel.materialize_evidence",
+      "geo.parcel.next_evidence",
+      "geo.parcel.propagate",
+      "geo.parcel.section",
+      "geo.parcel.separation",
+      "geo.parcel.solve"
+    ],
+    "run_status": "ABSTAINED",
+    "stage_hashes_after": {
+      "compile_evidence.json": "f5edd2acf838355979871c2864ccc74bec5131fef25bfc573ab5787d085c4ee0",
+      "explanation.json": "1b0e43c11bc92ea0658d377c5fa464cd86b59363e27e1f072678f2f21971a017",
+      "home_cells.json": "b6c1018c62299be24d03545bcfecf60cd6960fd5c555ca271827b137cdba001d",
+      "materialize_evidence.json": "c29b28912687c489264a217eeee1430390f00957fff6dd4b46d3f74bb56882af",
+      "next_evidence.json": "3fabc3fc28370fccd722c5c56574da0ec01447d4713c3ca7f4bccdb5ce39c511",
+      "propagation.json": "a181b8b675e19b02c65175cf572d68e265a10839f0b02520c80f1e7d9a8c90d7",
+      "section.json": "b85ea4f9e0c389d558ce66d25ad697a81897b39b393aabc685e4ec2fffe8d1cd",
+      "separation.json": "20c9882a35eadd421600a7aa23521ec0988f166d4c77f90180695fa17a861b76",
+      "solve.json": "faf25313f9d46512d8849465122042ba7af746b6bd47c0d7e867b362daf3c0e3"
+    },
+    "stage_hashes_before": {
+      "compile_evidence.json": "f5edd2acf838355979871c2864ccc74bec5131fef25bfc573ab5787d085c4ee0",
+      "explanation.json": "1b0e43c11bc92ea0658d377c5fa464cd86b59363e27e1f072678f2f21971a017",
+      "home_cells.json": "b6c1018c62299be24d03545bcfecf60cd6960fd5c555ca271827b137cdba001d",
+      "materialize_evidence.json": "c29b28912687c489264a217eeee1430390f00957fff6dd4b46d3f74bb56882af",
+      "next_evidence.json": "3fabc3fc28370fccd722c5c56574da0ec01447d4713c3ca7f4bccdb5ce39c511",
+      "propagation.json": "a181b8b675e19b02c65175cf572d68e265a10839f0b02520c80f1e7d9a8c90d7",
+      "section.json": "b85ea4f9e0c389d558ce66d25ad697a81897b39b393aabc685e4ec2fffe8d1cd",
+      "separation.json": "20c9882a35eadd421600a7aa23521ec0988f166d4c77f90180695fa17a861b76",
+      "solve.json": "faf25313f9d46512d8849465122042ba7af746b6bd47c0d7e867b362daf3c0e3"
+    }
+  },
+  "implementation_blake3": {
+    "schemas/canon.geo.descriptive_asset_request.v0.schema.json": "7c4ae87041952b74a869b50caa3c8a399ce37787df05f3139c8517e6bae83de0",
+    "scripts/geo_measurements/addressless_asset.py": "6a00a025c4dfa9c212bf010ddcb9d022fb3b51a0546dce9667d3129bd3aa9e97",
+    "src/geo/control.rs": "d38bdd412efb5984d4b7cf4ec2b123050fba39f5954aaaa0ed88fa6dd7d2a361",
+    "src/geo/descriptive.rs": "e25af5ecf81719ad7beee863098c4c4a52a84bbf250ea3cd70aa5963ded05dac",
+    "src/geo/executor.rs": "84dfc5fdea971dda2cb1222ef72d9900c084878fe0774c55c4131f48021d0d35",
+    "src/geo/mod.rs": "aea53cdf58339d33abd44e73c20aef30b2a3bfea4ecfcf5377a951ad388b07e5",
+    "src/geo/run.rs": "03ca6389108239178a81ac6add8a41a48bb1d24f54413194024b2809c347b252",
+    "src/geo/tile.rs": "1cc5c5d673dac277da3c70812a4f73d373eb464605e631a748ac6963f8cb5350",
+    "tests/fixtures/canon_v1/contract_inventory.json": "c4f8640d6d76b61311889e50081cd835966f5fcb1370fd0377389458be322f37",
+    "tests/geo_control_contracts.rs": "00acb362897a14b43d3da2aad73818b3c154104c0dbc1715da784d98bdf2c939",
+    "tests/geo_descriptive_asset.rs": "835518a67890626231594b36748f04848a7436594c4cae0c11b15bc535c117d6",
+    "tests/geo_run.rs": "0cb53fcdca2e52eb435ba9bcd6e6142177a283f187bc7434409387aadae5d718"
+  },
+  "interpretation": "Failed blind identity experiment: the exact conditional residual excludes truth (disclosed252 versus assessor254). Candidate inventory reach succeeds; the hard count-comparability premise fails. Native next-evidence ranking abstains without a versioned loss model. No tolerance is retuned and no identity promoted.",
+  "selection": {
+    "algorithm": "minimum SHA256(seed + property_name) among Tampa properties in NXRT 2025-Q4 supplement page 27",
+    "cohort": [
+      {
+        "city": "Tampa",
+        "property_name": "Courtney Cove",
+        "state": "FL",
+        "unit_count": 324
+      },
+      {
+        "city": "Tampa",
+        "property_name": "The Summit at Sabal Park",
+        "state": "FL",
+        "unit_count": 252
+      }
+    ],
+    "inventory_scope": "Hillsborough County parcels with DOR code 03xx; selected solely from public geography and property type",
+    "name_policy": "exact text soft only",
+    "selected": {
+      "city": "Tampa",
+      "property_name": "The Summit at Sabal Park",
+      "state": "FL",
+      "unit_count": 252
+    },
+    "selected_at": "2026-09-17T12:17:02.871451+00:00",
+    "selection_seed": "acc8c21c43de30bde96aa978a132908a",
+    "truth_not_yet_acquired": true,
+    "unit_tolerance": 0,
+    "year_tolerance": 2
+  },
+  "stage_counts": [
+    {
+      "candidates": 889,
+      "step": "regional_inventory_and_single_parcel_premise"
+    },
+    {
+      "candidates": 889,
+      "step": "property_type_compatibility"
+    },
+    {
+      "candidates": 135,
+      "step": "unit_count_exact_or_unknown"
+    },
+    {
+      "candidates": 135,
+      "step": "year_absent"
+    },
+    {
+      "candidates": 135,
+      "step": "name_soft_only_no_exact_support"
+    }
+  ],
+  "truth_support": {
+    "assessor_building_numbers": 16,
+    "assessor_subarea_polygons": 287,
+    "current_building_completeness_verified": false,
+    "footprint_snapshot": "zone3_2022",
+    "parcel_ids": [
+      "0652990300"
+    ]
+  },
+  "verification": {
+    "archive_integrity": "Source/archive and implementation hashes verified; native receipts retained.",
+    "commands": [
+      {
+        "command": "cargo fmt --check",
+        "exit_code": 0
+      },
+      {
+        "command": "cargo clippy --all-targets -- -D warnings",
+        "exit_code": 0
+      },
+      {
+        "command": "cargo test",
+        "exit_code": 0,
+        "ignored": 11,
+        "log_blake3": "3652c235e1984f792bfa175d49fbb08c621c442008d76c2eb3d9106290c7ba86",
+        "passed": 3151,
+        "test_groups": 332
+      }
+    ],
+    "earlier_integration_fix": "Added the new request contract to the public contract inventory; the coverage assertion is unchanged.",
+    "schema_validation": "Retained descriptive request passed Draft202012Validator using repository schema references."
+  },
+  "version": "canon_addressless_asset_measurement.v0"
+}

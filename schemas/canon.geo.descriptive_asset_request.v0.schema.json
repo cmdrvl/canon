@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.geo.descriptive_asset_request.v0.schema.json",
+  "title": "Experimental addressless single-member asset request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "profile", "bounded_geography", "inventory_source", "claim", "candidates", "max_candidates", "max_assignments", "max_materialized_models"],
+  "properties": {
+    "version": {"const": "canon_geo_descriptive_asset_request.v0"},
+    "profile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile_id", "selection_level", "channels"],
+      "properties": {
+        "profile_id": {"const": "descriptive_asset_single_member_v0"},
+        "selection_level": {"enum": ["parcel", "building"]},
+        "channels": {"type": "array", "maxItems": 4, "items": {"$ref": "#/$defs/channel"}}
+      }
+    },
+    "bounded_geography": {"$ref": "canon.geo.question.v0.schema.json#/$defs/bounded_geography"},
+    "inventory_source": {"$ref": "canon.geo.tile_work_request.v1.schema.json#/$defs/source_binding"},
+    "claim": {
+      "type": "object", "additionalProperties": false,
+      "required": ["claim_id", "as_of", "attributes", "source_records"],
+      "properties": {
+        "claim_id": {"type": "string", "minLength": 1},
+        "as_of": {"type": "string", "format": "date"},
+        "attributes": {"$ref": "#/$defs/attributes"},
+        "source_records": {"$ref": "#/$defs/records"}
+      }
+    },
+    "candidates": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "attributes", "source_records"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "attributes": {"$ref": "#/$defs/attributes"},
+          "source_records": {"$ref": "#/$defs/records"}
+        }
+      }
+    },
+    "max_candidates": {"type": "integer", "minimum": 1},
+    "max_assignments": {"type": "integer", "minimum": 0},
+    "max_materialized_models": {"type": "integer", "minimum": 0}
+  },
+  "$defs": {
+    "attributes": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "property_name": {"type": ["string", "null"], "minLength": 1},
+        "property_type": {"type": ["string", "null"], "minLength": 1},
+        "unit_count": {"type": ["integer", "null"], "minimum": 0, "maximum": 18446744073709551615},
+        "year_built": {"type": ["integer", "null"], "minimum": 1, "maximum": 65535}
+      }
+    },
+    "records": {
+      "type": "array", "minItems": 1,
+      "items": {"$ref": "canon.geo.evidence_request.v0.schema.json#/$defs/evidence_record_ref"}
+    },
+    "channel": {
+      "type": "object", "additionalProperties": false,
+      "required": ["channel", "tolerance", "contract"],
+      "properties": {
+        "channel": {"enum": ["property_name", "property_type", "unit_count", "year_built"]},
+        "tolerance": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
+        "contract": {"$ref": "canon.geo.evidence_request.v0.schema.json#/$defs/rho_contract"}
+      }
+    }
+  },
+  "x-runtime-invariants": [
+    "Candidate ids and channel policies are unique; every present claim attribute needs a policy.",
+    "The source/release and complete candidate membership must equal the run's bounded section.",
+    "Exactly one selected parcel or building is a declared question premise, not collateral completeness.",
+    "Absent values never contradict; exact name matches only rank. Hard admission remains governed by rho.",
+    "No input address, target geocode, target geometry, or withheld truth is accepted.",
+    "The source evidence date does not establish temporal coverage of the inventory."
+  ]
+}

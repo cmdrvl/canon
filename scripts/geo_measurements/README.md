@@ -4,6 +4,18 @@ These queries are the executable source for Appendices B, C, and D of
 `docs/PLAN_CANON_GEO.md`. They are a release gate, not retained evidence for the
 solver: fixture results must never be presented as a fresh warehouse run.
 
+## 2026-09-17 addressless NXRT experiment
+
+The [one-property experiment](fixtures/addressless_nxrt_2026-09-17/README.md)
+uses the experimental descriptive profile through the existing nine-stage
+`geo run` path. A seeded NXRT subject and public regional assessor export give
+889 parcel candidates and a conditional exact residual of 135. The truth
+parcel records 254 units versus 252 disclosed, so the frozen exact-count
+premise excludes truth and the blind attempt fails. Unknown unit counts
+remain feasible; no name score forces identity. The retained sources,
+native receipts, withheld-truth evaluation, limits, and replay command are
+linked from the experiment notes. This is not E4/E5 acceptance.
+
 ## Execution contract
 
 1. Call the cmdrvl-data MCP table list and describe operations first. Use the

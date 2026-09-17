@@ -186,6 +186,7 @@ fn contract_versions(contracts: &[GeoContractCapability]) -> BTreeSet<&str> {
 
 fn expected_implemented_contracts() -> BTreeSet<&'static str> {
     BTreeSet::from([
+        canon::geo::descriptive::CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION,
         CANON_GEO_QUESTION_VERSION,
         CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION,
         CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION,

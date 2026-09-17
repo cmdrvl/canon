@@ -1058,6 +1058,11 @@ pub fn default_geo_capabilities() -> Result<GeoCapabilities, GeoControlError> {
             validation_command:
                 "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>"
                     .to_string(),
+        }, GeoProfileTemplateCapability {
+            profile_id: super::descriptive::GEO_DESCRIPTIVE_ASSET_PROFILE_ID.to_string(),
+            description: "Experimental single-parcel descriptive profile: bounded geography seeds inventory; bind canon_geo_descriptive_asset_request.v0 at materialize_evidence:rows; name is soft, missing attributes do not exclude; no collateral-completeness claim".to_string(),
+            template: GeoCompositionProfile::default(),
+            validation_command: "canon geo run --plan <PLAN.json> --work-dir <DIR> --input geo.parcel.materialize_evidence:rows=<DESCRIPTIVE.json>".to_string(),
         }],
         deterministic_ceilings: vec![GeoNumericBound {
             semantic_id: "composition.default_max_materialized_models".to_string(),
@@ -1471,6 +1476,11 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             CANON_GEO_WAREHOUSE_ROWS_VERSION,
             "schemas/canon.geo.warehouse_rows.v0.schema.json",
             "release-pinned offline evidence row contract",
+        ),
+        contract(
+            super::descriptive::CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION,
+            "schemas/canon.geo.descriptive_asset_request.v0.schema.json",
+            "experimental addressless single-member profile; binds to geo run materialize_evidence rows",
         ),
         contract(
             CANON_GEO_H7_POPULATION_ROWS_VERSION,
