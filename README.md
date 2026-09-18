@@ -1694,6 +1694,11 @@ experimental national adapter and manually assembled runs do not yet implement
 general source-neutral acceptance. Reviewed registry promotion and exact replay
 keep their existing boundaries.
 
+The target has two first-class entry points into one inquiry: corroborate a known
+address, or discover likely addresses and physical entities from a region plus a few
+qualifying attributes. Both are in development; the delivery sequence is the
+[agent-complete inquiry roadmap](./docs/PLAN_CANON_GEO_AGENT_COMPLETE_INQUIRY.md).
+
 For Geo work, read the [agent operating architecture](./docs/CANON_GEO_AGENT_ARCHITECTURE.md)
 and then the [mathematical and empirical plan](./docs/PLAN_CANON_GEO.md). The operating
 order is question/profile/inventory -> bounded tile+halo -> candidate reach -> rho

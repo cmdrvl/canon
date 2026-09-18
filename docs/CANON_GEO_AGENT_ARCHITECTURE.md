@@ -9,7 +9,10 @@
 > Standalone address input is part of the target; the native address-membership contract
 > is currently NYC/PAD-specific, and the complete address-first journey remains open.
 > The mathematical model and empirical gates remain governed by
-> [`PLAN_CANON_GEO.md`](./PLAN_CANON_GEO.md).
+> [`PLAN_CANON_GEO.md`](./PLAN_CANON_GEO.md). The delivery sequence toward an
+> agent-complete inquiry (slices S1–S6 and their Beads) is
+> [`PLAN_CANON_GEO_AGENT_COMPLETE_INQUIRY.md`](./PLAN_CANON_GEO_AGENT_COMPLETE_INQUIRY.md);
+> it sequences work under this architecture and does not override it.
 
 > **Reuse finding:** Canon contains library-level `canon.project.plan.v1` and
 > `canon.project.run.v2` machinery for manifests, locks, DAGs, receipts, resume,
@@ -109,6 +112,28 @@ local sources, while a NYC profile can preserve PAD-specific semantics. Their co
 must identify the actual jurisdiction, grammar, grain, vintage, and evidence authority.
 Neither the number of available datasets nor repeated copies of one upstream record
 constitutes independent corroboration or a confidence score.
+
+### 1.1.1 Two first-class entry points, one inquiry
+
+Known-address corroboration (an address, optionally with a point, name or attributes) and
+region-and-attributes discovery (a region plus a few qualifying attributes, no trusted
+address) are two ways into one evidence, reasoning, explanation and acquisition loop. They
+are not separate products or solver stacks. A supplied address is an assertion to
+investigate, not a truth anchor; discovery must not require the agent to find the address
+elsewhere first. An address found by discovery may be corroborated later in the same
+inquiry, and reused evidence keeps one lineage rather than earning a second vote. A
+parcel, building or site answer is useful when no defensible postal address exists.
+
+Target division of responsibility: the calling agent states the subject, claim, scope,
+policy, permissions and budget; the Geo inquiry workflow selects profiles, discovers
+required evidence, builds bounded candidates, emits acquisition packets, binds returned
+evidence and replans; versioned adapters interpret source semantics; an authorized
+acquisition executor (the agent through its MCP connection, or a managed integration using
+the same contracts) fetches and retains bytes; the offline kernel and shared project runner
+validate, admit, solve, explain and retain receipts. None of this puts credentials or
+network calls in `geo run`. This is target behavior; delivery is sequenced in
+[`PLAN_CANON_GEO_AGENT_COMPLETE_INQUIRY.md`](./PLAN_CANON_GEO_AGENT_COMPLETE_INQUIRY.md)
+(bd-2s32, bd-33hh, bd-3s20, bd-1b0g).
 
 ### 1.2 What the REIT experiments demonstrate
 
@@ -338,6 +363,13 @@ proof to ordinary regional availability. The advancement is a new immutable inve
 snapshot; using it requires an explicit base-inventory-bound replan that revalidates the
 question, capability, profile, budget, and inventory identities. Live acquisition and
 proof attestation remain outside Canon.
+
+Target addition (bd-1b0g): inquiry-scoped evidence ingestion. A narrow lookup, such as two
+candidate buildings, may inform one inquiry with its exact subset, release, lineage and
+exclusions recorded, without claiming regional availability. Whole-region advancement keeps
+the stricter checks above, and `--satisfy` keeps its current meaning. Acquisition requests
+should also become executable packets: connector arguments or a versioned query recipe,
+bounds, pagination, permissions, a resource ceiling and a resume binding.
 
 Discovery proceeds from cheap metadata to bounded evidence:
 
@@ -704,7 +736,10 @@ accepted for this phase. The current artifacts and the fully working target are 
 in [PLAN_CANON_GEO.md §16.1.2](PLAN_CANON_GEO.md#1612-command-usability-measured-baseline-and-completion-criteria).
 An explicit solve/explain endpoint is planned behavior, not a shipped flag or a relabeling
 of the failed baseline. Missing proposed actions must not be represented as proof that no
-useful actions exist. No implementation is part of this planning update.
+useful actions exist. The current controller does exactly that for an empty supplied action
+list with an ambiguous composition (`src/geo/next_evidence.rs`, `HonestAmbiguity`);
+bd-2dvm owns the correction as slice S1 of the agent-complete roadmap. No implementation is
+part of this planning update.
 
 `inspect` must emit structured next actions containing the exact command, required inputs,
 expected output contract, deterministic cost ceiling, and the reason the action can change
@@ -791,12 +826,27 @@ B is dominated. Source count, novelty, and vendor diversity are not substitutes 
 conditional information. Without a declared loss model, the controller exposes the
 nondominated frontier and does not manufacture a total ranking.
 
+Target addition (bd-14uw): candidate actions should be generated from unresolved claims,
+the regional inventory and versioned evidence recipes, not only accepted from the caller.
+A recipe declares applicability, grain/relationship, required fields, join and temporal
+semantics, evidence authority, every possible observation outcome (including no-record,
+ambiguous-join, partial-coverage, stale and contradictory) with the contract each induces,
+acquisition steps, cost bounds and stopping behavior. Output distinguishes three promises:
+conditionally sufficient, potentially useful, and empirically useful (the last only from a
+separately evaluated population). Small, explicitly budgeted two-step bundles are allowed;
+an unconstrained search over all datasets is not.
+
+Action discovery has its own state: not attempted, incomplete, exhausted within declared
+installed capabilities and budget, or stopped by user policy. Only the exhausted state can
+support an honest-ambiguity stop. An empty action list does not establish it.
+
 The controller is allowed to recommend **stop** when:
 
 - the requested claim is already forced;
 - all affordable actions are redundant;
 - the requested grain is unsupported in this geography;
-- the remaining ambiguity is honest and no admitted observation can separate it;
+- the remaining ambiguity is honest and no admitted observation can separate it, with
+  action discovery exhausted within declared capabilities and budget;
 - further work would exceed the declared budget.
 
 ## 10. Agent API requirements

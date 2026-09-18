@@ -4,6 +4,7 @@
 > **Date:** 2026-09-18.
 > **Implementation baseline reviewed:** `cmdrvl/canon` main at `bbbf9e1643570a5d31974de5f731663b0da427d2` (2026-09-17).
 > **Scope of this change:** add this plan only. No runtime code, schemas, existing plans, acceptance gates, or task states are changed.
+> **Reconciliation (2026-09-18):** slices S1–S6 are mapped to Beads in [§12](#12-bead-map-reconciled-2026-09-18); the two scope clarifications (candidate ranking versus the point re-ranking CUT, and measured cost instrumentation versus the deferred national cost model) are recorded in [PLAN_CANON_GEO §18.3](PLAN_CANON_GEO.md#183-scope-decisions). No feature is claimed shipped by that reconciliation.
 > **Authority:** [Canon Geo Agent Architecture](CANON_GEO_AGENT_ARCHITECTURE.md) governs the operating model; [PLAN_CANON_GEO](PLAN_CANON_GEO.md) governs mathematics, historical measurements, scope decisions, and E1–E5/G3 gates. This roadmap proposes additive delivery work and identifies scope clarifications to reconcile explicitly before implementation. It does not silently reverse a frozen decision or relabel an old experiment.
 
 ## 1. Product direction: consolidate, do not pivot away
@@ -255,7 +256,7 @@ The deliverable is an evidence-tier curve linking coverage, accepted-answer qual
 
 ## 10. Delivery sequence: runnable slices with explicit exit gates
 
-All work below is **proposed and unchecked**. These are roadmap labels, not fabricated Beads IDs or claims of assigned ownership. During implementation, map them to existing work items before creating duplicates. In particular, reconcile the architecture's existing inspection, run-completion, and source-neutral address work. Code and positive/negative tests ship together.
+All work below is **proposed and unchecked**. These are roadmap labels, not fabricated Beads IDs or claims of assigned ownership; §12 records the reconciled owners. During implementation, map them to existing work items before creating duplicates. In particular, reconcile the architecture's existing inspection, run-completion, and source-neutral address work. Code and positive/negative tests ship together.
 
 ### S1 — Complete the current answer (P0; start here)
 
@@ -328,3 +329,18 @@ The agent-complete version is not ready until all of these hold:
 Non-goals for this milestone: a second scheduler; network acquisition inside the deterministic kernel; one generic score pretending to prove identity; a claim that every site has one address; complete collateral reconstruction as a prerequisite for useful association; nationwide crawling before a supported end-to-end slice; or new solver machinery without measured need.
 
 **Bottom line:** preserve ranking, exact reasoning, evidence-aware next actions, and national economics. Make known-address corroboration and region-plus-attributes discovery two first-class paths through one product. Agents should supply facts, permissions, and goals—not assemble the geographic reasoning system around the tool.
+
+## 12. Bead map (reconciled 2026-09-18)
+
+Existing owners were reused before any bead was created. All slice beads are children of the control-plane epic bd-1xy6, whose exit now also requires bd-244j to record every §11 line with its proof class. Priorities follow §10.
+
+| Slice | Owner(s) | Notes |
+|---|---|---|
+| S1 current answer (P0) | bd-2dvm; bd-1g18 | bd-2dvm owns the explicit endpoint, input preflight, and the empty-action-list defect in `next_evidence.rs` noted in §3. bd-1g18 owns the orthogonal one-inspection projection of §6. |
+| S2 inquiry and entry paths (P0) | bd-2s32 (new); bd-33hh; bd-3s20 (new) | bd-2s32: shared contract, pinned defaults, profile selection, automatic binding, crossover. bd-33hh: known-address corroboration. bd-3s20: region-and-attributes discovery, consuming bd-pufd's name+region artifact, the bd-11pt descriptive profile, and bd-ie4t comparability semantics. |
+| S3 acquisition and adapters (P0) | bd-1b0g (new); bd-2s8f (new); bd-3mft | bd-1b0g: executable packets, agent-mediated executor, inquiry-scoped ingestion, resume; it is the live follow-on that the closed bd-12st left open. bd-2s8f: packaged national place/building/address-point adapters from the REIT experiments. bd-3mft: source-neutral address adapter. |
+| S4 next evidence (P1) | bd-14uw (new) | Recipes, the four jobs, discovery-coverage state, bounded two-step bundles; extends closed bd-vojr. |
+| S5 ranking and acceptance (P1) | bd-1t9f (new) | Versioned acceptance policy, preference and consequence views, ablations, held-out two-mode evaluation. |
+| S6 economics and release proof (P1) | bd-1ssh (new); bd-244j (new) | bd-1ssh: cold/warm/refresh instrumentation and the evidence-tier quality/cost curve, starting with S1. The national projection remains in bd-2y2x under its unchanged trigger. bd-244j: clean-session release proof against §11. |
+
+Unchanged owners that this roadmap depends on but does not re-scope: bd-3fq5 (fixture conformance, gains two-mode scenarios), bd-2rf9 (accretion reuse), bd-3oj1 (concurrency), bd-s07o and bd-13ju (E5), bd-1g4x (E4), bd-3uug and bd-kwmc (publication and client output), bd-lc7c and bd-2ocv (ledger delivery).

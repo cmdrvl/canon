@@ -105,7 +105,7 @@ The controlling state entering the main review is:
 | E5 geography preflight | Franklin County, Ohio (`39049`) now has a real parcel-backed successor to the immutable 2026-08-31 thin-tier preflight. Pinned current inputs are bridge build `80d0ea39-a5aa-4c27-a8d7-f662a4507257` and Franklin parcel release `hub-de09f99cce0bcae7142d6d2e26582fd3-25` / `2026-09-01`. Of 494,704 landed parcels, 494,043 pass the declared source/derived geometry admission. H3 feature coverage gives every one of 151 property subjects a nonempty block; Snowflake GEOGRAPHY PIP reaches 147, with 146 unique and one two-parcel case. The four misses are 3.006–22.221 m from the nearest blocked parcel and none is rescued by invalid-retained geometry. Microsoft GlobalML `2026-07-24` footprint coverage over the same current bridge contributes 168,778 features across 581 of 585 center+k1 r8 work cells, with zero HOT-geometry misses. A seeded live row also traversed original EPSG:3735 WKB → independent digest verification → Canon fixed-point materialization: 29 decoded / 28 canonical vertices, ≤1 µm decimal admission loss and ≤499 µm lattice snapping. These are candidate-reach, source-availability, and source-byte transport results, not precision, exact-local parity, solver correctness, or an evidence-tier operating point. Successful MCP envelopes still omit query ids, so durable live receipt promotion remains open. The applicable FEMA Ohio partition remains `2023-05-02`; vintages are pinned per geography. | `e5_franklin_county_parcel_candidate_reach.sql`, `e5_microsoft_globalml_franklin_h3_coverage.sql`, `e5_franklin_county_live_geometry_probe.sql`; parcel candidate reach, Microsoft current-bridge coverage, and one seeded source-byte path `MEASURED`, generic core isolation `TESTED`, E5 `OPEN` |
 | Time semantics | Bounded lifecycle/as-of resolution, temporal containment/property membership and declared interval-constraint projection are implemented in `lifecycle.rs`. Timeless composition does not acquire historical validity from a release date. A characterized absence can emit the declared hard constraint only with an authoritative lifecycle death separator and valid scope; presence alone and unseparated absence remain diagnostic/abstained. No historical Brooklyn boundary was measured. | bd-12gh and promoted bd-1oy8; bounded contracts `IMPLEMENTED`, dated population/real-case proof remains separate (bd-1ehd) |
 | Current precision claim | The 96–98% entity-grain answered-point estimate is provisional and truth-instrument-limited; Appendix M indicates residual contamination. | Appendices L.6 and M.5; `MEASURED`, not a release claim |
-| Product thesis | Agent-facing geographic association from supplied evidence, with provenance, alternatives, and acceptance/exactness reported separately (§16.1.3). Collateral composition, dated existence, and named conflicts remain specialized deliverables (§18.2). Point re-ranking remains `CUT`; supported association does not imply complete extent or hard-forced identity. | §16.1.3 and §18 operator clarification; existing scope/gates preserved |
+| Product thesis | Agent-facing geographic association from supplied evidence, with provenance, alternatives, and acceptance/exactness reported separately (§16.1.3). Two first-class entry points, known-address corroboration and region-and-attributes discovery, share one inquiry loop; delivery is sequenced in `PLAN_CANON_GEO_AGENT_COMPLETE_INQUIRY.md` (S1–S6). Collateral composition, dated existence, and named conflicts remain specialized deliverables (§18.2). Point re-ranking as a product premise remains `CUT`; candidate preference among bounded candidates is a separately reported plane (§18.3 clarification). Supported association does not imply complete extent or hard-forced identity. | §16.1.3, §18 operator clarification, and the 2026-09-18 agent-complete roadmap; existing scope/gates preserved |
 | Solver scope | Extensional exact kernel retained as backend. Propagators (additive band, cardinality, exclusivity) and explanation artifacts (minimal core, correction sets, counterfactual separation) are `IN`; compiled representations, latent-slot symmetry breaking and VeriPB remain `DEFERRED`. The original temporal deferral was promoted on 2026-09-09; bounded lifecycle/as-of/declared temporal constraints are implemented, not historical population proof. | §18.3, §18.5; bd-1oy8 promotion/closure records the temporal amendment |
 | Imagery and map evidence | Licensed orthos, 3DEP, NAIP, NOAA ERI as pinned observer inputs; observers emit typed observations with characterized error through `rho`; first uses are truth adjudication and the evidence card, solver input third. Commercial basemaps and location-proposing models are `CUT`. | §18.4, Appendix J; `PROPOSED`, beads created 2026-09-01 |
 
@@ -1218,9 +1218,20 @@ and gates for hard-forced claims, composition, and scale. The examples demonstra
 and guide implementation; they do not establish population precision or close E1–E5/G3.
 
 The [agent architecture](./CANON_GEO_AGENT_ARCHITECTURE.md#1-purpose) owns the detailed
-operating model. Existing feature owners remain bd-3mft for source-neutral membership and
-acceptance contracts, bd-1g18 for per-claim inspection/explanation, and bd-33hh for the
-integrated agent journey. This documentation clarification implements none of those gaps.
+operating model. Existing feature owners remain bd-3mft for source-neutral address
+membership, bd-1g18 for per-claim inspection/explanation, and bd-33hh for the integrated
+known-address journey. This documentation clarification implements none of those gaps.
+
+**Agent-complete roadmap, 2026-09-18.** [`PLAN_CANON_GEO_AGENT_COMPLETE_INQUIRY.md`](./PLAN_CANON_GEO_AGENT_COMPLETE_INQUIRY.md)
+consolidates this direction into a delivery sequence. It is not a pivot: this plan's
+mathematics, measurements, scope decisions and gates keep their authority. It makes
+region-and-attributes discovery a first-class entry point beside known-address
+corroboration, and it assigns owners: S1 current answer (bd-2dvm, bd-1g18); S2 shared
+inquiry and both entry paths (bd-2s32, bd-33hh, bd-3s20); S3 acquisition loop and adapters
+(bd-1b0g, bd-2s8f, bd-3mft); S4 next-evidence generation (bd-14uw); S5 versioned
+association acceptance and held-out two-mode evaluation (bd-1t9f, which now owns the
+general acceptance-policy contract); S6 measured economics and release proof (bd-1ssh,
+bd-244j).
 
 ### 16.2 Candidate enumeration
 
@@ -1509,6 +1520,20 @@ cannot be silently lost. `CUT` items may be cited only as history.
 - Rendered basemap screenshots (Google, Mapbox, Esri, Apple) as evidence of any kind;
   Appendix J quotes the governing clauses.
 - Any vision model output used as a proposer of location.
+
+**Clarifications, 2026-09-18 (agent-complete roadmap; no decision above is reversed):**
+
+- *Ranking.* The `CUT` applies to point re-ranking as a product premise and to presenting
+  the failed E3 point-repair hypothesis as a success. Candidate preference among a bounded
+  candidate universe is retained as a separately reported plane, distinct from candidate
+  reach and from exact logical consequence. It is evaluated on held-out subjects in bd-1t9f
+  and never yields forced identity or acceptance without a versioned policy. Any new bounded
+  point-validation or point-ranking work must be explicitly scoped and measured there.
+- *Cost.* The national cost model and per-tile projection stay `DEFERRED` under bd-2y2x and
+  its unchanged trigger, and the figures above stay `CUT`. Measured cost against answer
+  quality is `IN` now, as cold-preparation, warm-inquiry and refresh counters plus an
+  evidence-tier quality/cost curve (bd-1ssh). Those measurements are inputs to the bd-2y2x
+  trigger review; they do not fire it by themselves.
 
 ### 18.4 The imagery and map evidence lane
 
@@ -2127,6 +2152,13 @@ document. A packet's bead is blocked by the bead of every packet it depends on.
 | PK-D9 | D9 | none | C24; G9 review record, one placeholder per §18.3 DEFERRED item (six) | bd-pd1f, bd-2gmz, bd-2xxc, bd-2y2x, bd-2vx5, plus bd-1oy8 as the temporal-solver owner | G1 to G7 recorded |
 
 Shared fixtures and their owners (round 6 decision): the five-file plan fixture set `tests/fixtures/geo/plan/{question,capabilities,inventory,profile,budget}.json` plus leaf bindings is owned by bd-7hze (T73) and cited by bd-2rf9, bd-3oj1, bd-1g18; the ring fixture `tests/fixtures/geo/case4_building_geometry.json` (`GeoCanonicalPolygonMm` maps with `frame_id`) is owned by bd-2fed (T74) and cited by bd-2k98 and bd-35zz; `tests/fixtures/geo/e4_gate_v2_population_request.json` is owned by bd-1g4x (T71); `tests/fixtures/geo/chimera_evidence_compilation.json` is owned by bd-o0co (T75); `tests/fixtures/geo/advisory_synthetic_adv12.json` by bd-2k98 (T08). Bead-defined test ids run T28 to T76 and are listed in the owning beads.
+
+Agent-complete inquiry slices (2026-09-18; `PLAN_CANON_GEO_AGENT_COMPLETE_INQUIRY.md`
+§12) sit under the control-plane epic bd-1xy6 and add no primary verb. New beads:
+bd-2s32 (shared inquiry), bd-3s20 (discovery entry), bd-1b0g (acquisition loop), bd-2s8f
+(packaged adapters), bd-14uw (action generation), bd-1t9f (acceptance and evaluation),
+bd-1ssh (cost instrumentation), and bd-244j (release proof). Existing owners reused:
+bd-2dvm, bd-1g18, bd-33hh, bd-3mft.
 
 T16 and T17 have no packet: T17 belongs to the D1 owners (bd-1g4x, bd-1l4r) and T16 to
 the D7 owners (bd-s07o, bd-3mo1), both existing beads. D0, D1, D7, and D8 need no new

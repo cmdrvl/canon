@@ -58,7 +58,7 @@ industry ontology, provider knowledge, or probabilistic runtime lookup.
 
 - **Spec:** [`docs/PLAN_CANON.md`](./docs/PLAN_CANON.md) — all behavior must follow this document
 - **Boundary:** [`docs/IDENTITY_ARCHITECTURE.md`](./docs/IDENTITY_ARCHITECTURE.md) — exact runtime vs build-time evidence, entity cluster/link modes, and extension firewall
-- **Geo system:** [`docs/CANON_GEO_AGENT_ARCHITECTURE.md`](./docs/CANON_GEO_AGENT_ARCHITECTURE.md) — agent operating model; [`docs/PLAN_CANON_GEO.md`](./docs/PLAN_CANON_GEO.md) remains authoritative for Geo mathematics, measurements, and E1–E5 gates
+- **Geo system:** [`docs/CANON_GEO_AGENT_ARCHITECTURE.md`](./docs/CANON_GEO_AGENT_ARCHITECTURE.md) — agent operating model; [`docs/PLAN_CANON_GEO.md`](./docs/PLAN_CANON_GEO.md) remains authoritative for Geo mathematics, measurements, and E1–E5 gates; [`docs/PLAN_CANON_GEO_AGENT_COMPLETE_INQUIRY.md`](./docs/PLAN_CANON_GEO_AGENT_COMPLETE_INQUIRY.md) sequences delivery (slices S1–S6 and their beads) without overriding either
 - **Harness notes:** [`CODEX.md`](./CODEX.md), [`CLAUDE.md`](./CLAUDE.md), and [`GEMINI.md`](./GEMINI.md) — runner-specific caveats only
 - Do not invent behavior not present in the plan
 
@@ -194,6 +194,11 @@ question + capabilities + regional inventory + resolution profile + budget
   module ships a verb only if it is on the primary surface; every other module is a library
   API plus a `geo run` stage executor, exercised through the run path. Do not add a verb
   per module.
+- Known-address corroboration and region-and-attributes discovery are two first-class
+  entry points into one inquiry loop, not two products. A supplied address is an assertion
+  to test, not a truth anchor. The next milestone is a complete agent experience over
+  supported profiles (current answer first, bd-2dvm/bd-1g18), not more standalone
+  primitives. An empty next-action list never proves that ambiguity is irreducible.
 - Open limits remain explicit: acquisition is external, exactness is representation-relative,
   candidate reach is an upstream proof obligation, immutable cross-release reuse in the same
   work directory is not guaranteed, and E5/live scale proof is not shipped. A standalone
