@@ -823,8 +823,13 @@ may produce explicitly bounded diagnostics only; they cannot support an exact ra
 Recommendations follow declared policy and prefer dominance: if action A costs no more
 than B and provides at least as much counterfactual separation in every modeled outcome,
 B is dominated. Source count, novelty, and vendor diversity are not substitutes for
-conditional information. Without a declared loss model, the controller exposes the
-nondominated frontier and does not manufacture a total ranking.
+conditional information. Shared lineage alone does not establish redundant information:
+complementary facts remain useful, while equivalent facts/effects do not gain credit by
+renaming their identifiers. Without bound, validated, applicable loss-model content and
+actual loss evaluation, the controller exposes the nondominated frontier and does not
+manufacture a total ranking. The operator-approved 2026-09-18 correction in
+`PLAN_CANON_GEO.md` §18.3 assigns the reference-only ranking defect to bd-1t9f; that target
+is not yet shipped. S5 withholds total ranking for opaque references.
 
 Target addition (bd-14uw): candidate actions should be generated from unresolved claims,
 the regional inventory and versioned evidence recipes, not only accepted from the caller.

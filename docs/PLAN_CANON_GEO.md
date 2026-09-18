@@ -1535,6 +1535,25 @@ cannot be silently lost. `CUT` items may be cited only as history.
   evidence-tier quality/cost curve (bd-1ssh). Those measurements are inputs to the bd-2y2x
   trigger review; they do not fire it by themselves.
 
+**Operator-approved correction, 2026-09-18 (second review of the consolidated plan):**
+The operator accepted the finding that an opaque loss-model reference cannot justify a
+total ranking. This explicitly supersedes the reference-only positive branch of T18 and
+the declaration-only wording of I14/C19/TH17 below; it is a stronger evidence requirement,
+not a claim that a failed gate passed. The original T18 dominance/frontier assertions stay.
+`Some(loss_model_ref)` without bound, validated, applicable model content and actual loss
+evaluation must yield `total_ranking = None`, preserve the frontier, and report why ranking
+is unavailable. S5 (bd-1t9f) implements that behavior and its negative tests; an evaluated
+loss-model implementation is outside the current milestone. No relabeling of the existing
+fixed lexicographic sort as a policy calculation is permitted. At review revision
+`60e3113`, code and T18 still implement the old reference-only behavior; this correction
+remains implementation work until bd-1t9f lands. Historical measurements, the point-repair
+CUT, E1–E5/G3, exact runtime lookup, and review-gated promotion are unchanged.
+
+The same approved review adds the initial research-use quality and latency release gates
+in `PLAN_CANON_GEO_AGENT_COMPLETE_INQUIRY.md` §9. They are predeclared delivery targets,
+not measured results or replacements for the gates in this plan. bd-244j must meet them
+and now blocks on the measured performance work bd-259l.
+
 ### 18.4 The imagery and map evidence lane
 
 Appendix A stated the rule: a model is a source, not a solver. Appendix J verified the
@@ -1701,8 +1720,9 @@ the index and the frozen gate definitions.
   row.
 - I13 `geo inspect` reads only emitted artifacts and receipts; it computes nothing that
   changes an answer.
-- I14 Next-evidence recommendations expose the nondominated frontier and never manufacture
-  a total ranking without a declared loss model.
+- I14 Next-evidence recommendations expose the nondominated frontier. A total ranking
+  requires a bound, validated, applicable and actually evaluated loss model; an opaque
+  declaration alone is insufficient (§18.3 correction, implementation owner bd-1t9f).
 
 ### 19.3 Module skeleton
 
@@ -1913,7 +1933,7 @@ Per-module surface. Field lists are the required minimum; implementers may add
 | `GeoNextActionKind` | `Acquire(GeoAcquisitionRequest)`, `Adjudicate(String)`, `Observe(String)`, `Stop` |
 | `GeoNextAction` | `action_id`, `kind`, `cost_units: u64`, `separation: Vec<GeoOutcomeSeparation>`, `dominated_by: Vec<String>` |
 | `GeoStopReason` | `ClaimForced`, `AllActionsRedundant`, `GrainUnsupported`, `HonestAmbiguity`, `BudgetExceeded` (architecture §9) |
-| `GeoNextEvidenceArtifact` | `version`, `run_id`, `frontier: Vec<GeoNextAction>`, `dominated: Vec<GeoNextAction>`, `total_ranking: Option<Vec<String>>` (`Some` only under a declared loss model), `stop: Option<GeoStopReason>` |
+| `GeoNextEvidenceArtifact` | `version`, `run_id`, `frontier: Vec<GeoNextAction>`, `dominated: Vec<GeoNextAction>`, `total_ranking: Option<Vec<String>>` (`Some` only under a bound, applicable and evaluated loss model; reference-only behavior is corrected by bd-1t9f), `stop: Option<GeoStopReason>` |
 | `pub fn recommend(composition: &GeoCompositionArtifact, separation: &GeoSeparationArtifact, candidates: &[GeoNextAction], policy: Option<&GeoNextEvidencePolicy>, budget: &GeoResourceBudget, budget_spent: &BTreeMap<String, u64>) -> Result<GeoNextEvidenceArtifact, GeoNextEvidenceError>` | dominance by cost and per-outcome separation; frontier is always emitted (I14). `GeoNextEvidencePolicy { policy: GeoDecisionPolicyRef, loss_model: Option<GeoLossModelRef> }` is owned by this module because the existing `GeoDecisionPolicyRef` (control.rs) declares no loss model and `GeoResourceBudget` carries `deterministic_bounds` but no remaining amounts; the artifact adds `budget_remaining` and `dominance_basis` (round 6 decision) |
 
 **`condo.rs`**
@@ -1969,7 +1989,7 @@ tile, artifact, or pass) so the message is never the only carrier.
 | `collision_pari_passu_labeled` | `collision::find_collisions` | a shared entity is covered by a `GeoPariPassuDeclaration` for every colliding accession | not an error: the row is kept with `pari_passu = true` and `explanation` (I12); listed here so no implementer suppresses it | T09 |
 | `inspect_artifact_missing` | `inspect::inspect` | an `output_refs` entry or receipt is absent from the work directory or fails its digest | refusal | T12 |
 | `inspect_question_unanswerable` | `inspect::inspect` | a question has no artifact that answers it in this run | abstention: `answer` states the missing artifact, `artifact_refs` names the run manifest (I13) | T25 |
-| `next_evidence_no_loss_model` | `next_evidence::recommend` | caller requests a total ranking and `policy` is `None` or declares no loss model | abstention on the ranking only: `total_ranking = None`, frontier still emitted (I14) | T18 |
+| `next_evidence_no_loss_model` | `next_evidence::recommend` | caller requests a total ranking and the policy has no bound, applicable, evaluated loss model (including an opaque reference) | abstention on the ranking only: `total_ranking = None`, frontier still emitted (I14); report missing/unevaluated model limitation | T18 |
 | `condo_confirmation_insufficient` | `condo::bridge_condo_unit` | only `KeyOnly` or `BlockOnly` support exists | abstention: `confirmation` set, `billing_bbl = None`, `bins` empty, `abstained_reason` set | T11 |
 | `rho_band_not_admissible` | `evidence::compile_evidence` (PK-D6a additive change, §18.4 frozen decision) | an `EmpiricalCalibration` contract without `admissible_hard_band == true`, or with the flag set but any of `population_id`, `calibration_blake3`, `falsification_rule_id` empty (the empty case refuses `invalid_input` naming the field) | abstention: disposition `DiagnosticOnly`, code carried as the admission reason | T68 |
 
@@ -2027,7 +2047,7 @@ close every §19.4 row and every §19.9 threat.
 | T15 | D6 | unit | a `PresentAtVintage` row over the universe of `temporal_occupancy_cannot_be_smuggled_in_as_timeless_property_identity` in `tests/geo_evidence_compilation.rs` | `to_rho_observation` returns `Some` with `valid_time == Some(interval)`; the row id is in `diagnostic_only_ids`; the compiled request has `hard_constraints.is_empty()` and `residual_model_count == 3` | an implementation that emits a `Require` from the vintage observation changes `residual_model_count` and fails | C11; TH10 | `observation_temporal_diagnostic` |
 | T16 | D7 | e2e | E5 Franklin measurement run artifact from bd-s07o | the tier curve artifact carries `abstention_cases` per tier with a declared denominator per tier; T27 passes on every generic module | a tier row without a denominator fails validation | C22, C23; TH20, TH21 | none |
 | T17 | D1 | gate | `cargo test --test geo_adjudication e4_acceptance_gate_requires_the_full_population_to_be_reachable -- --ignored` over `e4_gate_v2_population.json` (15 cases) with `frozen_e4_h7_gate()` | the frozen test asserts cases, reachable, rho_violations, and budget_fallbacks and stays byte-untouched; the G1 clause `evidence_no_observation_cases == 0` is asserted by a separate non-ignored test T70 (`d1_cohort_reports_no_evidence_no_observation_cases`, owned by bd-1g4x) reading the D1 evidence-stack population through the same path as `canon geo evaluate` | the gate thresholds are constants inside the test; a change under `src/` cannot move them (N11) | C24; TH19 | none |
-| T18 | D5 | unit | candidates `A { cost_units: 1, worst_case_remaining: 2 }` and `B { cost_units: 2, worst_case_remaining: 2 }`; `policy == None` | `frontier == [A]`, `dominated == [B]` with `B.dominated_by == ["A"]`, `total_ranking == None`, `stop == None` | a total ranking emitted with `policy == None` fails; with a policy declaring a loss model `total_ranking == Some(["A", "B"])` | C19; TH17 | `next_evidence_no_loss_model` |
+| T18 | D5 | unit | candidates `A { cost_units: 1, worst_case_remaining: 2 }` and `B { cost_units: 2, worst_case_remaining: 2 }`; test both no policy and a policy with only an opaque loss-model reference | `frontier == [A]`, `dominated == [B]` with `B.dominated_by == ["A"]`, `total_ranking == None`, `stop == None` in both cases; the reference case reports an unevaluated-model limitation | any total ranking from either input fails; changing only the reference id/version/hash cannot change the frontier or invent a ranking. Original reference-only positive branch explicitly superseded by §18.3; bd-1t9f implements the stronger test | C19; TH17 | `next_evidence_no_loss_model` |
 | T19 | D2 | unit | one 200-iteration `random_constraints` component from `tests/geo_composition.rs` with `GeoPropagationBudget { max_fixpoint_rounds: 1, max_hall_subset_size: 1, max_subset_sum_states: 1 }` | `fixpoint_reached == false`; `budget_fallback.is_some()` and `budget_fallback.counter` is one of the three budget field names with `configured == 1`; `check_soundness` on the retained `prunings` still returns `sound == true`; exit is zero | `max_fixpoint_rounds: 0` refuses `invalid_input` with `detail["field"] = "max_fixpoint_rounds"` (mirrors `zero_assignment_budget_refuses_validation`) | C04, C02; TH03 | `propagation_budget_exhausted` |
 | T20 | D2 | unit | `e4_worked_cases.json` `case_1_clean_rooftop` request (expected `status: resolved`, `residual_model_count: 1`) | `minimal_core` returns `Err` code `explanation_not_conflict` with `detail["status"] = "resolved"`; no artifact emitted | `case_6_dense_one_parcel_multi_building` (`status: ambiguous`, count 2) also refuses with `detail["status"] = "ambiguous"`; the Demo 0 chimera request does not refuse | C05; TH04 | `explanation_not_conflict` |
 | T21 | D2 | unit | the `global_mask_overflow_now_solves_exactly` request from `tests/geo_composition.rs` with `max_assignments` lowered until the baseline reports `residual_model_count_complete == false` or `residual_model_count_saturated == true`; one `GeoProspectiveObservation` with two outcomes | every `per_outcome[*].count_exact == false`, `redundant == false`, `baseline_model_count` equals the baseline artifact count; no field named `expected_value` serializes | on `case_6_dense_one_parcel_multi_building` with outcomes inducing `Require` building `1076314` and `Require` building `1085187`: `per_outcome` counts `[1, 1]`, `count_exact == true`, `worst_case_remaining == 1` | C08; TH07 | `separation_residual_inexact` |
@@ -2193,7 +2213,7 @@ that catches it. Numbering is stable; add rows at the end.
 | C16 | `find_collisions` reports every parcel or building shared by more than one accession with all accessions and loan ids; a declared pari passu match sets `pari_passu == true` with an `explanation` and the row is kept | `collision.rs` | I12 |
 | C17 | The retry loop is bounded by `max_passes > 0`; every pass records `plan_blake3`, `run_blake3`, and `abstention_reason`; `next_retry_pass` emits acquisition requests and never geocodes | `retry.rs` | I10 |
 | C18 | `inspect` reads artifacts and receipts by digest, has no call path to `solve_composition`, emits exactly eight answers each with at least one `artifact_refs` entry, and types an unanswerable question as an abstention | `inspect.rs` | I13 |
-| C19 | `recommend` always emits the nondominated `frontier`; `total_ranking` is `Some` only when `policy` declares a loss model; dominance uses cost and per-outcome separation only | `next_evidence.rs` | I14 |
+| C19 | `recommend` always emits the nondominated `frontier`; `total_ranking` is `Some` only after evaluating bound, validated, applicable loss-model content, never from its reference alone; dominance uses cost and per-outcome separation only | `next_evidence.rs` | I14; §18.3 correction |
 | C20 | `bridge_condo_unit` emits `billing_bbl` and `bins` only under `BlockAndGeometry`; `BlockOnly` and `KeyOnly` abstain with empty sets and an `abstained_reason` | `condo.rs` | bd-2fed, T11 |
 | C21 | `build_evidence_card` refuses when the composition, evidence, and explanation digests do not reference one another; `ambiguous_members` is the universe minus the backbone minus members absent from every residual model | `card.rs` | §18.4 second use |
 | C22 | Every artifact type declares `CANON_GEO_<NAME>_VERSION`, `canonical_<name>_bytes`, `validate_<name>_artifact`, and a `schemas/canon.geo.<name>.v0.schema.json`; canonical bytes are byte-identical across platforms | all §19.3 modules | N02, §19.3 shared shape |
@@ -2221,7 +2241,7 @@ that catches it. Numbering is stable; add rows at the end.
 | TH14 | A pari passu collision suppressed as a false positive, or an undeclared shared parcel hidden | Row kept with `pari_passu == true` and an explanation; undeclared rows flagged | C16; T09; `collision_pari_passu_labeled` |
 | TH15 | The retry loop runs unbounded or geocodes inside the loop, breaking pinned reproducibility | `max_passes > 0` required; each pass is a normal pinned run; loop emits requests only | C17; T10; `retry_policy_unbounded`, `retry_pass_ceiling` |
 | TH16 | `geo inspect` recomputes a solve and its answer diverges from the emitted artifact | Read-only by digest; no `solve_composition` call path; literal scan | C18; T12, T25, T27; `inspect_artifact_missing`, `inspect_question_unanswerable` |
-| TH17 | A total ranking of next actions manufactured without a loss model | `total_ranking` gated on a declared loss model; frontier always emitted | C19; T18; `next_evidence_no_loss_model` |
+| TH17 | A total ranking of next actions manufactured without evaluating an applicable bound loss model | reference-only and absent-model inputs both withhold `total_ranking`; frontier always emitted | C19; T18; `next_evidence_no_loss_model`; §18.3 correction |
 | TH18 | Condo unit confirmed by key equality alone (billing BBL equals PIP lot) | Block match plus majority-area footprint containment required | C20; T11; `condo_confirmation_insufficient` |
 | TH19 | Gate self-weakening: a frozen gate, threshold, or denominator edited so a red test passes | Gates are constants in tests and in §19.5; conformance lane is single-owner with reviewer sign-off per AGENTS.md | C24, N11; T17 |
 | TH20 | Proof-class inflation: Demo 0 output, fixtures, or retained evidence cited as a live measurement or gate pass | `fixture.` pins on every fixture-derived artifact; G-gate tests read only their frozen fixtures; measurement receipts require runtime-selected subjects with a recorded seed | C23, N07; T26, T16 |

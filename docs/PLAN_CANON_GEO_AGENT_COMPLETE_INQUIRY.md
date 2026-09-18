@@ -3,8 +3,9 @@
 > **Status:** operator-requested product consolidation and implementation roadmap; proposed behavior is not shipped by this document.
 > **Date:** 2026-09-18.
 > **Implementation baseline reviewed:** `cmdrvl/canon` main at `bbbf9e1643570a5d31974de5f731663b0da427d2` (2026-09-17).
-> **Scope of this change:** add this plan only. No runtime code, schemas, existing plans, acceptance gates, or task states are changed.
+> **Scope:** implementation roadmap and existing bead contracts; no runtime capability is shipped or feature bead closed by this document.
 > **Reconciliation (2026-09-18):** slices S1–S6 are mapped to Beads in [§12](#12-bead-map-reconciled-2026-09-18); the two scope clarifications (candidate ranking versus the point re-ranking CUT, and measured cost instrumentation versus the deferred national cost model) are recorded in [PLAN_CANON_GEO §18.3](PLAN_CANON_GEO.md#183-scope-decisions). No feature is claimed shipped by that reconciliation.
+> **Second review (2026-09-18, `60e3113`):** the operator approved corrections to stage ordering, information redundancy, inquiry bootstrap, acquisition completeness, loss-model ranking, and release quality/performance gates. The authoritative bead descriptions incorporate these corrections. The narrowly scoped T18/I14 correction is explicitly recorded in PLAN_CANON_GEO §18.3; historical measurements and E1–E5/G3 remain unchanged.
 > **Authority:** [Canon Geo Agent Architecture](CANON_GEO_AGENT_ARCHITECTURE.md) governs the operating model; [PLAN_CANON_GEO](PLAN_CANON_GEO.md) governs mathematics, historical measurements, scope decisions, and E1–E5/G3 gates. This roadmap proposes additive delivery work and identifies scope clarifications to reconcile explicitly before implementation. It does not silently reverse a frozen decision or relabel an old experiment.
 
 ## 1. Product direction: consolidate, do not pivot away
@@ -109,6 +110,10 @@ An inquiry carries its identity, mode, requested claim(s) and entity grain(s), s
 
 Geographic scope must have an explicit interpretation. “Orlando market,” “City of Orlando,” a county, and a bounding box are not interchangeable. An ambiguous place name should produce a bounded disambiguation action, not an invisible scope choice.
 
+A resolved scope carries actual bounded geometry: an explicit WGS84 bounding box (with an explicit antimeridian convention), or a content-addressed boundary artifact with declared CRS and a pinned transformation to WGS84. An administrative identifier alone is unresolved until its versioned boundary is retained. `GeoBoundedGeography` remains descriptive metadata, not a substitute for coordinates. Preserve the original geometry and transformation/rounding policy. H3 input is validated WGS84 latitude/longitude, never source-plane feet or millimeters relabeled as angles.
+
+Derive representative points under a versioned deterministic geometry policy and cover the declared scope with bounded sections through the shared project DAG. A single center plus a default halo is sufficient only when its coverage is checked against that scope and every declared candidate. Otherwise partition the scope within deterministic budgets or return a concrete scope/budget continuation. Never silently truncate a city to one disk. Structural completeness and empirical truth reach remain separate.
+
 ### 5.2 A: known-address corroboration
 
 Illustrative intent:
@@ -130,6 +135,8 @@ The workflow should select bounded candidate-generation strategies from availabl
 Return source-backed candidate addresses and physical associations, with deterministic preference ordering where justified, explicit ties, supporting/conflicting evidence, and candidate-reach limits. Unknown attributes must not automatically exclude candidates. Approximate quantities and incompatible measurement semantics must not become exact filters.
 
 Discovery must not reduce to “ask another tool for an address, then start Geo.” External retrieval is allowed, but Geo's packaged workflow owns what to request and how to evaluate what returns.
+
+With no retained source inventory, start with `canon_geo_discovery_request.v0`, which permits an explicit as-of selection policy without release pins. Resolve the scope, discover compatible regional sources, retain metadata/readability evidence, and pin releases before emitting `canon_geo_acquisition_request.v0`. Offline capabilities describe supported contracts, not the existence or release of a regional dataset. Zero evidence must yield an executable discovery continuation; never fabricate release pins, refuse solely for missing evidence, or solve an empty universe as if it answered the inquiry.
 
 ### 5.4 Shared progression
 
@@ -171,6 +178,8 @@ Keep provenance reachable in one bounded inspection. The agent should not have t
 
 **Required lifecycle change:** introduce an explicitly requested current-answer endpoint that can complete after the applicable solve/explain work. Optional acquisition planning must not invalidate it. Do not relabel the previously failed nine-stage baseline as complete. Full-workflow requests must preflight required inputs and continue to report unfinished required stages honestly.
 
+The stage order is acyclic. Current-answer plans end with `solve -> explain -> answer`. Generated full workflows use `solve -> explain -> generate_actions -> separation -> next_evidence -> answer`, with the additional section/compile/policy dependencies declared explicitly. Action generation consumes solve/explain artifacts and a pure claim projection shared with answer assembly; it never consumes the final answer artifact. Caller-supplied prospective inputs remain a supported full-workflow path without `generate_actions`. Current-answer-to-full-workflow resume reuses unchanged upstream nodes and recomputes the final answer with its new dependencies. Missing recipes or optional acquisition cannot erase the retained current answer. Test the generated runtime DAG, both input paths, and fresh-process resume, not just the bead graph.
+
 An illustrative rendering, not a measured new result:
 
 > The evidence favors address A and parcel P. Two buildings remain possible. This supports research navigation but does not meet the requested building-identity acceptance policy. Complete property extent is unestablished. Next-action discovery is incomplete because the local building-address source has not been inspected.
@@ -183,7 +192,11 @@ An acquisition packet must identify the question and claim it serves, applicable
 
 The executor returns actual result bytes or a declared retained projection, source/release identity, request/query identity when available, completeness and pagination state, row/byte counts, hashes, proof class, and failure details. Missing provenance limits the claim; it must never be invented to satisfy a validator.
 
+Page endpoint keys and row counts prove neither internal order nor completeness. Bind each page receipt to retained bytes and validate every typed key tuple, uniqueness and ordering within/across pages, and reconstruction counts. A versioned connector completeness contract must additionally bind the snapshot/query, cursor or offset chain, terminal condition, and a denominator where that source supports one. Arbitrary identifiers need not be consecutive: a key jump is not a missing-page proof. A genuinely skipped cursor/offset, duplicated interior row, changed snapshot, digest mismatch, or unsupported completeness assertion blocks `Complete`. When ordering is verified but completeness is unproven, report `Partial` with an explicit unknown-completeness reason. Zero rows is a complete empty result only under the same source contract.
+
 The workflow performs canonical binding, validation, adaptation, and explicit replanning. Reuse shared receipts and immutable revisions. Do not change the meaning of `--satisfy`: receipt validation alone is not inventory advancement.
+
+The inquiry continuation is callable through the existing primary surface: bd-1b0g extends `geo plan --inquiry` with explicit discovery-result/acquisition-receipt inputs and a shared project work directory. It validates local result bytes and emits the next immutable inquiry revision, a plan when ready, and concrete next commands. This is the ingestion path for facts-only inquiries that have no executable plan yet; neither manual revision editing nor misuse of regional `replan-from-acquisition` is required.
 
 **Add inquiry-scoped evidence ingestion without weakening regional inventory rules.** A lookup covering two candidate buildings can inform this inquiry without claiming that an entire region is available. Preserve its exact subset, release, lineage, and exclusions. Whole-region advancement retains the stronger existing checks in [the acquisition architecture](CANON_GEO_AGENT_ARCHITECTURE.md).
 
@@ -222,7 +235,9 @@ Permit small, explicitly budgeted multi-source recipes. Two records may jointly 
 
 Only claim guaranteed separation when every admissible modeled outcome supports it. Otherwise show the success and unresolved branches. Never promise that buying or retrieving a dataset guarantees identity simply because its schema contains a promising field.
 
-Without an applicable evaluated loss model, expose nondominated choices and reasons rather than manufacture a globally optimal action. A policy reference by itself is not a calculation of expected value. Shared source lineage must not receive duplicate information credit.
+Without an applicable evaluated loss model, expose nondominated choices and reasons rather than manufacture a globally optimal action. A policy reference by itself is not a calculation of expected value. Under the approved §18.3 correction, bd-1t9f removes reference-only total ranking: S5 emits `total_ranking: null` and an unevaluated-model limitation for an opaque reference. A future total ranking requires bound, validated model content, applicability and the actual evaluated loss; implementing that evaluator is outside this milestone. Stable serialization order is not a preference ranking.
+
+Shared lineage describes dependence, not equivalence. Two facts or actions from one source may be complementary. Redundancy requires canonical fact/contract-effect equivalence or a proved lack of additional effect on the residual; an intersecting lineage set alone must never discard an action. Equivalent facts remain duplicates when identifiers or recipe names change. Independent-support counts still group correlated lineage, while two-step recipes retain distinct conditional facts from that lineage. Test a same-lineage complementary pair, an actually duplicated effect, an identifier-renamed duplicate, and the cheaper useful action previously discarded by `normalize_candidates`.
 
 ### 8.4 Stopping and evidence discovery
 
@@ -240,6 +255,10 @@ Report candidate reach separately from conditional ranking accuracy and end-to-e
 
 Ranking and logical consequence remain parallel outputs. A versioned acceptance policy may permit a limited research use without claiming certainty; higher-stakes or complete-extent claims must meet their own evidence requirements. Missing calibration yields explicit limitations, not an invented percentage.
 
+**Initial release quality gate (proposed, not measured):** freeze the selection frame, seed procedure, supported region/profile/grain envelope, acceptance policy bytes, sample size and stopping rule before scoring. For each entry mode, evaluate at least 100 distinct held-out physical subjects, obtain at least 60 accepted associations and at least 20% accepted coverage, and require the one-sided 95% exact binomial upper bound on false acceptance among accepted associations to be at most 5%. Count a subject once; retries, multiple addresses, and related records do not enlarge the denominator. Corroboration includes at least 25 subjects in each correct/wrong/incomplete/ambiguous-input stratum. Acquisition failures and abstentions remain in the full coverage denominator. Accepted grain errors and unsupported complete-extent assertions must both be zero.
+
+Report the same metrics by advertised profile/grain and input stratum; do not pool away a failing supported claim. A profile/grain without sufficient held-out evidence is explicitly unvalidated for acceptance and cannot inherit a broader acceptance claim. The population interval is an evaluation statistic, never per-answer confidence. Failure keeps S5/release open; do not tune on the held-out set, drop hard subjects, or lower thresholds after seeing results. Any changed policy requires a fresh untouched evaluation population. These research-use gates do not replace higher-stakes requirements or E1–E5/G3.
+
 ### 9.2 Three cost workloads
 
 | Workload | Measure separately |
@@ -253,6 +272,10 @@ Instrument these from the first implementation slice. Deterministic counters gov
 Build projections from measured distributions across geography, evidence tier, candidate density, component size, source mixes, and failure cases. Report cold/warm distinctions, dense tails, cache assumptions, missing coverage, uncertainty, and unmeasured terms. A partial-geography test is not national coverage, and an extrapolation is never labeled measured national performance.
 
 The deliverable is an evidence-tier curve linking coverage, accepted-answer quality, abstention, and cost, plus a documented projection where supported. Unsupported cost terms stay unknown. Do not revive the old 0.5-second/tile or 140-CPU-hour national figures.
+
+**Initial release latency gate (proposed, not measured):** on a recorded reference host, release build and concurrency of one, warm inquiries with prepared source data and fresh work directories must meet p95 <= 60 seconds for current-answer completion and p95 <= 120 seconds for the offline full workflow, including generated actions, separation and final answer. Use at least 30 independently selected in-envelope subjects for each workload, include the retained approximately 3,000-candidate parcel stress cases separately, and record all durations, failures, timeouts, hardware and build flags. Compute p95 by the declared nearest-rank method; failed/timed-out runs cannot be discarded to improve it. Both the population p95 and each retained stress case must meet the applicable ceiling. External acquisition waiting, cold preparation and cached resume are measured separately, not hidden in or substituted for this warm-workload proof.
+
+bd-259l additionally preserves byte-identical semantic outputs and requires equivalent numeric-mask separation to finish within 2x the allowed-set encoding. Performance measurements and release gating may use wall time; runtime fallback and semantic answer identity may not. Freeze the reference configuration and targets before optimization; a failed gate leaves the bead open. bd-244j blocks on bd-259l as well as the quality/cost measurement owners.
 
 ## 10. Delivery sequence: runnable slices with explicit exit gates
 
@@ -282,7 +305,7 @@ Do not create a new command per module. Any facade/contract addition must be ref
 
 Use the retained national/local evidence family to accelerate integration, but prove transfer on an unseen subject and at least one non-NYC profile before describing the workflow as source-neutral. This integration check is not a substitute for the full E5 gate.
 
-### S4 — Generate actionable next evidence (P1; after S3)
+### S4 — Generate actionable next evidence (P1; after S3 and S5's policy evaluator)
 
 **Deliver:** recipe-driven action generation for the four jobs, conditional effects, bounded two-step bundles, discovery-coverage state, and evidence-change explanations after resume.
 
@@ -292,13 +315,13 @@ Use the retained national/local evidence family to accelerate integration, but p
 
 **Deliver:** separate preference and consequence views, versioned policy evaluation, evidence ablations, held-out corroboration/discovery results, and scope-specific point-ranking evaluation.
 
-**Exit gate:** report reach, ranking, false acceptance, abstention, grain, and extent separately. Unsupported confidence and source-count inflation fail tests. The historical point-repair result and frozen gates remain unchanged. Useful positive cases are required; a refusal-only implementation does not pass.
+**Exit gate:** meet §9.1's predeclared per-mode quality, sample and coverage gates; report reach, ranking, false acceptance, abstention, grain, and extent separately. Unsupported confidence and source-count inflation fail tests. Apply the explicit §18.3 T18/I14 correction; the historical point-repair result and E1–E5/G3 stay unchanged. A refusal-only implementation does not pass.
 
 ### S6 — Publish measured economics and the release proof (P1; instrumentation already running)
 
 **Deliver:** cold/warm/refresh costs, reuse and tail measurements, evidence-tier quality/cost results, and a clearly labeled national projection only where supported.
 
-**Exit gate:** a clean-session agent completes both use cases, acquires additional evidence through the supported boundary, resumes after restart, explains changes, and reports cost without bespoke orchestration. Declare the supported region/source/profile envelope and all unresolved gaps. Retained fixtures, held-out tests, fresh acquisition, and extrapolations retain distinct proof labels.
+**Exit gate:** a clean-session agent completes both use cases, acquires additional evidence through the supported boundary, resumes after restart, explains changes, and meets §9's quality and latency gates without bespoke orchestration. Declare the supported region/source/profile envelope and all unresolved gaps. Retained fixtures, held-out tests, fresh acquisition, and extrapolations retain distinct proof labels.
 
 ### First implementation wave
 
@@ -322,13 +345,13 @@ The agent-complete version is not ready until all of these hold:
 - [ ] Preference, acceptance, exactness, reach, and complete extent are reported separately.
 - [ ] Geo generates a useful next action and explains both successful and unsuccessful outcomes.
 - [ ] Fresh-process resume and evidence-change explanation work without losing provenance.
-- [ ] Held-out evaluation reports positive capability, wrong answers, abstentions, and failure cases for both modes.
-- [ ] Cost and reuse are measured; national projections are labeled and bounded by actual coverage.
-- [ ] Existing frozen gates, exact runtime lookup, and review-gated promotion remain intact.
+- [ ] Held-out evaluation meets §9.1's predeclared quality/sample/coverage gates for both modes and reports wrong answers, abstentions, and failures.
+- [ ] Cost and reuse are measured, §9.2's latency gates pass, and national projections are labeled and bounded by actual coverage.
+- [ ] The explicit T18/I14 correction is applied; all other frozen gates, exact runtime lookup, and review-gated promotion remain intact.
 
 Non-goals for this milestone: a second scheduler; network acquisition inside the deterministic kernel; one generic score pretending to prove identity; a claim that every site has one address; complete collateral reconstruction as a prerequisite for useful association; nationwide crawling before a supported end-to-end slice; or new solver machinery without measured need.
 
-**Bottom line:** preserve ranking, exact reasoning, evidence-aware next actions, and national economics. Make known-address corroboration and region-plus-attributes discovery two first-class paths through one product. Agents should supply facts, permissions, and goals—not assemble the geographic reasoning system around the tool.
+Preserve ranking, exact reasoning, evidence-aware next actions, and national economics. Make known-address corroboration and region-plus-attributes discovery two first-class paths through one product. Agents supply facts, permissions, and goals; Geo supplies the reusable geographic workflow.
 
 ## 12. Bead map (reconciled 2026-09-18)
 
@@ -336,11 +359,11 @@ Existing owners were reused before any bead was created. All slice beads are chi
 
 | Slice | Owner(s) | Notes |
 |---|---|---|
-| S1 current answer (P0) | bd-2dvm; bd-1g18 | bd-2dvm owns the explicit endpoint, input preflight, and the empty-action-list defect in `next_evidence.rs` noted in §3. bd-1g18 owns the orthogonal one-inspection projection of §6. |
+| S1 current answer (P0) | bd-3mrt; bd-1uo5; bd-2dvm; bd-1g18 | bd-3mrt owns the empty-action discovery correction; bd-1uo5 the answer projection; bd-2dvm endpoint/preflight and acyclic answer dependencies; bd-1g18 one-inspection reporting. bd-2omi/bd-1rsv supply retained replay oracles; bd-2no5 owns stage-semantics-safe resume. |
 | S2 inquiry and entry paths (P0) | bd-2s32 (new); bd-33hh; bd-3s20 (new) | bd-2s32: shared contract, pinned defaults, profile selection, automatic binding, crossover. bd-33hh: known-address corroboration. bd-3s20: region-and-attributes discovery, consuming bd-pufd's name+region artifact, the bd-11pt descriptive profile, and bd-ie4t comparability semantics. |
-| S3 acquisition and adapters (P0) | bd-1b0g (new); bd-2s8f (new); bd-3mft | bd-1b0g: executable packets, agent-mediated executor, inquiry-scoped ingestion, resume; it is the live follow-on that the closed bd-12st left open. bd-2s8f: packaged national place/building/address-point adapters from the REIT experiments. bd-3mft: source-neutral address adapter. |
-| S4 next evidence (P1) | bd-14uw (new) | Recipes, the four jobs, discovery-coverage state, bounded two-step bundles; extends closed bd-vojr. |
+| S3 acquisition and adapters (P0) | bd-3f0r; bd-1b0g; bd-2s8f; bd-3mft | bd-3f0r: executable packets and content-bound pagination/completeness contracts. bd-1b0g: discovery-to-pinned-acquisition execution, inquiry-scoped ingestion and resume; the live follow-on to closed bd-12st. bd-2s8f and bd-3mft: packaged evidence/address adapters. |
+| S4 next evidence (P1) | bd-14uw | Recipes, the four jobs, discovery-coverage state, bounded two-step bundles; extends closed bd-vojr and depends on bd-1t9f's policy evaluator for unmet acceptance requirements. |
 | S5 ranking and acceptance (P1) | bd-1t9f (new) | Versioned acceptance policy, preference and consequence views, ablations, held-out two-mode evaluation. |
-| S6 economics and release proof (P1) | bd-1ssh (new); bd-244j (new) | bd-1ssh: cold/warm/refresh instrumentation and the evidence-tier quality/cost curve, starting with S1. The national projection remains in bd-2y2x under its unchanged trigger. bd-244j: clean-session release proof against §11. |
+| S6 economics and release proof (P1) | bd-1ssh; bd-c95z; bd-259l; bd-244j | bd-1ssh: timing/workload instrumentation, starting with S1. bd-c95z: quality/cost curve. bd-259l: measured performance fix and retained stress ceilings; directly blocks bd-244j. bd-244j: clean-session proof against all 13 §11 lines, including held-out quality and the final generated-workflow population latency run. National projection stays in bd-2y2x under its unchanged trigger. |
 
 Unchanged owners that this roadmap depends on but does not re-scope: bd-3fq5 (fixture conformance, gains two-mode scenarios), bd-2rf9 (accretion reuse), bd-3oj1 (concurrency), bd-s07o and bd-13ju (E5), bd-1g4x (E4), bd-3uug and bd-kwmc (publication and client output), bd-lc7c and bd-2ocv (ledger delivery).
