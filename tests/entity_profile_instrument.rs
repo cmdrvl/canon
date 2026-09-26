@@ -327,6 +327,92 @@ fn placeholder_looking_title_keeps_its_surface_id_view() {
     }
 }
 
+fn exchange_twin_rows(
+    fixture: &InstrumentFixture,
+    name: &str,
+    group: &str,
+    new_maturity: &str,
+) -> PathBuf {
+    // AerCap 6.450% 2027 shape: 144A CUSIP through 2024-03, registered
+    // exchange CUSIP from 2024-04, distinct FIGIs by design, different
+    // filer titles.
+    let rows = fixture.path(name);
+    fs::write(
+        &rows,
+        format!(
+            "source_row_id,report_period,title,cusip,isin,figi,maturitydt,annualizedrt,issuer_lei,share_class,exchange_group\n\
+             row-1,2024-03-31,AERCAP IRELAND CAP GLOBA,00774MBF1,,BBG01K8GY0D8,2027-04-15,6.450,549300TI38531ODB1G63,,{group}\n\
+             row-2,2024-04-30,AerCap Ireland Capital DAC 6.45% 2027,00774MBG9,US00774MBG95,BBG01M1MGL15,{new_maturity},6.450,549300TI38531ODB1G63,,{group}\n"
+        ),
+    )
+    .expect("rows csv");
+    rows
+}
+
+fn twin_evidence(work: &Path) -> EdgeEvidenceRecord {
+    let surfaces: Vec<PreparedSurfaceRecord> = read_jsonl(&work.join("prepare/surfaces.jsonl"));
+    assert_eq!(surfaces.len(), 2);
+    let evidence: Vec<EdgeEvidenceRecord> = read_jsonl(&work.join("evidence/evidence.jsonl"));
+    evidence
+        .into_iter()
+        .find(|record| {
+            let ids = [&record.left_surface_id, &record.right_surface_id];
+            surfaces
+                .iter()
+                .all(|surface| ids.contains(&&surface.surface_id))
+        })
+        .expect("twins reach evidence as a candidate pair")
+}
+
+#[test]
+fn exchange_offer_twins_link_despite_distinct_figis() {
+    let fixture = InstrumentFixture::new();
+    let rows = exchange_twin_rows(
+        &fixture,
+        "twins.csv",
+        "EXO:0000950157-24-000611",
+        "2027-04-15",
+    );
+    let work = fixture.path("twins-work");
+    run_fixture(&rows, &fixture.registry, &work);
+
+    let record = twin_evidence(&work);
+    assert!(support_hit(&record, "anchor_match:exchange_group").is_some());
+    assert!(
+        anti_merge_hit(&record, "anchor_conflict:figi").is_none(),
+        "a shared exchange group must not be cut by the FIGI difference"
+    );
+    assert!(anti_merge_hit(&record, "attribute_conflict:instrument_maturity").is_none());
+}
+
+#[test]
+fn distinct_figis_without_exchange_evidence_stay_cannot_linked() {
+    let fixture = InstrumentFixture::new();
+    let rows = exchange_twin_rows(&fixture, "no-group.csv", "", "2027-04-15");
+    let work = fixture.path("no-group-work");
+    run_fixture(&rows, &fixture.registry, &work);
+
+    let record = twin_evidence(&work);
+    assert!(anti_merge_hit(&record, "anchor_conflict:figi").is_some());
+    assert!(support_hit(&record, "anchor_match:exchange_group").is_none());
+}
+
+#[test]
+fn shared_exchange_group_does_not_override_a_maturity_conflict() {
+    let fixture = InstrumentFixture::new();
+    let rows = exchange_twin_rows(
+        &fixture,
+        "bad-group.csv",
+        "EXO:0000950157-24-000611",
+        "2029-04-15",
+    );
+    let work = fixture.path("bad-group-work");
+    run_fixture(&rows, &fixture.registry, &work);
+
+    let record = twin_evidence(&work);
+    assert!(anti_merge_hit(&record, "attribute_conflict:instrument_maturity").is_some());
+}
+
 #[test]
 fn title_keyed_profile_still_merges_same_title_rows() {
     // Negative control: without surface_key_fields the default key is the

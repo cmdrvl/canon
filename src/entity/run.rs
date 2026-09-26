@@ -3866,6 +3866,17 @@ fn anchor_conflict_for_spec(
         return Ok(None);
     }
     let field = required_field_param(spec, "anchor_conflict")?;
+    // `unless_shared_anchor`: a conflict on `field` does not cut a pair that
+    // shares a non-empty value of another, stronger anchor (for instruments:
+    // a 144A note and its registered exchange twin carry distinct FIGIs by
+    // design but share their exchange-offer group).
+    if let Some(shared) = optional_non_empty_param(spec, "unless_shared_anchor")? {
+        let left_shared = anchor_values(left, shared);
+        let right_shared = anchor_values(right, shared);
+        if !left_shared.is_empty() && left_shared == right_shared {
+            return Ok(None);
+        }
+    }
     let left_values = anchor_values(left, field);
     let right_values = anchor_values(right, field);
     Ok(anchor_conflict_hit(AnchorConflictRequest {

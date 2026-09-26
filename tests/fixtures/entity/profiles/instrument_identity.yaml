@@ -47,6 +47,10 @@ normalized_views:
     operators:
       - ascii_trim_upper
       - placeholder_to_null
+  exchange_group:
+    operators:
+      - ascii_trim_upper
+      - placeholder_to_null
 prepare:
   primary_surface_fields:
     - title
@@ -59,8 +63,13 @@ prepare:
     instrument_maturity: maturitydt
     annualized_rate: annualizedrt
     share_class: share_class
+    exchange_group: exchange_group
   anchor_fields:
     figi: figi
+    # A restricted (144A / Reg S) note and the registered note it is
+    # exchanged into through an SEC exchange offer share this group. They
+    # are one instrument (decided 2026-09-26) despite distinct FIGIs.
+    exchange_group: exchange_group
   placeholder_values:
     - "N/A"
     - "NA"
@@ -108,6 +117,10 @@ evidence:
       params:
         field: figi
         score_units: "9000"
+    - op: anchor_match
+      params:
+        field: exchange_group
+        score_units: "9500"
     - op: isin_cusip_arithmetic
       params:
         cusip_field: cusip
@@ -117,6 +130,7 @@ evidence:
     - op: anchor_conflict
       params:
         field: figi
+        unless_shared_anchor: exchange_group
         score_units: "10000"
     - op: attribute_conflict
       params:
