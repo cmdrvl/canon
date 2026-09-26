@@ -214,6 +214,190 @@ fn instrument_profile_outputs_feed_temporal_cusip_succession_without_issuer_merg
     assert!(!relation_edge_implies_alias(&succession.relations[0]));
 }
 
+#[test]
+fn instrument_surfaces_key_on_identifier_tuple_not_title() {
+    let fixture = InstrumentFixture::new();
+    let rows = fixture.path("same-title.csv");
+    fs::write(
+        &rows,
+        concat!(
+            "source_row_id,report_period,title,cusip,isin,figi,maturitydt,annualizedrt,issuer_lei,share_class\n",
+            "row-1,2024-03-31,Alpha 2029 Note,111111AA1,US111111AA11,BBG00ALPHA111,2029-01-15,4.500,LEIALPHA,A\n",
+            "row-2,2024-06-30,Alpha 2029 Note,111111AB9,US111111AB99,BBG00ALPHA111,2029-01-15,4.500,LEIALPHA,A\n",
+            "row-3,2024-03-31,Conflicted Note,666666AA6,US666666AA66,,2030-12-15,5.250,LEICONFLICT,A\n",
+            "row-4,2024-06-30,Conflicted Note,888888AA8,US888888AA88,,2040-12-15,5.250,LEICONFLICT,A\n",
+            "row-5,2024-06-30,Foreign Equity,,GB00PLACE001,,,,,A\n",
+        ),
+    )
+    .expect("rows csv");
+    let work = fixture.path("same-title-work");
+
+    run_fixture(&rows, &fixture.registry, &work);
+
+    let surfaces: Vec<PreparedSurfaceRecord> = read_jsonl(&work.join("prepare/surfaces.jsonl"));
+    assert_eq!(
+        surfaces.len(),
+        5,
+        "every per-period identifier tuple must be its own surface"
+    );
+    let cusips = surfaces
+        .iter()
+        .filter_map(|surface| surface.normalized_views.get("cusip"))
+        .map(|view| view.value.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        cusips,
+        ["111111AA1", "111111AB9", "666666AA6", "888888AA8"]
+            .into_iter()
+            .collect(),
+        "a re-CUSIP must not be collapsed into the first CUSIP seen under a title"
+    );
+    let empty_cusip = surfaces
+        .iter()
+        .find(|surface| surface.primary_surface == "Foreign Equity")
+        .expect("row with an empty CUSIP is prepared, not refused");
+    assert!(!empty_cusip.normalized_views.contains_key("cusip"));
+
+    let by_cusip = surfaces
+        .iter()
+        .filter_map(|surface| {
+            surface
+                .normalized_views
+                .get("cusip")
+                .map(|view| (view.value.clone(), surface.surface_id.clone()))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let evidence: Vec<EdgeEvidenceRecord> = read_jsonl(&work.join("evidence/evidence.jsonl"));
+    let conflicted = evidence
+        .iter()
+        .find(|record| {
+            let pair = [&record.left_surface_id, &record.right_surface_id];
+            pair.contains(&&by_cusip["666666AA6"]) && pair.contains(&&by_cusip["888888AA8"])
+        })
+        .expect("same-title pair reaches evidence as two surfaces");
+    assert!(anti_merge_hit(conflicted, "attribute_conflict:instrument_maturity").is_some());
+
+    let recusip = evidence
+        .iter()
+        .find(|record| {
+            let pair = [&record.left_surface_id, &record.right_surface_id];
+            pair.contains(&&by_cusip["111111AA1"]) && pair.contains(&&by_cusip["111111AB9"])
+        })
+        .expect("re-CUSIP pair reaches evidence as two surfaces");
+    assert!(support_hit(recusip, "anchor_match:figi").is_some());
+    assert!(anti_merge_hit(recusip, "attribute_conflict:instrument_maturity").is_none());
+}
+
+#[test]
+fn placeholder_looking_title_keeps_its_surface_id_view() {
+    // Real N-PORT rows carry titles like "N/A"; the title is display text,
+    // not an identifier, so it must not be nulled into a surface with no
+    // surface-id view (which refused the whole run on 2024 corporate debt).
+    let fixture = InstrumentFixture::new();
+    let rows = fixture.path("placeholder-title.csv");
+    fs::write(
+        &rows,
+        concat!(
+            "source_row_id,report_period,title,cusip,isin,figi,maturitydt,annualizedrt,issuer_lei,share_class\n",
+            "row-1,2024-03-31,N/A,111111AA1,,,2029-01-15,4.500,,\n",
+            "row-2,2024-06-30,N/A,111111AA1,,,2029-01-15,4.500,,\n",
+            "row-3,2024-03-31,Alpha 2029 Note,222222AA2,,,2029-01-15,4.500,,\n",
+        ),
+    )
+    .expect("rows csv");
+    let work = fixture.path("placeholder-title-work");
+
+    run_fixture(&rows, &fixture.registry, &work);
+
+    let surfaces: Vec<PreparedSurfaceRecord> = read_jsonl(&work.join("prepare/surfaces.jsonl"));
+    assert_eq!(surfaces.len(), 3);
+    let placeholder_titled = surfaces
+        .iter()
+        .filter(|surface| surface.primary_surface == "N/A")
+        .collect::<Vec<_>>();
+    assert_eq!(placeholder_titled.len(), 2);
+    for surface in placeholder_titled {
+        assert!(
+            surface.normalized_views["core"]
+                .reason_codes
+                .iter()
+                .any(|reason| reason == "surface_id_view")
+        );
+        assert_eq!(surface.normalized_views["cusip"].value, "111111AA1");
+    }
+}
+
+#[test]
+fn title_keyed_profile_still_merges_same_title_rows() {
+    // Negative control: without surface_key_fields the default key is the
+    // canonical title view, which is exactly the collapse the instrument
+    // profile must avoid. Proves the positive test can observe a merge.
+    let fixture = InstrumentFixture::new();
+    let rows = fixture.path("title-keyed.csv");
+    fs::write(
+        &rows,
+        concat!(
+            "source_row_id,report_period,title,cusip,isin,figi,maturitydt,annualizedrt,issuer_lei,share_class\n",
+            "row-1,2024-03-31,Conflicted Note,666666AA6,US666666AA66,N/A,2030-12-15,5.250,LEICONFLICT,A\n",
+            "row-2,2024-06-30,Conflicted Note,888888AA8,US888888AA88,N/A,2040-12-15,5.250,LEICONFLICT,A\n",
+        ),
+    )
+    .expect("rows csv");
+    let profile_source = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(PROFILE))
+        .expect("profile yaml");
+    let start = profile_source
+        .find("  surface_key_fields:")
+        .expect("profile declares surface_key_fields");
+    let end = profile_source[start..]
+        .find("  nullable_fields:")
+        .map(|offset| start + offset)
+        .expect("profile declares nullable_fields");
+    let title_keyed = format!("{}{}", &profile_source[..start], &profile_source[end..]);
+    let strategy = fixture.path("title-keyed.yaml");
+    fs::write(&strategy, title_keyed).expect("title keyed profile");
+    let work = fixture.path("title-keyed-work");
+
+    run_entity_workbench(EntityRunRequest {
+        rows: &rows,
+        profile: strategy.to_str().expect("utf8 profile path"),
+        strategy: &strategy,
+        registry: &fixture.registry,
+        work_dir: &work,
+    })
+    .expect("title keyed run succeeds");
+
+    let surfaces: Vec<PreparedSurfaceRecord> = read_jsonl(&work.join("prepare/surfaces.jsonl"));
+    assert_eq!(surfaces.len(), 1, "title key merges both rows");
+}
+
+#[test]
+fn surface_key_field_must_be_declared() {
+    let fixture = InstrumentFixture::new();
+    let rows = fixture.write_rows("undeclared-key.csv");
+    let profile_source = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(PROFILE))
+        .expect("profile yaml");
+    let broken = profile_source.replace(
+        "  surface_key_fields:\n    - core\n",
+        "  surface_key_fields:\n    - core\n    - not_a_declared_field\n",
+    );
+    assert_ne!(broken, profile_source);
+    let strategy = fixture.path("undeclared-key.yaml");
+    fs::write(&strategy, broken).expect("broken profile");
+
+    let error = run_entity_workbench(EntityRunRequest {
+        rows: &rows,
+        profile: strategy.to_str().expect("utf8 profile path"),
+        strategy: &strategy,
+        registry: &fixture.registry,
+        work_dir: &fixture.path("undeclared-key-work"),
+    })
+    .expect_err("undeclared surface key field refuses");
+    assert!(
+        format!("{error:?}").contains("not_a_declared_field"),
+        "refusal names the offending field: {error:?}"
+    );
+}
+
 struct InstrumentFixture {
     _temp: tempfile::TempDir,
     root: PathBuf,

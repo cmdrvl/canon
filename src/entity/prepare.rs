@@ -71,6 +71,17 @@ pub struct PrepareFieldMapping {
     pub context_fields: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub provenance_fields: Vec<String>,
+    /// Composite surface key: normalized view names or context/provenance
+    /// fields whose values together identify one surface. Empty keeps the
+    /// default single canonical-view key. Profiles whose identity is not a
+    /// display name (for example instruments) must not collapse rows that
+    /// share a title but differ in identifiers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub surface_key_fields: Vec<String>,
+    /// Required fields whose column must exist but whose value may be empty
+    /// on a row (an absent identifier, not a malformed row).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub nullable_fields: Vec<String>,
 }
 
 impl PrepareFieldMapping {
@@ -94,6 +105,8 @@ impl PrepareFieldMapping {
                 "loan_id".to_string(),
                 "property_id".to_string(),
             ],
+            surface_key_fields: Vec::new(),
+            nullable_fields: Vec::new(),
         }
     }
 
@@ -122,6 +135,8 @@ impl PrepareFieldMapping {
                 "doc_id".to_string(),
                 "accession".to_string(),
             ],
+            surface_key_fields: Vec::new(),
+            nullable_fields: Vec::new(),
         }
     }
 }
@@ -814,7 +829,11 @@ fn prepare_surface_records_with_profile(
         }
         let core_value = core_view_value(&observation.profile_id, &normalized_views)
             .unwrap_or_else(|| observation.primary_surface.value.trim().to_string());
-        let surface_key = format!("{}:{core_value}", observation.profile_id);
+        let surface_key = if mapping.surface_key_fields.is_empty() {
+            format!("{}:{core_value}", observation.profile_id)
+        } else {
+            composite_surface_key(mapping, observation, &normalized_views)?
+        };
         let accumulator = groups.entry(surface_key.clone()).or_insert_with(|| {
             PreparedSurfaceAccumulator::new(
                 observation.profile_id.clone(),
@@ -830,13 +849,41 @@ fn prepare_surface_records_with_profile(
         .into_values()
         .map(PreparedSurfaceAccumulator::finish)
         .collect::<Vec<_>>();
-    assign_surface_ids(&mut surfaces)?;
+    assign_surface_ids(&mut surfaces, !mapping.surface_key_fields.is_empty())?;
     surfaces.sort_by(|left, right| {
         left.surface_id
             .cmp(&right.surface_id)
             .then_with(|| left.surface_key.cmp(&right.surface_key))
     });
     Ok(surfaces)
+}
+
+fn composite_surface_key(
+    mapping: &PrepareFieldMapping,
+    observation: &PreparedInputObservation,
+    normalized_views: &BTreeMap<String, PreparedNormalizedView>,
+) -> Result<String, Refusal> {
+    let parts = mapping
+        .surface_key_fields
+        .iter()
+        .map(|name| {
+            normalized_views
+                .get(name)
+                .map(|view| view.value.clone())
+                .or_else(|| {
+                    prepared_context_string(observation, name)
+                        .filter(|value| !is_placeholder_value(value, mapping))
+                })
+        })
+        .collect::<Vec<_>>();
+    let encoded = serde_json::to_string(&parts).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Failed to encode composite surface key",
+            json!({ "error": error.to_string() }),
+            None,
+        )
+    })?;
+    Ok(format!("{}:{encoded}", observation.profile_id))
 }
 
 pub(crate) fn prepare_surface_records_for_loaded_profile(
@@ -1016,7 +1063,7 @@ fn prepare_surface_records_from_profile_execution(
         .into_values()
         .map(PreparedSurfaceAccumulator::finish)
         .collect::<Vec<_>>();
-    assign_surface_ids(&mut surfaces)?;
+    assign_surface_ids(&mut surfaces, false)?;
     surfaces.sort_by(|left, right| {
         left.surface_id
             .cmp(&right.surface_id)
@@ -1241,11 +1288,21 @@ impl PreparedExactLookup {
     }
 }
 
-fn assign_surface_ids(surfaces: &mut [PreparedSurfaceRecord]) -> Result<(), Refusal> {
+fn assign_surface_ids(
+    surfaces: &mut [PreparedSurfaceRecord],
+    composite_key: bool,
+) -> Result<(), Refusal> {
     let materials = surfaces
         .iter()
-        .map(surface_id_material)
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|surface| {
+            let material = surface_id_material(surface)?;
+            Ok(if composite_key {
+                material.with_surface_key(surface.surface_key.clone())
+            } else {
+                material
+            })
+        })
+        .collect::<Result<Vec<_>, Refusal>>()?;
     let derived = derive_surface_ids(&materials)?;
     for (surface, derived) in surfaces.iter_mut().zip(derived) {
         surface.surface_id = derived.surface_id;
@@ -1396,6 +1453,18 @@ fn project_prepare_row(
     contract: &PrepareInputContract,
 ) -> Result<PreparedInputObservation, Refusal> {
     for field in &contract.required_fields {
+        if contract.mapping.nullable_fields.contains(field) {
+            if row.get(field).is_none() {
+                return Err(input_contract_refusal(
+                    format!("Input row is missing required profile field '{field}'"),
+                    row.row_number,
+                    field,
+                    None,
+                    None,
+                ));
+            }
+            continue;
+        }
         row.required_scalar(field)?;
     }
 
@@ -1506,7 +1575,12 @@ fn configured_normalized_views(
         let Some(value) = prepared_context_string(observation, field) else {
             continue;
         };
-        if is_placeholder_value(&value, mapping) {
+        // The canonical surface view is the surface's display text, not an
+        // identifier: a placeholder-looking title ("N/A") is still the text
+        // the row carries. Nulling it would leave the surface without its
+        // surface-id view and refuse the whole run.
+        let canonical = mapping.canonical_surface_normalized_view.as_deref() == Some(view_name);
+        if !canonical && is_placeholder_value(&value, mapping) {
             continue;
         }
         let view = profile.normalized_views.get(view_name).ok_or_else(|| {
@@ -1521,7 +1595,7 @@ fn configured_normalized_views(
             )
         })?;
         let value = apply_configured_normalizers(value.as_str(), &view.operators)?;
-        if value.trim().is_empty() || is_placeholder_value(&value, mapping) {
+        if value.trim().is_empty() || (!canonical && is_placeholder_value(&value, mapping)) {
             continue;
         }
 
@@ -1677,6 +1751,21 @@ fn validate_mapping(mapping: &PrepareFieldMapping) -> Result<(), Refusal> {
     ensure_unique_non_empty("context_fields", &mapping.context_fields)?;
     ensure_unique_non_empty("provenance_fields", &mapping.provenance_fields)?;
     ensure_unique_non_empty("placeholder_values", &mapping.placeholder_values)?;
+    ensure_unique_non_empty("surface_key_fields", &mapping.surface_key_fields)?;
+    ensure_unique_non_empty("nullable_fields", &mapping.nullable_fields)?;
+    for name in &mapping.surface_key_fields {
+        let declared = name == "core"
+            || mapping.normalized_view_fields.contains_key(name)
+            || mapping.context_fields.contains(name)
+            || mapping.provenance_fields.contains(name);
+        if !declared {
+            return Err(EntityRefusalKind::Profile.to_refusal(
+                "Prepare surface key field must be a normalized view or a context/provenance field",
+                json!({ "field": "surface_key_fields", "value": name }),
+                None,
+            ));
+        }
+    }
     if mapping
         .canonical_surface_normalized_view
         .as_ref()
@@ -1963,6 +2052,14 @@ fn context(
     contract: &PrepareInputContract,
 ) -> Result<BTreeMap<String, Value>, Refusal> {
     let mut context = BTreeMap::new();
+    // Primary surface fields are display text, never identifiers: a
+    // placeholder-looking value must survive into the canonical view.
+    let surface_fields = contract
+        .mapping
+        .primary_surface_fields
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
     for field in context_field_names(&contract.mapping) {
         if field == "source_row_id" {
             continue;
@@ -1971,8 +2068,9 @@ fn context(
             continue;
         };
         if let Some(normalized) = normalized_context_value(value, row.row_number, &field)? {
-            let keep = value_to_string(&normalized)
-                .is_none_or(|text| !is_placeholder_value(&text, &contract.mapping));
+            let keep = surface_fields.contains(field.as_str())
+                || value_to_string(&normalized)
+                    .is_none_or(|text| !is_placeholder_value(&text, &contract.mapping));
             if keep {
                 context.insert(field, normalized);
             }

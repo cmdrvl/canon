@@ -75,6 +75,25 @@ prepare:
   provenance_fields:
     - source_row_id
     - report_period
+  # One surface per per-period identifier tuple (Proof Case 0 grain). A title
+  # key would silently merge re-CUSIPs and same-title/different-maturity
+  # instruments into one surface before evidence ever runs.
+  surface_key_fields:
+    - core
+    - cusip
+    - isin
+    - instrument_maturity
+    - annualized_rate
+    - issuer_lei
+    - report_period
+  # Identifier and attribute columns must exist but may be empty on a row:
+  # an absent identifier is not a malformed observation.
+  nullable_fields:
+    - cusip
+    - isin
+    - maturitydt
+    - annualizedrt
+    - issuer_lei
 evidence:
   support:
     - op: exact_view

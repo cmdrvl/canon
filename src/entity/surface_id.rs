@@ -19,6 +19,10 @@ pub struct SurfaceIdMaterial {
     pub profile_id: String,
     pub normalized_view: SurfaceIdNormalizedView,
     pub raw_surfaces: Vec<String>,
+    /// Composite surface key for profiles that declare `surface_key_fields`;
+    /// absent for single-view profiles so their surface IDs are unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface_key: Option<String>,
 }
 
 impl SurfaceIdMaterial {
@@ -40,7 +44,14 @@ impl SurfaceIdMaterial {
                 .collect::<BTreeSet<_>>()
                 .into_iter()
                 .collect(),
+            surface_key: None,
         }
+    }
+
+    #[must_use]
+    pub fn with_surface_key(mut self, surface_key: impl Into<String>) -> Self {
+        self.surface_key = Some(surface_key.into());
+        self
     }
 
     fn validate(&self) -> Result<(), Refusal> {
