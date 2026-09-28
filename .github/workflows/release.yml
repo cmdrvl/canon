@@ -59,6 +59,12 @@ jobs:
       # check out. They are not inputs to the release binary.
       - uses: actions/checkout@v4
         if: runner.os == 'Windows'
+        # Git validates index paths even when sparse checkout excludes them.
+        # Scope the override to checkout; incompatible files stay unmaterialized.
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: core.protectNTFS
+          GIT_CONFIG_VALUE_0: 'false'
         with:
           sparse-checkout: |
             /*

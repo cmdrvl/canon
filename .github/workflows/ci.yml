@@ -84,6 +84,11 @@ jobs:
       # Measurement-only fixtures use filenames that Windows cannot check out.
       - uses: actions/checkout@v4
         if: runner.os == 'Windows'
+        # Permit index-only paths while sparse checkout keeps them off disk.
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: core.protectNTFS
+          GIT_CONFIG_VALUE_0: 'false'
         with:
           sparse-checkout: |
             /*
