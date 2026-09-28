@@ -389,6 +389,7 @@ fn typed_operator_params_reject_unknown_duplicate_and_oversized_values() {
 
 fn sample_package() -> EntityProfilePackage {
     EntityProfilePackage {
+        blocking: None,
         kind: "entity-profile".to_string(),
         profile: "pkg.synthetic.portable_profile".to_string(),
         version: "1.2.3".to_string(),

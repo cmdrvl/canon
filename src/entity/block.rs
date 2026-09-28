@@ -35,6 +35,9 @@ use std::{
     path::Path,
 };
 
+#[path = "declared_block.rs"]
+pub mod declared;
+
 pub const BLOCK_STAGE: &str = "block";
 pub const BLOCK_CANDIDATE_ARTIFACT: &str = "candidate_artifact";
 pub const BLOCK_PARTIAL_CANDIDATE_ARTIFACT_WRITTEN_ON_REFUSAL: bool = false;
@@ -139,10 +142,64 @@ impl RareTokenOverlapBlockOperator {
 pub struct BlockRuntimeConfig {
     pub candidate_budget: BlockCandidateBudgetConfig,
     pub max_exact_bucket_size: u64,
+    pub preflight: bool,
+    pub operator_overrides: BTreeMap<String, BlockOperatorTuning>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BlockOperatorTuning {
+    pub k: Option<usize>,
+    pub candidate_cap: Option<usize>,
+}
+
+impl BlockRuntimeConfig {
+    pub fn tuned_profile(
+        &self,
+        profile: &crate::entity::profile::EntityProfileDocument,
+    ) -> Result<crate::entity::profile::EntityProfileDocument, Refusal> {
+        let mut result = profile.clone();
+        for (id, tuning) in &self.operator_overrides {
+            let operator = result.blocking.as_mut().and_then(|blocking| {
+                blocking
+                    .operators
+                    .iter_mut()
+                    .find(|operator| operator.id() == *id)
+            });
+            match operator {
+                Some(
+                    declared::Operator::NgramTopk {
+                        k, candidate_cap, ..
+                    }
+                    | declared::Operator::RareTokenOverlap {
+                        k, candidate_cap, ..
+                    },
+                ) => {
+                    if let Some(value) = tuning.k {
+                        *k = value;
+                    }
+                    if let Some(value) = tuning.candidate_cap {
+                        *candidate_cap = value;
+                    }
+                }
+                _ => {
+                    return Err(EntityRefusalKind::Strategy.to_refusal(
+                        "Blocking tuning must name a declared similarity operator",
+                        json!({"operator_id": id}),
+                        None,
+                    ));
+                }
+            }
+        }
+        result.validate().map_err(|error| error.to_refusal())?;
+        Ok(result)
+    }
 }
 
 pub const fn default_block_runtime_config() -> BlockRuntimeConfig {
     BlockRuntimeConfig {
+        preflight: true,
+        operator_overrides: BTreeMap::new(),
         candidate_budget: BlockCandidateBudgetConfig::new(
             DEFAULT_BLOCK_MAX_CANDIDATES_PER_SURFACE,
             DEFAULT_BLOCK_MAX_CANDIDATES_PER_OPERATOR,
@@ -168,6 +225,26 @@ pub fn default_block_candidate_operators(core_view_name: &str) -> Vec<BlockCandi
                 .with_max_posting_size(DEFAULT_BLOCK_RARE_TOKEN_MAX_POSTING_SIZE),
         ),
     ]
+}
+
+pub fn generate_profile_candidates(
+    profile: &crate::entity::profile::EntityProfileDocument,
+    posting_index: &EntityPostingIndex,
+    ngram_index: &EntityNgramIndex,
+    surfaces: &[crate::entity::prepare::PreparedSurfaceRecord],
+    budget_config: BlockCandidateBudgetConfig,
+) -> Result<BlockCandidateGenerationResult, Refusal> {
+    if profile.blocking.is_some() {
+        declared::generate(profile, surfaces, budget_config)
+    } else {
+        generate_block_candidates(BlockCandidateGenerationRequest {
+            profile_id: profile.profile.clone(),
+            posting_index,
+            ngram_index: Some(ngram_index),
+            budget_config,
+            operators: default_block_candidate_operators(profile.canonical_view()),
+        })
+    }
 }
 
 pub fn load_block_runtime_config(strategy: &Path) -> Result<BlockRuntimeConfig, Refusal> {
@@ -207,6 +284,9 @@ struct BlockRuntimeStrategyDocument {
 
 #[derive(Debug, Clone, Default, Deserialize)]
 struct BlockRuntimeStrategySection {
+    preflight: Option<bool>,
+    #[serde(default)]
+    operator_overrides: BTreeMap<String, BlockOperatorTuning>,
     #[serde(default)]
     candidate_budget: BlockCandidateBudgetOverrides,
     #[serde(default)]
@@ -233,6 +313,8 @@ impl BlockRuntimeStrategyDocument {
     fn into_runtime_config(self) -> BlockRuntimeConfig {
         let mut config = default_block_runtime_config();
         let block = self.block;
+        config.preflight = block.preflight.unwrap_or(true);
+        config.operator_overrides = block.operator_overrides;
         if let Some(value) = block
             .candidate_budget
             .max_candidates_per_surface
@@ -280,7 +362,8 @@ impl AliasPatchMatchBlockOperator {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AliasPatchPair {
     pub left_surface_id: String,
     pub right_surface_id: String,
@@ -325,6 +408,8 @@ pub struct BlockCandidateHit {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BlockCandidateGenerationDiagnostics {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub configuration: Option<BlockConfiguration>,
     pub candidate_record_count: u64,
     pub candidate_pairs_emitted: u64,
     pub candidate_pairs_suppressed_by_cap: u64,
@@ -341,6 +426,12 @@ pub struct BlockCandidateGenerationDiagnostics {
     pub partial_candidate_artifact_written: bool,
     pub operator_yield: Vec<BlockOperatorYield>,
     pub operator_diagnostics: Vec<BlockOperatorCandidateDiagnostics>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlockConfiguration {
+    pub blocking: Option<declared::Blocking>,
+    pub placeholder_values: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -520,7 +611,10 @@ pub fn generate_block_candidates(
     validate_candidate_index_surface_sets(request.posting_index, request.ngram_index)?;
 
     let mut accumulator = BlockCandidateAccumulator::default();
-    let mut budget_observations = Vec::new();
+    let mut budget_observations = CandidateBudgetTracker::new(
+        request.budget_config.clone(),
+        request.posting_index.surface_ids.len(),
+    );
     let mut operator_diagnostics = Vec::new();
 
     for operator in &request.operators {
@@ -543,6 +637,7 @@ pub fn generate_block_candidates(
                     config,
                     &mut accumulator,
                     &mut budget_observations,
+                    None,
                 )?;
                 operator_diagnostics.push(diagnostic);
             }
@@ -568,9 +663,17 @@ pub fn generate_block_candidates(
         }
     }
 
+    finish_candidates(accumulator, budget_observations, operator_diagnostics)
+}
+
+fn finish_candidates(
+    accumulator: BlockCandidateAccumulator,
+    budget_observations: CandidateBudgetTracker,
+    mut operator_diagnostics: Vec<BlockOperatorCandidateDiagnostics>,
+) -> Result<BlockCandidateGenerationResult, Refusal> {
     let budget = validate_block_candidate_budget_before_artifact_emission(
-        &request.budget_config,
-        &budget_observations,
+        &budget_observations.config,
+        &budget_observations.observations,
     )?;
     operator_diagnostics.sort_by(block_operator_diagnostic_cmp);
     let candidates = accumulator.into_records();
@@ -582,6 +685,7 @@ pub fn generate_block_candidates(
     let operator_yield = operator_yield_from_diagnostics(&operator_diagnostics);
     Ok(BlockCandidateGenerationResult {
         diagnostics: BlockCandidateGenerationDiagnostics {
+            configuration: None,
             candidate_record_count: candidates.len() as u64,
             candidate_pairs_emitted: budget.candidate_pairs_emitted,
             candidate_pairs_suppressed_by_cap: budget.candidate_pairs_suppressed_by_cap,
@@ -592,7 +696,7 @@ pub fn generate_block_candidates(
             candidate_pairs_per_surface_p99: budget.candidate_pairs_per_surface_p99,
             max_candidates_for_surface: budget.max_candidates_for_surface,
             max_candidates_for_operator: budget.max_candidates_for_operator,
-            configured_budget: request.budget_config.clone(),
+            configured_budget: budget_observations.config.clone(),
             candidate_budget: budget.candidate_budget,
             candidate_artifact_bytes,
             partial_candidate_artifact_written: budget.partial_candidate_artifact_written,
@@ -1117,11 +1221,13 @@ fn apply_ngram_topk_operator(
     ngram_index: &EntityNgramIndex,
     config: &NgramTopKBlockOperator,
     accumulator: &mut BlockCandidateAccumulator,
-    budget_observations: &mut Vec<BlockCandidateBudgetObservation>,
+    budget_observations: &mut CandidateBudgetTracker,
+    max_ngram_df: Option<usize>,
 ) -> Result<BlockOperatorCandidateDiagnostics, Refusal> {
     let mut diagnostic = OperatorDiagnosticAccumulator::new(&config.operator_id);
 
-    for surface_id in &ngram_index.surface_ids {
+    let mut workspace = crate::entity::index::ngram_index::NgramQueryWorkspace::default();
+    for (ordinal, surface_id) in ngram_index.surface_ids.iter().enumerate() {
         let mut topk_config =
             TopKConfig::new(profile_id.to_string(), config.operator_id.clone(), config.k)
                 .with_candidate_cap(config.candidate_cap);
@@ -1129,7 +1235,7 @@ fn apply_ngram_topk_operator(
             topk_config = topk_config.with_score_floor_units(score_floor_units);
         }
         let result = ngram_index
-            .top_k_for_surface(surface_id, topk_config)
+            .top_k_for_ordinal(ordinal, topk_config, &mut workspace, max_ngram_df)
             .map_err(ngram_index_refusal)?;
         diagnostic.record_topk_counts(
             result.diagnostics.input_candidate_count,
@@ -1142,7 +1248,7 @@ fn apply_ngram_topk_operator(
             &config.operator_id,
             usize_to_u64(result.diagnostics.emitted_candidate_count),
             usize_to_u64(result.diagnostics.dropped_candidate_count),
-        ));
+        ))?;
 
         for candidate in result.candidates {
             accumulator.add_hit(
@@ -1165,7 +1271,7 @@ fn apply_rare_token_overlap_operator(
     posting_index: &EntityPostingIndex,
     config: &RareTokenOverlapBlockOperator,
     accumulator: &mut BlockCandidateAccumulator,
-    budget_observations: &mut Vec<BlockCandidateBudgetObservation>,
+    budget_observations: &mut CandidateBudgetTracker,
 ) -> Result<BlockOperatorCandidateDiagnostics, Refusal> {
     let token_features =
         token_features_by_surface(posting_index).map_err(posting_layout_refusal)?;
@@ -1233,7 +1339,7 @@ fn apply_rare_token_overlap_operator(
             &config.operator_id,
             usize_to_u64(result.diagnostics.emitted_candidate_count),
             usize_to_u64(result.diagnostics.dropped_candidate_count),
-        ));
+        ))?;
 
         for candidate in result.candidates {
             accumulator.add_hit(
@@ -1255,7 +1361,7 @@ fn apply_alias_patch_operator(
     posting_index: &EntityPostingIndex,
     config: &AliasPatchMatchBlockOperator,
     accumulator: &mut BlockCandidateAccumulator,
-    budget_observations: &mut Vec<BlockCandidateBudgetObservation>,
+    budget_observations: &mut CandidateBudgetTracker,
 ) -> Result<BlockOperatorCandidateDiagnostics, Refusal> {
     let surface_set = posting_index
         .surface_ids
@@ -1294,6 +1400,12 @@ fn apply_alias_patch_operator(
             continue;
         };
         if emitted_pairs.insert((left_surface_id.clone(), right_surface_id.clone())) {
+            budget_observations.push(BlockCandidateBudgetObservation::new(
+                &left_surface_id,
+                &config.operator_id,
+                1,
+                0,
+            ))?;
             accumulator.add_hit(
                 &left_surface_id,
                 &right_surface_id,
@@ -1304,15 +1416,6 @@ fn apply_alias_patch_operator(
                 },
             );
         }
-    }
-
-    for (left_surface_id, _) in &emitted_pairs {
-        budget_observations.push(BlockCandidateBudgetObservation::new(
-            left_surface_id,
-            &config.operator_id,
-            1,
-            0,
-        ));
     }
 
     Ok(BlockOperatorCandidateDiagnostics {
@@ -1822,6 +1925,71 @@ fn block_candidate_budget_refusal(
         }),
         Some(breach.budget.next_command.to_string()),
     )
+}
+
+struct CandidateBudgetTracker {
+    config: BlockCandidateBudgetConfig,
+    observations: Vec<BlockCandidateBudgetObservation>,
+    surfaces: BTreeMap<String, u64>,
+    operators: BTreeMap<String, u64>,
+    total: u64,
+    surfaces_total: usize,
+}
+
+impl CandidateBudgetTracker {
+    fn new(config: BlockCandidateBudgetConfig, surfaces_total: usize) -> Self {
+        Self {
+            config,
+            observations: Vec::new(),
+            surfaces: BTreeMap::new(),
+            operators: BTreeMap::new(),
+            total: 0,
+            surfaces_total,
+        }
+    }
+
+    fn push(&mut self, observation: BlockCandidateBudgetObservation) -> Result<(), Refusal> {
+        let surface = self
+            .surfaces
+            .entry(observation.surface_id.clone())
+            .or_default();
+        *surface = surface.saturating_add(observation.emitted_candidate_count);
+        let operator = self
+            .operators
+            .entry(observation.operator_id.clone())
+            .or_default();
+        *operator = operator.saturating_add(observation.emitted_candidate_count);
+        self.total = self
+            .total
+            .saturating_add(observation.emitted_candidate_count);
+        let exceeded = *surface > self.config.max_candidates_per_surface
+            || *operator > self.config.max_candidates_per_operator
+            || self.total > self.config.max_candidates_per_run;
+        let operator_id = observation.operator_id.clone();
+        self.observations.push(observation);
+        if exceeded {
+            let mut refusal = validate_block_candidate_budget_before_artifact_emission(
+                &self.config,
+                &self.observations,
+            )
+            .expect_err("incremental counters exceeded a declared budget");
+            refusal.detail["stopped_early"] = json!(true);
+            refusal.detail["observed_at_stop"] = json!(self.total);
+            refusal.detail["observation_kind"] = json!("lower_bound");
+            refusal.detail["surfaces_visited"] = json!(self.surfaces.len());
+            refusal.detail["surfaces_total"] = json!(self.surfaces_total);
+            refusal.detail["operator_id"] = json!(operator_id);
+            refusal.next_command = Some(format!(
+                "{} Review operator {operator_id} in the profile blocking section and the strategy candidate_budget.",
+                refusal
+                    .next_command
+                    .as_deref()
+                    .unwrap_or("Rerun canon entity block after adjusting the budget.")
+            ));
+            return Err(refusal);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

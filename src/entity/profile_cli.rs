@@ -124,18 +124,14 @@ fn find_profile_template(profile_id: &str) -> Result<&'static ProfileTemplate, C
 }
 
 fn profile_templates() -> &'static [ProfileTemplate] {
-    &[
-        CMBS_TENANT_LABEL_TEMPLATE,
-        REGAB_FIRM_IDENTITY_TEMPLATE,
-        INSTRUMENT_IDENTITY_TEMPLATE,
-    ]
+    crate::entity::profiles::TEMPLATES
 }
 
 #[derive(Debug, Clone, Copy)]
-struct ProfileTemplate {
-    profile: &'static str,
-    non_goals: &'static [&'static str],
-    yaml: &'static str,
+pub(crate) struct ProfileTemplate {
+    pub(crate) profile: &'static str,
+    pub(crate) non_goals: &'static [&'static str],
+    pub(crate) yaml: &'static str,
 }
 
 impl ProfileTemplate {
@@ -203,146 +199,3 @@ fn unknown_profile_template_refusal(profile_id: &str) -> CanonOutput {
         )
         .to_canon_output()
 }
-
-const CMBS_TENANT_LABEL_TEMPLATE: ProfileTemplate = ProfileTemplate {
-    profile: "cmbs_tenant_label",
-    non_goals: &[
-        "does_not_claim_legal_entity_identity",
-        "does_not_merge_brand_family_or_successor_relationships",
-    ],
-    yaml: r#"# canon entity profile template: cmbs_tenant_label
-# Identity semantics: canonical display label for CMBS tenant strings.
-# Non-goal: this does not claim legal-entity, obligor, investor, owner,
-# brand-hierarchy, or successor identity.
-profile: cmbs_tenant_label
-version: 0.1.0
-entity_type: tenant_label
-identity_semantics: canonical_display_label
-canonical_type: tenant_label
-required_fields:
-  - source_row_id
-  - deal_id
-  - loan_id
-  - property_id
-  - raw_tenant_name
-normalized_views:
-  tenant_core:
-    operators:
-      - unicode_fold
-      - lowercase
-      - strip_tenant_noise
-      - strip_legal_suffixes
-      - normalize_whitespace
-  tenant_tokens:
-    operators:
-      - unicode_fold
-      - lowercase
-      - tokenize
-      - drop_tenant_stopwords
-  tenant_brand:
-    operators:
-      - unicode_fold
-      - lowercase
-      - tenant_brand_fingerprint
-      - normalize_whitespace
-evidence:
-  support:
-    - op: exact_view
-      view: tenant_core
-    - op: string_similarity
-      view: tenant_core
-    - op: tfidf_cosine
-      view: tenant_tokens
-    - op: alias_patch_match
-      view: tenant_core
-  cannot_link:
-    - op: protected_token_conflict
-      view: tenant_tokens
-    - op: related_distinct_phrase
-      view: tenant_core
-    - op: same_property_distinct_rank
-  relation_hints:
-    - op: related_brand_family
-      view: tenant_brand
-      params:
-        merge_authorized: "false"
-        review_policy: relation_hint_only
-    - op: possible_successor_predecessor
-      view: tenant_brand
-      params:
-        merge_authorized: "false"
-        review_policy: relation_hint_only
-    - op: cross_profile_alignment
-      params:
-        merge_authorized: "false"
-        review_policy: relation_hint_only
-patch_namespaces:
-  aliases: cmbs_tenant_label.aliases
-  distinct: cmbs_tenant_label.distinct
-  relations: cmbs_tenant_label.relations
-"#,
-};
-
-const REGAB_FIRM_IDENTITY_TEMPLATE: ProfileTemplate = ProfileTemplate {
-    profile: "regab_firm_identity",
-    non_goals: &[
-        "does_not_merge_parent_subsidiary_or_division_boundaries",
-        "does_not_mutate_sec10d_parser_fields",
-    ],
-    yaml: r#"# canon entity profile template: regab_firm_identity
-# Identity semantics: reviewed firm identity / firm alias canonicalization.
-# Non-goal: this does not collapse parent/subsidiary, bank/division,
-# platform/category labels, or person/certifying-party fields by default.
-profile: regab_firm_identity
-version: 0.1.0
-entity_type: organization
-identity_semantics: same_firm_or_reviewed_alias
-canonical_type: org
-required_fields:
-  - source_row_id
-  - field_name
-  - org_name
-  - dataset
-normalized_views:
-  firm_core:
-    operators:
-      - unicode_fold
-      - lowercase
-      - expand_na_abbreviation
-      - preserve_legal_form
-      - normalize_whitespace
-  firm_tokens:
-    operators:
-      - unicode_fold
-      - lowercase
-      - tokenize
-evidence:
-  support:
-    - op: exact_view
-      view: firm_core
-    - op: reviewed_alias
-      view: firm_core
-  cannot_link:
-    - op: role_conflict
-    - op: platform_label_guard
-    - op: division_boundary
-  relation_hints:
-    - op: division_of
-    - op: parent_subsidiary_context
-patch_namespaces:
-  aliases: regab_firm_identity.aliases
-  distinct: regab_firm_identity.distinct
-  relations: regab_firm_identity.relations
-"#,
-};
-
-const INSTRUMENT_IDENTITY_TEMPLATE: ProfileTemplate = ProfileTemplate {
-    profile: "instrument_identity",
-    non_goals: &[
-        "does_not_claim_issuer_legal_entity_identity",
-        "does_not_merge_on_shared_issuer_lei",
-        "does_not_collapse_share_classes",
-        "does_not_claim_live_source_coverage",
-    ],
-    yaml: include_str!("../../tests/fixtures/entity/profiles/instrument_identity.yaml"),
-};

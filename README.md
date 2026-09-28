@@ -502,6 +502,13 @@ canon entity profile list [--emit json|summary]
 canon entity profile init <PROFILE> --output <PATH>
 ```
 
+Entity profiles may declare their candidate retrieval in `blocking.operators`:
+exact views, anchors, composite keys, and similarity restricted by shared
+attributes. Retrieval does not authorize a merge. Strategies control budgets;
+generation refuses at the first actual crossing. Sampled run preflight is advisory.
+See the [profile blocking reference](docs/PLAN_ENTITY_WORKBENCH.md#strategy-extensions)
+for parameters, equality authority, and artifact-version changes.
+
 #### Geo command surface
 
 Geo commands are declared in three tiers, and `canon --describe` carries the tier on

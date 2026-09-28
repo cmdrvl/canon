@@ -14,6 +14,50 @@ use std::{
 };
 
 #[test]
+fn sampled_preflight_does_not_refuse_alias_pairs_outside_the_sample() {
+    let fixture = PreflightFixture::new();
+    let stage_work = fixture.root.join("alias-source");
+    let output = run_entity_block_stage(EntityBlockStageRequest {
+        rows: &fixture.rows,
+        profile: "cmbs_tenant_label",
+        strategy: &fixture.strategy,
+        registry: &fixture.registry,
+        work_dir: &stage_work,
+    })
+    .unwrap();
+    let candidate = &output.candidates[0];
+    let mut profile = canon::entity::prepare::load_prepare_profile("cmbs_tenant_label").unwrap();
+    profile.blocking = Some(
+        serde_json::from_value(serde_json::json!({"operators": [
+            {"op":"alias_patch_match", "pairs":[{
+                "patch_id":"reviewed-pair",
+                "left_surface_id":candidate.left_surface_id,
+                "right_surface_id":candidate.right_surface_id
+            }]}
+        ]}))
+        .unwrap(),
+    );
+    let path = fixture.root.join("alias.yaml");
+    fs::write(&path, serde_yaml::to_string(&profile).unwrap()).unwrap();
+    let report = |sample_pct| {
+        run_block_preflight(EntityBlockPreflightRequest {
+            rows: &fixture.rows,
+            profile: path.to_str().unwrap(),
+            strategy: &fixture.strategy,
+            sample_pct,
+            work_dir: None,
+        })
+        .unwrap()
+    };
+    let sampled = report(1);
+    assert!(sampled.advisory);
+    assert_eq!(sampled.totals.observed_candidate_record_count, 0);
+    let full = report(100);
+    assert!(!full.advisory);
+    assert_eq!(full.totals.observed_candidate_record_count, 1);
+}
+
+#[test]
 fn preflight_exact_sample_matches_block_stage_diagnostics_and_reports_skew() {
     let fixture = PreflightFixture::new();
     let report = run_block_preflight(EntityBlockPreflightRequest {
@@ -66,7 +110,7 @@ fn preflight_exact_sample_matches_block_stage_diagnostics_and_reports_skew() {
         BlockPreflightBudgetStatus::Pass
     );
     assert!(report.operators.iter().any(|operator| {
-        operator.operator_id == "ngram_topk:run"
+        operator.operator_id == "ngram_topk:tenant_core"
             && operator.observed_cumulative_candidate_count
                 >= operator.observed_marginal_candidate_count
     }));
@@ -75,7 +119,8 @@ fn preflight_exact_sample_matches_block_stage_diagnostics_and_reports_skew() {
         .top_blocks
         .iter()
         .find(|block| {
-            block.operator_id == "exact_view:tenant_core" && block.key_value == "john smith"
+            block.operator_id == "exact_identity:tenant_core"
+                && block.key_value == "[\"john smith\"]"
         })
         .expect("dominant exact bucket appears");
     assert_eq!(john_smith.observed_row_count, 4);

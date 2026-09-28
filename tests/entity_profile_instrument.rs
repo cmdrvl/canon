@@ -25,14 +25,46 @@ use std::{
 const PROFILE: &str = "tests/fixtures/entity/profiles/instrument_identity.yaml";
 
 #[test]
+fn shipped_blocking_retrieves_anchors_without_global_title_search_or_equality_buckets() {
+    let fixture = InstrumentFixture::new();
+    let rows = fixture.write_rows("declared.csv");
+    let work = fixture.path("declared-work");
+    run_fixture(&rows, &fixture.registry, &work);
+    let surfaces: Vec<PreparedSurfaceRecord> = read_jsonl(&work.join("prepare/surfaces.jsonl"));
+    let ids = surface_ids_by_core(&surfaces);
+    let candidates: Vec<canon::entity::block::BlockCandidateRecord> =
+        read_jsonl(&work.join("block/candidates.jsonl"));
+    let has_pair = |first: &str, second: &str| {
+        candidates.iter().any(|candidate| {
+            let pair = [&candidate.left_surface_id, &candidate.right_surface_id];
+            pair.contains(&&ids[first]) && pair.contains(&&ids[second])
+        })
+    };
+    assert!(
+        has_pair("acme term loan 2030", "acme term loan due 2030"),
+        "shared FIGI retrieves across unequal title partitions"
+    );
+    assert!(
+        !has_pair("acme term loan 2030", "acme term loan 2031"),
+        "similar title and shared issuer alone do not make a retrieval key"
+    );
+    assert!(
+        fs::read(work.join("block/exact_buckets.jsonl"))
+            .unwrap()
+            .is_empty(),
+        "retrieval keys must not become equality authority"
+    );
+}
+
+#[test]
 fn instrument_profile_runs_prepare_and_evidence_with_configured_mapping() {
     let fixture = InstrumentFixture::new();
     let rows = fixture.write_rows("instruments.csv");
     let first_work = fixture.path("work-first");
     let second_work = fixture.path("work-second");
 
-    run_fixture(&rows, &fixture.registry, &first_work);
-    run_fixture(&rows, &fixture.registry, &second_work);
+    run_evidence_fixture(&rows, &fixture.registry, &first_work);
+    run_evidence_fixture(&rows, &fixture.registry, &second_work);
 
     let first_surfaces =
         fs::read(first_work.join("prepare/surfaces.jsonl")).expect("first prepare surfaces");
@@ -232,7 +264,7 @@ fn instrument_surfaces_key_on_identifier_tuple_not_title() {
     .expect("rows csv");
     let work = fixture.path("same-title-work");
 
-    run_fixture(&rows, &fixture.registry, &work);
+    run_evidence_fixture(&rows, &fixture.registry, &work);
 
     let surfaces: Vec<PreparedSurfaceRecord> = read_jsonl(&work.join("prepare/surfaces.jsonl"));
     assert_eq!(
@@ -544,6 +576,29 @@ fn run_fixture(rows: &Path, registry: &Path, work_dir: &Path) {
         work_dir,
     })
     .expect("instrument profile run succeeds");
+}
+
+// These evidence-contract cases deliberately exercise cross-partition negatives
+// and rows lacking every retrieval key. Supply broad candidates explicitly;
+// do not make the shipped profile's bounded retrieval silently global again.
+fn run_evidence_fixture(rows: &Path, registry: &Path, work_dir: &Path) {
+    let mut profile = canon::entity::prepare::load_prepare_profile("instrument_identity").unwrap();
+    profile.blocking = Some(
+        serde_json::from_value(serde_json::json!({"operators":[
+            {"op":"ngram_topk", "view":"core", "k":50, "candidate_cap":100}
+        ]}))
+        .unwrap(),
+    );
+    let profile_path = work_dir.with_extension("evidence-profile.yaml");
+    fs::write(&profile_path, serde_yaml::to_string(&profile).unwrap()).unwrap();
+    run_entity_workbench(EntityRunRequest {
+        rows,
+        profile: profile_path.to_str().unwrap(),
+        strategy: &profile_path,
+        registry,
+        work_dir,
+    })
+    .expect("broad evidence contract run succeeds");
 }
 
 fn surface_ids_by_core(surfaces: &[PreparedSurfaceRecord]) -> BTreeMap<String, String> {

@@ -1,4 +1,6 @@
 #![forbid(unsafe_code)]
+#[path = "entity/declarative_blocking.rs"]
+mod declarative_blocking;
 
 #[path = "entity/apply_cli.rs"]
 mod apply_cli;

@@ -3217,7 +3217,28 @@ fn prepared_surface_id_material(
     surface: &PreparedSurfaceRecord,
     field: &str,
 ) -> GeneralizationResult<SurfaceIdMaterial> {
-    let view_name = prepared_surface_id_view_name(&surface.profile_id);
+    let declared = surface
+        .normalized_views
+        .iter()
+        .filter(|(_, view)| {
+            view.reason_codes
+                .iter()
+                .any(|reason| reason == "surface_id_view")
+        })
+        .map(|(name, _)| name.as_str())
+        .collect::<Vec<_>>();
+    let view_name = match declared.as_slice() {
+        [name] => *name,
+        [] if surface.normalized_views.len() == 1 => {
+            surface.normalized_views.keys().next().unwrap()
+        }
+        _ => {
+            return Err(error(
+                GeneralizationErrorCode::ArtifactContract,
+                format!("{field}.normalized_views must identify exactly one surface_id view"),
+            ));
+        }
+    };
     let view = surface.normalized_views.get(view_name).ok_or_else(|| {
         error(
             GeneralizationErrorCode::ArtifactContract,
@@ -3230,14 +3251,6 @@ fn prepared_surface_id_material(
         view.value.clone(),
         surface.raw_variants.clone(),
     ))
-}
-
-fn prepared_surface_id_view_name(profile_id: &str) -> &'static str {
-    match profile_id {
-        "cmbs_tenant_label" => "tenant_core",
-        "regab_firm_identity" => "firm_core",
-        _ => "core",
-    }
 }
 
 fn prepared_surface_lookup_inputs(surface: &PreparedSurfaceRecord) -> Vec<String> {
@@ -9938,6 +9951,41 @@ fn error(code: GeneralizationErrorCode, message: impl Into<String>) -> Generaliz
 mod leakage_provenance_tests {
     use super::*;
 
+    #[test]
+    fn prepared_identity_uses_declared_view_and_refuses_ambiguous_markers() {
+        let mut surface: PreparedSurfaceRecord = serde_json::from_value(serde_json::json!({
+            "surface_id":"pending", "profile_id":"renamed_labels", "surface_key":"key",
+            "primary_surface":"Alpha", "normalized_views":{
+                "a_decoy":{"value":"wrong", "reason_codes":[]},
+                "declared_key":{"value":"alpha", "reason_codes":["surface_id_view"]}
+            },
+            "exact_lookup":{"status":"unresolved","canonical_id":null,"canonical_type":null,"rule_id":null,"matched_input":null},
+            "raw_variants":["Alpha"],"alias_surfaces":[],"mention_surfaces":[],
+            "row_count":1,"deal_count":0,"provenance_samples":[]
+        })).unwrap();
+        surface.surface_id = derive_surface_ids(&[SurfaceIdMaterial::new(
+            "renamed_labels",
+            "declared_key",
+            "alpha",
+            vec!["Alpha".to_string()],
+        )])
+        .unwrap()[0]
+            .surface_id
+            .clone();
+        validate_prepared_surface_id(&surface, "surface").unwrap();
+        surface
+            .normalized_views
+            .get_mut("a_decoy")
+            .unwrap()
+            .reason_codes
+            .push("surface_id_view".to_string());
+        assert!(validate_prepared_surface_id(&surface, "surface").is_err());
+        for view in surface.normalized_views.values_mut() {
+            view.reason_codes.clear();
+        }
+        assert!(validate_prepared_surface_id(&surface, "surface").is_err());
+    }
+
     fn checked_source(path: &str) -> LoadedGeneralizationCheckedLeakSourceRef {
         LoadedGeneralizationCheckedLeakSourceRef {
             path: path.to_string(),
@@ -10597,7 +10645,9 @@ mod leakage_provenance_tests {
             .first()
             .cloned()
             .unwrap_or_else(|| surface_key.to_string());
-        let view_name = prepared_surface_id_view_name(&run.metadata.profile.id);
+        // This fixture has one explicit view; its identity does not depend on
+        // the profile's name or the builtin catalog.
+        let view_name = "fixture_key";
         let normalized_views = BTreeMap::from([(
             view_name.to_string(),
             crate::entity::prepare::PreparedNormalizedView {
@@ -10635,6 +10685,7 @@ mod leakage_provenance_tests {
 
     fn block_diagnostics(candidate_count: u64) -> BlockCandidateGenerationDiagnostics {
         BlockCandidateGenerationDiagnostics {
+            configuration: None,
             candidate_record_count: candidate_count,
             candidate_pairs_emitted: candidate_count,
             candidate_pairs_suppressed_by_cap: 0,

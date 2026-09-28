@@ -18,6 +18,63 @@ use std::{
 };
 
 #[test]
+fn sdk_score_pair_uses_the_supplied_profile_normalization_after_rename() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = write_support_profile(temp.path(), "9000", "1");
+    let score = |path: &Path| {
+        score_entity_pair(EntityScorePairRequest::v1(
+            support_row("support:001", "Acme Coffee LLC"),
+            support_row("support:002", "Acme Coffee Shop Inc"),
+            path.to_str().unwrap(),
+            path.to_path_buf(),
+        ))
+        .unwrap()
+    };
+    let original = score(&profile);
+    assert!(original.score_units > 0);
+    let renamed = temp.path().join("renamed.yaml");
+    fs::write(
+        &renamed,
+        fs::read_to_string(&profile)
+            .unwrap()
+            .replace("cmbs_tenant_label", "renamed_generic_labels"),
+    )
+    .unwrap();
+    let renamed = score(&renamed);
+    assert_eq!(renamed.score_units, original.score_units);
+    assert_eq!(renamed.verdict, original.verdict);
+    // Profile-scoped namespaces, surface IDs and evidence hashes change on
+    // rename. The scored evidence and its ordering must remain identical.
+    let semantics = |result: &canon::sdk::EntityScorePairResponse| {
+        result
+            .evidence_waterfall
+            .contributions
+            .iter()
+            .map(|item| {
+                (
+                    item.lane.clone(),
+                    item.operator.clone(),
+                    item.evidence_count,
+                    item.reason_codes.clone(),
+                    item.source_score_units,
+                    item.score_units,
+                    item.running_total_units,
+                    item.value_frequency.clone(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(semantics(&renamed), semantics(&original));
+    assert!(
+        renamed
+            .evidence_waterfall
+            .contributions
+            .iter()
+            .all(|item| item.view_field.starts_with("renamed_generic_labels."))
+    );
+}
+
+#[test]
 fn sdk_score_pair_replays_full_run_edge_evidence_for_the_pair() {
     let temp = tempfile::tempdir().expect("tempdir");
     let rows = write_support_rows(temp.path());
@@ -244,23 +301,24 @@ required_fields:
 normalized_views:
   tenant_core:
     operators:
-      - unicode_fold
-      - lowercase
-      - strip_tenant_noise
-      - strip_legal_suffixes
-      - normalize_whitespace
+      - legal_basename
   tenant_tokens:
     operators:
-      - unicode_fold
-      - lowercase
-      - tokenize
-      - drop_tenant_stopwords
+      - legal_basename_tokens
   tenant_brand:
     operators:
-      - unicode_fold
-      - lowercase
-      - tenant_brand_fingerprint
-      - normalize_whitespace
+      - legal_basename_fingerprint
+prepare:
+  primary_surface_fields: [raw_tenant_name]
+  canonical_surface_normalized_view: tenant_core
+  normalized_view_fields:
+    tenant_core: raw_tenant_name
+    tenant_tokens: raw_tenant_name
+    tenant_brand: raw_tenant_name
+  alias_surfaces_field: alias_surfaces_json
+  mention_surfaces_field: mention_surfaces_json
+  context_fields: [deal_id, loan_id, property_id]
+  provenance_fields: [source_row_id, deal_id, loan_id, property_id]
 evidence:
   support:
     - op: exact_view

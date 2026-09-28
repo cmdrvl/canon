@@ -33,3 +33,40 @@ fn entity_native_500k_metrics_tier() {
         proof.artifact_content_hash
     );
 }
+
+#[test]
+#[ignore = "synthetic shared-posting stress tier; not live-corpus evidence"]
+fn entity_ngram_early_budget_metrics_tier() {
+    use canon::entity::{
+        block::{
+            BlockCandidateBudgetConfig,
+            declared::{Blocking, generate},
+        },
+        prepare::{PreparedSurfaceRecord, load_prepare_profile},
+    };
+    let mut profile = load_prepare_profile("instrument_identity").unwrap();
+    profile.blocking = Some(serde_json::from_value::<Blocking>(serde_json::json!({"operators":[{"op":"ngram_topk","view":"core","k":25,"candidate_cap":25}]})).unwrap());
+    let surfaces = (0..5_000).map(|ordinal| serde_json::from_value::<PreparedSurfaceRecord>(serde_json::json!({
+        "surface_id":format!("s{ordinal:05}"), "profile_id":"instrument_identity", "surface_key":format!("k{ordinal}"),
+        "primary_surface":"common shared title", "normalized_views":{"core":{"value":"common shared title","reason_codes":["surface_id_view"]}},
+        "exact_lookup":{"status":"unresolved","canonical_id":null,"canonical_type":null,"rule_id":null,"matched_input":null},
+        "raw_variants":[],"alias_surfaces":[],"mention_surfaces":[],"row_count":1,"deal_count":0,"provenance_samples":[]
+    })).unwrap()).collect::<Vec<_>>();
+    let start = Instant::now();
+    let refusal = generate(
+        &profile,
+        &surfaces,
+        BlockCandidateBudgetConfig::new(100, 25_000, 25_000),
+    )
+    .unwrap_err();
+    assert_eq!(refusal.detail["surfaces_visited"], 1001);
+    assert_eq!(refusal.detail["observed_at_stop"], 25025);
+    eprintln!(
+        "entity_ngram synthetic=true surfaces={} visited={} wall_ms={} observed_at_stop={} candidate_artifact_written={}",
+        surfaces.len(),
+        refusal.detail["surfaces_visited"],
+        start.elapsed().as_millis(),
+        refusal.detail["observed_at_stop"],
+        refusal.detail["candidate_artifact_written"]
+    );
+}

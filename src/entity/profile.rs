@@ -36,6 +36,8 @@ pub struct EntityProfileDocument {
     pub normalized_views: BTreeMap<String, EntityNormalizedView>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prepare: Option<PrepareFieldMapping>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocking: Option<crate::entity::block::declared::Blocking>,
     #[serde(default)]
     pub evidence: EntityEvidenceLanes,
     #[serde(default)]
@@ -51,6 +53,13 @@ pub struct EntityProfilePackageProjection {
 }
 
 impl EntityProfileDocument {
+    pub fn canonical_view(&self) -> &str {
+        self.prepare
+            .as_ref()
+            .and_then(|mapping| mapping.canonical_surface_normalized_view.as_deref())
+            .or_else(|| self.normalized_views.keys().next().map(String::as_str))
+            .unwrap_or("core")
+    }
     pub fn from_yaml_str(input: &str) -> Result<Self, EntityProfileError> {
         let value = serde_yaml::from_str::<YamlValue>(input).map_err(|error| {
             EntityProfileError::new(
@@ -117,6 +126,9 @@ impl EntityProfileDocument {
         self.validate_normalized_views()?;
         self.validate_prepare_mapping()?;
         self.validate_evidence()?;
+        if let Some(blocking) = &self.blocking {
+            blocking.validate(self)?;
+        }
         Ok(())
     }
 
@@ -460,7 +472,8 @@ fn profile_document_from_package(
                 .map(profile_operator_from_package)
                 .collect(),
         },
-        prepare: None,
+        prepare: Some(prepare_mapping_from_package(package)?),
+        blocking: package.blocking.clone(),
         patch_namespaces: EntityPatchNamespaces {
             aliases: package.patch_namespaces.aliases.clone(),
             distinct: package.patch_namespaces.distinct.clone(),
@@ -516,8 +529,11 @@ fn prepare_mapping_from_package(
                     ));
                 }
                 if seen_primary.insert(field_path.clone()) {
-                    mapping.primary_surface_fields.push(field_path);
+                    mapping.primary_surface_fields.push(field_path.clone());
                 }
+                mapping
+                    .normalized_view_fields
+                    .insert(normalized_view.clone(), field_path);
             }
             "context_value" => {
                 if seen_context.insert(field_path.clone()) {
@@ -912,6 +928,11 @@ impl EntityProfileError {
 }
 
 const SUPPORTED_NORMALIZE_OPS: &[&str] = &[
+    "legal_basename",
+    "legal_basename_tokens",
+    "legal_basename_fingerprint",
+    "legal_name_preserved",
+    "legal_name_preserved_tokens",
     "identity",
     "ascii_trim_upper",
     "unicode_fold",

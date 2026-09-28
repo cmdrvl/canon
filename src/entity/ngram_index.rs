@@ -60,6 +60,13 @@ pub struct EntityNgramIndex {
     surfaces: Vec<NormalizedNgramSurface>,
 }
 
+/// Reused by a blocking pass. Only touched score slots are cleared per query.
+#[derive(Default)]
+pub(crate) struct NgramQueryWorkspace {
+    scores: Vec<u64>,
+    touched: Vec<usize>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct NormalizedNgramSurface {
     surface_id: String,
@@ -128,50 +135,112 @@ impl EntityNgramIndex {
     ) -> Result<TopKPruneResult, EntityNgramIndexError> {
         let query_ordinal = self
             .surface_ids
-            .iter()
-            .position(|candidate| candidate == surface_id)
-            .ok_or_else(|| EntityNgramIndexError::UnknownSurfaceId {
+            .binary_search_by(|candidate| candidate.as_str().cmp(surface_id))
+            .map_err(|_| EntityNgramIndexError::UnknownSurfaceId {
                 surface_id: surface_id.to_string(),
             })?;
-        self.top_k_for_ordinal(query_ordinal, config)
+        self.top_k_for_ordinal(
+            query_ordinal,
+            config,
+            &mut NgramQueryWorkspace::default(),
+            None,
+        )
     }
 
-    fn top_k_for_ordinal(
+    pub(crate) fn top_k_for_ordinal(
         &self,
         query_ordinal: usize,
         config: TopKConfig,
+        workspace: &mut NgramQueryWorkspace,
+        max_ngram_df: Option<usize>,
     ) -> Result<TopKPruneResult, EntityNgramIndexError> {
         let query = &self.surfaces[query_ordinal];
-        let mut scores = BTreeMap::<usize, u64>::new();
+        for ordinal in workspace.touched.drain(..) {
+            workspace.scores[ordinal] = 0;
+        }
+        workspace.scores.resize(self.surfaces.len(), 0);
 
         for (ngram, query_weight) in &query.ngrams {
-            for posting in self
+            let postings = self
                 .ngram_layout
-                .postings_for_key(PostingFeatureKind::Ngram, ngram)?
-            {
+                .postings_for_key(PostingFeatureKind::Ngram, ngram)?;
+            if max_ngram_df.is_some_and(|limit| postings.len() > limit) {
+                continue;
+            }
+            for posting in postings {
                 let candidate_ordinal = posting.surface_ordinal as usize;
                 if candidate_ordinal == query_ordinal {
                     continue;
                 }
-                let contribution = *query_weight * posting.weight_units;
-                *scores.entry(candidate_ordinal).or_insert(0) += contribution;
+                if workspace.scores[candidate_ordinal] == 0 {
+                    workspace.touched.push(candidate_ordinal);
+                }
+                let contribution = query_weight.saturating_mul(posting.weight_units);
+                workspace.scores[candidate_ordinal] =
+                    workspace.scores[candidate_ordinal].saturating_add(contribution);
             }
         }
 
-        let candidates = scores
+        let input_count = workspace.touched.len();
+        let mut eligible = workspace
+            .touched
+            .iter()
+            .copied()
+            .filter(|ordinal| {
+                config
+                    .score_floor_units
+                    .is_none_or(|floor| saturating_u32(workspace.scores[*ordinal]) >= floor)
+            })
+            .collect::<Vec<_>>();
+        let eligible_count = eligible.len();
+        let within_cap = config
+            .candidate_cap
+            .map_or(eligible_count, |cap| eligible_count.min(cap));
+        let kept = within_cap.min(config.k);
+        let compare = |left: &usize, right: &usize| {
+            saturating_u32(workspace.scores[*right])
+                .cmp(&saturating_u32(workspace.scores[*left]))
+                .then_with(|| {
+                    self.surfaces[*left]
+                        .normalized_key
+                        .as_bytes()
+                        .cmp(self.surfaces[*right].normalized_key.as_bytes())
+                })
+                .then_with(|| {
+                    self.surfaces[*left]
+                        .surface_id
+                        .cmp(&self.surfaces[*right].surface_id)
+                })
+        };
+        if kept < eligible.len() {
+            eligible.select_nth_unstable_by(kept, compare);
+            eligible.truncate(kept);
+        }
+        eligible.sort_unstable_by(compare);
+        let candidates = eligible
             .into_iter()
-            .map(|(candidate_ordinal, score_units)| {
+            .map(|candidate_ordinal| {
                 let candidate = &self.surfaces[candidate_ordinal];
                 TopKCandidateInput::new(
                     query.surface_id.clone(),
                     candidate.surface_id.clone(),
                     candidate.normalized_key.clone(),
-                    saturating_u32(score_units),
+                    saturating_u32(workspace.scores[candidate_ordinal]),
                 )
             })
             .collect::<Vec<_>>();
 
-        Ok(prune_top_k_candidates(config, candidates))
+        let mut result = prune_top_k_candidates(config.clone(), candidates);
+        result.diagnostics.input_candidate_count = input_count;
+        result.diagnostics.eligible_candidate_count = eligible_count;
+        result.diagnostics.dropped_candidate_count = input_count - kept;
+        result.diagnostics.dropped_by_score_floor_count = input_count - eligible_count;
+        result.diagnostics.dropped_by_candidate_cap_count = eligible_count - within_cap;
+        result.diagnostics.dropped_by_topk_count = within_cap - kept;
+        result.diagnostics.candidate_cap_exceeded =
+            config.candidate_cap.is_some_and(|cap| eligible_count > cap);
+        result.diagnostics.topk_exceeded = within_cap > config.k;
+        Ok(result)
     }
 }
 

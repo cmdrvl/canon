@@ -329,6 +329,7 @@ fn known_surface_ids(candidate_records: &[BlockCandidateRecord]) -> Vec<String> 
 
 fn diagnostics(candidate_count: u64) -> BlockCandidateGenerationDiagnostics {
     BlockCandidateGenerationDiagnostics {
+        configuration: None,
         candidate_record_count: candidate_count,
         candidate_pairs_emitted: candidate_count,
         candidate_pairs_suppressed_by_cap: 0,

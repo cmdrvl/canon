@@ -802,23 +802,24 @@ required_fields:
 normalized_views:
   tenant_core:
     operators:
-      - unicode_fold
-      - lowercase
-      - strip_tenant_noise
-      - strip_legal_suffixes
-      - normalize_whitespace
+      - legal_basename
   tenant_tokens:
     operators:
-      - unicode_fold
-      - lowercase
-      - tokenize
-      - drop_tenant_stopwords
+      - legal_basename_tokens
   tenant_brand:
     operators:
-      - unicode_fold
-      - lowercase
-      - tenant_brand_fingerprint
-      - normalize_whitespace
+      - legal_basename_fingerprint
+prepare:
+  primary_surface_fields: [raw_tenant_name]
+  canonical_surface_normalized_view: tenant_core
+  normalized_view_fields:
+    tenant_core: raw_tenant_name
+    tenant_tokens: raw_tenant_name
+    tenant_brand: raw_tenant_name
+  alias_surfaces_field: alias_surfaces_json
+  mention_surfaces_field: mention_surfaces_json
+  context_fields: [deal_id, loan_id, property_id]
+  provenance_fields: [source_row_id, deal_id, loan_id, property_id]
 evidence:
   support:
     - op: exact_view

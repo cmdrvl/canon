@@ -51,13 +51,6 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-const BUILTIN_CMBS_TENANT_LABEL_PROFILE: &str =
-    include_str!("../../tests/fixtures/entity/profiles/cmbs_tenant_label.yaml");
-const BUILTIN_REGAB_FIRM_IDENTITY_PROFILE: &str =
-    include_str!("../../tests/fixtures/entity/profiles/regab_firm_identity.yaml");
-const BUILTIN_INSTRUMENT_IDENTITY_PROFILE: &str =
-    include_str!("../../tests/fixtures/entity/profiles/instrument_identity.yaml");
-
 pub const DEFAULT_INDEX_COMMON_POSTING_LIMIT: usize = 100;
 pub const DEFAULT_INDEX_NGRAM_WIDTH: usize = 3;
 pub const DEFAULT_INDEX_POSTINGS_PATH: &str = "index/postings.json";
@@ -2554,28 +2547,19 @@ fn load_profile_reference(profile: &str) -> Result<crate::entity::EntityProfileR
             Ok(reference)
         }
     } else {
-        let profile_source = match profile {
-            "cmbs_tenant_label" => BUILTIN_CMBS_TENANT_LABEL_PROFILE.to_string(),
-            "regab_firm_identity" => BUILTIN_REGAB_FIRM_IDENTITY_PROFILE.to_string(),
-            "instrument_identity" => BUILTIN_INSTRUMENT_IDENTITY_PROFILE.to_string(),
-            _ => {
-                return Err(EntityRefusalKind::Profile.to_refusal(
+        let profile_source = crate::entity::profiles::builtin_source(profile).ok_or_else(|| {
+                EntityRefusalKind::Profile.to_refusal(
                     "Unknown entity index profile",
                     json!({
                         "stage": "index",
                         "profile": profile,
-                        "available_profiles": [
-                            "cmbs_tenant_label",
-                            "regab_firm_identity",
-                            "instrument_identity"
-                        ],
+                        "available_profiles": crate::entity::profiles::BUILTIN_PROFILES.iter().map(|(id, _)| id).collect::<Vec<_>>(),
                         "writes_performed": false
                     }),
                     None,
-                ));
-            }
-        };
-        let document = EntityProfileDocument::from_yaml_str(&profile_source)
+                )
+        })?;
+        let document = EntityProfileDocument::from_yaml_str(profile_source)
             .map_err(|error| error.to_refusal())?;
         let mut reference = document.to_reference();
         reference.content_hash = Some(witness::hash_bytes(profile_source.as_bytes()));
@@ -2847,21 +2831,27 @@ fn tokens_for_surface(surface: &PreparedSurfaceRecord) -> Vec<String> {
     tokens.into_iter().collect()
 }
 
-pub(crate) fn core_view_value(profile_id: &str, surface: &PreparedSurfaceRecord) -> String {
+pub(crate) fn core_view_value(_profile_id: &str, surface: &PreparedSurfaceRecord) -> String {
     surface
         .normalized_views
-        .get(core_view_name(profile_id))
+        .get(canonical_view_name(surface))
         .or_else(|| surface.normalized_views.values().next())
         .map(|view| view.value.clone())
         .unwrap_or_else(|| surface.primary_surface.trim().to_string())
 }
 
-pub(crate) fn core_view_name(profile_id: &str) -> &'static str {
-    match profile_id {
-        "cmbs_tenant_label" => "tenant_core",
-        "regab_firm_identity" => "firm_core",
-        _ => "core",
-    }
+pub(crate) fn canonical_view_name(surface: &PreparedSurfaceRecord) -> &str {
+    surface
+        .normalized_views
+        .iter()
+        .find(|(_, view)| {
+            view.reason_codes
+                .iter()
+                .any(|reason| reason == "surface_id_view")
+        })
+        .map(|(name, _)| name.as_str())
+        .or_else(|| surface.normalized_views.keys().next().map(String::as_str))
+        .unwrap_or("core")
 }
 
 fn index_diagnostics(

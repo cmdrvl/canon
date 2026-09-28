@@ -5,12 +5,9 @@
 //! later block integration uses before emitting bounded candidate records.
 
 use serde::{Deserialize, Serialize};
-use std::{
-    cmp::Ordering,
-    collections::{BTreeSet, BinaryHeap},
-};
+use std::{cmp::Ordering, collections::BinaryHeap};
 
-pub const CANON_ENTITY_TOPK_VERSION: &str = "canon_entity_topk.v0";
+pub const CANON_ENTITY_TOPK_VERSION: &str = "canon_entity_topk.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TopKConfig {
@@ -127,8 +124,8 @@ pub struct TopKPruneResult {
 pub struct StableTopKHeap {
     config: TopKConfig,
     heap: BinaryHeap<HeapEntry>,
-    eligible: Vec<EnumeratedCandidate>,
-    below_floor_drops: Vec<TopKDropDiagnostic>,
+    eligible_count: usize,
+    below_floor_count: usize,
     input_candidate_count: usize,
     next_ordinal: usize,
 }
@@ -138,8 +135,8 @@ impl StableTopKHeap {
         Self {
             config,
             heap: BinaryHeap::new(),
-            eligible: Vec::new(),
-            below_floor_drops: Vec::new(),
+            eligible_count: 0,
+            below_floor_count: 0,
             input_candidate_count: 0,
             next_ordinal: 0,
         }
@@ -155,23 +152,20 @@ impl StableTopKHeap {
             .score_floor_units
             .is_some_and(|floor| candidate.score_units < floor)
         {
-            self.below_floor_drops.push(TopKDropDiagnostic::new(
-                &candidate,
-                TopKDropReason::BelowScoreFloor,
-            ));
+            self.below_floor_count += 1;
             return;
         }
 
         let enumerated = EnumeratedCandidate { ordinal, candidate };
         if self.config.effective_limit() > 0 {
             self.heap.push(HeapEntry {
-                candidate: enumerated.clone(),
+                candidate: enumerated,
             });
             if self.heap.len() > self.config.effective_limit() {
                 self.heap.pop();
             }
         }
-        self.eligible.push(enumerated);
+        self.eligible_count += 1;
     }
 
     pub fn extend<I>(&mut self, candidates: I)
@@ -187,8 +181,8 @@ impl StableTopKHeap {
         let StableTopKHeap {
             config,
             heap,
-            eligible,
-            mut below_floor_drops,
+            eligible_count: eligible_candidate_count,
+            below_floor_count: dropped_by_score_floor_count,
             input_candidate_count,
             next_ordinal: _,
         } = self;
@@ -200,42 +194,19 @@ impl StableTopKHeap {
             .collect::<Vec<_>>();
         kept.sort_by(enumerated_output_cmp);
 
-        let kept_ordinals = kept
-            .iter()
-            .map(|candidate| candidate.ordinal)
-            .collect::<BTreeSet<_>>();
         let candidates = kept
             .into_iter()
             .enumerate()
             .map(|(index, candidate)| TopKCandidate::from_enumerated(index + 1, candidate))
             .collect::<Vec<_>>();
 
-        let mut eligible_sorted = eligible;
-        eligible_sorted.sort_by(enumerated_output_cmp);
-
-        let mut dropped_by_candidate_cap_count = 0;
-        let mut dropped_by_topk_count = 0;
-        let mut dropped = Vec::new();
-        for (rank_index, candidate) in eligible_sorted.iter().enumerate() {
-            if kept_ordinals.contains(&candidate.ordinal) {
-                continue;
-            }
-            let reason = if config.candidate_cap.is_some_and(|cap| rank_index >= cap) {
-                dropped_by_candidate_cap_count += 1;
-                TopKDropReason::CandidateCap
-            } else {
-                dropped_by_topk_count += 1;
-                TopKDropReason::TopKLimit
-            };
-            dropped.push(TopKDropDiagnostic::new(&candidate.candidate, reason));
-        }
-
-        below_floor_drops.sort_by(drop_diagnostic_cmp);
-        dropped.sort_by(drop_diagnostic_cmp);
-        let dropped_by_score_floor_count = below_floor_drops.len();
-        let eligible_candidate_count = eligible_sorted.len();
-        dropped.splice(0..0, below_floor_drops);
-        dropped.sort_by(drop_diagnostic_cmp);
+        let within_cap = config
+            .candidate_cap
+            .map_or(eligible_candidate_count, |cap| {
+                eligible_candidate_count.min(cap)
+            });
+        let dropped_by_candidate_cap_count = eligible_candidate_count - within_cap;
+        let dropped_by_topk_count = within_cap.saturating_sub(config.k);
 
         let emitted_candidate_count = candidates.len();
         let dropped_candidate_count = input_candidate_count.saturating_sub(emitted_candidate_count);
@@ -251,7 +222,8 @@ impl StableTopKHeap {
 
         TopKPruneResult {
             candidates,
-            dropped,
+            // v1 reports complete reason counts; no unbounded per-candidate trace.
+            dropped: Vec::new(),
             diagnostics: TopKDiagnostics {
                 version: CANON_ENTITY_TOPK_VERSION.to_string(),
                 profile_id: config.profile_id,
@@ -317,18 +289,6 @@ impl TopKCandidate {
     }
 }
 
-impl TopKDropDiagnostic {
-    fn new(candidate: &TopKCandidateInput, reason: TopKDropReason) -> Self {
-        Self {
-            query_surface_id: candidate.query_surface_id.clone(),
-            candidate_surface_id: candidate.candidate_surface_id.clone(),
-            normalized_key: candidate.normalized_key.clone(),
-            score_units: candidate.score_units,
-            reason,
-        }
-    }
-}
-
 fn enumerated_output_cmp(left: &EnumeratedCandidate, right: &EnumeratedCandidate) -> Ordering {
     candidate_output_cmp(&left.candidate, &right.candidate)
         .then_with(|| left.ordinal.cmp(&right.ordinal))
@@ -338,19 +298,6 @@ fn candidate_output_cmp(left: &TopKCandidateInput, right: &TopKCandidateInput) -
     right
         .score_units
         .cmp(&left.score_units)
-        .then_with(|| {
-            left.normalized_key
-                .as_bytes()
-                .cmp(right.normalized_key.as_bytes())
-        })
-        .then_with(|| left.candidate_surface_id.cmp(&right.candidate_surface_id))
-        .then_with(|| left.query_surface_id.cmp(&right.query_surface_id))
-}
-
-fn drop_diagnostic_cmp(left: &TopKDropDiagnostic, right: &TopKDropDiagnostic) -> Ordering {
-    left.reason
-        .cmp(&right.reason)
-        .then_with(|| right.score_units.cmp(&left.score_units))
         .then_with(|| {
             left.normalized_key
                 .as_bytes()

@@ -61,6 +61,7 @@ industry ontology, provider knowledge, or probabilistic runtime lookup.
 - **Geo system:** [`docs/CANON_GEO_AGENT_ARCHITECTURE.md`](./docs/CANON_GEO_AGENT_ARCHITECTURE.md) — agent operating model; [`docs/PLAN_CANON_GEO.md`](./docs/PLAN_CANON_GEO.md) remains authoritative for Geo mathematics, measurements, and E1–E5 gates; [`docs/PLAN_CANON_GEO_AGENT_COMPLETE_INQUIRY.md`](./docs/PLAN_CANON_GEO_AGENT_COMPLETE_INQUIRY.md) sequences delivery (slices S1–S6 and their beads) without overriding either
 - **Harness notes:** [`CODEX.md`](./CODEX.md), [`CLAUDE.md`](./CLAUDE.md), and [`GEMINI.md`](./GEMINI.md) — runner-specific caveats only
 - Do not invent behavior not present in the plan
+- The engine never branches on a profile id; add a declarative operator instead.
 
 ### Key Files
 

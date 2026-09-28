@@ -368,6 +368,7 @@ fn run_fixture(fixture: &DomainOpsFixture, rows: &Path, profile: &Path, work_dir
 
 fn profile_package(configured: bool) -> EntityProfilePackage {
     EntityProfilePackage {
+        blocking: None,
         kind: "entity-profile".to_string(),
         profile: PROFILE_ID.to_string(),
         version: "1.0.0".to_string(),

@@ -1962,6 +1962,7 @@ fn candidate_diagnostics(
     candidate_records: &[BlockCandidateRecord],
 ) -> BlockCandidateGenerationDiagnostics {
     BlockCandidateGenerationDiagnostics {
+        configuration: None,
         candidate_record_count: candidate_records.len() as u64,
         candidate_pairs_emitted: candidate_records.len() as u64,
         candidate_pairs_suppressed_by_cap: 0,

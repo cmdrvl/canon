@@ -515,6 +515,7 @@ fn diagnostics<const N: usize>(
         .collect::<Vec<_>>();
 
     BlockCandidateGenerationDiagnostics {
+        configuration: None,
         candidate_record_count: candidate_count,
         candidate_pairs_emitted: candidate_count,
         candidate_pairs_suppressed_by_cap: suppressed_by_cap,

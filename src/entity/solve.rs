@@ -558,9 +558,44 @@ pub fn evaluate_signed_graph_components(
     graph: &EntityEvidenceGraph,
 ) -> SolveComponentConstraintReport {
     let components = positive_components(graph);
+    let mut support_by_component = vec![Vec::new(); components.len()];
+    let mut cannot_link_by_component = vec![Vec::new(); components.len()];
+    {
+        let ownership = components
+            .iter()
+            .enumerate()
+            .flat_map(|(index, component)| {
+                component
+                    .surface_ids
+                    .iter()
+                    .map(move |id| (id.as_str(), index))
+            })
+            .collect::<BTreeMap<_, _>>();
+        let owner_of_pair = |left: &str, right: &str| {
+            let left = ownership.get(left)?;
+            let right = ownership.get(right)?;
+            (left == right).then_some(*left)
+        };
+        // Preserve graph order within each component, including tie order.
+        // Cross-component negatives do not contradict either component.
+        for edge in &graph.support_edges {
+            if let Some(owner) = owner_of_pair(&edge.left_surface_id, &edge.right_surface_id) {
+                support_by_component[owner].push(edge);
+            }
+        }
+        for edge in &graph.cannot_link_edges {
+            if let Some(owner) = owner_of_pair(&edge.left_surface_id, &edge.right_surface_id) {
+                cannot_link_by_component[owner].push(edge);
+            }
+        }
+    }
     let mut decisions = components
         .into_iter()
-        .map(|component| evaluate_component_constraints(graph, component))
+        .zip(support_by_component)
+        .zip(cannot_link_by_component)
+        .map(|((component, support), cannot_link)| {
+            evaluate_component_constraints(component, &support, &cannot_link)
+        })
         .collect::<Vec<_>>();
     decisions.sort_by(component_constraint_decision_cmp);
 
@@ -1535,29 +1570,13 @@ fn reconciliation_decision_cmp(
 }
 
 fn evaluate_component_constraints(
-    graph: &EntityEvidenceGraph,
     component: PositiveSolveComponent,
+    support_edges: &[&SignedEvidenceEdge],
+    cannot_link_edges: &[&CannotLinkEvidenceEdge],
 ) -> SolveComponentConstraintDecision {
-    let surface_set = component
-        .surface_ids
-        .iter()
-        .cloned()
-        .collect::<BTreeSet<_>>();
-    let support_edges = graph
-        .support_edges
-        .iter()
-        .filter(|edge| edge_inside_component(edge, &surface_set))
-        .cloned()
-        .collect::<Vec<_>>();
-    let cannot_link_edges = graph
-        .cannot_link_edges
-        .iter()
-        .filter(|edge| cannot_link_inside_component(edge, &surface_set))
-        .cloned()
-        .collect::<Vec<_>>();
-
     let mut hard_cannot_link_violations = cannot_link_edges
         .iter()
+        .copied()
         .filter(|edge| edge.hard_cannot_link)
         .map(cannot_link_violation)
         .collect::<Vec<_>>();
@@ -1565,6 +1584,7 @@ fn evaluate_component_constraints(
 
     let mut soft_anti_merge_warnings = cannot_link_edges
         .iter()
+        .copied()
         .filter(|edge| !edge.hard_cannot_link)
         .map(cannot_link_violation)
         .collect::<Vec<_>>();
@@ -1572,10 +1592,12 @@ fn evaluate_component_constraints(
 
     let strongest_positive_cut = support_edges
         .iter()
+        .copied()
         .max_by(|left, right| signed_edge_strength_cmp(left, right))
         .map(signed_evidence_cut);
     let strongest_negative_cut = cannot_link_edges
         .iter()
+        .copied()
         .max_by(|left, right| cannot_link_strength_cmp(left, right))
         .map(cannot_link_evidence_cut);
     let raw_support_score_units = strongest_positive_cut
@@ -1659,17 +1681,6 @@ fn union_all(union_find: &mut SurfaceUnionFind, surface_ids: &[String]) {
             union_find.union(first, surface_id);
         }
     }
-}
-
-fn edge_inside_component(edge: &SignedEvidenceEdge, surface_ids: &BTreeSet<String>) -> bool {
-    surface_ids.contains(&edge.left_surface_id) && surface_ids.contains(&edge.right_surface_id)
-}
-
-fn cannot_link_inside_component(
-    edge: &CannotLinkEvidenceEdge,
-    surface_ids: &BTreeSet<String>,
-) -> bool {
-    surface_ids.contains(&edge.left_surface_id) && surface_ids.contains(&edge.right_surface_id)
 }
 
 fn signed_evidence_cut(edge: &SignedEvidenceEdge) -> SolveEvidenceCut {

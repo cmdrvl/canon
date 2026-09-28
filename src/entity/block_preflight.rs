@@ -7,10 +7,8 @@ use crate::{
     entity::{
         EntityProfileReference, EntityStrategyReference,
         block::{
-            BlockCandidateBudgetConfig, BlockCandidateGenerationDiagnostics,
-            BlockCandidateGenerationRequest, BlockCandidateOperator, BlockCandidateRecord,
-            BlockOperatorCandidateDiagnostics, BlockRuntimeConfig,
-            default_block_candidate_operators, generate_block_candidates,
+            BlockCandidateBudgetConfig, BlockCandidateGenerationDiagnostics, BlockCandidateRecord,
+            BlockOperatorCandidateDiagnostics, BlockRuntimeConfig, generate_profile_candidates,
             load_block_runtime_config,
         },
         error::EntityRefusalKind,
@@ -54,6 +52,8 @@ pub struct EntityBlockPreflightRequest<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EntityBlockPreflightReport {
     pub version: String,
+    /// Estimates never authorize a refusal; actual generation enforces budgets.
+    pub advisory: bool,
     pub rows: BlockPreflightInputReference,
     pub profile: EntityProfileReference,
     pub strategy: EntityStrategyReference,
@@ -209,31 +209,81 @@ pub fn run_block_preflight(
     })?;
     let runtime_config = load_block_runtime_config(request.strategy)?;
     let strategy = load_strategy_reference(request.strategy)?;
-    let prepared = prepare_preflight_inputs(request)?;
+    let mut prepared = prepare_preflight_inputs(request)?;
+    prepared.loaded_profile.document =
+        runtime_config.tuned_profile(&prepared.loaded_profile.document)?;
     let posting_index = build_preflight_posting_index(&prepared.sampled_surfaces)?;
     let ngram_index = build_preflight_ngram_index(&prepared.sampled_surfaces)?;
-    let core_view_name = entity_index::core_view_name(&prepared.contract.profile.id);
-    let operators = default_block_candidate_operators(core_view_name);
-    let block_result = generate_block_candidates(BlockCandidateGenerationRequest {
-        profile_id: prepared.contract.profile.id.clone(),
-        posting_index: &posting_index,
-        ngram_index: Some(&ngram_index),
-        budget_config: preflight_generation_budget(),
-        operators: operators.clone(),
-    })?;
+    let mut sampled_profile = prepared.loaded_profile.document.clone();
+    if request.sample_pct < 100 {
+        let sampled_ids = prepared
+            .sampled_surfaces
+            .iter()
+            .map(|surface| surface.surface_id.as_str())
+            .collect::<BTreeSet<_>>();
+        if let Some(blocking) = sampled_profile.blocking.as_mut() {
+            for operator in &mut blocking.operators {
+                if let crate::entity::block::declared::Operator::AliasPatchMatch { pairs } =
+                    operator
+                {
+                    pairs.retain(|pair| {
+                        sampled_ids.contains(pair.left_surface_id.as_str())
+                            && sampled_ids.contains(pair.right_surface_id.as_str())
+                    });
+                }
+            }
+        }
+    }
+    let block_result = generate_profile_candidates(
+        &sampled_profile,
+        &posting_index,
+        &ngram_index,
+        &prepared.sampled_surfaces,
+        preflight_generation_budget(),
+    )?;
+    let operator_ids = prepared
+        .loaded_profile
+        .document
+        .blocking
+        .as_ref()
+        .map_or_else(
+            || {
+                block_result
+                    .diagnostics
+                    .operator_diagnostics
+                    .iter()
+                    .map(|operator| operator.operator_id.clone())
+                    .collect::<Vec<_>>()
+            },
+            |blocking| {
+                blocking
+                    .operators
+                    .iter()
+                    .map(|operator| operator.id())
+                    .collect()
+            },
+        );
     let operator_reports = operator_reports(
-        &operators,
+        &operator_ids,
         &block_result.diagnostics,
         &block_result.candidates,
         request.sample_pct,
     );
-    let top_blocks = top_blocks(
-        &prepared.sampled_surfaces,
-        &posting_index,
-        &ngram_index,
-        request.sample_pct,
-        DEFAULT_TOP_BLOCKS,
-    )?;
+    let top_blocks = if prepared.loaded_profile.document.blocking.is_some() {
+        declared_top_blocks(
+            &prepared.loaded_profile.document,
+            &prepared.sampled_surfaces,
+            request.sample_pct,
+        )
+    } else {
+        top_blocks(
+            &prepared.sampled_surfaces,
+            &posting_index,
+            &ngram_index,
+            request.sample_pct,
+            DEFAULT_TOP_BLOCKS,
+        )?
+    };
     let totals = totals_from_diagnostics(&block_result.diagnostics, request.sample_pct);
     let budget_verdict = budget_verdict(&runtime_config, &totals, &operator_reports, &top_blocks);
     let input_row_count = prepared.observations.len() as u64;
@@ -242,6 +292,7 @@ pub fn run_block_preflight(
     let sampled_surface_count = prepared.sampled_surfaces.len() as u64;
     let mut report = EntityBlockPreflightReport {
         version: CANON_ENTITY_BLOCK_PREFLIGHT_VERSION.to_string(),
+        advisory: request.sample_pct != 100,
         rows: BlockPreflightInputReference {
             source: request.rows.display().to_string(),
             content_hash: witness::hash_bytes(&rows_bytes),
@@ -310,11 +361,13 @@ fn prepare_preflight_inputs(
     let contract = prepare_contract_for_loaded_profile(&loaded_profile)?;
     let observations = project_prepare_path(request.rows, &contract)?;
     let sampled_observations = sample_observations(&observations, request.sample_pct)?;
-    let sampled_surfaces = prepare_surface_records_for_loaded_profile(
-        request.rows,
-        &loaded_profile,
-        &sampled_observations,
-    )?;
+    let sampled_surfaces =
+        crate::entity::prepare::prepare_sampled_surface_records_for_loaded_profile(
+            request.rows,
+            &loaded_profile,
+            &observations,
+            &sampled_observations,
+        )?;
     Ok(PreparedPreflightInputs {
         loaded_profile,
         contract,
@@ -529,7 +582,7 @@ fn totals_from_diagnostics(
 }
 
 fn operator_reports(
-    operators: &[BlockCandidateOperator],
+    operators: &[String],
     diagnostics: &BlockCandidateGenerationDiagnostics,
     candidates: &[BlockCandidateRecord],
     sample_pct: u8,
@@ -543,7 +596,7 @@ fn operator_reports(
     let mut cumulative_pairs = BTreeSet::<CandidatePairKey>::new();
     let mut reports = Vec::new();
     for operator in operators {
-        let operator_id = operator_id(operator);
+        let operator_id = operator.as_str();
         let diagnostic = diagnostics_by_operator
             .get(operator_id)
             .map(|diagnostic| (*diagnostic).clone())
@@ -617,14 +670,6 @@ fn ordered_surface_pair(left: &str, right: &str) -> CandidatePairKey {
     }
 }
 
-fn operator_id(operator: &BlockCandidateOperator) -> &str {
-    match operator {
-        BlockCandidateOperator::NgramTopK(config) => config.operator_id.as_str(),
-        BlockCandidateOperator::RareTokenOverlap(config) => config.operator_id.as_str(),
-        BlockCandidateOperator::AliasPatchMatch(config) => config.operator_id.as_str(),
-    }
-}
-
 fn empty_operator_diagnostic(operator_id: &str) -> BlockOperatorCandidateDiagnostics {
     BlockOperatorCandidateDiagnostics {
         operator_id: operator_id.to_string(),
@@ -634,6 +679,77 @@ fn empty_operator_diagnostic(operator_id: &str) -> BlockOperatorCandidateDiagnos
         suppressed_candidate_count: 0,
         large_posting_suppressed_count: 0,
     }
+}
+
+fn declared_top_blocks(
+    profile: &crate::entity::profile::EntityProfileDocument,
+    surfaces: &[PreparedSurfaceRecord],
+    sample_pct: u8,
+) -> Vec<BlockPreflightTopBlock> {
+    use crate::entity::block::declared::{Operator, key, placeholder};
+    let mut counts = BTreeMap::<(String, String), ExactBucketCounts>::new();
+    for operator in &profile
+        .blocking
+        .as_ref()
+        .expect("declared blocking")
+        .operators
+    {
+        for surface in surfaces {
+            let keys: BTreeSet<Vec<String>> = match operator {
+                Operator::ExactIdentity { view } | Operator::ExactView { view } => {
+                    key(profile, surface, std::slice::from_ref(view))
+                        .into_iter()
+                        .collect()
+                }
+                Operator::CompositeKey { views } => {
+                    key(profile, surface, views).into_iter().collect()
+                }
+                Operator::ExactAnchor { field } => surface
+                    .anchors
+                    .iter()
+                    .filter(|anchor| {
+                        anchor.namespace == *field && !placeholder(profile, &anchor.value)
+                    })
+                    .map(|anchor| vec![anchor.value.clone()])
+                    .collect(),
+                Operator::NgramTopk { partition_by, .. }
+                | Operator::RareTokenOverlap { partition_by, .. } => {
+                    key(profile, surface, partition_by).into_iter().collect()
+                }
+                Operator::AliasPatchMatch { .. } => BTreeSet::new(),
+            };
+            for key in keys {
+                let count = counts
+                    .entry((
+                        operator.id(),
+                        serde_json::to_string(&key).expect("string tuple"),
+                    ))
+                    .or_default();
+                count.surface_count += 1;
+                count.row_count += surface.row_count;
+            }
+        }
+    }
+    let mut blocks = counts
+        .into_iter()
+        .map(|((operator_id, key_value), count)| BlockPreflightTopBlock {
+            key_kind: if operator_id.starts_with("exact_identity:") {
+                "exact_view"
+            } else {
+                "declared_retrieval_group"
+            }
+            .to_string(),
+            operator_id,
+            key_value,
+            observed_surface_count: count.surface_count,
+            estimated_surface_count: scale_row_count(count.surface_count, sample_pct),
+            observed_row_count: count.row_count,
+            estimated_row_count: scale_row_count(count.row_count, sample_pct),
+        })
+        .collect::<Vec<_>>();
+    sort_top_blocks(&mut blocks);
+    blocks.truncate(DEFAULT_TOP_BLOCKS);
+    blocks
 }
 
 fn top_blocks(
@@ -671,7 +787,7 @@ fn exact_top_blocks(
     let mut buckets = BTreeMap::<(String, String), ExactBucketCounts>::new();
     let placeholders = placeholder_bucket_values();
     for surface in surfaces {
-        let view_name = entity_index::core_view_name(&surface.profile_id);
+        let view_name = entity_index::canonical_view_name(surface);
         let key_value = entity_index::core_view_value(&surface.profile_id, surface);
         if key_value.trim().is_empty() || placeholders.contains(key_value.as_str()) {
             continue;
@@ -1033,15 +1149,8 @@ fn write_preflight_artifact(
 }
 
 fn placeholder_bucket_values() -> BTreeSet<&'static str> {
-    [
-        "0",
-        "unknown",
-        "vacant",
-        "na",
-        "n/a",
-        "none",
-        "placeholder:0",
-    ]
-    .into_iter()
-    .collect()
+    crate::entity::block::declared::DEFAULT_PLACEHOLDERS
+        .iter()
+        .copied()
+        .collect()
 }

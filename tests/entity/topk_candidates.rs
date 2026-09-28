@@ -1,6 +1,5 @@
 use canon::entity::topk::{
-    CANON_ENTITY_TOPK_VERSION, TopKCandidateInput, TopKConfig, TopKDropReason,
-    prune_top_k_candidates,
+    CANON_ENTITY_TOPK_VERSION, TopKCandidateInput, TopKConfig, prune_top_k_candidates,
 };
 
 #[test]
@@ -41,17 +40,10 @@ fn topk_candidates_deterministic() {
             .collect::<Vec<_>>(),
         [(1, "surface-001", 950), (2, "surface-002", 900)]
     );
-    assert_eq!(
-        first
-            .dropped
-            .iter()
-            .map(|drop| (drop.candidate_surface_id.as_str(), drop.reason))
-            .collect::<Vec<_>>(),
-        [
-            ("surface-005", TopKDropReason::BelowScoreFloor),
-            ("surface-003", TopKDropReason::CandidateCap),
-            ("surface-004", TopKDropReason::CandidateCap),
-        ]
+    assert_eq!(first.diagnostics.version, "canon_entity_topk.v1");
+    assert!(
+        first.dropped.is_empty(),
+        "v1 retains counts, not unbounded drop records"
     );
 }
 
@@ -86,8 +78,7 @@ fn topk_tie_order_stable() {
         ]
     );
     assert_eq!(result.diagnostics.dropped_by_topk_count, 1);
-    assert_eq!(result.dropped[0].candidate_surface_id, "surface-004");
-    assert_eq!(result.dropped[0].reason, TopKDropReason::TopKLimit);
+    assert!(result.dropped.is_empty());
 }
 
 fn candidate_fixture() -> Vec<TopKCandidateInput> {

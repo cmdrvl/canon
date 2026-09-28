@@ -12,6 +12,108 @@ use std::collections::BTreeSet;
 
 const PROFILE_SCHEMA_JSON: &str = include_str!("../schemas/canon.entity.profile.v1.schema.json");
 
+// Retire when the engine no longer loads profiles. This guards the concrete
+// duplicated core-view and normalizer dispatch defects fixed by bd-xhze.1.
+#[test]
+fn engine_does_not_embed_builtin_profile_ids() {
+    // Existing serialized names and forbidden-term catalog data are not
+    // dispatch. Allow only their exact declarations, never whole files.
+    const METADATA_LITERALS: &[(&str, &str)] = &[
+        ("extensions/mod.rs", r#""cmbs_tenant_label","#),
+        ("extensions/mod.rs", r#""regab_firm_identity","#),
+        (
+            "namekit/legal_suffix.rs",
+            r#"Self::CmbsTenantLabel => "cmbs_tenant_label","#,
+        ),
+        (
+            "namekit/legal_suffix.rs",
+            r#"Self::RegabFirmIdentity => "regab_firm_identity","#,
+        ),
+        (
+            "namekit/mod.rs",
+            r#"#[serde(rename = "regab_firm_identity")]"#,
+        ),
+        (
+            "namekit/tenant.rs",
+            r#"pub const CMBS_TENANT_PROFILE_ID: &str = "cmbs_tenant_label";"#,
+        ),
+        (
+            "temporal/instrument.rs",
+            r#""instrument_identity.temporal_succession.v0";"#,
+        ),
+        (
+            "temporal/instrument.rs",
+            r#""instrument_identity.superseded_by.relation_context.v0";"#,
+        ),
+        (
+            "temporal/instrument.rs",
+            r#"scope_id: "instrument_identity".to_string(),"#,
+        ),
+    ];
+    fn production_source(source: &str) -> String {
+        let mut lines = source.lines().peekable();
+        let mut output = String::new();
+        while let Some(line) = lines.next() {
+            if line.trim() == "#[cfg(test)]"
+                && lines
+                    .peek()
+                    .is_some_and(|next| next.trim().starts_with("mod "))
+            {
+                break; // These files keep unit-test modules at the end.
+            }
+            if line.trim_start().starts_with("//") {
+                continue;
+            }
+            output.push_str(line);
+            output.push('\n');
+        }
+        output
+    }
+    fn forbidden(source: &str) -> bool {
+        [
+            "cmbs_tenant_label",
+            "regab_firm_identity",
+            "instrument_identity",
+        ]
+        .iter()
+        .any(|id| source.contains(&format!("\"{id}")))
+    }
+    let forbidden_in = |path: &str, source: &str| {
+        production_source(source)
+            .lines()
+            .any(|line| forbidden(line) && !METADATA_LITERALS.contains(&(path, line.trim())))
+    };
+    // Prove that the metadata exceptions cannot hide a new dispatch branch.
+    let planted = "match profile { \"instrument_identity\" => core(), _ => other() }";
+    assert!(forbidden_in("entity/run.rs", planted));
+    for (path, declaration) in METADATA_LITERALS {
+        assert!(!forbidden_in(path, declaration));
+        assert!(forbidden_in(path, planted));
+    }
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut directories = vec![root.clone()];
+    while let Some(directory) = directories.pop() {
+        for entry in std::fs::read_dir(directory).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() && path != root.join("entity/profiles") {
+                directories.push(path);
+            } else if path.extension().is_some_and(|extension| extension == "rs") {
+                let source = std::fs::read_to_string(&path).unwrap();
+                let relative = path
+                    .strip_prefix(&root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                assert!(
+                    !forbidden_in(&relative, &source),
+                    "profile-id literal in {}",
+                    path.display()
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn profile_schema_declares_typed_boundaries() {
     let schema: Value = serde_json::from_str(PROFILE_SCHEMA_JSON).expect("schema parses");

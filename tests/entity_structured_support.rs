@@ -322,6 +322,55 @@ fn structured_support_numeric_tolerance_parameters_fail_closed() {
     assert_eq!(negative.reason(), "negative_decimal");
 }
 
+#[test]
+fn leading_dot_decimals_preserve_numeric_and_conflict_boundaries() {
+    use canon::entity::anti_merge::{
+        AttributeConflictComparison, AttributeConflictRequest, BasisPointScale,
+        attribute_conflict_hit,
+    };
+    let conflict = |left, right| {
+        attribute_conflict_hit(AttributeConflictRequest {
+            namespace: "generic",
+            operator_id: "attribute_conflict:rate",
+            reason_code: "rate_conflict",
+            field: "rate",
+            left_value: left,
+            right_value: right,
+            comparison: AttributeConflictComparison::DecimalBasisPoints {
+                scale: BasisPointScale::Percent,
+            },
+            tolerance_bps: 1,
+            score_units: score(10_000),
+        })
+    };
+    assert!(conflict(".625000000000", "0.625").unwrap().is_none());
+    assert!(conflict("-.625", "-0.625").unwrap().is_none());
+    assert!(conflict(".625", ".635").unwrap().is_none());
+    assert!(conflict(".625", ".6351").unwrap().is_some());
+    for malformed in [".", "-.", "1e-3", ".6x"] {
+        assert_eq!(
+            conflict(malformed, "0.625").unwrap_err().reason(),
+            "malformed_decimal"
+        );
+    }
+    let support = |left| {
+        numeric_within_tolerance_support_hit(NumericWithinToleranceSupportRequest {
+            namespace: "generic",
+            operator_id: "numeric_within_tolerance:rate",
+            reason_code: "rate_equal",
+            view_name: "rate",
+            left_value: left,
+            right_value: "0.625",
+            absolute_tolerance: "0",
+            relative_tolerance_bps: None,
+            score_units: score(8_000),
+        })
+    };
+    assert!(support(".625000000000").unwrap().is_some());
+    assert!(support(".6251").unwrap().is_none());
+    assert_eq!(support(".").unwrap_err().reason(), "malformed_decimal");
+}
+
 fn score(units: u32) -> ScoreUnits {
     ScoreUnits::from_scaled(units).expect("test score is inside score scale")
 }

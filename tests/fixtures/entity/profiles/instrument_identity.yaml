@@ -43,6 +43,10 @@ normalized_views:
     operators:
       - ascii_trim_upper
       - placeholder_to_null
+  issuer:
+    operators:
+      - ascii_trim_upper
+      - placeholder_to_null
   share_class:
     operators:
       - ascii_trim_upper
@@ -62,6 +66,7 @@ prepare:
     isin: isin
     instrument_maturity: maturitydt
     annualized_rate: annualizedrt
+    issuer: issuer_lei
     share_class: share_class
     exchange_group: exchange_group
   anchor_fields:
@@ -103,6 +108,23 @@ prepare:
     - maturitydt
     - annualizedrt
     - issuer_lei
+blocking:
+  operators:
+    - op: exact_view
+      view: cusip
+    - op: exact_view
+      view: isin
+    - op: exact_anchor
+      field: figi
+    - op: exact_anchor
+      field: exchange_group
+    - op: composite_key
+      views: [issuer, instrument_maturity, annualized_rate]
+    - op: ngram_topk
+      view: core
+      k: 50
+      candidate_cap: 100
+      partition_by: [instrument_maturity, annualized_rate]
 evidence:
   support:
     - op: exact_view

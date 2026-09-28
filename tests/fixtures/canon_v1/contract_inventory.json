@@ -1266,7 +1266,7 @@
       "access_boundary": "internal_source_only",
       "source_path": "src/entity/publication.rs"
     },
-    { "id": "canon_entity_topk.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_topk.v1", "family": "entity", "action": "preserve" },
     {
       "id": "canon_entity_value_frequency.v0",
       "family": "entity",

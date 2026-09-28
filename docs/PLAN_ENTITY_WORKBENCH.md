@@ -838,22 +838,92 @@ normalize:
       - drop_tenant_stopwords
 ```
 
-Blocking operators:
+Profile-declared blocking operators (the optional `blocking` section is part
+of the profile hash):
 
 ```yaml
 blocking:
-  - op: exact_view
-    view: tenant_core
-  - op: ngram_topk
-    view: tenant_core
-    k: 25
-  - op: rare_token_overlap
-    left_view: tenant_tokens
-    right_view: tenant_tokens
-    min_tokens: 1
-    min_idf: 1.0
-  - op: alias_patch_match
+  operators:
+    - op: exact_view
+      view: cusip
+    - op: exact_anchor
+      field: figi
+    - op: composite_key
+      views: [issuer, instrument_maturity, annualized_rate]
+    - op: ngram_topk
+      view: core
+      k: 25
+      candidate_cap: 25
+      score_floor_units: null
+      max_ngram_df: null
+      partition_by: [instrument_maturity]
+    - op: rare_token_overlap
+      view: core
+      k: 25
+      candidate_cap: 25
+      max_posting_size: 1000
 ```
+
+Exact views, anchors, and composite keys retrieve **scored pair candidates**;
+they do not grant equality authority. Every tuple member must be present and
+non-placeholder. Tuples are encoded structurally, so embedded delimiters cannot
+create a match. Shared issuer identity alone never establishes instrument identity.
+Pair enumeration stops at the first actual budget crossing, without publishing
+partial candidate artifacts. Large identifier buckets may therefore need a
+larger, explicitly chosen strategy budget; this release does not claim compact
+scored retrieval buckets or national-scale performance.
+
+`exact_identity: {view}` is the explicit form of the pre-existing equality
+hyperedge contract, used by the tenant-label and firm built-ins. It requires
+matching `exact_view` support in the profile and authorizes an identity union.
+Do not substitute it for uncertain retrieval keys. Ordinary lookup remains exact
+registry replay, and registry promotion remains review-gated.
+
+`partition_by` restricts similarity scoring **before** top-k selection. Optional
+`max_ngram_df` skips grams exceeding that document frequency within a partition;
+neither filter is implicit. Rare-token retrieval uses its selected view by default;
+`token_views` and `include_primary_surface` explicitly select additional text.
+`alias_patch_match` accepts `pairs` containing `left_surface_id`, `right_surface_id`,
+and `patch_id`; unknown surfaces refuse. Its profile hash binds that supplied
+provenance; retrieval still does not replace evidence evaluation or review.
+
+Unknown operators/parameters, undeclared views/anchors, duplicate operator IDs,
+and invalid limits refuse. Multi-view profiles with declared blocking must name
+`prepare.canonical_surface_normalized_view`. IDs derive from the operation and
+view/field tuple. Built-in names select embedded YAML only; normalization and
+blocking follow declarations. The generic legal-name operators are
+`legal_basename`, `legal_basename_tokens`, `legal_basename_fingerprint`,
+`legal_name_preserved`, and `legal_name_preserved_tokens`.
+
+With no `blocking` section, the legacy n-gram/rare-token candidate defaults and
+canonical-view equality buckets remain. Explicit built-in declarations preserve
+retrieval semantics, with reviewed differences in operator IDs, profile hashes,
+canonical-view provenance markers, and dependent artifact hashes. Those artifacts
+are not claimed byte-identical to artifacts from older profile bytes.
+
+Budgets and top-k tuning belong in the strategy:
+
+```yaml
+block:
+  preflight: true
+  operator_overrides:
+    ngram_topk:core:
+      k: 10
+      candidate_cap: 20
+  candidate_budget:
+    max_candidates_per_surface: 100
+    max_candidates_per_operator: 25000
+    max_candidates_per_run: 25000
+```
+
+`entity run` writes a deterministic 1% sampled preflight before blocking unless
+`block.preflight` is false. Sample projections are advisory, not proof of a budget
+breach: top-k caps and partition-local frequency filtering invalidate a universal
+pair extrapolation. Actual generation enforces the limits. Early refusals name
+the operator and report visited/total surfaces and an explicit lower-bound count.
+Top-k diagnostics use `canon_entity_topk.v1`: exact counts remain, while `dropped`
+is empty instead of retaining every rejected candidate. Selection preserves the
+full saturated-score, normalized-key, surface-ID, and ordinal ordering.
 
 Support evidence:
 

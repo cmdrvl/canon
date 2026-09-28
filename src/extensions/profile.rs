@@ -124,6 +124,8 @@ pub enum ProfileCapability {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EntityProfilePackage {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocking: Option<crate::entity::block::declared::Blocking>,
     pub kind: String,
     pub profile: String,
     pub version: String,

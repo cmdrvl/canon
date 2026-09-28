@@ -234,6 +234,7 @@ fn exact_view_hit(view_name: &str, operator_id: &str) -> EdgeEvidenceHit {
 
 fn diagnostic_profile() -> EntityProfileDocument {
     EntityProfileDocument {
+        blocking: None,
         profile: "pkg.synthetic:unlinkables".to_string(),
         version: "1".to_string(),
         entity_type: "organization".to_string(),

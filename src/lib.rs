@@ -6290,16 +6290,8 @@ fn entity_apply_lookup_column(
 
     entity_apply_command_flag_value(artifact, "--column").or_else(|| {
         entity_json_string_at_path(artifact, &["metadata", "profile", "id"])
-            .and_then(|profile| entity_apply_builtin_lookup_column(&profile).map(str::to_string))
+            .and_then(|profile| entity::profiles::builtin_primary_surface_field(&profile))
     })
-}
-
-fn entity_apply_builtin_lookup_column(profile: &str) -> Option<&'static str> {
-    match profile {
-        "cmbs_tenant_label" => Some("raw_tenant_name"),
-        "regab_firm_identity" => Some("org_name"),
-        _ => None,
-    }
 }
 
 fn entity_apply_output_path(apply: &EntityApplyCli, artifact: &serde_json::Value) -> PathBuf {
@@ -6532,7 +6524,9 @@ fn entity_apply_missing_lookup_column_refusal(
             "rows": apply.rows.display().to_string(),
             "registry": apply.registry.display().to_string(),
             "profile": entity_json_string_at_path(artifact, &["metadata", "profile", "id"]),
-            "supported_builtin_profiles": ["cmbs_tenant_label", "regab_firm_identity"],
+            "supported_builtin_profiles": entity::profiles::BUILTIN_PROFILES.iter()
+                .filter_map(|(id, _)| entity::profiles::builtin_primary_surface_field(id).map(|_| id))
+                .collect::<Vec<_>>(),
             "writes_performed": false,
             "recovery_flag": "--column"
         }),
@@ -8759,6 +8753,23 @@ pub struct ResolveResult {
 mod tests {
     use super::{DisplayMode, detect_display_mode};
     use std::path::Path;
+
+    #[test]
+    fn apply_builtin_columns_follow_declared_primary_fields() {
+        for (profile, expected) in [
+            ("cmbs_tenant_label", "raw_tenant_name"),
+            ("regab_firm_identity", "org_name"),
+            ("instrument_identity", "title"),
+        ] {
+            assert_eq!(
+                super::entity::profiles::builtin_primary_surface_field(profile).as_deref(),
+                Some(expected)
+            );
+        }
+        assert!(
+            super::entity::profiles::builtin_primary_surface_field("unknown_profile").is_none()
+        );
+    }
 
     #[test]
     fn detect_display_mode_ignores_subcommand_version_flag() {

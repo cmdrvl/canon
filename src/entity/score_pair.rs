@@ -15,7 +15,7 @@ use crate::{
         error::EntityRefusalKind,
         prepare::{
             assign_exact_lookups, load_prepare_profile_with_hash, load_prepare_registry_snapshot,
-            prepare_contract_for_loaded_profile, prepare_surface_records,
+            prepare_contract_for_loaded_profile, prepare_surface_records_with_profile,
             project_prepare_jsonl_reader,
         },
         review_export::{
@@ -116,7 +116,11 @@ pub(crate) fn score_pair(request: ScorePairRequest<'_>) -> Result<ScorePairEvalu
     }
     let contract = prepare_contract_for_loaded_profile(&loaded_profile)?;
     let observations = prepare_pair_observations(request.left, request.right, &contract)?;
-    let mut surfaces = prepare_surface_records(&observations)?;
+    let mut surfaces = prepare_surface_records_with_profile(
+        Some(&loaded_profile.document),
+        &contract.mapping,
+        &observations,
+    )?;
     let registry_snapshot_hash = if let Some(registry) = request.registry {
         let registry_snapshot = load_prepare_registry_snapshot(registry)?;
         let snapshot_hash = registry_snapshot.lookup_snapshot_hash.clone();

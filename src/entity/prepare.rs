@@ -40,12 +40,6 @@ use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 
-const BUILTIN_CMBS_TENANT_LABEL_PROFILE: &str =
-    include_str!("../../tests/fixtures/entity/profiles/cmbs_tenant_label.yaml");
-const BUILTIN_REGAB_FIRM_IDENTITY_PROFILE: &str =
-    include_str!("../../tests/fixtures/entity/profiles/regab_firm_identity.yaml");
-const BUILTIN_INSTRUMENT_IDENTITY_PROFILE: &str =
-    include_str!("../../tests/fixtures/entity/profiles/instrument_identity.yaml");
 pub const DEFAULT_PREPARE_ROWS_PER_CHUNK: u64 = 1024;
 const MAX_PREPARE_PROVENANCE_SAMPLES: usize = 16;
 const MAX_SURFACE_PROVENANCE_SAMPLES: usize = 8;
@@ -164,21 +158,13 @@ impl PrepareInputContract {
     }
 
     pub fn for_builtin_profile(profile: &EntityProfileDocument) -> Result<Self, Refusal> {
-        let mapping = match profile.profile.as_str() {
-            "cmbs_tenant_label" => PrepareFieldMapping::cmbs_tenant_label(),
-            "regab_firm_identity" => PrepareFieldMapping::regab_firm_identity(),
-            _ if profile.prepare.is_some() => profile
-                .prepare
-                .clone()
-                .expect("profile.prepare checked above"),
-            _ => {
-                return Err(EntityRefusalKind::Profile.to_refusal(
-                    "Entity profile has no prepare field mapping",
-                    json!({ "profile": profile.profile }),
-                    None,
-                ));
-            }
-        };
+        let mapping = profile.prepare.clone().ok_or_else(|| {
+            EntityRefusalKind::Profile.to_refusal(
+                "Entity profile has no prepare field mapping",
+                json!({ "profile": profile.profile }),
+                None,
+            )
+        })?;
         Self::new(profile, mapping)
     }
 }
@@ -491,27 +477,18 @@ pub fn load_prepare_profile_with_hash(profile: &str) -> Result<LoadedPrepareProf
             })
         }
     } else {
-        let profile_source = match profile {
-            "cmbs_tenant_label" => BUILTIN_CMBS_TENANT_LABEL_PROFILE.to_string(),
-            "regab_firm_identity" => BUILTIN_REGAB_FIRM_IDENTITY_PROFILE.to_string(),
-            "instrument_identity" => BUILTIN_INSTRUMENT_IDENTITY_PROFILE.to_string(),
-            _ => {
-                return Err(EntityRefusalKind::Profile.to_refusal(
+        let profile_source = crate::entity::profiles::builtin_source(profile).ok_or_else(|| {
+                EntityRefusalKind::Profile.to_refusal(
                     "Unknown entity prepare profile",
                     json!({
                         "profile": profile,
-                        "available_profiles": [
-                            "cmbs_tenant_label",
-                            "regab_firm_identity",
-                            "instrument_identity"
-                        ]
+                        "available_profiles": crate::entity::profiles::BUILTIN_PROFILES.iter().map(|(id, _)| id).collect::<Vec<_>>()
                     }),
                     None,
-                ));
-            }
-        };
+                )
+        })?;
 
-        let document = EntityProfileDocument::from_yaml_str(&profile_source)
+        let document = EntityProfileDocument::from_yaml_str(profile_source)
             .map_err(|error| error.to_refusal())?;
         let prepare_mapping = document.prepare.clone();
         Ok(LoadedPrepareProfile {
@@ -812,27 +789,42 @@ pub fn prepare_surface_records(
     prepare_surface_records_with_profile(None, &PrepareFieldMapping::default(), observations)
 }
 
-fn prepare_surface_records_with_profile(
+pub(crate) fn prepare_surface_records_with_profile(
     profile: Option<&EntityProfileDocument>,
     mapping: &PrepareFieldMapping,
     observations: &[PreparedInputObservation],
 ) -> Result<Vec<PreparedSurfaceRecord>, Refusal> {
     let mut groups: BTreeMap<String, PreparedSurfaceAccumulator> = BTreeMap::new();
+    let mut builtin_profiles = BTreeMap::new();
+    let mut composite_profiles = std::collections::BTreeSet::new();
 
     for observation in observations {
-        let mut normalized_views = normalized_views_for_surface(
-            &observation.profile_id,
-            &observation.primary_surface.value,
-        );
-        if let Some(profile) = profile {
-            normalized_views.extend(configured_normalized_views(profile, mapping, observation)?);
+        if profile.is_none() && !builtin_profiles.contains_key(&observation.profile_id) {
+            let builtin = crate::entity::profiles::builtin_source(&observation.profile_id)
+                .map(EntityProfileDocument::from_yaml_str)
+                .transpose()
+                .map_err(|error| error.to_refusal())?;
+            builtin_profiles.insert(observation.profile_id.clone(), builtin);
         }
+        let builtin = builtin_profiles
+            .get(&observation.profile_id)
+            .and_then(Option::as_ref);
+        let selected = profile.or(builtin);
+        let selected_mapping = builtin
+            .and_then(|profile| profile.prepare.as_ref())
+            .unwrap_or(mapping);
+        let normalized_views = if let Some(profile) = selected {
+            configured_normalized_views(profile, selected_mapping, observation)?
+        } else {
+            generic_normalized_views(&observation.primary_surface.value)
+        };
         let core_value = core_view_value(&observation.profile_id, &normalized_views)
             .unwrap_or_else(|| observation.primary_surface.value.trim().to_string());
-        let surface_key = if mapping.surface_key_fields.is_empty() {
+        let surface_key = if selected_mapping.surface_key_fields.is_empty() {
             format!("{}:{core_value}", observation.profile_id)
         } else {
-            composite_surface_key(mapping, observation, &normalized_views)?
+            composite_profiles.insert(observation.profile_id.clone());
+            composite_surface_key(selected_mapping, observation, &normalized_views)?
         };
         let accumulator = groups.entry(surface_key.clone()).or_insert_with(|| {
             PreparedSurfaceAccumulator::new(
@@ -849,7 +841,9 @@ fn prepare_surface_records_with_profile(
         .into_values()
         .map(PreparedSurfaceAccumulator::finish)
         .collect::<Vec<_>>();
-    assign_surface_ids(&mut surfaces, !mapping.surface_key_fields.is_empty())?;
+    assign_surface_ids(&mut surfaces, |surface| {
+        composite_profiles.contains(&surface.profile_id)
+    })?;
     surfaces.sort_by(|left, right| {
         left.surface_id
             .cmp(&right.surface_id)
@@ -960,6 +954,38 @@ fn execute_prepare_profile_package(
         .map_err(profile_package_refusal)
 }
 
+pub(crate) fn prepare_sampled_surface_records_for_loaded_profile(
+    rows: &Path,
+    loaded_profile: &LoadedPrepareProfile,
+    observations: &[PreparedInputObservation],
+    sampled_observations: &[PreparedInputObservation],
+) -> Result<Vec<PreparedSurfaceRecord>, Refusal> {
+    let Some(package) = loaded_profile.package.as_ref() else {
+        return prepare_surface_records_for_loaded_profile(
+            rows,
+            loaded_profile,
+            sampled_observations,
+        );
+    };
+    let mut execution =
+        execute_prepare_profile_package(rows, package, &loaded_profile.content_hash)?;
+    validate_profile_execution_row_count(observations.len(), &execution)?;
+    let selected_rows = sampled_observations
+        .iter()
+        .map(|observation| observation.row_number)
+        .collect::<std::collections::BTreeSet<_>>();
+    // Package execution reads the retained input once. Select its matching rows
+    // before zipping with sampled observations; never zip a sample with all rows.
+    execution.records = execution
+        .records
+        .into_iter()
+        .zip(observations)
+        .filter(|(_, observation)| selected_rows.contains(&observation.row_number))
+        .map(|(record, _)| record)
+        .collect();
+    prepare_surface_records_from_profile_execution(sampled_observations, &execution)
+}
+
 fn profile_record_format_for_path(path: &Path) -> Result<EntityProfileRecordInputFormat, Refusal> {
     match path
         .extension()
@@ -985,21 +1011,29 @@ fn profile_record_format_for_path(path: &Path) -> Result<EntityProfileRecordInpu
     }
 }
 
-fn prepare_surface_records_from_profile_execution(
-    observations: &[PreparedInputObservation],
+fn validate_profile_execution_row_count(
+    observation_count: usize,
     execution: &EntityProfilePackageExecution,
-) -> Result<Vec<PreparedSurfaceRecord>, Refusal> {
-    if observations.len() != execution.records.len() {
+) -> Result<(), Refusal> {
+    if observation_count != execution.records.len() {
         return Err(EntityRefusalKind::InputContract.to_refusal(
             "Entity profile package execution row count does not match prepared observations",
             json!({
-                "observations": observations.len(),
+                "observations": observation_count,
                 "execution_records": execution.records.len(),
                 "profile": execution.profile
             }),
             None,
         ));
     }
+    Ok(())
+}
+
+fn prepare_surface_records_from_profile_execution(
+    observations: &[PreparedInputObservation],
+    execution: &EntityProfilePackageExecution,
+) -> Result<Vec<PreparedSurfaceRecord>, Refusal> {
+    validate_profile_execution_row_count(observations.len(), execution)?;
 
     let mut groups: BTreeMap<String, PreparedSurfaceAccumulator> = BTreeMap::new();
     for (observation, record) in observations.iter().zip(&execution.records) {
@@ -1063,7 +1097,7 @@ fn prepare_surface_records_from_profile_execution(
         .into_values()
         .map(PreparedSurfaceAccumulator::finish)
         .collect::<Vec<_>>();
-    assign_surface_ids(&mut surfaces, false)?;
+    assign_surface_ids(&mut surfaces, |_| false)?;
     surfaces.sort_by(|left, right| {
         left.surface_id
             .cmp(&right.surface_id)
@@ -1290,13 +1324,13 @@ impl PreparedExactLookup {
 
 fn assign_surface_ids(
     surfaces: &mut [PreparedSurfaceRecord],
-    composite_key: bool,
+    composite_key: impl Fn(&PreparedSurfaceRecord) -> bool,
 ) -> Result<(), Refusal> {
     let materials = surfaces
         .iter()
         .map(|surface| {
             let material = surface_id_material(surface)?;
-            Ok(if composite_key {
+            Ok(if composite_key(surface) {
                 material.with_surface_key(surface.surface_key.clone())
             } else {
                 material
@@ -1388,19 +1422,17 @@ fn exact_lookup_inputs(surface: &PreparedSurfaceRecord) -> Vec<String> {
 }
 
 fn surface_id_material(surface: &PreparedSurfaceRecord) -> Result<SurfaceIdMaterial, Refusal> {
-    let view_name = marked_surface_id_view_name(surface)
-        .or_else(|| surface_id_view_name(&surface.profile_id).map(ToOwned::to_owned))
-        .ok_or_else(|| {
-            EntityRefusalKind::ArtifactContract.to_refusal(
-                "Prepared surface for external profile must mark exactly one canonical normalized view",
-                json!({
-                    "profile_id": surface.profile_id,
-                    "surface_key": surface.surface_key,
-                    "available_views": surface.normalized_views.keys().collect::<Vec<_>>()
-                }),
-                None,
-            )
-        })?;
+    let view_name = marked_surface_id_view_name(surface).ok_or_else(|| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Prepared surface for external profile must mark exactly one canonical normalized view",
+            json!({
+                "profile_id": surface.profile_id,
+                "surface_key": surface.surface_key,
+                "available_views": surface.normalized_views.keys().collect::<Vec<_>>()
+            }),
+            None,
+        )
+    })?;
     let view = surface.normalized_views.get(&view_name).ok_or_else(|| {
         EntityRefusalKind::ArtifactContract.to_refusal(
             "Prepared surface is missing the profile surface_id normalized view",
@@ -1419,14 +1451,6 @@ fn surface_id_material(surface: &PreparedSurfaceRecord) -> Result<SurfaceIdMater
         view.value.clone(),
         surface.raw_variants.clone(),
     ))
-}
-
-fn surface_id_view_name(profile_id: &str) -> Option<&'static str> {
-    match profile_id {
-        "cmbs_tenant_label" => Some("tenant_core"),
-        "regab_firm_identity" => Some("firm_core"),
-        _ => None,
-    }
 }
 
 fn marked_surface_id_view_name(surface: &PreparedSurfaceRecord) -> Option<String> {
@@ -1487,71 +1511,33 @@ fn project_prepare_row(
     })
 }
 
-fn normalized_views_for_surface(
-    profile_id: &str,
-    raw: &str,
-) -> BTreeMap<String, PreparedNormalizedView> {
-    match profile_id {
-        "cmbs_tenant_label" => cmbs_normalized_views(raw),
-        "regab_firm_identity" => regab_normalized_views(raw),
-        _ => generic_normalized_views(raw),
+fn legal_normalized_view(raw: &str, operator: &str) -> PreparedNormalizedView {
+    let normal = normalize_normality(raw);
+    let policy = if operator.starts_with("legal_basename") {
+        LegalSuffixProfile::CmbsTenantLabel
+    } else {
+        LegalSuffixProfile::RegabFirmIdentity
+    };
+    let legal = analyze_legal_suffixes(&normal.normalized, policy);
+    let core = non_empty_or_fallback(&legal.basename, &normal.normalized);
+    if operator.ends_with("_fingerprint") {
+        let fingerprint = normalize_openrefine_fingerprint(&core);
+        return PreparedNormalizedView {
+            value: fingerprint.fingerprint.clone(),
+            reason_codes: namekit_reason_codes(&fingerprint),
+        };
     }
-}
-
-fn cmbs_normalized_views(raw: &str) -> BTreeMap<String, PreparedNormalizedView> {
-    let normal = normalize_normality(raw);
-    let legal = analyze_legal_suffixes(&normal.normalized, LegalSuffixProfile::CmbsTenantLabel);
-    let core = non_empty_or_fallback(&legal.basename, &normal.normalized);
-    let tokens = tokenize_sorted_unique(&core);
-    let brand = normalize_openrefine_fingerprint(&core);
-
-    BTreeMap::from([
-        (
-            "tenant_core".to_string(),
-            PreparedNormalizedView {
-                value: core.clone(),
-                reason_codes: reason_codes(&normal, Some(&legal), None),
-            },
-        ),
-        (
-            "tenant_tokens".to_string(),
-            PreparedNormalizedView {
-                value: tokenized_value(&tokens),
-                reason_codes: reason_codes(&normal, Some(&legal), Some(&tokens)),
-            },
-        ),
-        (
-            "tenant_brand".to_string(),
-            PreparedNormalizedView {
-                value: brand.fingerprint.clone(),
-                reason_codes: namekit_reason_codes(&brand),
-            },
-        ),
-    ])
-}
-
-fn regab_normalized_views(raw: &str) -> BTreeMap<String, PreparedNormalizedView> {
-    let normal = normalize_normality(raw);
-    let legal = analyze_legal_suffixes(&normal.normalized, LegalSuffixProfile::RegabFirmIdentity);
-    let core = non_empty_or_fallback(&legal.basename, &normal.normalized);
-    let tokens = tokenize_sorted_unique(&core);
-
-    BTreeMap::from([
-        (
-            "firm_core".to_string(),
-            PreparedNormalizedView {
-                value: core.clone(),
-                reason_codes: reason_codes(&normal, Some(&legal), None),
-            },
-        ),
-        (
-            "firm_tokens".to_string(),
-            PreparedNormalizedView {
-                value: tokenized_value(&tokens),
-                reason_codes: reason_codes(&normal, Some(&legal), Some(&tokens)),
-            },
-        ),
-    ])
+    if operator.ends_with("_tokens") {
+        let tokens = tokenize_sorted_unique(&core);
+        return PreparedNormalizedView {
+            value: tokenized_value(&tokens),
+            reason_codes: reason_codes(&normal, Some(&legal), Some(&tokens)),
+        };
+    }
+    PreparedNormalizedView {
+        value: core,
+        reason_codes: reason_codes(&normal, Some(&legal), None),
+    }
 }
 
 fn generic_normalized_views(raw: &str) -> BTreeMap<String, PreparedNormalizedView> {
@@ -1572,7 +1558,10 @@ fn configured_normalized_views(
 ) -> Result<BTreeMap<String, PreparedNormalizedView>, Refusal> {
     let mut views = BTreeMap::new();
     for (view_name, field) in &mapping.normalized_view_fields {
-        let Some(value) = prepared_context_string(observation, field) else {
+        let Some(value) = prepared_context_string(observation, field).or_else(|| {
+            (field == &observation.primary_surface.field)
+                .then(|| observation.primary_surface.value.clone())
+        }) else {
             continue;
         };
         // The canonical surface view is the surface's display text, not an
@@ -1594,12 +1583,33 @@ fn configured_normalized_views(
                 None,
             )
         })?;
-        let value = apply_configured_normalizers(value.as_str(), &view.operators)?;
+        let legal = view
+            .operators
+            .first()
+            .filter(|operator| {
+                view.operators.len() == 1
+                    && matches!(
+                        operator.as_str(),
+                        "legal_basename"
+                            | "legal_basename_tokens"
+                            | "legal_basename_fingerprint"
+                            | "legal_name_preserved"
+                            | "legal_name_preserved_tokens"
+                    )
+            })
+            .map(|operator| legal_normalized_view(&value, operator));
+        let value = if let Some(normalized) = &legal {
+            normalized.value.clone()
+        } else {
+            apply_configured_normalizers(value.as_str(), &view.operators)?
+        };
         if value.trim().is_empty() || (!canonical && is_placeholder_value(&value, mapping)) {
             continue;
         }
 
-        let mut reason_codes = vec!["configured_field_mapping".to_string()];
+        let mut reason_codes = legal
+            .map(|normalized| normalized.reason_codes)
+            .unwrap_or_else(|| vec!["configured_field_mapping".to_string()]);
         if mapping
             .canonical_surface_normalized_view
             .as_deref()
@@ -1642,6 +1652,11 @@ fn apply_configured_normalizers(raw: &str, operators: &[String]) -> Result<Strin
     let mut value = raw.to_string();
     for operator in operators {
         value = match operator.as_str() {
+            "legal_basename"
+            | "legal_basename_tokens"
+            | "legal_basename_fingerprint"
+            | "legal_name_preserved"
+            | "legal_name_preserved_tokens" => legal_normalized_view(&value, operator).value,
             "identity" => value,
             "ascii_trim_upper" => value.trim().to_ascii_uppercase(),
             "unicode_fold" => normalize_normality(&value).normalized,
@@ -1679,15 +1694,11 @@ fn apply_configured_normalizers(raw: &str, operators: &[String]) -> Result<Strin
 }
 
 fn core_view_value(
-    profile_id: &str,
+    _profile_id: &str,
     views: &BTreeMap<String, PreparedNormalizedView>,
 ) -> Option<String> {
     marked_surface_id_view_name_from_views(views)
         .and_then(|view_name| views.get(&view_name).map(|view| view.value.clone()))
-        .or_else(|| {
-            let view_name = surface_id_view_name(profile_id)?;
-            views.get(view_name).map(|view| view.value.clone())
-        })
 }
 
 fn non_empty_or_fallback(value: &str, fallback: &str) -> String {

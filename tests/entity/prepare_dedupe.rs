@@ -8,6 +8,34 @@ use std::io::Cursor;
 const CMBS_PROFILE: &str = include_str!("../fixtures/entity/profiles/cmbs_tenant_label.yaml");
 
 #[test]
+fn builtin_prepare_preserves_distinct_instrument_tuples_with_the_same_title() {
+    let profile = EntityProfileDocument::from_yaml_str(include_str!(
+        "../fixtures/entity/profiles/instrument_identity.yaml"
+    ))
+    .unwrap();
+    let contract = PrepareInputContract::for_builtin_profile(&profile).unwrap();
+    let input = concat!(
+        "source_row_id,report_period,title,cusip,isin,maturitydt,annualizedrt,issuer_lei\n",
+        "1,2026-Q1,ACME NOTE,111111111,US1111111111,2030-01-01,5,ISSUER\n",
+        "2,2026-Q1,ACME NOTE,222222222,US2222222222,2031-01-01,5,ISSUER\n",
+        "3,2026-Q1,ACME NOTE,111111111,US1111111111,2030-01-01,5,ISSUER\n",
+    );
+    let mut observations = project_prepare_csv_reader(Cursor::new(input), b',', &contract).unwrap();
+    let surfaces = prepare_surface_records(&observations).unwrap();
+    assert_eq!(surfaces.len(), 2);
+    assert_ne!(surfaces[0].surface_id, surfaces[1].surface_id);
+    assert_eq!(
+        surfaces
+            .iter()
+            .map(|surface| surface.row_count)
+            .sum::<u64>(),
+        3
+    );
+    observations.reverse();
+    assert_eq!(prepare_surface_records(&observations).unwrap(), surfaces);
+}
+
+#[test]
 fn entity_prepare_dedupe() {
     let surfaces = surfaces_for(rows_in_original_order());
     assert_eq!(surfaces.len(), 2);

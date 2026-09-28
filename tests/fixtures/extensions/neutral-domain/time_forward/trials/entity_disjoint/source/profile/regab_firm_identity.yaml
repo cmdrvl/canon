@@ -11,16 +11,21 @@ required_fields:
 normalized_views:
   firm_core:
     operators:
-      - unicode_fold
-      - lowercase
-      - expand_na_abbreviation
-      - preserve_legal_form
-      - normalize_whitespace
+      - legal_name_preserved
   firm_tokens:
     operators:
-      - unicode_fold
-      - lowercase
-      - tokenize
+      - legal_name_preserved_tokens
+prepare:
+  primary_surface_fields: [org_name]
+  canonical_surface_normalized_view: firm_core
+  normalized_view_fields:
+    firm_core: org_name
+    firm_tokens: org_name
+  alias_surfaces_field: alias_surfaces_json
+  mention_surfaces_field: mention_surfaces_json
+  anchor_fields: {cik: filing_cik, accession: accession}
+  context_fields: [dataset, field_name, role_context, capacity, subject_role]
+  provenance_fields: [source_row_id, dataset, doc_id, accession]
 evidence:
   support:
     - op: exact_view

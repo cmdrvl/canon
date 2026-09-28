@@ -1,3 +1,5 @@
+# Non-goal: this does not collapse parent/subsidiary, bank/division,
+# platform/category labels, or person/certifying-party fields by default.
 profile: regab_firm_identity
 version: 0.1.0
 entity_type: organization
@@ -11,16 +13,36 @@ required_fields:
 normalized_views:
   firm_core:
     operators:
-      - unicode_fold
-      - lowercase
-      - expand_na_abbreviation
-      - preserve_legal_form
-      - normalize_whitespace
+      - legal_name_preserved
   firm_tokens:
     operators:
-      - unicode_fold
-      - lowercase
-      - tokenize
+      - legal_name_preserved_tokens
+prepare:
+  primary_surface_fields: [org_name]
+  canonical_surface_normalized_view: firm_core
+  normalized_view_fields:
+    firm_core: org_name
+    firm_tokens: org_name
+  alias_surfaces_field: alias_surfaces_json
+  mention_surfaces_field: mention_surfaces_json
+  anchor_fields: {cik: filing_cik, accession: accession}
+  context_fields: [dataset, field_name, role_context, capacity, subject_role]
+  provenance_fields: [source_row_id, dataset, doc_id, accession]
+blocking:
+  operators:
+    - op: exact_identity
+      view: firm_core
+    - op: ngram_topk
+      view: firm_core
+      k: 25
+      candidate_cap: 25
+    - op: rare_token_overlap
+      view: firm_core
+      token_views: [firm_core, firm_tokens]
+      include_primary_surface: true
+      k: 25
+      candidate_cap: 25
+      max_posting_size: 1000
 evidence:
   support:
     - op: exact_view

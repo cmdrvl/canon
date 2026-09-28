@@ -58,14 +58,14 @@ const RECORDED_ENTITY_ENGINE_SOURCE_RESIDUALS: &[(&str, &str)] = &[
     ("src/entity/prepare.rs", "tenant"),
     ("src/entity/profile.rs", "regab"),
     ("src/entity/profile.rs", "tenant"),
-    ("src/entity/profile_cli.rs", "cmbs"),
-    ("src/entity/profile_cli.rs", "regab"),
-    ("src/entity/profile_cli.rs", "sec10d"),
-    ("src/entity/profile_cli.rs", "tenant"),
     ("src/entity/profiles/cmbs.rs", "cmbs"),
     ("src/entity/profiles/cmbs.rs", "tenant"),
     ("src/entity/profiles/mod.rs", "cmbs"),
     ("src/entity/profiles/mod.rs", "regab"),
+    // Embedded profile catalog moved here from profile_cli; engine dispatch
+    // remains generic and is independently checked by strategy_entity_boundary.
+    ("src/entity/profiles/mod.rs", "sec10d"),
+    ("src/entity/profiles/mod.rs", "tenant"),
     ("src/entity/profiles/regab.rs", "reg ab"),
     ("src/entity/profiles/regab.rs", "regab"),
     ("src/entity/profiles/regab.rs", "servicer"),

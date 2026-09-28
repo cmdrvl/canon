@@ -293,7 +293,7 @@ impl FixedDecimal {
         while matches!(bytes.get(index), Some(byte) if byte.is_ascii_digit()) {
             index += 1;
         }
-        if index == whole_start {
+        if index == whole_start && !matches!(bytes.get(index), Some(b'.')) {
             return Err(anti_merge_error(field, "malformed_decimal"));
         }
 

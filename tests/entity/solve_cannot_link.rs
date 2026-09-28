@@ -8,6 +8,91 @@ use canon::entity::{
 };
 
 #[test]
+fn component_constraints_remain_local_across_many_disconnected_islands() {
+    let mut records = (0..128)
+        .map(|index| {
+            let mut hits = vec![support_hit("name", "exact", 9000)];
+            if index < 2 {
+                hits.push(anti_merge_hit(
+                    "constraint",
+                    "distinct",
+                    "local_conflict",
+                    1000,
+                    index == 0,
+                ));
+            }
+            build_edge_evidence_record(
+                format!("island:{index:03}:a"),
+                format!("island:{index:03}:b"),
+                hits,
+            )
+            .unwrap()
+        })
+        .collect::<Vec<_>>();
+    records.push(
+        build_edge_evidence_record(
+            "island:000:a",
+            "island:002:a",
+            vec![anti_merge_hit(
+                "constraint",
+                "distinct",
+                "cross_component",
+                10000,
+                true,
+            )],
+        )
+        .unwrap(),
+    );
+    records.push(
+        build_edge_evidence_record(
+            "negative-only:a",
+            "negative-only:b",
+            vec![anti_merge_hit(
+                "constraint",
+                "distinct",
+                "no_positive_component",
+                10000,
+                true,
+            )],
+        )
+        .unwrap(),
+    );
+    let evaluate = |records| {
+        evaluate_signed_graph_components(
+            &build_signed_evidence_graph(SignedEvidenceGraphInput {
+                edge_records: records,
+                exact_bucket_assertions: vec![],
+                incumbent_ids: vec![],
+            })
+            .unwrap(),
+        )
+    };
+    let report = evaluate(records.clone());
+    assert_eq!(report.components.len(), 128);
+    assert_eq!(report.summary["contradiction_count"], 1);
+    assert_eq!(report.summary["review_component_count"], 1);
+    assert_eq!(report.summary["auto_merge_candidate_count"], 126);
+    for component in &report.components {
+        assert_eq!(component.support_edge_count, 1);
+        assert_eq!(component.raw_support_score_units, score(9000));
+        assert!(
+            component
+                .hard_cannot_link_violations
+                .iter()
+                .all(|violation| violation.evidence_reason_codes == ["local_conflict"])
+        );
+        if component.component_id == "component:island:001:a" {
+            assert_eq!(component.adjusted_support_score_units, score(8000));
+        }
+    }
+    records.reverse();
+    assert_eq!(
+        serde_json::to_vec(&evaluate(records)).unwrap(),
+        serde_json::to_vec(&report).unwrap()
+    );
+}
+
+#[test]
 fn entity_solve_cannot_link_high_support_never_auto_merges() {
     let support_ab = build_edge_evidence_record(
         "surf:a",

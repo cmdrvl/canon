@@ -64,6 +64,17 @@
     "evidence": {
       "$ref": "#/$defs/evidence_lanes"
     },
+    "blocking": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operators"],
+      "properties": {
+        "operators": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/blocking_operator" }
+        }
+      }
+    },
     "patch_namespaces": {
       "$ref": "#/$defs/patch_namespaces"
     },
@@ -136,6 +147,77 @@
     }
   },
   "$defs": {
+    "blocking_operator": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["op", "view"],
+          "properties": {
+            "op": {"enum": ["exact_view", "exact_identity"]},
+            "view": {"type": "string", "minLength": 1}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["op", "field"],
+          "properties": {
+            "op": {"const": "exact_anchor"},
+            "field": {"type": "string", "minLength": 1}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["op", "views"],
+          "properties": {
+            "op": {"const": "composite_key"},
+            "views": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["op", "view", "k", "candidate_cap"],
+          "properties": {
+            "op": {"const": "ngram_topk"},
+            "view": {"type": "string", "minLength": 1},
+            "k": {"type": "integer", "minimum": 1},
+            "candidate_cap": {"type": "integer", "minimum": 1},
+            "score_floor_units": {"type": ["integer", "null"], "minimum": 0, "maximum": 4294967295},
+            "max_ngram_df": {"type": ["integer", "null"], "minimum": 1},
+            "partition_by": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["op", "view", "k", "candidate_cap", "max_posting_size"],
+          "properties": {
+            "op": {"const": "rare_token_overlap"},
+            "view": {"type": "string", "minLength": 1},
+            "k": {"type": "integer", "minimum": 1},
+            "candidate_cap": {"type": "integer", "minimum": 1},
+            "max_posting_size": {"type": "integer", "minimum": 1},
+            "partition_by": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+            "token_views": {"type": "array", "items": {"type": "string", "minLength": 1}},
+            "include_primary_surface": {"type": "boolean"}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["op"],
+          "properties": {
+            "op": {"const": "alias_patch_match"},
+            "pairs": {"type": "array", "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["patch_id", "left_surface_id", "right_surface_id"],
+              "properties": {
+                "patch_id": {"type": "string", "minLength": 1},
+                "left_surface_id": {"type": "string", "minLength": 1},
+                "right_surface_id": {"type": "string", "minLength": 1}
+              }
+            }}
+          }
+        }
+      ]
+    },
     "capability": {
       "type": "string",
       "enum": [

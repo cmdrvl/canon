@@ -24,9 +24,9 @@ use crate::{
             BlockCandidateRecord, EntityBlockStageOutput, EntityBlockStageRequest,
             EntityNativeBlockBudgetRefusalProof, EntityNativeBlockScaleReport,
             ExactBucketBlockRequest, ExactBucketSurface, RareTokenOverlapBlockOperator,
-            default_block_candidate_operators, emit_exact_bucket_hyperedges,
-            generate_block_candidates, load_block_runtime_config,
-            native_block_budget_refusal_proof, native_block_scale_report,
+            emit_exact_bucket_hyperedges, generate_block_candidates, generate_profile_candidates,
+            load_block_runtime_config, native_block_budget_refusal_proof,
+            native_block_scale_report,
         },
         block_artifact::{
             BlockCandidateArtifact, BlockCandidateArtifactRequest, ExactBucketAssertion,
@@ -2128,15 +2128,35 @@ fn build_and_write_block(
 ) -> Result<EntityBlockRun, Refusal> {
     let strategy = stage_strategy(base_strategy, "block");
     let block_config = load_block_runtime_config(request.strategy)?;
-    let mut result = generate_block_candidates(BlockCandidateGenerationRequest {
-        profile_id: index.artifact.metadata.profile.id.clone(),
-        posting_index: &index.postings,
-        ngram_index: Some(&index.ngrams),
-        budget_config: block_config.candidate_budget,
-        operators: default_block_candidate_operators(core_view_name(
-            &index.artifact.metadata.profile.id,
-        )),
-    })?;
+    let loaded_profile = load_prepare_profile_with_hash(request.profile)?;
+    validate_edge_profile_binding(&loaded_profile, &index.artifact.metadata.profile)?;
+    let blocking_profile = block_config.tuned_profile(&loaded_profile.document)?;
+    if !mirror_stable_paths && block_config.preflight {
+        // Sampling is advisory: capped retrieval and partition-local DF do not
+        // justify a universal 1/p² extrapolation or a projected refusal.
+        crate::entity::block_preflight::run_block_preflight(
+            crate::entity::block_preflight::EntityBlockPreflightRequest {
+                rows: request.rows,
+                profile: request.profile,
+                strategy: request.strategy,
+                sample_pct: 1,
+                work_dir: Some(request.work_dir),
+            },
+        )?;
+    }
+    let mut result = generate_profile_candidates(
+        &blocking_profile,
+        &index.postings,
+        &index.ngrams,
+        surfaces,
+        block_config.candidate_budget.clone(),
+    )?;
+    result.diagnostics.configuration = Some(crate::entity::block::BlockConfiguration {
+        blocking: blocking_profile.blocking.clone(),
+        placeholder_values: crate::entity::block::declared::effective_placeholder_values(
+            &blocking_profile,
+        ),
+    });
     for candidate in &mut result.candidates {
         candidate.version = CANON_ENTITY_BLOCK_VERSION_V1.to_string();
     }
@@ -2196,41 +2216,68 @@ fn build_and_write_block(
             .operator_yield
             .sort_by(|left, right| left.operator_id.cmp(&right.operator_id));
     }
-    let exact_bucket_result = emit_exact_bucket_hyperedges(ExactBucketBlockRequest {
-        profile: exact_bucket_profile(&index.artifact.metadata),
-        upstream: ExactBucketUpstream {
-            prepare_hash: index
-                .artifact
-                .metadata
-                .upstream_artifacts
-                .iter()
-                .find(|reference| reference.version == CANON_ENTITY_PREPARE_VERSION_V1)
-                .map(|reference| reference.content_hash.clone())
-                .unwrap_or_default(),
-            index_hash: index.artifact.artifact_content_hash.clone(),
-            strategy_hash: strategy.content_hash.clone(),
-            registry_snapshot_hash: index
-                .artifact
-                .metadata
-                .registry_snapshot
-                .lookup_snapshot_hash
-                .clone(),
-        },
-        operator_id: format!(
-            "exact_view:{}",
-            core_view_name(&index.artifact.metadata.profile.id)
-        ),
-        identity_view: core_view_name(&index.artifact.metadata.profile.id).to_string(),
-        placeholder_values: placeholder_bucket_values(),
-        surfaces: exact_bucket_surfaces(&index.artifact.metadata.profile.id, surfaces),
-    })
-    .map_err(|error| {
-        EntityRefusalKind::ArtifactContract.to_refusal(
+    let identity_views = match &loaded_profile.document.blocking {
+        Some(blocking) => blocking
+            .operators
+            .iter()
+            .filter_map(|operator| match operator {
+                crate::entity::block::declared::Operator::ExactIdentity { view } => {
+                    Some(view.as_str())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        None => vec![loaded_profile.document.canonical_view()],
+    };
+    let mut exact_bucket_assertions = Vec::new();
+    for view in identity_views {
+        exact_bucket_assertions.extend(
+            emit_exact_bucket_hyperedges(ExactBucketBlockRequest {
+                profile: exact_bucket_profile(&index.artifact.metadata),
+                upstream: ExactBucketUpstream {
+                    prepare_hash: index
+                        .artifact
+                        .metadata
+                        .upstream_artifacts
+                        .iter()
+                        .find(|reference| reference.version == CANON_ENTITY_PREPARE_VERSION_V1)
+                        .map(|reference| reference.content_hash.clone())
+                        .unwrap_or_default(),
+                    index_hash: index.artifact.artifact_content_hash.clone(),
+                    strategy_hash: strategy.content_hash.clone(),
+                    registry_snapshot_hash: index
+                        .artifact
+                        .metadata
+                        .registry_snapshot
+                        .lookup_snapshot_hash
+                        .clone(),
+                },
+                operator_id: format!("exact_view:{view}"),
+                identity_view: view.to_string(),
+                placeholder_values: loaded_profile
+                    .document
+                    .prepare
+                    .as_ref()
+                    .filter(|mapping| !mapping.placeholder_values.is_empty())
+                    .map(|mapping| mapping.placeholder_values.iter().cloned().collect())
+                    .unwrap_or_else(placeholder_bucket_values),
+                surfaces: exact_bucket_surfaces(view, surfaces),
+            })
+            .map_err(|error| {
+                EntityRefusalKind::ArtifactContract.to_refusal(
             "Failed to emit exact bucket assertions",
             json!({ "stage": "block", "error": format!("{error:?}"), "writes_performed": false }),
             Some(next_run_command(request)),
         )
-    })?;
+            })?
+            .assertions,
+        );
+    }
+    exact_bucket_assertions.sort_by(|left, right| {
+        left.bucket_id
+            .cmp(&right.bucket_id)
+            .then_with(|| left.operator_id.cmp(&right.operator_id))
+    });
     let artifact = build_block_candidate_artifact_contract(BlockCandidateArtifactRequest {
         index: EntityArtifactHeader {
             version: index.artifact.version.clone(),
@@ -2241,7 +2288,7 @@ fn build_and_write_block(
         candidate_records_path: BLOCK_CANDIDATES_PATH.to_string(),
         candidate_diagnostics_path: BLOCK_DIAGNOSTICS_PATH.to_string(),
         candidate_records: result.candidates.clone(),
-        bucket_assertions: exact_bucket_result.assertions.clone(),
+        bucket_assertions: exact_bucket_assertions.clone(),
         known_surface_ids: surfaces
             .iter()
             .map(|surface| surface.surface_id.clone())
@@ -2282,7 +2329,7 @@ fn build_and_write_block(
         BLOCK_EXACT_BUCKETS_PATH,
         "block",
         CANON_ENTITY_BLOCK_VERSION_V1,
-        &exact_bucket_result.assertions,
+        &exact_bucket_assertions,
     )?);
     publication_files.push(json_publication_file(
         BLOCK_ARTIFACT_PATH,
@@ -2314,7 +2361,7 @@ fn build_and_write_block(
         artifact,
         artifact_value,
         candidates: result.candidates,
-        exact_buckets: exact_bucket_result.assertions,
+        exact_buckets: exact_bucket_assertions,
         record_link_candidate_set: record_link.map(|record_link| record_link.candidate_set),
         publication_context,
         publication_files,
@@ -4676,6 +4723,8 @@ fn load_base_strategy_reference(
             Some(next_run_command(request)),
         )
     })?;
+    let profile = load_prepare_profile_with_hash(request.profile)?;
+    load_block_runtime_config(request.strategy)?.tuned_profile(&profile.document)?;
     let id = yaml_string(&value, "strategy_id")
         .or_else(|| yaml_string(&value, "profile"))
         .unwrap_or_else(|| request.profile.to_string());
@@ -4905,7 +4954,7 @@ fn tokens_for_surface(surface: &PreparedSurfaceRecord) -> Vec<String> {
 }
 
 fn exact_bucket_surfaces(
-    profile_id: &str,
+    view: &str,
     surfaces: &[PreparedSurfaceRecord],
 ) -> Vec<ExactBucketSurface> {
     surfaces
@@ -4913,7 +4962,11 @@ fn exact_bucket_surfaces(
         .map(|surface| {
             ExactBucketSurface::new(
                 surface.surface_id.clone(),
-                core_view_value(profile_id, surface),
+                surface
+                    .normalized_views
+                    .get(view)
+                    .map(|value| value.value.clone())
+                    .unwrap_or_default(),
                 surface.row_count,
                 surface.deal_count,
             )
@@ -4922,35 +4975,15 @@ fn exact_bucket_surfaces(
 }
 
 fn core_view_value(profile_id: &str, surface: &PreparedSurfaceRecord) -> String {
-    surface
-        .normalized_views
-        .get(core_view_name(profile_id))
-        .or_else(|| surface.normalized_views.values().next())
-        .map(|view| view.value.clone())
-        .unwrap_or_else(|| surface.primary_surface.trim().to_string())
-}
-
-fn core_view_name(profile_id: &str) -> &'static str {
-    match profile_id {
-        "cmbs_tenant_label" => "tenant_core",
-        "regab_firm_identity" => "firm_core",
-        _ => "core",
-    }
+    crate::entity::index::core_view_value(profile_id, surface)
 }
 
 fn placeholder_bucket_values() -> BTreeSet<String> {
-    [
-        "0",
-        "unknown",
-        "vacant",
-        "na",
-        "n/a",
-        "none",
-        "placeholder:0",
-    ]
-    .into_iter()
-    .map(ToOwned::to_owned)
-    .collect()
+    crate::entity::block::declared::DEFAULT_PLACEHOLDERS
+        .iter()
+        .copied()
+        .map(ToOwned::to_owned)
+        .collect()
 }
 
 fn exact_bucket_profile(metadata: &EntityArtifactMetadata) -> ExactBucketProfile {

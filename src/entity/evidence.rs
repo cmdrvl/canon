@@ -860,7 +860,7 @@ impl FixedDecimal {
             index += 1;
         }
         let whole_digits = index - whole_start;
-        if whole_digits == 0 {
+        if whole_digits == 0 && !matches!(bytes.get(index), Some(b'.')) {
             return Err(structured_error(field, "malformed_decimal"));
         }
 
