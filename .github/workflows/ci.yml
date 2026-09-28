@@ -80,6 +80,15 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
+        if: runner.os != 'Windows'
+      # Measurement-only fixtures use filenames that Windows cannot check out.
+      - uses: actions/checkout@v4
+        if: runner.os == 'Windows'
+        with:
+          sparse-checkout: |
+            /*
+            !/scripts/geo_measurements/fixtures/
+          sparse-checkout-cone-mode: false
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build release

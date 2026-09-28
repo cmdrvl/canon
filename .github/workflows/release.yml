@@ -53,6 +53,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        if: runner.os != 'Windows'
+
+      # Retained measurement filenames contain colons, which Windows cannot
+      # check out. They are not inputs to the release binary.
+      - uses: actions/checkout@v4
+        if: runner.os == 'Windows'
+        with:
+          sparse-checkout: |
+            /*
+            !/scripts/geo_measurements/fixtures/
+          sparse-checkout-cone-mode: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
