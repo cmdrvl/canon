@@ -1,0 +1,511 @@
+{
+  "suite": "canon geo data-center recovery, diagnostic suite (not a representative accuracy sample)",
+  "pre_registered": "2026-09-28, before any label was sourced",
+  "selection_seed": "canon-geo-data-center-recovery-2026-09-28",
+  "epoch_snapshot_sha256": "3acb45e525d20b38071415e354c139adf898d55838c639c50909f9650f06724c",
+  "sealed_evaluation_reference": {
+    "status": "pending",
+    "location": "outside this repository; only sha256 commitments are recorded here"
+  },
+  "cases": [
+    {
+      "case_id": "DEV-1",
+      "role": "development",
+      "selection": "deliberate (see step1_preregistration.md)",
+      "site": "Microsoft SAT14",
+      "question": "Which parcel(s) in Bexar County, Texas are supported as the site that these observations call 'Microsoft SAT14'? State the supported association, what remains ambiguous, and what evidence would settle it.",
+      "requested_grain": "parcel",
+      "supplied_observations": {
+        "Name": "Microsoft SAT14",
+        "Owner": "Microsoft",
+        "Current power (MW)": "47",
+        "Current total capital cost (2025 USD billions)": "1.7804540000000002",
+        "Current chip types": "H100,B300",
+        "Country": "United States",
+        "Address": "3545 Wiseman Boulevard, San Antonio, TX 78251"
+      },
+      "supplied_observations_withheld_fields": [
+        "Selected Sources",
+        "Calculations sheet",
+        "Project"
+      ],
+      "address_role": "The address string is an operator/aggregator claim under test, not a trusted point.",
+      "spatial_scope_meaning": "Region = Bexar County, TX. No point is supplied as trusted. Retrieval is centered only on anchors the analyst derives from permissible sources, never on the evaluation label.",
+      "parcel_files": "TxGIO 2025 Bexar county parcel file is permissible ONLY if the sealed label is independent of county appraisal records; otherwise it is excluded and this is recorded at sealing.",
+      "as_of": "2026-09-28",
+      "target_relationship": "site association (which candidate parcels/buildings, if any, are supported as the site the observations describe). Complete extent is NOT requested.",
+      "permissible_sources": [
+        "EDGAR_DB.SOURCE Foursquare OS Places (release 2026-08-11), Overture buildings (2026-07), Microsoft GlobalML footprints (2026-07-24), FEMA USA Structures (2023-10-03), each read-only under its query contract",
+        "GDELT news tables in EDGAR_DB.DBT_WRANGLING_NEWS (as landed)",
+        "Local parcel files only where the case says so",
+        "canon geo capabilities/plan/run/inspect"
+      ],
+      "prohibited_as_evidence": [
+        "State, county or municipal air-permit and other regulatory or planning records that name the facility (reserved for the sealed label)",
+        "Epoch AI source links or calculation sheets, the operator's own pages, and any repository document under docs/geo_datacenter_site_test_2026-09-28/",
+        "Anything read from the sealed evaluation artifact"
+      ],
+      "resource_budget": {
+        "warehouse_queries_max": 60,
+        "rows_per_query_max": 5000,
+        "wall_clock_minutes_max": 30,
+        "note": "aggregate in SQL rather than returning capped row prefixes; report gaps instead of claiming completeness"
+      },
+      "outputs_requested": [
+        "supported association (or none) with uncertainty",
+        "what remains ambiguous or unsupported",
+        "evidence trail with receipts",
+        "next observation that would settle it"
+      ]
+    },
+    {
+      "case_id": "H1-P",
+      "role": "known address, region rough",
+      "priority": "primary",
+      "selection": "drawn: H1_known_address_not_placeable, seed canon-geo-data-center-recovery-2026-09-28",
+      "site": "Microsoft Goodyear",
+      "question": "Which building(s) or parcel(s) at or near the stated address are supported as the site that these observations call 'Microsoft Goodyear'? Give the supported association, what remains ambiguous, and what would settle it.",
+      "requested_grain": "campus (buildings or parcels within the supported footprint)",
+      "supplied_observations": {
+        "Name": "Microsoft Goodyear",
+        "Owner": "Microsoft",
+        "Users": "OpenAI, Microsoft",
+        "Current power (MW)": "202",
+        "Current total capital cost (2025 USD billions)": "7.652164000000001",
+        "Current chip types": "H100,B200",
+        "Country": "United States",
+        "Address": "14250 W Broadway Rd, Goodyear, AZ 85338"
+      },
+      "supplied_observations_withheld_fields": [
+        "Selected Sources",
+        "Calculations sheet",
+        "Project"
+      ],
+      "spatial_scope_meaning": "The address string is an operator/aggregator claim under test, not a trusted point. Region = the city named in the address and its surrounding county.",
+      "as_of": "2026-09-28",
+      "target_relationship": "site association (which candidate parcels/buildings, if any, are supported as the site the observations describe). Complete extent is NOT requested.",
+      "permissible_sources": [
+        "EDGAR_DB.SOURCE Foursquare OS Places (release 2026-08-11), Overture buildings (2026-07), Microsoft GlobalML footprints (2026-07-24), FEMA USA Structures (2023-10-03), each read-only under its query contract",
+        "GDELT news tables in EDGAR_DB.DBT_WRANGLING_NEWS (as landed)",
+        "Local parcel files only where the case says so",
+        "canon geo capabilities/plan/run/inspect"
+      ],
+      "prohibited_as_evidence": [
+        "State, county or municipal air-permit and other regulatory or planning records that name the facility (reserved for the sealed label)",
+        "Epoch AI source links or calculation sheets, the operator's own pages, and any repository document under docs/geo_datacenter_site_test_2026-09-28/",
+        "Anything read from the sealed evaluation artifact"
+      ],
+      "resource_budget": {
+        "warehouse_queries_max": 60,
+        "rows_per_query_max": 5000,
+        "wall_clock_minutes_max": 30,
+        "note": "aggregate in SQL rather than returning capped row prefixes; report gaps instead of claiming completeness"
+      },
+      "outputs_requested": [
+        "supported association (or none) with uncertainty",
+        "what remains ambiguous or unsupported",
+        "evidence trail with receipts",
+        "next observation that would settle it"
+      ]
+    },
+    {
+      "case_id": "H1-R1",
+      "role": "known address, region rough",
+      "priority": "reserve_1",
+      "selection": "drawn: H1_known_address_not_placeable, seed canon-geo-data-center-recovery-2026-09-28",
+      "site": "CoreWeave Denton TX",
+      "question": "Which building(s) or parcel(s) at or near the stated address are supported as the site that these observations call 'CoreWeave Denton TX'? Give the supported association, what remains ambiguous, and what would settle it.",
+      "requested_grain": "campus (buildings or parcels within the supported footprint)",
+      "supplied_observations": {
+        "Name": "CoreWeave Denton TX",
+        "Owner": "CoreWeave",
+        "Users": "OpenAI",
+        "Current power (MW)": "262",
+        "Current total capital cost (2025 USD billions)": "9.925084",
+        "Current chip types": "B200",
+        "Country": "United States",
+        "Address": "8171 Jim Christal Rd, Denton, TX 76207"
+      },
+      "supplied_observations_withheld_fields": [
+        "Selected Sources",
+        "Calculations sheet",
+        "Project"
+      ],
+      "spatial_scope_meaning": "The address string is an operator/aggregator claim under test, not a trusted point. Region = the city named in the address and its surrounding county.",
+      "as_of": "2026-09-28",
+      "target_relationship": "site association (which candidate parcels/buildings, if any, are supported as the site the observations describe). Complete extent is NOT requested.",
+      "permissible_sources": [
+        "EDGAR_DB.SOURCE Foursquare OS Places (release 2026-08-11), Overture buildings (2026-07), Microsoft GlobalML footprints (2026-07-24), FEMA USA Structures (2023-10-03), each read-only under its query contract",
+        "GDELT news tables in EDGAR_DB.DBT_WRANGLING_NEWS (as landed)",
+        "Local parcel files only where the case says so",
+        "canon geo capabilities/plan/run/inspect"
+      ],
+      "prohibited_as_evidence": [
+        "State, county or municipal air-permit and other regulatory or planning records that name the facility (reserved for the sealed label)",
+        "Epoch AI source links or calculation sheets, the operator's own pages, and any repository document under docs/geo_datacenter_site_test_2026-09-28/",
+        "Anything read from the sealed evaluation artifact"
+      ],
+      "resource_budget": {
+        "warehouse_queries_max": 60,
+        "rows_per_query_max": 5000,
+        "wall_clock_minutes_max": 30,
+        "note": "aggregate in SQL rather than returning capped row prefixes; report gaps instead of claiming completeness"
+      },
+      "outputs_requested": [
+        "supported association (or none) with uncertainty",
+        "what remains ambiguous or unsupported",
+        "evidence trail with receipts",
+        "next observation that would settle it"
+      ]
+    },
+    {
+      "case_id": "H1-R2",
+      "role": "known address, region rough",
+      "priority": "reserve_2",
+      "selection": "drawn: H1_known_address_not_placeable, seed canon-geo-data-center-recovery-2026-09-28",
+      "site": "Meta Temple",
+      "question": "Which building(s) or parcel(s) at or near the stated address are supported as the site that these observations call 'Meta Temple'? Give the supported association, what remains ambiguous, and what would settle it.",
+      "requested_grain": "campus (buildings or parcels within the supported footprint)",
+      "supplied_observations": {
+        "Name": "Meta Temple",
+        "Owner": "Meta",
+        "Users": "Meta",
+        "Current power (MW)": "152",
+        "Current total capital cost (2025 USD billions)": "5.758064",
+        "Current chip types": "B300",
+        "Construction companies": "JE Dunn",
+        "Country": "United States",
+        "Address": "2310 Eberhardt Rd, Temple, TX 76504"
+      },
+      "supplied_observations_withheld_fields": [
+        "Selected Sources",
+        "Calculations sheet",
+        "Project"
+      ],
+      "spatial_scope_meaning": "The address string is an operator/aggregator claim under test, not a trusted point. Region = the city named in the address and its surrounding county.",
+      "as_of": "2026-09-28",
+      "target_relationship": "site association (which candidate parcels/buildings, if any, are supported as the site the observations describe). Complete extent is NOT requested.",
+      "permissible_sources": [
+        "EDGAR_DB.SOURCE Foursquare OS Places (release 2026-08-11), Overture buildings (2026-07), Microsoft GlobalML footprints (2026-07-24), FEMA USA Structures (2023-10-03), each read-only under its query contract",
+        "GDELT news tables in EDGAR_DB.DBT_WRANGLING_NEWS (as landed)",
+        "Local parcel files only where the case says so",
+        "canon geo capabilities/plan/run/inspect"
+      ],
+      "prohibited_as_evidence": [
+        "State, county or municipal air-permit and other regulatory or planning records that name the facility (reserved for the sealed label)",
+        "Epoch AI source links or calculation sheets, the operator's own pages, and any repository document under docs/geo_datacenter_site_test_2026-09-28/",
+        "Anything read from the sealed evaluation artifact"
+      ],
+      "resource_budget": {
+        "warehouse_queries_max": 60,
+        "rows_per_query_max": 5000,
+        "wall_clock_minutes_max": 30,
+        "note": "aggregate in SQL rather than returning capped row prefixes; report gaps instead of claiming completeness"
+      },
+      "outputs_requested": [
+        "supported association (or none) with uncertainty",
+        "what remains ambiguous or unsupported",
+        "evidence trail with receipts",
+        "next observation that would settle it"
+      ]
+    },
+    {
+      "case_id": "H2-P",
+      "role": "region and attributes, no supplied point",
+      "priority": "primary",
+      "selection": "drawn: H2_no_address_region_and_attributes, seed canon-geo-data-center-recovery-2026-09-28",
+      "site": "Google Storey County",
+      "question": "Where is the facility these observations call 'Google Storey County'? Identify the supported location and buildings, if any, from region and attribute evidence alone.",
+      "requested_grain": "campus (buildings within the supported footprint; multi-building extent reported separately, not required)",
+      "supplied_observations": {
+        "Name": "Google Storey County",
+        "Owner": "Google",
+        "Users": "Google DeepMind",
+        "Current power (MW)": "161",
+        "Current total capital cost (2025 USD billions)": "6.0990020000000005",
+        "Current chip types": "TPU v5e,TPU v4,TPU v6e,TPU v5p",
+        "Country": "United States"
+      },
+      "supplied_observations_withheld_fields": [
+        "Selected Sources",
+        "Calculations sheet",
+        "Project"
+      ],
+      "spatial_scope_meaning": "No address or coordinates exist in the supplied observations. Region = what the site name and owner imply; the analyst must state the region assumed and why.",
+      "as_of": "2026-09-28",
+      "target_relationship": "site association (which candidate parcels/buildings, if any, are supported as the site the observations describe). Complete extent is NOT requested.",
+      "permissible_sources": [
+        "EDGAR_DB.SOURCE Foursquare OS Places (release 2026-08-11), Overture buildings (2026-07), Microsoft GlobalML footprints (2026-07-24), FEMA USA Structures (2023-10-03), each read-only under its query contract",
+        "GDELT news tables in EDGAR_DB.DBT_WRANGLING_NEWS (as landed)",
+        "Local parcel files only where the case says so",
+        "canon geo capabilities/plan/run/inspect"
+      ],
+      "prohibited_as_evidence": [
+        "State, county or municipal air-permit and other regulatory or planning records that name the facility (reserved for the sealed label)",
+        "Epoch AI source links or calculation sheets, the operator's own pages, and any repository document under docs/geo_datacenter_site_test_2026-09-28/",
+        "Anything read from the sealed evaluation artifact"
+      ],
+      "resource_budget": {
+        "warehouse_queries_max": 60,
+        "rows_per_query_max": 5000,
+        "wall_clock_minutes_max": 30,
+        "note": "aggregate in SQL rather than returning capped row prefixes; report gaps instead of claiming completeness"
+      },
+      "outputs_requested": [
+        "supported association (or none) with uncertainty",
+        "what remains ambiguous or unsupported",
+        "evidence trail with receipts",
+        "next observation that would settle it"
+      ]
+    },
+    {
+      "case_id": "H2-R1",
+      "role": "region and attributes, no supplied point",
+      "priority": "reserve_1",
+      "selection": "drawn: H2_no_address_region_and_attributes, seed canon-geo-data-center-recovery-2026-09-28",
+      "site": "Google Mesa",
+      "question": "Where is the facility these observations call 'Google Mesa'? Identify the supported location and buildings, if any, from region and attribute evidence alone.",
+      "requested_grain": "campus (buildings within the supported footprint; multi-building extent reported separately, not required)",
+      "supplied_observations": {
+        "Name": "Google Mesa",
+        "Owner": "Google",
+        "Current power (MW)": "183",
+        "Current total capital cost (2025 USD billions)": "6.932405999999999",
+        "Current chip types": "TPU v6e,TPU v5p",
+        "Country": "United States"
+      },
+      "supplied_observations_withheld_fields": [
+        "Selected Sources",
+        "Calculations sheet",
+        "Project"
+      ],
+      "spatial_scope_meaning": "No address or coordinates exist in the supplied observations. Region = what the site name and owner imply; the analyst must state the region assumed and why.",
+      "as_of": "2026-09-28",
+      "target_relationship": "site association (which candidate parcels/buildings, if any, are supported as the site the observations describe). Complete extent is NOT requested.",
+      "permissible_sources": [
+        "EDGAR_DB.SOURCE Foursquare OS Places (release 2026-08-11), Overture buildings (2026-07), Microsoft GlobalML footprints (2026-07-24), FEMA USA Structures (2023-10-03), each read-only under its query contract",
+        "GDELT news tables in EDGAR_DB.DBT_WRANGLING_NEWS (as landed)",
+        "Local parcel files only where the case says so",
+        "canon geo capabilities/plan/run/inspect"
+      ],
+      "prohibited_as_evidence": [
+        "State, county or municipal air-permit and other regulatory or planning records that name the facility (reserved for the sealed label)",
+        "Epoch AI source links or calculation sheets, the operator's own pages, and any repository document under docs/geo_datacenter_site_test_2026-09-28/",
+        "Anything read from the sealed evaluation artifact"
+      ],
+      "resource_budget": {
+        "warehouse_queries_max": 60,
+        "rows_per_query_max": 5000,
+        "wall_clock_minutes_max": 30,
+        "note": "aggregate in SQL rather than returning capped row prefixes; report gaps instead of claiming completeness"
+      },
+      "outputs_requested": [
+        "supported association (or none) with uncertainty",
+        "what remains ambiguous or unsupported",
+        "evidence trail with receipts",
+        "next observation that would settle it"
+      ]
+    },
+    {
+      "case_id": "H2-R2",
+      "role": "region and attributes, no supplied point",
+      "priority": "reserve_2",
+      "selection": "drawn: H2_no_address_region_and_attributes, seed canon-geo-data-center-recovery-2026-09-28",
+      "site": "Google Kansas City East",
+      "question": "Where is the facility these observations call 'Google Kansas City East'? Identify the supported location and buildings, if any, from region and attribute evidence alone.",
+      "requested_grain": "campus (buildings within the supported footprint; multi-building extent reported separately, not required)",
+      "supplied_observations": {
+        "Name": "Google Kansas City East",
+        "Owner": "Google",
+        "Current power (MW)": "105",
+        "Current total capital cost (2025 USD billions)": "3.9776099999999994",
+        "Country": "United States"
+      },
+      "supplied_observations_withheld_fields": [
+        "Selected Sources",
+        "Calculations sheet",
+        "Project"
+      ],
+      "spatial_scope_meaning": "No address or coordinates exist in the supplied observations. Region = what the site name and owner imply; the analyst must state the region assumed and why.",
+      "as_of": "2026-09-28",
+      "target_relationship": "site association (which candidate parcels/buildings, if any, are supported as the site the observations describe). Complete extent is NOT requested.",
+      "permissible_sources": [
+        "EDGAR_DB.SOURCE Foursquare OS Places (release 2026-08-11), Overture buildings (2026-07), Microsoft GlobalML footprints (2026-07-24), FEMA USA Structures (2023-10-03), each read-only under its query contract",
+        "GDELT news tables in EDGAR_DB.DBT_WRANGLING_NEWS (as landed)",
+        "Local parcel files only where the case says so",
+        "canon geo capabilities/plan/run/inspect"
+      ],
+      "prohibited_as_evidence": [
+        "State, county or municipal air-permit and other regulatory or planning records that name the facility (reserved for the sealed label)",
+        "Epoch AI source links or calculation sheets, the operator's own pages, and any repository document under docs/geo_datacenter_site_test_2026-09-28/",
+        "Anything read from the sealed evaluation artifact"
+      ],
+      "resource_budget": {
+        "warehouse_queries_max": 60,
+        "rows_per_query_max": 5000,
+        "wall_clock_minutes_max": 30,
+        "note": "aggregate in SQL rather than returning capped row prefixes; report gaps instead of claiming completeness"
+      },
+      "outputs_requested": [
+        "supported association (or none) with uncertainty",
+        "what remains ambiguous or unsupported",
+        "evidence trail with receipts",
+        "next observation that would settle it"
+      ]
+    },
+    {
+      "case_id": "H3-P",
+      "role": "constructed ambiguity",
+      "priority": "primary",
+      "selection": "drawn: H3_same_owner_same_state_alternatives, seed canon-geo-data-center-recovery-2026-09-28",
+      "site": "(withheld from analyst; see sealed evaluation reference)",
+      "question": "Which single site, if any, do these observations identify? If they do not identify one, say which alternatives remain and what evidence would separate them.",
+      "requested_grain": "site (a named facility), not buildings",
+      "supplied_observations": {
+        "Owner": "Meta",
+        "Current power (MW)": "146",
+        "Current total capital cost (2025 USD billions)": "5.530772",
+        "Current chip types": "B300",
+        "Energy companies": "Tennessee Valley Authority,NextEra Energy Resources,First Solar",
+        "Country": "United States",
+        "Region": "Alabama"
+      },
+      "supplied_observations_withheld_fields": [
+        "Selected Sources",
+        "Calculations sheet",
+        "Project",
+        "Name",
+        "Address",
+        "Users"
+      ],
+      "spatial_scope_meaning": "Region = the stated state. The supplied observations deliberately omit the site name, city and address so that at least one other same-owner site in the state remains plausible; this is a constructed-ambiguity case.",
+      "as_of": "2026-09-28",
+      "target_relationship": "site association (which candidate parcels/buildings, if any, are supported as the site the observations describe). Complete extent is NOT requested.",
+      "permissible_sources": [
+        "EDGAR_DB.SOURCE Foursquare OS Places (release 2026-08-11), Overture buildings (2026-07), Microsoft GlobalML footprints (2026-07-24), FEMA USA Structures (2023-10-03), each read-only under its query contract",
+        "GDELT news tables in EDGAR_DB.DBT_WRANGLING_NEWS (as landed)",
+        "Local parcel files only where the case says so",
+        "canon geo capabilities/plan/run/inspect"
+      ],
+      "prohibited_as_evidence": [
+        "State, county or municipal air-permit and other regulatory or planning records that name the facility (reserved for the sealed label)",
+        "Epoch AI source links or calculation sheets, the operator's own pages, and any repository document under docs/geo_datacenter_site_test_2026-09-28/",
+        "Anything read from the sealed evaluation artifact"
+      ],
+      "resource_budget": {
+        "warehouse_queries_max": 60,
+        "rows_per_query_max": 5000,
+        "wall_clock_minutes_max": 30,
+        "note": "aggregate in SQL rather than returning capped row prefixes; report gaps instead of claiming completeness"
+      },
+      "outputs_requested": [
+        "supported association (or none) with uncertainty",
+        "what remains ambiguous or unsupported",
+        "evidence trail with receipts",
+        "next observation that would settle it"
+      ]
+    },
+    {
+      "case_id": "H3-R1",
+      "role": "constructed ambiguity",
+      "priority": "reserve_1",
+      "selection": "drawn: H3_same_owner_same_state_alternatives, seed canon-geo-data-center-recovery-2026-09-28",
+      "site": "(withheld from analyst; see sealed evaluation reference)",
+      "question": "Which single site, if any, do these observations identify? If they do not identify one, say which alternatives remain and what evidence would separate them.",
+      "requested_grain": "site (a named facility), not buildings",
+      "supplied_observations": {
+        "Owner": "Google",
+        "Current power (MW)": "77",
+        "Current total capital cost (2025 USD billions)": "2.9169140000000002",
+        "Current chip types": "TPU v6e,TPU v7",
+        "Country": "United States",
+        "Region": "Virginia"
+      },
+      "supplied_observations_withheld_fields": [
+        "Selected Sources",
+        "Calculations sheet",
+        "Project",
+        "Name",
+        "Address",
+        "Users"
+      ],
+      "spatial_scope_meaning": "Region = the stated state. The supplied observations deliberately omit the site name, city and address so that at least one other same-owner site in the state remains plausible; this is a constructed-ambiguity case.",
+      "as_of": "2026-09-28",
+      "target_relationship": "site association (which candidate parcels/buildings, if any, are supported as the site the observations describe). Complete extent is NOT requested.",
+      "permissible_sources": [
+        "EDGAR_DB.SOURCE Foursquare OS Places (release 2026-08-11), Overture buildings (2026-07), Microsoft GlobalML footprints (2026-07-24), FEMA USA Structures (2023-10-03), each read-only under its query contract",
+        "GDELT news tables in EDGAR_DB.DBT_WRANGLING_NEWS (as landed)",
+        "Local parcel files only where the case says so",
+        "canon geo capabilities/plan/run/inspect"
+      ],
+      "prohibited_as_evidence": [
+        "State, county or municipal air-permit and other regulatory or planning records that name the facility (reserved for the sealed label)",
+        "Epoch AI source links or calculation sheets, the operator's own pages, and any repository document under docs/geo_datacenter_site_test_2026-09-28/",
+        "Anything read from the sealed evaluation artifact"
+      ],
+      "resource_budget": {
+        "warehouse_queries_max": 60,
+        "rows_per_query_max": 5000,
+        "wall_clock_minutes_max": 30,
+        "note": "aggregate in SQL rather than returning capped row prefixes; report gaps instead of claiming completeness"
+      },
+      "outputs_requested": [
+        "supported association (or none) with uncertainty",
+        "what remains ambiguous or unsupported",
+        "evidence trail with receipts",
+        "next observation that would settle it"
+      ]
+    },
+    {
+      "case_id": "H3-R2",
+      "role": "constructed ambiguity",
+      "priority": "reserve_2",
+      "selection": "drawn: H3_same_owner_same_state_alternatives, seed canon-geo-data-center-recovery-2026-09-28",
+      "site": "(withheld from analyst; see sealed evaluation reference)",
+      "question": "Which single site, if any, do these observations identify? If they do not identify one, say which alternatives remain and what evidence would separate them.",
+      "requested_grain": "site (a named facility), not buildings",
+      "supplied_observations": {
+        "Owner": "Google",
+        "Current power (MW)": "238",
+        "Current total capital cost (2025 USD billions)": "9.015915999999999",
+        "Current chip types": "TPU v5e,TPU v5p,TPU v6e,TPU v7",
+        "Country": "United States",
+        "Region": "Virginia"
+      },
+      "supplied_observations_withheld_fields": [
+        "Selected Sources",
+        "Calculations sheet",
+        "Project",
+        "Name",
+        "Address",
+        "Users"
+      ],
+      "spatial_scope_meaning": "Region = the stated state. The supplied observations deliberately omit the site name, city and address so that at least one other same-owner site in the state remains plausible; this is a constructed-ambiguity case.",
+      "as_of": "2026-09-28",
+      "target_relationship": "site association (which candidate parcels/buildings, if any, are supported as the site the observations describe). Complete extent is NOT requested.",
+      "permissible_sources": [
+        "EDGAR_DB.SOURCE Foursquare OS Places (release 2026-08-11), Overture buildings (2026-07), Microsoft GlobalML footprints (2026-07-24), FEMA USA Structures (2023-10-03), each read-only under its query contract",
+        "GDELT news tables in EDGAR_DB.DBT_WRANGLING_NEWS (as landed)",
+        "Local parcel files only where the case says so",
+        "canon geo capabilities/plan/run/inspect"
+      ],
+      "prohibited_as_evidence": [
+        "State, county or municipal air-permit and other regulatory or planning records that name the facility (reserved for the sealed label)",
+        "Epoch AI source links or calculation sheets, the operator's own pages, and any repository document under docs/geo_datacenter_site_test_2026-09-28/",
+        "Anything read from the sealed evaluation artifact"
+      ],
+      "resource_budget": {
+        "warehouse_queries_max": 60,
+        "rows_per_query_max": 5000,
+        "wall_clock_minutes_max": 30,
+        "note": "aggregate in SQL rather than returning capped row prefixes; report gaps instead of claiming completeness"
+      },
+      "outputs_requested": [
+        "supported association (or none) with uncertainty",
+        "what remains ambiguous or unsupported",
+        "evidence trail with receipts",
+        "next observation that would settle it"
+      ]
+    }
+  ]
+}
