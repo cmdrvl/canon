@@ -1,0 +1,196 @@
+{
+  "snapshot_manifest_sha256": "56eda4e61a5682de1f3a681c4446b5c51954909d05cc592da638468a2bdf8457",
+  "pin": [
+    36.23958611703559,
+    -95.33284068111125
+  ],
+  "industrial_neighbors_found": [
+    "A.P. Green Industries",
+    "Harbison Walker International",
+    "Orchid Paper Products",
+    "Praxair Welding Gas and Supply Store",
+    "Red Devil"
+  ],
+  "variants": [
+    {
+      "min_m2": 10000,
+      "universe": 10,
+      "matches_historical_universe": true,
+      "sets": {
+        "partition": 5,
+        "module": 3,
+        "crosslayer": 9
+      },
+      "union_of_asserted_members": 10,
+      "full_universe_is_optimal_by_construction": true,
+      "variant_dir": "m2_10000",
+      "steps": [
+        {
+          "step": "rows",
+          "exit": 0,
+          "stderr": ""
+        },
+        {
+          "step": "materialize",
+          "exit": 0,
+          "stderr": ""
+        },
+        {
+          "step": "compile",
+          "exit": 0,
+          "stderr": ""
+        },
+        {
+          "step": "solve",
+          "exit": 0,
+          "stderr": ""
+        }
+      ],
+      "solve": {
+        "status": "ambiguous",
+        "summary": {
+          "parcel_candidates": 0,
+          "building_candidates": 10,
+          "candidate_assignments": 1024,
+          "candidate_assignments_saturated": false,
+          "structurally_feasible_assignments": 1023,
+          "structurally_feasible_assignments_complete": true,
+          "structurally_feasible_assignments_saturated": false,
+          "hard_constraint_evaluations": 0,
+          "hard_constraint_evaluations_complete": true,
+          "hard_constraint_evaluations_saturated": false,
+          "residual_model_count": 1023,
+          "model_count_scope": "entity_selection",
+          "residual_model_count_complete": true,
+          "residual_model_count_saturated": false,
+          "summary_counts_saturated": false,
+          "component_count": 10,
+          "residual_models_materialized": true
+        },
+        "solve_sha256": "6978a1f66f2a296f924277f18009fed22c4614425fb3a091fb8f474eb3c4c960",
+        "rank1_size": 10,
+        "models_at_rank1_cost": 1
+      }
+    },
+    {
+      "min_m2": 1000,
+      "universe": 27,
+      "matches_historical_universe": null,
+      "sets": {
+        "partition": 17,
+        "module": 3,
+        "crosslayer": 23
+      },
+      "union_of_asserted_members": 26,
+      "full_universe_is_optimal_by_construction": true,
+      "variant_dir": "m2_1000",
+      "steps": [
+        {
+          "step": "rows",
+          "exit": 0,
+          "stderr": ""
+        },
+        {
+          "step": "materialize",
+          "exit": 0,
+          "stderr": ""
+        },
+        {
+          "step": "compile",
+          "exit": 0,
+          "stderr": ""
+        },
+        {
+          "step": "solve",
+          "exit": 0,
+          "stderr": ""
+        }
+      ],
+      "solve": {
+        "status": "ambiguous",
+        "summary": {
+          "parcel_candidates": 0,
+          "building_candidates": 27,
+          "candidate_assignments": 134217728,
+          "candidate_assignments_saturated": false,
+          "structurally_feasible_assignments": 134217727,
+          "structurally_feasible_assignments_complete": true,
+          "structurally_feasible_assignments_saturated": false,
+          "hard_constraint_evaluations": 0,
+          "hard_constraint_evaluations_complete": true,
+          "hard_constraint_evaluations_saturated": false,
+          "residual_model_count": 134217727,
+          "model_count_scope": "entity_selection",
+          "residual_model_count_complete": true,
+          "residual_model_count_saturated": false,
+          "summary_counts_saturated": false,
+          "component_count": 27,
+          "residual_models_materialized": false
+        },
+        "solve_sha256": "d9fc704ae2f2b3c3a46b7a7d91299423ff27666e1c4ba1c33cc13d6e6c430b02",
+        "rank1_size": null,
+        "models_at_rank1_cost": null
+      }
+    },
+    {
+      "min_m2": 0,
+      "universe": 110,
+      "matches_historical_universe": null,
+      "sets": {
+        "partition": 47,
+        "module": 3,
+        "crosslayer": 88
+      },
+      "union_of_asserted_members": 98,
+      "full_universe_is_optimal_by_construction": true,
+      "variant_dir": "m2_0",
+      "steps": [
+        {
+          "step": "rows",
+          "exit": 0,
+          "stderr": ""
+        },
+        {
+          "step": "materialize",
+          "exit": 0,
+          "stderr": ""
+        },
+        {
+          "step": "compile",
+          "exit": 0,
+          "stderr": ""
+        },
+        {
+          "step": "solve",
+          "exit": 0,
+          "stderr": ""
+        }
+      ],
+      "solve": {
+        "status": "ambiguous",
+        "summary": {
+          "parcel_candidates": 0,
+          "building_candidates": 110,
+          "candidate_assignments": 18446744073709551615,
+          "candidate_assignments_saturated": true,
+          "structurally_feasible_assignments": 18446744073709551615,
+          "structurally_feasible_assignments_complete": true,
+          "structurally_feasible_assignments_saturated": true,
+          "hard_constraint_evaluations": 0,
+          "hard_constraint_evaluations_complete": true,
+          "hard_constraint_evaluations_saturated": false,
+          "residual_model_count": 18446744073709551615,
+          "model_count_scope": "entity_selection",
+          "residual_model_count_complete": true,
+          "residual_model_count_saturated": true,
+          "summary_counts_saturated": true,
+          "component_count": 110,
+          "residual_models_materialized": false
+        },
+        "solve_sha256": "e62b8ddeb499c3260f9f56a67d22dcffe3d756a72dd0b309abe1bbfcd194e193",
+        "rank1_size": null,
+        "models_at_rank1_cost": null
+      }
+    }
+  ]
+}
