@@ -1,0 +1,1262 @@
+[
+ {
+  "parcel": "510-180711",
+  "acres": 480.4,
+  "runs": [
+   {
+    "bearing": 0,
+    "vid": "sha256:4441c974cebcd6e3ef3563573a90eaaae0d80b5bc1486ac821f702ecc025a82c",
+    "candidates": 460,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 45,
+    "vid": "sha256:8f4258288d080768716f13904777aea9b2ef3465f0dbb597f02fb88e225cc9b5",
+    "candidates": 444,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 90,
+    "vid": "sha256:bea648da2d98ae55bff7cc9b832f5186f98805202622d8462c48573301f213a0",
+    "candidates": 349,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 135,
+    "vid": "sha256:cfbfa457be0502108c34340a122ad7ef11cdc8549204714a1169245f08ac0a55",
+    "candidates": 29,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 180,
+    "vid": "sha256:2807368cd85efe791e4a5f819a3146f49cbbce1ce86b275bc83d0845c4d27e12",
+    "candidates": 8,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 225,
+    "vid": "sha256:11d248e7cdf092093290e3bc9777be7cb32acb98989d9abf11daaae4d8d0ae4b",
+    "candidates": 3,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 270,
+    "vid": "sha256:5be584c57fda35f9d648fc72b51447150ae178d2ffd91fbf82a649f4dba8a43a",
+    "candidates": 17,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 315,
+    "vid": "sha256:f43e12e2c373840af870a3aad28a219a7da71db6166dc6572432e606128a1adc",
+    "candidates": 314,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   }
+  ]
+ },
+ {
+  "parcel": "050-011455",
+  "acres": 95.0,
+  "runs": [
+   {
+    "bearing": 0,
+    "vid": "sha256:21c3c6fd88b00abe843ba16427606edbde20e8515b5be868d2a5a15e420b5890",
+    "candidates": 2051,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 45,
+    "vid": "sha256:5cd11823d0261a2e9a2077dc7ec767d3386e2e0cf2c4dae5e982523eb29cddbc",
+    "candidates": 2222,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 90,
+    "vid": "sha256:b7232a55d7bc470768fdb5b8cb0069aefe94080dc7b4d4ac3c7f7d2947fce194",
+    "candidates": 1886,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 135,
+    "vid": "sha256:676364c061aed4b819091321f278026ad10e963c59a8d1e023005dee8463e66a",
+    "candidates": 1623,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 180,
+    "vid": "sha256:3bae5811f8aa38731476e4abb5829a2cce9a05a83241860bff57db25424b37a8",
+    "candidates": 1416,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 225,
+    "vid": "sha256:a30335fdde793b9e51659c57491114b372b4a9ddc08e6dec6748cc3093550fde",
+    "candidates": 1038,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 270,
+    "vid": "sha256:7d2f8fb1f1699882058a8deab123c2f396069d130a43112df26c73cfea4abc77",
+    "candidates": 906,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 315,
+    "vid": "sha256:3274b103dc98d5bafdee9a5f011561c22ad8ca790fdc6678bf8ba7324a384a2e",
+    "candidates": 973,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   }
+  ]
+ },
+ {
+  "parcel": "222-004984",
+  "acres": 221.9,
+  "runs": [
+   {
+    "bearing": 0,
+    "vid": "sha256:c946a3f8c1a8fdd59f6b5c6ad396c2dba9b85a20bd7d70667cb28f8ecc30cf8b",
+    "candidates": 46,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 45,
+    "vid": "sha256:fceb6e7992e6da9673ff6bcb2508ae276dea12de43c3e5d801b9979c4d691bea",
+    "candidates": 27,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 90,
+    "vid": "sha256:cac19df42495e1ff2977c3138c1bd43b7a26a4a6c9993e75d967e9eef543959d",
+    "candidates": 15,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 135,
+    "vid": "sha256:e150c4376cf7a59558bfedcfb38cdfd832ac2c4bdfd6da5bfb48d6802a9a451a",
+    "candidates": 157,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 180,
+    "vid": "sha256:d0a0d559c55140594d00174a7e275eb0a8136695c364787092240c9fbae20ab1",
+    "candidates": 275,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 225,
+    "vid": "sha256:49ede4029a8d40f3f44dd5fa0e01be14940fa231bd26f3f8bda1afabb3ad264d",
+    "candidates": 260,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 270,
+    "vid": "sha256:0b030b4787b5d8a2d6c43f1a01641cd738a17080903562dfe336e25f96086a40",
+    "candidates": 139,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 315,
+    "vid": "sha256:0185e29499000ab5f1a409f3b4ce74e54a0beaa4769e868f489dc8279f4e5d2c",
+    "candidates": 69,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   }
+  ]
+ },
+ {
+  "parcel": "050-011444",
+  "acres": 55.2,
+  "runs": [
+   {
+    "bearing": 0,
+    "vid": "sha256:8b34bd59fd5185ec8f0ded61053bbe9a6221ef297306529bd2addea58d7e9594",
+    "candidates": 2656,
+    "wide": 4,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 45,
+    "vid": "sha256:489f9e8677229da417d2fef220a384cc7a3489d31fefa120462cdf3c8c5cb519",
+    "candidates": 3481,
+    "wide": 2,
+    "narrow": 2,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 90,
+    "vid": "sha256:a3bccb173e1e4cb16484792073cd07728eab91bf55eba940bc594bea14b958ea",
+    "candidates": 3200,
+    "wide": 2,
+    "narrow": 2,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 135,
+    "vid": "sha256:712657c283792f6322c67ed4679cc86a6436f75c408a2c698d17f021097aed26",
+    "candidates": 2378,
+    "wide": 2,
+    "narrow": 2,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 180,
+    "vid": "sha256:6b21ed3fec0dcadd05325e474be090643589ca605298dd83c21fa90a94638e11",
+    "candidates": 1651,
+    "wide": 2,
+    "narrow": 2,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 225,
+    "vid": "sha256:244b4b8826328015ff39360928437c5335b732a4996f87373f92f87affc49919",
+    "candidates": 1342,
+    "wide": 2,
+    "narrow": 2,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 270,
+    "vid": "sha256:dcd732733b6389e72539fcebf8c28692eb475b64a29cdc524b4e3047d8528e05",
+    "candidates": 1082,
+    "wide": 4,
+    "narrow": 2,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 315,
+    "vid": "sha256:cdbfe50b9064916f0b4d4a7e586135bdc0fc5279f035abcaa1152a31c7207dd8",
+    "candidates": 1983,
+    "wide": 3,
+    "narrow": 1,
+    "truth_in_candidates": true
+   }
+  ]
+ },
+ {
+  "parcel": "050-002806",
+  "acres": 143.3,
+  "runs": [
+   {
+    "bearing": 0,
+    "vid": "sha256:8b6016e88fd85fcdf351ba6663ca3703817ef8dc5beb78017403aea91a66b475",
+    "candidates": 1157,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 45,
+    "vid": "sha256:4fabacaf16beb416a5f0bd202bf030314c102258cadb682cb55e2836946426b2",
+    "candidates": 1515,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 90,
+    "vid": "sha256:2bab3ecb06ae609f39e56a312cc8578ef29d55fe6664f0b51a87bca48739ec8f",
+    "candidates": 1572,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 135,
+    "vid": "sha256:f3f4fca69113e278fdd1ac6fa7cf81778f966fa553afe427990a4bc921fefea0",
+    "candidates": 846,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 180,
+    "vid": "sha256:b91f572380d226ba23982d01111b36ff2a95f18800768df0ccd68704afb2397f",
+    "candidates": 443,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 225,
+    "vid": "sha256:9cec0e1cc9fe2773f2b6e6360a66255773ff85ba2ca79c366bd1b2e5d8a3c239",
+    "candidates": 760,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 270,
+    "vid": "sha256:ff70d425e5e42691940e68546eded8135ccccf1231117a92340f4aa9124bde10",
+    "candidates": 1035,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 315,
+    "vid": "sha256:e8c8602a5860872835af9cf915564e99131e57a43699a6dd2c46cfb10151ebdc",
+    "candidates": 908,
+    "wide": 1,
+    "narrow": 1,
+    "truth_in_candidates": true
+   }
+  ]
+ },
+ {
+  "parcel": "610-207094",
+  "acres": 7.3,
+  "runs": [
+   {
+    "bearing": 0,
+    "vid": "sha256:08bce47d1f7d52b7db987464b7fd4cd6728bf9d6934fdaaf0df45035fb2076d2",
+    "candidates": 3219,
+    "wide": 27,
+    "narrow": 12,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 45,
+    "vid": "sha256:8c9a42bd8b879d26957c5b80836f02762186b4b1239cd5bdc11cbe91009d0396",
+    "candidates": 3245,
+    "wide": 29,
+    "narrow": 10,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 90,
+    "vid": "sha256:76693111509246d0143d3b61fa3a86f081c3e51260cadd546fc1fa723462ed0f",
+    "candidates": 2606,
+    "wide": 34,
+    "narrow": 14,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 135,
+    "vid": "sha256:65f178d2e9d2a66ab07732d79029aa73d7e96ac14c4217c69a76e574eadaf536",
+    "candidates": 1962,
+    "wide": 36,
+    "narrow": 17,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 180,
+    "vid": "sha256:cb08a7ccc8cccd3929e6ca26ebca2f678abc3031f11e5599356ed553be5993d3",
+    "candidates": 2010,
+    "wide": 39,
+    "narrow": 15,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 225,
+    "vid": "sha256:c2898ea07c25c36c9db4b9656a99d7e9ed7a607ebc8aa3a538b1263e8ad32f1c",
+    "candidates": 2318,
+    "wide": 45,
+    "narrow": 19,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 270,
+    "vid": "sha256:1394164f942313604ce44f9733b5836240410adc4c3dd46ad68d0f4d1fa53cb5",
+    "candidates": 2970,
+    "wide": 43,
+    "narrow": 19,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 315,
+    "vid": "sha256:55db476db8b9754cf388f1aae3a77ae51fe61e0aef6d2213143298ed00b06fcf",
+    "candidates": 3136,
+    "wide": 38,
+    "narrow": 17,
+    "truth_in_candidates": true
+   }
+  ]
+ },
+ {
+  "parcel": "222-002127",
+  "acres": 14.8,
+  "runs": [
+   {
+    "bearing": 0,
+    "vid": "sha256:a0d859b7c342ea798023a9007a2629ea1eaa8de1e99b26aacd2716052699dc48",
+    "candidates": 1036,
+    "wide": 15,
+    "narrow": 4,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 45,
+    "vid": "sha256:76885fd175de086419b538301aa5c335cb3e9ece18ad99f35cb08c85ac70877c",
+    "candidates": 591,
+    "wide": 20,
+    "narrow": 6,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 90,
+    "vid": "sha256:281ce66c75748d64fe101eafc44559bf186dfd1c6a45aae0996bc42536ba3141",
+    "candidates": 648,
+    "wide": 20,
+    "narrow": 6,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 135,
+    "vid": "sha256:1643d3480f02ff0e365e248875c72fadf6e8d673d03118092efdd7173a9e787b",
+    "candidates": 816,
+    "wide": 20,
+    "narrow": 8,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 180,
+    "vid": "sha256:3893796678c6efc74f238300de6d039b901afb1a2641a208a08c7a364054c0f8",
+    "candidates": 1695,
+    "wide": 18,
+    "narrow": 8,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 225,
+    "vid": "sha256:4b8fae072d1b9c6799abfa79102c6e918ae2b34dbc532f648b1e2efcc605a1db",
+    "candidates": 2812,
+    "wide": 12,
+    "narrow": 6,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 270,
+    "vid": "sha256:5bbda2ebfe6a1328136ae96876b8569fcf89788a3f854ca59d06631b15125af2",
+    "candidates": 2922,
+    "wide": 11,
+    "narrow": 3,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 315,
+    "vid": "sha256:39e0847620957ab8b20d28f787d9594d3f0bdc6a5ae95847ecec09ec0feaab30",
+    "candidates": 1973,
+    "wide": 12,
+    "narrow": 3,
+    "truth_in_candidates": true
+   }
+  ]
+ },
+ {
+  "parcel": "610-210593",
+  "acres": 7.6,
+  "runs": [
+   {
+    "bearing": 0,
+    "vid": "sha256:ffbe31618d12934b958a3bbed6f248d5c8530785769b26fa989cd317f9954f64",
+    "candidates": 3320,
+    "wide": 40,
+    "narrow": 18,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 45,
+    "vid": "sha256:c0f35276d61d7a3d05627301f8b71120c03f54d6a7e42d360d3011ff7970b360",
+    "candidates": 3059,
+    "wide": 38,
+    "narrow": 15,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 90,
+    "vid": "sha256:24985da2ff7e3ecf745eb2dffc826f756336869b2183413e5277681deab822af",
+    "candidates": 2160,
+    "wide": 38,
+    "narrow": 18,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 135,
+    "vid": "sha256:38c1b8295241406c03051e316527c3e33899866ec9741909a057287dd045faee",
+    "candidates": 1678,
+    "wide": 38,
+    "narrow": 15,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 180,
+    "vid": "sha256:b006ca5c14c87563862a3db81d10bd83cb2dbc00195258d681d808a37f952d52",
+    "candidates": 1511,
+    "wide": 43,
+    "narrow": 20,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 225,
+    "vid": "sha256:54d8bf05b230a1849345f1e266e3d900a9757ca3774626f026132fb2b2754efd",
+    "candidates": 1767,
+    "wide": 43,
+    "narrow": 20,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 270,
+    "vid": "sha256:6bbfacf51205d705daf5952995e686dc35762ced326081e8f23d00cb19292eb1",
+    "candidates": 2295,
+    "wide": 42,
+    "narrow": 21,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 315,
+    "vid": "sha256:b12990993c31cecbbca96d2fb8a93808f00e0bb6d54d402d4f874380d49ea0ec",
+    "candidates": 2975,
+    "wide": 43,
+    "narrow": 18,
+    "truth_in_candidates": true
+   }
+  ]
+ },
+ {
+  "parcel": "222-004355",
+  "acres": 28.5,
+  "runs": [
+   {
+    "bearing": 0,
+    "vid": "sha256:00d8caae4d073c6e9ec9e17402eddf8b5f9c0e95e99c87272ba6bda5a71db742",
+    "candidates": 492,
+    "wide": 9,
+    "narrow": 3,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 45,
+    "vid": "sha256:8249dc2a0d156c1bfc88af41e1056cc84cd24935aa79fbae1a497d9e34882497",
+    "candidates": 598,
+    "wide": 8,
+    "narrow": 3,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 90,
+    "vid": "sha256:ba2d5f20aa67661e8571c08a8e930ef681e4f689045b42da40f1daa07f73f88e",
+    "candidates": 800,
+    "wide": 11,
+    "narrow": 6,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 135,
+    "vid": "sha256:d899ee795706d4a7c6e0b69f319b1dc0ae9db1815ed4c234c2bf4f65af178173",
+    "candidates": 925,
+    "wide": 8,
+    "narrow": 5,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 180,
+    "vid": "sha256:4afce06cb669903cee4556d4156409fe0cafac5692692b15904c682317ffcef8",
+    "candidates": 873,
+    "wide": 10,
+    "narrow": 7,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 225,
+    "vid": "sha256:5950b5c4bb4a8fc242b088b905486fc8eb0061924c88a45de6cdd979fbd49b9a",
+    "candidates": 776,
+    "wide": 11,
+    "narrow": 5,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 270,
+    "vid": "sha256:33604daa8b45c331a38adfe422fceb1f1447945aecebce8e8ca5228c5a8708b7",
+    "candidates": 683,
+    "wide": 12,
+    "narrow": 6,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 315,
+    "vid": "sha256:036fdf1c971f78895feb2a12714ab13ed6afb8f94be7f809c358f50b5da920db",
+    "candidates": 601,
+    "wide": 11,
+    "narrow": 4,
+    "truth_in_candidates": true
+   }
+  ]
+ },
+ {
+  "parcel": "222-002056",
+  "acres": 19.0,
+  "runs": [
+   {
+    "bearing": 0,
+    "vid": "sha256:83463d747112e4f547f5a54ff5008b4c3c1ec77888e60f5bec64ff828356f1b2",
+    "candidates": 953,
+    "wide": 13,
+    "narrow": 7,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 45,
+    "vid": "sha256:34ecdab943b7bc793d70fdc4b675c4fcc0dcf789908b2970a0835d40e7e86aac",
+    "candidates": 650,
+    "wide": 14,
+    "narrow": 6,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 90,
+    "vid": "sha256:24913ea9b8e5e467f73480798b40a2301838ae7f8eb1a1ecc6f10ce054543fa4",
+    "candidates": 704,
+    "wide": 13,
+    "narrow": 6,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 135,
+    "vid": "sha256:ee5824cc0c973774279d8f5387ebca4106c53f0c02875e4403216d79713fa862",
+    "candidates": 699,
+    "wide": 13,
+    "narrow": 7,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 180,
+    "vid": "sha256:db11269de7960635065a94f80d53bd6a01feb7593e625219a4d4c2d854fe0631",
+    "candidates": 1078,
+    "wide": 12,
+    "narrow": 7,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 225,
+    "vid": "sha256:72448b624e5a364ca4c229654341614f884d06aa2477dc74dbefb5680e11aa78",
+    "candidates": 2069,
+    "wide": 13,
+    "narrow": 7,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 270,
+    "vid": "sha256:df7b48b043623f7b3f011bc4ebe564ed8e556d09d6f0326e87a99bda655aa4b9",
+    "candidates": 2926,
+    "wide": 8,
+    "narrow": 5,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 315,
+    "vid": "sha256:62e32edcf6bfda43f0433d9c9ac5660441bec19b8c5fed476ff9e57fb6c968b4",
+    "candidates": 2036,
+    "wide": 10,
+    "narrow": 5,
+    "truth_in_candidates": true
+   }
+  ]
+ },
+ {
+  "parcel": "050-011895",
+  "acres": 15.0,
+  "runs": [
+   {
+    "bearing": 0,
+    "vid": "sha256:caa2fc187ca04152b5e6e8c5d7b5d9cf5ae72c629816a1a7b534b65028a2de29",
+    "candidates": 2754,
+    "wide": 8,
+    "narrow": 6,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 45,
+    "vid": "sha256:282e091bacc416343218f151dd18e47f9c5a6e39b3d585225bf1f270651dadff",
+    "candidates": 3002,
+    "wide": 7,
+    "narrow": 5,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 90,
+    "vid": "sha256:b371293ab428118471359c8992be60c6e94a7a215d64e55cb391ccaa66ed045c",
+    "candidates": 2508,
+    "wide": 10,
+    "narrow": 6,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 135,
+    "vid": "sha256:d6b118d689d1d1f9d10a3ec0e65ab3b60f3c863b848ea116e759495c48a75085",
+    "candidates": 1729,
+    "wide": 12,
+    "narrow": 6,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 180,
+    "vid": "sha256:521b05ce9cf77e45098f4f829ab18d484a3521d8026e1cba2574234a54f50967",
+    "candidates": 879,
+    "wide": 22,
+    "narrow": 14,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 225,
+    "vid": "sha256:60994356784953b834e431b8f771d7567730b3b3fb8a147e0dec1ee6847dc858",
+    "candidates": 833,
+    "wide": 22,
+    "narrow": 12,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 270,
+    "vid": "sha256:ab07640fa244479e2d947c5be605a6fe4a4f15823f20f4bc85d0cd120453d670",
+    "candidates": 1332,
+    "wide": 19,
+    "narrow": 12,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 315,
+    "vid": "sha256:c0ff9ff8f3573894136e2ee29eada7aad9f885fe42d20dfd4017c18caa9309cb",
+    "candidates": 1957,
+    "wide": 14,
+    "narrow": 9,
+    "truth_in_candidates": true
+   }
+  ]
+ },
+ {
+  "parcel": "222-004441",
+  "acres": 12.0,
+  "runs": [
+   {
+    "bearing": 0,
+    "vid": "sha256:0054b64e6a5c26f60735ede50c0c1d8aba2b694f2a116a991c4ecc00e3fc007b",
+    "candidates": 568,
+    "wide": 26,
+    "narrow": 6,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 45,
+    "vid": "sha256:a286c9c18d5f511139739277bf0ac03c5cc87031425aad91660af1552d0c4c90",
+    "candidates": 725,
+    "wide": 24,
+    "narrow": 5,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 90,
+    "vid": "sha256:cc9c5569c1f34ac6a801dd848a3b7e626bba169cdf4859dd9a1dca7c5244200e",
+    "candidates": 834,
+    "wide": 24,
+    "narrow": 5,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 135,
+    "vid": "sha256:6ec73211f69e3a802d6855e209e6911f4ea291c6e87517f7a5eddfde90364268",
+    "candidates": 749,
+    "wide": 21,
+    "narrow": 6,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 180,
+    "vid": "sha256:8a2834cf2f6d78e48562c8d8c759442c54043b262077e5e1d605fb1667e9f6ba",
+    "candidates": 738,
+    "wide": 21,
+    "narrow": 7,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 225,
+    "vid": "sha256:905dd102dad5fb3443c5fcbbde96423e1e55d11d72add1f461c96f251ce9b856",
+    "candidates": 1458,
+    "wide": 22,
+    "narrow": 7,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 270,
+    "vid": "sha256:9daf54a5f1f29aba6632722672fa151a87eeb4d056f721197420475ffcccfc99",
+    "candidates": 2306,
+    "wide": 14,
+    "narrow": 5,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 315,
+    "vid": "sha256:f828bcded76850e2af3d347fa1811330b0e5a8b424b50dacae9c0998f32d0216",
+    "candidates": 1253,
+    "wide": 23,
+    "narrow": 5,
+    "truth_in_candidates": true
+   }
+  ]
+ },
+ {
+  "parcel": "222-001940",
+  "acres": 7.8,
+  "runs": [
+   {
+    "bearing": 0,
+    "vid": "sha256:7c9f48ff40539cd62f8c245a013c745eac071d651d4498f3286b61d0bd42db6d",
+    "candidates": 663,
+    "wide": 32,
+    "narrow": 16,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 45,
+    "vid": "sha256:43667a9d5e5b9f1f32d0b8d0894196cc4ee7c714a84629ee505af199644fb50a",
+    "candidates": 694,
+    "wide": 30,
+    "narrow": 15,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 90,
+    "vid": "sha256:bf93aacdd937168e1cc40b618e35295726cf9bf92decc15063ff10f2a6c7520b",
+    "candidates": 881,
+    "wide": 30,
+    "narrow": 16,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 135,
+    "vid": "sha256:46d3768938dc52409393d85cd5c0c16258e3e420f05b3ba8e00750dac9c2fc5a",
+    "candidates": 889,
+    "wide": 22,
+    "narrow": 12,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 180,
+    "vid": "sha256:1c67c75d2e3b17390652fc14d2999d2cc3ebcd33be064d7e35d5534f2d19e6e1",
+    "candidates": 748,
+    "wide": 21,
+    "narrow": 9,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 225,
+    "vid": "sha256:266efadd011da049f0c8a7fd4549fd68887d64aa41721b221501fbc7e44c3cca",
+    "candidates": 715,
+    "wide": 29,
+    "narrow": 12,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 270,
+    "vid": "sha256:0bc5aa0e29df7eaaa7506c7b2195ead51949adb12117366151453fdb740912a2",
+    "candidates": 828,
+    "wide": 33,
+    "narrow": 16,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 315,
+    "vid": "sha256:db098b9c61e5448700b0045f30687e7c3de43b47a4117264b11e0e17c9035f56",
+    "candidates": 619,
+    "wide": 30,
+    "narrow": 16,
+    "truth_in_candidates": true
+   }
+  ]
+ },
+ {
+  "parcel": "222-004644",
+  "acres": 9.2,
+  "runs": [
+   {
+    "bearing": 0,
+    "vid": "sha256:a213c2f98bd1d747ca166b37fa412d64b1fd934869c3386c1764dc05d088e6f6",
+    "candidates": 632,
+    "wide": 30,
+    "narrow": 8,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 45,
+    "vid": "sha256:b544ec43ef6cf9db3f174d5d1d5dc9ea4a4c64c85ea87617c9a4730d11ee03bc",
+    "candidates": 828,
+    "wide": 28,
+    "narrow": 8,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 90,
+    "vid": "sha256:89641aee3dc04c7b42ce2c467abd454aa247d66e8bce140369bb3a65d75b5137",
+    "candidates": 879,
+    "wide": 27,
+    "narrow": 8,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 135,
+    "vid": "sha256:c5e2e00fbd0ee5e96094d4f9bdc29cebff673fc52ad8559c32a52d4a54415018",
+    "candidates": 816,
+    "wide": 20,
+    "narrow": 7,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 180,
+    "vid": "sha256:2afb81cb06642ede7581b6189f940740304bf42888c0e07f40de8f4891bb850d",
+    "candidates": 724,
+    "wide": 23,
+    "narrow": 8,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 225,
+    "vid": "sha256:3fba5a9b9e89cf82d69bb78b0778b5971fbf881cc5a53bc982e54dff7ea9098c",
+    "candidates": 994,
+    "wide": 30,
+    "narrow": 8,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 270,
+    "vid": "sha256:cd892f94bf1e8d42263fa725e709ecaf5acb6cf67fe7f6797720b3f1729d2b3c",
+    "candidates": 1660,
+    "wide": 23,
+    "narrow": 5,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 315,
+    "vid": "sha256:e7b3bd43bc8903e763f9ab9a671602f03e903c617d32476a1e2ee09d458f8137",
+    "candidates": 989,
+    "wide": 30,
+    "narrow": 8,
+    "truth_in_candidates": true
+   }
+  ]
+ },
+ {
+  "parcel": "273-012619",
+  "acres": 4.4,
+  "runs": [
+   {
+    "bearing": 0,
+    "vid": "sha256:58a5febcf2adac960cdd489a3cdd605137a1ab06af13582e1fce806dc5de05e9",
+    "candidates": 274,
+    "wide": 53,
+    "narrow": 20,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 45,
+    "vid": "sha256:bec7e1a41aeb6e1bcc2b485d69ea29517151a1257c295d9887f70b749d8786ca",
+    "candidates": 156,
+    "wide": 57,
+    "narrow": 19,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 90,
+    "vid": "sha256:69328d7d8a47d0c45066925ff146fd8a82a122f381648cef39ba3dfc2b28d37c",
+    "candidates": 199,
+    "wide": 50,
+    "narrow": 17,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 135,
+    "vid": "sha256:3a5f17c197e8ede6216ceca8b7e336f59774315b30b4f477ede0efbfc06de039",
+    "candidates": 402,
+    "wide": 49,
+    "narrow": 23,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 180,
+    "vid": "sha256:736a739abd8ca91861c593c5015bf42f4313f35cdfe568dfdf802fba0bd8c1e1",
+    "candidates": 779,
+    "wide": 43,
+    "narrow": 20,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 225,
+    "vid": "sha256:84c88cb735f5dae01b565dcca556ba8d3a6c2959f80c1fea252ce5755b8dec86",
+    "candidates": 944,
+    "wide": 42,
+    "narrow": 18,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 270,
+    "vid": "sha256:b20d1c84aca5efeec10171dec18c3c26bab3bfb5046b5df90f2dc8fc53683556",
+    "candidates": 790,
+    "wide": 50,
+    "narrow": 17,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 315,
+    "vid": "sha256:c8649cb5516a761ee181649691ba1574d6c030e2de3a0e074eddb0f52a1bcdf5",
+    "candidates": 729,
+    "wide": 49,
+    "narrow": 18,
+    "truth_in_candidates": true
+   }
+  ]
+ },
+ {
+  "parcel": "222-004365",
+  "acres": 7.1,
+  "runs": [
+   {
+    "bearing": 0,
+    "vid": "sha256:683f5805793d31f0355227288debbab7af57dd7a1d767e8ac1153232ac69cf8f",
+    "candidates": 678,
+    "wide": 33,
+    "narrow": 15,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 45,
+    "vid": "sha256:ed859044708db098b3aa4ece9c6e371d5e336b566455137e621fcc83831ca104",
+    "candidates": 684,
+    "wide": 35,
+    "narrow": 14,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 90,
+    "vid": "sha256:2fe040dad9f572f460f399496f1681da8fcc6b5d9d1c9a4147b0caae38286aa0",
+    "candidates": 877,
+    "wide": 31,
+    "narrow": 13,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 135,
+    "vid": "sha256:8c0140329d3b6c98724d4e20013737d933e16fb78f80d23f244cf3cc115d3a3d",
+    "candidates": 911,
+    "wide": 26,
+    "narrow": 12,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 180,
+    "vid": "sha256:13d207bddf26455360cd064d599950d852d7fb5993274eb3d260cd5d1e1d9ee0",
+    "candidates": 806,
+    "wide": 24,
+    "narrow": 9,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 225,
+    "vid": "sha256:291453314545c2792ccb75759f73d0f824c422ee58de4c28091189d03183072d",
+    "candidates": 669,
+    "wide": 30,
+    "narrow": 8,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 270,
+    "vid": "sha256:ca3e842bf20df79d7e7319b4f2f6aacd4dfd9363dece1963b42b320a1d952cef",
+    "candidates": 634,
+    "wide": 38,
+    "narrow": 15,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 315,
+    "vid": "sha256:9076897c167bdde9b40d373ce6647be75914f1cd4a7027c59d9302e9c6151bfd",
+    "candidates": 686,
+    "wide": 31,
+    "narrow": 13,
+    "truth_in_candidates": true
+   }
+  ]
+ },
+ {
+  "parcel": "222-005361",
+  "acres": 78.2,
+  "runs": [
+   {
+    "bearing": 0,
+    "vid": "sha256:579dc29d0368121a58434df2e2c6eacaf67be046f2e41f0d4e2eec2ed4e3c554",
+    "candidates": 60,
+    "wide": 5,
+    "narrow": 2,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 45,
+    "vid": "sha256:feb43a6074b12e9f998bca61e30258efaaf1a0afa678ac5ef71591090bdaf44e",
+    "candidates": 41,
+    "wide": 3,
+    "narrow": 2,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 90,
+    "vid": "sha256:478bd44087a1ddaf24e6325b1ad82935f7be0deb89be4efd5d02c48c88dbdad9",
+    "candidates": 28,
+    "wide": 3,
+    "narrow": 2,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 135,
+    "vid": "sha256:a139e4082e27e5851388c7a3847991b92ef9e1b1e1bc136f30c89dbc24330fc6",
+    "candidates": 29,
+    "wide": 2,
+    "narrow": 2,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 180,
+    "vid": "sha256:d7d567c051221e1ac0d4b95a904c579301325f8e584a54188ede43a305557c19",
+    "candidates": 50,
+    "wide": 4,
+    "narrow": 3,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 225,
+    "vid": "sha256:c57da9c84cc9bc458e0731f52ae8d9fb19d1d0dddcc13906873d9af344a948c6",
+    "candidates": 56,
+    "wide": 5,
+    "narrow": 3,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 270,
+    "vid": "sha256:c26ca043f9be657285e2068f7624612ffaed6ead7cd1e12338f5f8bd63bbcf7f",
+    "candidates": 73,
+    "wide": 5,
+    "narrow": 3,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 315,
+    "vid": "sha256:c8edd3dd1dcc4084bccd6e599b0ed67ce3eef9f58999d30bd2d978fdcd448fcf",
+    "candidates": 69,
+    "wide": 5,
+    "narrow": 3,
+    "truth_in_candidates": true
+   }
+  ]
+ },
+ {
+  "parcel": "050-011984",
+  "acres": 9.1,
+  "runs": [
+   {
+    "bearing": 0,
+    "vid": "sha256:422ca46059a5789ed3b03839f35298a1d4c4bcff51fdbf4e0439b903f872fbe8",
+    "candidates": 1295,
+    "wide": 22,
+    "narrow": 9,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 45,
+    "vid": "sha256:4f554b7af9c9da7364a2a59895c7aaf612f952bd71176b8861a54c434a76e094",
+    "candidates": 1570,
+    "wide": 21,
+    "narrow": 10,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 90,
+    "vid": "sha256:cd06135c458e989e80b9f1a0850be7f5fc716d806cfb1917bff5b9524f4c50dd",
+    "candidates": 1054,
+    "wide": 20,
+    "narrow": 6,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 135,
+    "vid": "sha256:ccd0e85ee26fd9a9a807e96eb85827070ccde4cafa018bc42b19f2ce0675002f",
+    "candidates": 455,
+    "wide": 31,
+    "narrow": 9,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 180,
+    "vid": "sha256:5e2763edc9b49e35b63d84450fe07f3b5abb0f5a0e8d1e7b7a3f8b1f43d2be45",
+    "candidates": 131,
+    "wide": 37,
+    "narrow": 13,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 225,
+    "vid": "sha256:38afb913f76646a125b8425e2cadb34a77ddac7c995e038b8d42469e71a4ee5a",
+    "candidates": 227,
+    "wide": 40,
+    "narrow": 15,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 270,
+    "vid": "sha256:13c464f1dde5bbe07d106fcba6997ac8972879e258554c74c7a9d80b2df5ab47",
+    "candidates": 628,
+    "wide": 27,
+    "narrow": 12,
+    "truth_in_candidates": true
+   },
+   {
+    "bearing": 315,
+    "vid": "sha256:00bb3df701ac7b643e8dbde30002eab75a318e757ad34ab35ab649140dd19e2c",
+    "candidates": 793,
+    "wide": 26,
+    "narrow": 13,
+    "truth_in_candidates": true
+   }
+  ]
+ }
+]

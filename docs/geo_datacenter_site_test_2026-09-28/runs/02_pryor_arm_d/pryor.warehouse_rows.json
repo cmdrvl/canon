@@ -1,0 +1,405 @@
+{
+ "version": "canon_geo_warehouse_rows.v0",
+ "profile": {
+  "version": "canon_geo_composition_profile.v0",
+  "selection_level": "building"
+ },
+ "parcel_rows": [],
+ "building_parcel_rows": [
+  {
+   "building_id": "overture:154131f6",
+   "parcel_id": null
+  },
+  {
+   "building_id": "overture:215d1320",
+   "parcel_id": null
+  },
+  {
+   "building_id": "overture:bd06b2c1",
+   "parcel_id": null
+  },
+  {
+   "building_id": "overture:3fe30483",
+   "parcel_id": null
+  },
+  {
+   "building_id": "overture:ee97c483",
+   "parcel_id": null
+  },
+  {
+   "building_id": "overture:72ea9c27",
+   "parcel_id": null
+  },
+  {
+   "building_id": "overture:db71b13c",
+   "parcel_id": null
+  },
+  {
+   "building_id": "overture:56e84c8d",
+   "parcel_id": null
+  },
+  {
+   "building_id": "overture:dcc29a09",
+   "parcel_id": null
+  },
+  {
+   "building_id": "overture:37eade67",
+   "parcel_id": null
+  }
+ ],
+ "contracts": [
+  {
+   "id": "rho.d-google-pryor.fsq-industrial-partition",
+   "version": "1.0.0",
+   "source_dataset": "Foursquare OS Places 2026-08-11 (Google POI vs named industrial neighbors)",
+   "source_release": "hot",
+   "source_lineage_ids": [
+    "EDGAR_DB.SOURCE.FOURSQUARE_OS_PLACES_HOT"
+   ],
+   "method_id": "nearer_google_point_than_named_industrial_neighbor",
+   "method_version": "1.0.0",
+   "claim_role": "stable_identity_anchor",
+   "basis": {
+    "kind": "uncalibrated",
+    "reason": "membership method not calibrated",
+    "admission_policy": {
+     "kind": "soft_with_weight",
+     "cost_if_absent": 5
+    }
+   }
+  },
+  {
+   "id": "rho.d-google-pryor.hall-module-morphology",
+   "version": "1.0.0",
+   "source_dataset": "Overture Maps buildings 2026-07",
+   "source_release": "hot",
+   "source_lineage_ids": [
+    "EDGAR_DB.SOURCE.OVERTURE_MAPS_FEATURES_HOT"
+   ],
+   "method_id": "at_least_3_footprints_within_5pct_area_each_ge_20000m2",
+   "method_version": "1.0.0",
+   "claim_role": "attribute_observation",
+   "basis": {
+    "kind": "uncalibrated",
+    "reason": "membership method not calibrated",
+    "admission_policy": {
+     "kind": "soft_with_weight",
+     "cost_if_absent": 3
+    }
+   }
+  },
+  {
+   "id": "rho.d-google-pryor.ms-crosslayer",
+   "version": "1.0.0",
+   "source_dataset": "Microsoft GlobalML building footprints 2026-07-24",
+   "source_release": "hot",
+   "source_lineage_ids": [
+    "EDGAR_DB.SOURCE.MICROSOFT_GLOBALML_BUILDING_FOOTPRINTS_HOT"
+   ],
+   "method_id": "microsoft_footprint_within_30m_and_25pct_area",
+   "method_version": "1.0.0",
+   "claim_role": "attribute_observation",
+   "basis": {
+    "kind": "uncalibrated",
+    "reason": "membership method not calibrated",
+    "admission_policy": {
+     "kind": "soft_with_weight",
+     "cost_if_absent": 3
+    }
+   }
+  }
+ ],
+ "evidence_rows": [
+  {
+   "observation_id": "obs.d-google-pryor.fsq-industrial-partition.overture:215d1320",
+   "contract_id": "rho.d-google-pryor.fsq-industrial-partition",
+   "source_record": {
+    "source_record_id": "d-google-pryor.fsq-industrial-partition.overture:215d1320",
+    "source_vintage": "hot",
+    "record_blake3": "ee078f6dd75722b5c7f91572edb49f2ea6341b26e8e8aaaf7f1659a390062863"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:215d1320"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.d-google-pryor.fsq-industrial-partition.overture:3fe30483",
+   "contract_id": "rho.d-google-pryor.fsq-industrial-partition",
+   "source_record": {
+    "source_record_id": "d-google-pryor.fsq-industrial-partition.overture:3fe30483",
+    "source_vintage": "hot",
+    "record_blake3": "d0a889254e521620cf23cb9221d788e92031e07c9df5d7a08919345c09ba731c"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:3fe30483"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.d-google-pryor.fsq-industrial-partition.overture:ee97c483",
+   "contract_id": "rho.d-google-pryor.fsq-industrial-partition",
+   "source_record": {
+    "source_record_id": "d-google-pryor.fsq-industrial-partition.overture:ee97c483",
+    "source_vintage": "hot",
+    "record_blake3": "60cc7f38def55ab0041ce05710c083c36ab324e0bd13ad8e2564ce2f2de50917"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:ee97c483"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.d-google-pryor.fsq-industrial-partition.overture:56e84c8d",
+   "contract_id": "rho.d-google-pryor.fsq-industrial-partition",
+   "source_record": {
+    "source_record_id": "d-google-pryor.fsq-industrial-partition.overture:56e84c8d",
+    "source_vintage": "hot",
+    "record_blake3": "422b3ed19e9d97b40163366208c50f615a520e558ecc67cdb857cf557fb066a1"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:56e84c8d"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.d-google-pryor.fsq-industrial-partition.overture:dcc29a09",
+   "contract_id": "rho.d-google-pryor.fsq-industrial-partition",
+   "source_record": {
+    "source_record_id": "d-google-pryor.fsq-industrial-partition.overture:dcc29a09",
+    "source_vintage": "hot",
+    "record_blake3": "443472ab582f0313511fb1cd2fb33402faf648f39caba1952fc464d4d8e50c67"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:dcc29a09"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.d-google-pryor.hall-module-morphology.overture:ee97c483",
+   "contract_id": "rho.d-google-pryor.hall-module-morphology",
+   "source_record": {
+    "source_record_id": "d-google-pryor.hall-module-morphology.overture:ee97c483",
+    "source_vintage": "hot",
+    "record_blake3": "60cc7f38def55ab0041ce05710c083c36ab324e0bd13ad8e2564ce2f2de50917"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:ee97c483"
+    },
+    "cost_if_absent": 3
+   }
+  },
+  {
+   "observation_id": "obs.d-google-pryor.hall-module-morphology.overture:3fe30483",
+   "contract_id": "rho.d-google-pryor.hall-module-morphology",
+   "source_record": {
+    "source_record_id": "d-google-pryor.hall-module-morphology.overture:3fe30483",
+    "source_vintage": "hot",
+    "record_blake3": "d0a889254e521620cf23cb9221d788e92031e07c9df5d7a08919345c09ba731c"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:3fe30483"
+    },
+    "cost_if_absent": 3
+   }
+  },
+  {
+   "observation_id": "obs.d-google-pryor.hall-module-morphology.overture:bd06b2c1",
+   "contract_id": "rho.d-google-pryor.hall-module-morphology",
+   "source_record": {
+    "source_record_id": "d-google-pryor.hall-module-morphology.overture:bd06b2c1",
+    "source_vintage": "hot",
+    "record_blake3": "61a9becf590637c36f1d1dead9f4415cf22352bf9efefe388c0c441f801b7345"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:bd06b2c1"
+    },
+    "cost_if_absent": 3
+   }
+  },
+  {
+   "observation_id": "obs.d-google-pryor.ms-crosslayer.overture:154131f6",
+   "contract_id": "rho.d-google-pryor.ms-crosslayer",
+   "source_record": {
+    "source_record_id": "d-google-pryor.ms-crosslayer.overture:154131f6",
+    "source_vintage": "hot",
+    "record_blake3": "e02bb497ae3d667f8d5777c20d15e2b5158221b75d746f12eb88b4e3bcb9fbe8"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:154131f6"
+    },
+    "cost_if_absent": 3
+   }
+  },
+  {
+   "observation_id": "obs.d-google-pryor.ms-crosslayer.overture:215d1320",
+   "contract_id": "rho.d-google-pryor.ms-crosslayer",
+   "source_record": {
+    "source_record_id": "d-google-pryor.ms-crosslayer.overture:215d1320",
+    "source_vintage": "hot",
+    "record_blake3": "ee078f6dd75722b5c7f91572edb49f2ea6341b26e8e8aaaf7f1659a390062863"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:215d1320"
+    },
+    "cost_if_absent": 3
+   }
+  },
+  {
+   "observation_id": "obs.d-google-pryor.ms-crosslayer.overture:bd06b2c1",
+   "contract_id": "rho.d-google-pryor.ms-crosslayer",
+   "source_record": {
+    "source_record_id": "d-google-pryor.ms-crosslayer.overture:bd06b2c1",
+    "source_vintage": "hot",
+    "record_blake3": "61a9becf590637c36f1d1dead9f4415cf22352bf9efefe388c0c441f801b7345"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:bd06b2c1"
+    },
+    "cost_if_absent": 3
+   }
+  },
+  {
+   "observation_id": "obs.d-google-pryor.ms-crosslayer.overture:3fe30483",
+   "contract_id": "rho.d-google-pryor.ms-crosslayer",
+   "source_record": {
+    "source_record_id": "d-google-pryor.ms-crosslayer.overture:3fe30483",
+    "source_vintage": "hot",
+    "record_blake3": "d0a889254e521620cf23cb9221d788e92031e07c9df5d7a08919345c09ba731c"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:3fe30483"
+    },
+    "cost_if_absent": 3
+   }
+  },
+  {
+   "observation_id": "obs.d-google-pryor.ms-crosslayer.overture:ee97c483",
+   "contract_id": "rho.d-google-pryor.ms-crosslayer",
+   "source_record": {
+    "source_record_id": "d-google-pryor.ms-crosslayer.overture:ee97c483",
+    "source_vintage": "hot",
+    "record_blake3": "60cc7f38def55ab0041ce05710c083c36ab324e0bd13ad8e2564ce2f2de50917"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:ee97c483"
+    },
+    "cost_if_absent": 3
+   }
+  },
+  {
+   "observation_id": "obs.d-google-pryor.ms-crosslayer.overture:72ea9c27",
+   "contract_id": "rho.d-google-pryor.ms-crosslayer",
+   "source_record": {
+    "source_record_id": "d-google-pryor.ms-crosslayer.overture:72ea9c27",
+    "source_vintage": "hot",
+    "record_blake3": "a29b591f2e49f455a4235d6ef296b517d8982fa86d0ba2b9a032019ef525237b"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:72ea9c27"
+    },
+    "cost_if_absent": 3
+   }
+  },
+  {
+   "observation_id": "obs.d-google-pryor.ms-crosslayer.overture:db71b13c",
+   "contract_id": "rho.d-google-pryor.ms-crosslayer",
+   "source_record": {
+    "source_record_id": "d-google-pryor.ms-crosslayer.overture:db71b13c",
+    "source_vintage": "hot",
+    "record_blake3": "f35b8f7e3387c5c7896e61f394dd86db8e928ac534967013265cf5e58ebbf753"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:db71b13c"
+    },
+    "cost_if_absent": 3
+   }
+  },
+  {
+   "observation_id": "obs.d-google-pryor.ms-crosslayer.overture:dcc29a09",
+   "contract_id": "rho.d-google-pryor.ms-crosslayer",
+   "source_record": {
+    "source_record_id": "d-google-pryor.ms-crosslayer.overture:dcc29a09",
+    "source_vintage": "hot",
+    "record_blake3": "443472ab582f0313511fb1cd2fb33402faf648f39caba1952fc464d4d8e50c67"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:dcc29a09"
+    },
+    "cost_if_absent": 3
+   }
+  },
+  {
+   "observation_id": "obs.d-google-pryor.ms-crosslayer.overture:37eade67",
+   "contract_id": "rho.d-google-pryor.ms-crosslayer",
+   "source_record": {
+    "source_record_id": "d-google-pryor.ms-crosslayer.overture:37eade67",
+    "source_vintage": "hot",
+    "record_blake3": "5ff8a0c3f9d6b1e3d7b5731195338ca75b849c42d6461d8035d90a3f25372ca3"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:37eade67"
+    },
+    "cost_if_absent": 3
+   }
+  }
+ ],
+ "max_assignments": 65536,
+ "max_materialized_models": 16384
+}

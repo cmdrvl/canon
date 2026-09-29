@@ -1,0 +1,71 @@
+[
+ {
+  "source": "TxGIO StratMap Land Parcels 2025",
+  "county": "taylor",
+  "fips": "48441",
+  "url": "https://tnris-data-warehouse.s3.amazonaws.com/LCD/collection/stratmap-2025-land-parcels/items/shp/stratmap-2025-land-parcels-taylor_48441_shp.zip",
+  "bytes": 22120579,
+  "sha256": "45ada43eec80cd8fe5b6f70999fe36770c79f92b0a1fee5cf1cc233589c0b570",
+  "etag": "\"618d7f58e05d335e2706a04efdadc6e4-3\"",
+  "last_modified": "Fri, 15 May 2026 14:33:23 GMT",
+  "attribution": "Texas Geographic Information Office (TxGIO), StratMap Land Parcels 2025, contributed by county appraisal districts",
+  "license_note": "Public domain (CC0-1.0) per the cmdrvl-context parcel availability table (2026-09-01 probe). TxGIO's own page says the data is available at no cost, is received 'as-is' from appraisal districts or their vendors, and is 'not survey grade'. Confirm the license text before any redistribution.",
+  "run_at": "2026-09-28T23:55:20.329681+00:00"
+ },
+ {
+  "source": "TxGIO StratMap Land Parcels 2025",
+  "county": "ector",
+  "fips": "48135",
+  "url": "https://tnris-data-warehouse.s3.amazonaws.com/LCD/collection/stratmap-2025-land-parcels/items/shp/stratmap-2025-land-parcels-ector_48135_shp.zip",
+  "bytes": 18640964,
+  "sha256": "09d31937577672ac206bf1a57ad826f2a6433d64242436b81a59ecea1e18c011",
+  "etag": "\"5d285f16f9a3d8ccd3a568ca85ac5d7f-3\"",
+  "last_modified": "Fri, 15 May 2026 14:32:11 GMT",
+  "attribution": "Texas Geographic Information Office (TxGIO), StratMap Land Parcels 2025, contributed by county appraisal districts",
+  "license_note": "Public domain (CC0-1.0) per the cmdrvl-context parcel availability table (2026-09-01 probe). TxGIO's own page says the data is available at no cost, is received 'as-is' from appraisal districts or their vendors, and is 'not survey grade'. Confirm the license text before any redistribution.",
+  "run_at": "2026-09-29T00:00:33.972475+00:00"
+ },
+ {
+  "source": "TxGIO StratMap Land Parcels 2025",
+  "county": "bexar",
+  "fips": "48029",
+  "url": "https://tnris-data-warehouse.s3.amazonaws.com/LCD/collection/stratmap-2025-land-parcels/items/shp/stratmap-2025-land-parcels-bexar_48029_shp.zip",
+  "bytes": 179607999,
+  "sha256": "9282a3d2602f1ab7892aabd2ade0820abb849f4049c75cc88d9f39dc9afd3985",
+  "etag": "\"50d303267b8a79ced367a07eb01131b1-22\"",
+  "last_modified": "Fri, 15 May 2026 14:31:32 GMT",
+  "attribution": "Texas Geographic Information Office (TxGIO), StratMap Land Parcels 2025, contributed by county appraisal districts",
+  "license_note": "Public domain (CC0-1.0) per the cmdrvl-context parcel availability table (2026-09-01 probe). TxGIO's own page says the data is available at no cost, is received 'as-is' from appraisal districts or their vendors, and is 'not survey grade'. Confirm the license text before any redistribution.",
+  "run_at": "2026-09-29T00:01:31.480255+00:00"
+ },
+ {
+  "source": "Epoch AI (CC BY 4.0), not copied into this repo",
+  "dataset": "data_centers",
+  "url": "https://epoch.ai/data/data_centers/data_centers.csv",
+  "bytes": 69082,
+  "sha256": "3acb45e525d20b38071415e354c139adf898d55838c639c50909f9650f06724c",
+  "etag": "\"bd313d7b25d31552f29e6787ea3c44d7\"",
+  "attribution": "Epoch AI, AI Data Centers. Published online at epoch.ai",
+  "rows": 93
+ },
+ {
+  "source": "Epoch AI (CC BY 4.0), not copied into this repo",
+  "dataset": "data_center_timelines",
+  "url": "https://epoch.ai/data/data_centers/data_center_timelines.csv",
+  "bytes": 182903,
+  "sha256": "cf72d0072e6b1a104120bc680007d81bc7fbd481ff304da5cfbad8ef1ecae06b",
+  "etag": "\"c94c669139eb74941767527b881d860d\"",
+  "attribution": "Epoch AI, AI Data Center Timelines. Published online at epoch.ai",
+  "rows": 545
+ },
+ {
+  "source": "Epoch AI (CC BY 4.0), not copied into this repo",
+  "dataset": "data_centers_chip_quantities",
+  "url": "https://epoch.ai/data/data_centers/data_centers_chip_quantities.csv",
+  "bytes": 82862,
+  "sha256": "35260ab515d50da0161181d22c73b0106ae668e4ba945960677a18e2fef13b94",
+  "etag": "\"b1cca3c992f2edbfe86b6b89095cdb0f\"",
+  "attribution": "Epoch AI, AI Data Center Chip Quantities. Published online at epoch.ai",
+  "rows": 227
+ }
+]

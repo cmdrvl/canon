@@ -1,0 +1,107 @@
+[
+ {
+  "file": "02_pryor_arm_d/pryor.solve.json",
+  "bytes": 406430,
+  "sha256": "a8584ef52d222118dfc55ed74de4042e16d2809338138ce1c4efb088713132c9",
+  "byte_identical_resolve": true,
+  "canonical_identical_resolve": true
+ },
+ {
+  "file": "06_bexar_arm_e/A_microsoft_within_2.5km_of_Lambda__+-10pct.solve.json",
+  "bytes": 1437,
+  "sha256": "acb8d6a18fbc490d1cef616ab0eee8d88c3db0b89c63c03c5887826fec34b28b",
+  "byte_identical_resolve": true,
+  "canonical_identical_resolve": true
+ },
+ {
+  "file": "06_bexar_arm_e/A_microsoft_within_2.5km_of_Lambda__+-25pct.solve.json",
+  "bytes": 1437,
+  "sha256": "acb8d6a18fbc490d1cef616ab0eee8d88c3db0b89c63c03c5887826fec34b28b",
+  "byte_identical_resolve": true,
+  "canonical_identical_resolve": true
+ },
+ {
+  "file": "06_bexar_arm_e/A_microsoft_within_2.5km_of_Lambda__+-5pct.solve.json",
+  "bytes": 1437,
+  "sha256": "acb8d6a18fbc490d1cef616ab0eee8d88c3db0b89c63c03c5887826fec34b28b",
+  "byte_identical_resolve": true,
+  "canonical_identical_resolve": true
+ },
+ {
+  "file": "06_bexar_arm_e/A_microsoft_within_2.5km_of_Lambda__D10.5x-2.6x.solve.json",
+  "bytes": 1678,
+  "sha256": "2b0460b1bd478a7fa30c185a531b7bd2842f761dd9ab73f7faee30a8d6d28068",
+  "byte_identical_resolve": true,
+  "canonical_identical_resolve": true
+ },
+ {
+  "file": "06_bexar_arm_e/B_all_microsoft_bexar_ge4ac__+-10pct.solve.json",
+  "bytes": 119746,
+  "sha256": "032780cdbc304f8ef1243c44c57578bd156d011a9ad4a65d14bb5617e661c648",
+  "byte_identical_resolve": true,
+  "canonical_identical_resolve": true
+ },
+ {
+  "file": "06_bexar_arm_e/B_all_microsoft_bexar_ge4ac__+-25pct.solve.json",
+  "bytes": 296730,
+  "sha256": "b5a13d05828f79772d8288d66b3806c07aed23cbffaed4e035d3ccf933a93ef9",
+  "byte_identical_resolve": true,
+  "canonical_identical_resolve": true
+ },
+ {
+  "file": "06_bexar_arm_e/B_all_microsoft_bexar_ge4ac__+-5pct.solve.json",
+  "bytes": 61134,
+  "sha256": "245477986485d4490f7c5d3ab436764aabfbb04c3803db714fc83a03fdcb7278",
+  "byte_identical_resolve": true,
+  "canonical_identical_resolve": true
+ },
+ {
+  "file": "06_bexar_arm_e/B_all_microsoft_bexar_ge4ac__D10.5x-2.6x.solve.json",
+  "bytes": 678612,
+  "sha256": "41610c55e9b197a826a79fb7f2f820c5c0ba5f520620c0d0697f5e225509ec92",
+  "byte_identical_resolve": true,
+  "canonical_identical_resolve": true
+ },
+ {
+  "file": "06_bexar_arm_e/C_any_owner_within_2km_ge22ac_prefer_microsoft__+-10pct.solve.json",
+  "bytes": 290990,
+  "sha256": "5c36047f7c91df422014e481b1eb7edb07bcd32998a991eddd9af8d786838333",
+  "byte_identical_resolve": true,
+  "canonical_identical_resolve": true
+ },
+ {
+  "file": "06_bexar_arm_e/C_any_owner_within_2km_ge22ac_prefer_microsoft__+-25pct.solve.json",
+  "bytes": 723130,
+  "sha256": "b2a9f23c7033cc4859dc924f634c8b9526918b93357ff767a6e0c7be587fb0b6",
+  "byte_identical_resolve": true,
+  "canonical_identical_resolve": true
+ },
+ {
+  "file": "06_bexar_arm_e/C_any_owner_within_2km_ge22ac_prefer_microsoft__+-5pct.solve.json",
+  "bytes": 134186,
+  "sha256": "d44a9a43605c95f0c2e6d23fd954f5a25031e214f77711316fb764bbd2af4f9a",
+  "byte_identical_resolve": true,
+  "canonical_identical_resolve": true
+ },
+ {
+  "file": "06_bexar_arm_e/C_any_owner_within_2km_ge22ac_prefer_microsoft__D10.5x-2.6x.solve.json",
+  "bytes": 7004702,
+  "sha256": "b3aa61e23a7ef049d09d5d5d410107c7007dd0e7fb07017ad4b0cc2f8d9a77ac",
+  "byte_identical_resolve": true,
+  "canonical_identical_resolve": true
+ },
+ {
+  "file": "00_bridge_site_g/stored_0.12.1.site_g.solve.json",
+  "bytes": 869662,
+  "sha256": "31cdea2e3521a0111072e5b8b53440361a11a22128a0c6ab88c1e639a73b5912",
+  "byte_identical_resolve": null,
+  "canonical_identical_resolve": null
+ },
+ {
+  "file": "00_bridge_site_g/rerun_0.13.0.site_g.solve.json",
+  "bytes": 869662,
+  "sha256": "31cdea2e3521a0111072e5b8b53440361a11a22128a0c6ab88c1e639a73b5912",
+  "byte_identical_resolve": null,
+  "canonical_identical_resolve": null
+ }
+]

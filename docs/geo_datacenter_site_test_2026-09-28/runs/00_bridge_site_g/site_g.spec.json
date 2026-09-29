@@ -1,0 +1,416 @@
+{
+ "site": "g-google-new-albany",
+ "max_assignments": 65536,
+ "max_materialized_models": 16384,
+ "universe_policy": "logical_relaxation: union of Google-anchor and partition assertions",
+ "candidates": [
+  {
+   "id": "overture:1b661cc3",
+   "record": {
+    "ov": "1b661cc3",
+    "m2": 25092,
+    "m_google": 364,
+    "m_facebook": 2215,
+    "id": "overture:1b661cc3",
+    "sqft": 270090
+   }
+  },
+  {
+   "id": "overture:3913dc12",
+   "record": {
+    "ov": "3913dc12",
+    "m2": 13703,
+    "m_google": 504,
+    "m_facebook": 1926,
+    "id": "overture:3913dc12",
+    "sqft": 147499
+   }
+  },
+  {
+   "id": "overture:c50424a1",
+   "record": {
+    "ov": "c50424a1",
+    "m2": 26689,
+    "m_google": 586,
+    "m_facebook": 2438,
+    "id": "overture:c50424a1",
+    "sqft": 287280
+   }
+  },
+  {
+   "id": "overture:fa1eb23d",
+   "record": {
+    "ov": "fa1eb23d",
+    "m2": 15157,
+    "m_google": 694,
+    "m_facebook": 1668,
+    "id": "overture:fa1eb23d",
+    "sqft": 163150
+   }
+  },
+  {
+   "id": "overture:a789c822",
+   "record": {
+    "ov": "a789c822",
+    "m2": 26759,
+    "m_google": 821,
+    "m_facebook": 2005,
+    "id": "overture:a789c822",
+    "sqft": 288034
+   }
+  },
+  {
+   "id": "overture:36686765",
+   "record": {
+    "ov": "36686765",
+    "m2": 8834,
+    "m_google": 914,
+    "m_facebook": 1740,
+    "id": "overture:36686765",
+    "sqft": 95089
+   }
+  },
+  {
+   "id": "overture:35647238",
+   "record": {
+    "ov": "35647238",
+    "m2": 13202,
+    "m_google": 978,
+    "m_facebook": 1841,
+    "id": "overture:35647238",
+    "sqft": 142106
+   }
+  },
+  {
+   "id": "overture:801bdbaa",
+   "record": {
+    "ov": "801bdbaa",
+    "m2": 26635,
+    "m_google": 1061,
+    "m_facebook": 2571,
+    "id": "overture:801bdbaa",
+    "sqft": 286699
+   }
+  },
+  {
+   "id": "overture:ae119d36",
+   "record": {
+    "ov": "ae119d36",
+    "m2": 13113,
+    "m_google": 1144,
+    "m_facebook": 1745,
+    "id": "overture:ae119d36",
+    "sqft": 141148
+   }
+  },
+  {
+   "id": "overture:d193b57c",
+   "record": {
+    "ov": "d193b57c",
+    "m2": 26616,
+    "m_google": 1253,
+    "m_facebook": 2401,
+    "id": "overture:d193b57c",
+    "sqft": 286495
+   }
+  },
+  {
+   "id": "overture:56faf114",
+   "record": {
+    "ov": "56faf114",
+    "m2": 5289,
+    "m_google": 1389,
+    "m_facebook": 2247,
+    "id": "overture:56faf114",
+    "sqft": 56931
+   }
+  }
+ ],
+ "sources": [
+  {
+   "id": "fsq-google-point",
+   "dataset": "Foursquare: Google Data Center, 1101 Beech Rd SW",
+   "release": "hot",
+   "lineage": "EDGAR_DB.SOURCE.FOURSQUARE_OS_PLACES_HOT",
+   "method": "overture_centroid_within_1300m_of_named_place",
+   "claim_role": "stable_identity_anchor",
+   "weight": 5,
+   "reason": "membership method not calibrated",
+   "observation": {
+    "kind": "exact_sets",
+    "level": "building",
+    "sets": [
+     [
+      "overture:1b661cc3",
+      "overture:3913dc12",
+      "overture:c50424a1",
+      "overture:fa1eb23d",
+      "overture:a789c822",
+      "overture:36686765",
+      "overture:35647238",
+      "overture:801bdbaa",
+      "overture:ae119d36",
+      "overture:d193b57c"
+     ]
+    ]
+   },
+   "records": [
+    {
+     "id": "overture:1b661cc3",
+     "ov": "1b661cc3",
+     "m2": 25092,
+     "m_google": 364,
+     "m_facebook": 2215,
+     "sqft": 270090
+    },
+    {
+     "id": "overture:3913dc12",
+     "ov": "3913dc12",
+     "m2": 13703,
+     "m_google": 504,
+     "m_facebook": 1926,
+     "sqft": 147499
+    },
+    {
+     "id": "overture:c50424a1",
+     "ov": "c50424a1",
+     "m2": 26689,
+     "m_google": 586,
+     "m_facebook": 2438,
+     "sqft": 287280
+    },
+    {
+     "id": "overture:fa1eb23d",
+     "ov": "fa1eb23d",
+     "m2": 15157,
+     "m_google": 694,
+     "m_facebook": 1668,
+     "sqft": 163150
+    },
+    {
+     "id": "overture:a789c822",
+     "ov": "a789c822",
+     "m2": 26759,
+     "m_google": 821,
+     "m_facebook": 2005,
+     "sqft": 288034
+    },
+    {
+     "id": "overture:36686765",
+     "ov": "36686765",
+     "m2": 8834,
+     "m_google": 914,
+     "m_facebook": 1740,
+     "sqft": 95089
+    },
+    {
+     "id": "overture:35647238",
+     "ov": "35647238",
+     "m2": 13202,
+     "m_google": 978,
+     "m_facebook": 1841,
+     "sqft": 142106
+    },
+    {
+     "id": "overture:801bdbaa",
+     "ov": "801bdbaa",
+     "m2": 26635,
+     "m_google": 1061,
+     "m_facebook": 2571,
+     "sqft": 286699
+    },
+    {
+     "id": "overture:ae119d36",
+     "ov": "ae119d36",
+     "m2": 13113,
+     "m_google": 1144,
+     "m_facebook": 1745,
+     "sqft": 141148
+    },
+    {
+     "id": "overture:d193b57c",
+     "ov": "d193b57c",
+     "m2": 26616,
+     "m_google": 1253,
+     "m_facebook": 2401,
+     "sqft": 286495
+    }
+   ]
+  },
+  {
+   "id": "two-campus-partition",
+   "dataset": "Foursquare Google vs Facebook Data Center points",
+   "release": "hot",
+   "lineage": "EDGAR_DB.SOURCE.FOURSQUARE_OS_PLACES_HOT",
+   "method": "nearer_google_point_than_facebook_point",
+   "claim_role": "stable_identity_anchor",
+   "weight": 5,
+   "reason": "membership method not calibrated",
+   "observation": {
+    "kind": "exact_sets",
+    "level": "building",
+    "sets": [
+     [
+      "overture:1b661cc3",
+      "overture:3913dc12",
+      "overture:c50424a1",
+      "overture:fa1eb23d",
+      "overture:a789c822",
+      "overture:36686765",
+      "overture:35647238",
+      "overture:801bdbaa",
+      "overture:ae119d36",
+      "overture:d193b57c",
+      "overture:56faf114"
+     ]
+    ]
+   },
+   "records": [
+    {
+     "id": "overture:1b661cc3",
+     "ov": "1b661cc3",
+     "m2": 25092,
+     "m_google": 364,
+     "m_facebook": 2215,
+     "sqft": 270090
+    },
+    {
+     "id": "overture:3913dc12",
+     "ov": "3913dc12",
+     "m2": 13703,
+     "m_google": 504,
+     "m_facebook": 1926,
+     "sqft": 147499
+    },
+    {
+     "id": "overture:c50424a1",
+     "ov": "c50424a1",
+     "m2": 26689,
+     "m_google": 586,
+     "m_facebook": 2438,
+     "sqft": 287280
+    },
+    {
+     "id": "overture:fa1eb23d",
+     "ov": "fa1eb23d",
+     "m2": 15157,
+     "m_google": 694,
+     "m_facebook": 1668,
+     "sqft": 163150
+    },
+    {
+     "id": "overture:a789c822",
+     "ov": "a789c822",
+     "m2": 26759,
+     "m_google": 821,
+     "m_facebook": 2005,
+     "sqft": 288034
+    },
+    {
+     "id": "overture:36686765",
+     "ov": "36686765",
+     "m2": 8834,
+     "m_google": 914,
+     "m_facebook": 1740,
+     "sqft": 95089
+    },
+    {
+     "id": "overture:35647238",
+     "ov": "35647238",
+     "m2": 13202,
+     "m_google": 978,
+     "m_facebook": 1841,
+     "sqft": 142106
+    },
+    {
+     "id": "overture:801bdbaa",
+     "ov": "801bdbaa",
+     "m2": 26635,
+     "m_google": 1061,
+     "m_facebook": 2571,
+     "sqft": 286699
+    },
+    {
+     "id": "overture:ae119d36",
+     "ov": "ae119d36",
+     "m2": 13113,
+     "m_google": 1144,
+     "m_facebook": 1745,
+     "sqft": 141148
+    },
+    {
+     "id": "overture:d193b57c",
+     "ov": "d193b57c",
+     "m2": 26616,
+     "m_google": 1253,
+     "m_facebook": 2401,
+     "sqft": 286495
+    },
+    {
+     "id": "overture:56faf114",
+     "ov": "56faf114",
+     "m2": 5289,
+     "m_google": 1389,
+     "m_facebook": 2247,
+     "sqft": 56931
+    }
+   ]
+  },
+  {
+   "id": "hall-module-morphology",
+   "dataset": "Overture Maps buildings 2026-07",
+   "release": "hot",
+   "lineage": "EDGAR_DB.SOURCE.OVERTURE_MAPS_FEATURES_HOT",
+   "method": "footprint_within_3pct_of_repeated_26650m2_module",
+   "claim_role": "attribute_observation",
+   "weight": 3,
+   "reason": "membership method not calibrated",
+   "observation": {
+    "kind": "exact_sets",
+    "level": "building",
+    "sets": [
+     [
+      "overture:c50424a1",
+      "overture:a789c822",
+      "overture:801bdbaa",
+      "overture:d193b57c"
+     ]
+    ]
+   },
+   "records": [
+    {
+     "id": "overture:c50424a1",
+     "ov": "c50424a1",
+     "m2": 26689,
+     "m_google": 586,
+     "m_facebook": 2438,
+     "sqft": 287280
+    },
+    {
+     "id": "overture:a789c822",
+     "ov": "a789c822",
+     "m2": 26759,
+     "m_google": 821,
+     "m_facebook": 2005,
+     "sqft": 288034
+    },
+    {
+     "id": "overture:801bdbaa",
+     "ov": "801bdbaa",
+     "m2": 26635,
+     "m_google": 1061,
+     "m_facebook": 2571,
+     "sqft": 286699
+    },
+    {
+     "id": "overture:d193b57c",
+     "ov": "d193b57c",
+     "m2": 26616,
+     "m_google": 1253,
+     "m_facebook": 2401,
+     "sqft": 286495
+    }
+   ]
+  }
+ ]
+}

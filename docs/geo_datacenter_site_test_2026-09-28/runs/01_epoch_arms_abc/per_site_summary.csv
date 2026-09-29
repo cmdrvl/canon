@@ -1,0 +1,70 @@
+site,org,mw,epoch_address,A_grade,A_matched,B_grade,anchor_by,C_grade,ms_n,ov_n,fema_n,ms_largest,ov_largest,fema_largest
+Colossus 2,SpaceXAI,946,"5420 Tulane Rd, Memphis, TN 38109",exact_verified,"5420 TULANE RD, MEMPHIS, TN, 38109",none,A,ranked_candidates,1,4,2,109485.0,961670.0,542118.0
+Microsoft Fairwater Atlanta,Microsoft,636,"1435 Hwy 54 W, Fayetteville, GA 30214",exact_verified,"1435 STATE RTE 54, FAYETTEVILLE, GA, 30214",none,A,ranked_candidates,1,4,1,163132.0,340728.0,165057.0
+Anthropic-Amazon New Carlisle,Amazon,910,"55001 Larrison Blvd, New Carlisle, IN 46552",exact_verified,"55001 LARRISON DR, NEW CARLISLE, IN, 46552",none,A,ranked_candidates,3,11,3,1135408.0,542026.0,1081227.0
+Google Pryor (North),Google,368,"4581 Webb St, Pryor, OK 74361",no_match,,poi_address,B,ranked_candidates,10,11,3,1380999.0,1391861.0,1308056.0
+Meta Prometheus,Meta,496,"1 Community Cir, New Albany, OH 43054",no_match,,none,,city_level,,,,,,
+OpenAI Stargate Abilene,Oracle,421,"5502 Spinks Rd, Abilene, TX 79601",no_match,,none,,city_level,,,,,,
+Microsoft Fairwater Wisconsin,Microsoft,369,"4800 90th St, Mount Pleasant, WI 53403",exact_verified,"4800 90TH ST, MOUNT PLEASANT, WI, 53403",poi_address,A,ranked_candidates,0,3,0,0,299900.0,0
+Google Columbus,Google,303,"5076 S High St, Columbus, OH 43207",exact_verified,"5076 N HIGH ST, COLUMBUS, OH, 43214",poi_address,A,ranked_candidates,1,4,4,142567.0,246741.0,159643.0
+Google New Albany,Google,333,"1101 Beech Rd SW, New Albany, OH 43054",no_match,,poi_address,B,ranked_candidates,5,11,0,334411.0,608109.0,0
+Colossus 1,SpaceXAI,340,"3231 Riverport Rd, Memphis, TN 38109",no_match,,none,,city_level,,,,,,
+Google Council Bluffs (East),Google,237,"10410 Bunge Ave, Council Bluffs, IA 51503",exact_verified,"10410 BUNGE AVE, COUNCIL BLUFFS, IA, 51503",poi_address,A,ranked_candidates,4,16,3,901368.0,296440.0,677006.0
+CoreWeave Denton TX,CoreWeave,262,"8171 Jim Christal Rd, Denton, TX 76207",no_match,,none,,city_level,,,,,,
+QTS Richmond 1,,238,"6000 Technology Blvd, Sandston, VA 23150",no_match,,poi_address,B,ranked_candidates,5,21,6,719592.0,714998.0,728755.0
+Meta Rosemount,Meta,178,"1772-2396 145th St, Rosemount, MN 55068, USA",no_match,,none,,city_level,,,,,,
+Amazon Madison Mega Site,Amazon,284,"Amazon Data Services Inc, Madison Mega Site Nissan Parkway and Highway 22 Canton, Mississippi Madison County",not_attempted,,none,,unresolved,,,,,,
+Google Bristow,Google,238,"13001 Rollins Ford Road, Bristow, VA 20136",exact_verified,"13001 ROLLINS FORD RD, BRISTOW, VA, 20136",none,A,ranked_candidates,3,7,3,261226.0,289506.0,243550.0
+Microsoft Goodyear,Microsoft,202,"14250 W Broadway Rd, Goodyear, AZ 85338",no_match,,none,,city_level,,,,,,
+Meta Jeffersonville,Meta,178,"500 8th St, Jeffersonville, IN 47130, USA",exact_verified,"500 E 8TH ST, JEFFERSONVILLE, IN, 47130",none,A,ranked_candidates,14,13,13,611708.0,371918.0,621905.0
+AWS New Albany,Amazon,213,13360 Miller Rd NW,not_attempted,,none,,unresolved,,,,,,
+Google Omaha,Google,237,"11110 State St, Omaha, NE 68142",exact_verified,"11110 STATE ST, OMAHA, NE, 68142",none,A,ranked_candidates,1,5,1,142669.0,289764.0,248788.0
+Google Lincoln,Google,141,"5475 Cloud Ct, Lincoln, NE 68514",no_match,,none,,city_level,,,,,,
+QTS Richmond 2,,180,"6030–6070 Technology Blvd, Sandston, VA 23150",no_match,,none,,city_level,,,,,,
+Google The Dalles,Google,154,"3500 River Rd, The Dalles, OR",no_match,,none,,city_level,,,,,,
+QTS Richmond 3,,144,"3525–3543 Portugee Rd, Sandston, VA 23150",no_match,,none,,city_level,,,,,,
+Meta Montgomery,Meta,153,"Co Rd 42, Montgomery, AL 36105, USA",false_exact,"42 COUNTY CT, MONTGOMERY, AL, 36105",none,,city_level,,,,,,
+Meta Kuna,Meta,152,"601 Kuna Mora Rd,  Kuna ID 83634",exact_verified,"601 KUNA MORA RD, KUNA, ID, 83634",none,A,anchor_only,0,0,0,0,0,0
+Meta Temple,Meta,152,"2310 Eberhardt Rd, Temple, TX 76504",no_match,,none,,city_level,,,,,,
+Meta Cheyenne,Meta,152,"Cheyenne, WY 82007, USA",no_match,,none,,city_level,,,,,,
+Amazon Ridgeland,Amazon,228,"1626 County Line Road Ridgeland, Mississippi",not_attempted,,none,,unresolved,,,,,,
+Meta Huntsville,Meta,146,"5400 Prosperity Dr NW, Toney, AL",no_match,,none,,city_level,,,,,,
+Coreweave Helios,CoreWeave,132,"984 County Road 112, Afton, TX 79220",exact_verified,"984 CO RD 112, AFTON, TX, 79220",none,A,ranked_candidates,0,1,0,0,128291.0,0
+Microsoft Project Osmium,Microsoft,190,"5855 SW Kerry St, Cumming, IA 50061",no_match,,none,,city_level,,,,,,
+Meta Eagle Mountain,Meta,133,"1275 N Community Cir, Eagle Mountain, UT 84005",no_match,,poi_name_only,,city_level,,,,,,
+Google Midlothian,Google,103,"3250 Railport Parkway, Midlothian, TX 76065",no_match,,none,,city_level,,,,,,
+Google Lancaster,Google,137,"105 Whiley Rd, Lancaster, OH 43130",exact_verified,"105 WHILEY RD, LANCASTER, OH, 43130",none,A,ranked_candidates,5,8,4,165420.0,291472.0,168449.0
+Meta-QTS Hillsboro 2,Meta,180,"4755 NE Huffman St, Hillsboro, OR 97124",exact_verified,"4755 NE HUFFMAN ST, HILLSBORO, OR, 97124",none,A,ranked_candidates,21,24,13,366919.0,336481.0,344314.0
+Google Arcola,Google,77,"42575 Arcola Blvd, Sterling, VA 20166",no_match,,none,,city_level,,,,,,
+Google Red Oak,Google,77,"330 Austin Blvd, Red Oak, TX 75154",exact_verified,"330 AUSTIN BLVD, RED OAK, TX, 75154",none,A,ranked_candidates,3,6,2,750999.0,733674.0,765127.0
+Google Papillion,Google,237,"14651-15249 Gold Coast Rd 68138 Papillion Nebraska, USA",not_attempted,,none,,unresolved,,,,,,
+Meta Gallatin,Meta,87,"1 Meta Lp, Gallatin, TN 37066",no_match,,none,,city_level,,,,,,
+Meta Los Lunas,Meta,87,"4250 Messenger Lp, Los Lunas, NM 87031",no_match,,none,,city_level,,,,,,
+CoreWeave Ellendale ND,CoreWeave,68,"9685 87th Ave SE, Ellendale, ND 58436",exact_verified,"9685 87TH AVE SE, ELLENDALE, ND, 58436",none,A,anchor_only,0,0,0,0,0,0
+Meta Sarpy,Meta,80,"14436-14998 Fairview Rd, Springfield, NE 68059, USA",exact_verified,"14998 FAIRVIEW RD, SPRINGFIELD, NE, 68059",none,A,ranked_candidates,0,2,0,0,624466.0,0
+CoreWeave Chester VA,CoreWeave,82,"1401 Meadowville Technology Parkway, Chester, VA",exact_verified,"1401 MEADOWVILLE TECHNOLOGY PKWY, CHESTER, VA, 23836",poi_address,A,ranked_candidates,8,8,9,1019915.0,1020839.0,1053983.0
+AWS Berwick,Amazon,108,"1125 Electron Ave, Berwick, PA 18603",no_match,,none,,city_level,,,,,,
+CoreWeave Marble NC,CoreWeave,65,"155 Palmer Ln, Marble, NC 28905",exact_verified,"155 PALMER LN, MARBLE, NC, 28905",none,A,ranked_candidates,0,1,1,0,252557.0,254238.0
+Meta Aiken,Meta,69,"7601 State Hwy 105, Trenton, SC 29847, USA",no_match,,none,,city_level,,,,,,
+Core42 Lake Mariner,Core42,58,"7725 Lake Rd, Barker, NY 14012",exact_verified,"7725 LAKE RD, BARKER, NY, 14012",poi_address,A,ranked_candidates,0,1,1,0,242891.0,282159.0
+Microsoft SAT40,Microsoft,75,"15000 Lambda Drive, San Antonio, TX 78245",no_match,,poi_name_only,,city_level,,,,,,
+STACK Infrastructure NVA02,,85,"9590 Hornbaker Rd, Manassas, VA 20109",exact_verified,"9590 HORNBAKER RD, MANASSAS, VA, 20109",none,A,ranked_candidates,12,17,13,253803.0,257762.0,253532.0
+Anthropic Lake Mariner,AI XPV Platform,42,"7725 Lake Rd, Barker, NY 14012",exact_verified,"7725 LAKE RD, BARKER, NY, 14012",poi_address,A,ranked_candidates,0,1,1,0,242891.0,282159.0
+Microsoft-Nebius New Jersey,Nebius,50,"3963 S Lincoln Ave, Vineland, New Jersey",not_attempted,,none,,unresolved,,,,,,
+Stream Phoenix,,64,2950 S. Litchfield Road,not_attempted,,none,,unresolved,,,,,,
+Microsoft SAT14,Microsoft,47,"3545 Wiseman Boulevard, San Antonio, TX 78251",exact_verified,"3545 WISEMAN BLVD, SAN ANTONIO, TX, 78251",poi_name_only,A,ranked_candidates,12,12,10,331816.0,479235.0,516453.0
+Vantage TX1,,32,"14720 Omicron Dr, San Antonio, TX 78245",exact_verified,"14720 OMICRON DR, SAN ANTONIO, TX, 78245",none,A,ranked_candidates,4,9,3,254406.0,229169.0,230585.0
+CoreWeave Dalton 1 & 2,CoreWeave,28,"2205 Industrial South Rd, Dalton, GA, 30721",exact_verified,"2205 INDUSTRIAL SOUTH RD, DALTON, GA, 30721",poi_address,A,ranked_candidates,23,23,24,1086112.0,1102071.0,1101791.0
+xAI QTS Atlanta,SpaceXAI,17.32971,"1025 Jefferson Street NW, Atlanta, GA 30318",exact_verified,"1025 JEFFERSON ST NW, ATLANTA, GA, 30318",none,A,ranked_candidates,13,10,10,710938.0,719980.0,756912.0
+CoreWeave Lancaster Greenfield site,CoreWeave,0,"216 Greenfield Rd, Lancaster, PA",exact_verified,"216 GREENFIELD RD, LANCASTER, PA, 17601",poi_address,A,ranked_candidates,14,14,15,1019390.0,996969.0,1036127.0
+CoreWeave Muskogee OK,CoreWeave,0,"1525 W 43rd St S, Muskogee, OK 74401, USA",exact_verified,"1525 E 43RD ST S, MUSKOGEE, OK, 74403",none,A,ranked_candidates,1,0,1,183234.0,0,180551.0
+Crusoe Abilene Expansion,Microsoft,0,"5502 Spinks Rd, Abilene, TX 79601",no_match,,none,,city_level,,,,,,
+Goodnight,Google,0,"10001 Lima Rd, Claude, TX 79019",no_match,,none,,city_level,,,,,,
+Google Cedar Rapids,Google,0,"5800 EDGEWOOD RD SW CEDAR RAPIDS, IA 52404",not_attempted,,none,,unresolved,,,,,,
+Google Fort Wayne,Google,0,"6015 Adams Center Road, Fort Wayne, IN 46806",exact_verified,"6015 ADAMS CENTER RD, FORT WAYNE, IN, 46816",none,A,ranked_candidates,1,1,1,130684.0,138747.0,135761.0
+Meta Bowling Green,Meta,0,"12356 Middleton Pike, Bowling Green, OH 43402",exact_verified,"12356 MIDDLETON PIKE, BOWLING GREEN, OH, 43402",none,A,ranked_candidates,0,1,2,0,363209.0,378102.0
+Meta Hyperion,Meta,0,"Holly Ridge, LA 71269",not_attempted,,none,,unresolved,,,,,,
+OpenAI Stargate Lordstown,Softbank,0,"2300 Hallock Young Rd, Warren, OH 44481",exact_verified,"2300 HALLOCK YOUNG RD, WARREN, OH, 44481",poi_address,A,ranked_candidates,4,4,2,1876550.0,2100587.0,2333612.0
+OpenAI Stargate Shackelford,Oracle,0,"175 Private Road 1604, Abilene, TX 79601, Shackelford County",no_match,,none,,city_level,,,,,,
+QTS Cedar Rapids,,0,"6200 76th Ave SW, Fairfax, IA 52228",exact_verified,"6200 76TH AVE SW, FAIRFAX, IA, 52228",none,A,anchor_only,0,0,0,0,0,0
+QTS Eagle Mountain,Meta,0,"652 E Hyperscale Way, Eagle Mountain, UT 84013",no_match,,poi_name_only,,city_level,,,,,,

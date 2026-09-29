@@ -1,0 +1,347 @@
+{
+ "site": "d-google-pryor",
+ "max_assignments": 65536,
+ "max_materialized_models": 16384,
+ "universe_policy": "Overture buildings >= 10,000 m2 within 1,300 m of the Foursquare Google POI (4581 Webb St)",
+ "candidates": [
+  {
+   "id": "overture:154131f6",
+   "record": {
+    "oid": "154131f6-5edf-4f77-878f-f7b920f12870",
+    "m2": 129308,
+    "sqft": 1391858,
+    "m_pin": 938
+   }
+  },
+  {
+   "id": "overture:215d1320",
+   "record": {
+    "oid": "215d1320-3552-4a36-9f93-64bacc0aae26",
+    "m2": 60015,
+    "sqft": 645995,
+    "m_pin": 770
+   }
+  },
+  {
+   "id": "overture:bd06b2c1",
+   "record": {
+    "oid": "bd06b2c1-ffe1-4546-a087-82995dbc0dd6",
+    "m2": 31093,
+    "sqft": 334682,
+    "m_pin": 907
+   }
+  },
+  {
+   "id": "overture:3fe30483",
+   "record": {
+    "oid": "3fe30483-2bb1-45bc-8737-985c7c402979",
+    "m2": 30343,
+    "sqft": 326609,
+    "m_pin": 1076
+   }
+  },
+  {
+   "id": "overture:ee97c483",
+   "record": {
+    "oid": "ee97c483-5b8d-4e97-b446-d4eeac619a08",
+    "m2": 29321,
+    "sqft": 315608,
+    "m_pin": 987
+   }
+  },
+  {
+   "id": "overture:72ea9c27",
+   "record": {
+    "oid": "72ea9c27-e1c8-4096-8a95-080164733d83",
+    "m2": 13073,
+    "sqft": 140716,
+    "m_pin": 628
+   }
+  },
+  {
+   "id": "overture:db71b13c",
+   "record": {
+    "oid": "db71b13c-6bde-4851-bb59-21b7548da559",
+    "m2": 12961,
+    "sqft": 139511,
+    "m_pin": 1170
+   }
+  },
+  {
+   "id": "overture:56e84c8d",
+   "record": {
+    "oid": "56e84c8d-53c5-40e0-b785-8b111c29c5fb",
+    "m2": 11642,
+    "sqft": 125313,
+    "m_pin": 306
+   }
+  },
+  {
+   "id": "overture:dcc29a09",
+   "record": {
+    "oid": "dcc29a09-824b-47a1-9e95-ec6bc54df58d",
+    "m2": 10929,
+    "sqft": 117639,
+    "m_pin": 313
+   }
+  },
+  {
+   "id": "overture:37eade67",
+   "record": {
+    "oid": "37eade67-3e5f-429f-8359-21857a50e4e5",
+    "m2": 10340,
+    "sqft": 111299,
+    "m_pin": 1140
+   }
+  }
+ ],
+ "sources": [
+  {
+   "id": "fsq-industrial-partition",
+   "dataset": "Foursquare OS Places 2026-08-11 (Google POI vs named industrial neighbors)",
+   "release": "hot",
+   "lineage": "EDGAR_DB.SOURCE.FOURSQUARE_OS_PLACES_HOT",
+   "method": "nearer_google_point_than_named_industrial_neighbor",
+   "claim_role": "stable_identity_anchor",
+   "weight": 5,
+   "reason": "membership method not calibrated",
+   "observation": {
+    "kind": "exact_sets",
+    "level": "building",
+    "sets": [
+     [
+      "overture:215d1320",
+      "overture:3fe30483",
+      "overture:ee97c483",
+      "overture:56e84c8d",
+      "overture:dcc29a09"
+     ]
+    ]
+   },
+   "records": [
+    {
+     "id": "overture:215d1320",
+     "oid": "215d1320-3552-4a36-9f93-64bacc0aae26",
+     "m2": 60015,
+     "sqft": 645995,
+     "m_pin": 770,
+     "nearest_industrial": "Red Devil (4175 Webb St)",
+     "m_nearest_industrial": 1010,
+     "ms_match": true
+    },
+    {
+     "id": "overture:3fe30483",
+     "oid": "3fe30483-2bb1-45bc-8737-985c7c402979",
+     "m2": 30343,
+     "sqft": 326609,
+     "m_pin": 1076,
+     "nearest_industrial": "Red Devil (4175 Webb St)",
+     "m_nearest_industrial": 1207,
+     "ms_match": true
+    },
+    {
+     "id": "overture:ee97c483",
+     "oid": "ee97c483-5b8d-4e97-b446-d4eeac619a08",
+     "m2": 29321,
+     "sqft": 315608,
+     "m_pin": 987,
+     "nearest_industrial": "Red Devil (4175 Webb St)",
+     "m_nearest_industrial": 1236,
+     "ms_match": true
+    },
+    {
+     "id": "overture:56e84c8d",
+     "oid": "56e84c8d-53c5-40e0-b785-8b111c29c5fb",
+     "m2": 11642,
+     "sqft": 125313,
+     "m_pin": 306,
+     "nearest_industrial": "Red Devil (4175 Webb St)",
+     "m_nearest_industrial": 485,
+     "ms_match": false
+    },
+    {
+     "id": "overture:dcc29a09",
+     "oid": "dcc29a09-824b-47a1-9e95-ec6bc54df58d",
+     "m2": 10929,
+     "sqft": 117639,
+     "m_pin": 313,
+     "nearest_industrial": "Harbison Walker International",
+     "m_nearest_industrial": 648,
+     "ms_match": true
+    }
+   ]
+  },
+  {
+   "id": "hall-module-morphology",
+   "dataset": "Overture Maps buildings 2026-07",
+   "release": "hot",
+   "lineage": "EDGAR_DB.SOURCE.OVERTURE_MAPS_FEATURES_HOT",
+   "method": "at_least_3_footprints_within_5pct_area_each_ge_20000m2",
+   "claim_role": "attribute_observation",
+   "weight": 3,
+   "reason": "membership method not calibrated",
+   "observation": {
+    "kind": "exact_sets",
+    "level": "building",
+    "sets": [
+     [
+      "overture:ee97c483",
+      "overture:3fe30483",
+      "overture:bd06b2c1"
+     ]
+    ]
+   },
+   "records": [
+    {
+     "id": "overture:ee97c483",
+     "oid": "ee97c483-5b8d-4e97-b446-d4eeac619a08",
+     "m2": 29321,
+     "sqft": 315608,
+     "m_pin": 987,
+     "nearest_industrial": "Red Devil (4175 Webb St)",
+     "m_nearest_industrial": 1236,
+     "ms_match": true
+    },
+    {
+     "id": "overture:3fe30483",
+     "oid": "3fe30483-2bb1-45bc-8737-985c7c402979",
+     "m2": 30343,
+     "sqft": 326609,
+     "m_pin": 1076,
+     "nearest_industrial": "Red Devil (4175 Webb St)",
+     "m_nearest_industrial": 1207,
+     "ms_match": true
+    },
+    {
+     "id": "overture:bd06b2c1",
+     "oid": "bd06b2c1-ffe1-4546-a087-82995dbc0dd6",
+     "m2": 31093,
+     "sqft": 334682,
+     "m_pin": 907,
+     "nearest_industrial": "Red Devil (4175 Webb St)",
+     "m_nearest_industrial": 900,
+     "ms_match": true
+    }
+   ]
+  },
+  {
+   "id": "ms-crosslayer",
+   "dataset": "Microsoft GlobalML building footprints 2026-07-24",
+   "release": "hot",
+   "lineage": "EDGAR_DB.SOURCE.MICROSOFT_GLOBALML_BUILDING_FOOTPRINTS_HOT",
+   "method": "microsoft_footprint_within_30m_and_25pct_area",
+   "claim_role": "attribute_observation",
+   "weight": 3,
+   "reason": "membership method not calibrated",
+   "observation": {
+    "kind": "exact_sets",
+    "level": "building",
+    "sets": [
+     [
+      "overture:154131f6",
+      "overture:215d1320",
+      "overture:bd06b2c1",
+      "overture:3fe30483",
+      "overture:ee97c483",
+      "overture:72ea9c27",
+      "overture:db71b13c",
+      "overture:dcc29a09",
+      "overture:37eade67"
+     ]
+    ]
+   },
+   "records": [
+    {
+     "id": "overture:154131f6",
+     "oid": "154131f6-5edf-4f77-878f-f7b920f12870",
+     "m2": 129308,
+     "sqft": 1391858,
+     "m_pin": 938,
+     "nearest_industrial": "Red Devil (4175 Webb St)",
+     "m_nearest_industrial": 630,
+     "ms_match": true
+    },
+    {
+     "id": "overture:215d1320",
+     "oid": "215d1320-3552-4a36-9f93-64bacc0aae26",
+     "m2": 60015,
+     "sqft": 645995,
+     "m_pin": 770,
+     "nearest_industrial": "Red Devil (4175 Webb St)",
+     "m_nearest_industrial": 1010,
+     "ms_match": true
+    },
+    {
+     "id": "overture:bd06b2c1",
+     "oid": "bd06b2c1-ffe1-4546-a087-82995dbc0dd6",
+     "m2": 31093,
+     "sqft": 334682,
+     "m_pin": 907,
+     "nearest_industrial": "Red Devil (4175 Webb St)",
+     "m_nearest_industrial": 900,
+     "ms_match": true
+    },
+    {
+     "id": "overture:3fe30483",
+     "oid": "3fe30483-2bb1-45bc-8737-985c7c402979",
+     "m2": 30343,
+     "sqft": 326609,
+     "m_pin": 1076,
+     "nearest_industrial": "Red Devil (4175 Webb St)",
+     "m_nearest_industrial": 1207,
+     "ms_match": true
+    },
+    {
+     "id": "overture:ee97c483",
+     "oid": "ee97c483-5b8d-4e97-b446-d4eeac619a08",
+     "m2": 29321,
+     "sqft": 315608,
+     "m_pin": 987,
+     "nearest_industrial": "Red Devil (4175 Webb St)",
+     "m_nearest_industrial": 1236,
+     "ms_match": true
+    },
+    {
+     "id": "overture:72ea9c27",
+     "oid": "72ea9c27-e1c8-4096-8a95-080164733d83",
+     "m2": 13073,
+     "sqft": 140716,
+     "m_pin": 628,
+     "nearest_industrial": "Red Devil (4175 Webb St)",
+     "m_nearest_industrial": 15,
+     "ms_match": true
+    },
+    {
+     "id": "overture:db71b13c",
+     "oid": "db71b13c-6bde-4851-bb59-21b7548da559",
+     "m2": 12961,
+     "sqft": 139511,
+     "m_pin": 1170,
+     "nearest_industrial": "Orchid Paper Products",
+     "m_nearest_industrial": 573,
+     "ms_match": true
+    },
+    {
+     "id": "overture:dcc29a09",
+     "oid": "dcc29a09-824b-47a1-9e95-ec6bc54df58d",
+     "m2": 10929,
+     "sqft": 117639,
+     "m_pin": 313,
+     "nearest_industrial": "Harbison Walker International",
+     "m_nearest_industrial": 648,
+     "ms_match": true
+    },
+    {
+     "id": "overture:37eade67",
+     "oid": "37eade67-3e5f-429f-8359-21857a50e4e5",
+     "m2": 10340,
+     "sqft": 111299,
+     "m_pin": 1140,
+     "nearest_industrial": "Red Devil (4175 Webb St)",
+     "m_nearest_industrial": 1119,
+     "ms_match": true
+    }
+   ]
+  }
+ ]
+}

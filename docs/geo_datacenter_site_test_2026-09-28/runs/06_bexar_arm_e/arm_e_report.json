@@ -1,0 +1,165 @@
+{
+ "A_microsoft_within_2.5km_of_Lambda": {
+  "+/-5%": {
+   "status": "conflict",
+   "feasible_models": 0,
+   "candidates": 2,
+   "conflict_constraint_ids": [
+    "hyp.news_size_band.ksat_158_acre"
+   ]
+  },
+  "+/-10%": {
+   "status": "conflict",
+   "feasible_models": 0,
+   "candidates": 2,
+   "conflict_constraint_ids": [
+    "hyp.news_size_band.ksat_158_acre"
+   ]
+  },
+  "+/-25%": {
+   "status": "conflict",
+   "feasible_models": 0,
+   "candidates": 2,
+   "conflict_constraint_ids": [
+    "hyp.news_size_band.ksat_158_acre"
+   ]
+  },
+  "D1 0.5x-2.6x": {
+   "status": "ambiguous",
+   "feasible_models": 2,
+   "candidates": 2,
+   "in_every_model": [
+    "04348-116-0010#597363"
+   ],
+   "in_no_model": [],
+   "rank1_cost": 0,
+   "rank1_parcels": [
+    "04348-000-0141#61509",
+    "04348-116-0010#597363"
+   ]
+  }
+ },
+ "B_all_microsoft_bexar_ge4ac": {
+  "+/-5%": {
+   "status": "ambiguous",
+   "feasible_models": 173,
+   "candidates": 11,
+   "in_every_model": [],
+   "in_no_model": [],
+   "rank1_cost": 0,
+   "rank1_parcels": [
+    "04348-000-0141#61509",
+    "04348-116-0010#597363",
+    "16955-002-0020#541047",
+    "17640-000-0018#385272",
+    "17640-000-0092#494746"
+   ]
+  },
+  "+/-10%": {
+   "status": "ambiguous",
+   "feasible_models": 338,
+   "candidates": 11,
+   "in_every_model": [],
+   "in_no_model": [],
+   "rank1_cost": 0,
+   "rank1_parcels": [
+    "04348-000-0141#61509",
+    "04348-116-0010#597363",
+    "16955-002-0020#541047",
+    "17640-000-0018#385272"
+   ]
+  },
+  "+/-25%": {
+   "status": "ambiguous",
+   "feasible_models": 849,
+   "candidates": 11,
+   "in_every_model": [],
+   "in_no_model": [],
+   "rank1_cost": 0,
+   "rank1_parcels": [
+    "04348-000-0141#61509",
+    "04348-116-0010#597363",
+    "16955-002-0020#541047"
+   ]
+  },
+  "D1 0.5x-2.6x": {
+   "status": "ambiguous",
+   "feasible_models": 1860,
+   "candidates": 11,
+   "in_every_model": [],
+   "in_no_model": [],
+   "rank1_cost": 0,
+   "rank1_parcels": [
+    "04348-000-0141#61509",
+    "04348-116-0010#597363"
+   ]
+  }
+ },
+ "C_any_owner_within_2km_ge22ac_prefer_microsoft": {
+  "+/-5%": {
+   "status": "ambiguous",
+   "feasible_models": 420,
+   "candidates": 15,
+   "in_every_model": [],
+   "in_no_model": [
+    "04399-000-0010#61748"
+   ],
+   "rank1_cost": 0,
+   "rank1_parcels": [
+    "04347-000-1042#49288",
+    "04348-000-0141#61509",
+    "04348-116-0010#597363"
+   ]
+  },
+  "+/-10%": {
+   "status": "ambiguous",
+   "feasible_models": 912,
+   "candidates": 15,
+   "in_every_model": [],
+   "in_no_model": [
+    "04399-000-0010#61748"
+   ],
+   "rank1_cost": 0,
+   "rank1_parcels": [
+    "04347-000-1042#49288",
+    "04348-000-0141#61509",
+    "04348-116-0010#597363"
+   ]
+  },
+  "+/-25%": {
+   "status": "ambiguous",
+   "feasible_models": 2244,
+   "candidates": 15,
+   "in_every_model": [],
+   "in_no_model": [
+    "04399-000-0010#61748"
+   ],
+   "rank1_cost": 0,
+   "rank1_parcels": [
+    "04347-000-1042#49288",
+    "04347-000-1051#61505",
+    "04348-000-0141#61509",
+    "04348-116-0010#597363"
+   ]
+  },
+  "D1 0.5x-2.6x": {
+   "status": "ambiguous",
+   "feasible_models": 17716,
+   "candidates": 15,
+   "in_every_model": [],
+   "in_no_model": [],
+   "rank1_cost": 0,
+   "rank1_parcels": [
+    "04347-000-1042#49288",
+    "04347-000-1051#61505",
+    "04347-000-1080#673581",
+    "04347-237-9010#683099",
+    "04348-000-0021#63020",
+    "04348-000-0082#63154",
+    "04348-000-0100#61788",
+    "04348-000-0141#61509",
+    "04348-116-0010#597363"
+   ]
+  }
+ }
+}

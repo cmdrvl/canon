@@ -1,0 +1,344 @@
+[
+ {
+  "parcel": "510-180711",
+  "lat": 39.85252,
+  "lon": -82.9968,
+  "vid": "sha256:18c5807a8313699edc32ba786ae1eb947c819a2699628fed7541caaf504e1772",
+  "pois": []
+ },
+ {
+  "parcel": "050-011455",
+  "lat": 40.04945,
+  "lon": -83.1761,
+  "vid": "sha256:086ad201b6639f520bbd689798fae0aed3221b66c93504faa922c57e16551773",
+  "pois": []
+ },
+ {
+  "parcel": "222-004984",
+  "lat": 40.05831,
+  "lon": -82.77106,
+  "vid": "sha256:991c4e924d917ce0ac1b9476029d45f19d29dbe5b46e4e48bbaf407a216b68b1",
+  "pois": []
+ },
+ {
+  "parcel": "050-011444",
+  "lat": 40.05994,
+  "lon": -83.1343,
+  "vid": "sha256:971cd3ebb10ce2455e78797fd736560517c6a04ca83d69703639ffa57f308a88",
+  "pois": []
+ },
+ {
+  "parcel": "050-002806",
+  "lat": 40.01894,
+  "lon": -83.12438,
+  "vid": "sha256:45a54b865cdbe3c4a269283e5b7ac1760de87e7ec86fc491742cb051194171bc",
+  "pois": []
+ },
+ {
+  "parcel": "610-207094",
+  "lat": 40.11815,
+  "lon": -82.99943,
+  "vid": "sha256:2cd32395c88830d8379b022d8dbb57d68ce75928cb19c91ce1a45d53a733bc00",
+  "pois": [
+   {
+    "name": "Oracle Elevator Company",
+    "address": "771 Dearborn Park Ln Ste B",
+    "lat": 40.1158,
+    "lon": -82.99837,
+    "m": 276.0,
+    "cats": "[\"Business and Professional Services > Industrial Equipment Supplier\"]"
+   },
+   {
+    "name": "Huntington National Bank Data Center @ Cologix",
+    "address": "585 Scherers Ct",
+    "lat": 40.11562,
+    "lon": -83.00167,
+    "m": 340.0,
+    "cats": "[\"Landmarks and Outdoors > Structure\"]"
+   },
+   {
+    "name": "Datacenter.bz",
+    "address": "535 Scherers Ct",
+    "lat": 40.11602,
+    "lon": -83.00241,
+    "m": 347.0,
+    "cats": "[\"Business and Professional Services > Office > Tech Startup\"]"
+   },
+   {
+    "name": "Cologix",
+    "address": "535 Scherers Ct",
+    "lat": 40.11575,
+    "lon": -83.00248,
+    "m": 372.0,
+    "cats": "[\"Landmarks and Outdoors > Structure\"]"
+   }
+  ]
+ },
+ {
+  "parcel": "222-002127",
+  "lat": 40.10607,
+  "lon": -82.81577,
+  "vid": "sha256:5cd5c0797c1eba1a8f4e69d9ac5f303abcf6ac11ad2a761f7db8b7fde2664140",
+  "pois": []
+ },
+ {
+  "parcel": "610-210593",
+  "lat": 40.11575,
+  "lon": -83.00172,
+  "vid": "sha256:b37a6812fcb4d88ec1d00c598ad1d2104c8600fb9ea443c74290992d36d3fbe0",
+  "pois": [
+   {
+    "name": "Huntington National Bank Data Center @ Cologix",
+    "address": "585 Scherers Ct",
+    "lat": 40.11562,
+    "lon": -83.00167,
+    "m": 16.0,
+    "cats": "[\"Landmarks and Outdoors > Structure\"]"
+   },
+   {
+    "name": "Cologix",
+    "address": "535 Scherers Ct",
+    "lat": 40.11575,
+    "lon": -83.00248,
+    "m": 65.0,
+    "cats": "[\"Landmarks and Outdoors > Structure\"]"
+   },
+   {
+    "name": "Datacenter.bz",
+    "address": "535 Scherers Ct",
+    "lat": 40.11602,
+    "lon": -83.00241,
+    "m": 66.0,
+    "cats": "[\"Business and Professional Services > Office > Tech Startup\"]"
+   },
+   {
+    "name": "Oracle Elevator Company",
+    "address": "771 Dearborn Park Ln Ste B",
+    "lat": 40.1158,
+    "lon": -82.99837,
+    "m": 285.0,
+    "cats": "[\"Business and Professional Services > Industrial Equipment Supplier\"]"
+   },
+   {
+    "name": "AWS",
+    "address": "733 Lakeview Plaza Blvd",
+    "lat": 40.11196,
+    "lon": -82.99687,
+    "m": 590.0,
+    "cats": "[\"Business and Professional Services > Office > Coworking Space\"]"
+   }
+  ]
+ },
+ {
+  "parcel": "222-004355",
+  "lat": 40.10614,
+  "lon": -82.80121,
+  "vid": "sha256:7562e7b822157fc210f23938495060baff88e62605dfd620d4912c983d9d31ae",
+  "pois": [
+   {
+    "name": "Motorists Data Center",
+    "address": "6560 New Albany Rd E",
+    "lat": 40.10542,
+    "lon": -82.80174,
+    "m": 92.0,
+    "cats": "[\"Business and Professional Services > Office > Tech Startup\"]"
+   },
+   {
+    "name": "Buckeye Data Center",
+    "address": null,
+    "lat": 40.10394,
+    "lon": -82.79876,
+    "m": 321.0,
+    "cats": "[\"Business and Professional Services > Office\"]"
+   },
+   {
+    "name": "PCM Data Center",
+    "address": null,
+    "lat": 40.10472,
+    "lon": -82.80484,
+    "m": 347.0,
+    "cats": "[\"Business and Professional Services > Office\"]"
+   },
+   {
+    "name": "Aep Data Center",
+    "address": null,
+    "lat": 40.10428,
+    "lon": -82.80495,
+    "m": 380.0,
+    "cats": "[\"Business and Professional Services > Technology Business > IT Service\"]"
+   }
+  ]
+ },
+ {
+  "parcel": "222-002056",
+  "lat": 40.1038,
+  "lon": -82.81381,
+  "vid": "sha256:8184c528ca7f4d6bd302aa56818d5d276cf14ac3e5df57403c4f291e6056daa9",
+  "pois": []
+ },
+ {
+  "parcel": "050-011895",
+  "lat": 40.05211,
+  "lon": -83.12718,
+  "vid": "sha256:7ec4cc24d9dbe91c58d3bd79fa211181f5d615da619159ce7c8ac63d04101561",
+  "pois": []
+ },
+ {
+  "parcel": "222-004441",
+  "lat": 40.10394,
+  "lon": -82.8106,
+  "vid": "sha256:e371b3bbcc386f35140e1ca243f298d3b968484e00590a2ddeec0deadea6a50b",
+  "pois": [
+   {
+    "name": "Aep Data Center",
+    "address": null,
+    "lat": 40.10428,
+    "lon": -82.80495,
+    "m": 482.0,
+    "cats": "[\"Business and Professional Services > Technology Business > IT Service\"]"
+   },
+   {
+    "name": "PCM Data Center",
+    "address": null,
+    "lat": 40.10472,
+    "lon": -82.80484,
+    "m": 497.0,
+    "cats": "[\"Business and Professional Services > Office\"]"
+   }
+  ]
+ },
+ {
+  "parcel": "222-001940",
+  "lat": 40.10424,
+  "lon": -82.80514,
+  "vid": "sha256:3031f03a12c50857fb6378222482273ede0992dbe205ae20ea1ab33e288e1ea5",
+  "pois": [
+   {
+    "name": "Aep Data Center",
+    "address": null,
+    "lat": 40.10428,
+    "lon": -82.80495,
+    "m": 17.0,
+    "cats": "[\"Business and Professional Services > Technology Business > IT Service\"]"
+   },
+   {
+    "name": "PCM Data Center",
+    "address": null,
+    "lat": 40.10472,
+    "lon": -82.80484,
+    "m": 59.0,
+    "cats": "[\"Business and Professional Services > Office\"]"
+   },
+   {
+    "name": "Motorists Data Center",
+    "address": "6560 New Albany Rd E",
+    "lat": 40.10542,
+    "lon": -82.80174,
+    "m": 317.0,
+    "cats": "[\"Business and Professional Services > Office > Tech Startup\"]"
+   },
+   {
+    "name": "Buckeye Data Center",
+    "address": null,
+    "lat": 40.10394,
+    "lon": -82.79876,
+    "m": 544.0,
+    "cats": "[\"Business and Professional Services > Office\"]"
+   }
+  ]
+ },
+ {
+  "parcel": "222-004644",
+  "lat": 40.10354,
+  "lon": -82.80848,
+  "vid": "sha256:28c26e859e6dee68162cb45b7f1cd803740567d8b28b64864922bfcc7dbb8816",
+  "pois": [
+   {
+    "name": "Aep Data Center",
+    "address": null,
+    "lat": 40.10428,
+    "lon": -82.80495,
+    "m": 311.0,
+    "cats": "[\"Business and Professional Services > Technology Business > IT Service\"]"
+   },
+   {
+    "name": "PCM Data Center",
+    "address": null,
+    "lat": 40.10472,
+    "lon": -82.80484,
+    "m": 336.0,
+    "cats": "[\"Business and Professional Services > Office\"]"
+   }
+  ]
+ },
+ {
+  "parcel": "273-012619",
+  "lat": 40.09216,
+  "lon": -83.14368,
+  "vid": "sha256:0f89da3bd116cac931d8d0dcfbefb2e8196e63914123f103d4ec99b36a9a695f",
+  "pois": [
+   {
+    "name": "Expedient Data Center",
+    "address": "5700 Innovation Dr",
+    "lat": 40.09183,
+    "lon": -83.14396,
+    "m": 44.0,
+    "cats": "[\"Business and Professional Services > Technology Business > IT Service\"]"
+   }
+  ]
+ },
+ {
+  "parcel": "222-004365",
+  "lat": 40.10417,
+  "lon": -82.80313,
+  "vid": "sha256:ef43af0c7f665c828e632305308fc3119c434149b453eb48bbd46214c6708816",
+  "pois": [
+   {
+    "name": "Aep Data Center",
+    "address": null,
+    "lat": 40.10428,
+    "lon": -82.80495,
+    "m": 155.0,
+    "cats": "[\"Business and Professional Services > Technology Business > IT Service\"]"
+   },
+   {
+    "name": "PCM Data Center",
+    "address": null,
+    "lat": 40.10472,
+    "lon": -82.80484,
+    "m": 158.0,
+    "cats": "[\"Business and Professional Services > Office\"]"
+   },
+   {
+    "name": "Motorists Data Center",
+    "address": "6560 New Albany Rd E",
+    "lat": 40.10542,
+    "lon": -82.80174,
+    "m": 182.0,
+    "cats": "[\"Business and Professional Services > Office > Tech Startup\"]"
+   },
+   {
+    "name": "Buckeye Data Center",
+    "address": null,
+    "lat": 40.10394,
+    "lon": -82.79876,
+    "m": 372.0,
+    "cats": "[\"Business and Professional Services > Office\"]"
+   }
+  ]
+ },
+ {
+  "parcel": "222-005361",
+  "lat": 40.06964,
+  "lon": -82.77164,
+  "vid": "sha256:19d518b3543c02eac7c8e10c5efe4c5b75bc7780a781b28fc080ca56bc163e71",
+  "pois": []
+ },
+ {
+  "parcel": "050-011984",
+  "lat": 40.0145,
+  "lon": -83.12194,
+  "vid": "sha256:b4ea06168c99545de530061f5cea9f20cf69e7892775578f4d417af2758d1f63",
+  "pois": []
+ }
+]

@@ -1,0 +1,545 @@
+{
+ "version": "canon_geo_warehouse_rows.v0",
+ "profile": {
+  "version": "canon_geo_composition_profile.v0",
+  "selection_level": "building"
+ },
+ "parcel_rows": [],
+ "building_parcel_rows": [
+  {
+   "building_id": "overture:1b661cc3",
+   "parcel_id": null
+  },
+  {
+   "building_id": "overture:3913dc12",
+   "parcel_id": null
+  },
+  {
+   "building_id": "overture:c50424a1",
+   "parcel_id": null
+  },
+  {
+   "building_id": "overture:fa1eb23d",
+   "parcel_id": null
+  },
+  {
+   "building_id": "overture:a789c822",
+   "parcel_id": null
+  },
+  {
+   "building_id": "overture:36686765",
+   "parcel_id": null
+  },
+  {
+   "building_id": "overture:35647238",
+   "parcel_id": null
+  },
+  {
+   "building_id": "overture:801bdbaa",
+   "parcel_id": null
+  },
+  {
+   "building_id": "overture:ae119d36",
+   "parcel_id": null
+  },
+  {
+   "building_id": "overture:d193b57c",
+   "parcel_id": null
+  },
+  {
+   "building_id": "overture:56faf114",
+   "parcel_id": null
+  }
+ ],
+ "contracts": [
+  {
+   "id": "rho.g-google-new-albany.fsq-google-point",
+   "version": "1.0.0",
+   "source_dataset": "Foursquare: Google Data Center, 1101 Beech Rd SW",
+   "source_release": "hot",
+   "source_lineage_ids": [
+    "EDGAR_DB.SOURCE.FOURSQUARE_OS_PLACES_HOT"
+   ],
+   "method_id": "overture_centroid_within_1300m_of_named_place",
+   "method_version": "1.0.0",
+   "claim_role": "stable_identity_anchor",
+   "basis": {
+    "kind": "uncalibrated",
+    "reason": "membership method not calibrated",
+    "admission_policy": {
+     "kind": "soft_with_weight",
+     "cost_if_absent": 5
+    }
+   }
+  },
+  {
+   "id": "rho.g-google-new-albany.two-campus-partition",
+   "version": "1.0.0",
+   "source_dataset": "Foursquare Google vs Facebook Data Center points",
+   "source_release": "hot",
+   "source_lineage_ids": [
+    "EDGAR_DB.SOURCE.FOURSQUARE_OS_PLACES_HOT"
+   ],
+   "method_id": "nearer_google_point_than_facebook_point",
+   "method_version": "1.0.0",
+   "claim_role": "stable_identity_anchor",
+   "basis": {
+    "kind": "uncalibrated",
+    "reason": "membership method not calibrated",
+    "admission_policy": {
+     "kind": "soft_with_weight",
+     "cost_if_absent": 5
+    }
+   }
+  },
+  {
+   "id": "rho.g-google-new-albany.hall-module-morphology",
+   "version": "1.0.0",
+   "source_dataset": "Overture Maps buildings 2026-07",
+   "source_release": "hot",
+   "source_lineage_ids": [
+    "EDGAR_DB.SOURCE.OVERTURE_MAPS_FEATURES_HOT"
+   ],
+   "method_id": "footprint_within_3pct_of_repeated_26650m2_module",
+   "method_version": "1.0.0",
+   "claim_role": "attribute_observation",
+   "basis": {
+    "kind": "uncalibrated",
+    "reason": "membership method not calibrated",
+    "admission_policy": {
+     "kind": "soft_with_weight",
+     "cost_if_absent": 3
+    }
+   }
+  }
+ ],
+ "evidence_rows": [
+  {
+   "observation_id": "obs.g-google-new-albany.fsq-google-point.overture:1b661cc3",
+   "contract_id": "rho.g-google-new-albany.fsq-google-point",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.fsq-google-point.overture:1b661cc3",
+    "source_vintage": "hot",
+    "record_blake3": "0a2eb9dc7b10a1a646c3a7609aad5142f0a1c744954ee32f267534ed501f3b21"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:1b661cc3"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.fsq-google-point.overture:3913dc12",
+   "contract_id": "rho.g-google-new-albany.fsq-google-point",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.fsq-google-point.overture:3913dc12",
+    "source_vintage": "hot",
+    "record_blake3": "fd9e163bf21ee94c8b276b6b444ab057bf7b64b2673915e8c08421670b66cbd1"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:3913dc12"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.fsq-google-point.overture:c50424a1",
+   "contract_id": "rho.g-google-new-albany.fsq-google-point",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.fsq-google-point.overture:c50424a1",
+    "source_vintage": "hot",
+    "record_blake3": "cb2eb70995df24aef0107bccbaa4941253ea79b8d08cd690a721ee11cd7ea79c"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:c50424a1"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.fsq-google-point.overture:fa1eb23d",
+   "contract_id": "rho.g-google-new-albany.fsq-google-point",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.fsq-google-point.overture:fa1eb23d",
+    "source_vintage": "hot",
+    "record_blake3": "6b4b9b56a0c899b3d248aaacffa0e43af9a17682cab5f371866576a1870b0742"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:fa1eb23d"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.fsq-google-point.overture:a789c822",
+   "contract_id": "rho.g-google-new-albany.fsq-google-point",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.fsq-google-point.overture:a789c822",
+    "source_vintage": "hot",
+    "record_blake3": "00440c150ee448cb737c52610fe5d5b921ed1ec9b05288d38333655140c5e859"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:a789c822"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.fsq-google-point.overture:36686765",
+   "contract_id": "rho.g-google-new-albany.fsq-google-point",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.fsq-google-point.overture:36686765",
+    "source_vintage": "hot",
+    "record_blake3": "33a4485ee6acdf1396a1f98e2c372221c66f56cf392e39d2c3994925c0083154"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:36686765"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.fsq-google-point.overture:35647238",
+   "contract_id": "rho.g-google-new-albany.fsq-google-point",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.fsq-google-point.overture:35647238",
+    "source_vintage": "hot",
+    "record_blake3": "9a0e9211b3ced39dad4a5268fe317dce2b65c10ed2f7fdc7998977c772af19e5"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:35647238"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.fsq-google-point.overture:801bdbaa",
+   "contract_id": "rho.g-google-new-albany.fsq-google-point",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.fsq-google-point.overture:801bdbaa",
+    "source_vintage": "hot",
+    "record_blake3": "9ef0e9952eb10833ab94b40576f936d2424762e23939517f71b93754d5af41a7"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:801bdbaa"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.fsq-google-point.overture:ae119d36",
+   "contract_id": "rho.g-google-new-albany.fsq-google-point",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.fsq-google-point.overture:ae119d36",
+    "source_vintage": "hot",
+    "record_blake3": "cf06a178a43b158624c2fb5c0bade81626cb3afee8de081648646f83f3cd588e"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:ae119d36"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.fsq-google-point.overture:d193b57c",
+   "contract_id": "rho.g-google-new-albany.fsq-google-point",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.fsq-google-point.overture:d193b57c",
+    "source_vintage": "hot",
+    "record_blake3": "ce2e2cd76f772a8c365fc5b18a8988b37a9bebe53a89aa5a65d416510ef4b3d5"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:d193b57c"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.two-campus-partition.overture:1b661cc3",
+   "contract_id": "rho.g-google-new-albany.two-campus-partition",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.two-campus-partition.overture:1b661cc3",
+    "source_vintage": "hot",
+    "record_blake3": "0a2eb9dc7b10a1a646c3a7609aad5142f0a1c744954ee32f267534ed501f3b21"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:1b661cc3"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.two-campus-partition.overture:3913dc12",
+   "contract_id": "rho.g-google-new-albany.two-campus-partition",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.two-campus-partition.overture:3913dc12",
+    "source_vintage": "hot",
+    "record_blake3": "fd9e163bf21ee94c8b276b6b444ab057bf7b64b2673915e8c08421670b66cbd1"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:3913dc12"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.two-campus-partition.overture:c50424a1",
+   "contract_id": "rho.g-google-new-albany.two-campus-partition",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.two-campus-partition.overture:c50424a1",
+    "source_vintage": "hot",
+    "record_blake3": "cb2eb70995df24aef0107bccbaa4941253ea79b8d08cd690a721ee11cd7ea79c"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:c50424a1"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.two-campus-partition.overture:fa1eb23d",
+   "contract_id": "rho.g-google-new-albany.two-campus-partition",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.two-campus-partition.overture:fa1eb23d",
+    "source_vintage": "hot",
+    "record_blake3": "6b4b9b56a0c899b3d248aaacffa0e43af9a17682cab5f371866576a1870b0742"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:fa1eb23d"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.two-campus-partition.overture:a789c822",
+   "contract_id": "rho.g-google-new-albany.two-campus-partition",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.two-campus-partition.overture:a789c822",
+    "source_vintage": "hot",
+    "record_blake3": "00440c150ee448cb737c52610fe5d5b921ed1ec9b05288d38333655140c5e859"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:a789c822"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.two-campus-partition.overture:36686765",
+   "contract_id": "rho.g-google-new-albany.two-campus-partition",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.two-campus-partition.overture:36686765",
+    "source_vintage": "hot",
+    "record_blake3": "33a4485ee6acdf1396a1f98e2c372221c66f56cf392e39d2c3994925c0083154"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:36686765"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.two-campus-partition.overture:35647238",
+   "contract_id": "rho.g-google-new-albany.two-campus-partition",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.two-campus-partition.overture:35647238",
+    "source_vintage": "hot",
+    "record_blake3": "9a0e9211b3ced39dad4a5268fe317dce2b65c10ed2f7fdc7998977c772af19e5"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:35647238"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.two-campus-partition.overture:801bdbaa",
+   "contract_id": "rho.g-google-new-albany.two-campus-partition",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.two-campus-partition.overture:801bdbaa",
+    "source_vintage": "hot",
+    "record_blake3": "9ef0e9952eb10833ab94b40576f936d2424762e23939517f71b93754d5af41a7"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:801bdbaa"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.two-campus-partition.overture:ae119d36",
+   "contract_id": "rho.g-google-new-albany.two-campus-partition",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.two-campus-partition.overture:ae119d36",
+    "source_vintage": "hot",
+    "record_blake3": "cf06a178a43b158624c2fb5c0bade81626cb3afee8de081648646f83f3cd588e"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:ae119d36"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.two-campus-partition.overture:d193b57c",
+   "contract_id": "rho.g-google-new-albany.two-campus-partition",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.two-campus-partition.overture:d193b57c",
+    "source_vintage": "hot",
+    "record_blake3": "ce2e2cd76f772a8c365fc5b18a8988b37a9bebe53a89aa5a65d416510ef4b3d5"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:d193b57c"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.two-campus-partition.overture:56faf114",
+   "contract_id": "rho.g-google-new-albany.two-campus-partition",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.two-campus-partition.overture:56faf114",
+    "source_vintage": "hot",
+    "record_blake3": "b6f0d2c99d33f2f732db02dc80df2018d6cf8209c81ea4179674cc80a8f8abf5"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:56faf114"
+    },
+    "cost_if_absent": 5
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.hall-module-morphology.overture:c50424a1",
+   "contract_id": "rho.g-google-new-albany.hall-module-morphology",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.hall-module-morphology.overture:c50424a1",
+    "source_vintage": "hot",
+    "record_blake3": "cb2eb70995df24aef0107bccbaa4941253ea79b8d08cd690a721ee11cd7ea79c"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:c50424a1"
+    },
+    "cost_if_absent": 3
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.hall-module-morphology.overture:a789c822",
+   "contract_id": "rho.g-google-new-albany.hall-module-morphology",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.hall-module-morphology.overture:a789c822",
+    "source_vintage": "hot",
+    "record_blake3": "00440c150ee448cb737c52610fe5d5b921ed1ec9b05288d38333655140c5e859"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:a789c822"
+    },
+    "cost_if_absent": 3
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.hall-module-morphology.overture:801bdbaa",
+   "contract_id": "rho.g-google-new-albany.hall-module-morphology",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.hall-module-morphology.overture:801bdbaa",
+    "source_vintage": "hot",
+    "record_blake3": "9ef0e9952eb10833ab94b40576f936d2424762e23939517f71b93754d5af41a7"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:801bdbaa"
+    },
+    "cost_if_absent": 3
+   }
+  },
+  {
+   "observation_id": "obs.g-google-new-albany.hall-module-morphology.overture:d193b57c",
+   "contract_id": "rho.g-google-new-albany.hall-module-morphology",
+   "source_record": {
+    "source_record_id": "g-google-new-albany.hall-module-morphology.overture:d193b57c",
+    "source_vintage": "hot",
+    "record_blake3": "ce2e2cd76f772a8c365fc5b18a8988b37a9bebe53a89aa5a65d416510ef4b3d5"
+   },
+   "observation": {
+    "kind": "prefer_member",
+    "member": {
+     "level": "building",
+     "id": "overture:d193b57c"
+    },
+    "cost_if_absent": 3
+   }
+  }
+ ],
+ "max_assignments": 65536,
+ "max_materialized_models": 16384
+}
