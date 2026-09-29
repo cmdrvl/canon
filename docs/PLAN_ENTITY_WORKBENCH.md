@@ -877,7 +877,65 @@ scored retrieval buckets or national-scale performance.
 hyperedge contract, used by the tenant-label and firm built-ins. It requires
 matching `exact_view` support in the profile and authorizes an identity union.
 Do not substitute it for uncertain retrieval keys. Ordinary lookup remains exact
-registry replay, and registry promotion remains review-gated.
+registry replay. Registry promotion requires human acceptance or an explicit
+declared policy passing the frozen audit described below; human review is the
+default (2026-09-28 decision, bd-lz3h).
+
+### Declared promotion authority
+
+Strategies may opt into new-ID acceptance:
+
+```yaml
+promotion:
+  new_ids: auto_accept
+  auto_accept:
+    policy_id: exact_identifiers_v1
+    require:
+      min_adjusted_support_units: 10000
+      max_hard_cannot_link: 0
+      max_soft_anti_merge: 0
+      evidence_all_of: [exact_view:cusip, exact_view:isin]
+      evidence_any_of: []
+      max_component_surfaces: 50
+    audit:
+      suite: /absolute/path/to/frozen-suite
+      min_pair_precision: 0.995
+      min_component_precision: 0.99
+    max_auto_accepted_per_run: null
+```
+
+Omitting `promotion.new_ids`, or declaring `new_ids: escrow_only`, retains default
+artifact bytes. Operator IDs match exactly; a trailing `*` explicitly requests
+a prefix. Every accepted member must connect through edges meeting the declared
+support and evidence requirements. Components with hard cannot-links never
+qualify. The run ceiling refuses the run rather than truncating accepted work.
+Qualifying entities become `promotable_new`; the existing solve decision ledger
+records `policy:<policy_id>`, strategy content hash, and relied-upon evidence.
+This attestation does not impersonate a human reviewer or a cryptographic signer.
+
+The suite contains `policy_suite.json` with `rows`, `rows_hash`, `profile`,
+`profile_hash`, `registry`, `registry_snapshot_hash`, `gold`, `gold_hash`,
+`gold_provenance`, and `work_dir`. Input hashes use Canon's `blake3:` spelling.
+Paths are suite-relative or absolute. The gold file is a JSON array of
+`{surface_id, entity_id}` labels covering exactly the prepared surface universe,
+including same-identity positives and distinct-identity negatives. The caller
+supplies labels and their provenance; fixture labels are not live truth proof.
+The run binds the manifest hash. Audit reruns the exact strategy over pinned
+inputs and computes accepted-pair and whole-component precision, refusing zero
+accepted denominators, changed inputs, or a missed floor. Retained execution
+artifacts live under the declared work directory. Promotion checks the matching
+audit and ledger and replays the audit before mutating the versioned registry.
+Uncovered alias proposals still require human review. Calibration may emit a
+draft policy threshold fragment; it neither writes a strategy nor replaces the
+component audit.
+
+`attribute_conflict` remains strict by default. Profiles may declare string
+parameters `unit_ambiguous: "true"`, `zero_is_unknown: "true"`,
+`sentinel_year_min: "2099"`, or `sentinel_dates: '["2500-12-31"]'`.
+Mixed percent/decimal rates are compared using checked fixed-point arithmetic.
+Only matching under rescaling, a declared unknown zero, or a declared sentinel
+softens the negative hit, with `softened_by=<option>` in its explanation. These
+options never emit identity support; genuine mismatches remain hard conflicts.
 
 `partition_by` restricts similarity scoring **before** top-k selection. Optional
 `max_ngram_df` skips grams exceeding that document frequency within a partition;

@@ -356,6 +356,8 @@ pub struct SolveArtifact {
     pub review_groups: Vec<SolveReviewGroupSeed>,
     pub diagnostics: SolveDiagnosticsReport,
     pub decision_ledger_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_acceptance: Option<super::promotion_policy::PolicyAcceptance>,
 }
 
 pub fn build_solve_artifact_contract(
@@ -405,6 +407,7 @@ pub fn build_solve_artifact_contract_with_alias_proposals(
         review_groups: diagnostics.review_group_seeds.clone(),
         diagnostics,
         decision_ledger_path: request.decision_ledger_path,
+        policy_acceptance: None,
     };
     artifact.artifact_content_hash = hash_solve_artifact_without_self(&artifact)?;
     artifact.metadata.artifact_content_hash = artifact.artifact_content_hash.clone();
@@ -475,6 +478,56 @@ fn validate_solve_artifact_contract_inner(
     }
     validate_review_groups_reference_entities(artifact)?;
     validate_solve_alias_proposals(artifact)?;
+    Ok(())
+}
+
+pub(crate) fn apply_solve_promotion_policy(
+    artifact: &mut SolveArtifact,
+    document: String,
+    edges: &[crate::entity::edge::EdgeEvidenceRecord],
+    surfaces: &[SolveAliasProposalSurface],
+    human_overrides: &[serde_json::Value],
+) -> Result<(), Refusal> {
+    let Some(acceptance) =
+        super::promotion_policy::apply_policy(artifact, document, edges, human_overrides)?
+    else {
+        return Ok(());
+    };
+    let accepted: BTreeSet<_> = acceptance
+        .decisions
+        .iter()
+        .map(|decision| decision.component_id.as_str())
+        .collect();
+    for diagnostic in &mut artifact.diagnostics.components {
+        if accepted.contains(diagnostic.component_id.as_str()) {
+            diagnostic.state = SolveReconciliationState::PromotableNew;
+            diagnostic.reason = format!("auto_accept:{}", acceptance.policy.policy_id);
+        }
+    }
+    artifact
+        .review_groups
+        .retain(|group| !accepted.contains(group.component_id.as_str()));
+    artifact
+        .diagnostics
+        .review_group_seeds
+        .retain(|group| !accepted.contains(group.component_id.as_str()));
+    artifact.diagnostics.summary = solve_diagnostics_summary(
+        &artifact.diagnostics.components,
+        &artifact.diagnostics.review_group_seeds,
+    );
+    artifact.promotable_aliases = solve_alias_proposals(
+        &artifact.entities,
+        surfaces,
+        &artifact.metadata.profile.canonical_type,
+    )?;
+    artifact.summary = solve_artifact_summary(
+        &artifact.entities,
+        &artifact.diagnostics,
+        &artifact.promotable_aliases,
+    );
+    artifact.policy_acceptance = Some(acceptance);
+    artifact.artifact_content_hash = hash_solve_artifact_without_self(artifact)?;
+    artifact.metadata.artifact_content_hash = artifact.artifact_content_hash.clone();
     Ok(())
 }
 
@@ -889,18 +942,20 @@ fn solve_alias_proposals(
     }
 
     let mut aliases = BTreeMap::<(String, String, String), BTreeSet<String>>::new();
-    for entity in entities
-        .iter()
-        .filter(|entity| entity.state == SolveReconciliationState::ResolvedExisting)
-    {
+    for entity in entities.iter().filter(|entity| {
+        entity.state == SolveReconciliationState::ResolvedExisting
+            || (entity.state == SolveReconciliationState::PromotableNew
+                && entity.reason.starts_with("auto_accept:"))
+    }) {
         let Some(canonical_id) = entity.canonical_id.as_deref() else {
             return Err(invalid_resolved_existing_alias_entity(
                 entity,
                 "canonical_id",
             ));
         };
-        if entity.incumbent_canonical_ids.len() != 1
-            || entity.incumbent_canonical_ids.first().map(String::as_str) != Some(canonical_id)
+        if entity.state == SolveReconciliationState::ResolvedExisting
+            && (entity.incumbent_canonical_ids.len() != 1
+                || entity.incumbent_canonical_ids.first().map(String::as_str) != Some(canonical_id))
         {
             return Err(invalid_resolved_existing_alias_entity(
                 entity,
@@ -1142,8 +1197,10 @@ fn validate_solve_alias_proposals(artifact: &SolveArtifact) -> Result<(), Refusa
                 "component_id",
             ));
         };
-        if entity.state != SolveReconciliationState::ResolvedExisting
-            || entity.canonical_id.as_deref() != Some(proposal.canonical_id.as_str())
+        if !matches!(
+            entity.state,
+            SolveReconciliationState::ResolvedExisting | SolveReconciliationState::PromotableNew
+        ) || entity.canonical_id.as_deref() != Some(proposal.canonical_id.as_str())
         {
             return Err(invalid_solve_alias_proposal(
                 "Solve alias proposal must reference a ResolvedExisting entity",

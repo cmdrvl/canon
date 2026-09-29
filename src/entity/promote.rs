@@ -312,7 +312,7 @@ pub fn promote_entity_v1(request: EntityPromoteV1Request) -> Result<Value, Refus
     validate_promote_v1_audit(&request.result_artifact, &request.audit_artifact)?;
     refuse_link_bound_promotion(&request)?;
     let aliases = promoted_aliases_from_v1_result(&request.result_artifact)?;
-    refuse_unreviewed_alias_proposals(&request, &aliases)?;
+    let policy_source = refuse_unreviewed_alias_proposals(&request, &aliases)?;
     let registry_path = request.registry.join("registry.json");
     let registry_original =
         fs::read(&registry_path).map_err(|error| io_refusal(&registry_path, error))?;
@@ -365,12 +365,60 @@ pub fn promote_entity_v1(request: EntityPromoteV1Request) -> Result<Value, Refus
     let registry_bytes =
         build_registry_bytes(registry_value, &next_version, entry_count_after, &profile)?;
     let alias_bytes = build_alias_bytes(&alias_original, &aliases)?;
+    let alias_bytes = if let Some(solve) = &policy_source {
+        let acceptance = solve
+            .policy_acceptance
+            .as_ref()
+            .expect("verified policy source");
+        let proposals: std::collections::BTreeMap<_, _> = solve
+            .promotable_aliases
+            .iter()
+            .map(|proposal| (proposal.input.as_str(), proposal))
+            .collect();
+        let entities: std::collections::BTreeMap<_, _> = solve
+            .entities
+            .iter()
+            .map(|entity| (entity.component_id.as_str(), entity))
+            .collect();
+        let mut entries: Vec<Value> =
+            serde_json::from_slice(&alias_bytes).expect("alias bytes serialize");
+        for entry in entries.iter_mut().skip(existing_aliases.len()) {
+            let proposal = proposals
+                .get(entry["input"].as_str().unwrap_or_default())
+                .ok_or_else(|| {
+                    crate::entity::promotion_policy::refusal("missing_policy_alias_proposal")
+                })?;
+            let component = entities
+                .get(proposal.component_id.as_str())
+                .ok_or_else(|| {
+                    crate::entity::promotion_policy::refusal("missing_policy_component")
+                })?;
+            entry["policy_authority"] = json!({"policy_id": acceptance.policy.policy_id,
+                "strategy_content_hash": acceptance.strategy_content_hash, "component_id": proposal.component_id,
+                "surface_ids": component.surface_ids, "solve_hash": solve.artifact_content_hash});
+        }
+        to_pretty_bytes(&entries)?
+    } else {
+        alias_bytes
+    };
     let planned_mutations = vec![
         planned_file_mutation(&alias_path, &alias_original, &alias_bytes),
         planned_file_mutation(&registry_path, &registry_original, &registry_bytes),
     ];
     let _guard = acquire_registry_mutation_guard(&request.registry)
         .map_err(|error| io_refusal(&request.registry, error))?;
+    if let Some(solve) = &policy_source
+        && crate::entity::promotion_policy::read_human_overrides(&request.registry)?
+            != solve
+                .policy_acceptance
+                .as_ref()
+                .expect("verified policy source")
+                .human_overrides
+    {
+        return Err(crate::entity::promotion_policy::refusal(
+            "human_decisions_changed_before_commit",
+        ));
+    }
     match validate_planned_mutations(&planned_mutations)
         .map_err(|error| io_refusal(&request.registry, error))?
     {
@@ -419,9 +467,90 @@ pub fn promote_entity_v1(request: EntityPromoteV1Request) -> Result<Value, Refus
 fn refuse_unreviewed_alias_proposals(
     request: &EntityPromoteV1Request,
     aliases: &[EntityPromotedAlias],
-) -> Result<(), Refusal> {
+) -> Result<Option<SolveArtifact>, Refusal> {
     if aliases.is_empty() {
-        return Ok(());
+        return Ok(None);
+    }
+    let solve = if request.result_artifact["version"] == CANON_ENTITY_SOLVE_VERSION_V1 {
+        validated_solve_artifact_from_value(&request.result_artifact, "result")?
+    } else {
+        validated_solve_artifact_from_run(&request.result_artifact)?
+    };
+    if let Some(acceptance) = &solve.policy_acceptance {
+        crate::entity::promotion_policy::validate_attestation(&solve)?;
+        if crate::entity::promotion_policy::read_human_overrides(&request.registry)?
+            != acceptance.human_overrides
+        {
+            return Err(crate::entity::promotion_policy::refusal(
+                "human_decisions_changed_since_solve",
+            ));
+        }
+        let audit: crate::entity::promotion_policy::PolicyAuditResult = serde_json::from_value(
+            request
+                .audit_artifact
+                .get("policy_audit")
+                .cloned()
+                .unwrap_or(Value::Null),
+        )
+        .map_err(|_| crate::entity::promotion_policy::refusal("missing_policy_audit"))?;
+        crate::entity::promotion_policy::validate_audit_result(acceptance, &audit)?;
+        // Recompute the frozen evaluation instead of trusting a caller-authored
+        // precision number. Existing run caches make identical replay cheap.
+        let verified = crate::entity::promotion_policy::audit_policy(
+            &solve,
+            Path::new(&acceptance.policy.audit.suite),
+        )?
+        .ok_or_else(|| crate::entity::promotion_policy::refusal("missing_policy_audit"))?;
+        if audit != verified {
+            return Err(crate::entity::promotion_policy::refusal(
+                "policy_audit_replay_mismatch",
+            ));
+        }
+        let decisions: BTreeSet<_> = acceptance
+            .decisions
+            .iter()
+            .map(|decision| decision.component_id.as_str())
+            .collect();
+        if solve
+            .promotable_aliases
+            .iter()
+            .any(|proposal| !decisions.contains(proposal.component_id.as_str()))
+        {
+            return Err(crate::entity::promotion_policy::refusal(
+                "unreviewed_alias_outside_policy",
+            ));
+        }
+        let work = request
+            .result_path
+            .parent()
+            .and_then(Path::parent)
+            .ok_or_else(|| crate::entity::promotion_policy::refusal("missing_policy_work_dir"))?;
+        let ledger_bytes = read_entity_run_committed_publication_logical_bytes(
+            work,
+            "solve/decision_ledger.jsonl",
+        )?
+        .ok_or_else(|| {
+            crate::entity::promotion_policy::refusal("missing_policy_decision_ledger")
+        })?;
+        let mut expected = Vec::new();
+        for decision in &acceptance.decisions {
+            serde_json::to_writer(&mut expected, decision).expect("decision serializes");
+            expected.push(b'\n');
+        }
+        if ledger_bytes != expected {
+            return Err(crate::entity::promotion_policy::refusal(
+                "policy_ledger_mismatch_or_human_override",
+            ));
+        }
+        if fs::read(work.join("solve/decision_ledger.jsonl")).map_err(|_| {
+            crate::entity::promotion_policy::refusal("missing_policy_decision_ledger")
+        })? != expected
+        {
+            return Err(crate::entity::promotion_policy::refusal(
+                "policy_ledger_changed_after_publication",
+            ));
+        }
+        return Ok(Some(solve));
     }
     let review_export = format!(
         "canon entity review export {} --include resolved --emit csv > review.csv",

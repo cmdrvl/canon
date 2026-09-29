@@ -12512,6 +12512,7 @@ mod leakage_provenance_tests {
                 review_group_seeds: Vec::new(),
             },
             decision_ledger_path: run.work_dir.decision_ledger_path.clone(),
+            policy_acceptance: None,
         });
 
         let result = rebind_generalization_native_stages(rebind_request(&run, &fixture))

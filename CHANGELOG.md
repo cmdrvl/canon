@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- Cluster strategies can declare audit-gated policy acceptance for new identities.
+  Qualification requires connected policy-supported evidence, preserves hard
+  cannot-links and human overrides, records decision authority, and refuses run
+  ceiling overruns. Human review remains the default.
+- Policy audits execute the declared strategy against pinned inputs and complete
+  identity labels, measuring pair and component precision. Promotion verifies
+  the audit, strategy, manifest, and decision ledger before writing exact aliases.
+- Attribute-conflict comparators support declared unit ambiguity, unknown zero
+  rates, and sentinel dates. Ambiguous comparisons remain visible as soft
+  negative evidence; they never create identity support. Genuine mismatches
+  remain hard conflicts.
+- The instrument profile excludes CUSIP `999999999` and opts into these comparator
+  rules. Its content hash changes; downstream profile pins must be refreshed.
+
 ## 0.13.0 — 2026-09-28
 
 - Entity profiles can declare exact-view, anchor, composite-key, n-gram, rare-token,

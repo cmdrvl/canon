@@ -120,6 +120,11 @@ packages, temporal snapshots, and extensions may create or validate registry
 knowledge before promotion. Once promoted, normal lookup still resolves only
 through exact registry entries.
 
+New entity IDs default to human review. An explicit `promotion.new_ids:
+auto_accept` strategy may supply acceptance authority only after the matching
+frozen labeled audit passes. No policy may accept a component containing any
+hard cannot-link; human distinct/relation decisions override policy aliases.
+
 ### Canon Geo agent mental model
 
 Read [`docs/CANON_GEO_AGENT_ARCHITECTURE.md`](./docs/CANON_GEO_AGENT_ARCHITECTURE.md)

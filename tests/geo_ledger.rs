@@ -958,7 +958,7 @@ fn residual_models_for_case(
                 .universe
                 .parcels
                 .iter()
-                .filter(|parcel| !hard_forced.parcels.binary_search(parcel).is_ok())
+                .filter(|parcel| hard_forced.parcels.binary_search(parcel).is_err())
                 .take(2)
                 .cloned()
                 .collect::<Vec<_>>();

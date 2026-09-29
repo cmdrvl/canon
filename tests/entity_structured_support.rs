@@ -374,3 +374,91 @@ fn leading_dot_decimals_preserve_numeric_and_conflict_boundaries() {
 fn score(units: u32) -> ScoreUnits {
     ScoreUnits::from_scaled(units).expect("test score is inside score scale")
 }
+
+#[test]
+fn declared_attribute_uncertainty_softens_only_the_named_cases() {
+    use canon::entity::anti_merge::{
+        AttributeConflictComparison as Comparison, AttributeConflictOptions,
+        AttributeConflictRequest, BasisPointScale, attribute_conflict_hit_with_options,
+    };
+    let options = AttributeConflictOptions {
+        unit_ambiguous: true,
+        zero_is_unknown: true,
+        ..Default::default()
+    };
+    let compare = |left, right, comparison, options: &AttributeConflictOptions| {
+        attribute_conflict_hit_with_options(
+            AttributeConflictRequest {
+                namespace: "generic",
+                operator_id: "attribute_conflict:x",
+                reason_code: "attribute_conflict",
+                field: "x",
+                left_value: left,
+                right_value: right,
+                comparison,
+                tolerance_bps: 1,
+                score_units: score(10_000),
+            },
+            options,
+        )
+    };
+    let rate = Comparison::DecimalBasisPoints {
+        scale: BasisPointScale::Percent,
+    };
+    for (left, right, reason) in [
+        ("4.125", ".04125", "unit_ambiguous"),
+        (".00632", ".63", "unit_ambiguous"),
+        ("0", "4.125", "zero_is_unknown"),
+    ] {
+        for (a, b) in [(left, right), (right, left)] {
+            let hit = compare(a, b, rate, &options).unwrap().unwrap();
+            assert!(!hit.hard_cannot_link);
+            assert_eq!(hit.lane, canon::entity::score::ScoreLane::AntiMerge);
+            assert!(hit.explanation.contains(reason));
+            assert!(
+                compare(a, b, rate, &AttributeConflictOptions::default())
+                    .unwrap()
+                    .unwrap()
+                    .hard_cannot_link
+            );
+        }
+    }
+    assert!(
+        compare("4.125", "4.50", rate, &options)
+            .unwrap()
+            .unwrap()
+            .hard_cannot_link
+    );
+    assert!(
+        !compare(".04125", ".0450", rate, &options)
+            .unwrap()
+            .unwrap()
+            .hard_cannot_link
+    );
+    assert!(compare("4.125", "4.125", rate, &options).unwrap().is_none());
+    assert!(compare("1e-3", "1", rate, &options).is_err());
+    assert!(options.validate(Comparison::Date).is_err());
+    let options = AttributeConflictOptions {
+        sentinel_dates: vec!["2080-01-01".into()],
+        sentinel_year_min: Some(2099),
+        ..Default::default()
+    };
+    for (date, reason) in [
+        ("2099-12-31", "sentinel_year_min"),
+        ("2500-12-31", "sentinel_year_min"),
+        ("2080-01-01", "sentinel_dates"),
+    ] {
+        let hit = compare(date, "2030-01-01", Comparison::Date, &options)
+            .unwrap()
+            .unwrap();
+        assert!(!hit.hard_cannot_link);
+        assert!(hit.explanation.contains(reason));
+    }
+    assert!(
+        compare("2030-01-01", "2031-01-01", Comparison::Date, &options)
+            .unwrap()
+            .unwrap()
+            .hard_cannot_link
+    );
+    assert!(compare("2099-02-30", "2030-01-01", Comparison::Date, &options).is_err());
+}

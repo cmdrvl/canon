@@ -290,7 +290,20 @@ pub fn run_calibrate_sweep(
     for (index, row) in truth_space.iter_mut().enumerate() {
         row.row_index = index as u64;
     }
-    let recommendation = recommendation_from_truth_space(&truth_space);
+    let mut recommendation = recommendation_from_truth_space(&truth_space);
+    let document = std::fs::read_to_string(request.strategy)
+        .map_err(|_| crate::entity::promotion_policy::refusal("unreadable_calibration_strategy"))?;
+    if let Some(mut policy) = crate::entity::promotion_policy::load_policy(&document)?
+        && let Some(thresholds) = recommendation.selected_thresholds
+    {
+        policy.require.min_adjusted_support_units = thresholds.match_threshold.max(1);
+        let fragment = serde_yaml::to_string(&serde_json::json!({"promotion": {
+            "new_ids": "auto_accept", "auto_accept": policy
+        }}))
+        .expect("policy fragment serializes");
+        recommendation.proposed_strategy_yaml_fragment.as_mut().expect("selected threshold has fragment")
+            .push_str(&format!("# Draft pair-calibrated threshold; rerun the frozen component audit before promotion.\n{fragment}"));
+    }
 
     Ok(CalibrateSweepReport {
         version: CANON_ENTITY_CALIBRATE_SWEEP_VERSION.to_string(),

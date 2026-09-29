@@ -15,8 +15,9 @@ use crate::{
         EntityArtifactMetadata, EntityArtifactReference, EntityArtifactReferenceV1,
         EntityArtifactStageV1, EntityDeterministicSummary, EntityStrategyReference,
         anti_merge::{
-            AnchorConflictRequest, AttributeConflictComparison, AttributeConflictRequest,
-            BasisPointScale, StructuredAntiMergeError, anchor_conflict_hit, attribute_conflict_hit,
+            AnchorConflictRequest, AttributeConflictComparison, AttributeConflictOptions,
+            AttributeConflictRequest, BasisPointScale, StructuredAntiMergeError,
+            anchor_conflict_hit, attribute_conflict_hit_with_options,
         },
         block::{
             BlockCandidateBudgetConfig, BlockCandidateBudgetObservation,
@@ -2912,7 +2913,7 @@ fn build_and_write_solve(
     metadata.upstream_artifacts = upstream_artifacts;
     metadata.artifact_content_hash.clear();
 
-    let artifact = build_solve_artifact_contract_with_alias_proposals(
+    let mut artifact = build_solve_artifact_contract_with_alias_proposals(
         SolveArtifactRequest {
             metadata,
             graph,
@@ -2921,6 +2922,21 @@ fn build_and_write_solve(
             decision_ledger_path: DECISION_LEDGER_PATH.to_string(),
         },
         solve_alias_proposal_surfaces(input.surfaces),
+    )?;
+    let strategy_document = fs::read_to_string(request.strategy)
+        .map_err(|_| crate::entity::promotion_policy::refusal("unreadable_strategy"))?;
+    let human_overrides =
+        if crate::entity::promotion_policy::load_policy(&strategy_document)?.is_some() {
+            crate::entity::promotion_policy::read_human_overrides(request.registry)?
+        } else {
+            Vec::new()
+        };
+    crate::entity::solve::apply_solve_promotion_policy(
+        &mut artifact,
+        strategy_document,
+        input.edge_records,
+        &solve_alias_proposal_surfaces(input.surfaces),
+        &human_overrides,
     )?;
     validate_solve_artifact_contract(&artifact)?;
     let (artifact, artifact_value) = publish_v1_stage_artifact(
@@ -2935,7 +2951,19 @@ fn build_and_write_solve(
             DECISION_LEDGER_PATH,
             "solve",
             CANON_ENTITY_SOLVE_VERSION_V1,
-            Vec::new(),
+            artifact
+                .policy_acceptance
+                .as_ref()
+                .map(|acceptance| {
+                    let mut bytes = Vec::new();
+                    for decision in &acceptance.decisions {
+                        serde_json::to_writer(&mut bytes, decision)
+                            .expect("policy decision serializes");
+                        bytes.push(b'\n');
+                    }
+                    bytes
+                })
+                .unwrap_or_default(),
         ),
         json_publication_file(
             SOLVE_ARTIFACT_PATH,
@@ -3950,30 +3978,38 @@ fn attribute_conflict_for_spec(
     }
     let field = required_field_param(spec, "attribute_conflict")?;
     let comparison = attribute_conflict_comparison(spec)?;
+    let options = attribute_conflict_options(spec)?;
     let tolerance_bps = optional_u32_param(spec, "tolerance_bps")?.unwrap_or_default();
     let left_values = surface_field_values(left, field);
     let right_values = surface_field_values(right, field);
     let operator_id = field_operator_id(spec, field);
+    let mut soft_hit = None;
     for left_value in &left_values {
         for right_value in &right_values {
-            if let Some(hit) = attribute_conflict_hit(AttributeConflictRequest {
-                namespace: context.profile.patch_namespaces.distinct.as_str(),
-                operator_id: &operator_id,
-                reason_code: "attribute_conflict",
-                field,
-                left_value,
-                right_value,
-                comparison,
-                tolerance_bps,
-                score_units,
-            })
+            if let Some(hit) = attribute_conflict_hit_with_options(
+                AttributeConflictRequest {
+                    namespace: context.profile.patch_namespaces.distinct.as_str(),
+                    operator_id: &operator_id,
+                    reason_code: "attribute_conflict",
+                    field,
+                    left_value,
+                    right_value,
+                    comparison,
+                    tolerance_bps,
+                    score_units,
+                },
+                &options,
+            )
             .map_err(|error| structured_anti_merge_refusal("attribute_conflict", error))?
             {
-                return Ok(Some(hit));
+                if hit.hard_cannot_link {
+                    return Ok(Some(hit));
+                }
+                soft_hit.get_or_insert(hit);
             }
         }
     }
-    Ok(None)
+    Ok(soft_hit)
 }
 
 fn string_similarity_support_for_spec(
@@ -4147,6 +4183,7 @@ fn validate_edge_operator_params(profile: &EntityProfileDocument) -> Result<(), 
                 required_field_param(spec, "attribute_conflict")?;
                 optional_u32_param(spec, "tolerance_bps")?;
                 attribute_conflict_comparison(spec)?;
+                attribute_conflict_options(spec)?;
             }
             _ => {}
         }
@@ -4505,6 +4542,47 @@ fn attribute_conflict_comparison(
     }
 }
 
+fn attribute_conflict_options(
+    spec: &EntityOperatorSpec,
+) -> Result<AttributeConflictOptions, Refusal> {
+    let boolean = |key: &'static str| -> Result<bool, Refusal> {
+        match spec.params.get(key).map(String::as_str) {
+            None | Some("false") => Ok(false),
+            Some("true") => Ok(true),
+            value => Err(edge_support_config_refusal(
+                "Comparator option must be true or false",
+                &spec.op,
+                key,
+                json!({"value": value}),
+            )),
+        }
+    };
+    let sentinel_dates = spec
+        .params
+        .get("sentinel_dates")
+        .map(|value| serde_json::from_str::<Vec<String>>(value))
+        .transpose()
+        .map_err(|error| {
+            edge_support_config_refusal(
+                "sentinel_dates must be a JSON string array",
+                &spec.op,
+                "sentinel_dates",
+                json!({"error": error.to_string()}),
+            )
+        })?
+        .unwrap_or_default();
+    let options = AttributeConflictOptions {
+        unit_ambiguous: boolean("unit_ambiguous")?,
+        zero_is_unknown: boolean("zero_is_unknown")?,
+        sentinel_dates,
+        sentinel_year_min: optional_u32_param(spec, "sentinel_year_min")?,
+    };
+    options
+        .validate(attribute_conflict_comparison(spec)?)
+        .map_err(|error| structured_anti_merge_refusal("attribute_conflict", error))?;
+    Ok(options)
+}
+
 fn attribute_bps_scale(spec: &EntityOperatorSpec) -> Result<BasisPointScale, Refusal> {
     let scale = spec
         .params
@@ -4732,6 +4810,10 @@ fn load_base_strategy_reference(
         .or_else(|| yaml_string(&value, "version"))
         .unwrap_or_else(|| "0.0.0".to_string());
     let record_link = load_record_link_runtime_config(&value, request)?;
+    crate::entity::promotion_policy::load_policy(
+        std::str::from_utf8(&bytes)
+            .map_err(|_| crate::entity::promotion_policy::refusal("invalid_strategy_utf8"))?,
+    )?;
     Ok(BaseStrategyReference {
         id,
         version,

@@ -39,6 +39,7 @@ pub mod profile_cli;
 pub use crate::extensions::profile as profile_package;
 pub mod profiles;
 pub mod promote;
+pub mod promotion_policy;
 pub mod publication;
 pub mod record_link;
 pub mod relation;

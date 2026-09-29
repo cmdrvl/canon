@@ -124,6 +124,9 @@ pub fn explain_entity_v1(
             "next_command": "canon entity apply <PROMOTE.json> --rows <ROWS> --registry <REGISTRY>"
         }
     });
+    if let Some(policy) = selection_artifact.get("policy_acceptance") {
+        artifact["result"]["policy_acceptance"] = policy.clone();
+    }
     finalize_entity_v1_self_hash(&mut artifact)?;
     Ok(artifact)
 }

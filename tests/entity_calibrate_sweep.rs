@@ -288,6 +288,49 @@ struct CalibrationFixture {
     strategy: std::path::PathBuf,
 }
 
+#[test]
+fn declared_policy_calibration_proposes_require_threshold_without_writing() {
+    let fixture = CalibrationFixture::new();
+    fixture.write_strategy();
+    let mut strategy = fs::read_to_string(fixture.strategy()).unwrap();
+    strategy.push_str("\npromotion:\n  new_ids: auto_accept\n  auto_accept:\n    policy_id: calibrated\n    require:\n      min_adjusted_support_units: 90\n      max_hard_cannot_link: 0\n      max_soft_anti_merge: 0\n      evidence_all_of: [exact_view:name]\n      max_component_surfaces: 10\n    audit:\n      suite: frozen-suite\n      min_pair_precision: 0.995\n      min_component_precision: 0.99\n");
+    fs::write(fixture.strategy(), &strategy).unwrap();
+    fixture.write_predictions(&[
+        prediction("A", "B", 90),
+        prediction("C", "D", 80),
+        prediction("E", "F", 70),
+    ]);
+    fixture.write_gold(&[
+        gold("A", "B", "same", None),
+        gold("C", "D", "same", None),
+        gold("E", "F", "distinct", Some("critical")),
+    ]);
+    let report = fixture.report();
+    let fragment = report
+        .recommendation
+        .proposed_strategy_yaml_fragment
+        .unwrap();
+    let value: serde_yaml::Value = serde_yaml::from_str(&fragment).unwrap();
+    assert_eq!(
+        value["promotion"]["auto_accept"]["require"]["min_adjusted_support_units"].as_u64(),
+        Some(80)
+    );
+    assert!(fragment.contains("rerun the frozen component audit"));
+    assert_eq!(fs::read_to_string(fixture.strategy()).unwrap(), strategy);
+    fixture.write_gold(&[
+        gold("A", "B", "distinct", Some("critical")),
+        gold("C", "D", "same", None),
+        gold("E", "F", "distinct", Some("critical")),
+    ]);
+    assert!(
+        fixture
+            .report()
+            .recommendation
+            .proposed_strategy_yaml_fragment
+            .is_none()
+    );
+}
+
 impl CalibrationFixture {
     fn new() -> Self {
         let temp = tempdir().expect("tempdir");

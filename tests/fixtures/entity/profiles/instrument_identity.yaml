@@ -82,6 +82,7 @@ prepare:
     - "NULL"
     - "UNKNOWN"
     - "000000000"
+    - "999999999"
   context_fields:
     - report_period
     - issuer_lei
@@ -158,12 +159,15 @@ evidence:
       params:
         field: instrument_maturity
         comparison: date
+        sentinel_year_min: "2099"
         score_units: "10000"
     - op: attribute_conflict
       params:
         field: annualized_rate
         comparison: decimal_bps
         rate_scale: percent
+        unit_ambiguous: "true"
+        zero_is_unknown: "true"
         tolerance_bps: "1"
         score_units: "10000"
   relation_hints:

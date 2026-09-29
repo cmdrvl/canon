@@ -861,10 +861,10 @@ fn validate_optional_explanation(
                 ));
             }
             if composition_status != GeoCompositionStatus::Conflict
-                && !explanation
+                && explanation
                     .counters
                     .get("not_conflict")
-                    .is_some_and(|count| *count == 1)
+                    .is_none_or(|count| *count != 1)
             {
                 return Err(GeoCardError::mismatch(
                     "Geo evidence card non-conflict explanations must be explicit not-conflict artifacts",

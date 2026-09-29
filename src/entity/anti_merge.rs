@@ -3,7 +3,8 @@
 //! Cannot-link evidence helpers for `canon entity edge`.
 //!
 //! These helpers convert profile/namekit anti-overmerge signals into hard
-//! anti-merge edge hits. They never emit support-lane evidence.
+//! anti-merge edge hits, or explicit soft warnings under declared uncertainty
+//! rules. They never emit support-lane evidence.
 
 use crate::entity::{
     edge::EdgeEvidenceHit,
@@ -66,6 +67,59 @@ pub struct AttributeConflictRequest<'a> {
     pub comparison: AttributeConflictComparison,
     pub tolerance_bps: u32,
     pub score_units: ScoreUnits,
+}
+
+/// Explicit uncertainty rules. These can only soften negative evidence, never
+/// create support. The default preserves the strict comparator contract.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AttributeConflictOptions {
+    pub unit_ambiguous: bool,
+    pub zero_is_unknown: bool,
+    pub sentinel_dates: Vec<String>,
+    pub sentinel_year_min: Option<u32>,
+}
+
+impl AttributeConflictOptions {
+    pub fn validate(
+        &self,
+        comparison: AttributeConflictComparison,
+    ) -> Result<(), StructuredAntiMergeError> {
+        match comparison {
+            AttributeConflictComparison::Date if self.unit_ambiguous || self.zero_is_unknown => {
+                return Err(anti_merge_error(
+                    "comparison",
+                    "rate_options_require_decimal_comparison",
+                ));
+            }
+            AttributeConflictComparison::DecimalBasisPoints { scale } => {
+                if !self.sentinel_dates.is_empty() || self.sentinel_year_min.is_some() {
+                    return Err(anti_merge_error(
+                        "comparison",
+                        "sentinels_require_date_comparison",
+                    ));
+                }
+                if self.unit_ambiguous && scale != BasisPointScale::Percent {
+                    return Err(anti_merge_error(
+                        "rate_scale",
+                        "unit_ambiguous_requires_percent_tolerance",
+                    ));
+                }
+            }
+            _ => {}
+        }
+        if self
+            .sentinel_year_min
+            .is_some_and(|year| year == 0 || year > 9999)
+        {
+            return Err(anti_merge_error("sentinel_year_min", "invalid_year"));
+        }
+        for date in &self.sentinel_dates {
+            if IsoDate::parse_optional(date, "sentinel_dates")?.is_none() {
+                return Err(anti_merge_error("sentinel_dates", "empty_date"));
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -187,6 +241,15 @@ pub fn anchor_conflict_hit(request: AnchorConflictRequest<'_>) -> Option<EdgeEvi
 pub fn attribute_conflict_hit(
     request: AttributeConflictRequest<'_>,
 ) -> Result<Option<EdgeEvidenceHit>, StructuredAntiMergeError> {
+    attribute_conflict_hit_with_options(request, &AttributeConflictOptions::default())
+}
+
+pub fn attribute_conflict_hit_with_options(
+    request: AttributeConflictRequest<'_>,
+    options: &AttributeConflictOptions,
+) -> Result<Option<EdgeEvidenceHit>, StructuredAntiMergeError> {
+    options.validate(request.comparison)?;
+    let mut softened_by = None;
     let conflict = match request.comparison {
         AttributeConflictComparison::Date => {
             let Some(left) = IsoDate::parse_optional(request.left_value, "left_value")? else {
@@ -195,6 +258,22 @@ pub fn attribute_conflict_hit(
             let Some(right) = IsoDate::parse_optional(request.right_value, "right_value")? else {
                 return Ok(None);
             };
+            if left != right
+                && [left, right].iter().any(|date| {
+                    options
+                        .sentinel_year_min
+                        .is_some_and(|year| date.year >= year)
+                })
+            {
+                softened_by = Some("sentinel_year_min");
+            }
+            if left != right
+                && options.sentinel_dates.iter().any(|date| {
+                    date == request.left_value.trim() || date == request.right_value.trim()
+                })
+            {
+                softened_by = Some("sentinel_dates");
+            }
             left != right
         }
         AttributeConflictComparison::DecimalBasisPoints { scale } => {
@@ -205,7 +284,46 @@ pub fn attribute_conflict_hit(
             else {
                 return Ok(None);
             };
-            !left.within_basis_points(right, request.tolerance_bps, scale)?
+            let mut conflict = !left.within_basis_points(right, request.tolerance_bps, scale)?;
+            if options.zero_is_unknown
+                && (left.mantissa == 0 || right.mantissa == 0)
+                && !left.within_basis_points(right, 0, scale)?
+            {
+                conflict = true;
+                softened_by = Some("zero_is_unknown");
+            } else if !conflict
+                && options.unit_ambiguous
+                && !left.within_basis_points(right, request.tolerance_bps, BasisPointScale::Unit)?
+            {
+                // A small difference is harmless only under the percent
+                // interpretation. Preserve the unresolved unit question.
+                conflict = true;
+                softened_by = Some("unit_ambiguous");
+            } else if conflict && options.unit_ambiguous {
+                // Compare both possible mixed-unit interpretations in percent
+                // space. Checked fixed-point arithmetic keeps boundaries exact.
+                let times_hundred =
+                    |value: FixedDecimal| -> Result<FixedDecimal, StructuredAntiMergeError> {
+                        Ok(FixedDecimal {
+                            mantissa: value.mantissa.checked_mul(100).ok_or_else(|| {
+                                anti_merge_error("unit_ambiguous", "decimal_overflow")
+                            })?,
+                            scale: value.scale,
+                        })
+                    };
+                if times_hundred(left)?.within_basis_points(
+                    right,
+                    request.tolerance_bps,
+                    BasisPointScale::Percent,
+                )? || left.within_basis_points(
+                    times_hundred(right)?,
+                    request.tolerance_bps,
+                    BasisPointScale::Percent,
+                )? {
+                    softened_by = Some("unit_ambiguous");
+                }
+            }
+            conflict
         }
     };
     if !conflict {
@@ -218,14 +336,16 @@ pub fn attribute_conflict_hit(
         request.operator_id,
         request.reason_code,
         request.score_units,
-        true,
+        softened_by.is_none(),
         format!(
             "attribute field {} conflict comparison={} tolerance_bps={} score_units={}",
             request.field,
             comparison_name(request.comparison),
             request.tolerance_bps,
             request.score_units.as_u32()
-        ),
+        ) + &softened_by
+            .map(|option| format!(" softened_by={option}"))
+            .unwrap_or_default(),
     )))
 }
 

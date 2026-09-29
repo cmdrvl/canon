@@ -203,6 +203,13 @@ as part of `canon` rather than an ad hoc matcher:
 4. **Audit gates promotion**
    - Registry mutation requires explicit version bumping and snapshot checks.
    - Alias and anchor promotion requires a matching passing audit artifact.
+   - Human review remains the default acceptance authority. Under the explicit
+     2026-09-28 decision (bd-lz3h), new entity identities may instead be accepted
+     by a declared strategy policy after its pinned, labeled suite passes pair
+     and component precision floors with the same strategy and profile. Policy
+     acceptance never overrides a hard cannot-link or a later human decision.
+     A policy attestation records deterministic authority; it is not a digital
+     signature or a claim that the supplied labels are independently true.
 
 5. **Registry remains the durable asset**
    - Workbench-specific evidence can live in sidecars and proofs.

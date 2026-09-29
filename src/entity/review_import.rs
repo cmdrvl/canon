@@ -2721,7 +2721,7 @@ struct ReviewImportPendingEscrowRecord {
     source_decision_id: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct ReviewImportCannotLinkRecord {
     sidecar_id: String,
     profile_id: String,
@@ -2732,6 +2732,49 @@ struct ReviewImportCannotLinkRecord {
     reason: String,
     review_decision_id: String,
     source_event_hash: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    overridden_policy_aliases: Vec<Value>,
+}
+
+impl PartialOrd for ReviewImportCannotLinkRecord {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ReviewImportCannotLinkRecord {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (
+            &self.sidecar_id,
+            &self.profile_id,
+            &self.identity_semantics,
+            &self.left,
+            &self.right,
+            self.hard_cannot_link,
+            &self.reason,
+            &self.review_decision_id,
+            &self.source_event_hash,
+        )
+            .cmp(&(
+                &other.sidecar_id,
+                &other.profile_id,
+                &other.identity_semantics,
+                &other.left,
+                &other.right,
+                other.hard_cannot_link,
+                &other.reason,
+                &other.review_decision_id,
+                &other.source_event_hash,
+            ))
+            .then_with(|| {
+                serde_json::to_vec(&self.overridden_policy_aliases)
+                    .expect("aliases serialize")
+                    .cmp(
+                        &serde_json::to_vec(&other.overridden_policy_aliases)
+                            .expect("aliases serialize"),
+                    )
+            })
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -2944,7 +2987,7 @@ fn review_import_default_queue_plan_from_v1_decisions(
                         item,
                     )?);
             }
-            "emit_cannot_link" => {
+            "emit_cannot_link" | "distinct" | "relation" => {
                 plan.cannot_links.push(cannot_link_record_from_decision(
                     profile_id,
                     identity_semantics,
@@ -2984,7 +3027,12 @@ fn review_import_default_queue_plan_from_v1_decisions(
     sort_review_import_alias_entries(&mut plan.aliases);
     plan.anchors.sort();
     plan.pending_escrows.sort();
-    plan.cannot_links.sort();
+    plan.cannot_links.sort_by(|left, right| {
+        left.sidecar_id
+            .cmp(&right.sidecar_id)
+            .then_with(|| left.left.cmp(&right.left))
+            .then_with(|| left.right.cmp(&right.right))
+    });
     Ok(plan)
 }
 
@@ -3379,6 +3427,7 @@ fn cannot_link_record_from_decision(
         review_decision_id: review_id.to_string(),
         source_event_hash: value_string(decision, "decision_binding_hash")
             .unwrap_or_else(|| review_import_value_hash(decision)),
+        overridden_policy_aliases: Vec::new(),
     })
 }
 
@@ -4219,7 +4268,7 @@ fn build_review_import_default_queue_mutation(
     registry_before: Value,
     next_version: &str,
     review: &Value,
-    plan: ReviewImportDefaultQueuePlan,
+    mut plan: ReviewImportDefaultQueuePlan,
     registry_snapshot_before: &str,
 ) -> Result<ReviewImportDefaultQueueMutation, Refusal> {
     let registry_path = registry.join("registry.json");
@@ -4228,6 +4277,30 @@ fn build_review_import_default_queue_mutation(
     let pending_path = registry.join("_escrow").join("pending.jsonl");
     let cannot_link_path = registry.join("_escrow").join("cannot_link.jsonl");
     let alias_original = read_alias_bytes_or_empty(&alias_path)?;
+    let mut retained_aliases: Vec<Value> =
+        serde_json::from_slice(&alias_original).map_err(|_| {
+            crate::entity::promotion_policy::refusal("invalid_aliases_for_human_override")
+        })?;
+    let original_alias_count = retained_aliases.len();
+    for decision in &mut plan.cannot_links {
+        retained_aliases.retain(|alias| {
+            let surfaces = alias["policy_authority"]["surface_ids"].as_array();
+            let overrides = surfaces.is_some_and(|surfaces| {
+                surfaces.contains(&json!(decision.left))
+                    && surfaces.contains(&json!(decision.right))
+            });
+            if overrides {
+                decision.overridden_policy_aliases.push(alias.clone());
+            }
+            !overrides
+        });
+    }
+    let revoked_alias_count = (original_alias_count - retained_aliases.len()) as u64;
+    let alias_retained = if revoked_alias_count == 0 {
+        alias_original.clone()
+    } else {
+        serde_json::to_vec_pretty(&retained_aliases).expect("retained aliases serialize")
+    };
     let anchor_original = read_file_bytes_or_empty(&anchor_path)?;
     let pending_original = read_file_bytes_or_empty(&pending_path)?;
     let cannot_link_original = read_file_bytes_or_empty(&cannot_link_path)?;
@@ -4281,11 +4354,11 @@ fn build_review_import_default_queue_mutation(
     let mut replacements = BTreeMap::new();
     let mut files = Vec::new();
     let alias_bytes = if plan.aliases.is_empty() {
-        alias_original.clone()
+        alias_retained.clone()
     } else {
-        build_review_import_alias_bytes(&alias_original, &plan.aliases)?
+        build_review_import_alias_bytes(&alias_retained, &plan.aliases)?
     };
-    if !plan.aliases.is_empty() {
+    if !plan.aliases.is_empty() || revoked_alias_count > 0 {
         files.push(review_import_planned_file(
             &alias_path,
             alias_original.clone(),
@@ -4348,7 +4421,7 @@ fn build_review_import_default_queue_mutation(
         ));
     }
 
-    let entry_count_after = entry_count_before + plan.alias_count();
+    let entry_count_after = entry_count_before + plan.alias_count() - revoked_alias_count;
     let registry_original = fs::read(registry_path.as_path())
         .map_err(|error| review_import_io_refusal(registry_path.as_path(), error))?;
     let registry_bytes = build_review_import_registry_bytes(

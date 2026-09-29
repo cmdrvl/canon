@@ -236,6 +236,17 @@ fn run_entity_audit_v1_inner(
                 serde_json::to_value(cluster_shape).expect("cluster shape report serializes"),
             );
     }
+    if request.result_artifact.get("policy_acceptance").is_some() {
+        let solve: crate::entity::solve::SolveArtifact =
+            serde_json::from_value(request.result_artifact.clone())
+                .map_err(|_| crate::entity::promotion_policy::refusal("invalid_policy_solve"))?;
+        if let Some(result) =
+            crate::entity::promotion_policy::audit_policy(&solve, request.suite_dir)?
+        {
+            artifact["policy_audit"] =
+                serde_json::to_value(result).expect("policy audit serializes");
+        }
+    }
     finalize_entity_v1_self_hash(&mut artifact)?;
     Ok(artifact)
 }

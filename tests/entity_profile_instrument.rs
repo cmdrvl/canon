@@ -25,6 +25,389 @@ use std::{
 const PROFILE: &str = "tests/fixtures/entity/profiles/instrument_identity.yaml";
 
 #[test]
+fn existing_promotion_controls_do_not_enable_new_id_policy() {
+    let strategy = include_str!("fixtures/entity/strategies/regab_firm_identity.yaml");
+    assert!(
+        canon::entity::promotion_policy::load_policy(strategy)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        canon::entity::promotion_policy::load_policy("promotion:\n  new_ids: auto_accept\n")
+            .is_err()
+    );
+}
+
+#[test]
+fn sentinel_cusip_is_absent_from_prepare_retrieval_and_support() {
+    let fixture = InstrumentFixture::new();
+    let rows = fixture.write_rows("sentinels.csv");
+    let original = fs::read_to_string(&rows).unwrap();
+    fs::write(&rows, original.replace("000000000", "999999999")).unwrap();
+    let work = fixture.path("sentinels-work");
+    run_evidence_fixture(&rows, &fixture.registry, &work);
+    let surfaces: Vec<PreparedSurfaceRecord> = read_jsonl(&work.join("prepare/surfaces.jsonl"));
+    let surface = surface_by_core(&surfaces, "acme term loan placeholder");
+    assert!(!surface.normalized_views.contains_key("cusip"));
+    let evidence: Vec<EdgeEvidenceRecord> = read_jsonl(&work.join("evidence/evidence.jsonl"));
+    for edge in evidence.iter().filter(|edge| {
+        edge.left_surface_id == surface.surface_id || edge.right_surface_id == surface.surface_id
+    }) {
+        assert!(support_hit(edge, "exact_view:cusip").is_none());
+        assert!(support_hit(edge, "isin_cusip_arithmetic:cusip:isin").is_none());
+    }
+}
+
+#[test]
+fn declared_policy_runs_a_frozen_audit_then_promotes_exact_aliases() {
+    use canon::entity::{
+        audit::{EntityAuditV1Request, run_entity_audit_v1},
+        promote::{EntityPromoteV1Request, promote_entity_v1},
+    };
+    use serde_json::{Value, json};
+    let fixture = InstrumentFixture::new();
+    let rows = fixture.path("policy-rows.csv");
+    fs::write(
+        &rows,
+        concat!(
+            "source_row_id,report_period,title,cusip,isin,maturitydt,annualizedrt,issuer_lei\n",
+            "a,2026-06-30,Alpha Note,037833100,US0378331005,2030-06-30,5,\n",
+            "b,2026-06-30,Alpha Bond,037833100,US0378331005,2030-06-30,5,\n",
+            "c,2026-06-30,Beta Note,594918104,US5949181045,2031-06-30,6,\n",
+            "d,2026-06-30,Beta Different Coupon,594918104,US5949181045,2031-06-30,7,\n",
+        ),
+    )
+    .unwrap();
+    let profile = Path::new(env!("CARGO_MANIFEST_DIR")).join(PROFILE);
+    let baseline = fixture.path("policy-baseline");
+    run_fixture(&rows, &fixture.registry, &baseline);
+    let source: Value =
+        serde_json::from_slice(&fs::read(baseline.join("solve/solve.json")).unwrap()).unwrap();
+    assert!(source.get("policy_acceptance").is_none());
+    assert!(
+        source["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|entity| entity["state"] != "promotable_new")
+    );
+    let surfaces: Vec<PreparedSurfaceRecord> = read_jsonl(&baseline.join("prepare/surfaces.jsonl"));
+    let suite = fixture.path("suite");
+    fs::create_dir(&suite).unwrap();
+    let gold: Vec<_> = surfaces.iter().map(|surface| json!({
+        "surface_id": surface.surface_id,
+        "entity_id": if surface.primary_surface.starts_with("Alpha") { "alpha" } else { &surface.primary_surface }
+    })).collect();
+    fs::write(suite.join("gold.json"), serde_json::to_vec(&gold).unwrap()).unwrap();
+    let hash = |path: &Path| canon::witness::hash_bytes(&fs::read(path).unwrap());
+    fs::write(suite.join("policy_suite.json"), serde_json::to_vec(&json!({
+        "rows": rows, "rows_hash": hash(&rows),
+        "profile": profile, "profile_hash": hash(&profile), "registry": fixture.registry,
+        "registry_snapshot_hash": source["metadata"]["registry_snapshot"]["lookup_snapshot_hash"],
+        "gold": "gold.json", "gold_hash": hash(&suite.join("gold.json")),
+        "gold_provenance": "Synthetic positive and negative regression labels; not live instrument truth",
+        "work_dir": "audit-work"
+    })).unwrap()).unwrap();
+    let strategy = fixture.path("policy.yaml");
+    let document = format!(
+        "strategy_id: policy-test\nversion: 1.0.0\npromotion:\n  new_ids: auto_accept\n  auto_accept:\n    policy_id: exact-identifiers\n    require:\n      min_adjusted_support_units: 10000\n      max_hard_cannot_link: 0\n      max_soft_anti_merge: 0\n      evidence_all_of: [exact_view:cusip, exact_view:isin]\n      max_component_surfaces: 50\n    audit:\n      suite: {}\n      min_pair_precision: 0.995\n      min_component_precision: 0.99\n    max_auto_accepted_per_run: 5\n",
+        suite.display()
+    );
+    fs::write(&strategy, &document).unwrap();
+    assert!(
+        canon::entity::promotion_policy::load_policy(
+            &document.replace("new_ids: auto_accept", "new_ids: escrow_only")
+        )
+        .unwrap()
+        .is_none()
+    );
+    let work = fixture.path("policy-work");
+    run_entity_workbench(EntityRunRequest {
+        rows: &rows,
+        profile: profile.to_str().unwrap(),
+        strategy: &strategy,
+        registry: &fixture.registry,
+        work_dir: &work,
+    })
+    .unwrap();
+    let solve_path = work.join("solve/solve.json");
+    let solve: Value = serde_json::from_slice(&fs::read(&solve_path).unwrap()).unwrap();
+    assert_eq!(
+        solve["policy_acceptance"]["decisions"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(solve["promotable_aliases"].as_array().unwrap().len(), 2);
+    let audit = run_entity_audit_v1(EntityAuditV1Request {
+        result_artifact: solve.clone(),
+        suite_dir: &suite,
+    })
+    .unwrap();
+    assert_eq!(audit["policy_audit"]["accepted_pairs"], 1);
+    assert_eq!(audit["policy_audit"]["correct_pairs"], 1);
+    // A complete but wrong identity labeling must fail the computed audit,
+    // even though every declared static gate defaults to passed.
+    let gold_original = fs::read(suite.join("gold.json")).unwrap();
+    let manifest_original = fs::read(suite.join("policy_suite.json")).unwrap();
+    let bad_gold: Vec<_> = surfaces.iter().map(|surface| json!({
+        "surface_id": surface.surface_id,
+        "entity_id": if surface.primary_surface.starts_with("Beta") { "beta" } else { &surface.primary_surface }
+    })).collect();
+    fs::write(
+        suite.join("gold.json"),
+        serde_json::to_vec(&bad_gold).unwrap(),
+    )
+    .unwrap();
+    let mut bad_manifest: Value = serde_json::from_slice(&manifest_original).unwrap();
+    bad_manifest["gold_hash"] = json!(hash(&suite.join("gold.json")));
+    fs::write(
+        suite.join("policy_suite.json"),
+        serde_json::to_vec(&bad_manifest).unwrap(),
+    )
+    .unwrap();
+    let bad_work = fixture.path("wrong-gold-work");
+    run_entity_workbench(EntityRunRequest {
+        rows: &rows,
+        profile: profile.to_str().unwrap(),
+        strategy: &strategy,
+        registry: &fixture.registry,
+        work_dir: &bad_work,
+    })
+    .unwrap();
+    let bad_solve: Value =
+        serde_json::from_slice(&fs::read(bad_work.join("solve/solve.json")).unwrap()).unwrap();
+    let failed = run_entity_audit_v1(EntityAuditV1Request {
+        result_artifact: bad_solve,
+        suite_dir: &suite,
+    })
+    .unwrap_err();
+    assert!(format!("{failed:?}").contains("policy_precision_floor_failed"));
+    fs::write(suite.join("gold.json"), gold_original).unwrap();
+    fs::write(suite.join("policy_suite.json"), manifest_original).unwrap();
+    let acceptance: canon::entity::promotion_policy::PolicyAcceptance =
+        serde_json::from_value(solve["policy_acceptance"].clone()).unwrap();
+    let mut baseline_typed: canon::entity::solve::SolveArtifact =
+        serde_json::from_value(source.clone()).unwrap();
+    let baseline_bytes = serde_json::to_vec(&baseline_typed).unwrap();
+    assert!(
+        canon::entity::promotion_policy::apply_policy(
+            &mut baseline_typed,
+            "strategy_id: default\n".into(),
+            &[],
+            &[]
+        )
+        .unwrap()
+        .is_none()
+    );
+    assert_eq!(serde_json::to_vec(&baseline_typed).unwrap(), baseline_bytes);
+    let mut weak: canon::entity::solve::SolveArtifact =
+        serde_json::from_value(source.clone()).unwrap();
+    let target = weak
+        .entities
+        .iter_mut()
+        .find(|entity| entity.component_id == acceptance.decisions[0].component_id)
+        .unwrap();
+    target.surface_ids.push("surface:weak-member".into());
+    let refused = canon::entity::promotion_policy::apply_policy(
+        &mut weak,
+        document.clone(),
+        &acceptance.decisions[0].evidence,
+        &[],
+    )
+    .unwrap()
+    .unwrap();
+    assert!(
+        refused.decisions.is_empty(),
+        "a strong pair cannot authorize an unsupported component member"
+    );
+    let mut hard: canon::entity::solve::SolveArtifact =
+        serde_json::from_value(source.clone()).unwrap();
+    hard.entities
+        .iter_mut()
+        .find(|entity| entity.component_id == acceptance.decisions[0].component_id)
+        .unwrap()
+        .hard_cannot_link_count = 1;
+    assert!(
+        canon::entity::promotion_policy::apply_policy(
+            &mut hard,
+            document.clone(),
+            &acceptance.decisions[0].evidence,
+            &[]
+        )
+        .unwrap()
+        .unwrap()
+        .decisions
+        .is_empty()
+    );
+    let mut failed_audit: canon::entity::promotion_policy::PolicyAuditResult =
+        serde_json::from_value(audit["policy_audit"].clone()).unwrap();
+    failed_audit.correct_pairs = 0;
+    assert!(
+        canon::entity::promotion_policy::validate_audit_result(&acceptance, &failed_audit).is_err()
+    );
+    failed_audit.accepted_pairs = 0;
+    assert!(
+        canon::entity::promotion_policy::validate_audit_result(&acceptance, &failed_audit).is_err()
+    );
+    assert!(
+        canon::entity::promotion_policy::load_policy(
+            &document.replace("max_hard_cannot_link: 0", "max_hard_cannot_link: 1")
+        )
+        .is_err()
+    );
+    let ceiling_strategy = fixture.path("ceiling.yaml");
+    fs::write(
+        &ceiling_strategy,
+        document.replace(
+            "max_auto_accepted_per_run: 5",
+            "max_auto_accepted_per_run: 0",
+        ),
+    )
+    .unwrap();
+    let ceiling = run_entity_workbench(EntityRunRequest {
+        rows: &rows,
+        profile: profile.to_str().unwrap(),
+        strategy: &ceiling_strategy,
+        registry: &fixture.registry,
+        work_dir: &fixture.path("ceiling-work"),
+    })
+    .unwrap_err();
+    assert!(format!("{ceiling:?}").contains("auto_accept_run_ceiling_exceeded"));
+    let promote = |audit_artifact: Value| {
+        promote_entity_v1(EntityPromoteV1Request {
+            result_path: solve_path.clone(),
+            result_artifact: solve.clone(),
+            audit_artifact,
+            registry: fixture.registry.clone(),
+            next_version: "2026.09.29".into(),
+        })
+    };
+    let mut missing = audit.clone();
+    missing.as_object_mut().unwrap().remove("policy_audit");
+    canon::entity::schema::finalize_entity_v1_self_hash(&mut missing).unwrap();
+    assert!(promote(missing).is_err());
+    let mut wrong = audit.clone();
+    wrong["policy_audit"]["strategy_content_hash"] = json!("wrong");
+    canon::entity::schema::finalize_entity_v1_self_hash(&mut wrong).unwrap();
+    assert!(promote(wrong).is_err());
+    assert_eq!(
+        fs::read_to_string(fixture.registry.join("aliases.json")).unwrap(),
+        "[]"
+    );
+    let ledger_path = work.join("solve/decision_ledger.jsonl");
+    let ledger_original = fs::read(&ledger_path).unwrap();
+    fs::write(&ledger_path, b"{\"decision_source\":\"human:override\"}\n").unwrap();
+    assert!(
+        format!("{:?}", promote(audit.clone()).unwrap_err())
+            .contains("policy_ledger_changed_after_publication")
+    );
+    fs::write(&ledger_path, ledger_original).unwrap();
+    promote(audit).unwrap();
+    let aliases: Value =
+        serde_json::from_slice(&fs::read(fixture.registry.join("aliases.json")).unwrap()).unwrap();
+    assert_eq!(aliases.as_array().unwrap().len(), 2);
+    assert_eq!(aliases[0]["canonical_id"], aliases[1]["canonical_id"]);
+    assert_ne!(aliases[0]["input"], aliases[1]["input"]);
+    assert_eq!(
+        aliases[0]["policy_authority"]["policy_id"],
+        "exact-identifiers"
+    );
+    let lookup = std::process::Command::new(env!("CARGO_BIN_EXE_canon"))
+        .arg(&rows)
+        .arg("--registry")
+        .arg(&fixture.registry)
+        .args(["--column", "title", "--no-witness"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        lookup.status.code(),
+        Some(1),
+        "two of four rows remain unresolved"
+    );
+    let mapping: Value = serde_json::from_slice(&lookup.stdout).unwrap();
+    assert_eq!(mapping["summary"]["resolved"], 2);
+    assert_eq!(mapping["summary"]["unresolved"], 2);
+
+    // Human correction uses the existing import transaction and keeps the
+    // original policy authority in its override record.
+    let fresh_work = fixture.path("post-promotion");
+    run_entity_workbench(EntityRunRequest {
+        rows: &rows,
+        profile: profile.to_str().unwrap(),
+        strategy: &strategy,
+        registry: &fixture.registry,
+        work_dir: &fresh_work,
+    })
+    .unwrap();
+    let fresh_solve: Value =
+        serde_json::from_slice(&fs::read(fresh_work.join("solve/solve.json")).unwrap()).unwrap();
+    let mut review = canon::entity::review::build_review_v1_artifact(
+        canon::entity::review::ReviewV1ExportRequest {
+            result_artifact: fresh_solve,
+            include: canon::entity::review::ReviewExportInclude::Resolved,
+        },
+    )
+    .unwrap();
+    let item = review["review_items"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|item| {
+            item["surface_ids"]
+                .as_array()
+                .is_some_and(|ids| ids.len() == 2)
+        })
+        .unwrap();
+    item["decision"] = json!("distinct");
+    item["operator_id"] = json!("human-reviewer");
+    item["reason_code"] = json!("independently_corrected_identity");
+    canon::entity::schema::finalize_entity_v1_self_hash(&mut review).unwrap();
+    let review_bytes = serde_json::to_vec(&review).unwrap();
+    canon::entity::review_import::import_review_v1(
+        canon::entity::review_import::ReviewImportV1Request {
+            review_path: &fixture.path("human-review.json"),
+            review_bytes: &review_bytes,
+            registry: &fixture.registry,
+            next_version: "2026.09.30",
+            audit: None,
+        },
+    )
+    .unwrap();
+    let corrected_aliases: Value =
+        serde_json::from_slice(&fs::read(fixture.registry.join("aliases.json")).unwrap()).unwrap();
+    assert!(corrected_aliases.as_array().unwrap().is_empty());
+    let override_bytes =
+        fs::read_to_string(fixture.registry.join("_escrow/cannot_link.jsonl")).unwrap();
+    assert!(override_bytes.contains("overridden_policy_aliases"));
+    let corrected_work = fixture.path("corrected-work");
+    run_entity_workbench(EntityRunRequest {
+        rows: &rows,
+        profile: profile.to_str().unwrap(),
+        strategy: &strategy,
+        registry: &fixture.registry,
+        work_dir: &corrected_work,
+    })
+    .unwrap();
+    let corrected: Value =
+        serde_json::from_slice(&fs::read(corrected_work.join("solve/solve.json")).unwrap())
+            .unwrap();
+    assert!(
+        corrected["policy_acceptance"]["decisions"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        !corrected["policy_acceptance"]["human_overrides"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
 fn shipped_blocking_retrieves_anchors_without_global_title_search_or_equality_buckets() {
     let fixture = InstrumentFixture::new();
     let rows = fixture.write_rows("declared.csv");
@@ -114,7 +497,10 @@ fn instrument_profile_runs_prepare_and_evidence_with_configured_mapping() {
     assert!(support_hit(positive, "anchor_match:figi").is_some());
     assert!(support_hit(positive, "isin_cusip_arithmetic:cusip:isin").is_some());
     assert!(anti_merge_hit(positive, "attribute_conflict:instrument_maturity").is_none());
-    assert!(anti_merge_hit(positive, "attribute_conflict:annualized_rate").is_none());
+    let uncertain_rate = anti_merge_hit(positive, "attribute_conflict:annualized_rate")
+        .expect("5.000 versus 5.010 needs a unit declaration to interpret its tolerance");
+    assert!(!uncertain_rate.hard_cannot_link);
+    assert!(uncertain_rate.explanation.contains("unit_ambiguous"));
 
     let contradiction = record_for_cores(
         &evidence,

@@ -1308,6 +1308,16 @@ The pipeline is YAML-driven: a **strategy file** defines which fields to observe
 
 `canon entity` is a resolution workbench, not the core lookup path. It manufactures registry knowledge through evidence, audit, review, and promotion. After promotion, ordinary `canon` runs still resolve the resulting aliases through exact lookup.
 
+Human review is the default. Cluster strategies may explicitly declare a
+`promotion.new_ids: auto_accept` policy with evidence requirements, a component
+size limit, and a frozen labeled audit suite. `entity audit` runs that strategy
+on pinned inputs and measures pair and component precision; `entity promote`
+requires the matching passing audit and policy decision ledger. Hard cannot-links
+never qualify, and subsequent human distinct/relation decisions override policy
+aliases. See the [policy contract](docs/PLAN_ENTITY_WORKBENCH.md#declared-promotion-authority)
+for configuration and suite format. No automatic instrument policy or live truth
+certification is enabled by the built-in profile.
+
 There are two public entity modes:
 
 - **Cluster mode:** `canon entity run` groups observations inside one profiled corpus and emits solved clusters, escrow, review, and promotion artifacts.

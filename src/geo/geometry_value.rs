@@ -3654,7 +3654,7 @@ fn validate_redacted_stripped_fields(
             ));
         }
     }
-    if artifact.redacted != !artifact.stripped_fields.is_empty() {
+    if artifact.redacted == artifact.stripped_fields.is_empty() {
         return Err(GeoGeometryError::new(
             GeoGeometryErrorCode::InvalidLicensePosture,
             "Geo redacted artifact redacted flag must match stripped fields",
