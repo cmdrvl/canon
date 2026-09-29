@@ -1,0 +1,950 @@
+{
+ "case_id": "PRYOR",
+ "created_utc": "2026-09-29T03:22:54Z",
+ "crs": "EPSG:4326 (WGS84 lon/lat; Snowflake GEOGRAPHY, geodesic distances and areas)",
+ "anchors": [
+  {
+   "id": "A1_fsq_google_4581_webb",
+   "kind": "foursquare_place_point",
+   "lon": -95.33284068111125,
+   "lat": 36.239586117035586,
+   "provenance": "Foursquare OS Places 2026-08-11 fsq_place_id 4e84cca27ee6dd97bfbd6bae, name 'Google', address '4581 Webb St', Pryor OK 74361; documented as the anchor pin in canon docs run 02_pryor_arm_d (RESULT.md / run_arm_d_pryor.py); re-queried live, verifiable_id sha256:7b7c08a78c85dd73413fc825e1f399ca8808ab1de6b6cd2f39159844e3181573",
+   "h3_r7": "8726e8c0bffffff",
+   "h3_r7_vid": "sha256:11052bd35a5edef21508debf839d1de4e481a3ffaa1e79512f073f4272ea108d"
+  },
+  {
+   "id": "A2_raw_address_string",
+   "kind": "raw_address_string_no_point",
+   "lon": null,
+   "lat": null,
+   "string": "4581 Webb St, Pryor, OK 74361",
+   "provenance": "Operator/aggregator address string (documented in canon run 02 inputs, sites_epoch_addressed_us_v2 'epoch_address'); an unverified claim, no coordinate"
+  },
+  {
+   "id": "A3_geocoder_resolve_address_to_tract",
+   "kind": "geocoder_result_no_point",
+   "lon": null,
+   "lat": null,
+   "provenance": "geo.resolve_address_to_tract('4581 Webb St, Pryor, OK 74361') -> ok=false, match_quality=no_match (usaddress, census_structured, census_oneline); verifiable_id sha256:91c7de6a4d7b61a0bad5c07e3161d2495ba49e80b7a6534dac59cde4b2fdd76d"
+  }
+ ],
+ "neighborhood": {
+  "h3_resolution": 7,
+  "k_rings": 2,
+  "center_cells": [
+   "8726e8c0bffffff"
+  ],
+  "anchor_buffer_m": 1600.0,
+  "distance_policy": "retain a record iff its geometry (footprint polygon, or point for places) intersects the union of 1600 m geodesic buffers, i.e. ST_DWITHIN(geom, anchor_point, 1600), around every anchor that has a coordinate (>=1.5 km required); anchors without a coordinate (raw address strings, failed geocodes) cannot be buffered and are recorded only",
+  "containment_policy": "intersection, not centroid: a footprint is kept when any part is within 1600 m of an anchor even if its centroid is farther or in another H3 cell; the H3 r7 disk (k=2 rings around each anchor cell, >=4 km reach beyond any point of the anchor cell) is only the pruning cover; bbox-overlap prefilter [-95.351775, 36.224315, -95.313907, 36.254857] precedes the exact predicate",
+  "possible_misses": "objects whose keyed (centroid) H3 r7 cell lies outside the k-ring disk but whose geometry reaches within R of an anchor (needs a footprint > ~2.5 km across); polygons are not clipped to the buffer (whole footprint retained)",
+  "coverage_hole_check": "COUNT(*) re-run with a k=3 disk must equal the k=2 count"
+ },
+ "sources": {
+  "overture_buildings": {
+   "table": "EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT",
+   "file": "overture_buildings.jsonl",
+   "rows_retrieved": 175,
+   "distinct_keys_retrieved": 175,
+   "count_star": 175,
+   "count_distinct_keys": 175,
+   "count_matches": true,
+   "keys_match_distinct": true,
+   "count_k_plus1": 175,
+   "count_k_plus1_matches": true,
+   "releases_in_result": [
+    {
+     "R": "2026-07-22.0",
+     "N": 175
+    }
+   ],
+   "sha256": "910e5fd4846ba9bb4d55af0e24e6916f3b1d7bac32b11b330237332a39149374",
+   "key_column": "PROVIDER_FEATURE_ID",
+   "columns": [
+    "PROVIDER_FEATURE_ID",
+    "RELEASE",
+    "RELEASE_DT",
+    "SOURCE_PARTITION",
+    "DATASET",
+    "FEATURE_TYPE",
+    "COUNTRY",
+    "STATE",
+    "LICENSE_CLASS",
+    "LICENSE_TERMS",
+    "ATTRIBUTION_TEXT",
+    "OVERTURE_VERSION",
+    "GEOM_WKT",
+    "CENTROID_WKT",
+    "AREA_M2_DERIVED_GEODESIC",
+    "CENTROID_LON",
+    "CENTROID_LAT",
+    "BBOX_XMIN",
+    "BBOX_YMIN",
+    "BBOX_XMAX",
+    "BBOX_YMAX",
+    "H3_R4",
+    "H3_R7",
+    "H3_R8",
+    "SOURCES_JSON",
+    "NAMES_JSON",
+    "ROW_PAYLOAD_JSON",
+    "SOURCE_FILENAME",
+    "LOADED_AT",
+    "SOURCE_PART",
+    "H3_KEY_STATUS",
+    "DIST_M_A1"
+   ],
+   "unit_notes": "AREA_M2_DERIVED_GEODESIC = ST_AREA(geometry) in m^2, derived (not a source attribute); DIST_M_<anchor> = geodesic metres from geometry to the anchor point (0 if the anchor is inside the footprint), derived; other numeric fields keep source units (FEMA SQMETERS m^2, SQFEET ft^2, HEIGHT as landed; MS HEIGHT/CONFIDENCE as landed; Overture height inside ROW_PAYLOAD_JSON)",
+   "transport_ranges": 15,
+   "range_size_target": 12,
+   "query_text": {
+    "count": "SELECT COUNT(*) N, COUNT(DISTINCT PROVIDER_FEATURE_ID) ND FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT WHERE STATE = 'US-OK' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8726e8c0bffffff',2))))) AND BBOX_XMAX >= -95.35177472223643 AND BBOX_XMIN <= -95.31390663998607 AND BBOX_YMAX >= 36.22431482706074 AND BBOX_YMIN <= 36.254857407010434 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)'), 1600.0))",
+    "count_k_plus1": "SELECT COUNT(*) N, COUNT(DISTINCT PROVIDER_FEATURE_ID) ND FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT WHERE STATE = 'US-OK' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8726e8c0bffffff',3))))) AND BBOX_XMAX >= -95.35177472223643 AND BBOX_XMIN <= -95.31390663998607 AND BBOX_YMAX >= 36.22431482706074 AND BBOX_YMIN <= 36.254857407010434 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)'), 1600.0))",
+    "releases": "SELECT RELEASE R, COUNT(*) N FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT WHERE STATE = 'US-OK' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8726e8c0bffffff',2))))) AND BBOX_XMAX >= -95.35177472223643 AND BBOX_XMIN <= -95.31390663998607 AND BBOX_YMAX >= 36.22431482706074 AND BBOX_YMIN <= 36.254857407010434 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)'), 1600.0)) GROUP BY 1 ORDER BY 1",
+    "boundaries": "SELECT K FROM (SELECT PROVIDER_FEATURE_ID K, ROW_NUMBER() OVER (ORDER BY PROVIDER_FEATURE_ID) RN FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT WHERE STATE = 'US-OK' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8726e8c0bffffff',2))))) AND BBOX_XMAX >= -95.35177472223643 AND BBOX_XMIN <= -95.31390663998607 AND BBOX_YMAX >= 36.22431482706074 AND BBOX_YMIN <= 36.254857407010434 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)'), 1600.0))) WHERE MOD(RN,12)=0 OR RN=175 ORDER BY K",
+    "range_query_template": "see freeze2.py fetch_range; where-clause: STATE = 'US-OK' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8726e8c0bffffff',2))))) AND BBOX_XMAX >= -95.35177472223643 AND BBOX_XMIN <= -95.31390663998607 AND BBOX_YMAX >= 36.22431482706074 AND BBOX_YMIN <= 36.254857407010434 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)'), 1600.0)); object columns: OBJECT_CONSTRUCT_KEEP_NULL('PROVIDER_FEATURE_ID', PROVIDER_FEATURE_ID, 'RELEASE', RELEASE, 'RELEASE_DT', RELEASE_DT, 'SOURCE_PARTITION', SOURCE_PARTITION, 'DATASET', DATASET, 'FEATURE_TYPE', FEATURE_TYPE, 'COUNTRY', COUNTRY, 'STATE', STATE, 'LICENSE_CLASS', LICENSE_CLASS, 'LICENSE_TERMS', LICENSE_TERMS, 'ATTRIBUTION_TEXT', ATTRIBUTION_TEXT, 'OVERTURE_VERSION', OVERTURE_VERSION, 'GEOM_WKT', ST_ASWKT(GEOM_GEOG), 'CENTROID_WKT', ST_ASWKT(CENTROID_GEOG), 'AREA_M2_DERIVED_GEODESIC', ST_AREA(GEOM_GEOG), 'CENTROID_LON', CENTROID_LON, 'CENTROID_LAT', CENTROID_LAT, 'BBOX_XMIN', BBOX_XMIN, 'BBOX_YMIN', BBOX_YMIN, 'BBOX_XMAX', BBOX_XMAX, 'BBOX_YMAX', BBOX_YMAX, 'H3_R4', H3_R4, 'H3_R7', H3_R7, 'H3_R8', H3_R8, 'SOURCES_JSON', SOURCES_JSON, 'NAMES_JSON', NAMES_JSON, 'ROW_PAYLOAD_JSON', ROW_PAYLOAD_JSON, 'SOURCE_FILENAME', SOURCE_FILENAME, 'LOADED_AT', LOADED_AT, 'SOURCE_PART', SOURCE_PART, 'H3_KEY_STATUS', H3_KEY_STATUS, 'DIST_M_A1', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)')),2))"
+   },
+   "receipts": {
+    "count": [
+     "sha256:cedb9a4ff284e4231103a83786b610d1579b59f2865d8bfacd50392ab587c838"
+    ],
+    "count_k_plus1": [
+     "sha256:d0e9c0134d29a14fbcb836efcd260ea0860d1b9d45e17805faeee4ea2fd0569d"
+    ],
+    "releases": [
+     "sha256:47e8296d5d17a1b6c3b6d30787b9aedd660de019bc1347f96828c142ed9c8712"
+    ],
+    "boundaries": [
+     "sha256:6ecab323a1fefed6bb8351aa77ff7956fdf8a3616823187dc8544ca9313d9775"
+    ],
+    "ranges": [
+     "sha256:79e44a6e7808f37373c090071917155e92ceb6f22da024334f28a51ef9095aab",
+     "sha256:76b711089a01c0a1346dcf706562bf600d72266ddcad9ba4dc3c28f7cb85083c",
+     "sha256:056096538cd2c934edf06efac85c1ca8798387ab2a4e50b1e4c596754c71791d",
+     "sha256:3598c45f2e02e045db2f3c75a507118d32e84d1eff72c9f4e463d81bcf89974c",
+     "sha256:7612cf15396df5ad833eceac77d764156fec1ab7012eccdc850cec9425e7227c",
+     "sha256:87b6b32bd728010e8667647815e969e4acc0b2e53452da218827c7993cd58421",
+     "sha256:d05805dddec5422cb9b06cc2ff0f00aa5309fdee3c91338c9f7e40056da77350",
+     "sha256:df2d4b91a0d3cd4d41fa78081252c776fca0a3c1cb5b44f7dede63320a1c3832",
+     "sha256:ea0174b59bfd43812249e74babf4fb6b48e38719b1755444ed8184fb78792a85",
+     "sha256:b1d49d84a2cd13f02375074b6cd1f3bbb3e7b31e0597867aa0683802fe6d410f",
+     "sha256:7ebc5b0ba4bdcee022a18872875a94ddf6672e0f50b4709c8795da8a567a4e32",
+     "sha256:68be39270512a6c2867016d4cc52b037a340b685e14344b499c623bb53f59463",
+     "sha256:48b5d1cd0f2598a261fcf54db3ea4d7a700e5ac93afe2f9a954ec44dc9790302",
+     "sha256:ea1899caa86cdbf9c75a7e6f408bd343890ebc275d98bfa939c587639789e360",
+     "sha256:fd17037a9c1c8503f1896c796e35842c8dc002901117ff78936eace81bbc4113"
+    ]
+   },
+   "ranges": [
+    {
+     "lo": null,
+     "hi": "154131f6-5edf-4f77-878f-f7b920f12870",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 8260,
+     "md5": "fa1d4fa400dad774fb050b70ecf7a982",
+     "vid": "sha256:79e44a6e7808f37373c090071917155e92ceb6f22da024334f28a51ef9095aab",
+     "sql_sha256": "59c3370137566b0240f05cd6654e778e690556e9351183f6edadd764db520296"
+    },
+    {
+     "lo": "154131f6-5edf-4f77-878f-f7b920f12870",
+     "hi": "2b401b13-acbb-4974-b1e6-841c61c05df8",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 9128,
+     "md5": "3ab28fdbc6f1f165b28304a49d0f30b7",
+     "vid": "sha256:76b711089a01c0a1346dcf706562bf600d72266ddcad9ba4dc3c28f7cb85083c",
+     "sql_sha256": "390e2899c1f3a31e0c612ae12e3535a0d99eb59b429dc19519c110bf1f072089"
+    },
+    {
+     "lo": "2b401b13-acbb-4974-b1e6-841c61c05df8",
+     "hi": "3b5e6819-288d-44c1-85b3-b91841da4bb3",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 8484,
+     "md5": "b8045ffae008a7701770bde8adc55656",
+     "vid": "sha256:056096538cd2c934edf06efac85c1ca8798387ab2a4e50b1e4c596754c71791d",
+     "sql_sha256": "4aa6b063443ae400933a4ef0ff9499ddf8ae45951dc0aeca3360dff4891b2721"
+    },
+    {
+     "lo": "3b5e6819-288d-44c1-85b3-b91841da4bb3",
+     "hi": "4da12951-1b97-418f-bfdf-3a823d0570a1",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 7492,
+     "md5": "cb4e4b78bbeafea2cf1e81086dca2eaa",
+     "vid": "sha256:3598c45f2e02e045db2f3c75a507118d32e84d1eff72c9f4e463d81bcf89974c",
+     "sql_sha256": "adf8f2b66b3595cc4e55e5125a94973fcbac8f5b3f209df90e4d03fec1b5e4ca"
+    },
+    {
+     "lo": "4da12951-1b97-418f-bfdf-3a823d0570a1",
+     "hi": "5ce2193c-805a-4edc-8f09-cd39fde9cd31",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 7952,
+     "md5": "2af91edcc9cd3daf6d6624e9b7849921",
+     "vid": "sha256:7612cf15396df5ad833eceac77d764156fec1ab7012eccdc850cec9425e7227c",
+     "sql_sha256": "33e56e6d76b1b4291514334090b177d1437b102323b3c991d0da0017fefe2a77"
+    },
+    {
+     "lo": "5ce2193c-805a-4edc-8f09-cd39fde9cd31",
+     "hi": "6b1a3b1d-c908-4b33-8653-6f90862d94cc",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 7340,
+     "md5": "f9900b78b7a5d93f20791448498ec7fd",
+     "vid": "sha256:87b6b32bd728010e8667647815e969e4acc0b2e53452da218827c7993cd58421",
+     "sql_sha256": "c4353732f32b9ec8e44893571405193789dca2223a61c7f2cb3948c23383e8e4"
+    },
+    {
+     "lo": "6b1a3b1d-c908-4b33-8653-6f90862d94cc",
+     "hi": "7a37d6bc-a244-4691-9381-4740d4d3b9c4",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 7860,
+     "md5": "81158b2676d17ce8fd58519c31c298ea",
+     "vid": "sha256:d05805dddec5422cb9b06cc2ff0f00aa5309fdee3c91338c9f7e40056da77350",
+     "sql_sha256": "1fc5e7497b60f937855bb28c426925951277c99c41abf009ff26bfab20bff42e"
+    },
+    {
+     "lo": "7a37d6bc-a244-4691-9381-4740d4d3b9c4",
+     "hi": "90594405-a112-4c6d-88fc-0c606966b7e3",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 7236,
+     "md5": "59f923c2f43fd9bfead91f3b771ac592",
+     "vid": "sha256:df2d4b91a0d3cd4d41fa78081252c776fca0a3c1cb5b44f7dede63320a1c3832",
+     "sql_sha256": "f95667e142289e9e27361a15a13918d3d9931966b99cf5dbe4de6c07acb790c0"
+    },
+    {
+     "lo": "90594405-a112-4c6d-88fc-0c606966b7e3",
+     "hi": "a2b3d77e-08de-467e-96d7-68f515d76f76",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 8400,
+     "md5": "4c52b6da2445474d0f563e0359ba4764",
+     "vid": "sha256:ea0174b59bfd43812249e74babf4fb6b48e38719b1755444ed8184fb78792a85",
+     "sql_sha256": "584e0cc2ec223d031188f5271a7b91a83e6246b023f1154fd1a6e80c780bbb05"
+    },
+    {
+     "lo": "a2b3d77e-08de-467e-96d7-68f515d76f76",
+     "hi": "aba20915-0d95-4d84-9a01-3fc73691ab39",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 7432,
+     "md5": "301835b67344f686917e8274cccd42dc",
+     "vid": "sha256:b1d49d84a2cd13f02375074b6cd1f3bbb3e7b31e0597867aa0683802fe6d410f",
+     "sql_sha256": "1ca5d79f1ad5fb8b3a4fd2f110f3193b0127dd25b92f6abf406141068586415b"
+    },
+    {
+     "lo": "aba20915-0d95-4d84-9a01-3fc73691ab39",
+     "hi": "bcf04282-1d2c-42e0-936d-b3c0acdf2aef",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 7972,
+     "md5": "36ab4211010475a359f245ebf0e5abea",
+     "vid": "sha256:7ebc5b0ba4bdcee022a18872875a94ddf6672e0f50b4709c8795da8a567a4e32",
+     "sql_sha256": "462936a13628d9e7b64732ce11c4d496a42db38ab0f32dcf1e2c5d4235a91292"
+    },
+    {
+     "lo": "bcf04282-1d2c-42e0-936d-b3c0acdf2aef",
+     "hi": "d120191c-7681-44f4-a7d8-209fac55d4be",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 9224,
+     "md5": "131d29d8d69cd6f16a09d4ccd55cfff6",
+     "vid": "sha256:68be39270512a6c2867016d4cc52b037a340b685e14344b499c623bb53f59463",
+     "sql_sha256": "92df3f41d70f36e6be58a2c35412e24a6fc9a1761cd3265f2e26784da8ea54aa"
+    },
+    {
+     "lo": "d120191c-7681-44f4-a7d8-209fac55d4be",
+     "hi": "dcc29a09-824b-47a1-9e95-ec6bc54df58d",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 7996,
+     "md5": "94302db5463475966b4a7dff7c8d60c9",
+     "vid": "sha256:48b5d1cd0f2598a261fcf54db3ea4d7a700e5ac93afe2f9a954ec44dc9790302",
+     "sql_sha256": "997d70d0f73bdabe2483398e777cda9602d7389a19c83e8c346ccba4438464a0"
+    },
+    {
+     "lo": "dcc29a09-824b-47a1-9e95-ec6bc54df58d",
+     "hi": "ee97c483-5b8d-4e97-b446-d4eeac619a08",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 7128,
+     "md5": "e917908ad45c65a5bfae4f59b153ed32",
+     "vid": "sha256:ea1899caa86cdbf9c75a7e6f408bd343890ebc275d98bfa939c587639789e360",
+     "sql_sha256": "b710496487d34a1a6ea84451d37c563aefad54f35299455c871774ea97f588c5"
+    },
+    {
+     "lo": "ee97c483-5b8d-4e97-b446-d4eeac619a08",
+     "hi": "fc970c3b-05d0-4818-8d86-6217993b64c4",
+     "n": 7,
+     "nd": 7,
+     "b64_len": 4532,
+     "md5": "4bab8c63a726457c231d0cfd8630e2b6",
+     "vid": "sha256:fd17037a9c1c8503f1896c796e35842c8dc002901117ff78936eace81bbc4113",
+     "sql_sha256": "bb2632a49a19f2db73bdf96ca5df164c385396675beb10ed8d0624b90c4c5bef"
+    }
+   ],
+   "seconds": 17.2
+  },
+  "microsoft_globalml": {
+   "table": "EDGAR_DB.SOURCE.MICROSOFT_GLOBALML_BUILDING_FOOTPRINTS_HOT",
+   "file": "microsoft_globalml.jsonl",
+   "rows_retrieved": 168,
+   "distinct_keys_retrieved": 168,
+   "count_star": 168,
+   "count_distinct_keys": 168,
+   "count_matches": true,
+   "keys_match_distinct": true,
+   "count_k_plus1": 168,
+   "count_k_plus1_matches": true,
+   "releases_in_result": [
+    {
+     "R": "2026-07-24",
+     "N": 168
+    }
+   ],
+   "sha256": "36df30dd7c9fba7d3940a81610df3d0db68982b69e7eab4d89d9dee1b1a1afbb",
+   "key_column": "PROVIDER_FEATURE_ID",
+   "columns": [
+    "PROVIDER_FEATURE_ID",
+    "RELEASE_DT",
+    "COUNTRY",
+    "STATE",
+    "H3_R4",
+    "H3_R7",
+    "H3_R8",
+    "QUADKEY",
+    "SOURCE_FILE_URL",
+    "SOURCE_FILE_UPLOAD_DATE",
+    "SOURCE_FILE_SHA256",
+    "SOURCE_LINE_NUMBER",
+    "HEIGHT",
+    "CONFIDENCE",
+    "GEOMETRY_TYPE",
+    "GEOM_WKT",
+    "AREA_M2_DERIVED_GEODESIC",
+    "CENTROID_LON",
+    "CENTROID_LAT",
+    "BBOX_XMIN",
+    "BBOX_YMIN",
+    "BBOX_XMAX",
+    "BBOX_YMAX",
+    "PARSER_VERSION",
+    "LICENSE_TERMS",
+    "ATTRIBUTION_TEXT",
+    "FILENAME",
+    "INSERTED_AT",
+    "DIST_M_A1"
+   ],
+   "unit_notes": "AREA_M2_DERIVED_GEODESIC = ST_AREA(geometry) in m^2, derived (not a source attribute); DIST_M_<anchor> = geodesic metres from geometry to the anchor point (0 if the anchor is inside the footprint), derived; other numeric fields keep source units (FEMA SQMETERS m^2, SQFEET ft^2, HEIGHT as landed; MS HEIGHT/CONFIDENCE as landed; Overture height inside ROW_PAYLOAD_JSON)",
+   "transport_ranges": 14,
+   "range_size_target": 12,
+   "query_text": {
+    "count": "SELECT COUNT(*) N, COUNT(DISTINCT PROVIDER_FEATURE_ID) ND FROM EDGAR_DB.SOURCE.MICROSOFT_GLOBALML_BUILDING_FOOTPRINTS_HOT WHERE STATE = 'OK' AND H3_R7 IN (SELECT H3_STRING_TO_INT(C) FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8726e8c0bffffff',2))))) AND BBOX_XMAX >= -95.35177472223643 AND BBOX_XMIN <= -95.31390663998607 AND BBOX_YMAX >= 36.22431482706074 AND BBOX_YMIN <= 36.254857407010434 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)'), 1600.0))",
+    "count_k_plus1": "SELECT COUNT(*) N, COUNT(DISTINCT PROVIDER_FEATURE_ID) ND FROM EDGAR_DB.SOURCE.MICROSOFT_GLOBALML_BUILDING_FOOTPRINTS_HOT WHERE STATE = 'OK' AND H3_R7 IN (SELECT H3_STRING_TO_INT(C) FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8726e8c0bffffff',3))))) AND BBOX_XMAX >= -95.35177472223643 AND BBOX_XMIN <= -95.31390663998607 AND BBOX_YMAX >= 36.22431482706074 AND BBOX_YMIN <= 36.254857407010434 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)'), 1600.0))",
+    "releases": "SELECT RELEASE_DT R, COUNT(*) N FROM EDGAR_DB.SOURCE.MICROSOFT_GLOBALML_BUILDING_FOOTPRINTS_HOT WHERE STATE = 'OK' AND H3_R7 IN (SELECT H3_STRING_TO_INT(C) FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8726e8c0bffffff',2))))) AND BBOX_XMAX >= -95.35177472223643 AND BBOX_XMIN <= -95.31390663998607 AND BBOX_YMAX >= 36.22431482706074 AND BBOX_YMIN <= 36.254857407010434 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)'), 1600.0)) GROUP BY 1 ORDER BY 1",
+    "boundaries": "SELECT K FROM (SELECT PROVIDER_FEATURE_ID K, ROW_NUMBER() OVER (ORDER BY PROVIDER_FEATURE_ID) RN FROM EDGAR_DB.SOURCE.MICROSOFT_GLOBALML_BUILDING_FOOTPRINTS_HOT WHERE STATE = 'OK' AND H3_R7 IN (SELECT H3_STRING_TO_INT(C) FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8726e8c0bffffff',2))))) AND BBOX_XMAX >= -95.35177472223643 AND BBOX_XMIN <= -95.31390663998607 AND BBOX_YMAX >= 36.22431482706074 AND BBOX_YMIN <= 36.254857407010434 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)'), 1600.0))) WHERE MOD(RN,12)=0 OR RN=168 ORDER BY K",
+    "range_query_template": "see freeze2.py fetch_range; where-clause: STATE = 'OK' AND H3_R7 IN (SELECT H3_STRING_TO_INT(C) FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8726e8c0bffffff',2))))) AND BBOX_XMAX >= -95.35177472223643 AND BBOX_XMIN <= -95.31390663998607 AND BBOX_YMAX >= 36.22431482706074 AND BBOX_YMIN <= 36.254857407010434 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)'), 1600.0)); object columns: OBJECT_CONSTRUCT_KEEP_NULL('PROVIDER_FEATURE_ID', PROVIDER_FEATURE_ID, 'RELEASE_DT', RELEASE_DT, 'COUNTRY', COUNTRY, 'STATE', STATE, 'H3_R4', H3_R4, 'H3_R7', H3_R7, 'H3_R8', H3_R8, 'QUADKEY', QUADKEY, 'SOURCE_FILE_URL', SOURCE_FILE_URL, 'SOURCE_FILE_UPLOAD_DATE', SOURCE_FILE_UPLOAD_DATE, 'SOURCE_FILE_SHA256', SOURCE_FILE_SHA256, 'SOURCE_LINE_NUMBER', SOURCE_LINE_NUMBER, 'HEIGHT', HEIGHT, 'CONFIDENCE', CONFIDENCE, 'GEOMETRY_TYPE', GEOMETRY_TYPE, 'GEOM_WKT', ST_ASWKT(GEOM_GEOG), 'AREA_M2_DERIVED_GEODESIC', ST_AREA(GEOM_GEOG), 'CENTROID_LON', CENTROID_LON, 'CENTROID_LAT', CENTROID_LAT, 'BBOX_XMIN', BBOX_XMIN, 'BBOX_YMIN', BBOX_YMIN, 'BBOX_XMAX', BBOX_XMAX, 'BBOX_YMAX', BBOX_YMAX, 'PARSER_VERSION', PARSER_VERSION, 'LICENSE_TERMS', LICENSE_TERMS, 'ATTRIBUTION_TEXT', ATTRIBUTION_TEXT, 'FILENAME', FILENAME, 'INSERTED_AT', INSERTED_AT, 'DIST_M_A1', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)')),2))"
+   },
+   "receipts": {
+    "count": [
+     "sha256:11a4f46db865c22a31c0e3ee6b1b5b173fa5489575faddb8cb77dcce5df611a4"
+    ],
+    "count_k_plus1": [
+     "sha256:5d3dd32387c3197aa5765b9dcb64a42a2640b6575560623f974a4aed34f78d44"
+    ],
+    "releases": [
+     "sha256:893ce178c4b04a99286b50b57c5fc9858498f3875763e6262924da8f882d2c30"
+    ],
+    "boundaries": [
+     "sha256:ef05d14ad2355772bcb751c27094e56fb6b483301f6838a1fd45fc83fd3cdf2c"
+    ],
+    "ranges": [
+     "sha256:78072d69f76a4cd2cb6fd5191716e40ed5cb8ae4e629ea3e786841ea1bca1216",
+     "sha256:8eae102fdd4a1376eb505754a7929b923b20426baccebb67e90b3ed30f25e0b8",
+     "sha256:fd4b684737f50c1b0b3ed876feb39f454161a8bf6263988acbc1f626e4ed0d14",
+     "sha256:61d4ca2cff2c47b3eb9af4637a66096070de71a02440b788d4f4091e23985eac",
+     "sha256:68fa7b1003d2868b3a2f38568e1ced7e12fcb0ca2d0f835f8d7c23b6e72de9ee",
+     "sha256:4df8262272998c71e3f06cb058a7e347f88d9e723ca602eb36206be0eb275f62",
+     "sha256:f6b1f6b2edb5fa6a858cd00e82f546f4f4392d5bbf9359fc18d691e096046a27",
+     "sha256:262b8d18f614b66683812a0918600a329173255d7a1477c25fa7220ebda4089d",
+     "sha256:db79618d07393ce2bfd43744cd18cd236f2c8b4e884c6a9184864eab8e0e5fb6",
+     "sha256:c120fd6b628f3eabfe8f915bac86b11ca9b8f12ec65414fd66eb257f5a6af2d6",
+     "sha256:253050d7312fe23820086eb496650dafe406cec8919e09f99b7896d5992d53f1",
+     "sha256:136ef2c19b91cb32f53ffffaa97413be80f8248f69d343a8d7b359b49254518a",
+     "sha256:7a60d73cc98c024fdd477199ad596c8f8c923356cdfcc62171bee2fcae965b99",
+     "sha256:c5b1415b7150dd39d86cf905b80f732952a28735b6317d554649b3d52d85210c"
+    ]
+   },
+   "ranges": [
+    {
+     "lo": null,
+     "hi": "1001c02245eac080a924be42abdf371955d5c0ea2a9c46e9e2fee2dec91c516e",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 5140,
+     "md5": "75259e36f0d944b38cf0fa369edc39cd",
+     "vid": "sha256:78072d69f76a4cd2cb6fd5191716e40ed5cb8ae4e629ea3e786841ea1bca1216",
+     "sql_sha256": "f531a91e6d74ae9ae1ca2b3ec499d1d3702692160e2c98d83a0e7eded93917a5"
+    },
+    {
+     "lo": "1001c02245eac080a924be42abdf371955d5c0ea2a9c46e9e2fee2dec91c516e",
+     "hi": "20c75aac9c8f9392c62bfee5cfcde22c2ab8bc147286f9576d3ee8046fee27ba",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 5720,
+     "md5": "401632041bdbfdcbd0d8b99261fd06cf",
+     "vid": "sha256:8eae102fdd4a1376eb505754a7929b923b20426baccebb67e90b3ed30f25e0b8",
+     "sql_sha256": "d277c15165c39de0aadaa53e773260ff03d44c19652925cd2fde51a8e636ae33"
+    },
+    {
+     "lo": "20c75aac9c8f9392c62bfee5cfcde22c2ab8bc147286f9576d3ee8046fee27ba",
+     "hi": "2c2021af41eceb49330f501fc5add2cd6b0ca7e7738bb07ed46e960ecafaf19a",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 4436,
+     "md5": "448bbbf61cd8c6d678b4ce9f0e4ba729",
+     "vid": "sha256:fd4b684737f50c1b0b3ed876feb39f454161a8bf6263988acbc1f626e4ed0d14",
+     "sql_sha256": "888bffa7414bb76c5b3259bad1a9be36e26877cb77a1e38811fa0abcaf21665a"
+    },
+    {
+     "lo": "2c2021af41eceb49330f501fc5add2cd6b0ca7e7738bb07ed46e960ecafaf19a",
+     "hi": "417ecb723f86dbfea8d5ecd2549eefbdb58c0f14a6f47e81b99faaa0b7b86254",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 4972,
+     "md5": "ed7d898ade7dc65dfab7bb97c3c4d207",
+     "vid": "sha256:61d4ca2cff2c47b3eb9af4637a66096070de71a02440b788d4f4091e23985eac",
+     "sql_sha256": "61b03f2318126e009de61c9689a9998ee079ccb471cd7bfe2e1b13a36d6ad0df"
+    },
+    {
+     "lo": "417ecb723f86dbfea8d5ecd2549eefbdb58c0f14a6f47e81b99faaa0b7b86254",
+     "hi": "4ecebb4393a2db465014d01be08a28ea440fb412cd3c5c9f9143b6253d9029e6",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 4916,
+     "md5": "0b8bed131d9fd81b70fa2987eaa5c8e5",
+     "vid": "sha256:68fa7b1003d2868b3a2f38568e1ced7e12fcb0ca2d0f835f8d7c23b6e72de9ee",
+     "sql_sha256": "19321ca4a0b0140d72882b11f6e6fcdf62006b66456408406aea5a2e0ce3b535"
+    },
+    {
+     "lo": "4ecebb4393a2db465014d01be08a28ea440fb412cd3c5c9f9143b6253d9029e6",
+     "hi": "612a86d0f249a00562d23cd5851660d7395a261ef382df51f2df3ac17a7f6ddb",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 4664,
+     "md5": "d4673297b13272a8d917bc2bd885d662",
+     "vid": "sha256:4df8262272998c71e3f06cb058a7e347f88d9e723ca602eb36206be0eb275f62",
+     "sql_sha256": "62e9631b95a10a7b12e07cfcd8308f42e67e16b3ecc8890254ee123110819f5b"
+    },
+    {
+     "lo": "612a86d0f249a00562d23cd5851660d7395a261ef382df51f2df3ac17a7f6ddb",
+     "hi": "7bfa42691a7dc178bd5aa8da5c6c0d525e58552e3d43052b2874a05dec459718",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 4976,
+     "md5": "6b74a82ff1f27f5fdfdd13725d7eb206",
+     "vid": "sha256:f6b1f6b2edb5fa6a858cd00e82f546f4f4392d5bbf9359fc18d691e096046a27",
+     "sql_sha256": "f2e82c4c9dc4b81a75d25e8e69082f7fad8a34852b896e889bd8915c9cd334b8"
+    },
+    {
+     "lo": "7bfa42691a7dc178bd5aa8da5c6c0d525e58552e3d43052b2874a05dec459718",
+     "hi": "8a5233edd849a7ef2593fee65381258bd580ab596b4fe0f82c75d6871d5aeb3b",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 4640,
+     "md5": "9ee4d9b33590baf93fe4838aeb19d939",
+     "vid": "sha256:262b8d18f614b66683812a0918600a329173255d7a1477c25fa7220ebda4089d",
+     "sql_sha256": "aa1b68f079fcbe622ab2eb8d17ab88a6c947e00ad6b9fa4edd967e726e0179d3"
+    },
+    {
+     "lo": "8a5233edd849a7ef2593fee65381258bd580ab596b4fe0f82c75d6871d5aeb3b",
+     "hi": "996eef39609bb75c1bffaafafe13302a8a41f30e356ae053006dadf712a6cece",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 4904,
+     "md5": "60320ec51efbc7c983033eadbdc7deff",
+     "vid": "sha256:db79618d07393ce2bfd43744cd18cd236f2c8b4e884c6a9184864eab8e0e5fb6",
+     "sql_sha256": "de824d662950a6af533d63ffe15f3f2b78fa006de24e47be98020863869f838a"
+    },
+    {
+     "lo": "996eef39609bb75c1bffaafafe13302a8a41f30e356ae053006dadf712a6cece",
+     "hi": "affc6db541c206b5ba9066024153e444ce141dca9d168f78330859f542de5ac5",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 4512,
+     "md5": "eb5d1b612f190752261d556ac1819bba",
+     "vid": "sha256:c120fd6b628f3eabfe8f915bac86b11ca9b8f12ec65414fd66eb257f5a6af2d6",
+     "sql_sha256": "7376c7e5e6c785bc3a19dfc1cf4a007b07ad9fada9d706a64e68c4ecfa6cdc36"
+    },
+    {
+     "lo": "affc6db541c206b5ba9066024153e444ce141dca9d168f78330859f542de5ac5",
+     "hi": "c7d6baa782fdd9933e43ecb91caaa30edd53116d5e7815bde96ce0b7a49b5aca",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 4552,
+     "md5": "58343ded86bee300d8d22785c348ca8c",
+     "vid": "sha256:253050d7312fe23820086eb496650dafe406cec8919e09f99b7896d5992d53f1",
+     "sql_sha256": "969f17e5ffb5c2692e3e967a657b0bd2fa9d1510fe224242396d5f6ff21442c6"
+    },
+    {
+     "lo": "c7d6baa782fdd9933e43ecb91caaa30edd53116d5e7815bde96ce0b7a49b5aca",
+     "hi": "d71acaa517a468df87ab7333977903e72ccae798bef9bd7b100abd013dbe4340",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 4604,
+     "md5": "ade7d939753369a196b30379c8c2a80f",
+     "vid": "sha256:136ef2c19b91cb32f53ffffaa97413be80f8248f69d343a8d7b359b49254518a",
+     "sql_sha256": "645ca6f2a37307459adeda08d635c074e81be6bc5df270a3e20de5c23bcd79cc"
+    },
+    {
+     "lo": "d71acaa517a468df87ab7333977903e72ccae798bef9bd7b100abd013dbe4340",
+     "hi": "f077e95ef50ebe64611be86f5568d3d94218f8b068e5969dff2a36eb87c2570e",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 4844,
+     "md5": "55916f110effce6d7f756dd460646c88",
+     "vid": "sha256:7a60d73cc98c024fdd477199ad596c8f8c923356cdfcc62171bee2fcae965b99",
+     "sql_sha256": "dd7c0253f2087a8b7a4c20b40ee06d32d32eb9d7a4d7938f932f08831c2f0037"
+    },
+    {
+     "lo": "f077e95ef50ebe64611be86f5568d3d94218f8b068e5969dff2a36eb87c2570e",
+     "hi": "fee0ef1d7f65bd2aea711d1ce1bfa9fa7c692d79d25a1f13f65040a8f7079b55",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 4400,
+     "md5": "5d1c93b8b7e437e6db465d4b34fad3e5",
+     "vid": "sha256:c5b1415b7150dd39d86cf905b80f732952a28735b6317d554649b3d52d85210c",
+     "sql_sha256": "cb3ca92c8d19b6f6e2731503401c783d95d54d89c519f7326d5a00941502033a"
+    }
+   ],
+   "seconds": 16.1
+  },
+  "fema_usa_structures": {
+   "table": "EDGAR_DB.SOURCE.FEMA_USA_STRUCTURES_HOT",
+   "file": "fema_usa_structures.jsonl",
+   "rows_retrieved": 110,
+   "distinct_keys_retrieved": 110,
+   "count_star": 110,
+   "count_distinct_keys": 110,
+   "count_matches": true,
+   "keys_match_distinct": true,
+   "count_k_plus1": 110,
+   "count_k_plus1_matches": true,
+   "releases_in_result": [
+    {
+     "R": "2023-10-03",
+     "N": 110
+    }
+   ],
+   "sha256": "68714779dea296451fc442549678066621e7e21e110c8598a7ebb8d77e14ad22",
+   "key_column": "PROVIDER_FEATURE_ID",
+   "columns": [
+    "PROVIDER_FEATURE_ID",
+    "RELEASE_DT",
+    "COUNTRY",
+    "STATE",
+    "STATE_NAME",
+    "SOURCE_ROW_NUMBER",
+    "OBJECTID",
+    "BUILD_ID",
+    "UUID",
+    "GLOBALID",
+    "OCC_CLS",
+    "PRIM_OCC",
+    "SEC_OCC",
+    "OCCUPANCY_PROVENANCE",
+    "PROP_ADDR",
+    "PROP_CITY",
+    "PROP_ST",
+    "PROP_ZIP",
+    "PROP_CNTY",
+    "OUTBLDG",
+    "HEIGHT",
+    "SQMETERS",
+    "SQFEET",
+    "FIPS",
+    "CENSUSCODE",
+    "STATE_FIPS",
+    "COUNTY_FIPS",
+    "TRACT_GEOID",
+    "PROD_DATE",
+    "SOURCE_FIELD",
+    "LONGITUDE",
+    "LATITUDE",
+    "GEOM_WKT",
+    "AREA_M2_DERIVED_GEODESIC",
+    "CENTROID_LON",
+    "CENTROID_LAT",
+    "BBOX_XMIN",
+    "BBOX_YMIN",
+    "BBOX_XMAX",
+    "BBOX_YMAX",
+    "H3_R4",
+    "H3_R7",
+    "H3_R8",
+    "SOURCE_URL",
+    "SOURCE_SHA256",
+    "SOURCE_CHANNEL",
+    "LICENSE_TERMS",
+    "ATTRIBUTION_TEXT",
+    "ROW_PAYLOAD",
+    "LOADED_AT",
+    "H3_KEY_STATUS",
+    "DIST_M_A1"
+   ],
+   "unit_notes": "AREA_M2_DERIVED_GEODESIC = ST_AREA(geometry) in m^2, derived (not a source attribute); DIST_M_<anchor> = geodesic metres from geometry to the anchor point (0 if the anchor is inside the footprint), derived; other numeric fields keep source units (FEMA SQMETERS m^2, SQFEET ft^2, HEIGHT as landed; MS HEIGHT/CONFIDENCE as landed; Overture height inside ROW_PAYLOAD_JSON)",
+   "transport_ranges": 10,
+   "range_size_target": 12,
+   "query_text": {
+    "count": "SELECT COUNT(*) N, COUNT(DISTINCT PROVIDER_FEATURE_ID) ND FROM EDGAR_DB.SOURCE.FEMA_USA_STRUCTURES_HOT WHERE STATE = 'OK' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8726e8c0bffffff',2))))) AND BBOX_XMAX >= -95.35177472223643 AND BBOX_XMIN <= -95.31390663998607 AND BBOX_YMAX >= 36.22431482706074 AND BBOX_YMIN <= 36.254857407010434 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)'), 1600.0))",
+    "count_k_plus1": "SELECT COUNT(*) N, COUNT(DISTINCT PROVIDER_FEATURE_ID) ND FROM EDGAR_DB.SOURCE.FEMA_USA_STRUCTURES_HOT WHERE STATE = 'OK' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8726e8c0bffffff',3))))) AND BBOX_XMAX >= -95.35177472223643 AND BBOX_XMIN <= -95.31390663998607 AND BBOX_YMAX >= 36.22431482706074 AND BBOX_YMIN <= 36.254857407010434 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)'), 1600.0))",
+    "releases": "SELECT RELEASE_DT R, COUNT(*) N FROM EDGAR_DB.SOURCE.FEMA_USA_STRUCTURES_HOT WHERE STATE = 'OK' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8726e8c0bffffff',2))))) AND BBOX_XMAX >= -95.35177472223643 AND BBOX_XMIN <= -95.31390663998607 AND BBOX_YMAX >= 36.22431482706074 AND BBOX_YMIN <= 36.254857407010434 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)'), 1600.0)) GROUP BY 1 ORDER BY 1",
+    "boundaries": "SELECT K FROM (SELECT PROVIDER_FEATURE_ID K, ROW_NUMBER() OVER (ORDER BY PROVIDER_FEATURE_ID) RN FROM EDGAR_DB.SOURCE.FEMA_USA_STRUCTURES_HOT WHERE STATE = 'OK' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8726e8c0bffffff',2))))) AND BBOX_XMAX >= -95.35177472223643 AND BBOX_XMIN <= -95.31390663998607 AND BBOX_YMAX >= 36.22431482706074 AND BBOX_YMIN <= 36.254857407010434 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)'), 1600.0))) WHERE MOD(RN,12)=0 OR RN=110 ORDER BY K",
+    "range_query_template": "see freeze2.py fetch_range; where-clause: STATE = 'OK' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8726e8c0bffffff',2))))) AND BBOX_XMAX >= -95.35177472223643 AND BBOX_XMIN <= -95.31390663998607 AND BBOX_YMAX >= 36.22431482706074 AND BBOX_YMIN <= 36.254857407010434 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)'), 1600.0)); object columns: OBJECT_CONSTRUCT_KEEP_NULL('PROVIDER_FEATURE_ID', PROVIDER_FEATURE_ID, 'RELEASE_DT', RELEASE_DT, 'COUNTRY', COUNTRY, 'STATE', STATE, 'STATE_NAME', STATE_NAME, 'SOURCE_ROW_NUMBER', SOURCE_ROW_NUMBER, 'OBJECTID', OBJECTID, 'BUILD_ID', BUILD_ID, 'UUID', UUID, 'GLOBALID', GLOBALID, 'OCC_CLS', OCC_CLS, 'PRIM_OCC', PRIM_OCC, 'SEC_OCC', SEC_OCC, 'OCCUPANCY_PROVENANCE', OCCUPANCY_PROVENANCE, 'PROP_ADDR', PROP_ADDR, 'PROP_CITY', PROP_CITY, 'PROP_ST', PROP_ST, 'PROP_ZIP', PROP_ZIP, 'PROP_CNTY', PROP_CNTY, 'OUTBLDG', OUTBLDG, 'HEIGHT', HEIGHT, 'SQMETERS', SQMETERS, 'SQFEET', SQFEET, 'FIPS', FIPS, 'CENSUSCODE', CENSUSCODE, 'STATE_FIPS', STATE_FIPS, 'COUNTY_FIPS', COUNTY_FIPS, 'TRACT_GEOID', TRACT_GEOID, 'PROD_DATE', PROD_DATE, 'SOURCE_FIELD', SOURCE_FIELD, 'LONGITUDE', LONGITUDE, 'LATITUDE', LATITUDE, 'GEOM_WKT', ST_ASWKT(GEOM_GEOG), 'AREA_M2_DERIVED_GEODESIC', ST_AREA(GEOM_GEOG), 'CENTROID_LON', CENTROID_LON, 'CENTROID_LAT', CENTROID_LAT, 'BBOX_XMIN', BBOX_XMIN, 'BBOX_YMIN', BBOX_YMIN, 'BBOX_XMAX', BBOX_XMAX, 'BBOX_YMAX', BBOX_YMAX, 'H3_R4', H3_R4, 'H3_R7', H3_R7, 'H3_R8', H3_R8, 'SOURCE_URL', SOURCE_URL, 'SOURCE_SHA256', SOURCE_SHA256, 'SOURCE_CHANNEL', SOURCE_CHANNEL, 'LICENSE_TERMS', LICENSE_TERMS, 'ATTRIBUTION_TEXT', ATTRIBUTION_TEXT, 'ROW_PAYLOAD', ROW_PAYLOAD, 'LOADED_AT', LOADED_AT, 'H3_KEY_STATUS', H3_KEY_STATUS, 'DIST_M_A1', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)')),2))"
+   },
+   "receipts": {
+    "count": [
+     "sha256:dd04974ad1b136ae1f485ef31cc4b2d1b54c80d3d3b2759d6f62eb35ef7852a8"
+    ],
+    "count_k_plus1": [
+     "sha256:c7513b9bd44d9dd4e7feb2183608878be44f9165f7a87d7f1f9836b8cc06e40b"
+    ],
+    "releases": [
+     "sha256:471f4f73c7276d4b9be75ec63ccfd84f8d98647d689c6e84a013416adc48a4cb"
+    ],
+    "boundaries": [
+     "sha256:e9a728a29878421f2ffa5610f5168c0f4190f57c5464250d18957cad47d8c9c6"
+    ],
+    "ranges": [
+     "sha256:88342c4ee242364254e954de38caa84af749858502df670bd97677ae185b08a9",
+     "sha256:7082790be6667da9732e9c86a11adea6ffc6e77d603c5616632a638f39cdd030",
+     "sha256:34d3c9fdb3e018e662e857183eb6db8c2d02c3a26d6376b03a926b98ffd8cebe",
+     "sha256:4bcb1d8e73822e8644f9d0087df7bc01349b6ff7aee7f4711b44a6277d2564f6",
+     "sha256:54d77a2a298cedc0fb3ad9dd805ff629588e2e013ea1cc0d819fa086ecc88519",
+     "sha256:01c41569ce1ace0037ca2a6f570561f37ffdcca704d41e188706335ceeed62f0",
+     "sha256:62a3e34bffb8ad122523dc1d14e8f16140dc0b2e838d0059801d7be5e0099123",
+     "sha256:0a55d8683b19d30433d5f96f1198c52bd52460434866f3673dc6eea2eeff4ad1",
+     "sha256:0ce6abc131203cc961f2a75caa1def36a7c9fa6240295bc667f106ba7d30d532",
+     "sha256:4c67daf7e10914b8869112788db52eaf218f3ab0af6427bca485ce99edc5fe83"
+    ]
+   },
+   "ranges": [
+    {
+     "lo": null,
+     "hi": "19e79a64-b0bf-48e6-96c5-11a490518399",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 11164,
+     "md5": "ca3a154b4cf708e0b3e0f2c1297937fd",
+     "vid": "sha256:88342c4ee242364254e954de38caa84af749858502df670bd97677ae185b08a9",
+     "sql_sha256": "750bb1a7451d8e985f0729b4efd4227b82ff39eb5fb8d121fed046d561f357e1"
+    },
+    {
+     "lo": "19e79a64-b0bf-48e6-96c5-11a490518399",
+     "hi": "34e674cd-6313-4393-b3ee-033520442ad2",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 10232,
+     "md5": "96b9c80c838c1044d8ce9f93257a4e1d",
+     "vid": "sha256:7082790be6667da9732e9c86a11adea6ffc6e77d603c5616632a638f39cdd030",
+     "sql_sha256": "f2e0e16676ec6bc834d2ce90ec31d0c4000b409dc5285f9737a1fa59e7d242fd"
+    },
+    {
+     "lo": "34e674cd-6313-4393-b3ee-033520442ad2",
+     "hi": "567086df-c822-4677-9b7a-cfb6d15d3aed",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 9564,
+     "md5": "cefb8eef2a50687c0ddd47793b942010",
+     "vid": "sha256:34d3c9fdb3e018e662e857183eb6db8c2d02c3a26d6376b03a926b98ffd8cebe",
+     "sql_sha256": "78deb44a2cb4e8b2eeeda0f5eb82b4006b5b1a5bf71c91e30d745df260132f95"
+    },
+    {
+     "lo": "567086df-c822-4677-9b7a-cfb6d15d3aed",
+     "hi": "6fa45050-a35a-4cb0-8452-e61ee86f7f21",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 8652,
+     "md5": "a7b073f7dbcfdb6ab89590da801caa44",
+     "vid": "sha256:4bcb1d8e73822e8644f9d0087df7bc01349b6ff7aee7f4711b44a6277d2564f6",
+     "sql_sha256": "1641d0a25879a56a8b8b0619dc3d477fd8eba2dbef83198ee98b093eac6717de"
+    },
+    {
+     "lo": "6fa45050-a35a-4cb0-8452-e61ee86f7f21",
+     "hi": "85f83658-da0b-4877-9811-98a3b57940e9",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 8540,
+     "md5": "617d17aea5217f4f03a277f361f8a374",
+     "vid": "sha256:54d77a2a298cedc0fb3ad9dd805ff629588e2e013ea1cc0d819fa086ecc88519",
+     "sql_sha256": "cd77f42066cc296bd5d2be159621757a6be2d1b3b8774d0612c21b00ab9a9e5d"
+    },
+    {
+     "lo": "85f83658-da0b-4877-9811-98a3b57940e9",
+     "hi": "9da37df1-c967-4aa2-9e39-178b201dfbb9",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 9728,
+     "md5": "99462e9c58d8c264cc4a475958bbc987",
+     "vid": "sha256:01c41569ce1ace0037ca2a6f570561f37ffdcca704d41e188706335ceeed62f0",
+     "sql_sha256": "1a8cb280e70975ec2fcd0affe19bd865b0bc7e81f643759d152eef2a34a6bd90"
+    },
+    {
+     "lo": "9da37df1-c967-4aa2-9e39-178b201dfbb9",
+     "hi": "b32e948a-c152-489b-a4c8-b73f2505e06e",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 9184,
+     "md5": "9f24bdb68745ae84a5547c1d80453c74",
+     "vid": "sha256:62a3e34bffb8ad122523dc1d14e8f16140dc0b2e838d0059801d7be5e0099123",
+     "sql_sha256": "2537722cf3d0ab4a285944396ebb63e796aec93f3de4bc0d136a091876330ef1"
+    },
+    {
+     "lo": "b32e948a-c152-489b-a4c8-b73f2505e06e",
+     "hi": "d01467ae-f615-4541-82f0-d6ad8fbb195d",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 8372,
+     "md5": "7c8d9dee35f58319c0cefc85c1778dcd",
+     "vid": "sha256:0a55d8683b19d30433d5f96f1198c52bd52460434866f3673dc6eea2eeff4ad1",
+     "sql_sha256": "ac997183b455c4beef622667663f7cdd0d24a2fac3060fdd853742c9a07c99fe"
+    },
+    {
+     "lo": "d01467ae-f615-4541-82f0-d6ad8fbb195d",
+     "hi": "f4e3474c-e1e5-4e12-ab48-c01546cce57b",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 9744,
+     "md5": "7da7001f6ade5971c42036675c0ef790",
+     "vid": "sha256:0ce6abc131203cc961f2a75caa1def36a7c9fa6240295bc667f106ba7d30d532",
+     "sql_sha256": "8ee98b234788299d788406eac2bdeca34f32a793cc152e323bd7cbe1ac080397"
+    },
+    {
+     "lo": "f4e3474c-e1e5-4e12-ab48-c01546cce57b",
+     "hi": "f7cc6f94-9b0d-401c-b093-e564e894fb3a",
+     "n": 2,
+     "nd": 2,
+     "b64_len": 3060,
+     "md5": "38ce88a771fd106c28f051592d861c79",
+     "vid": "sha256:4c67daf7e10914b8869112788db52eaf218f3ab0af6427bca485ce99edc5fe83",
+     "sql_sha256": "2f42dbae1ec9315a1073c59152ad06ce02f440ae1fde6f0d28202de0a1c0879e"
+    }
+   ],
+   "seconds": 13.6
+  },
+  "foursquare_places": {
+   "table": "EDGAR_DB.SOURCE.FOURSQUARE_OS_PLACES_HOT",
+   "file": "foursquare_places.jsonl",
+   "rows_retrieved": 66,
+   "distinct_keys_retrieved": 66,
+   "count_star": 66,
+   "count_distinct_keys": 66,
+   "count_matches": true,
+   "keys_match_distinct": true,
+   "count_k_plus1": 66,
+   "count_k_plus1_matches": true,
+   "releases_in_result": [
+    {
+     "R": "2026-08-11",
+     "N": 66
+    }
+   ],
+   "sha256": "009df023f355374ac1a9404cc450b6c07f0bd649c2c00b47147fef98f9ce1d92",
+   "key_column": "FSQ_PLACE_ID",
+   "columns": [
+    "FSQ_PLACE_ID",
+    "NAME",
+    "ADDRESS",
+    "LOCALITY",
+    "REGION",
+    "POSTCODE",
+    "COUNTRY",
+    "LATITUDE",
+    "LONGITUDE",
+    "GEOM_WKT",
+    "BBOX_XMIN",
+    "BBOX_YMIN",
+    "BBOX_XMAX",
+    "BBOX_YMAX",
+    "H3_R4",
+    "H3_R7",
+    "H3_R8",
+    "RELEASE_DT",
+    "SNAPSHOT_MODE",
+    "DATE_CREATED",
+    "DATE_REFRESHED",
+    "DATE_CLOSED",
+    "FSQ_CATEGORY_IDS_JSON",
+    "FSQ_CATEGORY_LABELS_JSON",
+    "LICENSE_TERMS",
+    "ATTRIBUTION_TEXT",
+    "SOURCE_FILENAME",
+    "LOADED_AT",
+    "DIST_M_A1"
+   ],
+   "unit_notes": "AREA_M2_DERIVED_GEODESIC = ST_AREA(geometry) in m^2, derived (not a source attribute); DIST_M_<anchor> = geodesic metres from geometry to the anchor point (0 if the anchor is inside the footprint), derived; other numeric fields keep source units (FEMA SQMETERS m^2, SQFEET ft^2, HEIGHT as landed; MS HEIGHT/CONFIDENCE as landed; Overture height inside ROW_PAYLOAD_JSON)",
+   "transport_ranges": 6,
+   "range_size_target": 12,
+   "query_text": {
+    "count": "SELECT COUNT(*) N, COUNT(DISTINCT FSQ_PLACE_ID) ND FROM EDGAR_DB.SOURCE.FOURSQUARE_OS_PLACES_HOT WHERE REGION = 'OK' AND RELEASE_DT = '2026-08-11' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8726e8c0bffffff',2))))) AND BBOX_XMAX >= -95.35177472223643 AND BBOX_XMIN <= -95.31390663998607 AND BBOX_YMAX >= 36.22431482706074 AND BBOX_YMIN <= 36.254857407010434 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)'), 1600.0))",
+    "count_k_plus1": "SELECT COUNT(*) N, COUNT(DISTINCT FSQ_PLACE_ID) ND FROM EDGAR_DB.SOURCE.FOURSQUARE_OS_PLACES_HOT WHERE REGION = 'OK' AND RELEASE_DT = '2026-08-11' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8726e8c0bffffff',3))))) AND BBOX_XMAX >= -95.35177472223643 AND BBOX_XMIN <= -95.31390663998607 AND BBOX_YMAX >= 36.22431482706074 AND BBOX_YMIN <= 36.254857407010434 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)'), 1600.0))",
+    "releases": "SELECT RELEASE_DT R, COUNT(*) N FROM EDGAR_DB.SOURCE.FOURSQUARE_OS_PLACES_HOT WHERE REGION = 'OK' AND RELEASE_DT = '2026-08-11' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8726e8c0bffffff',2))))) AND BBOX_XMAX >= -95.35177472223643 AND BBOX_XMIN <= -95.31390663998607 AND BBOX_YMAX >= 36.22431482706074 AND BBOX_YMIN <= 36.254857407010434 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)'), 1600.0)) GROUP BY 1 ORDER BY 1",
+    "boundaries": "SELECT K FROM (SELECT FSQ_PLACE_ID K, ROW_NUMBER() OVER (ORDER BY FSQ_PLACE_ID) RN FROM EDGAR_DB.SOURCE.FOURSQUARE_OS_PLACES_HOT WHERE REGION = 'OK' AND RELEASE_DT = '2026-08-11' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8726e8c0bffffff',2))))) AND BBOX_XMAX >= -95.35177472223643 AND BBOX_XMIN <= -95.31390663998607 AND BBOX_YMAX >= 36.22431482706074 AND BBOX_YMIN <= 36.254857407010434 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)'), 1600.0))) WHERE MOD(RN,12)=0 OR RN=66 ORDER BY K",
+    "range_query_template": "see freeze2.py fetch_range; where-clause: REGION = 'OK' AND RELEASE_DT = '2026-08-11' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8726e8c0bffffff',2))))) AND BBOX_XMAX >= -95.35177472223643 AND BBOX_XMIN <= -95.31390663998607 AND BBOX_YMAX >= 36.22431482706074 AND BBOX_YMIN <= 36.254857407010434 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)'), 1600.0)); object columns: OBJECT_CONSTRUCT_KEEP_NULL('FSQ_PLACE_ID', FSQ_PLACE_ID, 'NAME', NAME, 'ADDRESS', ADDRESS, 'LOCALITY', LOCALITY, 'REGION', REGION, 'POSTCODE', POSTCODE, 'COUNTRY', COUNTRY, 'LATITUDE', LATITUDE, 'LONGITUDE', LONGITUDE, 'GEOM_WKT', ST_ASWKT(GEOM_GEOG), 'BBOX_XMIN', BBOX_XMIN, 'BBOX_YMIN', BBOX_YMIN, 'BBOX_XMAX', BBOX_XMAX, 'BBOX_YMAX', BBOX_YMAX, 'H3_R4', H3_R4, 'H3_R7', H3_R7, 'H3_R8', H3_R8, 'RELEASE_DT', RELEASE_DT, 'SNAPSHOT_MODE', SNAPSHOT_MODE, 'DATE_CREATED', DATE_CREATED, 'DATE_REFRESHED', DATE_REFRESHED, 'DATE_CLOSED', DATE_CLOSED, 'FSQ_CATEGORY_IDS_JSON', FSQ_CATEGORY_IDS_JSON, 'FSQ_CATEGORY_LABELS_JSON', FSQ_CATEGORY_LABELS_JSON, 'LICENSE_TERMS', LICENSE_TERMS, 'ATTRIBUTION_TEXT', ATTRIBUTION_TEXT, 'SOURCE_FILENAME', SOURCE_FILENAME, 'LOADED_AT', LOADED_AT, 'DIST_M_A1', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-95.33284068111125 36.239586117035586)')),2))"
+   },
+   "receipts": {
+    "count": [
+     "sha256:43fd04eaf351803fd3788c24dc078000a3429c4fa7281ed8fd2fd0f01293d215"
+    ],
+    "count_k_plus1": [
+     "sha256:242de7314a19b158097c151f0556c1858f8b6ba6635ef379f2be0f9e560ac046"
+    ],
+    "releases": [
+     "sha256:7787502339c5b18a2f4a98e2519cb3d82e1fbc915f89a7372f453c788d3c7f15"
+    ],
+    "boundaries": [
+     "sha256:2680ca1c0f26dae95a374880e533db210b15a5bc1adcdbe924180e4258443f23"
+    ],
+    "ranges": [
+     "sha256:c9f0928d1864433decaa682135ff29330154fc5d6c39a817ca09bc74b19daf4d",
+     "sha256:129ac8508443e76f94a53f2cead7058f33789a276e8c7ddc8ecf8479e2dc4794",
+     "sha256:9350b65b8c386dc26a79a88da7f25023db69324aeddd3d10d22d4d0843bb2379",
+     "sha256:f0167a467e8f56d143dbc06bc8bebfc39c991e06e53a1ec36239b1addf72d7fe",
+     "sha256:46a27ab6cdeef7ce440d3e7f71f6eecf04a7b28caf60486001fdf5b770779217",
+     "sha256:ffb22ab887e791456bf5901229c94239f2869babd9c8ea765e7aeddee4460769"
+    ]
+   },
+   "ranges": [
+    {
+     "lo": null,
+     "hi": "4c48c3971b430f47d2e8a0c2",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 3044,
+     "md5": "aa7be3e8f09d419b9ba34b0e8a1d4b92",
+     "vid": "sha256:c9f0928d1864433decaa682135ff29330154fc5d6c39a817ca09bc74b19daf4d",
+     "sql_sha256": "6c0f61ca63df0fdbe53810e235dc3e17b3a017d56dd171b5e8949e527180aff8"
+    },
+    {
+     "lo": "4c48c3971b430f47d2e8a0c2",
+     "hi": "4ec1588cb6341cd41f693dbe",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 3160,
+     "md5": "81915c1907ac4c35f54c194a4b873cf6",
+     "vid": "sha256:129ac8508443e76f94a53f2cead7058f33789a276e8c7ddc8ecf8479e2dc4794",
+     "sql_sha256": "3ec177dcd9e79b8eb1029224ee9a1529e156373c60a46e9b8b38221298322261"
+    },
+    {
+     "lo": "4ec1588cb6341cd41f693dbe",
+     "hi": "52f648d8498e41ecd35aaf14",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 3148,
+     "md5": "0a7fdc992801d2a68145e847079d3755",
+     "vid": "sha256:9350b65b8c386dc26a79a88da7f25023db69324aeddd3d10d22d4d0843bb2379",
+     "sql_sha256": "c1fc1be653d5496e664ea91c16e8b8c3c6c91db3c556b133ea3a53e137840c36"
+    },
+    {
+     "lo": "52f648d8498e41ecd35aaf14",
+     "hi": "678dc633841a49d9793d1114",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 3076,
+     "md5": "213788f8452d37936100e9ffbf37f431",
+     "vid": "sha256:f0167a467e8f56d143dbc06bc8bebfc39c991e06e53a1ec36239b1addf72d7fe",
+     "sql_sha256": "2ecfb173c43ac6eb251ed0b4bd49098747e3adc9fe0f2f02ac91b2b76d1abc6d"
+    },
+    {
+     "lo": "678dc633841a49d9793d1114",
+     "hi": "8e9395b590273279a3225d27",
+     "n": 12,
+     "nd": 12,
+     "b64_len": 2996,
+     "md5": "3ac2eb1bf1c7654d520563a08fd553db",
+     "vid": "sha256:46a27ab6cdeef7ce440d3e7f71f6eecf04a7b28caf60486001fdf5b770779217",
+     "sql_sha256": "a79a9e4b2a631a357839be2c5f6cda4b50cefac82f21586e6f82ef29812df394"
+    },
+    {
+     "lo": "8e9395b590273279a3225d27",
+     "hi": "f5c154fee3144ccdcbaddabf",
+     "n": 6,
+     "nd": 6,
+     "b64_len": 2060,
+     "md5": "1517601ed6f6bbac42a38ebf9a979269",
+     "vid": "sha256:ffb22ab887e791456bf5901229c94239f2869babd9c8ea765e7aeddee4460769",
+     "sql_sha256": "7c50ea045d315c457eb5b5620042c3d08fffc515db82384a43b43e791d74aae0"
+    }
+   ],
+   "seconds": 9.2
+  }
+ },
+ "gaps": [
+  "Parcels unavailable (Mayes County OK; no parcel layer under MCP contract).",
+  "Geocoder returned no_match: no geocoder anchor; Foursquare 'Google' POI is the only coordinate anchor, so the neighborhood is a single 1.6 km buffer around one point-of-interest pin (not a verified site point).",
+  "No Overture address records in the neighborhood (address layer coverage gap).",
+  "FEMA USA Structures OK vintage landed = 2023-10-03 (matches the declared vintage).",
+  "Retrieval scope is a 1.6 km buffer around the Foursquare pin only; anything farther is not in this snapshot."
+ ],
+ "parcels": "unavailable: no parcel layer landed under the MCP contract for this county",
+ "transport": "run_query row cells are clipped (~2000 chars) and result pages are byte-budgeted; fetch_result paging (RESULT_SCAN LIMIT/OFFSET, no ORDER BY) was observed to return duplicate rows, so rows were fetched by key range as ZLIB+BASE64 of TO_JSON(ARRAY_AGG(OBJECT_CONSTRUCT_KEEP_NULL(...))) in 1500-char pieces, verified by MD5 of the base64 string and row counts per range; geometry is ST_ASWKT of the stored GEOGRAPHY (Snowflake stores ~1e-9 degree precision)",
+ "anchor_lookups": [
+  {
+   "what": "Foursquare lookup ADDRESS LIKE '4581 WEBB%' region OK release 2026-08-11 -> 1 row",
+   "vid": "sha256:7b7c08a78c85dd73413fc825e1f399ca8808ab1de6b6cd2f39159844e3181573"
+  },
+  {
+   "what": "Overture addresses (STATE US-OK, r7 disk k=2) payload LIKE '%Webb%' -> 0 rows (no Overture address coverage)",
+   "vid": "sha256:f7a5620cfc03d4aa9f544b5ee57bff2771005c7d297d704e3e8c7fc304f17356"
+  },
+  {
+   "what": "geo.resolve_address_to_tract no_match",
+   "vid": "sha256:91c7de6a4d7b61a0bad5c07e3161d2495ba49e80b7a6534dac59cde4b2fdd76d"
+  }
+ ],
+ "vintages": {
+  "overture_buildings": [
+   {
+    "R": "2026-07-22.0",
+    "N": 175
+   }
+  ],
+  "microsoft_globalml": [
+   {
+    "R": "2026-07-24",
+    "N": 168
+   }
+  ],
+  "fema_usa_structures": [
+   {
+    "R": "2023-10-03",
+    "N": 110
+   }
+  ],
+  "foursquare_places": [
+   {
+    "R": "2026-08-11",
+    "N": 66
+   }
+  ]
+ },
+ "completeness": {
+  "overture_buildings": "COUNT(*) under identical bounds equals rows retrieved; k+1 disk count equal; no row cap hit; distinct keys == COUNT(DISTINCT key)",
+  "microsoft_globalml": "COUNT(*) under identical bounds equals rows retrieved; k+1 disk count equal; no row cap hit; distinct keys == COUNT(DISTINCT key)",
+  "fema_usa_structures": "COUNT(*) under identical bounds equals rows retrieved; k+1 disk count equal; no row cap hit; distinct keys == COUNT(DISTINCT key)",
+  "foursquare_places": "COUNT(*) under identical bounds equals rows retrieved; k+1 disk count equal; no row cap hit; distinct keys == COUNT(DISTINCT key)"
+ },
+ "sealed_evaluation_material_accessed": false,
+ "evaluation_points_used_for_retrieval": false,
+ "raw_row_location": "outcomes/datacenter-canon-geo-test/snapshots/PRYOR/ (outside the canon repo)",
+ "sha256_of_jsonl": {
+  "overture_buildings.jsonl": "910e5fd4846ba9bb4d55af0e24e6916f3b1d7bac32b11b330237332a39149374",
+  "microsoft_globalml.jsonl": "36df30dd7c9fba7d3940a81610df3d0db68982b69e7eab4d89d9dee1b1a1afbb",
+  "fema_usa_structures.jsonl": "68714779dea296451fc442549678066621e7e21e110c8598a7ebb8d77e14ad22",
+  "foursquare_places.jsonl": "009df023f355374ac1a9404cc450b6c07f0bd649c2c00b47147fef98f9ce1d92"
+ }
+}

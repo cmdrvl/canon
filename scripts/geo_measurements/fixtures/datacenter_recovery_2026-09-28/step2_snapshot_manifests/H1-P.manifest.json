@@ -1,0 +1,2451 @@
+{
+ "case_id": "H1-P",
+ "created_utc": "2026-09-29T03:26:10Z",
+ "crs": "EPSG:4326 (WGS84 lon/lat; Snowflake GEOGRAPHY, geodesic distances and areas)",
+ "anchors": [
+  {
+   "id": "A1_raw_address_string",
+   "kind": "raw_address_string_no_point",
+   "lon": null,
+   "lat": null,
+   "string": "14250 W Broadway Rd, Goodyear, AZ 85338",
+   "provenance": "Supplied observation 'Address' in case_manifest.json; operator/aggregator claim under test, no coordinate"
+  },
+  {
+   "id": "A2_geocoder_resolve_address_to_tract",
+   "kind": "geocoder_result_no_point",
+   "lon": null,
+   "lat": null,
+   "provenance": "geo.resolve_address_to_tract('14250 W Broadway Rd, Goodyear, AZ 85338') -> ok=false, match_quality=no_match; verifiable_id sha256:d7a5e497c0c324764c1264bbe668895f22e7f62285e62e39ba7b16e006664a14"
+  },
+  {
+   "id": "A3_overture_address_PHX16",
+   "kind": "overture_address_point",
+   "lon": -112.36511168199996,
+   "lat": 33.41532686600004,
+   "provenance": "Overture addresses release 2026-07-22.0 id 7258cb6e-486c-4aa5-9d88-91030a3115ce: street 'West Broadway Road' number '14250' unit 'PHX16' postcode 85338 Goodyear; exact street+number match, one of several unit points sharing the number; lookup verifiable_id sha256:9c59072baabc0ff0c5fd6b58e6b2c702dc67416a3ef28464425f07b9b232e621",
+   "h3_r7": "8748e96e8ffffff",
+   "h3_r7_vid": "sha256:1c869a57ca3e4717fd1ad5294a3830fe5c2293fb8e8821cef739ffe013a9d9b5"
+  },
+  {
+   "id": "A4_overture_address_PHX15",
+   "kind": "overture_address_point",
+   "lon": -112.36486244199995,
+   "lat": 33.41410027200004,
+   "provenance": "Overture addresses release 2026-07-22.0 id 260242cb-8579-4072-978d-2300cde36fe8: street 'West Broadway Road' number '14250' unit 'PHX15' postcode 85338 Goodyear; exact street+number match, one of several unit points sharing the number; lookup verifiable_id sha256:9c59072baabc0ff0c5fd6b58e6b2c702dc67416a3ef28464425f07b9b232e621",
+   "h3_r7": "8748e96e8ffffff",
+   "h3_r7_vid": "sha256:514b3ac239a715f179e5646f5b295a0b22b4ef652a6f8cb1c7b3f47a7b351bcb"
+  },
+  {
+   "id": "A5_overture_address_PHX14",
+   "kind": "overture_address_point",
+   "lon": -112.36485142799995,
+   "lat": 33.41267483900003,
+   "provenance": "Overture addresses release 2026-07-22.0 id 1c4d8f03-2dcf-4461-8934-623bdf916115: street 'West Broadway Road' number '14250' unit 'PHX14' postcode 85338 Goodyear; exact street+number match, one of several unit points sharing the number; lookup verifiable_id sha256:9c59072baabc0ff0c5fd6b58e6b2c702dc67416a3ef28464425f07b9b232e621",
+   "h3_r7": "8748e96e8ffffff",
+   "h3_r7_vid": "sha256:5f3ba01aaae020509a55da3ad2e573c4f287c336c72b9aba7ada93a8282901be"
+  },
+  {
+   "id": "A6_overture_address_PHX13",
+   "kind": "overture_address_point",
+   "lon": -112.36486576399994,
+   "lat": 33.411582890000034,
+   "provenance": "Overture addresses release 2026-07-22.0 id b81890e3-f51d-4766-bdfa-2b9bb8ccc66c: street 'West Broadway Road' number '14250' unit 'PHX13' postcode 85338 Goodyear; exact street+number match, one of several unit points sharing the number; lookup verifiable_id sha256:9c59072baabc0ff0c5fd6b58e6b2c702dc67416a3ef28464425f07b9b232e621",
+   "h3_r7": "8748e96e8ffffff",
+   "h3_r7_vid": "sha256:300a806e1f061896fef25399a4b26ebd3b86f2199c750f9301bf432edf3f8c01"
+  },
+  {
+   "id": "A7_overture_address_PHX12",
+   "kind": "overture_address_point",
+   "lon": -112.36485908599997,
+   "lat": 33.41028268300005,
+   "provenance": "Overture addresses release 2026-07-22.0 id c2fa3824-c853-4b64-80ea-792dedd76cd5: street 'West Broadway Road' number '14250' unit 'PHX12' postcode 85338 Goodyear; exact street+number match, one of several unit points sharing the number; lookup verifiable_id sha256:9c59072baabc0ff0c5fd6b58e6b2c702dc67416a3ef28464425f07b9b232e621",
+   "h3_r7": "8748e96e8ffffff",
+   "h3_r7_vid": "sha256:cbe2cebe9fffaa0864a584d222b42540f33bb63fb3a8a379b8028065a75d6bef"
+  },
+  {
+   "id": "A8_overture_address_PHX11",
+   "kind": "overture_address_point",
+   "lon": -112.36492039599995,
+   "lat": 33.408927359000074,
+   "provenance": "Overture addresses release 2026-07-22.0 id 274a05d1-7fe1-431b-8c43-50e89151b064: street 'West Broadway Road' number '14250' unit 'PHX11' postcode 85338 Goodyear; exact street+number match, one of several unit points sharing the number; lookup verifiable_id sha256:9c59072baabc0ff0c5fd6b58e6b2c702dc67416a3ef28464425f07b9b232e621",
+   "h3_r7": "8748e96e8ffffff",
+   "h3_r7_vid": "sha256:4469183527f69812b6c1c15b5d6132346f2dad0aa6724c8e98f71835c36aa674"
+  },
+  {
+   "id": "A9_overture_address_PHX10",
+   "kind": "overture_address_point",
+   "lon": -112.36486401099995,
+   "lat": 33.407918393000045,
+   "provenance": "Overture addresses release 2026-07-22.0 id 4832059e-a7b1-4ca5-8074-ff401659ab2e: street 'West Broadway Road' number '14250' unit 'PHX10' postcode 85338 Goodyear; exact street+number match, one of several unit points sharing the number; lookup verifiable_id sha256:9c59072baabc0ff0c5fd6b58e6b2c702dc67416a3ef28464425f07b9b232e621",
+   "h3_r7": "8748e96e8ffffff",
+   "h3_r7_vid": "sha256:604a8452be72425ba1684beb24a632e44e986664450d0ebe808016666774c037"
+  }
+ ],
+ "neighborhood": {
+  "h3_resolution": 7,
+  "k_rings": 2,
+  "center_cells": [
+   "8748e96e8ffffff"
+  ],
+  "anchor_buffer_m": 1600.0,
+  "distance_policy": "retain a record iff its geometry (footprint polygon, or point for places) intersects the union of 1600 m geodesic buffers, i.e. ST_DWITHIN(geom, anchor_point, 1600), around every anchor that has a coordinate (>=1.5 km required); anchors without a coordinate (raw address strings, failed geocodes) cannot be buffered and are recorded only",
+  "containment_policy": "intersection, not centroid: a footprint is kept when any part is within 1600 m of an anchor even if its centroid is farther or in another H3 cell; the H3 r7 disk (k=2 rings around each anchor cell, >=4 km reach beyond any point of the anchor cell) is only the pruning cover; bbox-overlap prefilter [-112.383406, 33.392647, -112.346557, 33.430598] precedes the exact predicate",
+  "possible_misses": "objects whose keyed (centroid) H3 r7 cell lies outside the k-ring disk but whose geometry reaches within R of an anchor (needs a footprint > ~2.5 km across); polygons are not clipped to the buffer (whole footprint retained)",
+  "coverage_hole_check": "COUNT(*) re-run with a k=3 disk must equal the k=2 count"
+ },
+ "sources": {
+  "overture_buildings": {
+   "table": "EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT",
+   "file": "overture_buildings.jsonl",
+   "rows_retrieved": 635,
+   "distinct_keys_retrieved": 635,
+   "count_star": 635,
+   "count_distinct_keys": 635,
+   "count_matches": true,
+   "keys_match_distinct": true,
+   "count_k_plus1": 635,
+   "count_k_plus1_matches": true,
+   "releases_in_result": [
+    {
+     "R": "2026-07-22.0",
+     "N": 635
+    }
+   ],
+   "sha256": "d57aff373acf5995f28f3b6ffb4d1e6afb37bfd72ddd39754577ff3f8739df0b",
+   "key_column": "PROVIDER_FEATURE_ID",
+   "columns": [
+    "PROVIDER_FEATURE_ID",
+    "RELEASE",
+    "RELEASE_DT",
+    "SOURCE_PARTITION",
+    "DATASET",
+    "FEATURE_TYPE",
+    "COUNTRY",
+    "STATE",
+    "LICENSE_CLASS",
+    "LICENSE_TERMS",
+    "ATTRIBUTION_TEXT",
+    "OVERTURE_VERSION",
+    "GEOM_WKT",
+    "CENTROID_WKT",
+    "AREA_M2_DERIVED_GEODESIC",
+    "CENTROID_LON",
+    "CENTROID_LAT",
+    "BBOX_XMIN",
+    "BBOX_YMIN",
+    "BBOX_XMAX",
+    "BBOX_YMAX",
+    "H3_R4",
+    "H3_R7",
+    "H3_R8",
+    "SOURCES_JSON",
+    "NAMES_JSON",
+    "ROW_PAYLOAD_JSON",
+    "SOURCE_FILENAME",
+    "LOADED_AT",
+    "SOURCE_PART",
+    "H3_KEY_STATUS",
+    "DIST_M_A3",
+    "DIST_M_A4",
+    "DIST_M_A5",
+    "DIST_M_A6",
+    "DIST_M_A7",
+    "DIST_M_A8",
+    "DIST_M_A9"
+   ],
+   "unit_notes": "AREA_M2_DERIVED_GEODESIC = ST_AREA(geometry) in m^2, derived (not a source attribute); DIST_M_<anchor> = geodesic metres from geometry to the anchor point (0 if the anchor is inside the footprint), derived; other numeric fields keep source units (FEMA SQMETERS m^2, SQFEET ft^2, HEIGHT as landed; MS HEIGHT/CONFIDENCE as landed; Overture height inside ROW_PAYLOAD_JSON)",
+   "transport_ranges": 64,
+   "range_size_target": 10,
+   "query_text": {
+    "count": "SELECT COUNT(*) N, COUNT(DISTINCT PROVIDER_FEATURE_ID) ND FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT WHERE STATE = 'US-AZ' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8748e96e8ffffff',2))))) AND BBOX_XMAX >= -112.38340643230902 AND BBOX_XMIN <= -112.3465566776909 AND BBOX_YMAX >= 33.3926471030252 AND BBOX_YMIN <= 33.43059815597489 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)'), 1600.0))",
+    "count_k_plus1": "SELECT COUNT(*) N, COUNT(DISTINCT PROVIDER_FEATURE_ID) ND FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT WHERE STATE = 'US-AZ' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8748e96e8ffffff',3))))) AND BBOX_XMAX >= -112.38340643230902 AND BBOX_XMIN <= -112.3465566776909 AND BBOX_YMAX >= 33.3926471030252 AND BBOX_YMIN <= 33.43059815597489 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)'), 1600.0))",
+    "releases": "SELECT RELEASE R, COUNT(*) N FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT WHERE STATE = 'US-AZ' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8748e96e8ffffff',2))))) AND BBOX_XMAX >= -112.38340643230902 AND BBOX_XMIN <= -112.3465566776909 AND BBOX_YMAX >= 33.3926471030252 AND BBOX_YMIN <= 33.43059815597489 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)'), 1600.0)) GROUP BY 1 ORDER BY 1",
+    "boundaries": "SELECT K FROM (SELECT PROVIDER_FEATURE_ID K, ROW_NUMBER() OVER (ORDER BY PROVIDER_FEATURE_ID) RN FROM EDGAR_DB.SOURCE.OVERTURE_MAPS_BUILDINGS_HOT WHERE STATE = 'US-AZ' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8748e96e8ffffff',2))))) AND BBOX_XMAX >= -112.38340643230902 AND BBOX_XMIN <= -112.3465566776909 AND BBOX_YMAX >= 33.3926471030252 AND BBOX_YMIN <= 33.43059815597489 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)'), 1600.0))) WHERE (MOD(RN,10)=0 OR RN=635) AND RN > 0 AND RN <= 1000 ORDER BY K [+0 more windows, RN ranges of 1000]",
+    "range_query_template": "see freeze2.py fetch_range; where-clause: STATE = 'US-AZ' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8748e96e8ffffff',2))))) AND BBOX_XMAX >= -112.38340643230902 AND BBOX_XMIN <= -112.3465566776909 AND BBOX_YMAX >= 33.3926471030252 AND BBOX_YMIN <= 33.43059815597489 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)'), 1600.0)); object columns: OBJECT_CONSTRUCT_KEEP_NULL('PROVIDER_FEATURE_ID', PROVIDER_FEATURE_ID, 'RELEASE', RELEASE, 'RELEASE_DT', RELEASE_DT, 'SOURCE_PARTITION', SOURCE_PARTITION, 'DATASET', DATASET, 'FEATURE_TYPE', FEATURE_TYPE, 'COUNTRY', COUNTRY, 'STATE', STATE, 'LICENSE_CLASS', LICENSE_CLASS, 'LICENSE_TERMS', LICENSE_TERMS, 'ATTRIBUTION_TEXT', ATTRIBUTION_TEXT, 'OVERTURE_VERSION', OVERTURE_VERSION, 'GEOM_WKT', ST_ASWKT(GEOM_GEOG), 'CENTROID_WKT', ST_ASWKT(CENTROID_GEOG), 'AREA_M2_DERIVED_GEODESIC', ST_AREA(GEOM_GEOG), 'CENTROID_LON', CENTROID_LON, 'CENTROID_LAT', CENTROID_LAT, 'BBOX_XMIN', BBOX_XMIN, 'BBOX_YMIN', BBOX_YMIN, 'BBOX_XMAX', BBOX_XMAX, 'BBOX_YMAX', BBOX_YMAX, 'H3_R4', H3_R4, 'H3_R7', H3_R7, 'H3_R8', H3_R8, 'SOURCES_JSON', SOURCES_JSON, 'NAMES_JSON', NAMES_JSON, 'ROW_PAYLOAD_JSON', ROW_PAYLOAD_JSON, 'SOURCE_FILENAME', SOURCE_FILENAME, 'LOADED_AT', LOADED_AT, 'SOURCE_PART', SOURCE_PART, 'H3_KEY_STATUS', H3_KEY_STATUS, 'DIST_M_A3', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)')),2), 'DIST_M_A4', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)')),2), 'DIST_M_A5', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)')),2), 'DIST_M_A6', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)')),2), 'DIST_M_A7', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)')),2), 'DIST_M_A8', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)')),2), 'DIST_M_A9', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)')),2))"
+   },
+   "receipts": {
+    "count": [
+     "sha256:c0a17daaf05d6d3a9d8c040acacf0dad219e2a4fe8b21b7ddf56ea0a1a4ec738"
+    ],
+    "count_k_plus1": [
+     "sha256:76aca5fceeef70562de2451d8adc3912ef5b348188cd54a72a61da29e36ae55e"
+    ],
+    "releases": [
+     "sha256:a4a07f10b739e9662279b2ab5a6989dc92cd6df579f7d1b7e773d65c88327545"
+    ],
+    "boundaries": [
+     "sha256:583c84c4e7744e4936703fceea235c62ab513a2ae8d36ff013e29ffea69fb375"
+    ],
+    "ranges": [
+     "sha256:6d91333ac453ce2d30ebd02d3379120136b25a04389a719eba464652d3c2454c",
+     "sha256:1aa334485d03a3dba024de63375ed0f812175efd01037a4b37675e07fdeb8228",
+     "sha256:f5baecb5e8623f645da716e7e84b4af2faf998bc850443618df1ca620c1ec9dc",
+     "sha256:78fdf7005ff222ab5299b329f6d9286a31851fd04afa0415550b225f809b542d",
+     "sha256:642c9a14b7ec53a466e5faf01b93de841441ca64eb421127df22af0bad6641c0",
+     "sha256:97383fdaac80808a55daec0dd1e544ecb293163c8253160d8f1cc352bc254811",
+     "sha256:bbf008f90ff6ad14a2fffbc5e7a657d6b4445c4b6c875864726f94d3341c8cc7",
+     "sha256:71a4af9bc76eaf7f2395b9a466dfe1b355baf85e0ccdce886c8bf00950ddf6e9",
+     "sha256:ed465b56f5a04749489f0be15f2562c59d7201335984768d5833f896e6eca1bd",
+     "sha256:44d3d9c435a9cd4dc2df96685b81c6ee51b1416f5861be34bea3a2eca94a4c1c",
+     "sha256:8bb08780770b065caa125cd2aa2c93a95d23571a53b61c1a305b6a11da87049b",
+     "sha256:64d1d9f51d1bf028646d83a571f93f0ea6bd38bbc9fb4ae9155c82a884eca7ee",
+     "sha256:d550f46e8573d39a7ad2e02a20ea58e7a7a69cfd22e3910538e83ddf4d900cd7",
+     "sha256:bca10b7eadc12cb525ef93d3f0d31398d41bb0c0e4ef981d9d31a51ceec27279",
+     "sha256:bcc7d8d90344bd0ad76e6d0f90ee06c71b6f4fe0c7f514ba8534361ece41576b",
+     "sha256:662d6ad1a52a5167e6520bf3dc5144e5cba126b73ff2b998db022a13849c32cc",
+     "sha256:569a12fa26176913e9f252d5f6c5ffab33a44cc6103ebab0b34f4d5de297a2ed",
+     "sha256:a0865278e49ca65cf7fabf232d2b18ff0836b2f03ecb6387e7ea51991fed1f37",
+     "sha256:ce15c9b58c1fbcb1fad911d494e36b47bfb4ccf82c200ae2edfe7e437acdc546",
+     "sha256:b5f578d7650cab95d9d9b3b18a05ca618d415357998dc03f8d565fb83ba66b8b",
+     "sha256:bc651c11c6f3e40a9e505d088dac27fb8387a3beda30421ec9b5479e04edad29",
+     "sha256:975344368c79e23b9b8d341d52a10ac4add4999c3685e8ca26ace74b801d823d",
+     "sha256:d57b6543f22a222dae2c76bbe944694499edb68423273150d98d17b78758277b",
+     "sha256:8dce0636db7d297ee68f4757e3543db63f6e4d298ddc5204ba70b1fc09988ff0",
+     "sha256:c6286e5aae292609fd9d4958f8c68b18c708685c2f9147cf823fc01d4f705dac",
+     "sha256:9a163f52f6f29343cd38e082d9e7b3a9137c6e41d6d7472396a13de1f8d0d29c",
+     "sha256:43f7d0c8f91c30e8bb483db4169e1d94b52ee9a14a3d53ec6c556b4a45e52e4a",
+     "sha256:1fd001fd470762258aab0e4724a1e3ce53a5cb5fad01ec2bbe294c229814ee12",
+     "sha256:c11a17d8aa906e3111dd27c463684063548ef44c503bad85b5a4407059e8d1f6",
+     "sha256:399e019b8fa5c405b4d723ab34399c861ebb5888c1550fb37cde035523100f37",
+     "sha256:c20ca259ac753d00490c24025ac273241be128011419462ed2f8bbc4a1c073cb",
+     "sha256:fb95593881fdd8a2c0f96adc8ae1c3069a367f1ef2aa8ea8100a28adacfaa2ff",
+     "sha256:248e7404e746c447f8ddc34adf9887b7ff7d1645dc152e2df1fd4b2d6c9d0f25",
+     "sha256:eff68df5921c8b744aaee9b7b3b592f110e27456bb5b83864a76b32cff7388fc",
+     "sha256:109b12be3487a758a2c3f41b3fe9a23eb946c1faf9609514fdc022546d0d4a38",
+     "sha256:e70e033cdd176f999a5d7bc1a19dcb200cbb45b4d961b0a5f8bd101adcd642fb",
+     "sha256:a037f8b795ee4cdd08792835bf342b42c87a148027fcee005b6efb198d5c3d86",
+     "sha256:c3b360c5c624c2f5587f8270bc91f95d0cdb9f726ede00204763b830faac5f43",
+     "sha256:5057240e1b2228ae80b4d61fe6b8c6d640fc218d16a5d489b0aafc551a366669",
+     "sha256:f026d9d002a6a767568b2d750f680d57804612e88bb4c527f7822523e4ad5b46",
+     "sha256:dae9c887c262c3948aec52c300a382d59987b968d7f430fe756ee4cc048d4b4e",
+     "sha256:191791e1355b61fd1a802143747e5ad760dee632aa774063619a8e18884030d2",
+     "sha256:bc8371fc6722a4f39f36e1edf41ebd2aaf22bf0f0fb35b2910b210765c9de07e",
+     "sha256:8c471a06ec62dd25161580b68733981cd1a71132d3d286f32e4bc543a9b442f6",
+     "sha256:5bef6d6377134b3582883b3ce8c7b5f251dfb4f7d58e47ab29ad221b332438fb",
+     "sha256:da6857d32558ec341c147ebe100dab68f5cb70430840cb14f84c91377a48e4d7",
+     "sha256:99d86df0a759b32ee47326998753e460234c2bf71354d05cac25ff9cdb2224d6",
+     "sha256:a369cfe7a0a19f1c0e4ebc2a04ff8c1beabf7d1db62ae2e7b1bf9bee223eaf33",
+     "sha256:3b695739b14c580abb6fb03eeb4b235c5be1440d6600c7ff59b1729847ae43d6",
+     "sha256:fac180e009e93391827100ed541bbe1fda66ccdb43c267f795b261dbcadab6c0",
+     "sha256:0bc27d73fe1ad56d1aa0d8caec40026505545f24877826c5bfb63fe7c7de3661",
+     "sha256:984f2865997d096c4e79c01f2765e8093423932836f749e560b9a8fd1a11c576",
+     "sha256:857421a6416d8ed04a9b72ecd843d477ad404400de7c79eb2c1d0b658c87f40f",
+     "sha256:73c416fa885279f6d2dbbc7aadf910bc70060a5c7f7e0efa2b27a439897ace45",
+     "sha256:037adb04dcffbfaa3039e1513d315cbfdef6108efea913f73802cb74158afe20",
+     "sha256:74a85e7eb9b9ffa0eea5a83efc3aaa5ff88d164e3156d83858e9701d65d9aee9",
+     "sha256:5a8d83f4cc87f44295416df8c2ea8079c4932bd48c04e05c1b4f62d6bcd9d9ea",
+     "sha256:10c3f675f0f17724ca271350ffbaa9b98e60dbf0149933c421d9843ce5e7fa9e",
+     "sha256:edd2a18cfa6c9785ea3227bc4a6b21e64444b65ba9e5435733e04e225cf56db1",
+     "sha256:2bf1a29e47293f1ee163a0549b0f1816c3ea1940d08c1d69af21daae02dbe746",
+     "sha256:d512aecfbbf6801a94ce029a4f5aa558ddf79f4def9d44c1e62fdaeee4d93f35",
+     "sha256:9ff8d6cd106a4cae34123ec584e1c7b9487d013c8f6ec18dcc2e95cf01db9263",
+     "sha256:66be4437aa4dc02a8b11cfc4ea4ae8bc0e171afcdc61bda2069e9d25cc6e05dd",
+     "sha256:462ca4d534c8dc0816e3bab45d10ef4f9955a00d91b244f656756f60c69daeae"
+    ]
+   },
+   "ranges": [
+    {
+     "lo": null,
+     "hi": "01d2f302-cb25-4bcd-b04f-7a0b26bc07d6",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6548,
+     "md5": "4f743f69c2491f9daa9281e5abf8f9a0",
+     "vid": "sha256:6d91333ac453ce2d30ebd02d3379120136b25a04389a719eba464652d3c2454c",
+     "sql_sha256": "89c89fa293ff5e7f71bf6274916a520c02517513debba9ddda5e87147f3fb4b8"
+    },
+    {
+     "lo": "01d2f302-cb25-4bcd-b04f-7a0b26bc07d6",
+     "hi": "052ccad5-4621-4486-b65d-afa1ad1e87e7",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 7228,
+     "md5": "56d63167b0aaff95b0fb23bf3bfad81b",
+     "vid": "sha256:1aa334485d03a3dba024de63375ed0f812175efd01037a4b37675e07fdeb8228",
+     "sql_sha256": "6864834b7f8792aa14783e838a32a77494433444ce8e734c3f57254711ab3a26"
+    },
+    {
+     "lo": "052ccad5-4621-4486-b65d-afa1ad1e87e7",
+     "hi": "0a571845-97d6-4872-b3b3-fae9d2d82dc9",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6800,
+     "md5": "985489654057c37d275c706e1fd83136",
+     "vid": "sha256:f5baecb5e8623f645da716e7e84b4af2faf998bc850443618df1ca620c1ec9dc",
+     "sql_sha256": "3f6144801befa711804471196053f88cfad60d6151317390626c40c2ea3dd8fb"
+    },
+    {
+     "lo": "0a571845-97d6-4872-b3b3-fae9d2d82dc9",
+     "hi": "0f8c9152-a5df-4a0c-bc46-3796535566e3",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6872,
+     "md5": "2e84e6fcb13f4d0c86b41efe1084c912",
+     "vid": "sha256:78fdf7005ff222ab5299b329f6d9286a31851fd04afa0415550b225f809b542d",
+     "sql_sha256": "65ba648357677ca8f9e1a3b9aec655541fb227e84e7a3789611c7ce0b91df4cf"
+    },
+    {
+     "lo": "0f8c9152-a5df-4a0c-bc46-3796535566e3",
+     "hi": "141dbc69-b4e4-48b6-a166-879eaeeb4f91",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6776,
+     "md5": "8665d95a5207741cea17b94610b4addd",
+     "vid": "sha256:642c9a14b7ec53a466e5faf01b93de841441ca64eb421127df22af0bad6641c0",
+     "sql_sha256": "4a665f6305ad7c0cba6652ab331595e914f524b45fbf12619e662df4e45db1ea"
+    },
+    {
+     "lo": "141dbc69-b4e4-48b6-a166-879eaeeb4f91",
+     "hi": "184264d4-6900-4189-b6be-50d2afa70f81",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 7140,
+     "md5": "0bbb170e17219f38d4498f11b7775f46",
+     "vid": "sha256:97383fdaac80808a55daec0dd1e544ecb293163c8253160d8f1cc352bc254811",
+     "sql_sha256": "121aa15e48206022ff3b54e062461d20ad6e47c892fda80347b5b017541a11ee"
+    },
+    {
+     "lo": "184264d4-6900-4189-b6be-50d2afa70f81",
+     "hi": "1e869057-247f-448b-a517-83a2b495e63a",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6648,
+     "md5": "934e9c9c500a100471aa247c4371709c",
+     "vid": "sha256:bbf008f90ff6ad14a2fffbc5e7a657d6b4445c4b6c875864726f94d3341c8cc7",
+     "sql_sha256": "cd5ea4f0f18eaa4d88e7167761c427e90dee719a11d830e348d8525608e6b8d1"
+    },
+    {
+     "lo": "1e869057-247f-448b-a517-83a2b495e63a",
+     "hi": "231a2594-cf25-476e-b44e-5059da3398b8",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6852,
+     "md5": "b6e43265bb6907543349d7d15cacebf7",
+     "vid": "sha256:71a4af9bc76eaf7f2395b9a466dfe1b355baf85e0ccdce886c8bf00950ddf6e9",
+     "sql_sha256": "089f3c601c1f889aeac269e6ae8e0d57612b3acabc1c05154d063ff0894a2873"
+    },
+    {
+     "lo": "231a2594-cf25-476e-b44e-5059da3398b8",
+     "hi": "26dc12c2-98f4-489a-a758-b4fa271b3916",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6884,
+     "md5": "282f3cebb4e3f76e8dc70b7852025b69",
+     "vid": "sha256:ed465b56f5a04749489f0be15f2562c59d7201335984768d5833f896e6eca1bd",
+     "sql_sha256": "009ddc3fd3405d775e81f1c8868e04c92d9f362ac9bd83800e05a9a3405c48b9"
+    },
+    {
+     "lo": "26dc12c2-98f4-489a-a758-b4fa271b3916",
+     "hi": "2a5e3d4a-c714-41c7-93d8-57c089f943b9",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6896,
+     "md5": "ce5fd1b8e913a38a9a049a164b466b67",
+     "vid": "sha256:44d3d9c435a9cd4dc2df96685b81c6ee51b1416f5861be34bea3a2eca94a4c1c",
+     "sql_sha256": "45032506af972c854ae8976b6d8c944c0dbbc5fddf237142f57b41da39ca5e93"
+    },
+    {
+     "lo": "2a5e3d4a-c714-41c7-93d8-57c089f943b9",
+     "hi": "2d24e74c-7781-477d-bdf9-3cb1c04ccbeb",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6592,
+     "md5": "30a2d68d852d0cb926e32c5d62eca505",
+     "vid": "sha256:8bb08780770b065caa125cd2aa2c93a95d23571a53b61c1a305b6a11da87049b",
+     "sql_sha256": "4855c5de8a681676d58fbb4de3f2aef7c1f5016944c284aaa22d4fe3e4baaab6"
+    },
+    {
+     "lo": "2d24e74c-7781-477d-bdf9-3cb1c04ccbeb",
+     "hi": "339c292c-d6fc-4dbf-81c3-05cdf7229165",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6940,
+     "md5": "56f7540d7fd8378f63d1230d94686b16",
+     "vid": "sha256:64d1d9f51d1bf028646d83a571f93f0ea6bd38bbc9fb4ae9155c82a884eca7ee",
+     "sql_sha256": "614b70e05ad8f29897de72fe1bea9a983b805f165266df54da968edbad786e73"
+    },
+    {
+     "lo": "339c292c-d6fc-4dbf-81c3-05cdf7229165",
+     "hi": "38440ad0-2f62-4022-8eec-317cdba3d2c2",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6888,
+     "md5": "448d733cfc19d5243a37ee77c35fc8eb",
+     "vid": "sha256:d550f46e8573d39a7ad2e02a20ea58e7a7a69cfd22e3910538e83ddf4d900cd7",
+     "sql_sha256": "4666d7af03cd1fc3d9df034e3ffb16041c9e817407be4ac72c1b3cb92515d9a4"
+    },
+    {
+     "lo": "38440ad0-2f62-4022-8eec-317cdba3d2c2",
+     "hi": "3e154d4c-71ab-4765-8316-7e5ed63caa00",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6664,
+     "md5": "0462e6159cc27f81e21bdbc0027f1076",
+     "vid": "sha256:bca10b7eadc12cb525ef93d3f0d31398d41bb0c0e4ef981d9d31a51ceec27279",
+     "sql_sha256": "3aced21365b3434584e7848299a8c5905bba2b27f070e446e3b7b28cc9509aee"
+    },
+    {
+     "lo": "3e154d4c-71ab-4765-8316-7e5ed63caa00",
+     "hi": "41509695-1499-48f4-aa1b-cccf105bd418",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 7288,
+     "md5": "ef7ca19aaa8a021cbd09b982c8d21c0e",
+     "vid": "sha256:bcc7d8d90344bd0ad76e6d0f90ee06c71b6f4fe0c7f514ba8534361ece41576b",
+     "sql_sha256": "07f69c6fa191753e9ae0ac3f7267f374eafa0907b805ccb8bc8439f9dd6da39f"
+    },
+    {
+     "lo": "41509695-1499-48f4-aa1b-cccf105bd418",
+     "hi": "4478e4a5-0be1-4c31-93e6-cfd047c09b14",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6696,
+     "md5": "d5742905edce9847be4a6d8e91697cd8",
+     "vid": "sha256:662d6ad1a52a5167e6520bf3dc5144e5cba126b73ff2b998db022a13849c32cc",
+     "sql_sha256": "8ef2a4c315b2e10061c061ff91eafd47069371dae1bd60921969269215e405c1"
+    },
+    {
+     "lo": "4478e4a5-0be1-4c31-93e6-cfd047c09b14",
+     "hi": "486b2d7c-1108-4a27-8461-a78fe4be57a0",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 7020,
+     "md5": "397abf36f42c31d13aefc6dfa4a64a00",
+     "vid": "sha256:569a12fa26176913e9f252d5f6c5ffab33a44cc6103ebab0b34f4d5de297a2ed",
+     "sql_sha256": "eb47ac518c3115863fa44cecd0f25fb9901f8b7efdb52802f7a20b66c4d3f4fe"
+    },
+    {
+     "lo": "486b2d7c-1108-4a27-8461-a78fe4be57a0",
+     "hi": "4bae8b25-3b38-4c73-a8c9-0c7362626f43",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6872,
+     "md5": "46b392f4c11bb99216effd561f404955",
+     "vid": "sha256:a0865278e49ca65cf7fabf232d2b18ff0836b2f03ecb6387e7ea51991fed1f37",
+     "sql_sha256": "a546deb9b48f5cd9e78614705d8dbfab3e5545d0d847027154131103e5952d54"
+    },
+    {
+     "lo": "4bae8b25-3b38-4c73-a8c9-0c7362626f43",
+     "hi": "4f4ed8ba-10b6-4772-9577-33e34b818aa7",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6904,
+     "md5": "4bfdc27e165376108b564c6f8c8f84c3",
+     "vid": "sha256:ce15c9b58c1fbcb1fad911d494e36b47bfb4ccf82c200ae2edfe7e437acdc546",
+     "sql_sha256": "221f6f89dcf426ce1996e06e454d452620f5c340e2d277570f8ba0e27ddfa80a"
+    },
+    {
+     "lo": "4f4ed8ba-10b6-4772-9577-33e34b818aa7",
+     "hi": "54cffc44-bc37-4660-94ee-028bba701eb1",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 7172,
+     "md5": "f15f0294223488e97c52a90c69eeb044",
+     "vid": "sha256:b5f578d7650cab95d9d9b3b18a05ca618d415357998dc03f8d565fb83ba66b8b",
+     "sql_sha256": "f22993d61ff909dbd8a2c32bed5975f49ab062da10deb6e11e8fb22601c5fcc0"
+    },
+    {
+     "lo": "54cffc44-bc37-4660-94ee-028bba701eb1",
+     "hi": "5757d572-4ee2-4ae1-ab05-1f15dcb0490a",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6960,
+     "md5": "2372133a245a6374df818c4e95c9f4db",
+     "vid": "sha256:bc651c11c6f3e40a9e505d088dac27fb8387a3beda30421ec9b5479e04edad29",
+     "sql_sha256": "8954401f6fcf55cb29bafe3e53f48ded7368d14eac74a76f1f43bd1ec430e7a8"
+    },
+    {
+     "lo": "5757d572-4ee2-4ae1-ab05-1f15dcb0490a",
+     "hi": "5a4e4bcf-08c8-4bf6-b369-0cf472656dfc",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6972,
+     "md5": "95a3eccf80979594ef0fc83f6da05952",
+     "vid": "sha256:975344368c79e23b9b8d341d52a10ac4add4999c3685e8ca26ace74b801d823d",
+     "sql_sha256": "34680450343fc16599d1da34dfd64bd53d9048653435366790fe12e2227d56d9"
+    },
+    {
+     "lo": "5a4e4bcf-08c8-4bf6-b369-0cf472656dfc",
+     "hi": "5d22a75b-338f-44eb-9b24-b6a5b4ca7b69",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6888,
+     "md5": "446c98df1a195c42314db7f1ca52bbdc",
+     "vid": "sha256:d57b6543f22a222dae2c76bbe944694499edb68423273150d98d17b78758277b",
+     "sql_sha256": "fc5c1dbaea86e3483f7ac9f94c4636adb45b90441bd32b226e965af049f4d491"
+    },
+    {
+     "lo": "5d22a75b-338f-44eb-9b24-b6a5b4ca7b69",
+     "hi": "61655edf-52c4-49f0-8519-aff95ae5a078",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6956,
+     "md5": "8369fff4c68554fc87b8a930bfbaefe8",
+     "vid": "sha256:8dce0636db7d297ee68f4757e3543db63f6e4d298ddc5204ba70b1fc09988ff0",
+     "sql_sha256": "fbe70bc9225ce60bfe047ea878aa1302a8633a620e56c7f9d6765ea5edac7ce3"
+    },
+    {
+     "lo": "61655edf-52c4-49f0-8519-aff95ae5a078",
+     "hi": "66553338-82e7-4c4a-bbf1-66820ecaeae0",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6900,
+     "md5": "74e3dea18ca92b739a822807df8c4ec1",
+     "vid": "sha256:c6286e5aae292609fd9d4958f8c68b18c708685c2f9147cf823fc01d4f705dac",
+     "sql_sha256": "a43d9bcaca80e6fcf8e31514941607b11a43c65a3e5a2e2f8a68550bf3910f16"
+    },
+    {
+     "lo": "66553338-82e7-4c4a-bbf1-66820ecaeae0",
+     "hi": "693c4bd9-7b35-493e-9330-b01cde58da69",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6860,
+     "md5": "4164cfca0bea98a8198e3f0540b4417e",
+     "vid": "sha256:9a163f52f6f29343cd38e082d9e7b3a9137c6e41d6d7472396a13de1f8d0d29c",
+     "sql_sha256": "8f659fc514982ce60e85b4225e12d23a2692d9d5f579f41558b552eff14e7f1a"
+    },
+    {
+     "lo": "693c4bd9-7b35-493e-9330-b01cde58da69",
+     "hi": "6da26037-5e99-49e3-9956-49b402cfe406",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6824,
+     "md5": "8d4e28a5c111c9049a77de436d03d323",
+     "vid": "sha256:43f7d0c8f91c30e8bb483db4169e1d94b52ee9a14a3d53ec6c556b4a45e52e4a",
+     "sql_sha256": "8c9db0f0c4677cb269dad9b9d002b503036d633a8a2ee422491cb70fceee5af8"
+    },
+    {
+     "lo": "6da26037-5e99-49e3-9956-49b402cfe406",
+     "hi": "70bd87a4-3d24-4928-a0e8-13c58551acc5",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6500,
+     "md5": "a395e1e0e6e37fe7358a3a4072091f37",
+     "vid": "sha256:1fd001fd470762258aab0e4724a1e3ce53a5cb5fad01ec2bbe294c229814ee12",
+     "sql_sha256": "4847021536bf222fb35beb56f6b288001160fcb0897e368eb979d2acd56e1824"
+    },
+    {
+     "lo": "70bd87a4-3d24-4928-a0e8-13c58551acc5",
+     "hi": "74fe0dbb-c6f1-437d-83a4-97e76554704f",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6860,
+     "md5": "c2edf1c0548d02f764f063d830efbcbd",
+     "vid": "sha256:c11a17d8aa906e3111dd27c463684063548ef44c503bad85b5a4407059e8d1f6",
+     "sql_sha256": "987fb57b7478a1e27e5a7e5e34fe68b153bf32f8f779100f0b9ed48ea8a27296"
+    },
+    {
+     "lo": "74fe0dbb-c6f1-437d-83a4-97e76554704f",
+     "hi": "78e0f7de-2ba7-4750-bdc2-877927ca9189",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6736,
+     "md5": "102ea2f157bfb6425142bd1dd5301f7b",
+     "vid": "sha256:399e019b8fa5c405b4d723ab34399c861ebb5888c1550fb37cde035523100f37",
+     "sql_sha256": "1f78cf6d2a49dfac16b74ce3d6c4c5986f74bd75dec85732fb3bdd2e93884ccd"
+    },
+    {
+     "lo": "78e0f7de-2ba7-4750-bdc2-877927ca9189",
+     "hi": "7c8d407d-923e-4266-8d45-b4af73f29ba3",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 7312,
+     "md5": "fd7213a9ac23278bada4191e28e25554",
+     "vid": "sha256:c20ca259ac753d00490c24025ac273241be128011419462ed2f8bbc4a1c073cb",
+     "sql_sha256": "8bf379e2a3d16b49b4eef4db4fb2b61799fc5acdad025e559d09138d6a20463b"
+    },
+    {
+     "lo": "7c8d407d-923e-4266-8d45-b4af73f29ba3",
+     "hi": "80151358-354f-4e44-9306-05f1c2795a6e",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6700,
+     "md5": "891456959ff45d91ddc687cec67aefaa",
+     "vid": "sha256:fb95593881fdd8a2c0f96adc8ae1c3069a367f1ef2aa8ea8100a28adacfaa2ff",
+     "sql_sha256": "cfd513a9fd5925901a4196aed23edf93ce35a024aa4ee978db49d718990862b5"
+    },
+    {
+     "lo": "80151358-354f-4e44-9306-05f1c2795a6e",
+     "hi": "81b99a9f-62d1-4c90-bd61-7f14b8a1f2d5",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6844,
+     "md5": "fe999f357bd1819936b7dc97a05b7e5d",
+     "vid": "sha256:248e7404e746c447f8ddc34adf9887b7ff7d1645dc152e2df1fd4b2d6c9d0f25",
+     "sql_sha256": "97ad3245676a7c90fe446b49726b8aa3f94b673bda33465479b97616971348a5"
+    },
+    {
+     "lo": "81b99a9f-62d1-4c90-bd61-7f14b8a1f2d5",
+     "hi": "8471d7d1-5066-4385-b65a-fafc91b6fe3d",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6712,
+     "md5": "aae26c02765d7eb8e4ec6b8779e9058c",
+     "vid": "sha256:eff68df5921c8b744aaee9b7b3b592f110e27456bb5b83864a76b32cff7388fc",
+     "sql_sha256": "50a3ba4c1f45300d3068c8c4ec901931a6678bf749ed476943c248a1ad958599"
+    },
+    {
+     "lo": "8471d7d1-5066-4385-b65a-fafc91b6fe3d",
+     "hi": "8763a3d1-0684-4653-a6de-92dd8bd99ace",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6492,
+     "md5": "114b0154cf8995374791080237c756e2",
+     "vid": "sha256:109b12be3487a758a2c3f41b3fe9a23eb946c1faf9609514fdc022546d0d4a38",
+     "sql_sha256": "da7f682dac6d4cb1442eb46b768921e982a0be767b830a88911338661214cae7"
+    },
+    {
+     "lo": "8763a3d1-0684-4653-a6de-92dd8bd99ace",
+     "hi": "8b024503-403b-4410-bebf-0cb75b32144c",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6996,
+     "md5": "d63df0bc01e7989a25fd6430a15af7ea",
+     "vid": "sha256:e70e033cdd176f999a5d7bc1a19dcb200cbb45b4d961b0a5f8bd101adcd642fb",
+     "sql_sha256": "5a08b4e062ea6db6c18479a5ed7165f7b7855e488b490c5fe7e9b1c8d6e261ec"
+    },
+    {
+     "lo": "8b024503-403b-4410-bebf-0cb75b32144c",
+     "hi": "8e7dcdf8-e552-46d9-9607-88c90db2d9ea",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6752,
+     "md5": "e3f35d4523ef9e2e63730a757e15e2d5",
+     "vid": "sha256:a037f8b795ee4cdd08792835bf342b42c87a148027fcee005b6efb198d5c3d86",
+     "sql_sha256": "97655c11765035828e2ce70e75c1967bfe4693a0485821368311d8d38e40c347"
+    },
+    {
+     "lo": "8e7dcdf8-e552-46d9-9607-88c90db2d9ea",
+     "hi": "92e772c0-91ac-4496-94d4-c9c64dd8af56",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6884,
+     "md5": "0ccd2d507c31b0d970bdf53908d94e51",
+     "vid": "sha256:c3b360c5c624c2f5587f8270bc91f95d0cdb9f726ede00204763b830faac5f43",
+     "sql_sha256": "8f631ec493529b26990a86f8f915d9c7d25385ef7c30dac475ec135401277af8"
+    },
+    {
+     "lo": "92e772c0-91ac-4496-94d4-c9c64dd8af56",
+     "hi": "98d5e383-55ec-475b-afda-412f777fc396",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 7808,
+     "md5": "f4cad93de28f5205f0acf9a4528ae8ff",
+     "vid": "sha256:5057240e1b2228ae80b4d61fe6b8c6d640fc218d16a5d489b0aafc551a366669",
+     "sql_sha256": "2752f4a530db0fee5cc8a61140e312026d4d0ec4807e98e8fb5d13296b7e303b"
+    },
+    {
+     "lo": "98d5e383-55ec-475b-afda-412f777fc396",
+     "hi": "9bd06b2a-4c64-4794-9eb4-dc915a9e0a7b",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6872,
+     "md5": "3a03606024c7b90bb1cb0cc938e178b1",
+     "vid": "sha256:f026d9d002a6a767568b2d750f680d57804612e88bb4c527f7822523e4ad5b46",
+     "sql_sha256": "a71fc71ed23a1d08e4b9588c85c018b469198fe9e96304f3a8893c370f8605ef"
+    },
+    {
+     "lo": "9bd06b2a-4c64-4794-9eb4-dc915a9e0a7b",
+     "hi": "9fd119b2-e22d-452e-953e-e38a80d74db2",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6920,
+     "md5": "451f2e8ceca510bf8648290861042d83",
+     "vid": "sha256:dae9c887c262c3948aec52c300a382d59987b968d7f430fe756ee4cc048d4b4e",
+     "sql_sha256": "e7fa8b8393aa042a0c416bde6036ac183aa511ef90b4cbfb61a1abc1261e002d"
+    },
+    {
+     "lo": "9fd119b2-e22d-452e-953e-e38a80d74db2",
+     "hi": "a6a0f0e7-1758-4cd6-97ee-3647a14eea29",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 7912,
+     "md5": "c61ba22cd495c5f71241a204536de41b",
+     "vid": "sha256:191791e1355b61fd1a802143747e5ad760dee632aa774063619a8e18884030d2",
+     "sql_sha256": "2a95ec3b573753a5532de885fb68bdc7cc3fcf31628e36b3590a2af9bbd49784"
+    },
+    {
+     "lo": "a6a0f0e7-1758-4cd6-97ee-3647a14eea29",
+     "hi": "a9b68926-6d2f-4dc5-8751-46aeb725c16f",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6684,
+     "md5": "62ad18986746a21331e254b957c1cf7e",
+     "vid": "sha256:bc8371fc6722a4f39f36e1edf41ebd2aaf22bf0f0fb35b2910b210765c9de07e",
+     "sql_sha256": "c1e159448c5796ed150f78c8153cfba39c1a62d524fe0ed2548cfccfc6c05110"
+    },
+    {
+     "lo": "a9b68926-6d2f-4dc5-8751-46aeb725c16f",
+     "hi": "aee7c326-a9cf-4b83-9505-124a23963cc9",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 7244,
+     "md5": "eb5546bf3ef9e2d4277c814cc075ee20",
+     "vid": "sha256:8c471a06ec62dd25161580b68733981cd1a71132d3d286f32e4bc543a9b442f6",
+     "sql_sha256": "adb543850dd52d34ce4a119ddedf41a0d24109e8c9ccfa5477e1c10ca5c92125"
+    },
+    {
+     "lo": "aee7c326-a9cf-4b83-9505-124a23963cc9",
+     "hi": "b263dd95-ac2f-4147-92fb-cb2cced3f3ba",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6696,
+     "md5": "0ee7b634a463cc3db7e7cde739ef30ee",
+     "vid": "sha256:5bef6d6377134b3582883b3ce8c7b5f251dfb4f7d58e47ab29ad221b332438fb",
+     "sql_sha256": "7e3bcca752f758f8c2883e0ac058568486dd50abf7fa48b3cbba878e53e91ded"
+    },
+    {
+     "lo": "b263dd95-ac2f-4147-92fb-cb2cced3f3ba",
+     "hi": "b74e5b02-5241-4e9d-9211-0ec6fb9eb357",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6580,
+     "md5": "4c91ed0a5d62ab3a20bfe4b3329a6cea",
+     "vid": "sha256:da6857d32558ec341c147ebe100dab68f5cb70430840cb14f84c91377a48e4d7",
+     "sql_sha256": "26c6340fcc599dbf9006669bef26f279e5f11e5a69e3dcc61cde96656340d6ee"
+    },
+    {
+     "lo": "b74e5b02-5241-4e9d-9211-0ec6fb9eb357",
+     "hi": "bab067d2-261c-46a4-9497-0c824f814f38",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8100,
+     "md5": "2e166512899b45d79a957298be812408",
+     "vid": "sha256:99d86df0a759b32ee47326998753e460234c2bf71354d05cac25ff9cdb2224d6",
+     "sql_sha256": "cde583cf080c6eb49e3568b4023ffb1d89a39b80ecc7396867c0ac150dbc8a1e"
+    },
+    {
+     "lo": "bab067d2-261c-46a4-9497-0c824f814f38",
+     "hi": "bd8604f3-4d83-4106-9269-12c4ff4df233",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 7172,
+     "md5": "fb8851450b9671bb88c124e7f118d2e9",
+     "vid": "sha256:a369cfe7a0a19f1c0e4ebc2a04ff8c1beabf7d1db62ae2e7b1bf9bee223eaf33",
+     "sql_sha256": "69d78e12602ade8404a64598c1c19ca0adb1e4a605e5ac830e258d38684c9750"
+    },
+    {
+     "lo": "bd8604f3-4d83-4106-9269-12c4ff4df233",
+     "hi": "c2b4a9f3-c427-481d-a4bb-164f6bd4ad20",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6632,
+     "md5": "0a834d4820acceb4319c9e43f9f50a7b",
+     "vid": "sha256:3b695739b14c580abb6fb03eeb4b235c5be1440d6600c7ff59b1729847ae43d6",
+     "sql_sha256": "28d30a55055acb0983050942cabc3cb5cd16aef12d332003e2708cccc35424cc"
+    },
+    {
+     "lo": "c2b4a9f3-c427-481d-a4bb-164f6bd4ad20",
+     "hi": "c8171f45-0236-46f7-86ff-7951c3ce3579",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6680,
+     "md5": "5ee076f3b2e8ece8853931a7a213ed10",
+     "vid": "sha256:fac180e009e93391827100ed541bbe1fda66ccdb43c267f795b261dbcadab6c0",
+     "sql_sha256": "8bd6b2b9456409dd55777ad561fbfe69c1eafed8b0c17c5fc6a7018592161ed0"
+    },
+    {
+     "lo": "c8171f45-0236-46f7-86ff-7951c3ce3579",
+     "hi": "ccb99b49-50ec-4a68-85fd-10295e616b38",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6984,
+     "md5": "d2a5848429513da56e061c6e159f4da1",
+     "vid": "sha256:0bc27d73fe1ad56d1aa0d8caec40026505545f24877826c5bfb63fe7c7de3661",
+     "sql_sha256": "c528b9e6c7482f8d3a0053a886c4d4be69f5302cd33bbe7205e839cfbe6e21a9"
+    },
+    {
+     "lo": "ccb99b49-50ec-4a68-85fd-10295e616b38",
+     "hi": "cf466147-91df-47c8-84be-18deaeeb19c2",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6684,
+     "md5": "a3aa1ee950d235d78d2db2f355d41686",
+     "vid": "sha256:984f2865997d096c4e79c01f2765e8093423932836f749e560b9a8fd1a11c576",
+     "sql_sha256": "bf619ee75640b312b6e41097390f987d469a3204658ea10d14dbecb425526427"
+    },
+    {
+     "lo": "cf466147-91df-47c8-84be-18deaeeb19c2",
+     "hi": "d1fcaee5-4a22-4ad3-84e7-872dc2b6d265",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 7164,
+     "md5": "e0c1e97b22a6e5e1be855347cb71a69e",
+     "vid": "sha256:857421a6416d8ed04a9b72ecd843d477ad404400de7c79eb2c1d0b658c87f40f",
+     "sql_sha256": "7515eb3d852130617e8688fecbfa7dbe8ab77fa20fb3e276dbd00afb9508d593"
+    },
+    {
+     "lo": "d1fcaee5-4a22-4ad3-84e7-872dc2b6d265",
+     "hi": "d3cba4bc-f38f-4fd2-abb0-7544b4aaf81b",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6640,
+     "md5": "d8ff8d1b675a034650e0240dd8e79e1f",
+     "vid": "sha256:73c416fa885279f6d2dbbc7aadf910bc70060a5c7f7e0efa2b27a439897ace45",
+     "sql_sha256": "9b140f8a5947606c91fc6fd2de261ce6b2ea2bb20c7e2ae29f29c51437ead342"
+    },
+    {
+     "lo": "d3cba4bc-f38f-4fd2-abb0-7544b4aaf81b",
+     "hi": "d7245bdd-4fa8-47bb-8b6f-34ce3e082a30",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6900,
+     "md5": "92b1a669bdfcb0f42f638b4d28a6baa6",
+     "vid": "sha256:037adb04dcffbfaa3039e1513d315cbfdef6108efea913f73802cb74158afe20",
+     "sql_sha256": "1b69e3ff8441241ee02f074ede62080cb2f3d6d8aed425ea035f5b47a1f660c1"
+    },
+    {
+     "lo": "d7245bdd-4fa8-47bb-8b6f-34ce3e082a30",
+     "hi": "db374a1a-0eb6-4615-a295-31259005aeee",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6568,
+     "md5": "897a58120fcef80bfa5e53c6a119ca1f",
+     "vid": "sha256:74a85e7eb9b9ffa0eea5a83efc3aaa5ff88d164e3156d83858e9701d65d9aee9",
+     "sql_sha256": "26c4715a8718f8d551e09ac8679b72fde1ec1738a8db8f6ea2bfde00b35571ab"
+    },
+    {
+     "lo": "db374a1a-0eb6-4615-a295-31259005aeee",
+     "hi": "e02b7edc-cdf8-4b0c-ae44-c0d90d5e963e",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6760,
+     "md5": "f1ec57d7dab7a35288de7eebf541751f",
+     "vid": "sha256:5a8d83f4cc87f44295416df8c2ea8079c4932bd48c04e05c1b4f62d6bcd9d9ea",
+     "sql_sha256": "5d7e737e9759fe07c5e86f3e64669b131463c7acbcf61ed083fc7990bd4155d4"
+    },
+    {
+     "lo": "e02b7edc-cdf8-4b0c-ae44-c0d90d5e963e",
+     "hi": "e517ded2-c1d7-4a71-bd13-76599f9d1e0a",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 7012,
+     "md5": "5bded5de878c31f1dfac432a51c8fdcb",
+     "vid": "sha256:10c3f675f0f17724ca271350ffbaa9b98e60dbf0149933c421d9843ce5e7fa9e",
+     "sql_sha256": "bd1b3cc12036f39c3e06862aa3d6084887359a688c5554f9cbc25fbece1759f0"
+    },
+    {
+     "lo": "e517ded2-c1d7-4a71-bd13-76599f9d1e0a",
+     "hi": "e9fb9da0-c661-4ace-ac07-1bd2d7c4d534",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 7080,
+     "md5": "30181e8a2cc4c3f0b899583098f40e66",
+     "vid": "sha256:edd2a18cfa6c9785ea3227bc4a6b21e64444b65ba9e5435733e04e225cf56db1",
+     "sql_sha256": "7fca49369580ecb16267455d658c59cea39b8dbd0fac79752d74c1af70377343"
+    },
+    {
+     "lo": "e9fb9da0-c661-4ace-ac07-1bd2d7c4d534",
+     "hi": "edeb603d-78de-48ae-bb34-2e577d3af253",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 7100,
+     "md5": "e3a43e03500de44473e217496a3eff8a",
+     "vid": "sha256:2bf1a29e47293f1ee163a0549b0f1816c3ea1940d08c1d69af21daae02dbe746",
+     "sql_sha256": "89e759b5c224c8a74eac9015a6600fe3d9862897afd942fce7c4d69ebb276710"
+    },
+    {
+     "lo": "edeb603d-78de-48ae-bb34-2e577d3af253",
+     "hi": "f3eada11-6962-4f33-9f9b-13700edb9f10",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 6892,
+     "md5": "ae3308a92e53118e60bf705902dc97f6",
+     "vid": "sha256:d512aecfbbf6801a94ce029a4f5aa558ddf79f4def9d44c1e62fdaeee4d93f35",
+     "sql_sha256": "be2ea2b7215853806b10be2f68778d320b47fdf95a690e10a45f29fcd69adc89"
+    },
+    {
+     "lo": "f3eada11-6962-4f33-9f9b-13700edb9f10",
+     "hi": "f94e6e73-bc88-49d0-9cc6-59ec01a664f0",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8012,
+     "md5": "a14152bf8052e09281a1c9dc187cd2f3",
+     "vid": "sha256:9ff8d6cd106a4cae34123ec584e1c7b9487d013c8f6ec18dcc2e95cf01db9263",
+     "sql_sha256": "6f9daee515a7265d56335e15bc7c0f1f1f9cc4d9a5fa3fe17df575a07ae93006"
+    },
+    {
+     "lo": "f94e6e73-bc88-49d0-9cc6-59ec01a664f0",
+     "hi": "fc992985-4745-4915-bde4-d2c94c8a435a",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 7212,
+     "md5": "791298417d75bf93228dc7a2e3d49bc2",
+     "vid": "sha256:66be4437aa4dc02a8b11cfc4ea4ae8bc0e171afcdc61bda2069e9d25cc6e05dd",
+     "sql_sha256": "8e8b240abd0ef4c077da54191bec5249219ff67b1909d590a5c45cd91ac890b8"
+    },
+    {
+     "lo": "fc992985-4745-4915-bde4-d2c94c8a435a",
+     "hi": "ff54c351-e0d9-4933-9442-96c5a56d454a",
+     "n": 5,
+     "nd": 5,
+     "b64_len": 4444,
+     "md5": "18109ef07493c9792c09a706af564afe",
+     "vid": "sha256:462ca4d534c8dc0816e3bab45d10ef4f9955a00d91b244f656756f60c69daeae",
+     "sql_sha256": "574dcc5ecd3ed293fb8ae17764bf35b98cf2561ba60f9917f521ecf595d781d2"
+    }
+   ],
+   "seconds": 76.7
+  },
+  "microsoft_globalml": {
+   "table": "EDGAR_DB.SOURCE.MICROSOFT_GLOBALML_BUILDING_FOOTPRINTS_HOT",
+   "file": "microsoft_globalml.jsonl",
+   "rows_retrieved": 613,
+   "distinct_keys_retrieved": 613,
+   "count_star": 613,
+   "count_distinct_keys": 613,
+   "count_matches": true,
+   "keys_match_distinct": true,
+   "count_k_plus1": 613,
+   "count_k_plus1_matches": true,
+   "releases_in_result": [
+    {
+     "R": "2026-07-24",
+     "N": 613
+    }
+   ],
+   "sha256": "0120d378824f096c0e9b5b7df22ba581bdd4d4a72c7cd40414a1b4992c12637e",
+   "key_column": "PROVIDER_FEATURE_ID",
+   "columns": [
+    "PROVIDER_FEATURE_ID",
+    "RELEASE_DT",
+    "COUNTRY",
+    "STATE",
+    "H3_R4",
+    "H3_R7",
+    "H3_R8",
+    "QUADKEY",
+    "SOURCE_FILE_URL",
+    "SOURCE_FILE_UPLOAD_DATE",
+    "SOURCE_FILE_SHA256",
+    "SOURCE_LINE_NUMBER",
+    "HEIGHT",
+    "CONFIDENCE",
+    "GEOMETRY_TYPE",
+    "GEOM_WKT",
+    "AREA_M2_DERIVED_GEODESIC",
+    "CENTROID_LON",
+    "CENTROID_LAT",
+    "BBOX_XMIN",
+    "BBOX_YMIN",
+    "BBOX_XMAX",
+    "BBOX_YMAX",
+    "PARSER_VERSION",
+    "LICENSE_TERMS",
+    "ATTRIBUTION_TEXT",
+    "FILENAME",
+    "INSERTED_AT",
+    "DIST_M_A3",
+    "DIST_M_A4",
+    "DIST_M_A5",
+    "DIST_M_A6",
+    "DIST_M_A7",
+    "DIST_M_A8",
+    "DIST_M_A9"
+   ],
+   "unit_notes": "AREA_M2_DERIVED_GEODESIC = ST_AREA(geometry) in m^2, derived (not a source attribute); DIST_M_<anchor> = geodesic metres from geometry to the anchor point (0 if the anchor is inside the footprint), derived; other numeric fields keep source units (FEMA SQMETERS m^2, SQFEET ft^2, HEIGHT as landed; MS HEIGHT/CONFIDENCE as landed; Overture height inside ROW_PAYLOAD_JSON)",
+   "transport_ranges": 39,
+   "range_size_target": 16,
+   "query_text": {
+    "count": "SELECT COUNT(*) N, COUNT(DISTINCT PROVIDER_FEATURE_ID) ND FROM EDGAR_DB.SOURCE.MICROSOFT_GLOBALML_BUILDING_FOOTPRINTS_HOT WHERE STATE = 'AZ' AND H3_R7 IN (SELECT H3_STRING_TO_INT(C) FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8748e96e8ffffff',2))))) AND BBOX_XMAX >= -112.38340643230902 AND BBOX_XMIN <= -112.3465566776909 AND BBOX_YMAX >= 33.3926471030252 AND BBOX_YMIN <= 33.43059815597489 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)'), 1600.0))",
+    "count_k_plus1": "SELECT COUNT(*) N, COUNT(DISTINCT PROVIDER_FEATURE_ID) ND FROM EDGAR_DB.SOURCE.MICROSOFT_GLOBALML_BUILDING_FOOTPRINTS_HOT WHERE STATE = 'AZ' AND H3_R7 IN (SELECT H3_STRING_TO_INT(C) FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8748e96e8ffffff',3))))) AND BBOX_XMAX >= -112.38340643230902 AND BBOX_XMIN <= -112.3465566776909 AND BBOX_YMAX >= 33.3926471030252 AND BBOX_YMIN <= 33.43059815597489 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)'), 1600.0))",
+    "releases": "SELECT RELEASE_DT R, COUNT(*) N FROM EDGAR_DB.SOURCE.MICROSOFT_GLOBALML_BUILDING_FOOTPRINTS_HOT WHERE STATE = 'AZ' AND H3_R7 IN (SELECT H3_STRING_TO_INT(C) FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8748e96e8ffffff',2))))) AND BBOX_XMAX >= -112.38340643230902 AND BBOX_XMIN <= -112.3465566776909 AND BBOX_YMAX >= 33.3926471030252 AND BBOX_YMIN <= 33.43059815597489 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)'), 1600.0)) GROUP BY 1 ORDER BY 1",
+    "boundaries": "SELECT K FROM (SELECT PROVIDER_FEATURE_ID K, ROW_NUMBER() OVER (ORDER BY PROVIDER_FEATURE_ID) RN FROM EDGAR_DB.SOURCE.MICROSOFT_GLOBALML_BUILDING_FOOTPRINTS_HOT WHERE STATE = 'AZ' AND H3_R7 IN (SELECT H3_STRING_TO_INT(C) FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8748e96e8ffffff',2))))) AND BBOX_XMAX >= -112.38340643230902 AND BBOX_XMIN <= -112.3465566776909 AND BBOX_YMAX >= 33.3926471030252 AND BBOX_YMIN <= 33.43059815597489 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)'), 1600.0))) WHERE (MOD(RN,16)=0 OR RN=613) AND RN > 0 AND RN <= 1600 ORDER BY K [+0 more windows, RN ranges of 1600]",
+    "range_query_template": "see freeze2.py fetch_range; where-clause: STATE = 'AZ' AND H3_R7 IN (SELECT H3_STRING_TO_INT(C) FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8748e96e8ffffff',2))))) AND BBOX_XMAX >= -112.38340643230902 AND BBOX_XMIN <= -112.3465566776909 AND BBOX_YMAX >= 33.3926471030252 AND BBOX_YMIN <= 33.43059815597489 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)'), 1600.0)); object columns: OBJECT_CONSTRUCT_KEEP_NULL('PROVIDER_FEATURE_ID', PROVIDER_FEATURE_ID, 'RELEASE_DT', RELEASE_DT, 'COUNTRY', COUNTRY, 'STATE', STATE, 'H3_R4', H3_R4, 'H3_R7', H3_R7, 'H3_R8', H3_R8, 'QUADKEY', QUADKEY, 'SOURCE_FILE_URL', SOURCE_FILE_URL, 'SOURCE_FILE_UPLOAD_DATE', SOURCE_FILE_UPLOAD_DATE, 'SOURCE_FILE_SHA256', SOURCE_FILE_SHA256, 'SOURCE_LINE_NUMBER', SOURCE_LINE_NUMBER, 'HEIGHT', HEIGHT, 'CONFIDENCE', CONFIDENCE, 'GEOMETRY_TYPE', GEOMETRY_TYPE, 'GEOM_WKT', ST_ASWKT(GEOM_GEOG), 'AREA_M2_DERIVED_GEODESIC', ST_AREA(GEOM_GEOG), 'CENTROID_LON', CENTROID_LON, 'CENTROID_LAT', CENTROID_LAT, 'BBOX_XMIN', BBOX_XMIN, 'BBOX_YMIN', BBOX_YMIN, 'BBOX_XMAX', BBOX_XMAX, 'BBOX_YMAX', BBOX_YMAX, 'PARSER_VERSION', PARSER_VERSION, 'LICENSE_TERMS', LICENSE_TERMS, 'ATTRIBUTION_TEXT', ATTRIBUTION_TEXT, 'FILENAME', FILENAME, 'INSERTED_AT', INSERTED_AT, 'DIST_M_A3', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)')),2), 'DIST_M_A4', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)')),2), 'DIST_M_A5', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)')),2), 'DIST_M_A6', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)')),2), 'DIST_M_A7', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)')),2), 'DIST_M_A8', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)')),2), 'DIST_M_A9', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)')),2))"
+   },
+   "receipts": {
+    "count": [
+     "sha256:b2f017173edbffb33bd512ed79738921f6d8db053502eb69847cf89aa961950c"
+    ],
+    "count_k_plus1": [
+     "sha256:c23747280e7c83d314fb22b61e4e5a2fb034385ca99676866ae846d22f321868"
+    ],
+    "releases": [
+     "sha256:72b8c7b70ad369750f1be1a3aea61504b445fc85a7b0049de49c41eae48f2094"
+    ],
+    "boundaries": [
+     "sha256:345bcab78193b3e4e8b518c511d50ff78c4c31686e2d737f2d8e29b51b508e35"
+    ],
+    "ranges": [
+     "sha256:bd287e060e2a0bd92c37da7e6fd159e7253d7d7c04529b184c078bebf773382d",
+     "sha256:772f1b3537208bf1c3319b3ddef18c539863af72274f29d3812ee1ba1da0eeb0",
+     "sha256:74b522743cee8fd2e43f1feca6a70f46760dbe931f41ff23d722ff4989239765",
+     "sha256:fdbdd522d0bab3b181490e71c624678e2f63d87107c8fc81d4433d60c450a629",
+     "sha256:9aacf6385ea4d6fa7ab225267c1658f0a1b42d97642557a1d39ff527ce7112bd",
+     "sha256:82b1b4af06b8cee5e532814591d55d7643e7cb03ee38e8c0b9b10b401717c340",
+     "sha256:403081d014fb568379597b13c8365a72b53c22d13f9f48c9453005947e93ae80",
+     "sha256:5a36c996e2543e89da444251e607aea7e526712dc8df11a77415b36263441c6b",
+     "sha256:3ea5db8728c8eb1997c7bcca151a186e620f9766795f33183c445d084097ed4d",
+     "sha256:788d45e4a768472e94d07990203c4b636686573eac5e8bc9f526ea68e2a53e87",
+     "sha256:fee19b405bbcad36e21c0b10843cb2b91098941cb104d28c456028ffdee5dc28",
+     "sha256:2c1853f60cb2bf77b6c3dd557842087a0e831a09f58c969eb9286561cef95654",
+     "sha256:5d5c98e60658ce3b18a90e6ac818709f04b2dc48be70181cd44835642caa80cf",
+     "sha256:2fe2ef6da754f8a8b31a58717b78c335fd1313fceb23c1524e807f2ce5b55c80",
+     "sha256:2d8e132766a8f5e349351949d9381c7006785e0a9e1c1d041d3a25f43f344941",
+     "sha256:badc9ef15bb42441b8cf7bb8bd76d38fa3e91c8254c90ce6f9556b89e79c067c",
+     "sha256:7e1ee82c073cf7dc81b6d261800cce49f8772ed555167401c17748fa5564479f",
+     "sha256:9a9413d11f9feb101d22769a50973a32bfe77258ef97ce9b1c039338bbd2730f",
+     "sha256:443f7c0beda3faa2c66fce976f3498bd6592d3bb5ca502919787fc0c30bef2fb",
+     "sha256:fd8c28f03362c495d00aa59469164ba53413fb31f667adc4c022b587fcf75d72",
+     "sha256:6afe2012c5502987c52ca0684d45fc0ed22a4441d160b1ead2a55eb9cace9379",
+     "sha256:c90595aa9096b9f6a060e268e4574d3acb8dbd68b6858c55aab33d0718065c46",
+     "sha256:73d805470a1639df34a054f21be47463426c0cc11850c848728268415bcf3291",
+     "sha256:15223f3f7b9c998652c0acf08f24cb7e8d41a3597ca06a20b0c80971828ebb8e",
+     "sha256:292357811d037ab4b3020c4ff92bd17b9b73a7f1b67c17f0de9cee1a54cb5af1",
+     "sha256:b4074818f91cbfcc20963e7ff6f1e23c8c1ae6aa61a32c4a2638dad5740dadad",
+     "sha256:f75e39d2dcee5b5efd752679602f75a9a805c5398c2cd30ee8613d681428805c",
+     "sha256:754f27586500470b0da828942d02138fd82b44e7dcb121274919c1663ab3f98b",
+     "sha256:d31c206b5a6da0c3cef4438dfe7822c5a49e655cb3321a2f1fe0b0d0077233b4",
+     "sha256:6ae105363b69e198b902f9870d3bb4c57435d5d441ec0797211819af91bed147",
+     "sha256:bbe291150b467213c3f860ea067f2abecf7955052425934a72bf105ae0253b2e",
+     "sha256:cc1a1aeb0ee0a541c2182a51e14920d0463002b3dcfa431e28eef08e60e46dc3",
+     "sha256:a19c35259208ba090670182ef4272d2b32ea99bbe87036835ae138e741502af8",
+     "sha256:90e69bdfaf92c1d0f1d89099cade83092a18544eb9fda1653500ac5a557ed5c2",
+     "sha256:20781cce6b0823b7ee7308da6b89595db2498dda913c5722a84fe931605888f9",
+     "sha256:99208ca71d3c3fa203a2d6f447d0bb3444b4ff213faaf8c9cbb5370094e01540",
+     "sha256:5089093f240f0b9624449869521f3aff62bfe811cfa9402be8db4612d2e5da5b",
+     "sha256:94d9cd3a280760a23bb0caeb4a48437f37a80d4a39e21b734b188f83647f25d5",
+     "sha256:05c830ea69a1201728f98e695f57ff90f22614642ef05ea32968095b624781ed"
+    ]
+   },
+   "ranges": [
+    {
+     "lo": null,
+     "hi": "044a9bb006600ad021ff954efee752e1c819279fe7a19dd818e99b34a5ae0a8f",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6600,
+     "md5": "79717c67fbc5aaf99aad35e96a86f7b4",
+     "vid": "sha256:bd287e060e2a0bd92c37da7e6fd159e7253d7d7c04529b184c078bebf773382d",
+     "sql_sha256": "62a321ca6dfab1405fb22fccbdd7f572d97541abc9a62da2756aecde9604aaa9"
+    },
+    {
+     "lo": "044a9bb006600ad021ff954efee752e1c819279fe7a19dd818e99b34a5ae0a8f",
+     "hi": "0a07fae2a66958954ec6518c36658790674cc763b5a74dfef020bc30bc1482fb",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6624,
+     "md5": "0aba91335f6fdeb580ec634dd17228be",
+     "vid": "sha256:772f1b3537208bf1c3319b3ddef18c539863af72274f29d3812ee1ba1da0eeb0",
+     "sql_sha256": "b058467f589a667cb9b7789afd5a33f4f097e1ee52112e8ed72c5cdbe61e3d30"
+    },
+    {
+     "lo": "0a07fae2a66958954ec6518c36658790674cc763b5a74dfef020bc30bc1482fb",
+     "hi": "0f3201ccb60e232c0ff2e645250f0db6497702f1d95a16c22caa18410e03fdab",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6656,
+     "md5": "13cff63f996ed8a62d5648e20cbb8cbd",
+     "vid": "sha256:74b522743cee8fd2e43f1feca6a70f46760dbe931f41ff23d722ff4989239765",
+     "sql_sha256": "58c79084509ad0370bb75136b769cdd31c6149154381dbdcd39820b949f891f5"
+    },
+    {
+     "lo": "0f3201ccb60e232c0ff2e645250f0db6497702f1d95a16c22caa18410e03fdab",
+     "hi": "151fa155e4f46d65e3e1f900c2cb1c9cf76d5676e35fe942cfa39f3b38d7ce01",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6944,
+     "md5": "e9d18d8cb620231ed2ac86e439961d65",
+     "vid": "sha256:fdbdd522d0bab3b181490e71c624678e2f63d87107c8fc81d4433d60c450a629",
+     "sql_sha256": "bf4e799f6d5ac3254a0af27ddbcc4cd818b6ab410f259cace4fdf6e9ae99f838"
+    },
+    {
+     "lo": "151fa155e4f46d65e3e1f900c2cb1c9cf76d5676e35fe942cfa39f3b38d7ce01",
+     "hi": "1d9d4012ec57811be4bff7c8056b243ab01cdce1fd83d45e298c639aa3d2e867",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6552,
+     "md5": "7aaea77744a697e9047f2658b90bb1e6",
+     "vid": "sha256:9aacf6385ea4d6fa7ab225267c1658f0a1b42d97642557a1d39ff527ce7112bd",
+     "sql_sha256": "0b5f62a7c30c78e0334b0e75643324eb1ead2095b97a51027b9da194334b2acc"
+    },
+    {
+     "lo": "1d9d4012ec57811be4bff7c8056b243ab01cdce1fd83d45e298c639aa3d2e867",
+     "hi": "232f359708a5a242420e78f185465c2ebea16f886c42541d97309194f8d7c8b6",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6512,
+     "md5": "1395b45e382348d7cddf949b6938afe1",
+     "vid": "sha256:82b1b4af06b8cee5e532814591d55d7643e7cb03ee38e8c0b9b10b401717c340",
+     "sql_sha256": "3d875a2e4ee04122805e72dd8e74d0e41ba03ab07f598d1f9af10745d1d003c8"
+    },
+    {
+     "lo": "232f359708a5a242420e78f185465c2ebea16f886c42541d97309194f8d7c8b6",
+     "hi": "2bcb1ec29f210e1d41c47ee416d0727787fcbfdc9c2cc41a6b35274c1aaaf55b",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6520,
+     "md5": "fefc5f82fb6c958527c33f8bc802d35a",
+     "vid": "sha256:403081d014fb568379597b13c8365a72b53c22d13f9f48c9453005947e93ae80",
+     "sql_sha256": "9215a239435d4169ecabc1d4c7fdac061ea319522d0d06209fd611fceff9582b"
+    },
+    {
+     "lo": "2bcb1ec29f210e1d41c47ee416d0727787fcbfdc9c2cc41a6b35274c1aaaf55b",
+     "hi": "32c53b768312afca83f74bdbd1ec80c4cce01ebbb39a108b3e8e97e07bd62d10",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6592,
+     "md5": "2b8ccc7bc311c83e86151756ba31090c",
+     "vid": "sha256:5a36c996e2543e89da444251e607aea7e526712dc8df11a77415b36263441c6b",
+     "sql_sha256": "e312c2fddd601e9c19230727708b4c3cddb2b603a9dff6101b71bcace79d972c"
+    },
+    {
+     "lo": "32c53b768312afca83f74bdbd1ec80c4cce01ebbb39a108b3e8e97e07bd62d10",
+     "hi": "3a2ec59c0821f80870de38e831959927efd73059d4274527a0f9dc285ac5b63f",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6624,
+     "md5": "d346301c1b12f66b7ba2d361696cf427",
+     "vid": "sha256:3ea5db8728c8eb1997c7bcca151a186e620f9766795f33183c445d084097ed4d",
+     "sql_sha256": "c6da0aa32d04c1550a0d8b96e9647880414f888115d32f8b76d74522ed724c27"
+    },
+    {
+     "lo": "3a2ec59c0821f80870de38e831959927efd73059d4274527a0f9dc285ac5b63f",
+     "hi": "401354deae31dca6e1d9bb4cd65585abdbd450ed8c5bdb60604c1e0ea0a861cb",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6620,
+     "md5": "9438e5f84cad84591ba93a6b6d5022b1",
+     "vid": "sha256:788d45e4a768472e94d07990203c4b636686573eac5e8bc9f526ea68e2a53e87",
+     "sql_sha256": "dde6ed6886cd2b190d3869b4f085e1d8297786c758f0bb59c4b5fd5be9bd2e5a"
+    },
+    {
+     "lo": "401354deae31dca6e1d9bb4cd65585abdbd450ed8c5bdb60604c1e0ea0a861cb",
+     "hi": "442ffa71d612f00ff06b3edcaa49e3ae0c079a098723f11bb3b2b7c43b6d2df8",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6904,
+     "md5": "7eb48fe8686df6afc76b59faa75e8bc3",
+     "vid": "sha256:fee19b405bbcad36e21c0b10843cb2b91098941cb104d28c456028ffdee5dc28",
+     "sql_sha256": "da4ddce9f976aa5a5bb8139fed418ead6837a53f0f11aab89a7e9d618d3b681e"
+    },
+    {
+     "lo": "442ffa71d612f00ff06b3edcaa49e3ae0c079a098723f11bb3b2b7c43b6d2df8",
+     "hi": "49bb405bb37f929efdaee53cb359eed99cf33a79843a921a7c5ee5419ef7dac6",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6964,
+     "md5": "63ed192fb87bc92d806c3541cc410bbc",
+     "vid": "sha256:2c1853f60cb2bf77b6c3dd557842087a0e831a09f58c969eb9286561cef95654",
+     "sql_sha256": "42d459172ad03cd6d47afa93fb7c7c8aea8d016d4b78c09fb6699e23a8d6c230"
+    },
+    {
+     "lo": "49bb405bb37f929efdaee53cb359eed99cf33a79843a921a7c5ee5419ef7dac6",
+     "hi": "52c9e5c39ec388f7f138c9ec1d9d9d29c0696c9410a9d1930321903d27d1d265",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6864,
+     "md5": "9d70e419ed2d4785f24e8d157c6450ae",
+     "vid": "sha256:5d5c98e60658ce3b18a90e6ac818709f04b2dc48be70181cd44835642caa80cf",
+     "sql_sha256": "4b686d97828f349470bd762bce22a160b29034115506758413c8642f48f29c31"
+    },
+    {
+     "lo": "52c9e5c39ec388f7f138c9ec1d9d9d29c0696c9410a9d1930321903d27d1d265",
+     "hi": "58e9fcb835ff1a164c35c1a89ccaa19d78ffba5b9cb4bd445b419c93585d0e65",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6664,
+     "md5": "966932acc97edc906bcdc12a1553484a",
+     "vid": "sha256:2fe2ef6da754f8a8b31a58717b78c335fd1313fceb23c1524e807f2ce5b55c80",
+     "sql_sha256": "5e3bbb229526db466cc06bfa80233af950eee52822e29dc712eebb7e56567c86"
+    },
+    {
+     "lo": "58e9fcb835ff1a164c35c1a89ccaa19d78ffba5b9cb4bd445b419c93585d0e65",
+     "hi": "5f36aef8ce8ef7ead44e62d20def92559f2adc3851ddbbe0f3e28f1d9e960db1",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6732,
+     "md5": "0d2fac6aee82a14ef034b56f866beb6c",
+     "vid": "sha256:2d8e132766a8f5e349351949d9381c7006785e0a9e1c1d041d3a25f43f344941",
+     "sql_sha256": "fc1337944c4efddde1654410d79ca2196f3f8fded8b4981d8ce47d8d2a6668b7"
+    },
+    {
+     "lo": "5f36aef8ce8ef7ead44e62d20def92559f2adc3851ddbbe0f3e28f1d9e960db1",
+     "hi": "657dc37c5a9dca87a8145cfe99104a5f16e6ddaa199467f1967a16db4d19ebd4",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6380,
+     "md5": "5e5e5566c8d7cac55c78618cd712fc43",
+     "vid": "sha256:badc9ef15bb42441b8cf7bb8bd76d38fa3e91c8254c90ce6f9556b89e79c067c",
+     "sql_sha256": "12be1a972f2460e23f4a849c2be3f75e895bdedb2027a3683b4ea653ef5660b9"
+    },
+    {
+     "lo": "657dc37c5a9dca87a8145cfe99104a5f16e6ddaa199467f1967a16db4d19ebd4",
+     "hi": "6dbf4dd91c8f2fa19cd4f30dfc58d6beb27cf140d19c38c5b7a698d23752eebd",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6620,
+     "md5": "638d0b752a988b7e25aad795f4daa456",
+     "vid": "sha256:7e1ee82c073cf7dc81b6d261800cce49f8772ed555167401c17748fa5564479f",
+     "sql_sha256": "9894269e6605f651877be7d736b9efd66119002149de52680130e256180ee921"
+    },
+    {
+     "lo": "6dbf4dd91c8f2fa19cd4f30dfc58d6beb27cf140d19c38c5b7a698d23752eebd",
+     "hi": "7424580e1d8630b17cac3962f4cfcada67a1a765e5f7a3bafdf8916664f76895",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6612,
+     "md5": "5a748983e22c86f05e2566a84c7cf9bc",
+     "vid": "sha256:9a9413d11f9feb101d22769a50973a32bfe77258ef97ce9b1c039338bbd2730f",
+     "sql_sha256": "cbf2a91c87ce377dc4ff01b31df87a7c733de4ad078fd11a96d5134b1a7a5f1d"
+    },
+    {
+     "lo": "7424580e1d8630b17cac3962f4cfcada67a1a765e5f7a3bafdf8916664f76895",
+     "hi": "7a7809befc93fde3a56867bd76c0319dccb416c1f722c786223387b01b305926",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6644,
+     "md5": "a1f04e9853ba49b65e8cd522246f9bcc",
+     "vid": "sha256:443f7c0beda3faa2c66fce976f3498bd6592d3bb5ca502919787fc0c30bef2fb",
+     "sql_sha256": "ecb36cbd7c4909851475cd4a5ad64f02dc4d1e13b39a30c48eaf14eb1ed6d7ff"
+    },
+    {
+     "lo": "7a7809befc93fde3a56867bd76c0319dccb416c1f722c786223387b01b305926",
+     "hi": "8475932271c91b3d2ed0b5203b962f063022b9f1289367a3472ebeb499e37322",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6688,
+     "md5": "e745dfdcd839d886f7cf84ef898f92a3",
+     "vid": "sha256:fd8c28f03362c495d00aa59469164ba53413fb31f667adc4c022b587fcf75d72",
+     "sql_sha256": "12d974034d26130b7843c8f6d3ce962a161bd527ca2333e7a12b272a75785e04"
+    },
+    {
+     "lo": "8475932271c91b3d2ed0b5203b962f063022b9f1289367a3472ebeb499e37322",
+     "hi": "8a30b4b388d8422817ca5f4bc1c715da78b2bfd57e15342d43e7fc01937da03c",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6800,
+     "md5": "290b4cdae7b600874d15cf7950e4e448",
+     "vid": "sha256:6afe2012c5502987c52ca0684d45fc0ed22a4441d160b1ead2a55eb9cace9379",
+     "sql_sha256": "7e51502d5fde0d60888ba217321a1198c4144136a2756b1d5bf92e3e77dd7f1a"
+    },
+    {
+     "lo": "8a30b4b388d8422817ca5f4bc1c715da78b2bfd57e15342d43e7fc01937da03c",
+     "hi": "9320a06158f3c05a988ea6a24b7141dc1d96cfa1398c22d5f7f8d3b061cc4202",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6692,
+     "md5": "9debb342507f379632053554e5d7f75a",
+     "vid": "sha256:c90595aa9096b9f6a060e268e4574d3acb8dbd68b6858c55aab33d0718065c46",
+     "sql_sha256": "5cf4a50ebeb902671defc814aa6160e650189756335546b472afd11ce7ac2e5f"
+    },
+    {
+     "lo": "9320a06158f3c05a988ea6a24b7141dc1d96cfa1398c22d5f7f8d3b061cc4202",
+     "hi": "97dec4e321c42c6995a72e491ddebd99cb97304d41a2d156ac4df2ecc17cf8a6",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6428,
+     "md5": "9d90e5d4634251171e2da97ffc6a91d8",
+     "vid": "sha256:73d805470a1639df34a054f21be47463426c0cc11850c848728268415bcf3291",
+     "sql_sha256": "e73e324be9aa534c287747c888e76f84f59f40d8c75439b7b3f098382adbcea6"
+    },
+    {
+     "lo": "97dec4e321c42c6995a72e491ddebd99cb97304d41a2d156ac4df2ecc17cf8a6",
+     "hi": "9f4e87500ee73d4631e28b38cd53717fe4633d9775aa584ad26089589730c7c7",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6872,
+     "md5": "3566609f1d6c57edf0a63d4e587da53f",
+     "vid": "sha256:15223f3f7b9c998652c0acf08f24cb7e8d41a3597ca06a20b0c80971828ebb8e",
+     "sql_sha256": "120372e9bb745d09e89cfaa95cd433c9e2e5db0ecf1ffeae2036e5635f0e7641"
+    },
+    {
+     "lo": "9f4e87500ee73d4631e28b38cd53717fe4633d9775aa584ad26089589730c7c7",
+     "hi": "a5f8d48451f56cdc961b713b3adbc72722b4fb484f1108275d3a5a8b6a1c6cf7",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6380,
+     "md5": "b3153e64856c20d42daa1fc6ce70d7b4",
+     "vid": "sha256:292357811d037ab4b3020c4ff92bd17b9b73a7f1b67c17f0de9cee1a54cb5af1",
+     "sql_sha256": "f8ab9550fa714105c7b55de1d344440c1fd266f091b2a26a68e3bbe8b4641908"
+    },
+    {
+     "lo": "a5f8d48451f56cdc961b713b3adbc72722b4fb484f1108275d3a5a8b6a1c6cf7",
+     "hi": "af548db1c8a8fc09fca1147399ea889ff09d1ffa303de33fe993eb4c57823d30",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6528,
+     "md5": "16ea7e091210a80c15554021d7589a42",
+     "vid": "sha256:b4074818f91cbfcc20963e7ff6f1e23c8c1ae6aa61a32c4a2638dad5740dadad",
+     "sql_sha256": "4a52345bc6842c4e12afb4d54a0f0f6372dcf656fbd840bda2d19607700526db"
+    },
+    {
+     "lo": "af548db1c8a8fc09fca1147399ea889ff09d1ffa303de33fe993eb4c57823d30",
+     "hi": "b7f464dfc02036a0f194b383f7f006d7832be9e7e339bf0846cd7384681ed849",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6588,
+     "md5": "28dcc830ac51de578ee2b6ef2d3845a3",
+     "vid": "sha256:f75e39d2dcee5b5efd752679602f75a9a805c5398c2cd30ee8613d681428805c",
+     "sql_sha256": "bb9f21f2b7cc81a53ea8ab65bcdb760caf9e9828ff9653911063af3ab12a3ea1"
+    },
+    {
+     "lo": "b7f464dfc02036a0f194b383f7f006d7832be9e7e339bf0846cd7384681ed849",
+     "hi": "be4efbc0d5659f674e714a9159cf39514315037f7fb1e076ef9ec352e7ee2bd8",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6464,
+     "md5": "27ac6460b1c9d6f8de232ebca80f0d66",
+     "vid": "sha256:754f27586500470b0da828942d02138fd82b44e7dcb121274919c1663ab3f98b",
+     "sql_sha256": "22a78927acde3adbd05611f32c978fda44abafafd4e430bd4ca331d84a417e3c"
+    },
+    {
+     "lo": "be4efbc0d5659f674e714a9159cf39514315037f7fb1e076ef9ec352e7ee2bd8",
+     "hi": "c5b548c4a20120567c9d00cdb9b24c4f4d78fc50d5b06b35f326d95363bdb698",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6724,
+     "md5": "1ba45a0d75d23e3da3b91b2a2316bb4c",
+     "vid": "sha256:d31c206b5a6da0c3cef4438dfe7822c5a49e655cb3321a2f1fe0b0d0077233b4",
+     "sql_sha256": "8e083b464cc3946696de6da43085f645d142425282555647d7be1e14cc5a5a77"
+    },
+    {
+     "lo": "c5b548c4a20120567c9d00cdb9b24c4f4d78fc50d5b06b35f326d95363bdb698",
+     "hi": "cb08d074fc2d554d521ea6ad5b29f56d4636658c6e323dcc6c231c42d593aa3b",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6884,
+     "md5": "33722f871f2c3d0d4b5718f094d5193e",
+     "vid": "sha256:6ae105363b69e198b902f9870d3bb4c57435d5d441ec0797211819af91bed147",
+     "sql_sha256": "1faf96f674b07b56909cb2f259e98b3262be296c33568efecb382681436449e8"
+    },
+    {
+     "lo": "cb08d074fc2d554d521ea6ad5b29f56d4636658c6e323dcc6c231c42d593aa3b",
+     "hi": "d29881e571529ad2a373e8e7ce9308442f457b1006e283abef66a181770fd41e",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6404,
+     "md5": "0d8c7f294d93385397960895270271c5",
+     "vid": "sha256:bbe291150b467213c3f860ea067f2abecf7955052425934a72bf105ae0253b2e",
+     "sql_sha256": "a17b86eac4aa73e2441e873d407090dc4882b965d14ee6e0a1eb1ce458c833aa"
+    },
+    {
+     "lo": "d29881e571529ad2a373e8e7ce9308442f457b1006e283abef66a181770fd41e",
+     "hi": "d84f0bf3f5d9750c95e0d4b936e71107605237ebf87e4a1e13178b68809a33b4",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6920,
+     "md5": "4980cd10e224a55accd5d7495c47af43",
+     "vid": "sha256:cc1a1aeb0ee0a541c2182a51e14920d0463002b3dcfa431e28eef08e60e46dc3",
+     "sql_sha256": "2b0292251b52f3e8ecfeb2853d3163611924e6856c44bf07eaac130942355e40"
+    },
+    {
+     "lo": "d84f0bf3f5d9750c95e0d4b936e71107605237ebf87e4a1e13178b68809a33b4",
+     "hi": "e1db115ae4acb4861a15fa9b1598f64da5e158d51f1bbf19e57e46d19c2fba4c",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6876,
+     "md5": "cfba1540a0b688470527d1a1fd3a14fe",
+     "vid": "sha256:a19c35259208ba090670182ef4272d2b32ea99bbe87036835ae138e741502af8",
+     "sql_sha256": "39ac2aaaf074e148835f84d8e1de4dcc75e3b1daf1ac64ddeba58a2449f229e9"
+    },
+    {
+     "lo": "e1db115ae4acb4861a15fa9b1598f64da5e158d51f1bbf19e57e46d19c2fba4c",
+     "hi": "e7f2273d30526453076ebb6bb4b42c3d0125fc2ea80df0e522f15bc68d232eae",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6672,
+     "md5": "22a4b2e889c350fccf23f9a2f6f0d083",
+     "vid": "sha256:90e69bdfaf92c1d0f1d89099cade83092a18544eb9fda1653500ac5a557ed5c2",
+     "sql_sha256": "49e6b2d68eb9146c93638af5e2a2b47860dc70edd57f87aac2e423a360155a62"
+    },
+    {
+     "lo": "e7f2273d30526453076ebb6bb4b42c3d0125fc2ea80df0e522f15bc68d232eae",
+     "hi": "ed8785e0d4537d07660233ef6022af63e507d2c0b4d32b05bdbf235863c0e1a3",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6608,
+     "md5": "12ec81b801d935c0790b1c01cc2f4ee8",
+     "vid": "sha256:20781cce6b0823b7ee7308da6b89595db2498dda913c5722a84fe931605888f9",
+     "sql_sha256": "b063a4c3e1f88bba7107bed1a25b12f346cb6eda3966efc5c718f71500012c78"
+    },
+    {
+     "lo": "ed8785e0d4537d07660233ef6022af63e507d2c0b4d32b05bdbf235863c0e1a3",
+     "hi": "f3b0a0e4ceb0268c707bdfe255d57530fb949b2ec1305fb632b744a6b4be041c",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6312,
+     "md5": "daf7ac66af1002f105a2259b21a259db",
+     "vid": "sha256:99208ca71d3c3fa203a2d6f447d0bb3444b4ff213faaf8c9cbb5370094e01540",
+     "sql_sha256": "3457bd45d15ed5ff906038143ee5f3ba056d7e6e4234c448130f6d153c8859a0"
+    },
+    {
+     "lo": "f3b0a0e4ceb0268c707bdfe255d57530fb949b2ec1305fb632b744a6b4be041c",
+     "hi": "f9790c39694bdec6c39a00dae2ec60ad93d6819cfab11406af02b9d06445ec7f",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6924,
+     "md5": "5f4b9169a1203a7f8d047440ef1935e6",
+     "vid": "sha256:5089093f240f0b9624449869521f3aff62bfe811cfa9402be8db4612d2e5da5b",
+     "sql_sha256": "8ddb85a065ebb9d4d8a4b1b851518189c7126e67470964f45a16aca584b8d031"
+    },
+    {
+     "lo": "f9790c39694bdec6c39a00dae2ec60ad93d6819cfab11406af02b9d06445ec7f",
+     "hi": "fd1228e6bcffe0b74358e10c0b70f63e78be36a9aadc3586c2d774a3a0150b3d",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 6548,
+     "md5": "a6699b1c09c3642f4e8498819c742f69",
+     "vid": "sha256:94d9cd3a280760a23bb0caeb4a48437f37a80d4a39e21b734b188f83647f25d5",
+     "sql_sha256": "74e3990bf5c4d4681652b11ec69e53b3449f71bd0cdc367a61abae661ed25d23"
+    },
+    {
+     "lo": "fd1228e6bcffe0b74358e10c0b70f63e78be36a9aadc3586c2d774a3a0150b3d",
+     "hi": "fed4593c2ca45691ed8e810789fa2e468d23f7f3e5b56a88a8b87add3fe0588d",
+     "n": 5,
+     "nd": 5,
+     "b64_len": 2820,
+     "md5": "6785f2876627a8a5679dfe2b93be63dc",
+     "vid": "sha256:05c830ea69a1201728f98e695f57ff90f22614642ef05ea32968095b624781ed",
+     "sql_sha256": "e0344c5630d7d0b35b1baf684ae03eed913a314f5b39cc7b6935c3a40b8c24f0"
+    }
+   ],
+   "seconds": 46.8
+  },
+  "fema_usa_structures": {
+   "table": "EDGAR_DB.SOURCE.FEMA_USA_STRUCTURES_HOT",
+   "file": "fema_usa_structures.jsonl",
+   "rows_retrieved": 643,
+   "distinct_keys_retrieved": 643,
+   "count_star": 643,
+   "count_distinct_keys": 643,
+   "count_matches": true,
+   "keys_match_distinct": true,
+   "count_k_plus1": 643,
+   "count_k_plus1_matches": true,
+   "releases_in_result": [
+    {
+     "R": "2023-05-02",
+     "N": 643
+    }
+   ],
+   "sha256": "712a0a2e72492dd8bdd978c2292c1a327f3e0860479cef7ccc30928ef46333f4",
+   "key_column": "PROVIDER_FEATURE_ID",
+   "columns": [
+    "PROVIDER_FEATURE_ID",
+    "RELEASE_DT",
+    "COUNTRY",
+    "STATE",
+    "STATE_NAME",
+    "SOURCE_ROW_NUMBER",
+    "OBJECTID",
+    "BUILD_ID",
+    "UUID",
+    "GLOBALID",
+    "OCC_CLS",
+    "PRIM_OCC",
+    "SEC_OCC",
+    "OCCUPANCY_PROVENANCE",
+    "PROP_ADDR",
+    "PROP_CITY",
+    "PROP_ST",
+    "PROP_ZIP",
+    "PROP_CNTY",
+    "OUTBLDG",
+    "HEIGHT",
+    "SQMETERS",
+    "SQFEET",
+    "FIPS",
+    "CENSUSCODE",
+    "STATE_FIPS",
+    "COUNTY_FIPS",
+    "TRACT_GEOID",
+    "PROD_DATE",
+    "SOURCE_FIELD",
+    "LONGITUDE",
+    "LATITUDE",
+    "GEOM_WKT",
+    "AREA_M2_DERIVED_GEODESIC",
+    "CENTROID_LON",
+    "CENTROID_LAT",
+    "BBOX_XMIN",
+    "BBOX_YMIN",
+    "BBOX_XMAX",
+    "BBOX_YMAX",
+    "H3_R4",
+    "H3_R7",
+    "H3_R8",
+    "SOURCE_URL",
+    "SOURCE_SHA256",
+    "SOURCE_CHANNEL",
+    "LICENSE_TERMS",
+    "ATTRIBUTION_TEXT",
+    "ROW_PAYLOAD",
+    "LOADED_AT",
+    "H3_KEY_STATUS",
+    "DIST_M_A3",
+    "DIST_M_A4",
+    "DIST_M_A5",
+    "DIST_M_A6",
+    "DIST_M_A7",
+    "DIST_M_A8",
+    "DIST_M_A9"
+   ],
+   "unit_notes": "AREA_M2_DERIVED_GEODESIC = ST_AREA(geometry) in m^2, derived (not a source attribute); DIST_M_<anchor> = geodesic metres from geometry to the anchor point (0 if the anchor is inside the footprint), derived; other numeric fields keep source units (FEMA SQMETERS m^2, SQFEET ft^2, HEIGHT as landed; MS HEIGHT/CONFIDENCE as landed; Overture height inside ROW_PAYLOAD_JSON)",
+   "transport_ranges": 65,
+   "range_size_target": 10,
+   "query_text": {
+    "count": "SELECT COUNT(*) N, COUNT(DISTINCT PROVIDER_FEATURE_ID) ND FROM EDGAR_DB.SOURCE.FEMA_USA_STRUCTURES_HOT WHERE STATE = 'AZ' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8748e96e8ffffff',2))))) AND BBOX_XMAX >= -112.38340643230902 AND BBOX_XMIN <= -112.3465566776909 AND BBOX_YMAX >= 33.3926471030252 AND BBOX_YMIN <= 33.43059815597489 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)'), 1600.0))",
+    "count_k_plus1": "SELECT COUNT(*) N, COUNT(DISTINCT PROVIDER_FEATURE_ID) ND FROM EDGAR_DB.SOURCE.FEMA_USA_STRUCTURES_HOT WHERE STATE = 'AZ' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8748e96e8ffffff',3))))) AND BBOX_XMAX >= -112.38340643230902 AND BBOX_XMIN <= -112.3465566776909 AND BBOX_YMAX >= 33.3926471030252 AND BBOX_YMIN <= 33.43059815597489 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)'), 1600.0))",
+    "releases": "SELECT RELEASE_DT R, COUNT(*) N FROM EDGAR_DB.SOURCE.FEMA_USA_STRUCTURES_HOT WHERE STATE = 'AZ' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8748e96e8ffffff',2))))) AND BBOX_XMAX >= -112.38340643230902 AND BBOX_XMIN <= -112.3465566776909 AND BBOX_YMAX >= 33.3926471030252 AND BBOX_YMIN <= 33.43059815597489 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)'), 1600.0)) GROUP BY 1 ORDER BY 1",
+    "boundaries": "SELECT K FROM (SELECT PROVIDER_FEATURE_ID K, ROW_NUMBER() OVER (ORDER BY PROVIDER_FEATURE_ID) RN FROM EDGAR_DB.SOURCE.FEMA_USA_STRUCTURES_HOT WHERE STATE = 'AZ' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8748e96e8ffffff',2))))) AND BBOX_XMAX >= -112.38340643230902 AND BBOX_XMIN <= -112.3465566776909 AND BBOX_YMAX >= 33.3926471030252 AND BBOX_YMIN <= 33.43059815597489 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)'), 1600.0))) WHERE (MOD(RN,10)=0 OR RN=643) AND RN > 0 AND RN <= 1000 ORDER BY K [+0 more windows, RN ranges of 1000]",
+    "range_query_template": "see freeze2.py fetch_range; where-clause: STATE = 'AZ' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8748e96e8ffffff',2))))) AND BBOX_XMAX >= -112.38340643230902 AND BBOX_XMIN <= -112.3465566776909 AND BBOX_YMAX >= 33.3926471030252 AND BBOX_YMIN <= 33.43059815597489 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)'), 1600.0)); object columns: OBJECT_CONSTRUCT_KEEP_NULL('PROVIDER_FEATURE_ID', PROVIDER_FEATURE_ID, 'RELEASE_DT', RELEASE_DT, 'COUNTRY', COUNTRY, 'STATE', STATE, 'STATE_NAME', STATE_NAME, 'SOURCE_ROW_NUMBER', SOURCE_ROW_NUMBER, 'OBJECTID', OBJECTID, 'BUILD_ID', BUILD_ID, 'UUID', UUID, 'GLOBALID', GLOBALID, 'OCC_CLS', OCC_CLS, 'PRIM_OCC', PRIM_OCC, 'SEC_OCC', SEC_OCC, 'OCCUPANCY_PROVENANCE', OCCUPANCY_PROVENANCE, 'PROP_ADDR', PROP_ADDR, 'PROP_CITY', PROP_CITY, 'PROP_ST', PROP_ST, 'PROP_ZIP', PROP_ZIP, 'PROP_CNTY', PROP_CNTY, 'OUTBLDG', OUTBLDG, 'HEIGHT', HEIGHT, 'SQMETERS', SQMETERS, 'SQFEET', SQFEET, 'FIPS', FIPS, 'CENSUSCODE', CENSUSCODE, 'STATE_FIPS', STATE_FIPS, 'COUNTY_FIPS', COUNTY_FIPS, 'TRACT_GEOID', TRACT_GEOID, 'PROD_DATE', PROD_DATE, 'SOURCE_FIELD', SOURCE_FIELD, 'LONGITUDE', LONGITUDE, 'LATITUDE', LATITUDE, 'GEOM_WKT', ST_ASWKT(GEOM_GEOG), 'AREA_M2_DERIVED_GEODESIC', ST_AREA(GEOM_GEOG), 'CENTROID_LON', CENTROID_LON, 'CENTROID_LAT', CENTROID_LAT, 'BBOX_XMIN', BBOX_XMIN, 'BBOX_YMIN', BBOX_YMIN, 'BBOX_XMAX', BBOX_XMAX, 'BBOX_YMAX', BBOX_YMAX, 'H3_R4', H3_R4, 'H3_R7', H3_R7, 'H3_R8', H3_R8, 'SOURCE_URL', SOURCE_URL, 'SOURCE_SHA256', SOURCE_SHA256, 'SOURCE_CHANNEL', SOURCE_CHANNEL, 'LICENSE_TERMS', LICENSE_TERMS, 'ATTRIBUTION_TEXT', ATTRIBUTION_TEXT, 'ROW_PAYLOAD', ROW_PAYLOAD, 'LOADED_AT', LOADED_AT, 'H3_KEY_STATUS', H3_KEY_STATUS, 'DIST_M_A3', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)')),2), 'DIST_M_A4', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)')),2), 'DIST_M_A5', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)')),2), 'DIST_M_A6', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)')),2), 'DIST_M_A7', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)')),2), 'DIST_M_A8', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)')),2), 'DIST_M_A9', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)')),2))"
+   },
+   "receipts": {
+    "count": [
+     "sha256:9a3f2ff54777c0ad9d8e185b6350509af016f3f424ba104d32a0782af1d7969a"
+    ],
+    "count_k_plus1": [
+     "sha256:e3708e59031d2c3c21a72874a915f8a1cb4be5b0e84ac9a1f2e5d19bf24501bb"
+    ],
+    "releases": [
+     "sha256:88a3357234edb3703bb60ecd1d5bc6e7ac751c64f171558562ac18a72321e991"
+    ],
+    "boundaries": [
+     "sha256:b9719a65387dba47bb6756a2584bbb61c1b7d2cca1d50e943a1a964a58e345f0"
+    ],
+    "ranges": [
+     "sha256:eebb1807d064b44ab815e936359f8322590ce4d30cd7c85f4fa372d7dc4a4627",
+     "sha256:3211965f39d244bbf2ebadffeea2e15d40cdcc8e3311a8c049dfd2f3bf84fb0b",
+     "sha256:23e67908c94d482bd45332413b806a51798ea5a20cee2913a88103e7f3fa4911",
+     "sha256:d697645baa20378396981f9ad2c3bc93b76dbb35181b357b8dd3e70714493cba",
+     "sha256:91e70b054ecc18346fdefbd870ba5cb58d78a0db156b07bf39f4ebbbd4763a59",
+     "sha256:337dfbb83dfb0d0cbfb1d4d25a52d7feab39fc52c85e8a0839e7ee7302ed3884",
+     "sha256:23c8acb4540cb5bbf5b3f0059b1d73dfbea5921772eaf8a58e31bd7e4ed0ab3e",
+     "sha256:373c370e8fa8a22ecca609ff3933c1fc7d8c635640c9fddea779deb9d844d17a",
+     "sha256:0d595b8c2b700c93987d70f3c113424f393449010aab9c8621adaf064c9cbd39",
+     "sha256:2b51a44305f94cb93ad0681273555ca341d033ae8068dca36fd405e98a3887d4",
+     "sha256:82794f7991748593d02d2f290a0602a3d47752460a8fbbeecbeace6508ff2646",
+     "sha256:1cdfab408fd81df1b708f98bdb1d0f1f3e1eb848fa9b95dbec56a80fe96f4348",
+     "sha256:3831c12e9d9abb3efe7b0d9151434e02863d5097ee049efac86d3c703de9c227",
+     "sha256:ffa9fa6d0d364e6149450eb85dab41c3670dfb02b8ea2a155f75c7b3ed620b52",
+     "sha256:313035892d84ba69f7571bb771597c462e7673fa124e9f8ec4da8939d7e1a5e1",
+     "sha256:c0751da482f8c2b3cf1b68f532597fbac540fe2f734c88927f1c4f656a2e5bb7",
+     "sha256:fbbfb0785dd45e5753d678e7525717bb9b776f1e56a4b97313bfb9338744a920",
+     "sha256:d006fb8d520938fec73f2f4d38bececa0c8c19875c2bc02a18413944c95ef019",
+     "sha256:9f505faab8b3b6440f320f1120ec6a538e03ac3e337427b07704a5e1f649303b",
+     "sha256:fbd57fec6a787b5c90ebf6dfe8c63c3857d43a2ceca73ecf43ba75151d3a326d",
+     "sha256:7a1559ae102191df21c6849343ebe45dfce325b1c8be063e352ade6db9d42795",
+     "sha256:0b5ac7c68bceab8be6d4678890cc17aaf25f0626841a38980e5781124829060a",
+     "sha256:c0788bb4ca999fc43054c418ceec0f3ef1c56c53648dc68c91f9aca0fde3637c",
+     "sha256:7857404c0ea7d35dea69a3d036aa4663a95dc99499c1fc777de2b6bae0b3d81a",
+     "sha256:00ef289c5c4638c13460539862e3d43430f904b8c990dd0de1829545ea7d1094",
+     "sha256:40264f01974c89b7d360b4559ce7e1ca60298ad88b8287d06b86707b008de4b7",
+     "sha256:b593ad52d964beb5b741f4ff1d0275c252bd603c89c2e7ac2295830b0bcba7ae",
+     "sha256:2ea9a86534cd992b3a368969f3551cdc8335e93088f1f3844b2ab8de9a54571b",
+     "sha256:b4d6c5f3777bc22069fa580b4453018e4eaf0394b5a536405c2a29047add810d",
+     "sha256:d15eda6f33890d4ba4b7b601a1c464c21cc8ee643efaca54b8b3a0217ba7ff4f",
+     "sha256:47eb8819492a2c163dce122e875869138de35e6962c086bdc5f0ba57fdcf7500",
+     "sha256:fd7a2997f96e43039d1693d94aad973a40286b880aac93549102b035d6e5194b",
+     "sha256:4f46a622563bfd4aea0afb9e932657ed778a190cb5d8e3a7dee998ab6321dbf8",
+     "sha256:aadbdfc4910f148f3ca45f084d66aadb3851ec9b17242231f446d1a05ad1c91b",
+     "sha256:0f12ad840606d7e3a08bd77ea12b86c10a19db4f197e1b2bc9a2189aa0136c7e",
+     "sha256:7bb7fdb548d3dac1818b4be7ae82f0082e970dc15d2779e9ff418c4d00e9ae7e",
+     "sha256:4b48034ab67b40c6b122f47f5ca502da59429bf5ec72fe51e009c5c896387bb2",
+     "sha256:2a40d49914c3a81448d130f057203b5f7fc1cff479dd64fa24e60c880ff79533",
+     "sha256:a34e9c9fef105fc4bcfb65fe92457bdbb44ed05c97773c3232cd76c1b0beb105",
+     "sha256:e792749167da15869ce3ada2e0f361327d550a65a87d2365c2fd38df8ade5bd6",
+     "sha256:00d9f54a9f0eb1ba28722df2c72879360b160c81c743111e9bc9e2060b1d9c5d",
+     "sha256:1ae4702e3cb5f5d51db01c5e328daee9f0e88b94d8c9ced672773ccae3f00610",
+     "sha256:6183ce690f78cadd304123c9ae2980996bc6e169ac17ebaa36da6fa2e4590cbf",
+     "sha256:89c1d9d936260fe70018bca047bc66f05c056271f4c85f6757a8926e4aec5dc0",
+     "sha256:70d2f4648f72f3f861fe0249463b8015d3fa8306e26b64044c748cece56e0667",
+     "sha256:6aff366b04cbfd9436d3a5f0e538e3029af979fbdac74b8ecd802aca847811ad",
+     "sha256:eaacde669772793276185d702191b63af0bcc7b3a73858694069e545db6d7c9b",
+     "sha256:932d962166ec623f367d589d73b9b2a56b75f1244981b8ca6e5889b91c690644",
+     "sha256:c7a9b7173adb3128a907999038546ee3b4a82d350d773dbc6b719acc8525ed72",
+     "sha256:dbac2a98c8acc8cda0a0a90b115f64dfdf2e579f03594f2882107540c81cf1fd",
+     "sha256:57c5f136b7d9d31e7be30457f6bd7ad5508f2db3e8b4bdb06456b1bdf0612059",
+     "sha256:6790a9185aea2995b4ca68a1accb968ba37ab46ede3a26dfdbade735ca8d9e13",
+     "sha256:dbfceabd07469d96f5f73338f382f2577f6c419bb53cebd633c9e0a187388f10",
+     "sha256:4273d7070387e33ce8226d50d8605fa73dd7070371add2db9b882f67ec2274d0",
+     "sha256:dc07cdd1c581dbd87c4a36bd2f53abe1e1b3d18a8c48fbfe101500801b7ebe31",
+     "sha256:22cba9fcb553ce418809f27cbeb0a40918e4865aff42b038610b681f09a7bef2",
+     "sha256:0a42c94ddd3e4da01f9fcf679f8488441b270b2a93a67b2d5332c072854ab126",
+     "sha256:c84a25bd661c3777e45ef6c3db1bae70590d4ecda5f84db101dfb86804b9a567",
+     "sha256:39141eb78957c23e7c6f0442e57e55a4a82a1e166ea6f4c9c2fadf0f2ebe81a5",
+     "sha256:e4be7d58f4fb8c5a2fdadb3738e78584bd428dcad54a066adae92bd63ada2e30",
+     "sha256:6c50994bb2f85b9aa72950ff5ab19a943d206df0c7a4fae8ec3e80202e4f63bb",
+     "sha256:1292b3e02703335288962c30c44ac140fc3121b6c99a54ac19738092fc67a051",
+     "sha256:b5abbe6f2440b5bbe6b892e5b88db49f14283abf2bcf22c4e57fa8169885f427",
+     "sha256:827061df6ba4c0b7f13462a3916c5ff417c61607eb61d7890da91cbf97d098f0",
+     "sha256:1d770e3e4a88e0c87941cbfffbbf1065f7d89c4acbef74fb1aeb6a48102eb2e9"
+    ]
+   },
+   "ranges": [
+    {
+     "lo": null,
+     "hi": "0381220f-0f72-4c3e-bd28-934b845ae13f",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8236,
+     "md5": "24ae6596c26aeca8b786c3fd35a65990",
+     "vid": "sha256:eebb1807d064b44ab815e936359f8322590ce4d30cd7c85f4fa372d7dc4a4627",
+     "sql_sha256": "39d121b2f174b7bb5cb1afcd1df4b4c01591fe251ed93f0a9ddad1d9f51c2dd3"
+    },
+    {
+     "lo": "0381220f-0f72-4c3e-bd28-934b845ae13f",
+     "hi": "05e5de2a-3a3c-4289-b972-285c6c3f988c",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8376,
+     "md5": "5b49d01395e5a00678078ca91c7d426d",
+     "vid": "sha256:3211965f39d244bbf2ebadffeea2e15d40cdcc8e3311a8c049dfd2f3bf84fb0b",
+     "sql_sha256": "431b4a7b73aef17bdbae440858f12f5286c98ffffff1b89715fe7856d72463b2"
+    },
+    {
+     "lo": "05e5de2a-3a3c-4289-b972-285c6c3f988c",
+     "hi": "07e19fde-55b9-4988-8ee2-fb0558e732c2",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8336,
+     "md5": "d2536f94a1d4415226f1faaa752d479a",
+     "vid": "sha256:23e67908c94d482bd45332413b806a51798ea5a20cee2913a88103e7f3fa4911",
+     "sql_sha256": "e62b9556eacc8caac0e82fc53bcb73a8e334f24916af9ba22be957bfa04923fe"
+    },
+    {
+     "lo": "07e19fde-55b9-4988-8ee2-fb0558e732c2",
+     "hi": "0cc50a22-1b13-46f0-9529-e52a04ed4e6c",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 9344,
+     "md5": "e2241f8f1becee41bd5ebcff29cf529e",
+     "vid": "sha256:d697645baa20378396981f9ad2c3bc93b76dbb35181b357b8dd3e70714493cba",
+     "sql_sha256": "0302e2905dace8f3fb96f8a4e6ad3de81a36bcdd99514c98da872d1b7a685599"
+    },
+    {
+     "lo": "0cc50a22-1b13-46f0-9529-e52a04ed4e6c",
+     "hi": "0fe7c2a5-64c6-4595-a6b0-f27a33b0c28c",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8220,
+     "md5": "056c469dbb37db76993a47dfe563885e",
+     "vid": "sha256:91e70b054ecc18346fdefbd870ba5cb58d78a0db156b07bf39f4ebbbd4763a59",
+     "sql_sha256": "751b0a4fbbf34016f2b0136f26ec43369db3cfe2e1e7bee5a89ff460a56ffd75"
+    },
+    {
+     "lo": "0fe7c2a5-64c6-4595-a6b0-f27a33b0c28c",
+     "hi": "1532b36f-5be1-4082-b271-be70a20166d5",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8504,
+     "md5": "2a6337acd7ea726efd7fadf98b4dc753",
+     "vid": "sha256:337dfbb83dfb0d0cbfb1d4d25a52d7feab39fc52c85e8a0839e7ee7302ed3884",
+     "sql_sha256": "de3a5e6878fef8060456c5fce7c6a928c95af13392d36b7564d5aee6e195fd11"
+    },
+    {
+     "lo": "1532b36f-5be1-4082-b271-be70a20166d5",
+     "hi": "189ca4e7-2fe6-448b-9a75-5d492bfaa29b",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8384,
+     "md5": "cb934e00640f07f3d8b9a3c5f1bf73b0",
+     "vid": "sha256:23c8acb4540cb5bbf5b3f0059b1d73dfbea5921772eaf8a58e31bd7e4ed0ab3e",
+     "sql_sha256": "002363dda9d703f616644d5ae2a068c6ed844db589e69eace4de6261ebc5950e"
+    },
+    {
+     "lo": "189ca4e7-2fe6-448b-9a75-5d492bfaa29b",
+     "hi": "1e3879c0-0e87-46dc-a26d-a146ad43719f",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8740,
+     "md5": "1c79051d45f700ffbe24636ace1487af",
+     "vid": "sha256:373c370e8fa8a22ecca609ff3933c1fc7d8c635640c9fddea779deb9d844d17a",
+     "sql_sha256": "44e4534ae1c49a305c3960cd53592e638f51afd88cbee4bcc3f0136b902bf6ec"
+    },
+    {
+     "lo": "1e3879c0-0e87-46dc-a26d-a146ad43719f",
+     "hi": "2219b890-825a-4d36-b95c-a966f3e4996c",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8128,
+     "md5": "cdab88342a8fcea00664f454dee8fe77",
+     "vid": "sha256:0d595b8c2b700c93987d70f3c113424f393449010aab9c8621adaf064c9cbd39",
+     "sql_sha256": "aeb93499bf8b57a72c47540f1151f6c8e97313c94f91dd9defe9089288c7c507"
+    },
+    {
+     "lo": "2219b890-825a-4d36-b95c-a966f3e4996c",
+     "hi": "253cbb11-e0a6-4fb4-ab0a-9e08f23e75a9",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8412,
+     "md5": "b20684301276886fa5702dc0279c8b56",
+     "vid": "sha256:2b51a44305f94cb93ad0681273555ca341d033ae8068dca36fd405e98a3887d4",
+     "sql_sha256": "5119cf96fa25688af786d61a174a47c1cf2d92b4cec19711f798525d601deffe"
+    },
+    {
+     "lo": "253cbb11-e0a6-4fb4-ab0a-9e08f23e75a9",
+     "hi": "288bad83-4b65-466d-817b-52ec84e303de",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8244,
+     "md5": "1685f2b989aee69ce3aec67958f31478",
+     "vid": "sha256:82794f7991748593d02d2f290a0602a3d47752460a8fbbeecbeace6508ff2646",
+     "sql_sha256": "dc8e06656f0ba0a45d609a1f136ea8bfcf0e825f18405de6b46250699278536c"
+    },
+    {
+     "lo": "288bad83-4b65-466d-817b-52ec84e303de",
+     "hi": "2aa18f05-b386-4501-baaf-41edc4f3775f",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8656,
+     "md5": "24cf6a3cd98e5e425b91474b9a5ddd73",
+     "vid": "sha256:1cdfab408fd81df1b708f98bdb1d0f1f3e1eb848fa9b95dbec56a80fe96f4348",
+     "sql_sha256": "396f7c6ba99b31e3bc794ac69f1b7d4da20ba51f00500cdab40f509e51210cac"
+    },
+    {
+     "lo": "2aa18f05-b386-4501-baaf-41edc4f3775f",
+     "hi": "2d49347d-3f9f-4828-8e1f-9ccba216034e",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8824,
+     "md5": "97476099296a0c7d7c744c68b0d9bd90",
+     "vid": "sha256:3831c12e9d9abb3efe7b0d9151434e02863d5097ee049efac86d3c703de9c227",
+     "sql_sha256": "114369e609e42c453e268eb96ddeb3199be0b4f1a8a085a65b02f644ff0a94e2"
+    },
+    {
+     "lo": "2d49347d-3f9f-4828-8e1f-9ccba216034e",
+     "hi": "2fe48ba2-12a1-4289-9b58-5400a0669dd1",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8432,
+     "md5": "d00fecd812349608a1a4b7303f123d5e",
+     "vid": "sha256:ffa9fa6d0d364e6149450eb85dab41c3670dfb02b8ea2a155f75c7b3ed620b52",
+     "sql_sha256": "838cbc49082d98919073e6fefd7bf4896f883bed3a43803ed738acd1135df89c"
+    },
+    {
+     "lo": "2fe48ba2-12a1-4289-9b58-5400a0669dd1",
+     "hi": "32a2727b-525a-47ac-b93a-dda587c1be0f",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8720,
+     "md5": "591fbffc0a233f708cbf1de2f79556de",
+     "vid": "sha256:313035892d84ba69f7571bb771597c462e7673fa124e9f8ec4da8939d7e1a5e1",
+     "sql_sha256": "cfc5c6f85d1ef75fb42b77986dc843bf0f5825781b3bc29e96408fe096cd3645"
+    },
+    {
+     "lo": "32a2727b-525a-47ac-b93a-dda587c1be0f",
+     "hi": "36f26343-bf76-4322-b2c2-41d6244a0415",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8300,
+     "md5": "da8218f3b1b16bf083afe6ebef4c273d",
+     "vid": "sha256:c0751da482f8c2b3cf1b68f532597fbac540fe2f734c88927f1c4f656a2e5bb7",
+     "sql_sha256": "a5377dd718d939b132beece3a2cedf2a8be371b7738c1d10e76127dea9931d55"
+    },
+    {
+     "lo": "36f26343-bf76-4322-b2c2-41d6244a0415",
+     "hi": "38b89420-3dcf-4114-84cf-cd4e6765df2b",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8408,
+     "md5": "a690b77ccc4b5e425f35d6db50dc0bb2",
+     "vid": "sha256:fbbfb0785dd45e5753d678e7525717bb9b776f1e56a4b97313bfb9338744a920",
+     "sql_sha256": "6a31132daf2f29cf36fea6dcf9995880b0392808549303edb068e05f5f966eea"
+    },
+    {
+     "lo": "38b89420-3dcf-4114-84cf-cd4e6765df2b",
+     "hi": "3b6633d2-ce69-403e-9366-7a32585585ed",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8524,
+     "md5": "5575221aae87dd501294121c4c3ab9f0",
+     "vid": "sha256:d006fb8d520938fec73f2f4d38bececa0c8c19875c2bc02a18413944c95ef019",
+     "sql_sha256": "c5f17764110c1b76047786270e5a9fe4adaac66ec610ed357cfcdf4461de46d8"
+    },
+    {
+     "lo": "3b6633d2-ce69-403e-9366-7a32585585ed",
+     "hi": "3f370cb9-1cc5-406c-8bbc-50cb674179d1",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8384,
+     "md5": "1398445037a69d0cb1571015a65123ce",
+     "vid": "sha256:9f505faab8b3b6440f320f1120ec6a538e03ac3e337427b07704a5e1f649303b",
+     "sql_sha256": "a8c3f7aa6b2a3e49f16fd1725d7206e194d33faa6cb9a6c1ae26367925707445"
+    },
+    {
+     "lo": "3f370cb9-1cc5-406c-8bbc-50cb674179d1",
+     "hi": "43a90e28-7844-4040-aba7-7272135fbba3",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8460,
+     "md5": "69bdae5f3e1cec92f2be9b2c01fad424",
+     "vid": "sha256:fbd57fec6a787b5c90ebf6dfe8c63c3857d43a2ceca73ecf43ba75151d3a326d",
+     "sql_sha256": "677247cb03d2af63ceb33b92c4270ea82a220a28195c4a281f17f905c3302fec"
+    },
+    {
+     "lo": "43a90e28-7844-4040-aba7-7272135fbba3",
+     "hi": "475db8a9-4336-4660-8114-8a1791729423",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8360,
+     "md5": "72a40ed73539a2dc835946b91ffd50c5",
+     "vid": "sha256:7a1559ae102191df21c6849343ebe45dfce325b1c8be063e352ade6db9d42795",
+     "sql_sha256": "4c52be588325020a0f80a8031d45646a581a0c97cca16c5affcdc974498f8bbd"
+    },
+    {
+     "lo": "475db8a9-4336-4660-8114-8a1791729423",
+     "hi": "4c9abe4a-d2a6-4276-a853-37a7c7275c86",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8784,
+     "md5": "6e3f88b9673098cc04321d166305367e",
+     "vid": "sha256:0b5ac7c68bceab8be6d4678890cc17aaf25f0626841a38980e5781124829060a",
+     "sql_sha256": "5c0cd656a7c58d9f324f175bf9faaf3030845867a6ffa99ce2d93bbf9acfbc71"
+    },
+    {
+     "lo": "4c9abe4a-d2a6-4276-a853-37a7c7275c86",
+     "hi": "50853165-5edf-4998-9c64-09ee07d4c13c",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8532,
+     "md5": "8630a0320b7123b7e921af6d6f5e7983",
+     "vid": "sha256:c0788bb4ca999fc43054c418ceec0f3ef1c56c53648dc68c91f9aca0fde3637c",
+     "sql_sha256": "79a9fbdcf634fa23705fb64b8b80db2165eb07356f7b6cefefe61094e99227ab"
+    },
+    {
+     "lo": "50853165-5edf-4998-9c64-09ee07d4c13c",
+     "hi": "538053cf-8d85-4cea-97b0-f0f4912641a5",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8580,
+     "md5": "e22a98abeeffa548831dd34d7f41bf96",
+     "vid": "sha256:7857404c0ea7d35dea69a3d036aa4663a95dc99499c1fc777de2b6bae0b3d81a",
+     "sql_sha256": "559a58cd7c60b6cd7374d5b2043725478b4ef1457069979b6a1b4fb2d6db5fda"
+    },
+    {
+     "lo": "538053cf-8d85-4cea-97b0-f0f4912641a5",
+     "hi": "570ba9bd-3e96-4577-b1a9-a1cbc4d88a92",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8512,
+     "md5": "98b3df70406f76547bfb825c64425f24",
+     "vid": "sha256:00ef289c5c4638c13460539862e3d43430f904b8c990dd0de1829545ea7d1094",
+     "sql_sha256": "15198c1f33a90974a761a90fe299f0b2930f8a951d982858ea3d2815bb35bb3b"
+    },
+    {
+     "lo": "570ba9bd-3e96-4577-b1a9-a1cbc4d88a92",
+     "hi": "5a293bc6-90d0-402b-8978-404c5920edba",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8256,
+     "md5": "2d4768402934b93a73f902ede30a5c0e",
+     "vid": "sha256:40264f01974c89b7d360b4559ce7e1ca60298ad88b8287d06b86707b008de4b7",
+     "sql_sha256": "c20889e78e836da486ba2f27f0d41a3bfe70c20767ec4458ed617cf49a1f942c"
+    },
+    {
+     "lo": "5a293bc6-90d0-402b-8978-404c5920edba",
+     "hi": "5cf8ff52-26bb-4873-a9a5-99396befbb29",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8200,
+     "md5": "b647ffae481789f6b1349011b5da7e63",
+     "vid": "sha256:b593ad52d964beb5b741f4ff1d0275c252bd603c89c2e7ac2295830b0bcba7ae",
+     "sql_sha256": "1c4a03dca0c7449ac2e69aec468929907007bae35aff36f3011ad6801c00ce56"
+    },
+    {
+     "lo": "5cf8ff52-26bb-4873-a9a5-99396befbb29",
+     "hi": "5f4ba441-f84b-4bb4-917a-94f835c3fb66",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 9912,
+     "md5": "7e02ecea2e118692dda68218e003a607",
+     "vid": "sha256:2ea9a86534cd992b3a368969f3551cdc8335e93088f1f3844b2ab8de9a54571b",
+     "sql_sha256": "f893662c15940d4766c64fe21ee7a8058b14f344ddeefe4e1dcdddc4cf351dd9"
+    },
+    {
+     "lo": "5f4ba441-f84b-4bb4-917a-94f835c3fb66",
+     "hi": "63754c89-1691-4322-be93-14f9d4a18431",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8312,
+     "md5": "cd09ed3db80eaaba86b509d68dcda286",
+     "vid": "sha256:b4d6c5f3777bc22069fa580b4453018e4eaf0394b5a536405c2a29047add810d",
+     "sql_sha256": "aa0f96bd40eb68eaee99b54d9d6e8f88620372e1a8b54b67290046d25bee31bd"
+    },
+    {
+     "lo": "63754c89-1691-4322-be93-14f9d4a18431",
+     "hi": "673ee75b-c0f6-4cad-b14f-9002252f65a4",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8288,
+     "md5": "301eda166a8c593a4873ba6408b88080",
+     "vid": "sha256:d15eda6f33890d4ba4b7b601a1c464c21cc8ee643efaca54b8b3a0217ba7ff4f",
+     "sql_sha256": "19c3e9af03e88199b122f606a50d245af09fed9d72c0e9407da06e231ecced0c"
+    },
+    {
+     "lo": "673ee75b-c0f6-4cad-b14f-9002252f65a4",
+     "hi": "6b705116-3c0f-489e-8282-10e79ba72e3f",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8836,
+     "md5": "afba37f1c7ea63895eb7270e500bdbbb",
+     "vid": "sha256:47eb8819492a2c163dce122e875869138de35e6962c086bdc5f0ba57fdcf7500",
+     "sql_sha256": "8feb2a92846ee1b0ba6bd09e708311fd981e826b13021357b72b7a7b1be9b3ac"
+    },
+    {
+     "lo": "6b705116-3c0f-489e-8282-10e79ba72e3f",
+     "hi": "6dd578f9-a53e-497d-9af9-8eceaf78287c",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8840,
+     "md5": "68ba91bcfed34b13d29e24de032fed44",
+     "vid": "sha256:fd7a2997f96e43039d1693d94aad973a40286b880aac93549102b035d6e5194b",
+     "sql_sha256": "4ac644cb13bf951b708e0593ec6b8189fa2611b19f4bfd229423c2e1eadd9a72"
+    },
+    {
+     "lo": "6dd578f9-a53e-497d-9af9-8eceaf78287c",
+     "hi": "72ee60a6-817e-4694-8da3-8086f75ba059",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8648,
+     "md5": "04b36333b79e2cec9f337b23bc97e4a7",
+     "vid": "sha256:4f46a622563bfd4aea0afb9e932657ed778a190cb5d8e3a7dee998ab6321dbf8",
+     "sql_sha256": "12d2baa0b834f4af2ed19c6a7e95df93b7aba36be76c14bd194f83bdd25a8f6e"
+    },
+    {
+     "lo": "72ee60a6-817e-4694-8da3-8086f75ba059",
+     "hi": "76566aeb-19c7-40ba-b7e3-b939f5951925",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8660,
+     "md5": "d92a1ec9188a01cae2f10f3c1c75f00d",
+     "vid": "sha256:aadbdfc4910f148f3ca45f084d66aadb3851ec9b17242231f446d1a05ad1c91b",
+     "sql_sha256": "129652f249aca02aef4fe434e473104149232983fe392ecbff2b37e51c7ad33c"
+    },
+    {
+     "lo": "76566aeb-19c7-40ba-b7e3-b939f5951925",
+     "hi": "7b5c667f-4833-49e5-94e6-72a4d172a8d3",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8572,
+     "md5": "3aac7435cba56fa5394c3072f5076e7b",
+     "vid": "sha256:0f12ad840606d7e3a08bd77ea12b86c10a19db4f197e1b2bc9a2189aa0136c7e",
+     "sql_sha256": "b45684de1723fd90ecfc4e2f908c525d8f4a9bc85eac8e1ae7bfc2f356ecb6e6"
+    },
+    {
+     "lo": "7b5c667f-4833-49e5-94e6-72a4d172a8d3",
+     "hi": "81f9d171-3ae9-431b-a693-a329cc13c487",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8660,
+     "md5": "2ec9b48fc78e1e5c47448d04f56feff1",
+     "vid": "sha256:7bb7fdb548d3dac1818b4be7ae82f0082e970dc15d2779e9ff418c4d00e9ae7e",
+     "sql_sha256": "df95e5cf627eb516fd97b8b05ac37c377f3f0dc9f5a6e9d9b170ab44224c0aad"
+    },
+    {
+     "lo": "81f9d171-3ae9-431b-a693-a329cc13c487",
+     "hi": "8690f188-52d2-475c-ac52-90962fa99da4",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8736,
+     "md5": "a48ad07781a672d939eeb7158600d027",
+     "vid": "sha256:4b48034ab67b40c6b122f47f5ca502da59429bf5ec72fe51e009c5c896387bb2",
+     "sql_sha256": "7afda4f4cb2865b7bcd3555ce330c5bb31e10636329cd065649c4d3233f83f2f"
+    },
+    {
+     "lo": "8690f188-52d2-475c-ac52-90962fa99da4",
+     "hi": "8a895c74-d7c3-46a4-a13e-7dd0153ff6ad",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8392,
+     "md5": "e0137b45c13db33a8bd428fa79031045",
+     "vid": "sha256:2a40d49914c3a81448d130f057203b5f7fc1cff479dd64fa24e60c880ff79533",
+     "sql_sha256": "f27a295786271b97880f50f824a61d6fc352c986000624d1a5f909efcd3c911d"
+    },
+    {
+     "lo": "8a895c74-d7c3-46a4-a13e-7dd0153ff6ad",
+     "hi": "8f87f95e-5893-4991-b784-e087282d26ef",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8240,
+     "md5": "25ad39e2111400ea9691789962b1aa76",
+     "vid": "sha256:a34e9c9fef105fc4bcfb65fe92457bdbb44ed05c97773c3232cd76c1b0beb105",
+     "sql_sha256": "089bd21238363c6a22bb0944c69ba3854672c154e2da24a127f86745a1a2c24c"
+    },
+    {
+     "lo": "8f87f95e-5893-4991-b784-e087282d26ef",
+     "hi": "9349c494-ea89-454c-8bbf-bf056a0bf2d1",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8516,
+     "md5": "23a26fa51ac5981591793506acb3227f",
+     "vid": "sha256:e792749167da15869ce3ada2e0f361327d550a65a87d2365c2fd38df8ade5bd6",
+     "sql_sha256": "09cc9b22d31f1858adffa6cb6d19365f9e90d5a3e016723f2f1571a2e93570a6"
+    },
+    {
+     "lo": "9349c494-ea89-454c-8bbf-bf056a0bf2d1",
+     "hi": "96a6a832-0e4a-4c9f-9f5c-5668fee242d7",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8520,
+     "md5": "822e22f7e97b10dc80cc04c74cec5c5f",
+     "vid": "sha256:00d9f54a9f0eb1ba28722df2c72879360b160c81c743111e9bc9e2060b1d9c5d",
+     "sql_sha256": "70b30bf930a0076256009777a463ef58de9b1aa1d0e73f6f9166e703172fcf5c"
+    },
+    {
+     "lo": "96a6a832-0e4a-4c9f-9f5c-5668fee242d7",
+     "hi": "a3d741fb-9102-4bc7-873b-b6e59e12a89d",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8436,
+     "md5": "648c72f7ef892194b727d78f0bd364f0",
+     "vid": "sha256:1ae4702e3cb5f5d51db01c5e328daee9f0e88b94d8c9ced672773ccae3f00610",
+     "sql_sha256": "fb782bd4520de2fa1574928d31ef6b42ea81cff241160cd5d9537cf2e4d7c8ad"
+    },
+    {
+     "lo": "a3d741fb-9102-4bc7-873b-b6e59e12a89d",
+     "hi": "a7774ae8-39df-408a-a43c-33ac93921352",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8508,
+     "md5": "339433d6fab3cde3ecef55cfaceb09dc",
+     "vid": "sha256:6183ce690f78cadd304123c9ae2980996bc6e169ac17ebaa36da6fa2e4590cbf",
+     "sql_sha256": "4edcab3c44ae18dbfcd0f82bea0165e1b11f9704732b39924d25986a5f4e1b7a"
+    },
+    {
+     "lo": "a7774ae8-39df-408a-a43c-33ac93921352",
+     "hi": "ab9a86af-9b69-49d0-9569-a34855ae9132",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8608,
+     "md5": "02dc30e2fe4e8b1f89c15f64efc3b333",
+     "vid": "sha256:89c1d9d936260fe70018bca047bc66f05c056271f4c85f6757a8926e4aec5dc0",
+     "sql_sha256": "371af052dbe158e94acebbf18897d3934f605a75f1b9cfd8820e0d22684fd121"
+    },
+    {
+     "lo": "ab9a86af-9b69-49d0-9569-a34855ae9132",
+     "hi": "aed3a132-cb5b-4dd6-9e4e-978c785bff18",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8592,
+     "md5": "d8a317e28edf5c8a1de9d3b0ee01a6bf",
+     "vid": "sha256:70d2f4648f72f3f861fe0249463b8015d3fa8306e26b64044c748cece56e0667",
+     "sql_sha256": "bc796cc6622d9ab3693bfbd320000438a1597e3628c2dda830f9748c021758c6"
+    },
+    {
+     "lo": "aed3a132-cb5b-4dd6-9e4e-978c785bff18",
+     "hi": "b343220c-6a94-498e-9b08-653e53aff15b",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8660,
+     "md5": "b24ec3d72fc81f0117396b558efc15b8",
+     "vid": "sha256:6aff366b04cbfd9436d3a5f0e538e3029af979fbdac74b8ecd802aca847811ad",
+     "sql_sha256": "01977f04c560cf12707392df0f7741c02d9bf3c2cb3d207f2c6091cf5d359920"
+    },
+    {
+     "lo": "b343220c-6a94-498e-9b08-653e53aff15b",
+     "hi": "b8f073a7-88f5-42ff-ab4e-dae18ab23901",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8172,
+     "md5": "fb4529e3e7704f381727dc19b343ceac",
+     "vid": "sha256:eaacde669772793276185d702191b63af0bcc7b3a73858694069e545db6d7c9b",
+     "sql_sha256": "3ef347baa69ef5b0a970012ade3a3a292e62e559f5c4ce329e2a1273010d19f4"
+    },
+    {
+     "lo": "b8f073a7-88f5-42ff-ab4e-dae18ab23901",
+     "hi": "bce16f8f-387a-4f77-90e0-dc7a30bbab71",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8452,
+     "md5": "f6f106d3837b58108254ac66de679a98",
+     "vid": "sha256:932d962166ec623f367d589d73b9b2a56b75f1244981b8ca6e5889b91c690644",
+     "sql_sha256": "ce6732e156488983823cf637665223b797c0ce1e0b601245f837400c4a5ac2fa"
+    },
+    {
+     "lo": "bce16f8f-387a-4f77-90e0-dc7a30bbab71",
+     "hi": "c1b8c45e-62ce-4ba6-941b-62bc6564ddca",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 9088,
+     "md5": "d7f5e0bb966cd792bd41861fdd672e4d",
+     "vid": "sha256:c7a9b7173adb3128a907999038546ee3b4a82d350d773dbc6b719acc8525ed72",
+     "sql_sha256": "698aa4333b8524a38ead346c69973b575053ecd496677a1c0d88aa457ee23659"
+    },
+    {
+     "lo": "c1b8c45e-62ce-4ba6-941b-62bc6564ddca",
+     "hi": "c4c8eac4-b001-48df-b2ff-0e5c2f4da72f",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8492,
+     "md5": "a7194183bb3ca14b470b96c7c31c007d",
+     "vid": "sha256:dbac2a98c8acc8cda0a0a90b115f64dfdf2e579f03594f2882107540c81cf1fd",
+     "sql_sha256": "4fb9b15b5b12ace8e54a2cf171bd59799a0d680efa6a3707fa4b40d2b58a3b48"
+    },
+    {
+     "lo": "c4c8eac4-b001-48df-b2ff-0e5c2f4da72f",
+     "hi": "c94fc1ca-e269-4b49-9ed9-b283196d09e2",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8260,
+     "md5": "ccfc763334df71b7285cd8b6502b4dd2",
+     "vid": "sha256:57c5f136b7d9d31e7be30457f6bd7ad5508f2db3e8b4bdb06456b1bdf0612059",
+     "sql_sha256": "d7f4d8824f28efb87621f4eef873898246bdefb7ac2ea12dd29d38b167feca75"
+    },
+    {
+     "lo": "c94fc1ca-e269-4b49-9ed9-b283196d09e2",
+     "hi": "cf1943e4-1fe8-4f57-9090-4fcb05890839",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8720,
+     "md5": "6a6776249aa7f19d67d960057b19b979",
+     "vid": "sha256:6790a9185aea2995b4ca68a1accb968ba37ab46ede3a26dfdbade735ca8d9e13",
+     "sql_sha256": "1ab785576e24d82ede6ff87d5f705f36133326a045a394f78df2983a6a5365d2"
+    },
+    {
+     "lo": "cf1943e4-1fe8-4f57-9090-4fcb05890839",
+     "hi": "d2f7e29b-e3fd-4346-9b44-b17235162508",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8416,
+     "md5": "0e709581606219f6848d2f079b61e003",
+     "vid": "sha256:dbfceabd07469d96f5f73338f382f2577f6c419bb53cebd633c9e0a187388f10",
+     "sql_sha256": "b268cbf3e89635b40053d9776f23b2f7fe524f5a4d2a5d22f2b99fc42eeb3fa9"
+    },
+    {
+     "lo": "d2f7e29b-e3fd-4346-9b44-b17235162508",
+     "hi": "d792ea60-0c41-43cd-9776-275bed783916",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8468,
+     "md5": "f88956d2b8c452b6a8b64f0356289df3",
+     "vid": "sha256:4273d7070387e33ce8226d50d8605fa73dd7070371add2db9b882f67ec2274d0",
+     "sql_sha256": "ae6fb9c397bda67575439f998f53877482c5ea13cc2cd9c751cb6f718385e356"
+    },
+    {
+     "lo": "d792ea60-0c41-43cd-9776-275bed783916",
+     "hi": "dba81e09-2652-4a62-bcb6-0c1e47bc8d1e",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8636,
+     "md5": "674827a15a718d001665c3874544bb9f",
+     "vid": "sha256:dc07cdd1c581dbd87c4a36bd2f53abe1e1b3d18a8c48fbfe101500801b7ebe31",
+     "sql_sha256": "faf0a1b878cd48322a891025ad70c186b2a9a550603c1398379055fd5068ef1e"
+    },
+    {
+     "lo": "dba81e09-2652-4a62-bcb6-0c1e47bc8d1e",
+     "hi": "dd8836bc-608e-44a1-8d2b-bf9d4ca31dfd",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8280,
+     "md5": "c33e8d7e75fc8622080550d63fa898a1",
+     "vid": "sha256:22cba9fcb553ce418809f27cbeb0a40918e4865aff42b038610b681f09a7bef2",
+     "sql_sha256": "3620590d81121add68582da1ec402c9d468a5e2fd04a0d23f7ea14170aab9ca4"
+    },
+    {
+     "lo": "dd8836bc-608e-44a1-8d2b-bf9d4ca31dfd",
+     "hi": "e3da3dfa-0257-4516-9c1e-cff3071cdfd2",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8332,
+     "md5": "df4c37a341fe9982efb6566416ead5f3",
+     "vid": "sha256:0a42c94ddd3e4da01f9fcf679f8488441b270b2a93a67b2d5332c072854ab126",
+     "sql_sha256": "26e2b53b99bf9d8ca915d1cc86ceb1f171e931002b1c8b43424acf53cfe1e0ca"
+    },
+    {
+     "lo": "e3da3dfa-0257-4516-9c1e-cff3071cdfd2",
+     "hi": "e8a2d7dd-ad4e-4a51-9672-b111047d1738",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 10096,
+     "md5": "29467446f26bebe1c7b2cd229f88b2d8",
+     "vid": "sha256:c84a25bd661c3777e45ef6c3db1bae70590d4ecda5f84db101dfb86804b9a567",
+     "sql_sha256": "3e6cbadcd6fb995a92e4a6a7efbdce907ec8362da127eb1bd504526a037a7065"
+    },
+    {
+     "lo": "e8a2d7dd-ad4e-4a51-9672-b111047d1738",
+     "hi": "eb9accec-41d1-4e7b-a65e-b360afcf6367",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8608,
+     "md5": "0c02bad89d3af503abf113ea965087e1",
+     "vid": "sha256:39141eb78957c23e7c6f0442e57e55a4a82a1e166ea6f4c9c2fadf0f2ebe81a5",
+     "sql_sha256": "d72106ce1a7323c6f9951767219436b153c53e5dc0469679941732fa5ce3edb7"
+    },
+    {
+     "lo": "eb9accec-41d1-4e7b-a65e-b360afcf6367",
+     "hi": "eef53f18-6c45-4044-b829-27d696a0d4ee",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 9068,
+     "md5": "fb98b38f376b6a9de7b78596f76afd57",
+     "vid": "sha256:e4be7d58f4fb8c5a2fdadb3738e78584bd428dcad54a066adae92bd63ada2e30",
+     "sql_sha256": "389b0d3563b4a838533abf0b21f9ef5b98b44d8df3c23d85f8812be0797a1978"
+    },
+    {
+     "lo": "eef53f18-6c45-4044-b829-27d696a0d4ee",
+     "hi": "f18b877b-d3e5-408e-a9ff-7b0c18d1b6f6",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8384,
+     "md5": "a66724ce0ead07daad1dbccf0fb0df3f",
+     "vid": "sha256:6c50994bb2f85b9aa72950ff5ab19a943d206df0c7a4fae8ec3e80202e4f63bb",
+     "sql_sha256": "95a5f3885412f608a2d2133a652ced7fb0385ba7a2370a47b32990199eded388"
+    },
+    {
+     "lo": "f18b877b-d3e5-408e-a9ff-7b0c18d1b6f6",
+     "hi": "f4e78135-a829-4adb-88c3-0ae5943ce010",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 9248,
+     "md5": "c3183b9296ec4f429a67bcdde3073cec",
+     "vid": "sha256:1292b3e02703335288962c30c44ac140fc3121b6c99a54ac19738092fc67a051",
+     "sql_sha256": "49de3da9d3580cf1cdc4e0bc7ff761b24b32bdec0fdb1c4192e841a9d2971d5a"
+    },
+    {
+     "lo": "f4e78135-a829-4adb-88c3-0ae5943ce010",
+     "hi": "f92d2295-bcef-4a19-bf89-036c618f5111",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8776,
+     "md5": "2371ca17002dfe700f667c44c1aea0c9",
+     "vid": "sha256:b5abbe6f2440b5bbe6b892e5b88db49f14283abf2bcf22c4e57fa8169885f427",
+     "sql_sha256": "3fc5ebb1826beb03a0a5cfdf4532365b1e9af878a46224c01b1fac8313737078"
+    },
+    {
+     "lo": "f92d2295-bcef-4a19-bf89-036c618f5111",
+     "hi": "fd355e44-e3f8-402a-a23b-fafe93f05eb1",
+     "n": 10,
+     "nd": 10,
+     "b64_len": 8648,
+     "md5": "d6accc584275b4439c85124b025d3e23",
+     "vid": "sha256:827061df6ba4c0b7f13462a3916c5ff417c61607eb61d7890da91cbf97d098f0",
+     "sql_sha256": "1b905856baf8493790e8b40c281cdf38f27aaf46f78f25f1de584dbf8cb68e18"
+    },
+    {
+     "lo": "fd355e44-e3f8-402a-a23b-fafe93f05eb1",
+     "hi": "ffc2380e-72e6-4116-bacc-db1d1ead5429",
+     "n": 3,
+     "nd": 3,
+     "b64_len": 3904,
+     "md5": "463dde4a59d79c92e96266356fb627bd",
+     "vid": "sha256:1d770e3e4a88e0c87941cbfffbbf1065f7d89c4acbef74fb1aeb6a48102eb2e9",
+     "sql_sha256": "eb39e14c1f3e17a3658606e3308335b15896b37121d5ac1bd11d1a6854b2bab1"
+    }
+   ],
+   "seconds": 84.0
+  },
+  "foursquare_places": {
+   "table": "EDGAR_DB.SOURCE.FOURSQUARE_OS_PLACES_HOT",
+   "file": "foursquare_places.jsonl",
+   "rows_retrieved": 88,
+   "distinct_keys_retrieved": 88,
+   "count_star": 88,
+   "count_distinct_keys": 88,
+   "count_matches": true,
+   "keys_match_distinct": true,
+   "count_k_plus1": 88,
+   "count_k_plus1_matches": true,
+   "releases_in_result": [
+    {
+     "R": "2026-08-11",
+     "N": 88
+    }
+   ],
+   "sha256": "ba4a4057d52f4ba66f1745edcbf12af0055e232db9f7bd278c872060a4196f90",
+   "key_column": "FSQ_PLACE_ID",
+   "columns": [
+    "FSQ_PLACE_ID",
+    "NAME",
+    "ADDRESS",
+    "LOCALITY",
+    "REGION",
+    "POSTCODE",
+    "COUNTRY",
+    "LATITUDE",
+    "LONGITUDE",
+    "GEOM_WKT",
+    "BBOX_XMIN",
+    "BBOX_YMIN",
+    "BBOX_XMAX",
+    "BBOX_YMAX",
+    "H3_R4",
+    "H3_R7",
+    "H3_R8",
+    "RELEASE_DT",
+    "SNAPSHOT_MODE",
+    "DATE_CREATED",
+    "DATE_REFRESHED",
+    "DATE_CLOSED",
+    "FSQ_CATEGORY_IDS_JSON",
+    "FSQ_CATEGORY_LABELS_JSON",
+    "LICENSE_TERMS",
+    "ATTRIBUTION_TEXT",
+    "SOURCE_FILENAME",
+    "LOADED_AT",
+    "DIST_M_A3",
+    "DIST_M_A4",
+    "DIST_M_A5",
+    "DIST_M_A6",
+    "DIST_M_A7",
+    "DIST_M_A8",
+    "DIST_M_A9"
+   ],
+   "unit_notes": "AREA_M2_DERIVED_GEODESIC = ST_AREA(geometry) in m^2, derived (not a source attribute); DIST_M_<anchor> = geodesic metres from geometry to the anchor point (0 if the anchor is inside the footprint), derived; other numeric fields keep source units (FEMA SQMETERS m^2, SQFEET ft^2, HEIGHT as landed; MS HEIGHT/CONFIDENCE as landed; Overture height inside ROW_PAYLOAD_JSON)",
+   "transport_ranges": 6,
+   "range_size_target": 16,
+   "query_text": {
+    "count": "SELECT COUNT(*) N, COUNT(DISTINCT FSQ_PLACE_ID) ND FROM EDGAR_DB.SOURCE.FOURSQUARE_OS_PLACES_HOT WHERE REGION = 'AZ' AND RELEASE_DT = '2026-08-11' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8748e96e8ffffff',2))))) AND BBOX_XMAX >= -112.38340643230902 AND BBOX_XMIN <= -112.3465566776909 AND BBOX_YMAX >= 33.3926471030252 AND BBOX_YMIN <= 33.43059815597489 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)'), 1600.0))",
+    "count_k_plus1": "SELECT COUNT(*) N, COUNT(DISTINCT FSQ_PLACE_ID) ND FROM EDGAR_DB.SOURCE.FOURSQUARE_OS_PLACES_HOT WHERE REGION = 'AZ' AND RELEASE_DT = '2026-08-11' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8748e96e8ffffff',3))))) AND BBOX_XMAX >= -112.38340643230902 AND BBOX_XMIN <= -112.3465566776909 AND BBOX_YMAX >= 33.3926471030252 AND BBOX_YMIN <= 33.43059815597489 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)'), 1600.0))",
+    "releases": "SELECT RELEASE_DT R, COUNT(*) N FROM EDGAR_DB.SOURCE.FOURSQUARE_OS_PLACES_HOT WHERE REGION = 'AZ' AND RELEASE_DT = '2026-08-11' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8748e96e8ffffff',2))))) AND BBOX_XMAX >= -112.38340643230902 AND BBOX_XMIN <= -112.3465566776909 AND BBOX_YMAX >= 33.3926471030252 AND BBOX_YMIN <= 33.43059815597489 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)'), 1600.0)) GROUP BY 1 ORDER BY 1",
+    "boundaries": "SELECT K FROM (SELECT FSQ_PLACE_ID K, ROW_NUMBER() OVER (ORDER BY FSQ_PLACE_ID) RN FROM EDGAR_DB.SOURCE.FOURSQUARE_OS_PLACES_HOT WHERE REGION = 'AZ' AND RELEASE_DT = '2026-08-11' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8748e96e8ffffff',2))))) AND BBOX_XMAX >= -112.38340643230902 AND BBOX_XMIN <= -112.3465566776909 AND BBOX_YMAX >= 33.3926471030252 AND BBOX_YMIN <= 33.43059815597489 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)'), 1600.0))) WHERE (MOD(RN,16)=0 OR RN=88) AND RN > 0 AND RN <= 1600 ORDER BY K [+0 more windows, RN ranges of 1600]",
+    "range_query_template": "see freeze2.py fetch_range; where-clause: REGION = 'AZ' AND RELEASE_DT = '2026-08-11' AND H3_R7 IN (SELECT C FROM (SELECT VALUE::string C FROM TABLE(FLATTEN(H3_GRID_DISK('8748e96e8ffffff',2))))) AND BBOX_XMAX >= -112.38340643230902 AND BBOX_XMIN <= -112.3465566776909 AND BBOX_YMAX >= 33.3926471030252 AND BBOX_YMIN <= 33.43059815597489 AND (ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)'), 1600.0) OR ST_DWITHIN(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)'), 1600.0)); object columns: OBJECT_CONSTRUCT_KEEP_NULL('FSQ_PLACE_ID', FSQ_PLACE_ID, 'NAME', NAME, 'ADDRESS', ADDRESS, 'LOCALITY', LOCALITY, 'REGION', REGION, 'POSTCODE', POSTCODE, 'COUNTRY', COUNTRY, 'LATITUDE', LATITUDE, 'LONGITUDE', LONGITUDE, 'GEOM_WKT', ST_ASWKT(GEOM_GEOG), 'BBOX_XMIN', BBOX_XMIN, 'BBOX_YMIN', BBOX_YMIN, 'BBOX_XMAX', BBOX_XMAX, 'BBOX_YMAX', BBOX_YMAX, 'H3_R4', H3_R4, 'H3_R7', H3_R7, 'H3_R8', H3_R8, 'RELEASE_DT', RELEASE_DT, 'SNAPSHOT_MODE', SNAPSHOT_MODE, 'DATE_CREATED', DATE_CREATED, 'DATE_REFRESHED', DATE_REFRESHED, 'DATE_CLOSED', DATE_CLOSED, 'FSQ_CATEGORY_IDS_JSON', FSQ_CATEGORY_IDS_JSON, 'FSQ_CATEGORY_LABELS_JSON', FSQ_CATEGORY_LABELS_JSON, 'LICENSE_TERMS', LICENSE_TERMS, 'ATTRIBUTION_TEXT', ATTRIBUTION_TEXT, 'SOURCE_FILENAME', SOURCE_FILENAME, 'LOADED_AT', LOADED_AT, 'DIST_M_A3', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36511168199996 33.41532686600004)')),2), 'DIST_M_A4', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486244199995 33.41410027200004)')),2), 'DIST_M_A5', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485142799995 33.41267483900003)')),2), 'DIST_M_A6', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486576399994 33.411582890000034)')),2), 'DIST_M_A7', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36485908599997 33.41028268300005)')),2), 'DIST_M_A8', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36492039599995 33.408927359000074)')),2), 'DIST_M_A9', ROUND(ST_DISTANCE(GEOM_GEOG, TO_GEOGRAPHY('POINT(-112.36486401099995 33.407918393000045)')),2))"
+   },
+   "receipts": {
+    "count": [
+     "sha256:9f94f2af613bd0fdaed96cffbeb8292b4deabe11c05c34bdbf5e795cc3410807"
+    ],
+    "count_k_plus1": [
+     "sha256:bfc7bde29136782c0949eb59a214474c79ae6afcb85abe15d5a4ea9fe65ab24f"
+    ],
+    "releases": [
+     "sha256:fa12fd611a89d4f12f7aef0e16b4d311ea9104d0ecad39aad37dec0df73e6580"
+    ],
+    "boundaries": [
+     "sha256:cb04b3dd98af7408d368c8d20eb517e98a57d2bb32e3526dd788531d3102061a"
+    ],
+    "ranges": [
+     "sha256:986feca1f16f2bfb06cf8d1281e74d92363c67a75a9d0d2d3b69d1616b50d5da",
+     "sha256:8955a537da3070ecd748b32b8c5a42548af12f65229bc049770f5c9d5cf0590f",
+     "sha256:f4ac584164c34f7a602f1666de2fbebdf2dbc9a5e3cc7d59cd50a5e00fce7a63",
+     "sha256:177d6e05c321f074e255ae5d9f8d1e4b1227b6b074e80b72d2e90c259e820eb5",
+     "sha256:55778b560d1d462bff49bc72f275a0381cc8c98df5bfe304896e119500ee68c6",
+     "sha256:acd9d57dcbb8d2f5dff7dd4653b9067368751e8cb6603078505958a0c580a0e4"
+    ]
+   },
+   "ranges": [
+    {
+     "lo": null,
+     "hi": "4cd17e0006b54688edf0e094",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 4632,
+     "md5": "8f5b45aed8bf00cd7c7ee5466bfe4b74",
+     "vid": "sha256:986feca1f16f2bfb06cf8d1281e74d92363c67a75a9d0d2d3b69d1616b50d5da",
+     "sql_sha256": "76186c5f92abdeb5f50a81f49156d27a723d10edf8904f185afb212d687f7710"
+    },
+    {
+     "lo": "4cd17e0006b54688edf0e094",
+     "hi": "4e9ee6682c5b47f3f541084c",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 4752,
+     "md5": "4883cffcd82e6872072165521ed34f2b",
+     "vid": "sha256:8955a537da3070ecd748b32b8c5a42548af12f65229bc049770f5c9d5cf0590f",
+     "sql_sha256": "41cc7631192f631707a30104684c4f02ac3066160b36a2fb1b1156f81418e81a"
+    },
+    {
+     "lo": "4e9ee6682c5b47f3f541084c",
+     "hi": "550b2fb7498ed060304c1466",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 4836,
+     "md5": "3add059ce90568384ddbac02a6b56fa9",
+     "vid": "sha256:f4ac584164c34f7a602f1666de2fbebdf2dbc9a5e3cc7d59cd50a5e00fce7a63",
+     "sql_sha256": "9cb6f90b9ff405b0a08cf9d5f73f8abf1c7d6e7717896c90b9854588bbe75309"
+    },
+    {
+     "lo": "550b2fb7498ed060304c1466",
+     "hi": "6589a73c49b346f16a6f104b",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 5012,
+     "md5": "1c6bfc54bac445c619d4aa6398837760",
+     "vid": "sha256:177d6e05c321f074e255ae5d9f8d1e4b1227b6b074e80b72d2e90c259e820eb5",
+     "sql_sha256": "6f21be822338fff2d9d43a530de19f2c7a226d66697da4faedab833d6c9e1e0d"
+    },
+    {
+     "lo": "6589a73c49b346f16a6f104b",
+     "hi": "8fafae13e6fd49edf79e6b41",
+     "n": 16,
+     "nd": 16,
+     "b64_len": 4604,
+     "md5": "4cf4a85c02743a96dc264f8fed2d86bb",
+     "vid": "sha256:55778b560d1d462bff49bc72f275a0381cc8c98df5bfe304896e119500ee68c6",
+     "sql_sha256": "81395f2c285cccad463b7b6204c121ba5102aa0dba1eaba278ffce0d3fec3759"
+    },
+    {
+     "lo": "8fafae13e6fd49edf79e6b41",
+     "hi": "e50bda56a0094cdceb205bee",
+     "n": 8,
+     "nd": 8,
+     "b64_len": 3044,
+     "md5": "41e4b9ac23aa8e5e39db79754f2cf3cb",
+     "vid": "sha256:acd9d57dcbb8d2f5dff7dd4653b9067368751e8cb6603078505958a0c580a0e4",
+     "sql_sha256": "a1294e55208e5dab3d70add2f2cb28bd15bc5f92b8e875c3e0626750ce6473fb"
+    }
+   ],
+   "seconds": 11.7
+  }
+ },
+ "gaps": [
+  "Parcels unavailable (Maricopa County AZ; no parcel layer under MCP contract).",
+  "Geocoder returned no_match: no geocoder anchor. Coordinate anchors are seven Overture address points (unit-level, PHX10..PHX16) sharing the street+number; they span ~0.9 km N-S and are competing anchors, none is verified as the site point.",
+  "FEMA USA Structures AZ vintage landed = release_dt 2023-05-02, NOT the 2023-10-03 stated in case_manifest permissible_sources (discrepancy against the pre-registered vintage).",
+  "Overture address units PHX1..PHX9 (if they exist under the same number) were not returned by the lookup; the list of address anchors may be incomplete.",
+  "Foursquare has no place at 14250 W Broadway Rd; two street-neighbor places recorded but not used."
+ ],
+ "parcels": "unavailable: no parcel layer landed under the MCP contract for this county",
+ "transport": "run_query row cells are clipped (~2000 chars) and result pages are byte-budgeted; fetch_result paging (RESULT_SCAN LIMIT/OFFSET, no ORDER BY) was observed to return duplicate rows, so rows were fetched by key range as ZLIB+BASE64 of TO_JSON(ARRAY_AGG(OBJECT_CONSTRUCT_KEEP_NULL(...))) in 1500-char pieces, verified by MD5 of the base64 string and row counts per range; geometry is ST_ASWKT of the stored GEOGRAPHY (Snowflake stores ~1e-9 degree precision)",
+ "anchor_lookups": [
+  {
+   "what": "geo.resolve_address_to_tract no_match",
+   "vid": "sha256:d7a5e497c0c324764c1264bbe668895f22e7f62285e62e39ba7b16e006664a14"
+  },
+  {
+   "what": "Foursquare (AZ, postcode 85338, address LIKE %BROADWAY%): only 2 places, 14929 W Broadway Rd 'A Tumbling-T Ranches' (33.402765,-112.389763) and 17300 W Broadway Rd 'Saint-Gobain' (33.4138015,-112.4312312); no place at 14250. Recorded as street-neighbor references, NOT used as anchors or buffered",
+   "vid": "sha256:74ece11ca11baf607152e8db8171360dd045362bcd298241fa5ba283367f7c73"
+  },
+  {
+   "what": "Foursquare address LIKE '14250 W%' AZ -> only Surprise/Litchfield Park hits, unrelated",
+   "vid": "sha256:0991b161074e81fb0561da2ac6e80fed429aa35e933eed295a82895a28a395b6"
+  },
+  {
+   "what": "Overture addresses (US-AZ, r7 disk k=3 from a Broadway Rd cell) payload LIKE %14250%: 13 rows, 7 on West Broadway Road number 14250 units PHX10..PHX16 (used as anchors A3..A9); PHX1-PHX9 not returned by that query",
+   "vid": "sha256:9c59072baabc0ff0c5fd6b58e6b2c702dc67416a3ef28464425f07b9b232e621"
+  }
+ ],
+ "vintages": {
+  "overture_buildings": [
+   {
+    "R": "2026-07-22.0",
+    "N": 635
+   }
+  ],
+  "microsoft_globalml": [
+   {
+    "R": "2026-07-24",
+    "N": 613
+   }
+  ],
+  "fema_usa_structures": [
+   {
+    "R": "2023-05-02",
+    "N": 643
+   }
+  ],
+  "foursquare_places": [
+   {
+    "R": "2026-08-11",
+    "N": 88
+   }
+  ]
+ },
+ "completeness": {
+  "overture_buildings": "COUNT(*) under identical bounds equals rows retrieved; k+1 disk count equal; no row cap hit; distinct keys == COUNT(DISTINCT key)",
+  "microsoft_globalml": "COUNT(*) under identical bounds equals rows retrieved; k+1 disk count equal; no row cap hit; distinct keys == COUNT(DISTINCT key)",
+  "fema_usa_structures": "COUNT(*) under identical bounds equals rows retrieved; k+1 disk count equal; no row cap hit; distinct keys == COUNT(DISTINCT key)",
+  "foursquare_places": "COUNT(*) under identical bounds equals rows retrieved; k+1 disk count equal; no row cap hit; distinct keys == COUNT(DISTINCT key)"
+ },
+ "sealed_evaluation_material_accessed": false,
+ "evaluation_points_used_for_retrieval": false,
+ "raw_row_location": "outcomes/datacenter-canon-geo-test/snapshots/H1-P/ (outside the canon repo)",
+ "sha256_of_jsonl": {
+  "overture_buildings.jsonl": "d57aff373acf5995f28f3b6ffb4d1e6afb37bfd72ddd39754577ff3f8739df0b",
+  "microsoft_globalml.jsonl": "0120d378824f096c0e9b5b7df22ba581bdd4d4a72c7cd40414a1b4992c12637e",
+  "fema_usa_structures.jsonl": "712a0a2e72492dd8bdd978c2292c1a327f3e0860479cef7ccc30928ef46333f4",
+  "foursquare_places.jsonl": "ba4a4057d52f4ba66f1745edcbf12af0055e232db9f7bd278c872060a4196f90"
+ }
+}
