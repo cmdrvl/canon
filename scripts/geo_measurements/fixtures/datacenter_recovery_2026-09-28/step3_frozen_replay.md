@@ -15,11 +15,12 @@ Diagnostic only: no accuracy is measured and no patch is proposed.
    superset signature (rank 1 = full universe, sole model at that cost). The solve bytes are not identical to the historical hash (`6978a1f66f2a296f...` vs `a8584ef52d222118...`); I have not diagnosed why
    (candidate record fields and set sizes may differ slightly from the hand-transcribed run-02 values, e.g. cross-layer 9 here). The Step 0 byte-identical claim stands for the retained run-02 input, not for this rebuild.
 2. **Without the size filter the kernel cannot rank anything.** At 27 and 110 candidates the solve completes (status `ambiguous`) but returns no ranked models: the residual set is 1.3e8 and then saturated.
-   The kernel factorizes into one independent variable per building (27 of 27 and 110 of 110 factors are single-building, `exhaustive_enumeration`, no constraints), and each factor reports exactly one positive
-   assignment out of two. That is consistent with every building's optimum being "include", i.e. the superset behavior scales with the universe. I inferred the meaning of `positive_assignments` from the field names
-   and the Step 3 ablation; I have not read its definition in the source.
-3. **This is a translation and formulation finding, not a reach finding** for this snapshot: widening the universe (fixing the size-filter reach problem) does not help while the objective cannot subtract.
-   Restoring small objects therefore makes the residual space larger without adding a way to choose among it.
+   The kernel factorizes into one independent variable per building (27 of 27 and 110 of 110 factors are single-building, `exhaustive_enumeration`, no constraints).
+   **Correction (2026-09-29):** an earlier version of this note read each factor's `positive_assignments == 1` (of 2 feasible) as evidence that "include" is each building's only optimum. That was wrong. In
+   `src/geo/composition.rs`, `positive_count` increments for any assignment with a non-empty selection, so a single-building component always reports 1 of 2 whatever the preferences are. The field says nothing about soft cost.
+   The larger runs show only that the residual space cannot be materialized or ranked at these sizes. That the full universe is the optimum at 27 and 110 candidates follows from the objective (non-negative
+   absence costs), not from this output; it is measured empirically only at 10 candidates, where the ranked list is materialized.
+3. **Consequence, restated:** restoring small objects makes the residual space larger, and the ranking is unavailable without a per-component cost readout. The superset property itself is the analytic result plus the 10-candidate replay.
 4. Consistent with the blind reviewer's trace (`step3_pryor_blind_trace.md`): the snapshot supports retained ambiguity, and the 1,000 m2 filter changes which candidates exist.
 
 ## Limits
