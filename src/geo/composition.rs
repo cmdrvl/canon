@@ -1075,13 +1075,73 @@ pub struct GeoIntegerMeasure {
     pub value_origin: GeoIntegerValueOrigin,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// A per-member soft preference. It only orders the hard residual; it never
+/// removes a feasible model.
+///
+/// Direction is explicit and exclusive. `cost_if_absent` prefers the member
+/// present; `cost_if_present` prefers it absent. A preference may carry only
+/// one positive cost. A preference that carries only `cost_if_present` is
+/// serialized without a `cost_if_absent` field, so a build that predates the
+/// field rejects the request instead of silently reading it as neutral.
+/// Every preference without `cost_if_present` serializes exactly as before.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "GeoSoftPreferenceWire")]
 pub struct GeoSoftPreference {
     pub id: String,
     pub member: GeoEntityRef,
     /// Exact integer cost added when `member` is absent. This cost affects only
     /// presentation order after the hard residual has been frozen.
     pub cost_if_absent: u64,
+    /// Exact integer cost added when `member` is present. Same rule: order only.
+    /// Must come from evidence that the member belongs to a competing
+    /// interpretation, never from missing support.
+    pub cost_if_present: u64,
+}
+
+#[derive(Deserialize)]
+struct GeoSoftPreferenceWire {
+    id: String,
+    member: GeoEntityRef,
+    cost_if_absent: Option<u64>,
+    cost_if_present: Option<u64>,
+}
+
+impl TryFrom<GeoSoftPreferenceWire> for GeoSoftPreference {
+    type Error = String;
+
+    fn try_from(wire: GeoSoftPreferenceWire) -> Result<Self, Self::Error> {
+        match (wire.cost_if_absent, wire.cost_if_present) {
+            (None, None) => Err("missing field `cost_if_absent`".to_string()),
+            (Some(absent), Some(present)) if absent > 0 && present > 0 => Err(
+                "a soft preference may carry only one of cost_if_absent and cost_if_present"
+                    .to_string(),
+            ),
+            (absent, present) => Ok(Self {
+                id: wire.id,
+                member: wire.member,
+                cost_if_absent: absent.unwrap_or(0),
+                cost_if_present: present.unwrap_or(0),
+            }),
+        }
+    }
+}
+
+impl Serialize for GeoSoftPreference {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let pure_opposition = self.cost_if_absent == 0 && self.cost_if_present > 0;
+        let fields = 2 + usize::from(!pure_opposition) + usize::from(self.cost_if_present > 0);
+        let mut state = serializer.serialize_struct("GeoSoftPreference", fields)?;
+        state.serialize_field("id", &self.id)?;
+        state.serialize_field("member", &self.member)?;
+        if !pure_opposition {
+            state.serialize_field("cost_if_absent", &self.cost_if_absent)?;
+        }
+        if self.cost_if_present > 0 {
+            state.serialize_field("cost_if_present", &self.cost_if_present)?;
+        }
+        state.end()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -3597,11 +3657,14 @@ fn rank_residual(
     for model in models {
         let mut cost = 0_u128;
         for preference in preferences {
-            if !model.contains(&preference.member) {
-                cost = cost
-                    .checked_add(u128::from(preference.cost_if_absent))
-                    .ok_or_else(|| GeoCompositionError::overflow("soft preference cost"))?;
-            }
+            let applied = if model.contains(&preference.member) {
+                preference.cost_if_present
+            } else {
+                preference.cost_if_absent
+            };
+            cost = cost
+                .checked_add(u128::from(applied))
+                .ok_or_else(|| GeoCompositionError::overflow("soft preference cost"))?;
         }
         ranked.push((cost, model.clone()));
     }

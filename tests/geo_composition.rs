@@ -1202,6 +1202,7 @@ fn bounded_dfs_retains_wide_models_for_soft_ranking_without_forcing_them() {
             id: "supplied-support".to_string(),
             member: GeoEntityRef::new(GeoEntityLevel::Parcel, "p128"),
             cost_if_absent: 4,
+            cost_if_present: 0,
         }],
         max_assignments: 100_000,
         max_materialized_models: 129,
@@ -1500,11 +1501,13 @@ fn soft_costs_wider_than_u64_never_erase_an_exact_hard_result() {
                 id: "prefer-b-1".to_string(),
                 member: GeoEntityRef::new(GeoEntityLevel::Parcel, "b"),
                 cost_if_absent: u64::MAX,
+                cost_if_present: 0,
             },
             GeoSoftPreference {
                 id: "prefer-b-2".to_string(),
                 member: GeoEntityRef::new(GeoEntityLevel::Parcel, "b"),
                 cost_if_absent: u64::MAX,
+                cost_if_present: 0,
             },
         ],
         max_assignments: 4,
@@ -2042,4 +2045,153 @@ fn width_129_pruned_search_can_still_deliver_a_positive_exact_result() {
     assert!(!artifact.summary.residual_model_count_saturated);
     assert_eq!(artifact.hard_forced.parcels, ["p128"]);
     assert!(artifact.backbone_complete);
+}
+
+fn three_parcel_request(preferences: Vec<GeoSoftPreference>) -> GeoCompositionRequest {
+    GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
+        universe: GeoCompositionUniverse {
+            parcels: ["a", "b", "c"].iter().map(|id| id.to_string()).collect(),
+            buildings: Vec::new(),
+        },
+        hard_constraints: Vec::new(),
+        soft_preferences: preferences,
+        max_assignments: 64,
+        max_materialized_models: 64,
+    }
+}
+
+fn parcel_preference(
+    id: &str,
+    parcel: &str,
+    cost_if_absent: u64,
+    cost_if_present: u64,
+) -> GeoSoftPreference {
+    GeoSoftPreference {
+        id: id.to_string(),
+        member: GeoEntityRef::new(GeoEntityLevel::Parcel, parcel),
+        cost_if_absent,
+        cost_if_present,
+    }
+}
+
+#[test]
+fn absence_preference_only_keeps_the_full_universe_as_the_unique_optimum() {
+    // Control A: without opposing evidence the objective is unchanged, including
+    // its documented superset behavior.
+    let request = three_parcel_request(vec![
+        parcel_preference("want-a", "a", 3, 0),
+        parcel_preference("want-b", "b", 2, 0),
+        parcel_preference("want-c", "c", 1, 0),
+    ]);
+    let artifact = solve_composition(&request).unwrap();
+    assert_eq!(artifact.summary.residual_model_count, 7);
+    assert_eq!(artifact.soft_ranked[0].cost, 0);
+    assert_eq!(artifact.soft_ranked[0].model.parcels, ["a", "b", "c"]);
+    assert_eq!(artifact.soft_ranked[1].cost, 1);
+}
+
+#[test]
+fn opposition_ranks_a_member_lower_without_removing_any_feasible_model() {
+    // Controls B and D: opposition lowers models containing the member, the
+    // model that contains it stays in the residual, and a candidate with no
+    // preference (control E) is neutral.
+    let request = three_parcel_request(vec![
+        parcel_preference("want-a", "a", 3, 0),
+        parcel_preference("oppose-b", "b", 0, 2),
+    ]);
+    let artifact = solve_composition(&request).unwrap();
+    assert_eq!(
+        artifact.summary.residual_model_count, 7,
+        "opposition must never delete a feasible model"
+    );
+    assert_eq!(artifact.soft_ranked.len(), 7);
+    let cost_of = |parcels: &[&str]| {
+        artifact
+            .soft_ranked
+            .iter()
+            .find(|ranked| ranked.model.parcels == parcels)
+            .unwrap_or_else(|| panic!("model {parcels:?} must remain in the residual"))
+            .cost
+    };
+    assert_eq!(cost_of(&["a"]), 0);
+    assert_eq!(
+        cost_of(&["a", "c"]),
+        0,
+        "c has no evidence, so it is neutral"
+    );
+    assert_eq!(cost_of(&["a", "b"]), 2);
+    assert_eq!(
+        cost_of(&["b"]),
+        5,
+        "the opposed member stays reachable at a cost"
+    );
+    assert_eq!(artifact.soft_ranked[0].cost, 0);
+    assert!(
+        artifact.soft_ranked[..2]
+            .iter()
+            .all(|ranked| !ranked.model.parcels.contains(&"b".to_string()))
+    );
+}
+
+#[test]
+fn opposing_the_true_member_lowers_it_but_never_hides_it() {
+    // Control D: contradictory soft evidence against the correct candidate.
+    let request = three_parcel_request(vec![parcel_preference("oppose-truth", "a", 0, 4)]);
+    let artifact = solve_composition(&request).unwrap();
+    assert_eq!(artifact.summary.residual_model_count, 7);
+    assert!(
+        artifact
+            .soft_ranked
+            .iter()
+            .any(|ranked| ranked.model.parcels.contains(&"a".to_string()) && ranked.cost == 4)
+    );
+}
+
+#[test]
+fn soft_preference_wire_form_is_backward_compatible_and_fail_closed() {
+    // Legacy preferences serialize exactly as before, including a zero cost.
+    let legacy = parcel_preference("legacy", "a", 5, 0);
+    assert_eq!(
+        serde_json::to_string(&legacy).unwrap(),
+        r#"{"id":"legacy","member":{"level":"parcel","id":"a"},"cost_if_absent":5}"#
+    );
+    let zero = parcel_preference("zero", "a", 0, 0);
+    assert_eq!(
+        serde_json::to_string(&zero).unwrap(),
+        r#"{"id":"zero","member":{"level":"parcel","id":"a"},"cost_if_absent":0}"#
+    );
+    let legacy_back: GeoSoftPreference = serde_json::from_str(
+        r#"{"id":"legacy","member":{"level":"parcel","id":"a"},"cost_if_absent":5}"#,
+    )
+    .unwrap();
+    assert_eq!(legacy_back, legacy);
+
+    // Opposition omits cost_if_absent, so a build that predates the field
+    // rejects the request rather than reading it as a neutral preference.
+    let oppose = parcel_preference("oppose", "a", 0, 3);
+    let wire = serde_json::to_string(&oppose).unwrap();
+    assert_eq!(
+        wire,
+        r#"{"id":"oppose","member":{"level":"parcel","id":"a"},"cost_if_present":3}"#
+    );
+    assert_eq!(
+        serde_json::from_str::<GeoSoftPreference>(&wire).unwrap(),
+        oppose
+    );
+
+    // A preference must carry a direction, and only one.
+    assert!(
+        serde_json::from_str::<GeoSoftPreference>(
+            r#"{"id":"x","member":{"level":"parcel","id":"a"}}"#
+        )
+        .is_err()
+    );
+    assert!(
+        serde_json::from_str::<GeoSoftPreference>(
+            r#"{"id":"x","member":{"level":"parcel","id":"a"},"cost_if_absent":1,"cost_if_present":1}"#
+        )
+        .is_err()
+    );
 }

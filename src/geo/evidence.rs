@@ -226,6 +226,14 @@ pub enum GeoRhoObservationKind {
         member: GeoEntityRef,
         cost_if_absent: u64,
     },
+    /// Presentation-only opposition. The source affirmatively records that
+    /// `member` belongs to a competing interpretation. It only orders the
+    /// residual: it never becomes a hard constraint and never removes a feasible
+    /// model. Missing support must not be translated into this kind.
+    PreferAbsentMember {
+        member: GeoEntityRef,
+        cost_if_present: u64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -977,6 +985,23 @@ fn admit_observation(
             id: generated_id.to_string(),
             member: member.clone(),
             cost_if_absent: *cost_if_absent,
+            cost_if_present: 0,
+        });
+        return (
+            GeoEvidenceDisposition::SoftPreference,
+            vec![generated_id.to_string()],
+        );
+    }
+    if let GeoRhoObservationKind::PreferAbsentMember {
+        member,
+        cost_if_present,
+    } = observation
+    {
+        soft_preferences.push(GeoSoftPreference {
+            id: generated_id.to_string(),
+            member: member.clone(),
+            cost_if_absent: 0,
+            cost_if_present: *cost_if_present,
         });
         return (
             GeoEvidenceDisposition::SoftPreference,
@@ -1143,7 +1168,8 @@ fn push_hard_constraint(
             min: *min,
             max: *max,
         },
-        GeoRhoObservationKind::PreferMember { .. } => {
+        GeoRhoObservationKind::PreferMember { .. }
+        | GeoRhoObservationKind::PreferAbsentMember { .. } => {
             return;
         }
     };
@@ -1168,6 +1194,19 @@ fn push_soft_preferences_from_observation(
                 id: generated_id.to_string(),
                 member: member.clone(),
                 cost_if_absent: *cost_if_absent,
+                cost_if_present: 0,
+            });
+            Some(vec![generated_id.to_string()])
+        }
+        GeoRhoObservationKind::PreferAbsentMember {
+            member,
+            cost_if_present,
+        } => {
+            soft_preferences.push(GeoSoftPreference {
+                id: generated_id.to_string(),
+                member: member.clone(),
+                cost_if_absent: 0,
+                cost_if_present: *cost_if_present,
             });
             Some(vec![generated_id.to_string()])
         }
@@ -1189,6 +1228,7 @@ fn push_soft_preferences_from_observation(
                     id: id.clone(),
                     member: GeoEntityRef::new(*level, member_id),
                     cost_if_absent,
+                    cost_if_present: 0,
                 });
                 generated_ids.push(id);
             }
@@ -1289,7 +1329,11 @@ fn base_hard_admission_allowed(
     contract: &GeoRhoContract,
     observation: &GeoRhoObservationKind,
 ) -> bool {
-    if matches!(observation, GeoRhoObservationKind::PreferMember { .. }) {
+    if matches!(
+        observation,
+        GeoRhoObservationKind::PreferMember { .. }
+            | GeoRhoObservationKind::PreferAbsentMember { .. }
+    ) {
         return false;
     }
     is_logical_relaxation(contract)
@@ -1330,7 +1374,11 @@ fn soft_admission_expected(
     ) {
         return None;
     }
-    if matches!(observation, GeoRhoObservationKind::PreferMember { .. }) {
+    if matches!(
+        observation,
+        GeoRhoObservationKind::PreferMember { .. }
+            | GeoRhoObservationKind::PreferAbsentMember { .. }
+    ) {
         return Some((vec![generated_id.to_string()], None));
     }
     match empirical_admission_policy(contract) {
@@ -1368,7 +1416,8 @@ fn soft_generated_ids(
     generated_id: &str,
 ) -> Option<Vec<String>> {
     match observation {
-        GeoRhoObservationKind::PreferMember { .. } => Some(vec![generated_id.to_string()]),
+        GeoRhoObservationKind::PreferMember { .. }
+        | GeoRhoObservationKind::PreferAbsentMember { .. } => Some(vec![generated_id.to_string()]),
         GeoRhoObservationKind::IntegerSumBand {
             values, min, max, ..
         } if *min == 0 && *max == 0 => {
@@ -1400,7 +1449,11 @@ fn expected_diagnostic_admission_reason(
     if let Some(reason) = diagnostic_only_policy_reason(contract) {
         return Some(reason);
     }
-    if matches!(observation, GeoRhoObservationKind::PreferMember { .. }) {
+    if matches!(
+        observation,
+        GeoRhoObservationKind::PreferMember { .. }
+            | GeoRhoObservationKind::PreferAbsentMember { .. }
+    ) {
         return None;
     }
     match empirical_admission_policy(contract) {
@@ -1554,7 +1607,8 @@ fn validate_observation_kind(
                 }
             }
         }
-        GeoRhoObservationKind::PreferMember { member, .. } => {
+        GeoRhoObservationKind::PreferMember { member, .. }
+        | GeoRhoObservationKind::PreferAbsentMember { member, .. } => {
             validate_observation_member(member, &parcel_set, &building_set)?;
         }
     }

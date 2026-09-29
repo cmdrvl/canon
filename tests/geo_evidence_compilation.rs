@@ -2530,3 +2530,57 @@ fn evidence_enrichment_fixture_stays_joined_to_the_population_fixture() {
         }
     }
 }
+
+#[test]
+fn absent_member_opposition_compiles_soft_and_never_prunes() {
+    let request = GeoEvidenceCompilationRequest {
+        version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
+        universe: universe(&["p1", "p2", "p3"]),
+        contracts: vec![contract(
+            "calibrated-only",
+            GeoRhoSoundness::EmpiricalHighCoverage,
+        )],
+        observations: vec![GeoRhoObservation {
+            id: "competing-occupant-p2".to_string(),
+            contract_id: "calibrated-only".to_string(),
+            source_records: vec![source_record("competing-occupant-p2-row")],
+            valid_time: None,
+            observation: GeoRhoObservationKind::PreferAbsentMember {
+                member: GeoEntityRef::new(GeoEntityLevel::Parcel, "p2"),
+                cost_if_present: 7,
+            },
+        }],
+        max_assignments: 8,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    };
+
+    let compiled = compile_evidence(&request).expect("opposition must compile");
+    assert!(
+        compiled.composition_request.hard_constraints.is_empty(),
+        "opposition is never a hard constraint, whatever the contract says"
+    );
+    assert_eq!(compiled.composition_request.soft_preferences.len(), 1);
+    let preference = &compiled.composition_request.soft_preferences[0];
+    assert_eq!(preference.cost_if_absent, 0);
+    assert_eq!(preference.cost_if_present, 7);
+
+    let solved = solve_composition(&compiled.composition_request).expect("request must solve");
+    assert_eq!(
+        solved.summary.residual_model_count, 7,
+        "no feasible model is removed"
+    );
+    assert!(
+        solved
+            .soft_ranked
+            .iter()
+            .take_while(|ranked| ranked.cost == 0)
+            .all(|ranked| !ranked.model.parcels.contains(&"p2".to_string()))
+    );
+    assert!(
+        solved
+            .soft_ranked
+            .iter()
+            .any(|ranked| ranked.model.parcels.contains(&"p2".to_string()) && ranked.cost == 7)
+    );
+}

@@ -953,7 +953,8 @@ fn observation_members(observation: &super::GeoRhoObservationKind) -> Vec<GeoEnt
                 .map(|value| GeoEntityRef::new(*level, &value.id))
                 .collect(),
         ),
-        super::GeoRhoObservationKind::PreferMember { member, .. } => vec![member.clone()],
+        super::GeoRhoObservationKind::PreferMember { member, .. }
+        | super::GeoRhoObservationKind::PreferAbsentMember { member, .. } => vec![member.clone()],
     }
 }
 

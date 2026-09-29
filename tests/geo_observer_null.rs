@@ -198,6 +198,7 @@ fn request_with_zero_cost_building_preferences(
                     id: format!("observer.null.pref.{}", building.id),
                     member: GeoEntityRef::new(GeoEntityLevel::Building, building.id.clone()),
                     cost_if_absent: 0,
+                    cost_if_present: 0,
                 }),
         );
     canonicalize_composition_request(&with_null).expect("zero-cost preferences stay canonical")

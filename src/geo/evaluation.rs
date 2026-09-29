@@ -5582,7 +5582,8 @@ fn canonicalize_population_case_observation(observation: &mut GeoRhoObservation)
         GeoRhoObservationKind::IntegerSumBand { values, .. } => {
             values.sort_by(compare_e4_integer_values);
         }
-        GeoRhoObservationKind::PreferMember { .. } => {}
+        GeoRhoObservationKind::PreferMember { .. }
+        | GeoRhoObservationKind::PreferAbsentMember { .. } => {}
     }
 }
 

@@ -511,6 +511,27 @@
             "member",
             "cost_if_absent"
           ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "prefer_absent_member"
+            },
+            "member": {
+              "$ref": "#/$defs/entity_ref"
+            },
+            "cost_if_present": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "member",
+            "cost_if_present"
+          ]
         }
       ]
     },

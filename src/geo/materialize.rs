@@ -1194,6 +1194,13 @@ fn canonicalize_warehouse_observation_kind(
             member: member.clone(),
             cost_if_absent: *cost_if_absent,
         },
+        GeoRhoObservationKind::PreferAbsentMember {
+            member,
+            cost_if_present,
+        } => GeoRhoObservationKind::PreferAbsentMember {
+            member: member.clone(),
+            cost_if_present: *cost_if_present,
+        },
     }
 }
 

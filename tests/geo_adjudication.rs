@@ -223,6 +223,7 @@ fn base_request(case: &PopulationCase) -> GeoCompositionRequest {
                 id: format!("pip-{index:03}"),
                 member: GeoEntityRef::new(GeoEntityLevel::Parcel, parcel.clone()),
                 cost_if_absent: 1,
+                cost_if_present: 0,
             })
             .collect(),
         max_assignments: 2_097_152,
