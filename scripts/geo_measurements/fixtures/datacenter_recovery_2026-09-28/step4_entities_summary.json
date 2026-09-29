@@ -1,0 +1,56 @@
+{
+ "PRYOR": {
+  "rule": "intersection/min-area >= 0.5, connected components",
+  "records": 453,
+  "entities": 202,
+  "by_source_count": {
+   "fema": 23,
+   "microsoft+overture": 75,
+   "fema+microsoft+overture": 70,
+   "fema+overture": 8,
+   "overture": 17,
+   "microsoft": 8,
+   "fema+microsoft": 1
+  },
+  "single_upstream_entities_with_multiple_records": 56,
+  "entities_under_1000m2": 165,
+  "entities_with_any_name": 8,
+  "entities_file_sha256": "00d135f03ef04f61318312e3da133cf58a6464c8c948817ca22370f343e51046"
+ },
+ "DEV-1": {
+  "rule": "intersection/min-area >= 0.5, connected components",
+  "records": 11308,
+  "entities": 3916,
+  "by_source_count": {
+   "fema+microsoft+overture": 3482,
+   "fema": 152,
+   "fema+microsoft": 69,
+   "microsoft+overture": 42,
+   "microsoft": 88,
+   "fema+overture": 41,
+   "overture": 42
+  },
+  "single_upstream_entities_with_multiple_records": 19,
+  "entities_under_1000m2": 3786,
+  "entities_with_any_name": 55,
+  "entities_file_sha256": "5d572a594b6bae60cda5141185d025e1ddce8f7f13b5ebfebc0c7df5e1f16c7a"
+ },
+ "H1-P": {
+  "rule": "intersection/min-area >= 0.5, connected components",
+  "records": 1891,
+  "entities": 717,
+  "by_source_count": {
+   "fema+microsoft+overture": 532,
+   "fema": 80,
+   "overture": 12,
+   "fema+overture": 26,
+   "microsoft": 4,
+   "microsoft+overture": 62,
+   "fema+microsoft": 1
+  },
+  "single_upstream_entities_with_multiple_records": 50,
+  "entities_under_1000m2": 671,
+  "entities_with_any_name": 12,
+  "entities_file_sha256": "89256cd4e555fe38b81df8498ba5ac1ffb7220e101b3ccf14480efc6f385f2c5"
+ }
+}
