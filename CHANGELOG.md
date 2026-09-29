@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.14.0 — 2026-09-28
 
 - Cluster strategies can declare audit-gated policy acceptance for new identities.
   Qualification requires connected policy-supported evidence, preserves hard
