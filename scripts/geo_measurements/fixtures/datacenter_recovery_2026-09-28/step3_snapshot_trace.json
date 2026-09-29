@@ -1,0 +1,256 @@
+{
+  "purpose": "Step 3 evidence bookkeeping from the retained Pryor snapshot; not an accuracy measurement",
+  "inputs": {
+    "spec_sha256": "5e24f16d08768fa47a93d8f78dc605a146db083a9d7302f2f1d54e98496e9162",
+    "compilation_sha256": "ef13086e7e3b92dda81a5c90632fa7ee33f3b57c9d203240a292f42cf5086e02",
+    "universe": "Overture buildings >= 10,000 m2 within 1,300 m of the Foursquare Google POI (4581 Webb St)",
+    "candidates": 10,
+    "soft_preferences": 17
+  },
+  "objective": "cost(S) = sum(w_j for absent m_j), w_j >= 0; hard constraints: none",
+  "per_source_members": {
+    "fsq-industrial-partition": {
+      "weight": 5,
+      "asserted_members": 5,
+      "method": "nearer_google_point_than_named_industrial_neighbor",
+      "claim_role": "stable_identity_anchor"
+    },
+    "hall-module-morphology": {
+      "weight": 3,
+      "asserted_members": 3,
+      "method": "at_least_3_footprints_within_5pct_area_each_ge_20000m2",
+      "claim_role": "attribute_observation"
+    },
+    "ms-crosslayer": {
+      "weight": 3,
+      "asserted_members": 9,
+      "method": "microsoft_footprint_within_30m_and_25pct_area",
+      "claim_role": "attribute_observation"
+    }
+  },
+  "candidate_table": [
+    {
+      "id": "overture:154131f6",
+      "sqft": 1391858,
+      "m2": 129308,
+      "distance_to_google_poi_m": 938,
+      "nearest_named_industrial_neighbor": "Red Devil (4175 Webb St)",
+      "distance_to_that_neighbor_m": 630,
+      "microsoft_footprint_match": true,
+      "asserted_by": [
+        "ms-crosslayer"
+      ],
+      "total_inclusion_reward": 3,
+      "effect_of_being_closer_to_a_different_business_than_to_the_google_poi": 0
+    },
+    {
+      "id": "overture:215d1320",
+      "sqft": 645995,
+      "m2": 60015,
+      "distance_to_google_poi_m": 770,
+      "nearest_named_industrial_neighbor": "Red Devil (4175 Webb St)",
+      "distance_to_that_neighbor_m": 1010,
+      "microsoft_footprint_match": true,
+      "asserted_by": [
+        "fsq-industrial-partition",
+        "ms-crosslayer"
+      ],
+      "total_inclusion_reward": 8,
+      "effect_of_being_closer_to_a_different_business_than_to_the_google_poi": 0
+    },
+    {
+      "id": "overture:37eade67",
+      "sqft": 111299,
+      "m2": 10340,
+      "distance_to_google_poi_m": 1140,
+      "nearest_named_industrial_neighbor": "Red Devil (4175 Webb St)",
+      "distance_to_that_neighbor_m": 1119,
+      "microsoft_footprint_match": true,
+      "asserted_by": [
+        "ms-crosslayer"
+      ],
+      "total_inclusion_reward": 3,
+      "effect_of_being_closer_to_a_different_business_than_to_the_google_poi": 0
+    },
+    {
+      "id": "overture:3fe30483",
+      "sqft": 326609,
+      "m2": 30343,
+      "distance_to_google_poi_m": 1076,
+      "nearest_named_industrial_neighbor": "Red Devil (4175 Webb St)",
+      "distance_to_that_neighbor_m": 1207,
+      "microsoft_footprint_match": true,
+      "asserted_by": [
+        "fsq-industrial-partition",
+        "hall-module-morphology",
+        "ms-crosslayer"
+      ],
+      "total_inclusion_reward": 11,
+      "effect_of_being_closer_to_a_different_business_than_to_the_google_poi": 0
+    },
+    {
+      "id": "overture:56e84c8d",
+      "sqft": 125313,
+      "m2": 11642,
+      "distance_to_google_poi_m": 306,
+      "nearest_named_industrial_neighbor": "Red Devil (4175 Webb St)",
+      "distance_to_that_neighbor_m": 485,
+      "microsoft_footprint_match": false,
+      "asserted_by": [
+        "fsq-industrial-partition"
+      ],
+      "total_inclusion_reward": 5,
+      "effect_of_being_closer_to_a_different_business_than_to_the_google_poi": 0
+    },
+    {
+      "id": "overture:72ea9c27",
+      "sqft": 140716,
+      "m2": 13073,
+      "distance_to_google_poi_m": 628,
+      "nearest_named_industrial_neighbor": "Red Devil (4175 Webb St)",
+      "distance_to_that_neighbor_m": 15,
+      "microsoft_footprint_match": true,
+      "asserted_by": [
+        "ms-crosslayer"
+      ],
+      "total_inclusion_reward": 3,
+      "effect_of_being_closer_to_a_different_business_than_to_the_google_poi": 0
+    },
+    {
+      "id": "overture:bd06b2c1",
+      "sqft": 334682,
+      "m2": 31093,
+      "distance_to_google_poi_m": 907,
+      "nearest_named_industrial_neighbor": "Red Devil (4175 Webb St)",
+      "distance_to_that_neighbor_m": 900,
+      "microsoft_footprint_match": true,
+      "asserted_by": [
+        "hall-module-morphology",
+        "ms-crosslayer"
+      ],
+      "total_inclusion_reward": 6,
+      "effect_of_being_closer_to_a_different_business_than_to_the_google_poi": 0
+    },
+    {
+      "id": "overture:db71b13c",
+      "sqft": 139511,
+      "m2": 12961,
+      "distance_to_google_poi_m": 1170,
+      "nearest_named_industrial_neighbor": "Orchid Paper Products",
+      "distance_to_that_neighbor_m": 573,
+      "microsoft_footprint_match": true,
+      "asserted_by": [
+        "ms-crosslayer"
+      ],
+      "total_inclusion_reward": 3,
+      "effect_of_being_closer_to_a_different_business_than_to_the_google_poi": 0
+    },
+    {
+      "id": "overture:dcc29a09",
+      "sqft": 117639,
+      "m2": 10929,
+      "distance_to_google_poi_m": 313,
+      "nearest_named_industrial_neighbor": "Harbison Walker International",
+      "distance_to_that_neighbor_m": 648,
+      "microsoft_footprint_match": true,
+      "asserted_by": [
+        "fsq-industrial-partition",
+        "ms-crosslayer"
+      ],
+      "total_inclusion_reward": 8,
+      "effect_of_being_closer_to_a_different_business_than_to_the_google_poi": 0
+    },
+    {
+      "id": "overture:ee97c483",
+      "sqft": 315608,
+      "m2": 29321,
+      "distance_to_google_poi_m": 987,
+      "nearest_named_industrial_neighbor": "Red Devil (4175 Webb St)",
+      "distance_to_that_neighbor_m": 1236,
+      "microsoft_footprint_match": true,
+      "asserted_by": [
+        "fsq-industrial-partition",
+        "hall-module-morphology",
+        "ms-crosslayer"
+      ],
+      "total_inclusion_reward": 11,
+      "effect_of_being_closer_to_a_different_business_than_to_the_google_poi": 0
+    }
+  ],
+  "candidates_closer_to_a_different_named_business_than_to_the_google_poi": [
+    "overture:154131f6",
+    "overture:37eade67",
+    "overture:72ea9c27",
+    "overture:bd06b2c1",
+    "overture:db71b13c"
+  ],
+  "ablation_by_source_subset": [
+    {
+      "sources": [],
+      "min_cost": 0,
+      "optimal_selections": 1023,
+      "smallest_optimal_selection_size": 1
+    },
+    {
+      "sources": [
+        "fsq-industrial-partition"
+      ],
+      "min_cost": 0,
+      "optimal_selections": 32,
+      "smallest_optimal_selection_size": 5
+    },
+    {
+      "sources": [
+        "hall-module-morphology"
+      ],
+      "min_cost": 0,
+      "optimal_selections": 128,
+      "smallest_optimal_selection_size": 3
+    },
+    {
+      "sources": [
+        "ms-crosslayer"
+      ],
+      "min_cost": 0,
+      "optimal_selections": 2,
+      "smallest_optimal_selection_size": 9
+    },
+    {
+      "sources": [
+        "fsq-industrial-partition",
+        "hall-module-morphology"
+      ],
+      "min_cost": 0,
+      "optimal_selections": 16,
+      "smallest_optimal_selection_size": 6
+    },
+    {
+      "sources": [
+        "fsq-industrial-partition",
+        "ms-crosslayer"
+      ],
+      "min_cost": 0,
+      "optimal_selections": 1,
+      "smallest_optimal_selection_size": 10
+    },
+    {
+      "sources": [
+        "hall-module-morphology",
+        "ms-crosslayer"
+      ],
+      "min_cost": 0,
+      "optimal_selections": 2,
+      "smallest_optimal_selection_size": 9
+    },
+    {
+      "sources": [
+        "fsq-industrial-partition",
+        "hall-module-morphology",
+        "ms-crosslayer"
+      ],
+      "min_cost": 0,
+      "optimal_selections": 1,
+      "smallest_optimal_selection_size": 10
+    }
+  ]
+}

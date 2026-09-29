@@ -1,0 +1,84 @@
+{
+  "purpose": "Step 0 baseline: pin and reproduce the Pryor superset regression before any change. Not a site-accuracy measurement.",
+  "repository_revision": "0d54287d9beb9e10f0212866dcb8c631b3c6e3ca",
+  "worktree_status_lines": 0,
+  "versions": {
+    "rustc": "rustc 1.98.0-nightly (13f1859f2 2026-06-27)",
+    "cargo": "cargo 1.98.0-nightly (a335d47ff 2026-06-26)",
+    "python": "3.14.7",
+    "platform": "macOS-26.6.2-x86_64-i386-64bit-Mach-O"
+  },
+  "canon_binary": {
+    "path": "/private/tmp/claude-501/-Users-zac-Source-cmdrvl/cce1ae3e-f51d-4338-a6de-4021be05d30b/scratchpad/canon-geo-recovery-wt/target/debug/canon",
+    "version": "canon 0.14.0"
+  },
+  "input": {
+    "path": "docs/geo_datacenter_site_test_2026-09-28/runs/02_pryor_arm_d/pryor.evidence_compilation.json",
+    "sha256": "ef13086e7e3b92dda81a5c90632fa7ee33f3b57c9d203240a292f42cf5086e02",
+    "bytes": 22039,
+    "budgets": {
+      "max_assignments": 65536,
+      "max_materialized_models": 16384
+    },
+    "candidates": 10,
+    "hard_constraints": 0,
+    "soft_preferences": 17
+  },
+  "historical_manifest_entry": {
+    "file": "02_pryor_arm_d/pryor.solve.json",
+    "bytes": 406430,
+    "sha256": "a8584ef52d222118dfc55ed74de4042e16d2809338138ce1c4efb088713132c9",
+    "byte_identical_resolve": true,
+    "canonical_identical_resolve": true
+  },
+  "A1_objective_check": {
+    "cmd": "/usr/local/opt/python@3.14/bin/python3.14 - /private/tmp/claude-501/-Users-zac-Source-cmdrvl/cce1ae3e-f51d-4338-a6de-4021be05d30b/scratchpad/canon-geo-recovery-wt/docs/geo_datacenter_site_test_2026-09-28/runs/02_pryor_arm_d/pryor.evidence_compilation.json",
+    "exit_code": 0,
+    "stdout_sha256": "f34e8f55abae86f38ac1bc10f070c7b8f4810d3e3f9f80685655c9a6efc8c33d",
+    "stdout_bytes": 318,
+    "stderr": "",
+    "result": {
+      "input_sha256": "ef13086e7e3b92dda81a5c90632fa7ee33f3b57c9d203240a292f42cf5086e02",
+      "candidates": 10,
+      "preferences": 17,
+      "nonempty_models": 1023,
+      "minimum_cost": 0,
+      "optimal_models": 1,
+      "full_universe_is_unique_optimum": true,
+      "meaning": "Objective reconstruction, not a site-accuracy measurement"
+    }
+  },
+  "A2_replay_pinned_binary": {
+    "cmd": "/private/tmp/claude-501/-Users-zac-Source-cmdrvl/cce1ae3e-f51d-4338-a6de-4021be05d30b/scratchpad/canon-geo-recovery-wt/target/debug/canon geo solve --request /private/tmp/claude-501/-Users-zac-Source-cmdrvl/cce1ae3e-f51d-4338-a6de-4021be05d30b/scratchpad/canon-geo-recovery-wt/docs/geo_datacenter_site_test_2026-09-28/runs/02_pryor_arm_d/pryor.evidence_compilation.json",
+    "exit_code": 0,
+    "stdout_sha256": "a8584ef52d222118dfc55ed74de4042e16d2809338138ce1c4efb088713132c9",
+    "stdout_bytes": 406430,
+    "stderr": "",
+    "historical_byte_match": true,
+    "status": "ambiguous",
+    "residual_model_count": 1023,
+    "rank1_cost": 0,
+    "rank1_size": 10,
+    "rank1_is_full_universe": true,
+    "models_at_rank1_cost": 1
+  },
+  "A2_replay_installed_0_13_0": {
+    "cmd": "/usr/local/bin/canon geo solve --request /private/tmp/claude-501/-Users-zac-Source-cmdrvl/cce1ae3e-f51d-4338-a6de-4021be05d30b/scratchpad/canon-geo-recovery-wt/docs/geo_datacenter_site_test_2026-09-28/runs/02_pryor_arm_d/pryor.evidence_compilation.json",
+    "exit_code": 0,
+    "stdout_sha256": "a8584ef52d222118dfc55ed74de4042e16d2809338138ce1c4efb088713132c9",
+    "stdout_bytes": 406430,
+    "stderr": "",
+    "historical_byte_match": true,
+    "status": "ambiguous",
+    "residual_model_count": 1023,
+    "rank1_cost": 0,
+    "rank1_size": 10,
+    "rank1_is_full_universe": true,
+    "models_at_rank1_cost": 1
+  },
+  "verdict": {
+    "superset_signature_reproduced": true,
+    "historical_byte_match_on_pinned_binary": true,
+    "drift_explained": "n/a"
+  }
+}
