@@ -1,0 +1,196 @@
+{
+  "target_token": "microsoft",
+  "anchors": 7,
+  "universe": 287,
+  "support": {
+    "partition": 9,
+    "module": 5,
+    "crosslayer": 225
+  },
+  "opposition": 22,
+  "opposition_examples": {
+    "ent:002f85f168": [
+      {
+        "place": "Simpson Norton",
+        "fsq_place_id": "1a6dc034a4464169e2ff4a18",
+        "footprint": "fema:11458009"
+      },
+      {
+        "place": "Leadership West",
+        "fsq_place_id": "55b0bd5a498ed6f730fe1421",
+        "footprint": "fema:11458009"
+      },
+      {
+        "place": "Simpson Norton",
+        "fsq_place_id": "1a6dc034a4464169e2ff4a18",
+        "footprint": "microsoft:87c4cee7685cda572fd6235a713b39a84bc93d2e1c0ba283004e0bcff55e1d23"
+      },
+      {
+        "place": "Leadership West",
+        "fsq_place_id": "55b0bd5a498ed6f730fe1421",
+        "footprint": "microsoft:87c4cee7685cda572fd6235a713b39a84bc93d2e1c0ba283004e0bcff55e1d23"
+      },
+      {
+        "place": "Simpson Norton",
+        "fsq_place_id": "1a6dc034a4464169e2ff4a18",
+        "footprint": "overture:ba4861e2-4cb2-475d-915d-d8719c00160d"
+      },
+      {
+        "place": "Leadership West",
+        "fsq_place_id": "55b0bd5a498ed6f730fe1421",
+        "footprint": "overture:ba4861e2-4cb2-475d-915d-d8719c00160d"
+      }
+    ],
+    "ent:0cb74f5b04": [
+      {
+        "place": "Quackenbush Construction",
+        "fsq_place_id": "4da31d3bac7644c328e211a4",
+        "footprint": "fema:11457956"
+      },
+      {
+        "place": "Quackenbush Construction",
+        "fsq_place_id": "4da31d3bac7644c328e211a4",
+        "footprint": "microsoft:91b8d186612b9c9f4cf886e81f03d82c5f5dcd79bd558f09047139bbfd0f62ce"
+      },
+      {
+        "place": "Quackenbush Construction",
+        "fsq_place_id": "4da31d3bac7644c328e211a4",
+        "footprint": "overture:169d0984-419b-45e0-ba07-43589a6ada13"
+      }
+    ],
+    "ent:2964eaa262": [
+      {
+        "place": "Stilwells",
+        "fsq_place_id": "4d8165327252a1cde6579a5d",
+        "footprint": "fema:11457982"
+      },
+      {
+        "place": "Stilwells",
+        "fsq_place_id": "4d8165327252a1cde6579a5d",
+        "footprint": "microsoft:939b8e4cbd62509124f49d5436b09cb01fb28c4b2753281b9e6ff793e64df0c5"
+      },
+      {
+        "place": "Stilwells",
+        "fsq_place_id": "4d8165327252a1cde6579a5d",
+        "footprint": "overture:af54a33b-3ff0-4eed-8ea1-f6ea4be0da6d"
+      }
+    ],
+    "ent:2f2aab5dfb": [
+      {
+        "place": "Omni Building Products",
+        "fsq_place_id": "8387c965ae0744beec335514",
+        "footprint": "fema:11460123"
+      },
+      {
+        "place": "Omni Building Products",
+        "fsq_place_id": "8387c965ae0744beec335514",
+        "footprint": "microsoft:95c42aec2d70edfbd080cfe5f29db8fec77d412ce7174d77cbf70df5c9ced865"
+      },
+      {
+        "place": "Omni Building Products",
+        "fsq_place_id": "8387c965ae0744beec335514",
+        "footprint": "overture:6096ad02-87e3-4b6b-a661-a709be0bc860"
+      }
+    ],
+    "ent:3e5e575aad": [
+      {
+        "place": "SOS Exterminating",
+        "fsq_place_id": "6d378aee0c17434af6e0b2f1",
+        "footprint": "fema:11458371"
+      }
+    ]
+  },
+  "weights": {
+    "partition": 5,
+    "module": 3,
+    "crosslayer": 3,
+    "opposition": 5
+  },
+  "baseline": {
+    "core": 228,
+    "tie_neutral_or_balanced": 59,
+    "excluded": 0,
+    "upper": 287,
+    "kernel_full": {
+      "compile": 0,
+      "solve": 0,
+      "status": "ambiguous",
+      "residual_model_count": 18446744073709551615,
+      "ranked_models": 0
+    },
+    "kernel_crosscheck": [
+      {
+        "size": 8,
+        "kernel_rank1_cost": 0,
+        "separable_cost": 0,
+        "kernel_rank1_models": 1,
+        "agrees": true
+      },
+      {
+        "size": 10,
+        "kernel_rank1_cost": 0,
+        "separable_cost": 0,
+        "kernel_rank1_models": 1,
+        "agrees": true
+      },
+      {
+        "size": 12,
+        "kernel_rank1_cost": 0,
+        "separable_cost": 0,
+        "kernel_rank1_models": 1,
+        "agrees": true
+      },
+      {
+        "size": 12,
+        "kernel_rank1_cost": 0,
+        "separable_cost": 0,
+        "kernel_rank1_models": 2,
+        "agrees": true
+      }
+    ]
+  },
+  "patched": {
+    "core": 207,
+    "tie_neutral_or_balanced": 58,
+    "excluded": 22,
+    "upper": 265,
+    "kernel_full": {
+      "compile": 0,
+      "solve": 0,
+      "status": "ambiguous",
+      "residual_model_count": 18446744073709551615,
+      "ranked_models": 0
+    },
+    "kernel_crosscheck": [
+      {
+        "size": 8,
+        "kernel_rank1_cost": 26,
+        "separable_cost": 26,
+        "kernel_rank1_models": 8,
+        "agrees": true
+      },
+      {
+        "size": 10,
+        "kernel_rank1_cost": 32,
+        "separable_cost": 32,
+        "kernel_rank1_models": 10,
+        "agrees": true
+      },
+      {
+        "size": 12,
+        "kernel_rank1_cost": 38,
+        "separable_cost": 38,
+        "kernel_rank1_models": 12,
+        "agrees": true
+      },
+      {
+        "size": 12,
+        "kernel_rank1_cost": 27,
+        "separable_cost": 27,
+        "kernel_rank1_models": 1,
+        "agrees": true
+      }
+    ]
+  },
+  "readout_sha256": "a94d5076bd55ea6aa98de55bf4aff0bdb5b09afa5eeef95fb59bacad9a21728a"
+}

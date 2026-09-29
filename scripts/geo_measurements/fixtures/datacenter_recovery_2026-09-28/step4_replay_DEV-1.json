@@ -1,0 +1,191 @@
+{
+  "target_token": "microsoft",
+  "anchors": 3,
+  "universe": 2734,
+  "support": {
+    "partition": 41,
+    "module": 0,
+    "crosslayer": 2500
+  },
+  "opposition": 120,
+  "opposition_examples": {
+    "ent:00a2a19e36": [
+      {
+        "place": "Party Pals Sa",
+        "fsq_place_id": "013e4153273b41d436e0fbe0",
+        "footprint": "fema:28898284"
+      },
+      {
+        "place": "Party Pals Sa",
+        "fsq_place_id": "013e4153273b41d436e0fbe0",
+        "footprint": "microsoft:e73fa448ae6a33b84d9f82f6aef5b30e358890aea15e39244320f9e102f77d9a"
+      },
+      {
+        "place": "Party Pals Sa",
+        "fsq_place_id": "013e4153273b41d436e0fbe0",
+        "footprint": "overture:4fe52c01-d1fd-4366-8128-bb0db205a1a4"
+      }
+    ],
+    "ent:0168688179": [
+      {
+        "place": "River City Women's Health",
+        "fsq_place_id": "550880e2498ef793c4ea5009",
+        "footprint": "fema:35316278"
+      },
+      {
+        "place": "River City Women's Health",
+        "fsq_place_id": "550880e2498ef793c4ea5009",
+        "footprint": "microsoft:67705e2147f4696528cf43b5106f9768f941f07fa9938b515fa469cadfda88bb"
+      },
+      {
+        "place": "River City Women's Health",
+        "fsq_place_id": "550880e2498ef793c4ea5009",
+        "footprint": "overture:56d8b2ea-ab3f-4e41-964c-ed0b6d593adf"
+      }
+    ],
+    "ent:01c823a6dc": [
+      {
+        "place": "Aetna",
+        "fsq_place_id": "4c646507d646be9ab3de09fd",
+        "footprint": "fema:28879081"
+      },
+      {
+        "place": "Aetna",
+        "fsq_place_id": "4c646507d646be9ab3de09fd",
+        "footprint": "microsoft:313a25f0ac882d6ae12d297612a30e0e4ce9e21da44ab05483f4b901e698d99c"
+      },
+      {
+        "place": "Aetna",
+        "fsq_place_id": "4c646507d646be9ab3de09fd",
+        "footprint": "overture:5d9da1f5-5c7e-495d-b029-04e49b1aee07"
+      }
+    ],
+    "ent:0215a75bed": [
+      {
+        "place": "Boulevard Next-Gen Ministry",
+        "fsq_place_id": "4d8cb268fa94370409e1d5c5",
+        "footprint": "fema:32240783"
+      },
+      {
+        "place": "Boulevard Next-Gen Ministry",
+        "fsq_place_id": "4d8cb268fa94370409e1d5c5",
+        "footprint": "microsoft:923af0c0a394e582b272826513e90af81274c4da7c543ca267612aecf7e6f580"
+      },
+      {
+        "place": "Boulevard Next-Gen Ministry",
+        "fsq_place_id": "4d8cb268fa94370409e1d5c5",
+        "footprint": "overture:bab39575-f068-4630-aec9-dd1106104522"
+      }
+    ],
+    "ent:05c1e76e07": [
+      {
+        "place": "Westover Valley Playground",
+        "fsq_place_id": "51900b81498ea99a851dea52",
+        "footprint": "fema:28888405"
+      },
+      {
+        "place": "Westover Valley Playground",
+        "fsq_place_id": "51900b81498ea99a851dea52",
+        "footprint": "microsoft:9a3d4720296bcfba72fd481bf14989f80b0701c6236b4e8625ef7473d131d7b8"
+      },
+      {
+        "place": "Westover Valley Playground",
+        "fsq_place_id": "51900b81498ea99a851dea52",
+        "footprint": "overture:5b747233-fc27-41c9-a4f4-714b8e0a1e8d"
+      }
+    ]
+  },
+  "weights": {
+    "partition": 5,
+    "module": 3,
+    "crosslayer": 3,
+    "opposition": 5
+  },
+  "baseline": {
+    "core": 2531,
+    "tie_neutral_or_balanced": 203,
+    "excluded": 0,
+    "upper": 2734,
+    "kernel_full": {
+      "compile": 0,
+      "solve": 0,
+      "status": "ambiguous",
+      "residual_model_count": 18446744073709551615,
+      "ranked_models": 0
+    },
+    "kernel_crosscheck": [
+      {
+        "size": 8,
+        "kernel_rank1_cost": 0,
+        "separable_cost": 0,
+        "kernel_rank1_models": 1,
+        "agrees": true
+      },
+      {
+        "size": 10,
+        "kernel_rank1_cost": 0,
+        "separable_cost": 0,
+        "kernel_rank1_models": 1,
+        "agrees": true
+      },
+      {
+        "size": 12,
+        "kernel_rank1_cost": 0,
+        "separable_cost": 0,
+        "kernel_rank1_models": 1,
+        "agrees": true
+      },
+      {
+        "size": 12,
+        "kernel_rank1_cost": 0,
+        "separable_cost": 0,
+        "kernel_rank1_models": 1,
+        "agrees": true
+      }
+    ]
+  },
+  "patched": {
+    "core": 2414,
+    "tie_neutral_or_balanced": 201,
+    "excluded": 119,
+    "upper": 2615,
+    "kernel_full": {
+      "compile": 0,
+      "solve": 0,
+      "status": "ambiguous",
+      "residual_model_count": 18446744073709551615,
+      "ranked_models": 0
+    },
+    "kernel_crosscheck": [
+      {
+        "size": 8,
+        "kernel_rank1_cost": 26,
+        "separable_cost": 26,
+        "kernel_rank1_models": 8,
+        "agrees": true
+      },
+      {
+        "size": 10,
+        "kernel_rank1_cost": 32,
+        "separable_cost": 32,
+        "kernel_rank1_models": 10,
+        "agrees": true
+      },
+      {
+        "size": 12,
+        "kernel_rank1_cost": 38,
+        "separable_cost": 38,
+        "kernel_rank1_models": 12,
+        "agrees": true
+      },
+      {
+        "size": 12,
+        "kernel_rank1_cost": 38,
+        "separable_cost": 38,
+        "kernel_rank1_models": 12,
+        "agrees": true
+      }
+    ]
+  },
+  "readout_sha256": "d34a4359b413cd58b70aec4a42d5a6b4ab533e5f096c9f384841ea7a1166f016"
+}

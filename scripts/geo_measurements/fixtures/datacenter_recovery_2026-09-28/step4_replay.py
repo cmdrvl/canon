@@ -12,7 +12,7 @@ Support (unchanged in kind from the arm-D rules, recomputed on entities):
   crosslayer  w3  the entity has >= 2 distinct declared upstreams (lineage-collapsed: Overture rows citing Microsoft do not count twice)
 Opposition (new, w5, prefer_absent): a Foursquare place that is not closed, whose name does not contain the target token, has its point inside a member footprint of the
   entity (containment, not proximity). Missing support never becomes opposition.
-Readout: candidate counts are too large to materialize. Because preferences are per-member additive and there are no hard constraints, the soft optimum is separable per
+Readout (cross-check corrected 2026-09-29 before any scoring to account for the kernel's non-empty-selection requirement): candidate counts are too large to materialize. Because preferences are per-member additive and there are no hard constraints, the soft optimum is separable per
 entity: include iff cost_if_present < cost_if_absent, exclude iff greater, tie otherwise. `core` = strictly included, `upper` = core + ties. The separable readout is
 cross-checked against the kernel's own rank-1 on small subsets (materializable) before it is reported.
 
@@ -167,8 +167,11 @@ for tag, with_opp, binary in [("baseline", False, canon_base), ("patched", True,
         r, solve = run_canon(binary, build_request(sub, with_opp), f"{tag}_check_{size}_{offset}")
         k = kernel_rank1(solve) if solve else None
         c2, t2, _, _ = separable(sub, with_opp)
-        py_cost = sum(min(separable(sub, with_opp)[2][m], separable(sub, with_opp)[3][m]) for m in [e["id"] for e in sub])
-        ok = bool(k) and k[0] == py_cost and all(set(model) >= c2 and set(model) <= (c2 | t2) for model in k[1]) if (c2 | t2) else None
+        _, _, cin2, cout2 = separable(sub, with_opp)
+        py_cost = sum(min(cin2[m], cout2[m]) for m in cin2)
+        if not (c2 | t2):  # the kernel requires a non-empty selection: add the cheapest forced inclusion
+            py_cost += min(cin2[m] - cout2[m] for m in cin2)
+        ok = bool(k) and k[0] == py_cost and (all(set(model) >= c2 and set(model) <= (c2 | t2) for model in k[1]) if (c2 | t2) else True)
         checks.append({"size": len(sub), "kernel_rank1_cost": k and k[0], "separable_cost": py_cost, "kernel_rank1_models": k and len(k[1]), "agrees": ok})
     result[tag]["kernel_crosscheck"] = checks
 (out / "readout_entities.json").write_text(json.dumps(readouts))

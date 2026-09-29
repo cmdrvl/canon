@@ -1,0 +1,256 @@
+{
+  "target_token": "google",
+  "anchors": 1,
+  "universe": 134,
+  "support": {
+    "partition": 16,
+    "module": 0,
+    "crosslayer": 62
+  },
+  "opposition": 14,
+  "opposition_examples": {
+    "ent:06961f5bb6": [
+      {
+        "place": "Hampton Inn & Suites Pryor",
+        "fsq_place_id": "59f530a967e5f265c2ccd2c6",
+        "footprint": "microsoft:3d10727f56be61079e942b40b80332de290c7c0f28fe7b3bd7e60c2122832ffe"
+      },
+      {
+        "place": "Hampton Inn Gym",
+        "fsq_place_id": "5ba3846a8496ca002cdfd45d",
+        "footprint": "microsoft:3d10727f56be61079e942b40b80332de290c7c0f28fe7b3bd7e60c2122832ffe"
+      },
+      {
+        "place": "Hampton Inn & Suites Pryor",
+        "fsq_place_id": "59f530a967e5f265c2ccd2c6",
+        "footprint": "overture:03bb9f8f-2bcd-4f01-9a89-9026ed6cf6a9"
+      }
+    ],
+    "ent:06e766e05c": [
+      {
+        "place": "Red Devil",
+        "fsq_place_id": "516473a8e4b093b12b1386cd",
+        "footprint": "microsoft:077f7c9fc8e3c7dc13785336263bf229114022e1d567edc593a2fe18e3a8a92c"
+      },
+      {
+        "place": "Red Devil",
+        "fsq_place_id": "516473a8e4b093b12b1386cd",
+        "footprint": "overture:72ea9c27-e1c8-4096-8a95-080164733d83"
+      }
+    ],
+    "ent:073e276732": [
+      {
+        "place": "Harbison Walker International",
+        "fsq_place_id": "5ffc4f91c6f7954a47bd007c",
+        "footprint": "fema:4411401"
+      },
+      {
+        "place": "A.P. Green Industries",
+        "fsq_place_id": "4c9137e9ae45224b4eefe597",
+        "footprint": "microsoft:02926cdce1fc3f81bf576c520a56fe29cd1d789a37cb37344a5f505166a1676d"
+      },
+      {
+        "place": "Harbison Walker International",
+        "fsq_place_id": "5ffc4f91c6f7954a47bd007c",
+        "footprint": "microsoft:02926cdce1fc3f81bf576c520a56fe29cd1d789a37cb37344a5f505166a1676d"
+      },
+      {
+        "place": "A.P. Green Industries",
+        "fsq_place_id": "4c9137e9ae45224b4eefe597",
+        "footprint": "overture:6992a6f2-972d-4fd7-a02b-ff00cac7cec4"
+      },
+      {
+        "place": "Harbison Walker International",
+        "fsq_place_id": "5ffc4f91c6f7954a47bd007c",
+        "footprint": "overture:6992a6f2-972d-4fd7-a02b-ff00cac7cec4"
+      }
+    ],
+    "ent:1f373a5171": [
+      {
+        "place": "E-Z Mart",
+        "fsq_place_id": "4c19f5cd4ff90f475baa1049",
+        "footprint": "fema:4418020"
+      },
+      {
+        "place": "Amazon Locker - Birdcage",
+        "fsq_place_id": "69b47fd135233d4c3bfb6077",
+        "footprint": "fema:4418020"
+      },
+      {
+        "place": "Western Union",
+        "fsq_place_id": "aa97d69d88d447d478daf316",
+        "footprint": "fema:4418020"
+      },
+      {
+        "place": "E-Z Mart",
+        "fsq_place_id": "4c19f5cd4ff90f475baa1049",
+        "footprint": "microsoft:02d7a5fc578246f10060552f55165018d1b9b18dfaa3af150c900d090e13dec8"
+      },
+      {
+        "place": "Amazon Locker - Birdcage",
+        "fsq_place_id": "69b47fd135233d4c3bfb6077",
+        "footprint": "microsoft:02d7a5fc578246f10060552f55165018d1b9b18dfaa3af150c900d090e13dec8"
+      },
+      {
+        "place": "Western Union",
+        "fsq_place_id": "aa97d69d88d447d478daf316",
+        "footprint": "microsoft:02d7a5fc578246f10060552f55165018d1b9b18dfaa3af150c900d090e13dec8"
+      },
+      {
+        "place": "E-Z Mart",
+        "fsq_place_id": "4c19f5cd4ff90f475baa1049",
+        "footprint": "overture:5cafab31-d89a-45c6-a5c0-b7ec52101130"
+      },
+      {
+        "place": "Amazon Locker - Birdcage",
+        "fsq_place_id": "69b47fd135233d4c3bfb6077",
+        "footprint": "overture:5cafab31-d89a-45c6-a5c0-b7ec52101130"
+      },
+      {
+        "place": "Western Union",
+        "fsq_place_id": "aa97d69d88d447d478daf316",
+        "footprint": "overture:5cafab31-d89a-45c6-a5c0-b7ec52101130"
+      }
+    ],
+    "ent:416a3ee59a": [
+      {
+        "place": "Days Inn & Suites by Wyndham Pryor",
+        "fsq_place_id": "4c03e036310fc9b66f72c661",
+        "footprint": "fema:4386086"
+      },
+      {
+        "place": "Mia's",
+        "fsq_place_id": "4c2675275c5ca593e93746fe",
+        "footprint": "fema:4386086"
+      },
+      {
+        "place": "Double D's Bar And Grill",
+        "fsq_place_id": "691e8003486b9f3e52ce8050",
+        "footprint": "fema:4386086"
+      },
+      {
+        "place": "Days Inn & Suites by Wyndham Pryor",
+        "fsq_place_id": "4c03e036310fc9b66f72c661",
+        "footprint": "microsoft:4f94dd978d9e7a2022a68ed8303fe9e673c7259c37df986141f5a58b26146649"
+      },
+      {
+        "place": "Mia's",
+        "fsq_place_id": "4c2675275c5ca593e93746fe",
+        "footprint": "microsoft:4f94dd978d9e7a2022a68ed8303fe9e673c7259c37df986141f5a58b26146649"
+      },
+      {
+        "place": "Double D's Bar And Grill",
+        "fsq_place_id": "691e8003486b9f3e52ce8050",
+        "footprint": "microsoft:4f94dd978d9e7a2022a68ed8303fe9e673c7259c37df986141f5a58b26146649"
+      },
+      {
+        "place": "Days Inn & Suites by Wyndham Pryor",
+        "fsq_place_id": "4c03e036310fc9b66f72c661",
+        "footprint": "overture:a8259232-275c-4505-a700-87a5bf89b948"
+      },
+      {
+        "place": "Mia's",
+        "fsq_place_id": "4c2675275c5ca593e93746fe",
+        "footprint": "overture:a8259232-275c-4505-a700-87a5bf89b948"
+      },
+      {
+        "place": "Double D's Bar And Grill",
+        "fsq_place_id": "691e8003486b9f3e52ce8050",
+        "footprint": "overture:a8259232-275c-4505-a700-87a5bf89b948"
+      }
+    ]
+  },
+  "weights": {
+    "partition": 5,
+    "module": 3,
+    "crosslayer": 3,
+    "opposition": 5
+  },
+  "baseline": {
+    "core": 72,
+    "tie_neutral_or_balanced": 62,
+    "excluded": 0,
+    "upper": 134,
+    "kernel_full": {
+      "compile": 0,
+      "solve": 0,
+      "status": "ambiguous",
+      "residual_model_count": 18446744073709551615,
+      "ranked_models": 0
+    },
+    "kernel_crosscheck": [
+      {
+        "size": 8,
+        "kernel_rank1_cost": 0,
+        "separable_cost": 0,
+        "kernel_rank1_models": 1,
+        "agrees": true
+      },
+      {
+        "size": 10,
+        "kernel_rank1_cost": 0,
+        "separable_cost": 0,
+        "kernel_rank1_models": 1,
+        "agrees": true
+      },
+      {
+        "size": 12,
+        "kernel_rank1_cost": 0,
+        "separable_cost": 0,
+        "kernel_rank1_models": 1,
+        "agrees": true
+      },
+      {
+        "size": 12,
+        "kernel_rank1_cost": 0,
+        "separable_cost": 0,
+        "kernel_rank1_models": 1,
+        "agrees": true
+      }
+    ]
+  },
+  "patched": {
+    "core": 58,
+    "tie_neutral_or_balanced": 62,
+    "excluded": 14,
+    "upper": 120,
+    "kernel_full": {
+      "compile": 0,
+      "solve": 0,
+      "status": "ambiguous",
+      "residual_model_count": 18446744073709551615,
+      "ranked_models": 0
+    },
+    "kernel_crosscheck": [
+      {
+        "size": 8,
+        "kernel_rank1_cost": 26,
+        "separable_cost": 26,
+        "kernel_rank1_models": 8,
+        "agrees": true
+      },
+      {
+        "size": 10,
+        "kernel_rank1_cost": 32,
+        "separable_cost": 32,
+        "kernel_rank1_models": 10,
+        "agrees": true
+      },
+      {
+        "size": 12,
+        "kernel_rank1_cost": 38,
+        "separable_cost": 38,
+        "kernel_rank1_models": 12,
+        "agrees": true
+      },
+      {
+        "size": 12,
+        "kernel_rank1_cost": 6,
+        "separable_cost": 6,
+        "kernel_rank1_models": 1,
+        "agrees": true
+      }
+    ]
+  },
+  "readout_sha256": "4f34424ad67ccf9005b43d3779be9ec9d76f8f82fcd7a550d6ec427806447e88"
+}
