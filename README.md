@@ -511,6 +511,28 @@ for parameters, equality authority, and artifact-version changes.
 
 #### Geo command surface
 
+For a short terminal walkthrough, run:
+
+```bash
+bash scripts/geo_demo/cornerstone.sh
+```
+
+Press Enter through three evidence steps: Foursquare parcel support, Overture
+corroboration, and the remaining building ambiguity. The default reads
+hash-verified retained results from the
+[Cornerstone experiment](scripts/geo_measurements/fixtures/cornerstone_national_2026-09-17/README.md)
+immediately; it does not fetch live MCP data or execute the solver. Add `--auto`
+to print all steps without prompts, or `--recompute` to run native evidence
+materialization, compilation, and solving over the retained adapter rows.
+Use `--step 1`, `--step 2`, or `--step 3` to visit just one step.
+Recomputation can take several minutes per parcel solve; it does not rerun
+geometry adaptation or the full project DAG. `--work-dir DIR` retains the inputs
+and summaries in a new or empty directory. Default readback requires Bash, jq,
+tar, and `sha256sum` or `shasum`; recomputation builds the checkout with Cargo
+unless `CANON_BIN` names an executable. The walkthrough preserves the distinction
+between a preferred candidate and accepted identity. Live acquisition still
+requires an externally connected agent and the experimental adapter.
+
 Geo commands are declared in three tiers, and `canon --describe` carries the tier on
 every row:
 
