@@ -1,6 +1,6 @@
 # Canon geo on data center sites: a field test, and what it says about the plan
 
-**Status:** working brief for a brainstorm, 2026-09-28. Written to be attacked, not to defend the plan.
+**Status:** working brief for a brainstorm, 2026-09-28; focused Geo reality check and Hilliard follow-up added 2026-10-20 (§11). Written to be attacked, not to defend the plan.
 **Question the brainstorm should answer:** what may be wrong with the Canon geo plan, judged against a field test on a
 real, awkward asset class?
 **Beads:** `bd-dzdy1` (cmdrvl-curves, the test), `bd-399so` and `bd-ncw6p` (Epoch landing/scraper), `bd-2opq` (Franklin parcel
@@ -303,3 +303,146 @@ durable copy. Order: Epoch snapshot (`spot_scrapers.epoch_ai`), arms A-C (`scrip
 Franklin anchors and pruning (`find_anchors.py`, `prune_test.py`), TxGIO (`spot_scrapers.txgio_land_parcels`), Bexar arm E
 (`run_arm_e_bexar.py`). Canon steps: `canon geo materialize-evidence`, `compile-evidence`, `solve --request`. Details and the hash manifest:
 [`geo_datacenter_site_test_2026-09-28/README.md`](geo_datacenter_site_test_2026-09-28/README.md).
+
+## 11. Hilliard follow-up and focused reality check (2026-10-20)
+
+This section assesses the **news-to-parcel Geo inquiry**, not every Canon v1
+promise. The measuring sticks are `CANON_GEO_AGENT_ARCHITECTURE.md`,
+`PLAN_CANON_GEO.md` (including unchanged E1–E5), and the S1–S6 sequence in
+`PLAN_CANON_GEO_AGENT_COMPLETE_INQUIRY.md`. It records retained development
+experiments and a bridge to a reusable agent workflow; it changes no normative
+mathematics, acceptance gate, command tier or release claim.
+
+### What the new experiment actually established
+
+The observed news snapshot contained **435 project/facility records**, not 435
+verified operating data centers. The Hilliard subject is AWS/Bloom's proposed
+fuel-cell installation beside an existing campus. The article's 72.9 MW and
+several acres describe that installation, not the complete campus. Site records,
+physical subjects, equipment, buildings and campus extent must stay distinct.
+
+An initial literal road-situs query missed `CRK` when the article said `CREEK`.
+That was acquisition failure, not Canon doing a faulty name comparison. The
+geographic retry retained **1,383 parcels**, 1,452 Overture footprints and 1,162
+FEMA footprints in the declared union of 1 km seed buffers. This is bounded
+source coverage, not proof that the full city, road or true site was reached.
+Road-address observations furnished broad context for 42 parcels; they did not
+establish that those parcels were campus members or eliminate the other 1,341.
+
+The official OPSB GeoPDF supplied a geographic project outline and **228
+proposed fuel-cell equipment positions**. Canon's native exact point predicate
+placed all 228 represented centers strictly inside parcel `050-002806`.
+Those observations share one source lineage. Three parcel geometries refused
+materialization and five overlapping geometries were outside the measurement
+harness's simple-ring support; none became negative evidence. Rounded source
+controls, a caption/embedded-CRS disagreement and uncalibrated upstream
+interpolation/reprojection remain limitations. Exact predicates do not remove
+those uncertainties or prove world identity.
+
+This is positive geometric support at the parcel-association grain. It is not
+accepted identity, one-building resolution or complete campus extent. The
+CLI evidence/compile/solve route retained all 1,383 candidates, reported
+ambiguity, no forced member and no materialized global soft ranking. Fresh
+replays were byte-identical. The 345 retained imagery tiles verified through
+Canon's pin API, but did not cover the complete source-campus view; their 2025
+vintage cannot establish proposed 2026 equipment. No calibrated image observer
+was proved.
+
+The retained local experiment root is
+`/Users/zac/Source/cmdrvl/cmdrvl-curves/local_data/spot_scrapers/hilliard_project_evidence/20261020T195640Z`.
+`trial-result.json`, `native-points-probe.json`, `geometry-admission.json`,
+`project-compiled.json`, `project-solve.json` and
+`native-build-and-adapter-receipt.json` bind the result and reproducible inputs.
+Raw PDF, source-derived geometry and reconstructive imagery remain local under
+the recorded licence restrictions; this brief does not authorize redistribution.
+
+### Vision versus implementation
+
+| Promised capability | Current reality | Owner / bridge |
+|---|---|---|
+| Bounded geographic candidate construction with honest reach | **PARTIAL:** intended area acquisition worked externally; reach remains unverified and manual adaptation remains | Existing bd-3s20, bd-3f0r, bd-1b0g, bd-2s8f |
+| Deterministic spatial evidence and replay | **WORKING in the retained native-predicate/CLI experiment:** positive containment and byte replay; not an agent-complete journey | New bd-v8gv packages the native relation path |
+| Source documents become reusable geographic observations | **PARTIAL:** useful GeoPDF extraction exists as local subject-specific scripts | New bd-1ywd packages a bounded supported document adapter outside core |
+| Current supported answer is visible despite optional work or unmaterialized models | **PARTIAL:** nine-stage run waits for prospective inputs; empty `soft_ranked` hides useful support from a caller | Existing S1 bd-2dvm, bd-1uo5, bd-1g18, bd-3mrt |
+| Exact area-majority on the declared bounded representation | **DEFECT:** arithmetic overflow on three real map/parcel pairs, including the useful candidate | Existing bd-gqnu; independent of the point-containment route |
+| Reusable address evidence and correct coverage/vintage | **PARTIAL:** literal acquisition missed an alias; tile completeness did not establish full target coverage | Existing bd-3mft, bd-3pkw, bd-1uhl |
+| Fresh agent performs the inquiry without bespoke code | **UNPROVEN:** operator supplied extraction, a Rust harness and internal artifacts | New bd-he43 plus S1–S3 owners |
+| Justified acceptance, cross-region quality and scalable economics | **UNPROVEN:** one development subject is not held-out quality, E5 or national cost evidence | Existing bd-1t9f, bd-259l, bd-c95z, bd-244j, E5 owners |
+
+The missing functionality is integration and source semantics, not a collection
+of `todo!()` placeholders. `src/geo/geometry.rs` implements native point
+location; `executor.rs`'s observer stage consumes already prepared admission
+requests. `composition.rs` emits global `soft_ranked` only when residual models
+can be materialized. Existing bd-1uo5 already requires a useful per-member
+support projection with an explicit global-ranking-unavailable reason. A new
+global optimizer is not required to show the Hilliard finding.
+
+### Which work moves the needle
+
+1. **Finish S1 first.** Return the evidence-supported member, alternatives,
+   unknown geometry, requested grain and limitations without inventing a forced
+   identity or requiring hypothetical future observations. This converts existing
+   evidence into a usable answer. Preserve global preference unavailability when
+   the solver did not materialize the models.
+2. **Remove the custom spatial glue.** `bd-v8gv` adds native point-to-parcel
+   evidence to the existing run DAG; `bd-1ywd` packages retained document-map
+   extraction as a source adapter. Both include positive and negative behavioral
+   tests. Source-specific parsing stays outside core; uncertain controls remain
+   uncertain. Area arithmetic repair helps the outline route but does not block
+   positive point support.
+3. **Prove transfer and incremental value.** `bd-he43` runs a different physical
+   news subject through the public inquiry/acquisition interfaces. Its dependency
+   graph includes the actual S1–S3 integration owners. It need not await S4's full
+   policy-driven action discovery or the population release gate; incomplete
+   action discovery must remain explicit. Existing release proofs stay separate.
+
+Completing these beads and the existing S1–S3 owners should close the named
+integration gap **within the declared supported profiles**, provided their
+positive acceptance tests actually pass. It would not establish data availability
+for all 435 records, calibrated geographic truth, full property extent or national
+economics. Even completing all open Geo beads cannot promise every news record
+is resolvable: source coverage, ambiguous article grain, independently obtained
+truth and acceptable coordinate accuracy remain empirical obligations.
+
+### Next use case and falsifiable value test
+
+Freeze a Franklin news-subject eligibility frame, selection seed, fallback order,
+budget, as-of date and parcel-association question before inspecting results.
+Exclude Hilliard and all duplicate records for its physical campus. Retain failed
+acquisition, absent controls and abstentions; do not replace them with a favorable
+map after observing the answer. Bound the document adapter to supported formats
+rather than attempting a universal PDF parser. Other typed spatial point sources
+may be tested as a separately reported arm.
+
+Use a fresh agent and Canon's returned acquisition/adaptation instructions. MCP
+lookups remain external; no subject-specific program, manual constraint JSON,
+owner/deed filter or printed parcel-ID shortcut may enter geometric resolution.
+Acquire all available parcels/footprints in the declared area, retaining failed
+geometries and partial coverage. Record the weak-clue answer, add target-specific
+spatial observations, restart and resume, then explain exactly what changed.
+Uncalibrated soft support must not be described as hard candidate elimination.
+
+Hold independently adjudicated parcel truth out of acquisition and profile
+tuning until results are frozen. Recorder/parcel identifiers are legitimate
+**evaluation-only** evidence; an identifier printed on the same source plan is
+a dependent consistency check, not independent confirmation.
+
+Compare the minimal native containment lookup and full Canon inquiry with the
+**same retained inputs and budget**, using Canon for both arms. Measure correct
+associations, alternatives, wrong neighbors, grain errors, reach, unknown
+geometry, replay, intervention count and cold/warm/refresh work. Add explicit
+wrong-address, boundary/overlap, corrupt-evidence and missing-geometry controls.
+Do not claim a benchmark against external GIS tools that were not run.
+
+Point-in-polygon itself is ordinary GIS. The extra evidence source produced the
+new location information here. Canon's potential additional value is retaining
+and reconciling that evidence, exposing uncertainty and contradiction, preserving
+grain, and resuming reproducibly with less agent work. A direct lookup can tie
+Canon on a clean point. The next trial must show where the full workflow helps
+or costs more; a tie or failure limits the product claim.
+
+One unseen site proves transfer only. Follow with NYC using unchanged core and
+versioned local adapters, then the predeclared multi-subject quality/cost
+evaluation. The existing per-mode held-out population, false-acceptance,
+coverage, grain and latency gates in bd-244j remain unchanged. Hilliard and any
+subject used to tune the adapter are never counted as held-out proof.
