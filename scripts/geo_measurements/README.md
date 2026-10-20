@@ -4,6 +4,113 @@ These queries are the executable source for Appendices B, C, and D of
 `docs/PLAN_CANON_GEO.md`. They are a release gate, not retained evidence for the
 solver: fixture results must never be presented as a fresh warehouse run.
 
+## 2026-10-20 MCP source readiness: NYC and Franklin County
+
+The [retained preflight](fixtures/source_preflight_2026-10-20/measurement.json)
+records live metadata lookup, twenty-five data-plane schemas, bounded SQL results,
+query-history identities, and source-WKB admission through installed and
+source-tree Canon 0.14.0 binaries. This is the source-readiness prerequisite
+for the S1–S3 inquiry work and Franklin E5 tiers. Both jurisdictions support
+bounded implementation cases; full acceptance still requires additional evidence.
+
+| Evidence | Live observation | Supported use |
+|---|---|---|
+| NYC parcels | MapPLUTO 26v2 / 2026-08-01: 856,687 rows; matching geom-v3 source evidence exists in all five boroughs | Parcel candidates and original EPSG:2263 geometry |
+| NYC address/building links | PAD 26B: 1,324,519 frontage rows; 2026-08-09: 1,081,999 active footprints | Source-asserted BBL/BIN links, address corroboration, building candidates |
+| NYC documents | ACRIS master and legals are readable at the frozen 2026-08-10 release and a later 2026-10-08 release | Inputs for the independent document truth workflow; counts alone do not admit truth |
+| Franklin parcels | 2026-09-01: 494,704 feature rows; 494,043 pass the existing geometry filter; original EPSG:3735 WKB and transform receipt are readable | Generic county parcel candidates, attributes, source geometry |
+| National evidence in both test neighborhoods | Overture address/building/place, Foursquare place, FEMA structure, and Microsoft footprint rows all return nonzero bounded counts | Additional candidate and corroboration sources; counts are availability, not independent votes |
+| Boundaries, assessment, lifecycle, events | TIGER county polygons for Kings and Franklin; NYC assessment rows; 22,732 Franklin drops/adds rows; 132 NHC geometry rows with source hashes | Region discovery, profiled attributes, lifecycle evidence, and event-exposure inputs; these paths still need their own native evaluation |
+| Imagery | Cataloged NYC ortho, NAIP, and USGS ortho channels | Acquisition locators; retained raster bytes, applicable pins, and observer characterization still require verification |
+
+The known NYC development case, 2207 Albemarle Road, still joins PAD source
+row 397690 to BBL `3051090025` and BIN `3117371`. Its parcel WKB and one
+seed-selected Franklin parcel both pass independent source-hash verification
+and materialize in two fresh Canon processes with byte-identical outputs.
+The Franklin selection seed is recorded over 169 eligible PIP edges, rather
+than choosing a convenient property by hand. A corrupt source digest refuses
+with `invalid_source_digest`. These are one-feature transport/admission probes,
+not solver accuracy, complete property extent, unseen-subject transfer, or E5
+acceptance. The installed binary's hash is retained; its source revision is
+not attested. The binary built from repository revision `bd24f2a` independently
+repeats both positive probes and the corrupt-digest control, with the same
+positive output bytes; its hash and clean Rust source-tree check are retained.
+Demo 0 also passes separately at fixture class, including its
+contradictory hard-evidence control, and the retained NYC address leaf replays.
+
+On that seeded Franklin parcel, `3045 OLENTANGY RIVER RD`, the matching
+Overture/NAD address point lies inside the county polygon and one of two
+intersecting Overture building features under the warehouse predicates.
+One FEMA and one Microsoft footprint also intersect the parcel. The other
+house-number-only matches are different streets or units and earn no address
+match credit. These are bounded source/reference-geometry observations;
+independent truth, native association acceptance, and complete extent remain
+separate claims. Source lineage and license terms are retained.
+
+Replay the retained Franklin source-byte probe without warehouse access:
+
+```bash
+probe_dir=$(mktemp -d)
+jq '.native_probes.franklin.request' \
+  scripts/geo_measurements/fixtures/source_preflight_2026-10-20/measurement.json \
+  > "$probe_dir/franklin-rows.json"
+canon geo materialize-warehouse-geometry --rows "$probe_dir/franklin-rows.json"
+```
+
+Snapshot drift is material: `PROPERTY_MART.LOAN_ISSUANCE_PROPERTY` now exposes
+Franklin build `dd644d67-070c-4824-a2a6-bbc8b625a402`, with **172 properties /
+176 loans**. A new measurement, changing only the bridge-build binding in the
+existing candidate-reach SQL, reports **168/172 reached**, 167 unique PIP
+subjects, one two-parcel subject, four misses, and 61,268 blocked pairs.
+Its guard passes. Query `01c7dc16-0624-3df4-006c-c703096547c6` records the
+execution; the seeded source-byte query is
+`01c7dc16-0624-46ff-006c-c7030965a2ca`. The historical 151-property /
+202-loan measurements, SQL pins, and manifest expectations remain unchanged.
+
+The remaining data and transport limits are concrete:
+
+- No Franklin/Ohio recorder deed or mortgage table was found, and a separate
+  all-schema column-shape check found no near-native deed index under another
+  name. Independent Franklin truth remains an acquisition dependency
+  (`bd-o3fy` → `bd-13ju` → `bd-s07o`); parcel reach cannot supply its labels.
+- `SOURCE.OVERTURE_MAPS_MANIFEST_EXT` returns zero rows even though the hot
+  data is populated. One Franklin address row carries NAD lineage but null
+  upstream record id, update time, and source license fields. Release/source
+  provenance must be completed before stronger evidence claims.
+- The data MCP truncates a long JSON cell; `fetch_result` reproduces the same
+  truncation even with only that column selected. The Franklin request was
+  recovered from its original `RESULT_SCAN` as two bounded text projections,
+  reassembled completely, and passed to Canon. An acquisition adapter must
+  check cell truncation as well as row pagination.
+- Source encodings need explicit adapters: Microsoft H3 columns are integers,
+  while FEMA/Overture H3 columns are hex text. MapPLUTO source-plane BBLs can
+  be strings such as `3051090025.0`, while PAD uses `3051090025`. The initial
+  direct comparisons fail; typed conversion and the source-row locator succeed.
+  This is source interpretation, not a change to exact registry replay.
+- Assessment attributes remain source-typed observations: the NYC development
+  lot has text-valued count/area fields across eight year/period rows. Franklin
+  drops/adds dates range through `2068-12-31`, requiring date interpretation
+  before temporal claims. Its 8,720 instrument references do not turn that
+  lifecycle ledger into independent recorder mortgage truth.
+- Exact metadata `lookup` reliably finds the source families. Broad semantic
+  `reveal` requests returned incomplete or unrelated resource lists; its
+  results are discovery leads rather than a complete availability denominator.
+
+Implementation remains at the agent-complete roadmap's **S1** boundary:
+current-answer projection/endpoint, empty-action discovery state, and useful
+one-inspection reporting are open (`bd-1uo5`, `bd-2dvm`, `bd-3mrt`, `bd-1g18`).
+The nine-stage offline DAG and kernel already exist. Proceed with that vertical
+slice and the S2/S3 inquiry/adapters over these supported sources; preserve
+separate E4/E5, held-out quality, and live-scale gates.
+
+The repository check exposed a Demo 0 fallback defect (`bd-1xy6.1`): Cargo
+loaded configuration from the caller's directory even with `--manifest-path`.
+The fallback now runs Cargo metadata/build in repository-root subshells while
+preserving caller-relative work paths. The regression plants an invalid
+foreign Cargo configuration; it fails before the fix and passes afterward.
+Formatting, Clippy with warnings denied, and the full default test suite pass:
+3,190 tests passed, zero failed, and 11 ignored. This does not close E4/E5.
+
 ## 2026-09-17 addressless NXRT experiment
 
 The [one-property experiment](fixtures/addressless_nxrt_2026-09-17/README.md)

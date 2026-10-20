@@ -153,16 +153,23 @@ fn geo_capabilities_report_exact_surface_tier_counts() {
 fn demo0_fallback_cargo_path_is_cwd_independent() {
     let temp = tempdir().expect("tempdir");
     let foreign_dir = temp.path().join("foreign");
-    let work_dir = temp.path().join("work");
+    let work_dir = foreign_dir.join("work");
     fs::create_dir_all(&foreign_dir).expect("foreign cwd");
     fs::create_dir_all(&work_dir).expect("demo workdir");
+    let foreign_config_dir = foreign_dir.join(".cargo");
+    fs::create_dir_all(&foreign_config_dir).expect("foreign cargo config directory");
+    fs::write(
+        foreign_config_dir.join("config.toml"),
+        "deliberately invalid caller configuration\n",
+    )
+    .expect("foreign cargo config");
 
     let mut command = Command::new("bash");
     command
         .current_dir(&foreign_dir)
         .arg(demo_script())
         .arg("--work-dir")
-        .arg(&work_dir)
+        .arg("work")
         .env_remove("CANON_BIN");
 
     let assert = command.assert().success();
@@ -174,6 +181,7 @@ fn demo0_fallback_cargo_path_is_cwd_independent() {
         summary["composition"]["bounded_universe"]["parcel_candidates"],
         7
     );
+    assert!(work_dir.join("solve.json").is_file());
 }
 
 #[test]

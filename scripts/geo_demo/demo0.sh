@@ -48,12 +48,17 @@ if [[ -n "${CANON_BIN:-}" ]]; then
     exit 70
   fi
 else
-  cargo_target_dir="$(cargo metadata --quiet --no-deps --format-version 1 --manifest-path "$repo_root/Cargo.toml" | jq -r '.target_directory')"
+  # Cargo loads project configuration relative to its current directory.
+  cargo_target_dir="$(
+    cd -- "$repo_root" &&
+      cargo metadata --quiet --no-deps --format-version 1 --manifest-path "$repo_root/Cargo.toml" |
+      jq -r '.target_directory'
+  )"
   if [[ -z "$cargo_target_dir" || "$cargo_target_dir" == "null" ]]; then
     printf 'demo0 could not resolve cargo target directory for %s\n' "$repo_root/Cargo.toml" >&2
     exit 70
   fi
-  cargo build --quiet --manifest-path "$repo_root/Cargo.toml" --bin canon
+  (cd -- "$repo_root" && cargo build --quiet --manifest-path "$repo_root/Cargo.toml" --bin canon)
   canon_bin="$cargo_target_dir/debug/canon"
   if [[ ! -x "$canon_bin" ]]; then
     printf 'demo0 cargo build did not produce executable canon binary at %s\n' "$canon_bin" >&2
