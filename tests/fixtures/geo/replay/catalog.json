@@ -528,7 +528,7 @@
             "/semantic_hash",
             "/status"
           ],
-          "commit": null,
+          "commit": "265afaa54d62742ec2506019e0d5c5d551bfb567",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -1163,7 +1163,7 @@
             "/semantic_hash",
             "/status"
           ],
-          "commit": null,
+          "commit": "265afaa54d62742ec2506019e0d5c5d551bfb567",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -1820,7 +1820,7 @@
             "/semantic_hash",
             "/status"
           ],
-          "commit": null,
+          "commit": "265afaa54d62742ec2506019e0d5c5d551bfb567",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -2808,7 +2808,7 @@
             "/project_run_report/receipt/node_receipts/3/content_hash_inputs",
             "/project_run_report/receipt/node_receipts/3/dependency_receipt_hashes/geo.building.section"
           ],
-          "commit": null,
+          "commit": "265afaa54d62742ec2506019e0d5c5d551bfb567",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -3255,7 +3255,7 @@
             "/project_run_report/receipt/node_receipts/3/content_hash_inputs",
             "/project_run_report/receipt/node_receipts/3/dependency_receipt_hashes/geo.building.section"
           ],
-          "commit": null,
+          "commit": "265afaa54d62742ec2506019e0d5c5d551bfb567",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -6772,7 +6772,7 @@
             "/semantic_hash",
             "/status"
           ],
-          "commit": null,
+          "commit": "265afaa54d62742ec2506019e0d5c5d551bfb567",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -7166,7 +7166,7 @@
           "target": "replay_tier",
           "bead": "bd-2no5",
           "date": "2026-10-21",
-          "commit": null,
+          "commit": "265afaa54d62742ec2506019e0d5c5d551bfb567",
           "old": "resume",
           "new": "full",
           "semantic_note": "Unversioned historical receipts must be recomputed over 2983 candidates, not treated as a fast warm resume. Explicit full/release consumer; original retained hashes and evidence unchanged."
@@ -7399,7 +7399,7 @@
           "target": "replay_tier",
           "bead": "bd-2no5",
           "date": "2026-10-21",
-          "commit": null,
+          "commit": "265afaa54d62742ec2506019e0d5c5d551bfb567",
           "old": "resume",
           "new": "full",
           "semantic_note": "Unversioned historical receipts must be recomputed over 889 candidates, not treated as a fast warm resume. Explicit full/release consumer; original retained hashes and evidence unchanged."
@@ -7661,7 +7661,7 @@
           "changed_paths": [
             "/semantic_hash"
           ],
-          "commit": null,
+          "commit": "265afaa54d62742ec2506019e0d5c5d551bfb567",
           "contract_versions": [
             "canon_geo_run.v0",
             "canon_geo_run.v0"
@@ -8023,7 +8023,7 @@
             "/semantic_hash",
             "/status"
           ],
-          "commit": null,
+          "commit": "265afaa54d62742ec2506019e0d5c5d551bfb567",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -8928,7 +8928,7 @@
           "changed_paths": [
             "/run_semantic_hash"
           ],
-          "commit": null,
+          "commit": "265afaa54d62742ec2506019e0d5c5d551bfb567",
           "contract_versions": [
             "canon_geo_run.v0",
             "canon_geo_run.v0"
@@ -9030,7 +9030,7 @@
           "changed_paths": [
             "/run_semantic_hash"
           ],
-          "commit": null,
+          "commit": "265afaa54d62742ec2506019e0d5c5d551bfb567",
           "contract_versions": [
             "canon_geo_run.v0",
             "canon_geo_run.v0"
@@ -9134,7 +9134,7 @@
           "changed_paths": [
             "/run_semantic_hash"
           ],
-          "commit": null,
+          "commit": "265afaa54d62742ec2506019e0d5c5d551bfb567",
           "contract_versions": [
             "canon_geo_run.v0",
             "canon_geo_run.v0"
@@ -9225,7 +9225,7 @@
           "changed_paths": [
             "/run_semantic_hash"
           ],
-          "commit": null,
+          "commit": "265afaa54d62742ec2506019e0d5c5d551bfb567",
           "contract_versions": [
             "canon_geo_run.v0",
             "canon_geo_run.v0"
@@ -9316,7 +9316,7 @@
           "changed_paths": [
             "/run_semantic_hash"
           ],
-          "commit": null,
+          "commit": "265afaa54d62742ec2506019e0d5c5d551bfb567",
           "contract_versions": [
             "canon_geo_run.v0",
             "canon_geo_run.v0"
