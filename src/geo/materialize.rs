@@ -1143,6 +1143,11 @@ fn canonicalize_warehouse_observation_kind(
     observation: &GeoRhoObservationKind,
 ) -> GeoRhoObservationKind {
     match observation {
+        GeoRhoObservationKind::PointParcelRelations { report } => {
+            GeoRhoObservationKind::PointParcelRelations {
+                report: report.clone(),
+            }
+        }
         GeoRhoObservationKind::ExactSets { level, sets } => {
             let mut sets = sets.clone();
             for set in &mut sets {

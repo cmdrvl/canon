@@ -1498,6 +1498,16 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "experimental addressless single-member profile; binds to geo run materialize_evidence rows",
         ),
         contract(
+            super::point_relations::CANON_GEO_POINT_PARCEL_REQUEST_VERSION,
+            "schemas/canon.geo.point_parcel_request.v0.schema.json",
+            "bounded native point/parcel observations; binds to geo run materialize_evidence rows",
+        ),
+        contract(
+            super::point_relations::CANON_GEO_POINT_PARCEL_RELATIONS_VERSION,
+            "schemas/canon.geo.point_parcel_relations.v0.schema.json",
+            "diagnostic native point/parcel accounting with dependent-family soft support",
+        ),
+        contract(
             CANON_GEO_H7_POPULATION_ROWS_VERSION,
             "schemas/canon.geo.h7_population_rows.v0.schema.json",
             "Appendix H.7 accepted-loan population row contract",

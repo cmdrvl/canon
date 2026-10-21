@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.geo.point_parcel_relations.v0.schema.json",
+  "title": "Diagnostic native point/parcel accounting; not accepted identity or complete extent",
+  "type": "object", "additionalProperties": false,
+  "required": ["version", "target_ref", "target_relation", "target_source_records", "source_as_of", "source_transform", "frame", "points", "candidates", "max_relation_pairs", "max_predicates", "max_geometry_bytes", "predicates_evaluated", "bbox_exterior_pairs", "canonical_geometry_bytes"],
+  "properties": {
+    "version": {"const": "canon_geo_point_parcel_relations.v0"},
+    "target_ref": {"$ref": "canon.geo.point_parcel_request.v0.schema.json#/$defs/id"},
+    "target_relation": {"enum": ["physical_component_of", "proposed_component_of", "associated_observation_of"]},
+    "target_source_records": {"type": "array", "minItems": 1, "items": {"$ref": "canon.geo.point_parcel_request.v0.schema.json#/$defs/record"}},
+    "source_as_of": {"type": "string", "minLength": 1},
+    "source_transform": {"$ref": "canon.geo.point_parcel_request.v0.schema.json#/$defs/source_transform"},
+    "frame": {"$ref": "canon.geo.geometry_request.v0.schema.json#/$defs/frame"},
+    "points": {"type": "array", "minItems": 1, "items": {
+      "type": "object", "additionalProperties": false, "required": ["point_id", "source_record", "coordinate", "quantization", "problem"],
+      "properties": {
+        "point_id": {"type": "string", "minLength": 1}, "source_record": {"$ref": "canon.geo.point_parcel_request.v0.schema.json#/$defs/record"},
+        "coordinate": {"oneOf": [{"type": "null"}, {"$ref": "canon.geo.geometry_tile.v0.schema.json#/$defs/point_mm"}]},
+        "quantization": {"oneOf": [{"type": "null"}, {"$ref": "canon.geo.geometry_tile.v0.schema.json#/$defs/quantization"}]},
+        "problem": {"oneOf": [{"type": "null"}, {"$ref": "canon.geo.point_parcel_request.v0.schema.json#/$defs/geometry_error"}]}
+      }
+    }},
+    "candidates": {"type": "array", "minItems": 1, "items": {
+      "type": "object", "additionalProperties": false, "required": ["parcel_id", "source_record", "geometry_blake3", "groups"],
+      "properties": {
+        "parcel_id": {"type": "string", "minLength": 1}, "source_record": {"$ref": "canon.geo.point_parcel_request.v0.schema.json#/$defs/record"},
+        "geometry_blake3": {"oneOf": [{"type": "null"}, {"$ref": "canon.geo.point_parcel_request.v0.schema.json#/$defs/blake3"}]},
+        "groups": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["outcome", "problem", "point_ids"], "properties": {
+          "outcome": {"enum": ["interior", "boundary", "exterior", "unavailable_geometry", "retained_admission_refused", "geometry_admission_refused", "point_admission_refused", "mixed_frame", "unsupported_topology", "arithmetic_failure", "budget_exhausted"]},
+          "problem": {"oneOf": [{"type": "null"}, {"$ref": "canon.geo.point_parcel_request.v0.schema.json#/$defs/geometry_error"}]},
+          "point_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+        }}}
+      }
+    }},
+    "max_relation_pairs": {"type": "integer", "minimum": 1},
+    "max_predicates": {"type": "integer", "minimum": 0},
+    "max_geometry_bytes": {"type": "integer", "minimum": 1},
+    "predicates_evaluated": {"type": "integer", "minimum": 0},
+    "bbox_exterior_pairs": {"type": "integer", "minimum": 0},
+    "canonical_geometry_bytes": {"type": "integer", "minimum": 0}
+  }
+}

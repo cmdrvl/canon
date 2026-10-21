@@ -5492,6 +5492,35 @@ fn validate_disjoint_polygons(
     Ok(())
 }
 
+/// Locate an admitted point in an admitted area in the same local frame.
+/// Callers materialize both values through this module before reaching here;
+/// source accuracy and physical identity remain separate evidence questions.
+pub(crate) fn locate_in_canonical_area(
+    frame: &GeoLocalFrameContract,
+    geometry: &GeoCanonicalGeometryMm,
+    point: GeoPointMm,
+) -> Result<GeoPointLocation, GeoGeometryError> {
+    match geometry {
+        GeoCanonicalGeometryMm::Polygon { polygon } => locate_in_polygon(frame, polygon, point),
+        GeoCanonicalGeometryMm::MultiPolygon { polygons } => {
+            let mut result = GeoPointLocation::Exterior;
+            for polygon in polygons {
+                match locate_in_polygon(frame, polygon, point)? {
+                    GeoPointLocation::Interior => return Ok(GeoPointLocation::Interior),
+                    GeoPointLocation::Boundary => result = GeoPointLocation::Boundary,
+                    GeoPointLocation::Exterior => {}
+                }
+            }
+            Ok(result)
+        }
+        GeoCanonicalGeometryMm::Point { .. } => Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidInput,
+            "Point containment requires an admitted polygon or multipolygon",
+            [("field", "geometry")],
+        )),
+    }
+}
+
 fn locate_in_polygon(
     frame: &GeoLocalFrameContract,
     polygon: &GeoCanonicalPolygonMm,

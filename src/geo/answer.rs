@@ -1546,7 +1546,8 @@ fn observation_members(observation: &GeoRhoObservationKind) -> Vec<GeoEntityRef>
         GeoRhoObservationKind::ExistentialMembership { members }
         | GeoRhoObservationKind::AllOf { members } => members.clone(),
         GeoRhoObservationKind::IntegerSumBand { .. }
-        | GeoRhoObservationKind::ExactCardinality { .. } => Vec::new(),
+        | GeoRhoObservationKind::ExactCardinality { .. }
+        | GeoRhoObservationKind::PointParcelRelations { .. } => Vec::new(),
     }
 }
 

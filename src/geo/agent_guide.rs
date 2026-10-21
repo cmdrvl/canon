@@ -19,9 +19,13 @@ const SCHEMAS: &[(&str, &str)] = &schemas![
     "canon.geo.composition_request.v0.schema.json",
     "canon.geo.descriptive_asset_request.v0.schema.json",
     "canon.geo.evidence_request.v0.schema.json",
+    "canon.geo.geometry_request.v0.schema.json",
+    "canon.geo.geometry_tile.v0.schema.json",
     "canon.geo.home_cell_rows.v1.schema.json",
     "canon.geo.next_evidence_inputs.v0.schema.json",
     "canon.geo.next_evidence_request.v0.schema.json",
+    "canon.geo.point_parcel_request.v0.schema.json",
+    "canon.geo.point_parcel_relations.v0.schema.json",
     "canon.geo.question.v0.schema.json",
     "canon.geo.regional_inventory.v1.schema.json",
     "canon.geo.resource_budget.v0.schema.json",
@@ -88,6 +92,7 @@ pub fn agent_guide() -> Result<Value, Box<dyn Error>> {
             "budget": {"schema": "canon.geo.resource_budget.v0.schema.json"},
             "descriptive": {"schema": "canon.geo.descriptive_asset_request.v0.schema.json", "binding_example": "geo.building.materialize_evidence:rows", "meaning": "Claim attributes and source-backed candidate attributes. Supports one parcel or one building, not campus extent. Run executor accepts this family; the warehouse-only materialize-evidence leaf does not."},
             "warehouse": {"schema": "canon.geo.warehouse_rows.v0.schema.json", "meaning": "Alternative materialize_evidence:rows family. Candidate incidence and typed observations, not arbitrary article prose."},
+            "point_parcel": {"schema": "canon.geo.point_parcel_request.v0.schema.json", "binding_example": "geo.parcel.materialize_evidence:rows", "meaning": "Native point/parcel observations over the complete declared bounded parcel inventory. Supply source decimal coordinates, an explicit local frame and source/control transform accuracy (null if unknown), point-to-target relationship evidence, parcel geometries or retained admission failures, and one uncalibrated soft attribute family with lineage. Missing/refused candidates remain unknown. Holes and multipolygons use native predicates. Repeated points from that family contribute one preference per supported parcel; boundary/exterior/unknown outcomes do not eliminate candidates or establish unique identity. The warehouse-only leaf does not accept this family; use plan/run."},
             "source_reference": {"schema": "canon.geo.evidence_request.v0.schema.json", "pointer": "/$defs/evidence_record_ref", "meaning": "Record identifier, vintage and raw record BLAKE3; retain actual source bytes externally. Repeated copies do not establish independent support."},
             "rho_contract": {"schema": "canon.geo.evidence_request.v0.schema.json", "pointer": "/$defs/rho_contract", "meaning": "Versioned observation semantics and admission authority. Uncalibrated source claims must remain diagnostic or soft; source count is not confidence."},
             "home_cells": {"schema": "canon.geo.home_cell_rows.v1.schema.json", "meaning": "Source-bound representative points for blocking, not geometric truth."},
@@ -96,6 +101,7 @@ pub fn agent_guide() -> Result<Value, Box<dyn Error>> {
             "next_evidence": {"schema": "canon.geo.next_evidence_inputs.v0.schema.json", "meaning": "Prospective action candidates and cost budget, not acceptance authority."}
         },
         "output_contracts": {
+            "point_parcel_relations": {"schema": "canon.geo.point_parcel_relations.v0.schema.json", "meaning": "Diagnostic observation retained inside materialize/compile evidence. Every declared point/parcel pair has an explicit location or unknown outcome. Inspect the separately emitted member preferences for support; representation-relative containment does not establish source accuracy, accepted identity or complete property extent."},
             "answer": {"schema": "canon.geo.answer.v0.schema.json", "meaning": "Read support and alternatives independently of optional future work. Uncalibrated preference is not accepted identity; source count is not confidence, and a member association does not prove complete property extent."}
         },
         "schema_documents": {},
@@ -119,7 +125,7 @@ pub fn agent_guide() -> Result<Value, Box<dyn Error>> {
     }"#,
     )?;
     guide["schema_documents"] = serde_json::to_value(documents)?;
-    guide["examples"] = Value::Array(vec![synthetic_example()?]);
+    guide["examples"] = Value::Array(vec![synthetic_example()?, synthetic_point_example()?]);
     Ok(guide)
 }
 
@@ -247,6 +253,75 @@ fn synthetic_example() -> Result<Value, Box<dyn Error>> {
     });
     example["full_workflow_extension"] = full;
     Ok(example)
+}
+
+fn synthetic_point_example() -> Result<Value, Box<dyn Error>> {
+    let base = synthetic_example()?;
+    let base_files = &base["write_files"];
+    let region = json!({"geography_id": "guide.synthetic.point-region", "geography_kind": "bounded_fixture", "description": "Synthetic parcel/point workflow; not live geography"});
+    let ids = ["parcel-a", "parcel-b", "parcel-missing"];
+    let profile =
+        json!({"version": "canon_geo_composition_profile.v0", "selection_level": "parcel"});
+    let rows = json!({"version": "canon_geo_warehouse_rows.v0", "profile": profile, "parcel_rows": ids.iter().map(|id| json!({"parcel_id": id})).collect::<Vec<_>>(), "building_parcel_rows": [], "contracts": [], "evidence_rows": [], "max_assignments": 128, "max_materialized_models": 64});
+    let rows_digest = format!(
+        "blake3:{}",
+        blake3::hash(&serde_json::to_vec(&rows)?).to_hex()
+    );
+    let release =
+        json!({"release_id": "guide.synthetic.parcels.v1", "release_digest": rows_digest});
+    let scope = json!({"kind": "native_entity", "entity_level": "parcel", "identity_participation": "stable_alias"});
+    let inventory = json!({
+        "version": "canon_geo_regional_inventory.v1", "inventory_id": "guide.synthetic.point-inventory", "region": region,
+        "sources": [{"source_instance_id": "guide.synthetic.parcels", "release": release, "temporal_scope": {}, "lineage_ids": ["guide.synthetic.parcel-lineage"], "native_scope": scope, "evidence_classes": ["parcel_geometry", "asserted_attribute"],
+            "coverage": {"coverage_id": "guide.synthetic.point-coverage", "region": region, "predicate": "three declared synthetic parcel records; empirical truth reach unverified"},
+            "local_state": {"state": "available", "local_ref": {"artifact_id": "guide.synthetic.parcel-rows", "contract_version": "canon_geo_warehouse_rows.v0", "content_hash": rows_digest, "media_type": "application/json"}}, "license_class": "public_redistributable", "egress_class": "shareable", "estimates": []}], "discovery_gaps": []});
+    let typed_inventory = serde_json::from_value(inventory.clone())?;
+    let source = json!({"source_instance_id": "guide.synthetic.parcels", "release": release, "native_scope": scope, "inventory_ref": {"inventory_id": "guide.synthetic.point-inventory", "semantic_hash": super::regional_inventory_semantic_hash(&typed_inventory)?, "planning_hash": super::regional_inventory_planning_hash(&typed_inventory)?}});
+    let record = |id: &str| json!({"source_record_id": id, "source_vintage": "guide.synthetic.v1", "record_blake3": blake3::hash(id.as_bytes()).to_hex().to_string()});
+    let coordinate = |x: i64, y: i64| json!({"x": x.to_string(), "y": y.to_string()});
+    let polygon = |id: &str, x: i64| json!({"feature_id": id, "source_crs": "LOCAL:fixture-mm", "geometry": {"kind": "polygon", "exterior": [coordinate(x,0),coordinate(x+100,0),coordinate(x+100,100),coordinate(x,100),coordinate(x,0)], "holes": []}});
+    let frame = json!({"version": "canon_geo_local_frame.v0", "frame_id": "guide.synthetic.local-mm", "tile_id": "892a100d62bffff", "source_crs": "LOCAL:fixture-mm", "source_axis_domain": "planar", "source_decimal_places": 0, "source_origin": {"x": 0,"y": 0}, "affine": {"x_from_source_x_numerator": 1,"x_from_source_y_numerator": 0,"y_from_source_x_numerator": 0,"y_from_source_y_numerator": 1,"denominator": 1}, "projection": {"method_id": "synthetic-identity", "method_version": "1", "parameters_blake3": blake3::hash(b"synthetic identity frame").to_hex().to_string(), "max_projection_error_micrometres": 0}, "max_abs_coordinate_mm": 2_000_000});
+    let point_observations: Vec<_> = [("point-1",10,10),("point-2",20,20),("boundary-point",0,50)].into_iter().map(|(id,x,y)| json!({"point_id": id,"source_record": record(id),"frame_id": "guide.synthetic.local-mm","coordinate": coordinate(x,y)})).collect();
+    let input = json!({
+        "version": "canon_geo_point_parcel_request.v0", "target_ref": "guide.synthetic.target", "target_relation": "proposed_component_of", "target_source_records": [record("guide.synthetic.target-record")], "source_as_of": "2026-08-31",
+        "source_transform": {"method_id": "synthetic-identity", "method_version": "1", "parameters_blake3": blake3::hash(b"synthetic point transform").to_hex().to_string(), "source_accuracy_mm": null},
+        "family": {"id": "guide.synthetic.point-family", "version": "1", "source_dataset": "guide.synthetic.point-plan", "source_release": "guide.synthetic.v1", "source_lineage_ids": ["guide.synthetic.one-plan"], "method_id": "external-point-observation", "method_version": "1", "claim_role": "attribute_observation", "basis": {"kind": "uncalibrated", "reason": "Synthetic workflow with unknown source/control accuracy", "admission_policy": {"kind": "soft_with_weight", "cost_if_absent": 1}}},
+        "inventory_source": source, "frame": frame,
+        "points": point_observations,
+        "candidates": [{"parcel_id": "parcel-a", "source_record": record("parcel-a"), "geometry": polygon("parcel-a",0), "retained_admission_refusal": null}, {"parcel_id": "parcel-b", "source_record": record("parcel-b"), "geometry": polygon("parcel-b",200), "retained_admission_refusal": null}, {"parcel_id": "parcel-missing", "source_record": record("parcel-missing"), "geometry": null, "retained_admission_refusal": null}],
+        "acquisition_truncated": false, "max_relation_pairs": 100, "max_predicates": 100, "max_vertices_per_geometry": 100, "max_geometry_bytes": 1_000_000, "max_report_bytes": 1_000_000, "max_assignments": 128, "max_materialized_models": 64});
+    let mut question = base_files["question.json"].clone();
+    question["question_id"] = json!("guide.synthetic.point-question");
+    question["subject_bindings"] = json!([{"role": "target", "binding_class": "operator_label", "value": "Proposed components in a synthetic bounded parcel inventory"}]);
+    question["bounded_geography"] = region.clone();
+    question["requested_grains"] = json!([{"entity_level": "parcel", "required_evidence_classes": ["parcel_geometry"], "optional_evidence_classes": ["asserted_attribute"]}]);
+    let home_rows: Vec<_> = ids.iter().map(|id| json!({"source": source, "feature_id": id, "source_record_id": format!("guide.synthetic.{id}"), "geometry_sha256": "5ed87d37d872789086452c35f658f5628ba870ca36072c495bb88519592403ed", "representative_point_method": "synthetic_blocking_point_not_live", "longitude": "-73.977264000", "latitude": "40.753429000", "transform_execution_id": "guide.synthetic.transform", "transform_definition_id": "guide.synthetic.definition", "claimed_home_cell": "892a100d62bffff"})).collect();
+    let features: Vec<_> = ids
+        .iter()
+        .map(|id| json!({"source": source, "feature_id": id, "home_cell": "892a100d62bffff"}))
+        .collect();
+    let run = json!([
+        "geo",
+        "run",
+        "--plan",
+        "plan.json",
+        "--work-dir",
+        "work",
+        "--input",
+        "geo.parcel.home_cells:rows=home-cells.json",
+        "--input",
+        "geo.parcel.section:request=tile-work.json",
+        "--input",
+        "geo.parcel.materialize_evidence:rows=point-input.json"
+    ]);
+    Ok(
+        json!({"id": "synthetic_point_parcel_not_live", "proof_class": "synthetic_contract_demonstration", "warning": "Native representation-relative containment and dependent-family soft support, not live identity, source accuracy, unique parcel authority or full extent. A missing geometry remains an unknown. H3 points are only synthetic blocking inputs.", "create_directories": ["work"], "file_encoding": base["file_encoding"],
+        "write_files": {"question.json": question,"capabilities.json": base_files["capabilities.json"],"budget.json": base_files["budget.json"],"profile.json": profile,"inventory.json": inventory,"inventory-rows.json": rows,
+            "home-cells.json": {"version": "canon_geo_home_cell_rows.v1", "coordinate_crs": "EPSG:4326", "coordinate_decimal_places": 9, "h3_resolution": 9, "stability_radius_fixed": 1000, "rows": home_rows, "max_rows": 16},
+            "tile-work.json": {"version": "canon_geo_tile_work_request.v1", "center_cell": "892a100d62bffff", "halo_k": 1, "features": features, "max_features": 16, "max_work_cells": 7},"point-input.json": input},
+        "steps": [{"argv": ["geo", "plan", "--question", "question.json", "--capabilities", "capabilities.json", "--inventory", "inventory.json", "--profile", "profile.json", "--budget", "budget.json"], "stdout_file": "plan.json"}, {"argv": run,"stdout_file": "run.json"}, {"argv": ["geo", "inspect", "--run", "work", "--recommend-next"],"stdout_file": "inspection.json"}, {"argv": run,"stdout_file": "warm-run.json"}, {"argv": ["geo", "inspect", "--run", "work", "--recommend-next"],"stdout_file": "warm-inspection.json"}],
+        "expected": {"answer_scope": "current_answer", "plan_stages": 8, "cold_executed": 8, "warm_reused": 8, "candidate_count": 3, "supported_parcels": ["parcel-a"], "source_family_count": 1, "hard_constraints": 0, "unknown_geometry_parcels": ["parcel-missing"], "future_action_inputs_required": false}}),
+    )
 }
 
 #[cfg(test)]

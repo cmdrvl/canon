@@ -370,6 +370,11 @@
     "rho_observation_kind": {
       "oneOf": [
         {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "report"],
+          "properties": {"kind": {"const": "point_parcel_relations"}, "report": {"$ref": "canon.geo.point_parcel_relations.v0.schema.json"}}
+        },
+        {
           "type": "object",
           "additionalProperties": false,
           "properties": {

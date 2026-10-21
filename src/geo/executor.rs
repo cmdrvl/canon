@@ -71,6 +71,10 @@ use crate::{
         },
         ingest_client_geometry_tile, materialize_home_cells, materialize_tile_work_unit,
         materialize_warehouse_rows, minimal_core, next_retry_pass, non_conflict_explanation,
+        point_relations::{
+            CANON_GEO_POINT_PARCEL_REQUEST_VERSION, GeoPointParcelRequest,
+            materialize_point_parcel_evidence,
+        },
         project_answer, propagate, recommend_from_inputs, record_pass,
         reliability_order_from_evidence, resolve_geo_as_of, separate, solve_composition,
         validate_answer_artifact, validate_as_of_resolution_artifact,
@@ -593,10 +597,14 @@ impl GeoProjectNodeExecutor {
             &[
                 CANON_GEO_WAREHOUSE_ROWS_VERSION,
                 CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION,
+                CANON_GEO_POINT_PARCEL_REQUEST_VERSION,
             ],
         )?;
         if binding.contract == CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION {
             return self.execute_descriptive_evidence(node, &section_artifact, &binding.bytes);
+        }
+        if binding.contract == CANON_GEO_POINT_PARCEL_REQUEST_VERSION {
+            return self.execute_point_parcel_evidence(node, &section_artifact, &binding.bytes);
         }
         let rows: GeoWarehouseRowsRequest =
             parse_json(node, &binding.bytes, CANON_GEO_WAREHOUSE_ROWS_VERSION)?;
@@ -627,6 +635,101 @@ impl GeoProjectNodeExecutor {
             output_id: "materialize_evidence",
             output_contract: CANON_GEO_EVIDENCE_REQUEST_VERSION,
             output_bytes: bytes,
+            deterministic_usage: usage,
+        })
+    }
+
+    fn execute_point_parcel_evidence(
+        &self,
+        node: &ProjectPlanNode,
+        section: &GeoTileWorkUnitArtifact,
+        bytes: &[u8],
+    ) -> ProjectRunResult<GeoLeafExecution> {
+        let input: GeoPointParcelRequest =
+            parse_json(node, bytes, CANON_GEO_POINT_PARCEL_REQUEST_VERSION)?;
+        if section
+            .features
+            .iter()
+            .any(|feature| feature.source != input.inventory_source)
+        {
+            return Err(error(
+                node,
+                ProjectRunErrorCode::ArtifactContract,
+                "Point/parcel inventory source/release must equal every bounded-section source binding",
+            ));
+        }
+        let rows = GeoWarehouseRowsRequest {
+            version: CANON_GEO_WAREHOUSE_ROWS_VERSION.into(),
+            profile: crate::geo::GeoCompositionProfile::parcel(),
+            parcel_rows: input
+                .candidates
+                .iter()
+                .map(|candidate| crate::geo::GeoWarehouseParcelRow {
+                    parcel_id: candidate.parcel_id.clone(),
+                })
+                .collect(),
+            building_parcel_rows: Vec::new(),
+            contracts: Vec::new(),
+            evidence_rows: Vec::new(),
+            max_assignments: input.max_assignments,
+            max_materialized_models: input.max_materialized_models,
+        };
+        self.validate_warehouse_rows_against_section(node, section, &rows)?;
+        let request = materialize_point_parcel_evidence(&input)
+            .map_err(|e| leaf_error(node, "point-parcel-relations", e))?;
+        let report = request
+            .observations
+            .iter()
+            .find_map(|observation| match &observation.observation {
+                crate::geo::GeoRhoObservationKind::PointParcelRelations { report } => Some(report),
+                _ => None,
+            })
+            .expect("native materializer retains its relation accounting");
+        let unknown_pairs: u64 = report
+            .candidates
+            .iter()
+            .flat_map(|c| &c.groups)
+            .filter(|g| {
+                !matches!(
+                    g.outcome,
+                    crate::geo::GeoPointParcelOutcome::Interior
+                        | crate::geo::GeoPointParcelOutcome::Boundary
+                        | crate::geo::GeoPointParcelOutcome::Exterior
+                )
+            })
+            .map(|g| g.point_ids.len() as u64)
+            .sum();
+        let usage = BTreeMap::from([
+            ("point_relation_points".into(), report.points.len() as u64),
+            (
+                "point_relation_candidate_parcels".into(),
+                report.candidates.len() as u64,
+            ),
+            (
+                "point_relation_predicates_evaluated".into(),
+                report.predicates_evaluated,
+            ),
+            (
+                "point_relation_bbox_exterior_pairs".into(),
+                report.bbox_exterior_pairs,
+            ),
+            ("point_relation_unknown_pairs".into(), unknown_pairs),
+            (
+                "point_relation_geometry_bytes".into(),
+                report.canonical_geometry_bytes,
+            ),
+            ("point_relation_dependent_families".into(), 1),
+            (
+                "point_relation_supported_parcels".into(),
+                request.observations.len() as u64 - 1,
+            ),
+        ]);
+        let output_bytes = canonical_materialized_evidence_request_bytes(&request)
+            .map_err(|e| serialization_error(node, CANON_GEO_EVIDENCE_REQUEST_VERSION, e))?;
+        Ok(GeoLeafExecution {
+            output_id: "materialize_evidence",
+            output_contract: CANON_GEO_EVIDENCE_REQUEST_VERSION,
+            output_bytes,
             deterministic_usage: usage,
         })
     }

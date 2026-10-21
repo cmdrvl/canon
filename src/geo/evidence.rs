@@ -199,6 +199,12 @@ pub struct GeoRhoObservation {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum GeoRhoObservationKind {
+    /// Native point/parcel accounting is retained for inspection. It never
+    /// becomes a hard constraint or a preference by itself; the materializer
+    /// emits separately attributed, dependent-family member preferences.
+    PointParcelRelations {
+        report: Box<super::point_relations::GeoPointParcelRelations>,
+    },
     /// The selected members at one level equal one of these sets.
     ExactSets {
         level: GeoEntityLevel,
@@ -444,6 +450,15 @@ pub fn compile_evidence(
             ));
         }
         validate_observation_kind(&observation.observation, &request.universe)?;
+        if let GeoRhoObservationKind::PointParcelRelations { report } = &observation.observation
+            && observation.source_records
+                != super::point_relations::point_parcel_source_records(report)
+        {
+            return Err(GeoEvidenceError::invalid(
+                "Point relation diagnostics must retain every referenced immutable source record",
+                [("observation_id", observation.id.as_str())],
+            ));
+        }
     }
     observations.sort_by(|left, right| left.id.cmp(&right.id));
     reject_duplicate_ids(
@@ -452,6 +467,14 @@ pub fn compile_evidence(
     )?;
     let observed_contract_ids = observations
         .iter()
+        // Accounting alone is not a corroborating membership observation.
+        // A native family with positive support also emits PreferMember rows.
+        .filter(|observation| {
+            !matches!(
+                observation.observation,
+                GeoRhoObservationKind::PointParcelRelations { .. }
+            )
+        })
         .map(|observation| observation.contract_id.clone())
         .collect::<BTreeSet<_>>();
     let admission_context = GeoRhoAdmissionContext {
@@ -598,6 +621,12 @@ pub fn validate_evidence_compilation_artifact(
         observed_contract_ids: artifact
             .admissions
             .iter()
+            .filter(|admission| {
+                !matches!(
+                    admission.observation,
+                    GeoRhoObservationKind::PointParcelRelations { .. }
+                )
+            })
             .map(|admission| admission.contract.id.clone())
             .collect(),
     };
@@ -765,7 +794,7 @@ pub fn validate_evidence_compilation_artifact(
     Ok(())
 }
 
-fn validate_contract(contract: &GeoRhoContract) -> Result<(), GeoEvidenceError> {
+pub(crate) fn validate_contract(contract: &GeoRhoContract) -> Result<(), GeoEvidenceError> {
     validate_identifier("contracts[].id", &contract.id)?;
     validate_identifier("contracts[].version", &contract.version)?;
     validate_identifier("contracts[].source_dataset", &contract.source_dataset)?;
@@ -957,6 +986,13 @@ fn admit_observation(
         temporally_scoped,
         context,
     } = request;
+    if matches!(
+        observation,
+        GeoRhoObservationKind::PointParcelRelations { .. }
+    ) {
+        *admission_reason = Some("point_parcel_relations_diagnostic_only".to_string());
+        return (GeoEvidenceDisposition::DiagnosticOnly, Vec::new());
+    }
     if temporally_scoped {
         // The interval is preserved in the admission artifact, but v0
         // composition has no query-as-of domain. Applying this as either hard
@@ -1143,7 +1179,8 @@ fn push_hard_constraint(
             min: *min,
             max: *max,
         },
-        GeoRhoObservationKind::PreferMember { .. } => {
+        GeoRhoObservationKind::PreferMember { .. }
+        | GeoRhoObservationKind::PointParcelRelations { .. } => {
             return;
         }
     };
@@ -1289,7 +1326,11 @@ fn base_hard_admission_allowed(
     contract: &GeoRhoContract,
     observation: &GeoRhoObservationKind,
 ) -> bool {
-    if matches!(observation, GeoRhoObservationKind::PreferMember { .. }) {
+    if matches!(
+        observation,
+        GeoRhoObservationKind::PreferMember { .. }
+            | GeoRhoObservationKind::PointParcelRelations { .. }
+    ) {
         return false;
     }
     is_logical_relaxation(contract)
@@ -1394,6 +1435,12 @@ fn expected_diagnostic_admission_reason(
     temporally_scoped: bool,
     context: &GeoRhoAdmissionContext,
 ) -> Option<String> {
+    if matches!(
+        observation,
+        GeoRhoObservationKind::PointParcelRelations { .. }
+    ) {
+        return Some("point_parcel_relations_diagnostic_only".to_string());
+    }
     if temporally_scoped {
         return None;
     }
@@ -1471,6 +1518,9 @@ fn validate_observation_kind(
         .map(|building| building.id.as_str())
         .collect::<BTreeSet<_>>();
     match observation {
+        GeoRhoObservationKind::PointParcelRelations { report } => {
+            super::point_relations::validate_point_parcel_relations(report, universe)?;
+        }
         GeoRhoObservationKind::ExactSets { level, sets } => {
             validate_supported_level("observations[].exact_sets.level", *level)?;
             if sets.is_empty() {
@@ -1661,7 +1711,7 @@ const fn evidence_level_name(level: GeoEntityLevel) -> &'static str {
     }
 }
 
-fn validate_source_records(
+pub(crate) fn validate_source_records(
     observation_id: &str,
     source_records: &[GeoEvidenceRecordRef],
 ) -> Result<(), GeoEvidenceError> {
@@ -1713,7 +1763,7 @@ fn validate_identifier(field: &str, value: &str) -> Result<(), GeoEvidenceError>
     Ok(())
 }
 
-fn validate_blake3(field: &str, value: &str) -> Result<(), GeoEvidenceError> {
+pub(crate) fn validate_blake3(field: &str, value: &str) -> Result<(), GeoEvidenceError> {
     if value.len() != 64
         || !value
             .bytes()

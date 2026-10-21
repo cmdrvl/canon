@@ -1792,6 +1792,20 @@ uncalibrated workflow demonstration, not live identity proof. Read the answer ou
 for support, alternatives, preferences, acceptance and further-work state; the ordinary
 answer stage does not claim knowledge of its own final run history.
 
+The guide also supplies a synthetic point-to-parcel example. Bind
+`canon_geo_point_parcel_request.v0` to `geo.parcel.materialize_evidence:rows`
+through `geo run`. Supply the complete bounded parcel inventory, source decimal
+point and polygon coordinates, a common frame, point-to-target relationship,
+source hashes and transform accuracy (`null` when unknown). Canon admits each
+geometry and computes native containment, including holes and multipolygons;
+missing or refused geometry remains an explicit unknown. The retained
+`canon_geo_point_parcel_relations.v0` observation accounts for every declared
+point/parcel pair. Interior points supply one soft preference per parcel and
+source family; repeated points do not multiply that family's weight. Boundary,
+exterior and unknown results do not eliminate candidates or establish accepted
+identity or complete property extent. The warehouse-only materialization leaf
+does not accept this input family; use the guide's plan/run/inspect sequence.
+
 The current descriptive profile accepts a bounded inventory and source-backed
 name, address, property type, unit count and construction year. Area, stories,
 near-road relations and a facts-only `--inquiry` interface remain unavailable.

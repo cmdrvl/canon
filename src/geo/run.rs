@@ -81,6 +81,10 @@ use crate::{
         lifecycle::{
             CANON_GEO_AS_OF_RESOLUTION_REQUEST_VERSION, CANON_GEO_AS_OF_RESOLUTION_VERSION,
         },
+        point_relations::{
+            CANON_GEO_POINT_PARCEL_REQUEST_VERSION, GeoPointParcelRequest,
+            validate_point_parcel_request,
+        },
         validate_geo_plan,
     },
     project::{
@@ -2608,6 +2612,22 @@ fn validate_bound_analysis_inputs(
                     result,
                 )
             }
+            CANON_GEO_POINT_PARCEL_REQUEST_VERSION => {
+                let result = serde_json::from_slice::<GeoPointParcelRequest>(&binding.bytes)
+                    .map_err(|error| format!("INVALID_INPUT: {error}; field=rows"))
+                    .and_then(|input| {
+                        validate_point_parcel_request(&input).map_err(|error| format!("{:?}: {}; field=rows; detail={:?}", error.code, error.message, error.detail))?;
+                        if input.inventory_source.inventory_ref != plan.inventory_ref
+                            || plan.profile_ref.selection_level != crate::geo::GeoEntityLevel::Parcel {
+                            return Err("INVALID_INPUT: Point/parcel inventory and parcel grain must match the plan; field=inventory_source".into());
+                        }
+                        Ok(())
+                    });
+                (
+                    "schemas/canon.geo.point_parcel_request.v0.schema.json",
+                    result,
+                )
+            }
             _ => continue,
         };
         if let Err(reason) = result {
@@ -2640,6 +2660,7 @@ pub(crate) fn bound_analysis_contracts(
         (GEO_MATERIALIZE_EVIDENCE_COMMAND, GEO_ROWS_BINDING_ID) => Some(&[
             CANON_GEO_WAREHOUSE_ROWS_VERSION,
             CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION,
+            CANON_GEO_POINT_PARCEL_REQUEST_VERSION,
         ]),
         (GEO_SEPARATION_STAGE_COMMAND, GEO_REQUEST_BINDING_ID) => {
             Some(&[CANON_GEO_SEPARATION_INPUTS_VERSION])
@@ -2863,8 +2884,9 @@ fn input_specs_for_command(command: &str) -> Option<Vec<GeoInputSpec>> {
             accepted_contracts: &[
                 CANON_GEO_WAREHOUSE_ROWS_VERSION,
                 CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION,
+                CANON_GEO_POINT_PARCEL_REQUEST_VERSION,
             ],
-            reason: "materialize-evidence requires local typed warehouse rows or a bounded descriptive asset request",
+            reason: "materialize-evidence requires local typed warehouse rows, bounded descriptive attributes, or native point/parcel observations",
         }]),
         GEO_ASSESSMENT_ROLL_OWNER_STAGE_COMMAND => Some(vec![GeoInputSpec {
             binding_id: GEO_REQUEST_BINDING_ID,

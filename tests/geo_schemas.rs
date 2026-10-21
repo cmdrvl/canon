@@ -409,6 +409,16 @@ fn answer_artifact_schema_matches_a_real_retained_projection() {
 
 fn external_schema_source(schema_file: &str, reference: &str) -> &'static str {
     match schema_file {
+        "canon.geo.point_parcel_request.v0.schema.json" => {
+            include_str!("../schemas/canon.geo.point_parcel_request.v0.schema.json")
+        }
+        "canon.geo.point_parcel_relations.v0.schema.json" => {
+            include_str!("../schemas/canon.geo.point_parcel_relations.v0.schema.json")
+        }
+        "canon.geo.geometry_request.v0.schema.json" => GEOMETRY_REQUEST_SCHEMA,
+        "canon.geo.tile_work_request.v1.schema.json" => {
+            include_str!("../schemas/canon.geo.tile_work_request.v1.schema.json")
+        }
         "canon.geo.answer.v0.schema.json" => ANSWER_SCHEMA,
         "canon.geo.address_parse_request.v0.schema.json" => ADDRESS_PARSE_REQUEST_SCHEMA,
         "canon.geo.address_parse_forest.v0.schema.json" => ADDRESS_PARSE_FOREST_SCHEMA,
@@ -5014,6 +5024,64 @@ fn warehouse_rows_schema_matches_a_real_instance() {
         CANON_GEO_WAREHOUSE_ROWS_VERSION,
         &instance,
     );
+}
+
+#[test]
+fn native_point_request_report_and_compiled_diagnostics_match_their_schemas() {
+    let guide = canon::geo::agent_guide::agent_guide().unwrap();
+    let example = guide["examples"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["id"] == "synthetic_point_parcel_not_live")
+        .unwrap();
+    let request: canon::geo::GeoPointParcelRequest =
+        serde_json::from_value(example["write_files"]["point-input.json"].clone()).unwrap();
+    assert_drift_free(
+        include_str!("../schemas/canon.geo.point_parcel_request.v0.schema.json"),
+        "Native point-to-parcel evidence input, one dependent source family",
+        canon::geo::CANON_GEO_POINT_PARCEL_REQUEST_VERSION,
+        &serde_json::to_value(&request).unwrap(),
+    );
+    let report = canon::geo::build_point_parcel_relations(&request).unwrap();
+    assert_drift_free(
+        include_str!("../schemas/canon.geo.point_parcel_relations.v0.schema.json"),
+        "Diagnostic native point/parcel accounting; not accepted identity or complete extent",
+        canon::geo::CANON_GEO_POINT_PARCEL_RELATIONS_VERSION,
+        &serde_json::to_value(&report).unwrap(),
+    );
+    let evidence = canon::geo::materialize_point_parcel_evidence(&request).unwrap();
+    assert_drift_free(
+        EVIDENCE_REQUEST_SCHEMA,
+        "canon.geo.evidence_request.v0",
+        canon::geo::CANON_GEO_EVIDENCE_REQUEST_VERSION,
+        &serde_json::to_value(&evidence).unwrap(),
+    );
+    let compiled = canon::geo::compile_evidence(&evidence).unwrap();
+    assert_drift_free(
+        EVIDENCE_COMPILATION_SCHEMA,
+        "canon.geo.evidence_compilation.v0",
+        canon::geo::CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+        &serde_json::to_value(&compiled).unwrap(),
+    );
+}
+
+#[test]
+fn nullable_point_geometry_schema_walk_rejects_an_undeclared_feature_key() {
+    let guide = canon::geo::agent_guide::agent_guide().unwrap();
+    let mut request = guide["examples"][1]["write_files"]["point-input.json"].clone();
+    request["candidates"][0]["geometry"]["undeclared_feature_key"] = Value::Bool(true);
+    let schema = parsed(include_str!(
+        "../schemas/canon.geo.point_parcel_request.v0.schema.json"
+    ));
+    let failure = std::panic::catch_unwind(|| {
+        assert_instance_matches_schema(&schema, &schema, &request, "$");
+    })
+    .expect_err("nullable geometry alternatives must still walk feature properties");
+    let message = failure
+        .downcast_ref::<String>()
+        .expect("schema assertion message");
+    assert!(message.contains("undeclared_feature_key"), "{message}");
 }
 
 #[test]
