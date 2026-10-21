@@ -1429,7 +1429,7 @@
         {
           "bead": "bd-3mrt",
           "date": "2026-10-21",
-          "commit": null,
+          "commit": "a62eafcd496b98b2fc304a2a4e80700f24453598",
           "artifact_ids": [
             "run_semantic_hash"
           ],
@@ -1456,7 +1456,7 @@
         {
           "bead": "bd-3mrt",
           "date": "2026-10-21",
-          "commit": null,
+          "commit": "a62eafcd496b98b2fc304a2a4e80700f24453598",
           "artifact_ids": [
             "geo.building.next_evidence/next_evidence"
           ],
@@ -1800,7 +1800,7 @@
             "/run_id",
             "/semantic_hash"
           ],
-          "commit": null,
+          "commit": "a62eafcd496b98b2fc304a2a4e80700f24453598",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -1817,7 +1817,7 @@
           "changed_paths": [
             "/action_discovery"
           ],
-          "commit": null,
+          "commit": "a62eafcd496b98b2fc304a2a4e80700f24453598",
           "contract_versions": [
             "canon_geo_next_evidence.v0"
           ],
@@ -4572,7 +4572,7 @@
             "/semantic_hash",
             "/status"
           ],
-          "commit": null,
+          "commit": "a62eafcd496b98b2fc304a2a4e80700f24453598",
           "contract_versions": [
             "canon_geo_run.v0",
             "canon.v0"
@@ -4795,7 +4795,7 @@
             "/semantic_hash",
             "/status"
           ],
-          "commit": null,
+          "commit": "a62eafcd496b98b2fc304a2a4e80700f24453598",
           "contract_versions": [
             "canon_geo_run.v0",
             "canon.v0"
@@ -4990,7 +4990,7 @@
             "/semantic_hash",
             "/status"
           ],
-          "commit": null,
+          "commit": "a62eafcd496b98b2fc304a2a4e80700f24453598",
           "contract_versions": [
             "canon_geo_run.v0",
             "canon.v0"
