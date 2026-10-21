@@ -6786,7 +6786,7 @@
           "case_id": "nxrt.experiment",
           "bead": "bd-v8gv",
           "date": "2026-10-21",
-          "commit": null,
+          "commit": "fa9958258ba267d2999b7755f6f9db09448437c1",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -7724,7 +7724,7 @@
           "case_id": "resume.nxrt.experiment",
           "bead": "bd-v8gv",
           "date": "2026-10-21",
-          "commit": null,
+          "commit": "fa9958258ba267d2999b7755f6f9db09448437c1",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -8101,7 +8101,7 @@
           "case_id": "orlando.case0_hints.lineage_order_failure",
           "bead": "bd-v8gv",
           "date": "2026-10-21",
-          "commit": null,
+          "commit": "fa9958258ba267d2999b7755f6f9db09448437c1",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -9053,7 +9053,7 @@
           "case_id": "current_answer.brooklyn.00_neighborhood",
           "bead": "bd-v8gv",
           "date": "2026-10-21",
-          "commit": null,
+          "commit": "fa9958258ba267d2999b7755f6f9db09448437c1",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -9202,7 +9202,7 @@
           "case_id": "current_answer.brooklyn.01_address_parcel",
           "bead": "bd-v8gv",
           "date": "2026-10-21",
-          "commit": null,
+          "commit": "fa9958258ba267d2999b7755f6f9db09448437c1",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -9353,7 +9353,7 @@
           "case_id": "current_answer.brooklyn.02_address_building",
           "bead": "bd-v8gv",
           "date": "2026-10-21",
-          "commit": null,
+          "commit": "fa9958258ba267d2999b7755f6f9db09448437c1",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -9491,7 +9491,7 @@
           "case_id": "current_answer.cornerstone.national_building_supported",
           "bead": "bd-v8gv",
           "date": "2026-10-21",
-          "commit": null,
+          "commit": "fa9958258ba267d2999b7755f6f9db09448437c1",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -9629,7 +9629,7 @@
           "case_id": "current_answer.cornerstone.national_building",
           "bead": "bd-v8gv",
           "date": "2026-10-21",
-          "commit": null,
+          "commit": "fa9958258ba267d2999b7755f6f9db09448437c1",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
