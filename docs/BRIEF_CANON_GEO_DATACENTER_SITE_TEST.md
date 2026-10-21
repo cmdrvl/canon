@@ -313,6 +313,12 @@ promise. The measuring sticks are `CANON_GEO_AGENT_ARCHITECTURE.md`,
 experiments and a bridge to a reusable agent workflow; it changes no normative
 mathematics, acceptance gate, command tier or release claim.
 
+**User scope correction (2026-10-20):** packaging PDF extraction is not wanted.
+`bd-1ywd` is cancelled, with no implementation credit. Agents may read source
+documents and prepare retained observations outside Canon using its documented
+input guidance. Canon owns geographic association and evidence reasoning;
+PDF extraction packaging is not a prerequisite for the next trial.
+
 ### What the new experiment actually established
 
 The observed news snapshot contained **435 project/facility records**, not 435
@@ -362,11 +368,11 @@ the recorded licence restrictions; this brief does not authorize redistribution.
 |---|---|---|
 | Bounded geographic candidate construction with honest reach | **PARTIAL:** intended area acquisition worked externally; reach remains unverified and manual adaptation remains | Existing bd-3s20, bd-3f0r, bd-1b0g, bd-2s8f |
 | Deterministic spatial evidence and replay | **WORKING in the retained native-predicate/CLI experiment:** positive containment and byte replay; not an agent-complete journey | New bd-v8gv packages the native relation path |
-| Source documents become reusable geographic observations | **PARTIAL:** useful GeoPDF extraction exists as local subject-specific scripts | New bd-1ywd packages a bounded supported document adapter outside core |
+| Externally prepared spatial observations enter the geographic inquiry | **PARTIAL:** useful GeoPDF observations were prepared externally; their provenance and uncertainty must survive ingestion | Native relation integration bd-v8gv; PDF packaging bd-1ywd cancelled at user direction |
 | Current supported answer is visible despite optional work or unmaterialized models | **PARTIAL:** nine-stage run waits for prospective inputs; empty `soft_ranked` hides useful support from a caller | Existing S1 bd-2dvm, bd-1uo5, bd-1g18, bd-3mrt |
 | Exact area-majority on the declared bounded representation | **DEFECT:** arithmetic overflow on three real map/parcel pairs, including the useful candidate | Existing bd-gqnu; independent of the point-containment route |
 | Reusable address evidence and correct coverage/vintage | **PARTIAL:** literal acquisition missed an alias; tile completeness did not establish full target coverage | Existing bd-3mft, bd-3pkw, bd-1uhl |
-| Fresh agent performs the inquiry without bespoke code | **UNPROVEN:** operator supplied extraction, a Rust harness and internal artifacts | New bd-he43 plus S1–S3 owners |
+| Fresh agent performs geographic association without a custom solver harness | **UNPROVEN:** operator supplied a Rust harness and internal artifacts; external evidence preparation remains allowed | New bd-he43 plus existing inquiry owners |
 | Justified acceptance, cross-region quality and scalable economics | **UNPROVEN:** one development subject is not held-out quality, E5 or national cost evidence | Existing bd-1t9f, bd-259l, bd-c95z, bd-244j, E5 owners |
 
 The missing functionality is integration and source semantics, not a collection
@@ -384,12 +390,12 @@ global optimizer is not required to show the Hilliard finding.
    identity or requiring hypothetical future observations. This converts existing
    evidence into a usable answer. Preserve global preference unavailability when
    the solver did not materialize the models.
-2. **Remove the custom spatial glue.** `bd-v8gv` adds native point-to-parcel
-   evidence to the existing run DAG; `bd-1ywd` packages retained document-map
-   extraction as a source adapter. Both include positive and negative behavioral
-   tests. Source-specific parsing stays outside core; uncertain controls remain
-   uncertain. Area arithmetic repair helps the outline route but does not block
-   positive point support.
+2. **Remove the custom spatial solver glue.** `bd-v8gv` adds native
+   point-to-parcel evidence to the existing run DAG, with positive and negative
+   behavioral tests. Agents prepare typed spatial observations externally;
+   source-document extraction is not a product deliverable. Provenance and
+   uncertain controls remain visible. Area arithmetic repair helps the outline
+   route but does not block positive point support.
 3. **Prove transfer and incremental value.** `bd-he43` runs a different physical
    news subject through the public inquiry/acquisition interfaces. Its dependency
    graph includes the actual S1–S3 integration owners. It need not await S4's full
@@ -410,13 +416,16 @@ Freeze a Franklin news-subject eligibility frame, selection seed, fallback order
 budget, as-of date and parcel-association question before inspecting results.
 Exclude Hilliard and all duplicate records for its physical campus. Retain failed
 acquisition, absent controls and abstentions; do not replace them with a favorable
-map after observing the answer. Bound the document adapter to supported formats
-rather than attempting a universal PDF parser. Other typed spatial point sources
-may be tested as a separately reported arm.
+map after observing the answer. Agents may supply retained observations from
+documents or other typed spatial point sources through documented inputs;
+record external preparation work and its limitations. No packaged PDF parser
+or second-document extraction transfer test is required.
 
-Use a fresh agent and Canon's returned acquisition/adaptation instructions. MCP
-lookups remain external; no subject-specific program, manual constraint JSON,
-owner/deed filter or printed parcel-ID shortcut may enter geometric resolution.
+Use a fresh agent and Canon's documented operator guidance and returned
+acquisition instructions. MCP lookups, document interpretation and shaping
+observations into documented typed inputs remain external. Canon must perform
+geographic association without a custom solver/predicate program, internal
+constraint surgery, owner/deed filter or printed parcel-ID shortcut.
 Acquire all available parcels/footprints in the declared area, retaining failed
 geometries and partial coverage. Record the weak-clue answer, add target-specific
 spatial observations, restart and resume, then explain exactly what changed.
@@ -441,7 +450,9 @@ grain, and resuming reproducibly with less agent work. A direct lookup can tie
 Canon on a clean point. The next trial must show where the full workflow helps
 or costs more; a tie or failure limits the product claim.
 
-One unseen site proves transfer only. Follow with NYC using unchanged core and
+This bounded trial tests the geographic inquiry, not automated document
+extraction or the full agent-complete S3/S6 release. One unseen site proves
+transfer only. Follow with NYC using unchanged core and
 versioned local adapters, then the predeclared multi-subject quality/cost
 evaluation. The existing per-mode held-out population, false-acceptance,
 coverage, grain and latency gates in bd-244j remain unchanged. Hilliard and any
