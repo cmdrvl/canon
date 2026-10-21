@@ -2024,6 +2024,7 @@ fn retry_recovery_home_cell_plan(
             bounded_section_required: false,
             incidence_factorization_required: false,
             exact_solve_scope: None,
+            answer_config: None,
             deterministic_bounds: Vec::new(),
             cost_estimate_ranges: Vec::new(),
             transitions: GeoPlanTransitionSet {
@@ -2238,6 +2239,7 @@ fn retry_recovery_pass_plan(
             bounded_section_required: false,
             incidence_factorization_required: false,
             exact_solve_scope: None,
+            answer_config: None,
             deterministic_bounds: Vec::new(),
             cost_estimate_ranges: Vec::new(),
             transitions: GeoPlanTransitionSet {

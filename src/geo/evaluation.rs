@@ -2132,6 +2132,7 @@ fn overlay_node(
         bounded_section_required: spec.bounded_section_required,
         incidence_factorization_required: spec.incidence_factorization_required,
         exact_solve_scope: spec.exact_solve_scope,
+        answer_config: None,
         cost_estimate_ranges: deterministic_bounds
             .iter()
             .map(|bound| GeoPlanCostEstimateRange {
@@ -2197,7 +2198,8 @@ fn stage_preconditions(stage: GeoPlanStage) -> Vec<GeoPlanPrecondition> {
         ],
         GeoPlanStage::ExplainResidual
         | GeoPlanStage::SeparateResidual
-        | GeoPlanStage::SelectNextEvidence => vec![precondition(
+        | GeoPlanStage::SelectNextEvidence
+        | GeoPlanStage::ProjectCurrentAnswer => vec![precondition(
             GeoPlanGatePlane::SolverCorrectness,
             GeoPlanGateStatus::PendingArtifact,
             "post-solve artifacts are produced only from completed declared-universe residuals",

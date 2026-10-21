@@ -11,13 +11,14 @@ use crate::{
     fs_safety::{PlannedAccess, resolve_workspace_path},
     geo::{
         CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_SATISFACTION_VERSION,
-        CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION,
-        CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
-        CANON_GEO_EXPLANATION_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
-        CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
-        CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION,
-        CANON_GEO_OBSERVATION_ROWS_VERSION, CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION,
-        CANON_GEO_PLAN_VERSION, CANON_GEO_PROPAGATION_VERSION, CANON_GEO_RETRY_LOOP_VERSION,
+        CANON_GEO_ANSWER_VERSION, CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION,
+        CANON_GEO_COMPOSITION_VERSION, CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+        CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_EXPLANATION_VERSION,
+        CANON_GEO_GEOMETRY_TILE_VERSION, CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
+        CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION,
+        CANON_GEO_NEXT_EVIDENCE_VERSION, CANON_GEO_OBSERVATION_ROWS_VERSION,
+        CANON_GEO_OBSERVER_ADMISSION_REQUEST_VERSION, CANON_GEO_PLAN_VERSION,
+        CANON_GEO_PROPAGATION_VERSION, CANON_GEO_RETRY_LOOP_VERSION,
         CANON_GEO_SEPARATION_INPUTS_VERSION, CANON_GEO_SEPARATION_VERSION,
         CANON_GEO_TILE_IDENTIFIER_STABILITY_REQUEST_VERSION,
         CANON_GEO_TILE_IDENTIFIER_STABILITY_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
@@ -36,6 +37,8 @@ use crate::{
         condo::{CANON_GEO_CONDO_BRIDGE_REQUEST_VERSION, CANON_GEO_CONDO_BRIDGE_VERSION},
         descriptive::{CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION, GeoDescriptiveAssetRequest},
         executor::CANON_GEO_CLIENT_TILE_SOURCE_VERSION,
+        executor::GEO_ANSWER_OUTPUT_ID,
+        executor::GEO_ANSWER_STAGE_COMMAND,
         executor::GEO_AS_OF_RESOLUTION_OUTPUT_ID,
         executor::GEO_AS_OF_RESOLUTION_STAGE_COMMAND,
         executor::GEO_ASSESSMENT_ROLL_OWNER_OUTPUT_ID,
@@ -2060,6 +2063,19 @@ fn build_geo_run(
 ) -> GeoRunResult<GeoRun> {
     artifact_inputs.sort();
     artifact_inputs.dedup();
+    let mut observation = context.observation;
+    observation
+        .resource_observations
+        .retain(|key, _| !native_workload_observation_key(key));
+    observation.resource_observations.extend(
+        project_run_report
+            .as_ref()
+            .map(|report| {
+                let failed_receipts = failed_workload_receipts(report, policy);
+                geo_run_workload_observation(report, &plan, &failed_receipts)
+            })
+            .unwrap_or_else(empty_geo_run_workload_observation),
+    );
     let output_refs = project_run_report
         .as_ref()
         .map(|report| output_refs_from_project_report(&plan, report, policy))
@@ -2117,7 +2133,7 @@ fn build_geo_run(
         next_actions,
         deterministic_usage,
         project_run_report,
-        observation: context.observation,
+        observation,
     };
     run.semantic_hash = geo_run_semantic_hash(&run)?;
     run.run_id = format!(
@@ -2133,6 +2149,141 @@ struct GeoRunBuildContext {
     acquisition_satisfactions: Vec<GeoRunAcquisitionSatisfactionRef>,
     extra_blockers: Vec<GeoRunBlocker>,
     extra_actions: Vec<GeoRunNextAction>,
+}
+
+fn empty_geo_run_workload_observation() -> BTreeMap<String, u64> {
+    BTreeMap::from([
+        ("cost.nodes.executed".to_string(), 0),
+        ("cost.nodes.resumed".to_string(), 0),
+        ("cost.nodes.invalidated".to_string(), 0),
+        ("cost.nodes.failed".to_string(), 0),
+        ("cost.nodes.timing_unknown".to_string(), 0),
+        ("cost.millis.executed_total".to_string(), 0),
+        ("cost.millis.preparation".to_string(), 0),
+        ("cost.millis.reasoning".to_string(), 0),
+        ("cost.workload.cold".to_string(), 1),
+        ("cost.workload.warm".to_string(), 0),
+        ("cost.workload.refresh".to_string(), 0),
+    ])
+}
+
+fn native_workload_observation_key(key: &str) -> bool {
+    key.starts_with("cost.nodes.")
+        || key.starts_with("cost.workload.")
+        || key.starts_with("cost.millis.stage.")
+        || matches!(
+            key,
+            "cost.millis.executed_total" | "cost.millis.preparation" | "cost.millis.reasoning"
+        )
+}
+
+// Failed bodies are deliberately absent from the semantic run receipt. Read
+// their existing immutable CAS receipt by the report's hash for observation
+// only; failed/corrupt reads leave timing explicitly unknown, never a fake zero.
+fn failed_workload_receipts(
+    report: &ProjectRunReport,
+    policy: &ProjectRunPolicy,
+) -> Vec<ProjectRunNodeReceipt> {
+    report
+        .failed_nodes
+        .iter()
+        .filter_map(|node_id| {
+            let recorded = report.node_reports.iter().find(|node| {
+                &node.node_id == node_id && node.outcome == ProjectRunNodeOutcome::Failed
+            })?;
+            let expected_hash = recorded.receipt_hash.as_ref()?;
+            let canonical_path = project_receipt_path(policy, node_id).ok()?;
+            let path =
+                crate::project::receipt::node_receipt_cas_path(&canonical_path, expected_hash);
+            let receipt = read_node_receipt(&path).ok()?;
+            (receipt.receipt_hash == *expected_hash
+                && receipt.node_id == *node_id
+                && receipt.project_id == report.project_id
+                && receipt.plan_graph_hash == report.plan_graph_hash
+                && receipt.outcome == ProjectRunNodeOutcome::Failed)
+                .then_some(receipt)
+        })
+        .collect()
+}
+
+/// Account only for work attempted during this invocation. Retained receipt
+/// durations remain historical observations and are not charged again on reuse.
+pub fn geo_run_workload_observation(
+    report: &ProjectRunReport,
+    plan: &GeoPlan,
+    failed_receipts: &[ProjectRunNodeReceipt],
+) -> BTreeMap<String, u64> {
+    let mut observed = empty_geo_run_workload_observation();
+    let executed = report.executed_nodes.iter().collect::<BTreeSet<_>>();
+    let resumed = report.resumed_nodes.iter().collect::<BTreeSet<_>>();
+    let failed = report.failed_nodes.iter().collect::<BTreeSet<_>>();
+    let invalidated = report.invalidated_nodes.iter().collect::<BTreeSet<_>>();
+    observed.insert("cost.nodes.executed".to_string(), executed.len() as u64);
+    observed.insert("cost.nodes.resumed".to_string(), resumed.len() as u64);
+    observed.insert("cost.nodes.failed".to_string(), failed.len() as u64);
+    observed.insert(
+        "cost.nodes.invalidated".to_string(),
+        invalidated.len() as u64,
+    );
+    let refresh = !invalidated.is_empty();
+    observed.insert("cost.workload.refresh".to_string(), u64::from(refresh));
+    observed.insert(
+        "cost.workload.cold".to_string(),
+        u64::from(!refresh && resumed.is_empty()),
+    );
+    observed.insert(
+        "cost.workload.warm".to_string(),
+        u64::from(!refresh && !resumed.is_empty()),
+    );
+    let stages = plan
+        .geo_nodes
+        .iter()
+        .map(|overlay| (overlay.project_node_id.as_str(), overlay.stage))
+        .collect::<BTreeMap<_, _>>();
+    let mut timed = BTreeSet::new();
+    for receipt in report.receipt.node_receipts.iter().chain(failed_receipts) {
+        if !executed.contains(&receipt.node_id) && !failed.contains(&receipt.node_id) {
+            continue;
+        }
+        if !timed.insert(&receipt.node_id) {
+            continue;
+        }
+        let duration = receipt.duration_millis;
+        let total = observed
+            .get_mut("cost.millis.executed_total")
+            .expect("initialized total");
+        *total = total.saturating_add(duration);
+        if let Some(stage) = stages.get(receipt.node_id.as_str()) {
+            let (name, category) = match stage {
+                GeoPlanStage::MaterializeHomeCells => ("materialize_home_cells", "preparation"),
+                GeoPlanStage::BuildBoundedSection => ("build_bounded_section", "preparation"),
+                GeoPlanStage::MaterializeEvidence => ("materialize_evidence", "preparation"),
+                GeoPlanStage::CompileEvidence => ("compile_evidence", "reasoning"),
+                GeoPlanStage::PropagateConstraints => ("propagate_constraints", "reasoning"),
+                GeoPlanStage::FactorAndSolveExactResidual => {
+                    ("factor_and_solve_exact_residual", "reasoning")
+                }
+                GeoPlanStage::ExplainResidual => ("explain_residual", "reasoning"),
+                GeoPlanStage::SeparateResidual => ("separate_residual", "reasoning"),
+                GeoPlanStage::SelectNextEvidence => ("select_next_evidence", "reasoning"),
+                GeoPlanStage::ProjectCurrentAnswer => ("project_current_answer", "reasoning"),
+            };
+            let value = observed
+                .entry(format!("cost.millis.stage.{name}"))
+                .or_default();
+            *value = value.saturating_add(duration);
+            let value = observed
+                .get_mut(&format!("cost.millis.{category}"))
+                .expect("initialized category");
+            *value = value.saturating_add(duration);
+        }
+    }
+    let attempted = executed.union(&failed).copied().collect::<BTreeSet<_>>();
+    observed.insert(
+        "cost.nodes.timing_unknown".to_string(),
+        attempted.difference(&timed).count() as u64,
+    );
+    observed
 }
 
 #[derive(Debug, Clone)]
@@ -2176,8 +2327,11 @@ fn prepare_geo_run(
             !input_bindings.contains_key(&(input.node_id.clone(), input.binding_id.clone()))
         })
         .collect::<Vec<_>>();
-    let effective_project_plan =
-        effective_project_plan_with_input_hashes(&plan.project_plan, &input_bindings)?;
+    let effective_project_plan = effective_project_plan_with_input_hashes(
+        &plan.project_plan,
+        &input_bindings,
+        &plan.geo_nodes,
+    )?;
     validate_effective_geo_project_nodes(plan, &effective_project_plan)?;
     Ok(PreparedGeoRun {
         effective_project_plan,
@@ -2295,6 +2449,7 @@ fn output_contract_for_command(command: &str) -> Option<&'static str> {
         GEO_COMPILE_EVIDENCE_COMMAND => Some(CANON_GEO_EVIDENCE_COMPILATION_VERSION),
         GEO_PROPAGATE_STAGE_COMMAND => Some(CANON_GEO_PROPAGATION_VERSION),
         GEO_EXPLAIN_STAGE_COMMAND => Some(CANON_GEO_EXPLANATION_VERSION),
+        GEO_ANSWER_STAGE_COMMAND => Some(CANON_GEO_ANSWER_VERSION),
         GEO_SEPARATION_STAGE_COMMAND => Some(CANON_GEO_SEPARATION_VERSION),
         GEO_NEXT_EVIDENCE_STAGE_COMMAND => Some(CANON_GEO_NEXT_EVIDENCE_VERSION),
         GEO_RETRY_PASS_STAGE_COMMAND => Some(CANON_GEO_RETRY_LOOP_VERSION),
@@ -2320,6 +2475,7 @@ fn output_id_for_command(command: &str) -> Option<&'static str> {
         GEO_COMPILE_EVIDENCE_COMMAND => Some("compile_evidence"),
         GEO_PROPAGATE_STAGE_COMMAND => Some(GEO_PROPAGATE_OUTPUT_ID),
         GEO_EXPLAIN_STAGE_COMMAND => Some(GEO_EXPLAIN_OUTPUT_ID),
+        GEO_ANSWER_STAGE_COMMAND => Some(GEO_ANSWER_OUTPUT_ID),
         GEO_SEPARATION_STAGE_COMMAND => Some(GEO_SEPARATION_OUTPUT_ID),
         GEO_NEXT_EVIDENCE_STAGE_COMMAND => Some(GEO_NEXT_EVIDENCE_OUTPUT_ID),
         GEO_RETRY_PASS_STAGE_COMMAND => Some(GEO_RETRY_LOOP_OUTPUT_ID),
@@ -2345,6 +2501,7 @@ fn output_contract_for_output_id(output_id: &str) -> Option<&'static str> {
         "compile_evidence" => Some(CANON_GEO_EVIDENCE_COMPILATION_VERSION),
         GEO_PROPAGATE_OUTPUT_ID => Some(CANON_GEO_PROPAGATION_VERSION),
         GEO_EXPLAIN_OUTPUT_ID => Some(CANON_GEO_EXPLANATION_VERSION),
+        GEO_ANSWER_OUTPUT_ID => Some(CANON_GEO_ANSWER_VERSION),
         GEO_SEPARATION_OUTPUT_ID => Some(CANON_GEO_SEPARATION_VERSION),
         GEO_NEXT_EVIDENCE_OUTPUT_ID => Some(CANON_GEO_NEXT_EVIDENCE_VERSION),
         GEO_RETRY_LOOP_OUTPUT_ID => Some(CANON_GEO_RETRY_LOOP_VERSION),
@@ -2469,6 +2626,7 @@ fn input_specs_for_command(command: &str) -> Option<Vec<GeoInputSpec>> {
         GEO_COMPILE_EVIDENCE_COMMAND
         | GEO_PROPAGATE_STAGE_COMMAND
         | GEO_EXPLAIN_STAGE_COMMAND
+        | GEO_ANSWER_STAGE_COMMAND
         | GEO_SOLVE_COMMAND => Some(Vec::new()),
         _ => None,
     }
@@ -2772,10 +2930,34 @@ fn validate_input_bindings_against_plan(
 fn effective_project_plan_with_input_hashes(
     project_plan: &ProjectPlan,
     bindings: &BTreeMap<(String, String), GeoRunArtifactBinding>,
+    overlays: &[GeoPlanNodeOverlay],
 ) -> GeoRunResult<ProjectPlan> {
     let mut extension_nodes = Vec::with_capacity(project_plan.nodes.len());
     for node in &project_plan.nodes {
         let mut content_hash_inputs = node.content_hash_inputs.clone();
+        if let Some(config) = overlays
+            .iter()
+            .find(|overlay| overlay.project_node_id == node.node_id)
+            .and_then(|overlay| overlay.answer_config.as_ref())
+        {
+            let config = crate::geo::canonicalize_answer_config(config);
+            let bytes = serde_json::to_vec(&config).map_err(|error| {
+                GeoRunError::new(
+                    GeoRunErrorCode::ArtifactContract,
+                    "Geo answer configuration could not be serialized",
+                    [
+                        ("project_node_id", node.node_id.clone()),
+                        ("source_error", error.to_string()),
+                    ],
+                )
+            })?;
+            let ref_id = "geo.answer.config.v0";
+            content_hash_inputs.retain(|input| input.ref_id != ref_id);
+            content_hash_inputs.push(ProjectPlanHashRef {
+                ref_id: ref_id.to_string(),
+                content_hash: digest_bytes(&bytes),
+            });
+        }
         let dependency_refs =
             node.dependencies
                 .iter()
@@ -3762,6 +3944,7 @@ fn phase_for_stage(stage: GeoPlanStage) -> GeoRunPhase {
         GeoPlanStage::PropagateConstraints => GeoRunPhase::Factorized,
         GeoPlanStage::FactorAndSolveExactResidual
         | GeoPlanStage::ExplainResidual
+        | GeoPlanStage::ProjectCurrentAnswer
         | GeoPlanStage::SeparateResidual
         | GeoPlanStage::SelectNextEvidence => GeoRunPhase::Solved,
     }
@@ -5415,6 +5598,136 @@ fn serialization_error(error: serde_json::Error) -> GeoRunError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn answer_config_changes_only_its_consumer_cache_key() {
+        let make_node = |id: &str, command: &str, output: &str, dependencies: Vec<String>| {
+            ProjectExtensionDagNode {
+                node_id: id.to_string(),
+                kind: crate::project::ProjectPlanNodeKind::Solve,
+                class: crate::project::ProjectPlanNodeClass::Computation,
+                command: command.to_string(),
+                dependencies,
+                content_hash_inputs: Vec::new(),
+                outputs: vec![ProjectExtensionDagOutput {
+                    output_id: output.to_string(),
+                    path: format!("{id}.json"),
+                    materialization: ProjectPlanOutputMaterialization::PlannedArtifact,
+                }],
+                limits: BTreeMap::new(),
+                cache_eligible: true,
+                side_effects: vec![
+                    crate::project::ProjectPlanSideEffect {
+                        kind: crate::project::ProjectPlanSideEffectKind::ReadsInput,
+                        description: "reads only declared upstream artifact bytes".to_string(),
+                    },
+                    crate::project::ProjectPlanSideEffect {
+                        kind: crate::project::ProjectPlanSideEffectKind::WritesArtifact,
+                        description: "publishes the declared solve or answer artifact".to_string(),
+                    },
+                ],
+                refusal_conditions: Vec::new(),
+            }
+        };
+        let project =
+            compile_extension_project_plan(ProjectExtensionDagRequest::offline_read_only(
+                "answer-config-cache-fixture",
+                digest_label("manifest"),
+                digest_label("lock"),
+                vec![
+                    make_node("solve", GEO_SOLVE_COMMAND, "solve", Vec::new()),
+                    make_node(
+                        "answer",
+                        GEO_ANSWER_STAGE_COMMAND,
+                        GEO_ANSWER_OUTPUT_ID,
+                        vec!["solve".to_string()],
+                    ),
+                ],
+            ))
+            .unwrap();
+        let config = crate::geo::GeoAnswerConfig {
+            entity_level: crate::geo::GeoControlEntityLevel::Building,
+            answer_scope: crate::geo::GeoAnswerScope::CurrentAnswer,
+            requested_claim_classes: vec![
+                crate::geo::GeoClaimClass::CollateralComposition,
+                crate::geo::GeoClaimClass::CandidateReach,
+            ],
+            decision_policy: None,
+            question_hash: digest_label("question"),
+            question_id: "cache-fixture".to_string(),
+            query_as_of: None,
+        };
+        let overlay = GeoPlanNodeOverlay {
+            project_node_id: "answer".to_string(),
+            stage: GeoPlanStage::ProjectCurrentAnswer,
+            entity_level: Some(crate::geo::GeoControlEntityLevel::Building),
+            evidence_classes: Vec::new(),
+            claim_classes: Vec::new(),
+            expected_output_contract: CANON_GEO_ANSWER_VERSION.to_string(),
+            preconditions: Vec::new(),
+            claim_effect: crate::geo::GeoPlanClaimEffect::CanChangeRequestedClaim,
+            bounded_section_required: false,
+            incidence_factorization_required: false,
+            exact_solve_scope: None,
+            answer_config: Some(config),
+            deterministic_bounds: Vec::new(),
+            cost_estimate_ranges: Vec::new(),
+            transitions: crate::geo::GeoPlanTransitionSet {
+                success: "project".to_string(),
+                abstention: "preserve".to_string(),
+                contradiction: "explain".to_string(),
+                budget_fallback: "report".to_string(),
+            },
+        };
+        let before = effective_project_plan_with_input_hashes(
+            &project,
+            &BTreeMap::new(),
+            std::slice::from_ref(&overlay),
+        )
+        .unwrap();
+        let mut reordered = overlay.clone();
+        reordered
+            .answer_config
+            .as_mut()
+            .unwrap()
+            .requested_claim_classes
+            .reverse();
+        assert_eq!(
+            before,
+            effective_project_plan_with_input_hashes(&project, &BTreeMap::new(), &[reordered])
+                .unwrap(),
+            "set ordering is canonical"
+        );
+        let mut changed = overlay;
+        changed.answer_config.as_mut().unwrap().question_id = "another-question".to_string();
+        let after =
+            effective_project_plan_with_input_hashes(&project, &BTreeMap::new(), &[changed])
+                .unwrap();
+        let node = |plan: &ProjectPlan, id: &str| {
+            plan.nodes
+                .iter()
+                .find(|node| node.node_id == id)
+                .unwrap()
+                .cache
+                .cache_key
+                .clone()
+        };
+        assert_eq!(
+            node(&before, "solve"),
+            node(&after, "solve"),
+            "upstream solution remains reusable"
+        );
+        assert_ne!(
+            node(&before, "answer"),
+            node(&after, "answer"),
+            "changed question/config cannot reuse a stale answer"
+        );
+        assert_eq!(
+            project,
+            effective_project_plan_with_input_hashes(&project, &BTreeMap::new(), &[]).unwrap(),
+            "legacy project bytes stay unchanged"
+        );
+    }
 
     #[test]
     fn geo_run_manifest_publication_round_trips_head_and_content_revision() {

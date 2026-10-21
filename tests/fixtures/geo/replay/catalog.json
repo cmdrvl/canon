@@ -194,7 +194,31 @@
         "bindings": 5
       },
       "adapter_version": null,
-      "golden_changes": [],
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-1uo5",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/node_reports",
+            "/project_run_report/receipt/node_receipts",
+            "/project_run_report/receipt/receipt_hash",
+            "/project_run_report/run_receipt_hash",
+            "/run_id",
+            "/semantic_hash"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:d66b32d39a6a1fe81404ecb0ce0988b4a1b2ed0c0b6a3222ff4faf6a52885f36",
+          "old": "blake3:d27cb43cd8b3f5b2dfef2a18ac943cb11471fc4758692917913fca025744a541",
+          "semantic_note": "Register the answer executor: each executed stage truthfully reports 19 supported commands instead of 18; only this counter and derived receipt/run hashes change. All Geo output references, artifact digests, statuses and domain outcomes remain identical. Receipt-array pointers cover all 54 reviewed changed leaves."
+        }
+      ],
       "before": {
         "proof_class": "retained_preparation_records_not_reexecuted",
         "canon_invocations": 4,
@@ -464,7 +488,31 @@
         "bindings": 5
       },
       "adapter_version": null,
-      "golden_changes": [],
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-1uo5",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/node_reports",
+            "/project_run_report/receipt/node_receipts",
+            "/project_run_report/receipt/receipt_hash",
+            "/project_run_report/run_receipt_hash",
+            "/run_id",
+            "/semantic_hash"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:0e308c3fe27ffe209e120398fb3a65a88ad4d91acc90955bbb6e1cb6f91560a1",
+          "old": "blake3:d21099aae54337162c41078f4aea5477e06adb2590df33b1c27cf182d48f478f",
+          "semantic_note": "Register the answer executor: each executed stage truthfully reports 19 supported commands instead of 18; only this counter and derived receipt/run hashes change. All Geo output references, artifact digests, statuses and domain outcomes remain identical. Receipt-array pointers cover all 54 reviewed changed leaves."
+        }
+      ],
       "before": {
         "proof_class": "retained_preparation_records_not_reexecuted",
         "canon_invocations": 4,
@@ -745,7 +793,31 @@
         "bindings": 5
       },
       "adapter_version": null,
-      "golden_changes": [],
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-1uo5",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/node_reports",
+            "/project_run_report/receipt/node_receipts",
+            "/project_run_report/receipt/receipt_hash",
+            "/project_run_report/run_receipt_hash",
+            "/run_id",
+            "/semantic_hash"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:16869bac09c4697cc7f97a0d5ad5b84d85399f01e243a9b215c9964bccb4756e",
+          "old": "blake3:cb3733b113560772d31f1f1da28e0ea1ae948f26604249de4df1e147babe6708",
+          "semantic_note": "Register the answer executor: each executed stage truthfully reports 19 supported commands instead of 18; only this counter and derived receipt/run hashes change. All Geo output references, artifact digests, statuses and domain outcomes remain identical. Receipt-array pointers cover all 54 reviewed changed leaves."
+        }
+      ],
       "before": {
         "proof_class": "retained_preparation_records_not_reexecuted",
         "canon_invocations": 4,
@@ -1469,6 +1541,29 @@
           "changed_paths": [
             "/action_discovery"
           ]
+        },
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-1uo5",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/node_reports",
+            "/project_run_report/receipt/node_receipts",
+            "/project_run_report/receipt/receipt_hash",
+            "/project_run_report/run_receipt_hash",
+            "/run_id",
+            "/semantic_hash"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:d9fd8b2b16c917c1727d95b53490013dce115f0eb6e37e7cbbb31de818fd6f0a",
+          "old": "blake3:daf1164907d47f75ad81629114de8416d92d505134fd102ad0428f963bec39b9",
+          "semantic_note": "Register the answer executor: each executed stage truthfully reports 19 supported commands instead of 18; only this counter and derived receipt/run hashes change. All Geo output references, artifact digests, statuses and domain outcomes remain identical. Receipt-array pointers cover all 71 reviewed changed leaves."
         }
       ],
       "before": {
@@ -1825,6 +1920,29 @@
           "new": "blake3:6b02cdf15f98310d6854af1a05e8cc52ea6ccbee3f5c84b54b4e4c3ae4ab410d",
           "old": "blake3:c5577d7c21cc5b2d0611e980a9a022d23d01735c0c127994750dc469ef64708d",
           "semantic_note": "Separate incomplete caller action discovery from an exhausted evidence search; solver and evidence outputs unchanged."
+        },
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-1uo5",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/node_reports",
+            "/project_run_report/receipt/node_receipts",
+            "/project_run_report/receipt/receipt_hash",
+            "/project_run_report/run_receipt_hash",
+            "/run_id",
+            "/semantic_hash"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:e8b2030969fbc8065432241c6fca868281f3f6e56d48e9e07740df26acd3b8e4",
+          "old": "blake3:da50f4456cb9640a36b2891249446f63161dc30ec66cd34539e1de1ac5a868b2",
+          "semantic_note": "Register the answer executor: each executed stage truthfully reports 19 supported commands instead of 18; only this counter and derived receipt/run hashes change. All Geo output references, artifact digests, statuses and domain outcomes remain identical. Receipt-array pointers cover all 71 reviewed changed leaves."
         }
       ],
       "before": {
@@ -4215,6 +4333,29 @@
           "new": null,
           "old": "blake3:faf25313f9d46512d8849465122042ba7af746b6bd47c0d7e867b362daf3c0e3",
           "semantic_note": "Historical unsafe hard admission using logical relaxation is rejected at source materialization; this failed baseline is not an identity success."
+        },
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-1uo5",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/node_reports",
+            "/project_run_report/receipt/node_receipts",
+            "/project_run_report/receipt/receipt_hash",
+            "/project_run_report/run_receipt_hash",
+            "/run_id",
+            "/semantic_hash"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:120a06ed535160da0d2330133fbc852b1041f608d56383388ea278911a7bb412",
+          "old": "blake3:59322adf9028c3a4b08cb27c0c75819067631f2f7e1006528db117f29fb97e8e",
+          "semantic_note": "Register the answer executor: each executed stage truthfully reports 19 supported commands instead of 18; only this counter and derived receipt/run hashes change. All Geo output references, artifact digests, statuses and domain outcomes remain identical. Receipt-array pointers cover all 16 reviewed changed leaves."
         }
       ],
       "before": {
@@ -5170,7 +5311,31 @@
         "bindings": 5
       },
       "adapter_version": null,
-      "golden_changes": [],
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-1uo5",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/node_reports",
+            "/project_run_report/receipt/node_receipts",
+            "/project_run_report/receipt/receipt_hash",
+            "/project_run_report/run_receipt_hash",
+            "/run_id",
+            "/semantic_hash"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:ec729cebde4e84fbe5c5f4ab827eb84f6dc284590b794e6cefe0e7e6d88bc599",
+          "old": "blake3:e605a09f82511f4ed0f374bc58dae3fd5d7a5afb9ff74052e72bff266ee12748",
+          "semantic_note": "Register the answer executor: each executed stage truthfully reports 19 supported commands instead of 18; only this counter and derived receipt/run hashes change. All Geo output references, artifact digests, statuses and domain outcomes remain identical. Receipt-array pointers cover all 16 reviewed changed leaves."
+        }
+      ],
       "before": {
         "proof_class": "retained_preparation_records_not_reexecuted",
         "canon_invocations": 4,

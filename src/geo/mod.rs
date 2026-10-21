@@ -8,6 +8,7 @@
 pub mod address;
 pub mod adjudicate;
 pub mod agent_guide;
+pub mod answer;
 pub mod assessment_roll;
 pub mod card;
 pub mod cli;
@@ -50,6 +51,7 @@ pub mod tile;
 
 pub use address::*;
 pub use adjudicate::*;
+pub use answer::*;
 pub use card::*;
 pub use collateral_schedule::*;
 pub use collision::*;

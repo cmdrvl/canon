@@ -288,7 +288,8 @@
         "factor_and_solve_exact_residual",
         "explain_residual",
         "separate_residual",
-        "select_next_evidence"
+        "select_next_evidence",
+        "project_current_answer"
       ]
     },
     "gate_plane": {
@@ -767,6 +768,9 @@
         },
         "exact_solve_scope": {
           "$ref": "#/$defs/exact_solve_scope"
+        },
+        "answer_config": {
+          "$ref": "canon.geo.answer.v0.schema.json#/$defs/answer_config"
         },
         "deterministic_bounds": {
           "type": "array",

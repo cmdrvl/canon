@@ -44,11 +44,12 @@ use canon::{
     },
 };
 use executor::{
-    GEO_COLLATERAL_LEDGER_OUTPUT_ID, GEO_COMPILE_EVIDENCE_COMMAND, GEO_LEDGER_STAGE_COMMAND,
-    GEO_MATERIALIZE_EVIDENCE_COMMAND, GEO_MATERIALIZE_HOME_CELLS_COMMAND, GEO_PROPAGATE_OUTPUT_ID,
-    GEO_PROPAGATE_STAGE_COMMAND, GEO_REQUEST_BINDING_ID, GEO_ROWS_BINDING_ID, GEO_SOLVE_COMMAND,
-    GEO_TILE_WORK_COMMAND, GeoExecutorDependencyOutput, GeoExecutorInputBinding,
-    GeoProjectNodeExecutor,
+    GEO_ANSWER_OUTPUT_ID, GEO_ANSWER_STAGE_COMMAND, GEO_COLLATERAL_LEDGER_OUTPUT_ID,
+    GEO_COMPILE_EVIDENCE_COMMAND, GEO_EXPLAIN_OUTPUT_ID, GEO_EXPLAIN_STAGE_COMMAND,
+    GEO_LEDGER_STAGE_COMMAND, GEO_MATERIALIZE_EVIDENCE_COMMAND, GEO_MATERIALIZE_HOME_CELLS_COMMAND,
+    GEO_PROPAGATE_OUTPUT_ID, GEO_PROPAGATE_STAGE_COMMAND, GEO_REQUEST_BINDING_ID,
+    GEO_ROWS_BINDING_ID, GEO_SOLVE_COMMAND, GEO_TILE_WORK_COMMAND, GeoExecutorDependencyOutput,
+    GeoExecutorInputBinding, GeoProjectNodeExecutor,
 };
 use h3o::CellIndex;
 use serde_json::Value;
@@ -112,6 +113,145 @@ fn geo_project_node_executor_runs_the_six_planner_leaf_chain() {
     assert_eq!(
         solve_receipt.deterministic_usage["composition_components"],
         1
+    );
+}
+
+#[test]
+fn answer_stage_projects_existing_outputs_with_deterministic_usage_and_bytes() {
+    let plan = answer_stage_plan();
+    let mut previous = None;
+    for _ in 0..2 {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut executor = executor_with_fixture_inputs()
+            .with_answer_config("geo.building.answer", answer_config());
+        let report =
+            run_project_plan(&plan, &policy(temp.path()), &mut executor).expect("answer chain run");
+        assert!(report.failed_nodes.is_empty(), "{:?}", report.node_reports);
+        assert!(
+            report
+                .executed_nodes
+                .iter()
+                .any(|id| id == "geo.building.answer")
+        );
+        let bytes = fs::read(temp.path().join("geo/building/answer.json")).expect("answer output");
+        let artifact: canon::geo::GeoAnswerArtifact = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            canon::geo::canonical_answer_bytes(&artifact).unwrap(),
+            bytes
+        );
+        assert_eq!(artifact.question_id, "executor-answer-fixture");
+        assert_eq!(
+            artifact.further_work.action_discovery,
+            canon::geo::GeoActionDiscoveryState::NotAttempted
+        );
+        assert_eq!(
+            artifact.further_work.source,
+            canon::geo::GeoAnswerFurtherWorkSource::NotInScope
+        );
+        assert!(!artifact.extent_and_reach.complete_extent_claimed);
+        let receipt = read_node_receipt(&receipt_path(temp.path(), "geo.building.answer")).unwrap();
+        assert_eq!(
+            receipt.deterministic_usage["answer_members_listed"],
+            artifact.association_support.members.len() as u64
+        );
+        assert_eq!(
+            receipt.deterministic_usage["answer_preferred_models"],
+            artifact.preference.composition_view.preferred.len() as u64
+        );
+        assert_eq!(receipt.deterministic_usage["dependency_output_count"], 4);
+        assert_eq!(receipt.deterministic_usage["input_binding_count"], 0);
+        if let Some(previous) = previous.replace(bytes.clone()) {
+            assert_eq!(
+                previous, bytes,
+                "fresh executor/temp directory must not affect answer bytes"
+            );
+        }
+    }
+}
+
+#[test]
+fn answer_stage_without_config_refuses_without_publishing_answer() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let report = run_project_plan(
+        &answer_stage_plan(),
+        &policy(temp.path()),
+        &mut executor_with_fixture_inputs(),
+    )
+    .expect("typed failed run");
+    assert_eq!(report.failed_nodes, ["geo.building.answer"]);
+    let failed = report
+        .node_reports
+        .iter()
+        .find(|row| row.node_id == "geo.building.answer")
+        .unwrap();
+    assert!(
+        failed
+            .reason
+            .as_deref()
+            .unwrap()
+            .contains("answer_config_missing")
+    );
+    assert!(!temp.path().join("geo/building/answer.json").exists());
+    assert!(
+        temp.path().join("geo/building/solve.json").exists(),
+        "the solved result remains available"
+    );
+}
+
+#[test]
+fn answer_stage_rejects_explanation_compilation_mismatch() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = answer_stage_plan();
+    let mut run_policy = policy(temp.path());
+    run_policy
+        .cancel_before_nodes
+        .insert("geo.building.answer".to_string());
+    let report = run_project_plan(&plan, &run_policy, &mut executor_with_fixture_inputs())
+        .expect("upstream chain run");
+    assert!(report.failed_nodes.is_empty());
+    let node = plan
+        .nodes
+        .iter()
+        .find(|node| node.node_id == "geo.building.answer")
+        .unwrap();
+    let mut outputs = BTreeMap::new();
+    for (producer, output, path) in [
+        ("section", "section", "section"),
+        ("compile_evidence", "compile_evidence", "compile_evidence"),
+        ("solve", "solve", "solve"),
+        ("explain", "explanation", "explanation"),
+    ] {
+        let mut bytes = fs::read(temp.path().join(format!("geo/building/{path}.json"))).unwrap();
+        if producer == "explain" {
+            let mut artifact: canon::geo::GeoExplanationArtifact =
+                serde_json::from_slice(&bytes).unwrap();
+            artifact.evidence_blake3 = format!("blake3:{}", "0".repeat(64));
+            bytes = canon::geo::canonical_explanation_bytes(&artifact).unwrap();
+        }
+        outputs.insert(
+            format!("geo.building.{producer}"),
+            vec![project_dependency_output(output, bytes)],
+        );
+    }
+    let mut executor =
+        GeoProjectNodeExecutor::new().with_answer_config("geo.building.answer", answer_config());
+    let error = executor
+        .execute(
+            node,
+            &ProjectNodeExecutionContext {
+                node_id: node.node_id.clone(),
+                dependency_semantic_hashes: outputs
+                    .keys()
+                    .map(|id| (id.clone(), digest_bytes(id.as_bytes())))
+                    .collect(),
+                dependency_outputs: outputs,
+            },
+        )
+        .expect_err("a well-formed artifact with the wrong compilation binding must refuse");
+    assert!(
+        error.message.contains("AnswerInputMismatch"),
+        "{}",
+        error.message
     );
 }
 
@@ -1212,7 +1352,7 @@ fn policy(workspace: &Path) -> ProjectRunPolicy {
     policy
 }
 
-fn five_node_plan() -> ProjectPlan {
+fn fixture_chain_nodes() -> Vec<ProjectExtensionDagNode> {
     let nodes = vec![
         extension_node(
             "geo.building.home_cells",
@@ -1276,13 +1416,67 @@ fn five_node_plan() -> ProjectPlan {
             Vec::new(),
         ),
     ];
+    nodes
+}
+
+fn five_node_plan() -> ProjectPlan {
     compile_extension_project_plan(ProjectExtensionDagRequest::offline_read_only(
         "geo-executor-fixture",
         digest_bytes(b"geo executor manifest"),
         digest_bytes(b"geo executor lock"),
-        nodes,
+        fixture_chain_nodes(),
     ))
     .expect("extension project plan compiles")
+}
+
+fn answer_config() -> canon::geo::GeoAnswerConfig {
+    canon::geo::GeoAnswerConfig {
+        entity_level: GeoControlEntityLevel::Building,
+        answer_scope: canon::geo::GeoAnswerScope::CurrentAnswer,
+        requested_claim_classes: vec![canon::geo::GeoClaimClass::CollateralComposition],
+        decision_policy: None,
+        question_hash: digest_bytes(b"executor answer fixture question"),
+        question_id: "executor-answer-fixture".to_string(),
+        query_as_of: None,
+    }
+}
+
+fn answer_stage_plan() -> ProjectPlan {
+    let mut nodes = fixture_chain_nodes();
+    nodes.push(extension_node(
+        "geo.building.explain",
+        ProjectPlanNodeKind::Solve,
+        GEO_EXPLAIN_STAGE_COMMAND,
+        vec![
+            "geo.building.compile_evidence".to_string(),
+            "geo.building.propagate".to_string(),
+            "geo.building.solve".to_string(),
+        ],
+        GEO_EXPLAIN_OUTPUT_ID,
+        "geo/building/explanation.json",
+        Vec::new(),
+    ));
+    nodes.push(extension_node(
+        "geo.building.answer",
+        ProjectPlanNodeKind::Solve,
+        GEO_ANSWER_STAGE_COMMAND,
+        vec![
+            "geo.building.compile_evidence".to_string(),
+            "geo.building.explain".to_string(),
+            "geo.building.section".to_string(),
+            "geo.building.solve".to_string(),
+        ],
+        GEO_ANSWER_OUTPUT_ID,
+        "geo/building/answer.json",
+        Vec::new(),
+    ));
+    compile_extension_project_plan(ProjectExtensionDagRequest::offline_read_only(
+        "geo-executor-answer-fixture",
+        digest_bytes(b"geo executor answer manifest"),
+        digest_bytes(b"geo executor answer lock"),
+        nodes,
+    ))
+    .expect("answer stage plan")
 }
 
 fn ledger_stage_plan() -> ProjectPlan {

@@ -525,6 +525,14 @@ fn geo_run_client_tile_ingest_waits_for_raw_source_and_rejects_wrong_source_cont
 
     assert_eq!(waiting.status, GeoRunStatus::WaitingForInput);
     assert!(waiting.output_refs.is_empty());
+    let retained_waiting: canon::geo::GeoRun =
+        serde_json::from_slice(&canonical_geo_run_bytes(&waiting).unwrap()).unwrap();
+    let execution = canon::geo::project_answer_execution(&retained_waiting)
+        .expect("project the actual preflight waiting run");
+    assert_eq!(execution.status, canon::geo::GeoRunStatus::WaitingForInput);
+    assert!(execution.completed_project_node_ids.is_empty());
+    assert!(!execution.awaiting_inputs.is_empty());
+    assert!(!execution.run_budget_fallback);
     assert!(waiting.next_actions.iter().any(|action| {
         action.project_node_id.as_deref() == Some(CLIENT_TILE_NODE_ID)
             && action.expected_contract.as_deref() == Some(CANON_GEO_CLIENT_TILE_SOURCE_VERSION)
@@ -935,7 +943,13 @@ fn unchanged_geo_run_resumes_and_ignores_operational_observation() {
             observed_at_utc: Some("2026-08-31T10:00:00Z".to_string()),
             host_id: Some("host-a".to_string()),
             process_id: Some(100),
-            resource_observations: BTreeMap::from([("rss_bytes".to_string(), 100)]),
+            resource_observations: BTreeMap::from([
+                ("rss_bytes".to_string(), 100),
+                ("cost.money.licensing_cents".to_string(), 275),
+                ("cost.millis.review".to_string(), 15),
+                ("cost.nodes.executed".to_string(), 999),
+                ("cost.millis.stage.stale".to_string(), 999),
+            ]),
         },
     })
     .expect("first run");
@@ -967,6 +981,30 @@ fn unchanged_geo_run_resumes_and_ignores_operational_observation() {
         canonical_geo_run_semantic_bytes(&second).expect("second semantic")
     );
     assert_eq!(first.semantic_hash, second.semantic_hash);
+    let first_cost = &first.observation.resource_observations;
+    let second_cost = &second.observation.resource_observations;
+    let first_report = first.project_run_report.as_ref().unwrap();
+    let second_report = second.project_run_report.as_ref().unwrap();
+    assert_eq!(first_cost["cost.workload.cold"], 1);
+    assert_eq!(
+        first_cost["cost.nodes.executed"],
+        first_report.executed_nodes.len() as u64
+    );
+    assert_eq!(second_cost["cost.workload.warm"], 1);
+    assert_eq!(
+        second_cost["cost.nodes.resumed"],
+        second_report.resumed_nodes.len() as u64
+    );
+    assert_eq!(second_cost["cost.nodes.executed"], 0);
+    assert_eq!(
+        second_cost["cost.millis.executed_total"], 0,
+        "cached durations are not new execution work"
+    );
+    assert_eq!(first_cost["rss_bytes"], 100);
+    assert_eq!(first_cost["cost.money.licensing_cents"], 275);
+    assert_eq!(first_cost["cost.millis.review"], 15);
+    assert!(!first_cost.contains_key("cost.millis.stage.stale"));
+    assert_eq!(second_cost["rss_bytes"], 9_999);
 }
 
 #[test]
@@ -1113,6 +1151,14 @@ fn typed_composition_status_projects_to_geo_run_status() {
     ))
     .expect("fallback run");
     assert_eq!(fallback.status, GeoRunStatus::BudgetFallback);
+    let retained_fallback: canon::geo::GeoRun =
+        serde_json::from_slice(&canonical_geo_run_bytes(&fallback).unwrap()).unwrap();
+    let execution = canon::geo::project_answer_execution(&retained_fallback)
+        .expect("project the actual runner budget fallback");
+    assert_eq!(execution.status, canon::geo::GeoRunStatus::BudgetFallback);
+    assert!(execution.run_budget_fallback);
+    assert!(!execution.completed_project_node_ids.is_empty());
+    assert!(execution.awaiting_inputs.is_empty());
     assert_eq!(
         solve_output(fallback_temp.path())["status"],
         "budget_fallback"
@@ -1468,6 +1514,15 @@ fn changed_warehouse_rows_reuse_only_the_unaffected_bounded_section_prefix() {
     ] {
         assert!(report.executed_nodes.contains(&node_id.to_string()));
     }
+    let cost = &changed.observation.resource_observations;
+    assert_eq!(cost["cost.workload.refresh"], 1);
+    assert_eq!(cost["cost.workload.cold"], 0);
+    assert_eq!(cost["cost.workload.warm"], 0);
+    assert_eq!(
+        cost["cost.nodes.invalidated"],
+        report.invalidated_nodes.len() as u64
+    );
+    assert!(cost["cost.nodes.invalidated"] >= 1);
 }
 
 #[test]
@@ -1939,6 +1994,196 @@ fn injected_executor_contract_weak_output_refuses_before_publication() {
         !temp.path().join("geo/building/home_cells.json").exists(),
         "contract-weak injected output must not be published"
     );
+}
+
+#[test]
+fn native_workload_observation_measures_fresh_work_and_preserves_semantic_identity() {
+    let plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    let mut prior_semantic = None;
+    for _ in 0..2 {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let started = std::time::Instant::now();
+        let run = run_geo_plan(GeoRunRequest::new(
+            plan.clone(),
+            policy(temp.path()),
+            run_bindings(warehouse_rows()),
+        ))
+        .expect("fresh native chain");
+        let wall_millis = started.elapsed().as_millis();
+        let report = run.project_run_report.as_ref().unwrap();
+        let cost = &run.observation.resource_observations;
+        assert_eq!(
+            cost["cost.nodes.executed"],
+            report.executed_nodes.len() as u64
+        );
+        assert_eq!(cost["cost.workload.cold"], 1);
+        assert_eq!(cost["cost.workload.warm"], 0);
+        assert_eq!(cost["cost.workload.refresh"], 0);
+        assert!(
+            cost["cost.millis.executed_total"] > 0,
+            "actual native reasoning must be timed"
+        );
+        assert!(u128::from(cost["cost.millis.executed_total"]) <= wall_millis);
+        let receipt_sum: u64 = report
+            .receipt
+            .node_receipts
+            .iter()
+            .filter(|receipt| report.executed_nodes.contains(&receipt.node_id))
+            .map(|receipt| receipt.duration_millis)
+            .sum();
+        assert_eq!(cost["cost.millis.executed_total"], receipt_sum);
+        let stage_sum: u64 = cost
+            .iter()
+            .filter(|(key, _)| key.starts_with("cost.millis.stage."))
+            .map(|(_, value)| *value)
+            .sum();
+        assert_eq!(stage_sum, receipt_sum);
+        assert_eq!(
+            cost["cost.millis.preparation"] + cost["cost.millis.reasoning"],
+            receipt_sum
+        );
+        for id in &report.executed_nodes {
+            let stage = plan
+                .geo_nodes
+                .iter()
+                .find(|overlay| &overlay.project_node_id == id)
+                .unwrap()
+                .stage;
+            let stage = serde_json::to_value(stage).unwrap();
+            assert!(
+                cost.contains_key(&format!("cost.millis.stage.{}", stage.as_str().unwrap())),
+                "missing stage timing for {id}"
+            );
+        }
+        for unsupported in [
+            "cost.millis.licensing",
+            "cost.millis.review",
+            "cost.money.total",
+        ] {
+            assert!(
+                !cost.contains_key(unsupported),
+                "unmeasured term must not become a measured zero"
+            );
+        }
+        eprintln!("cold native stage timing: {cost:?}");
+        let semantic = canonical_geo_run_semantic_bytes(&run).unwrap();
+        if let Some(prior) = prior_semantic.replace(semantic.clone()) {
+            assert_eq!(
+                prior, semantic,
+                "actual clock observations cannot change domain identity"
+            );
+        }
+    }
+}
+
+#[test]
+fn failed_native_work_is_counted_in_observed_time() {
+    struct SlowFailure;
+    impl ProjectNodeExecutor for SlowFailure {
+        fn execute(
+            &mut self,
+            node: &ProjectPlanNode,
+            _context: &ProjectNodeExecutionContext,
+        ) -> ProjectRunResult<ProjectNodeExecutionResult> {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(node.node_id.clone()),
+                "planted slow executor failure",
+            ))
+        }
+    }
+    let temp = tempfile::tempdir().expect("tempdir");
+    let run = run_geo_plan_with_project_executor(
+        GeoRunRequest::new(
+            building_plan(
+                "release.fixture.one",
+                GeoSourceAvailability::Available,
+                None,
+            ),
+            policy(temp.path()),
+            run_bindings(warehouse_rows()),
+        ),
+        &mut SlowFailure,
+    )
+    .expect("actual failed execution remains observable");
+    assert_eq!(run.status, GeoRunStatus::Failed);
+    let cost = &run.observation.resource_observations;
+    assert_eq!(cost["cost.nodes.failed"], 1);
+    assert_eq!(cost["cost.nodes.executed"], 0);
+    assert!(cost["cost.millis.executed_total"] >= 5);
+    assert!(cost["cost.millis.stage.materialize_home_cells"] >= 5);
+    assert_eq!(cost["cost.nodes.timing_unknown"], 0);
+    let report = run.project_run_report.as_ref().unwrap();
+    assert!(
+        report.receipt.node_receipts.is_empty(),
+        "failure telemetry must not enter semantic completed receipts"
+    );
+    let failed = &report.node_reports[0];
+    let canonical = receipt_path(temp.path(), &failed.node_id);
+    let receipt = read_node_receipt(&canon::project::receipt::node_receipt_cas_path(
+        &canonical,
+        failed.receipt_hash.as_ref().unwrap(),
+    ))
+    .unwrap();
+    assert_eq!(cost["cost.millis.executed_total"], receipt.duration_millis);
+    let incomplete = run::geo_run_workload_observation(
+        report,
+        &building_plan(
+            "release.fixture.one",
+            GeoSourceAvailability::Available,
+            None,
+        ),
+        &[],
+    );
+    assert_eq!(
+        incomplete["cost.nodes.timing_unknown"], 1,
+        "a missing failed body is unknown, not zero measured work"
+    );
+}
+
+#[test]
+fn workload_stage_accounting_sums_grains_and_includes_current_answer() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    let run = run_geo_plan(GeoRunRequest::new(
+        plan.clone(),
+        policy(temp.path()),
+        run_bindings(warehouse_rows()),
+    ))
+    .unwrap();
+    // This is an accounting unit case, not a second geographic solve or scale proof.
+    let mut report = run.project_run_report.unwrap();
+    let mut a = report.receipt.node_receipts[0].clone();
+    a.node_id = "grain-a.answer".to_string();
+    a.duration_millis = 17;
+    let mut b = a.clone();
+    b.node_id = "grain-b.answer".to_string();
+    b.duration_millis = 23;
+    report.executed_nodes = vec![a.node_id.clone(), b.node_id.clone()];
+    report.failed_nodes.clear();
+    report.resumed_nodes.clear();
+    report.invalidated_nodes.clear();
+    report.receipt.node_receipts = vec![a, b];
+    let mut overlay = plan.geo_nodes[0].clone();
+    overlay.stage = GeoPlanStage::ProjectCurrentAnswer;
+    overlay.project_node_id = "grain-a.answer".to_string();
+    let mut second = overlay.clone();
+    second.project_node_id = "grain-b.answer".to_string();
+    plan.geo_nodes = vec![overlay, second];
+    let observed = run::geo_run_workload_observation(&report, &plan, &[]);
+    assert_eq!(observed["cost.millis.stage.project_current_answer"], 40);
+    assert_eq!(observed["cost.millis.reasoning"], 40);
+    assert_eq!(observed["cost.millis.preparation"], 0);
+    assert_eq!(observed["cost.millis.executed_total"], 40);
 }
 
 struct FailingProjectExecutor {

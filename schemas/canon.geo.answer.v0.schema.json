@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.geo.answer.v0.schema.json",
+  "title": "canon.geo.answer.v0",
+  "description": "Pure, digest-bound current-answer projection. Preference, acceptance, logical consequence, extent and action discovery remain separate.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "question_hash", "question_id", "query_as_of", "entity_level", "answer_scope", "claim_label", "inputs", "execution", "association_support", "preference", "acceptance", "logical_consequence", "extent_and_reach", "further_work"],
+  "properties": {
+    "version": {"const": "canon_geo_answer.v0"},
+    "question_hash": {"$ref": "#/$defs/digest"},
+    "question_id": {"$ref": "#/$defs/identifier"},
+    "query_as_of": {"anyOf": [{"$ref": "#/$defs/as_of"}, {"type": "null"}]},
+    "entity_level": {"enum": ["parcel", "building"]},
+    "answer_scope": {"enum": ["current_answer", "full_workflow"]},
+    "claim_label": {"$ref": "#/$defs/claim_label"},
+    "inputs": {"$ref": "#/$defs/input_digests"},
+    "execution": {"$ref": "#/$defs/execution"},
+    "association_support": {"$ref": "#/$defs/support"},
+    "preference": {"$ref": "#/$defs/preference"},
+    "acceptance": {"$ref": "#/$defs/acceptance"},
+    "logical_consequence": {"$ref": "#/$defs/consequence"},
+    "extent_and_reach": {"$ref": "#/$defs/extent"},
+    "further_work": {"$ref": "#/$defs/further_work"}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "minLength": 1},
+    "digest": {"type": "string", "pattern": "^blake3:[0-9a-f]{64}$"},
+    "uint64": {"type": "integer", "minimum": 0, "maximum": 18446744073709551615},
+    "uint128": {"type": "integer", "minimum": 0, "maximum": 340282366920938463463374607431768211455},
+    "strings": {"type": "array", "items": {"$ref": "#/$defs/identifier"}, "uniqueItems": true},
+    "claim_class": {"enum": ["candidate_reach", "stable_identity", "collateral_composition", "temporal_occupancy", "lifecycle_state", "attribute_band"]},
+    "as_of": {
+      "type": "object", "additionalProperties": false,
+      "required": ["utc_day", "semantic_id", "unit", "origin"],
+      "properties": {
+        "utc_day": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+        "semantic_id": {"$ref": "#/$defs/identifier"},
+        "unit": {"const": "utc_day"},
+        "origin": {"enum": ["caller_declared", "binary_default", "source_release", "local_artifact", "adapter_contract", "operator_policy"]}
+      }
+    },
+    "decision_policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["policy_id", "version", "content_hash"],
+      "properties": {"policy_id": {"$ref": "#/$defs/identifier"}, "version": {"$ref": "#/$defs/identifier"}, "content_hash": {"$ref": "#/$defs/digest"}}
+    },
+    "answer_config": {
+      "type": "object", "additionalProperties": false,
+      "required": ["entity_level", "answer_scope", "requested_claim_classes", "decision_policy", "question_hash", "question_id", "query_as_of"],
+      "properties": {
+        "entity_level": {"enum": ["parcel", "building"]},
+        "answer_scope": {"enum": ["current_answer", "full_workflow"]},
+        "requested_claim_classes": {"type": "array", "items": {"$ref": "#/$defs/claim_class"}, "uniqueItems": true},
+        "decision_policy": {"anyOf": [{"$ref": "#/$defs/decision_policy"}, {"type": "null"}]},
+        "question_hash": {"$ref": "#/$defs/digest"},
+        "question_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "query_as_of": {"anyOf": [{"$ref": "#/$defs/as_of"}, {"type": "null"}]}
+      }
+    },
+    "claim_label": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"const": "single_member_association"}}},
+        {"type": "object", "additionalProperties": false, "required": ["kind", "claim_class"], "properties": {"kind": {"const": "composition"}, "claim_class": {"$ref": "#/$defs/claim_class"}}}
+      ]
+    },
+    "input_digests": {
+      "type": "object", "additionalProperties": false,
+      "required": ["section_blake3", "evidence_compilation_blake3", "composition_blake3", "explanation_blake3", "next_evidence_blake3"],
+      "properties": {
+        "section_blake3": {"$ref": "#/$defs/digest"}, "evidence_compilation_blake3": {"$ref": "#/$defs/digest"},
+        "composition_blake3": {"$ref": "#/$defs/digest"}, "explanation_blake3": {"$ref": "#/$defs/digest"},
+        "next_evidence_blake3": {"anyOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]}
+      }
+    },
+    "stage": {"enum": ["materialize_home_cells", "build_bounded_section", "materialize_evidence", "compile_evidence", "propagate_constraints", "factor_and_solve_exact_residual", "explain_residual", "separate_residual", "select_next_evidence", "project_current_answer"]},
+    "composition_status": {"enum": ["resolved", "ambiguous", "conflict", "budget_fallback"]},
+    "execution": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source", "consumed_stages", "omitted_by_scope", "composition_status", "actual_runner_history_available"],
+      "properties": {
+        "source": {"enum": ["supplied_artifact_projection", "verified_run_snapshot"]},
+        "consumed_stages": {"type": "array", "items": {"$ref": "#/$defs/stage"}, "uniqueItems": true},
+        "omitted_by_scope": {"type": "array", "items": {"$ref": "#/$defs/stage"}, "uniqueItems": true},
+        "composition_status": {"$ref": "#/$defs/composition_status"},
+        "actual_runner_history_available": {"type": "boolean"},
+        "run_snapshot": {"$ref": "#/$defs/run_execution"}
+      }
+    },
+    "awaiting_input": {
+      "type": "object", "additionalProperties": false,
+      "required": ["blocker_id", "project_node_id", "reason", "required_artifact_ids", "expected_contracts", "next_commands"],
+      "properties": {
+        "blocker_id": {"$ref": "#/$defs/identifier"}, "project_node_id": {"type": ["string", "null"]}, "reason": {"$ref": "#/$defs/identifier"},
+        "required_artifact_ids": {"$ref": "#/$defs/strings"}, "expected_contracts": {"$ref": "#/$defs/strings"}, "next_commands": {"$ref": "#/$defs/strings"}
+      }
+    },
+    "run_execution": {
+      "type": "object", "additionalProperties": false,
+      "required": ["run_id", "run_semantic_hash", "run_artifact_blake3", "plan_id", "plan_semantic_hash", "status", "phase", "completed_project_node_ids", "executed_project_node_ids", "resumed_project_node_ids", "failed_project_node_ids", "cancelled_project_node_ids", "blocked_project_node_ids", "receipt_body_verified_project_node_ids", "report_only_terminal_project_node_ids", "awaiting_inputs", "run_budget_fallback", "composition_budget_fallback"],
+      "properties": {
+        "run_id": {"$ref": "#/$defs/identifier"}, "run_semantic_hash": {"$ref": "#/$defs/digest"}, "run_artifact_blake3": {"$ref": "#/$defs/digest"},
+        "plan_id": {"$ref": "#/$defs/identifier"}, "plan_semantic_hash": {"$ref": "#/$defs/digest"},
+        "status": {"enum": ["COMPLETED", "PARTIAL", "WAITING_FOR_INPUT", "UNSUPPORTED_GRAIN", "FAILED", "CANCELLED", "BUDGET_FALLBACK", "ABSTAINED", "CONTRADICTED"]},
+        "phase": {"enum": ["DRAFTED", "PREFLIGHTED", "MATERIALIZED", "REACH_CHECKED", "COMPILED", "FACTORIZED", "SOLVED", "RECONCILED", "EVALUATED"]},
+        "completed_project_node_ids": {"$ref": "#/$defs/strings"}, "executed_project_node_ids": {"$ref": "#/$defs/strings"}, "resumed_project_node_ids": {"$ref": "#/$defs/strings"},
+        "failed_project_node_ids": {"$ref": "#/$defs/strings"}, "cancelled_project_node_ids": {"$ref": "#/$defs/strings"}, "blocked_project_node_ids": {"$ref": "#/$defs/strings"},
+        "receipt_body_verified_project_node_ids": {"$ref": "#/$defs/strings", "description": "Nodes whose supplied full receipt bodies were hash-validated."},
+        "report_only_terminal_project_node_ids": {"$ref": "#/$defs/strings", "description": "Failed or cancelled outcomes validated against report metadata and outcome sets; full terminal receipt bodies were not supplied or verified."},
+        "awaiting_inputs": {"type": "array", "items": {"$ref": "#/$defs/awaiting_input"}},
+        "run_budget_fallback": {"type": "boolean"}, "composition_budget_fallback": {"type": ["boolean", "null"]}
+      }
+    },
+    "entity_ref": {
+      "type": "object", "additionalProperties": false,
+      "required": ["level", "id"],
+      "properties": {"level": {"enum": ["poi_unit", "building", "parcel", "property"]}, "id": {"$ref": "#/$defs/identifier"}}
+    },
+    "model": {
+      "type": "object", "additionalProperties": false,
+      "required": ["parcels", "buildings"],
+      "properties": {"parcels": {"$ref": "#/$defs/strings"}, "buildings": {"$ref": "#/$defs/strings"}}
+    },
+    "source_record": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_record_id", "source_vintage", "record_blake3"],
+      "properties": {"source_record_id": {"$ref": "#/$defs/identifier"}, "source_vintage": {"$ref": "#/$defs/identifier"}, "record_blake3": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+    },
+    "evidence_ref": {
+      "type": "object", "additionalProperties": false,
+      "required": ["observation_id", "rho_contract_id", "rho_contract_version", "disposition", "generated_id", "admission_reason", "source_dataset", "source_release", "source_record_ids", "source_vintages", "source_records", "lineage_ids", "lineage_group_id", "source_derivation", "effect"],
+      "properties": {
+        "observation_id": {"$ref": "#/$defs/identifier"}, "rho_contract_id": {"$ref": "#/$defs/identifier"}, "rho_contract_version": {"$ref": "#/$defs/identifier"},
+        "disposition": {"enum": ["hard_constraint", "soft_preference", "diagnostic_only"]},
+        "generated_id": {"type": ["string", "null"], "minLength": 1}, "admission_reason": {"type": ["string", "null"]},
+        "source_dataset": {"$ref": "#/$defs/identifier"}, "source_release": {"$ref": "#/$defs/identifier"},
+        "source_record_ids": {"$ref": "#/$defs/strings"}, "source_vintages": {"$ref": "#/$defs/strings"},
+        "source_records": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/source_record"}, "uniqueItems": true},
+        "lineage_ids": {"$ref": "#/$defs/strings"}, "lineage_group_id": {"$ref": "#/$defs/identifier"},
+        "source_derivation": {"const": "not_declared"},
+        "effect": {"enum": ["membership_required", "membership_forbidden", "candidate_set_restriction", "soft_agreement", "whole_level_restriction", "diagnostic_only"]}
+      }
+    },
+    "evidence_refs": {"type": "array", "items": {"$ref": "#/$defs/evidence_ref"}},
+    "lineage_group": {
+      "type": "object", "additionalProperties": false,
+      "required": ["group_id", "observation_ids", "shared_lineage_ids"],
+      "properties": {"group_id": {"$ref": "#/$defs/identifier"}, "observation_ids": {"$ref": "#/$defs/strings"}, "shared_lineage_ids": {"$ref": "#/$defs/strings"}}
+    },
+    "member_support": {
+      "type": "object", "additionalProperties": false,
+      "required": ["member", "hard", "soft", "diagnostic", "forced", "independent_support_groups", "support_origin", "conflicting_observation_ids"],
+      "properties": {
+        "member": {"$ref": "#/$defs/entity_ref"}, "hard": {"$ref": "#/$defs/evidence_refs"}, "soft": {"$ref": "#/$defs/evidence_refs"}, "diagnostic": {"$ref": "#/$defs/evidence_refs"},
+        "forced": {"type": "boolean"}, "independent_support_groups": {"$ref": "#/$defs/uint64"},
+        "support_origin": {"enum": ["recorded_observation", "logical_consequence", "observation_and_consequence"]},
+        "conflicting_observation_ids": {"$ref": "#/$defs/strings"}
+      }
+    },
+    "support": {
+      "type": "object", "additionalProperties": false,
+      "required": ["members", "global_constraints", "diagnostic_observations", "lineage_groups", "members_total", "truncated"],
+      "properties": {
+        "members": {"type": "array", "items": {"$ref": "#/$defs/member_support"}},
+        "global_constraints": {"$ref": "#/$defs/evidence_refs"}, "diagnostic_observations": {"$ref": "#/$defs/evidence_refs"},
+        "lineage_groups": {"type": "array", "items": {"$ref": "#/$defs/lineage_group"}},
+        "members_total": {"$ref": "#/$defs/uint64"}, "truncated": {"type": "boolean"}
+      }
+    },
+    "preference_state": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"const": "ranked"}}},
+        {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"const": "no_soft_evidence"}}},
+        {"type": "object", "additionalProperties": false, "required": ["kind", "reason"], "properties": {"kind": {"const": "unavailable"}, "reason": {"enum": ["residual_models_not_materialized", "composition_conflict", "composition_budget_fallback"]}}}
+      ]
+    },
+    "preferred_model": {
+      "type": "object", "additionalProperties": false,
+      "required": ["members", "cost"],
+      "properties": {"members": {"$ref": "#/$defs/model"}, "cost": {"$ref": "#/$defs/uint128"}}
+    },
+    "cost_bucket": {
+      "type": "object", "additionalProperties": false,
+      "required": ["cost", "model_count"],
+      "properties": {"cost": {"$ref": "#/$defs/uint128"}, "model_count": {"$ref": "#/$defs/uint64"}}
+    },
+    "preference_view": {
+      "type": "object", "additionalProperties": false,
+      "required": ["preferred", "tie_count", "next_best_cost", "next_best_tie_count", "ranked_models", "cost_histogram", "truncated"],
+      "properties": {
+        "preferred": {"type": "array", "items": {"$ref": "#/$defs/preferred_model"}}, "tie_count": {"$ref": "#/$defs/uint64"},
+        "next_best_cost": {"anyOf": [{"$ref": "#/$defs/uint128"}, {"type": "null"}]}, "next_best_tie_count": {"$ref": "#/$defs/uint64"},
+        "ranked_models": {"$ref": "#/$defs/uint64"}, "cost_histogram": {"type": "array", "items": {"$ref": "#/$defs/cost_bucket"}}, "truncated": {"type": "boolean"}
+      }
+    },
+    "grouped_preference_view": {
+      "type": "object", "additionalProperties": false,
+      "required": ["rule_id", "preferred", "tie_count", "next_best_cost", "next_best_tie_count", "ranked_models", "cost_histogram", "truncated"],
+      "properties": {
+        "rule_id": {"const": "contract_lineage_dedupe.v0"},
+        "preferred": {"type": "array", "items": {"$ref": "#/$defs/preferred_model"}}, "tie_count": {"$ref": "#/$defs/uint64"},
+        "next_best_cost": {"anyOf": [{"$ref": "#/$defs/uint128"}, {"type": "null"}]}, "next_best_tie_count": {"$ref": "#/$defs/uint64"},
+        "ranked_models": {"$ref": "#/$defs/uint64"}, "cost_histogram": {"type": "array", "items": {"$ref": "#/$defs/cost_bucket"}}, "truncated": {"type": "boolean"}
+      }
+    },
+    "preferred_support": {
+      "type": "object", "additionalProperties": false,
+      "required": ["members", "observation_ids", "lineage_group_ids", "shared_lineage_ids"],
+      "properties": {"members": {"$ref": "#/$defs/model"}, "observation_ids": {"$ref": "#/$defs/strings"}, "lineage_group_ids": {"$ref": "#/$defs/strings"}, "shared_lineage_ids": {"$ref": "#/$defs/strings"}}
+    },
+    "preference": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state", "calibration", "composition_view", "grouped_view", "lineage_dependent", "supporting"],
+      "properties": {
+        "state": {"$ref": "#/$defs/preference_state"}, "calibration": {"const": "uncalibrated"},
+        "composition_view": {"$ref": "#/$defs/preference_view"}, "grouped_view": {"$ref": "#/$defs/grouped_preference_view"},
+        "lineage_dependent": {"type": "boolean"}, "supporting": {"type": "array", "items": {"$ref": "#/$defs/preferred_support"}}
+      }
+    },
+    "acceptance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["policy", "status"],
+      "properties": {"policy": {"anyOf": [{"$ref": "#/$defs/decision_policy"}, {"type": "null"}]}, "status": {"enum": ["no_policy_declared", "policy_not_evaluated"]}}
+    },
+    "consequence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["residual_model_count", "residual_model_count_complete", "residual_model_count_saturated", "hard_forced", "backbone_complete", "conflict_constraint_ids", "conflict_core_complete", "budget_fallback_component_keys", "exactness_scope"],
+      "properties": {
+        "residual_model_count": {"anyOf": [{"$ref": "#/$defs/uint64"}, {"type": "null"}]},
+        "residual_model_count_complete": {"type": "boolean"}, "residual_model_count_saturated": {"type": "boolean"},
+        "hard_forced": {"$ref": "#/$defs/model"}, "backbone_complete": {"type": "boolean"},
+        "conflict_constraint_ids": {"$ref": "#/$defs/strings"}, "conflict_core_complete": {"type": ["boolean", "null"]},
+        "budget_fallback_component_keys": {"$ref": "#/$defs/strings"}, "exactness_scope": {"const": "representation_relative"}
+      }
+    },
+    "extent": {
+      "type": "object", "additionalProperties": false,
+      "required": ["candidate_reach", "truth_reach", "candidate_count", "missing_reference_count", "complete_extent_claimed", "complete_extent_reason"],
+      "properties": {
+        "candidate_reach": {"enum": ["passed_against_reference", "failed_against_reference", "structurally_complete_relative_to_inputs"]},
+        "truth_reach": {"enum": ["passed_against_reference", "failed_against_reference", "unverified"]},
+        "candidate_count": {"$ref": "#/$defs/uint64"}, "missing_reference_count": {"$ref": "#/$defs/uint64"},
+        "complete_extent_claimed": {"const": false}, "complete_extent_reason": {"$ref": "#/$defs/identifier"}
+      }
+    },
+    "further_work": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source", "action_discovery", "frontier_action_ids", "stop"],
+      "properties": {
+        "source": {"enum": ["next_evidence_artifact", "not_in_scope"]},
+        "action_discovery": {"enum": ["not_attempted", "incomplete", "exhausted_within_declared_capabilities_and_budget", "stopped_by_policy"]},
+        "frontier_action_ids": {"$ref": "#/$defs/strings"},
+        "stop": {"enum": [null, "claim_forced", "all_actions_redundant", "grain_unsupported", "honest_ambiguity", "budget_exceeded"]}
+      }
+    }
+  }
+}

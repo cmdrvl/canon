@@ -613,10 +613,22 @@ restricted, plan-bound inventory advancement described in §4.5. Once evidence i
 acquired, the genuine advancement path is still an explicit new plan whose inventory and
 inputs include that evidence.
 
-The run artifact does not yet contain the full target answer projection, separate
-abstention/contradiction/fallback collections, registry proposal refs, ready-node claims,
-or a cross-agent concurrency protocol. Stored-run inspection over manifests, receipt
-lineage, and referenced artifacts is provided separately by the shipped `geo inspect`.
+The registered internal `canon.geo.stage.answer.v0` stage projects digest-bound
+section, evidence, solve and explanation artifacts into `canon_geo_answer.v0`.
+It exposes support, primary and lineage-grouped preferences, consequences, reach
+and policy slots without solving or evaluating acceptance. Optional next-evidence
+input supplies further-work state. Answer configuration affects its consuming
+node's cache identity. The ordinary stage describes supplied artifacts and
+leaves whole-run execution history unknown: it cannot consume its own future
+run report. Pure final assembly can additionally bind a validated retained run
+to the question and consumed output digests, exposing completed/reused nodes,
+failed or blocked nodes, waiting inputs and budget state independently of the
+geographic finding. Automatic current-answer planning and
+one-inspection rendering remain bd-2dvm/bd-1g18 work; the default nine-stage plan
+is unchanged. Separate abstention/contradiction/fallback collections, registry
+proposal refs, ready-node claims and a cross-agent concurrency protocol remain
+open. Stored-run inspection over manifests, receipt lineage and referenced
+artifacts is provided separately by the shipped `geo inspect`.
 
 Semantic dependency hashes include declared inputs, policy, node contract, dependency
 semantic hashes, output content digests, and deterministic usage counters that control
@@ -639,6 +651,17 @@ node outputs when their effective project input hashes still match. External-acq
 deduplication, Geo inspect over those revisions, ready-node claims, crash-stale lock
 recovery, and multi-agent concurrent scheduling remain target behavior rather than shipped
 Geo semantics.
+
+The shared runner measures executor duration and failed attempts in receipt
+telemetry, preserving original receipts on reuse. Geo run observations report
+`cost.nodes.*`, `cost.millis.*`, and cold/warm/refresh workload labels. Stage
+durations describe attempted executor work, excluding historical reused time;
+they are not total invocation time. Missing failed-receipt timing is explicitly
+unknown, and unmeasured licensing, transfer, review and monetary terms are not
+reported as measured zeroes. `scripts/geo_measurements/cost_workloads.sh` exercises
+retained local workloads with an explicitly declared build profile. Historical
+resume compatibility and the quality/cost curve remain bd-2no5/bd-c95z work;
+these measurements supply no national cost or accuracy claim.
 
 The Rust run API now has an opt-in deterministic JSONL progress writer. Its monotone events
 name the current plan node, last committed or resumed artifact, deterministic counters, and

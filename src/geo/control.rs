@@ -115,6 +115,13 @@ pub enum GeoControlEntityLevel {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum GeoAnswerScope {
+    CurrentAnswer,
+    FullWorkflow,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum GeoControlRelation {
     SameAs,
     Contains,
@@ -1119,6 +1126,11 @@ pub fn default_geo_capabilities() -> Result<GeoCapabilities, GeoControlError> {
 fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
     vec![
         contract(
+            super::CANON_GEO_ANSWER_VERSION,
+            "schemas/canon.geo.answer.v0.schema.json",
+            "current-answer projection over digest-bound support, preference, consequence and reach",
+        ),
+        contract(
             CANON_GEO_QUESTION_VERSION,
             "schemas/canon.geo.question.v0.schema.json",
             "source-generic question intent contract",
@@ -1732,6 +1744,12 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
         unsurfaced_command(
             "canon.geo.stage.observe_admit.v0",
             CANON_GEO_OBSERVATION_ROWS_VERSION,
+            true,
+            false,
+        ),
+        unsurfaced_command(
+            "canon.geo.stage.answer.v0",
+            super::CANON_GEO_ANSWER_VERSION,
             true,
             false,
         ),

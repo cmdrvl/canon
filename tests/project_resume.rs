@@ -1305,6 +1305,140 @@ fn t67_boundary_feature_change_invalidates_home_and_controlled_halo_sections() {
 }
 
 #[test]
+fn native_executor_timing_is_operational_and_resume_preserves_original_receipt() {
+    let plan = chain_plan();
+    let fast_dir = tempfile::tempdir().expect("fast workspace");
+    let slow_dir = tempfile::tempdir().expect("slow workspace");
+    // Pin only the no-delay control's telemetry so scheduler delays cannot
+    // accidentally make its measured milliseconds equal the delayed run.
+    let mut fast = DelayedExecutor::new(0, false, 1);
+    let mut slow = DelayedExecutor::new(5, false, 0);
+    let fast_report =
+        run_project_plan(&plan, &approving_policy(fast_dir.path()), &mut fast).expect("fast run");
+    let slow_policy = approving_policy(slow_dir.path());
+    let slow_report = run_project_plan(&plan, &slow_policy, &mut slow).expect("delayed run");
+    assert_eq!(fast_report.executed_nodes, slow_report.executed_nodes);
+    assert!(slow_report.failed_nodes.is_empty());
+    let mut original_receipts = BTreeMap::new();
+    for node_id in ["alpha", "beta"] {
+        let fast_receipt =
+            read_node_receipt(&receipt_path(fast_dir.path(), node_id)).expect("fast receipt");
+        let slow_receipt =
+            read_node_receipt(&receipt_path(slow_dir.path(), node_id)).expect("delayed receipt");
+        assert!(slow_receipt.duration_millis >= 5);
+        assert_eq!(fast_receipt.semantic_hash, slow_receipt.semantic_hash);
+        assert_eq!(
+            fast_receipt.deterministic_usage,
+            slow_receipt.deterministic_usage
+        );
+        assert_eq!(fast_receipt.outputs, slow_receipt.outputs);
+        assert_ne!(fast_receipt.telemetry_hash, slow_receipt.telemetry_hash);
+        assert_ne!(fast_receipt.receipt_hash, slow_receipt.receipt_hash);
+        original_receipts.insert(
+            node_id,
+            canonical_node_receipt_bytes(&slow_receipt).expect("original receipt bytes"),
+        );
+    }
+    let mut must_not_execute = DelayedExecutor::new(5, true, 0);
+    let resumed = run_project_plan(&plan, &slow_policy, &mut must_not_execute)
+        .expect("resume original measured receipts");
+    assert!(resumed.executed_nodes.is_empty());
+    assert_eq!(resumed.resumed_nodes, vec!["alpha", "beta"]);
+    assert_eq!(must_not_execute.calls, 0);
+    for (node_id, original) in original_receipts {
+        assert_eq!(
+            fs::read(receipt_path(slow_dir.path(), node_id)).expect("resumed receipt"),
+            original
+        );
+    }
+}
+
+#[test]
+fn native_timing_preserves_explicit_executor_duration() {
+    let temp = tempfile::tempdir().expect("workspace");
+    let mut executor = DelayedExecutor::new(5, false, 1);
+    let report = run_project_plan(
+        &single_node_plan(),
+        &approving_policy(temp.path()),
+        &mut executor,
+    )
+    .expect("explicit duration run");
+    assert!(report.failed_nodes.is_empty());
+    assert_eq!(report.receipt.node_receipts[0].duration_millis, 1);
+}
+
+#[test]
+fn native_failure_timing_is_recorded_without_changing_failure_semantics() {
+    let plan = single_node_plan();
+    let fast_dir = tempfile::tempdir().expect("fast failing workspace");
+    let slow_dir = tempfile::tempdir().expect("slow failing workspace");
+    let mut fast = DelayedExecutor::new(0, true, 0);
+    let mut slow = DelayedExecutor::new(5, true, 0);
+    let fast_report = run_project_plan(&plan, &approving_policy(fast_dir.path()), &mut fast)
+        .expect("fast failure report");
+    let slow_report = run_project_plan(&plan, &approving_policy(slow_dir.path()), &mut slow)
+        .expect("delayed failure report");
+    assert_eq!(fast_report.failed_nodes, vec!["alpha"]);
+    assert_eq!(fast_report.failed_nodes, slow_report.failed_nodes);
+    let fast_receipt =
+        read_node_receipt(&receipt_path(fast_dir.path(), "alpha")).expect("fast failure receipt");
+    let slow_receipt = read_node_receipt(&receipt_path(slow_dir.path(), "alpha"))
+        .expect("delayed failure receipt");
+    assert_eq!(slow.calls, 1);
+    assert!(slow_receipt.duration_millis >= 5);
+    assert_eq!(slow_receipt.outcome, ProjectRunNodeOutcome::Failed);
+    assert!(slow_receipt.outputs.is_empty());
+    assert!(!artifact_path(slow_dir.path(), &plan, "alpha").exists());
+    assert_eq!(fast_receipt.semantic_hash, slow_receipt.semantic_hash);
+    assert_eq!(fast_receipt.failure_code, slow_receipt.failure_code);
+    assert_eq!(fast_receipt.failure_message, slow_receipt.failure_message);
+    assert_eq!(
+        fast_receipt.deterministic_usage,
+        slow_receipt.deterministic_usage
+    );
+    assert_ne!(fast_receipt.telemetry_hash, slow_receipt.telemetry_hash);
+}
+
+struct DelayedExecutor {
+    delay_millis: u64,
+    fail: bool,
+    supplied_duration_millis: u64,
+    calls: usize,
+}
+
+impl DelayedExecutor {
+    fn new(delay_millis: u64, fail: bool, supplied_duration_millis: u64) -> Self {
+        Self {
+            delay_millis,
+            fail,
+            supplied_duration_millis,
+            calls: 0,
+        }
+    }
+}
+
+impl ProjectNodeExecutor for DelayedExecutor {
+    fn execute(
+        &mut self,
+        node: &ProjectPlanNode,
+        context: &ProjectNodeExecutionContext,
+    ) -> Result<ProjectNodeExecutionResult, ProjectRunError> {
+        self.calls += 1;
+        std::thread::sleep(std::time::Duration::from_millis(self.delay_millis));
+        if self.fail {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ExecutionFailed,
+                Some(node.node_id.clone()),
+                "delayed executor failure",
+            ));
+        }
+        let mut result = DeterministicExecutor::default().execute(node, context)?;
+        result.duration_millis = self.supplied_duration_millis;
+        Ok(result)
+    }
+}
+
+#[test]
 fn telemetry_variation_preserves_semantic_hashes_and_downstream_artifacts() {
     let plan = chain_plan();
     let first_dir = tempfile::tempdir().expect("first");

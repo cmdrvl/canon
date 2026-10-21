@@ -452,7 +452,10 @@
         "observed_at_utc": { "$ref": "#/$defs/non_empty_text" },
         "host_id": { "$ref": "#/$defs/non_empty_text" },
         "process_id": { "$ref": "#/$defs/uint32" },
-        "resource_observations": { "$ref": "#/$defs/usage_map" }
+        "resource_observations": {
+          "$ref": "#/$defs/usage_map",
+          "description": "Operational observations excluded from semantic identity. Native offline execution keys: cost.nodes.executed, cost.nodes.resumed, cost.nodes.invalidated, cost.nodes.failed, cost.nodes.timing_unknown (attempted nodes without a verified timing receipt; totals cover known durations only); cost.millis.executed_total (attempted completed or failed work this invocation, excluding resumed receipt history), cost.millis.preparation, cost.millis.reasoning, cost.millis.stage.<geo_plan_stage_snake_case> (summed across grains, including project_current_answer); and cost.workload.cold / cost.workload.warm / cost.workload.refresh (exactly one is 1; invalidation takes priority, otherwise no resumed nodes is cold). Unmeasured acquisition/licensing, transfer, monetary charges and review terms remain unknown and have no fabricated zero entries. This is measured local execution, not a national or per-tile estimate."
+        }
       }
     },
     "run_blocker": {

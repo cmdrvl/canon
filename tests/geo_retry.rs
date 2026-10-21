@@ -751,6 +751,7 @@ fn retry_stage_overlay(bounds: &[GeoNumericBound]) -> GeoPlanNodeOverlay {
         bounded_section_required: false,
         incidence_factorization_required: false,
         exact_solve_scope: None,
+        answer_config: None,
         deterministic_bounds: bounds.to_vec(),
         cost_estimate_ranges: bounds
             .iter()

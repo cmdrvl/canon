@@ -117,6 +117,7 @@ pub enum GeoPlanStage {
     ExplainResidual,
     SeparateResidual,
     SelectNextEvidence,
+    ProjectCurrentAnswer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -257,6 +258,8 @@ pub struct GeoPlanNodeOverlay {
     pub incidence_factorization_required: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exact_solve_scope: Option<GeoPlanExactSolveScope>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer_config: Option<super::GeoAnswerConfig>,
     pub deterministic_bounds: Vec<GeoNumericBound>,
     pub cost_estimate_ranges: Vec<GeoPlanCostEstimateRange>,
     pub transitions: GeoPlanTransitionSet,
@@ -402,6 +405,8 @@ struct GeoPlanNodeSemanticProjection<'a> {
     bounded_section_required: bool,
     incidence_factorization_required: bool,
     exact_solve_scope: &'a Option<GeoPlanExactSolveScope>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    answer_config: Option<super::GeoAnswerConfig>,
     deterministic_bounds: &'a [GeoNumericBound],
 }
 
@@ -796,6 +801,12 @@ pub fn canonical_geo_plan_bytes(plan: &GeoPlan) -> Result<Vec<u8>, GeoPlanError>
     for external_request in &mut canonical.external_requests {
         canonicalize_plan_external_request(external_request);
     }
+    for node in &mut canonical.geo_nodes {
+        node.answer_config = node
+            .answer_config
+            .as_ref()
+            .map(super::canonicalize_answer_config);
+    }
     canonical
         .external_requests
         .sort_by_key(external_request_sort_key);
@@ -816,6 +827,26 @@ pub fn validate_geo_plan(plan: &GeoPlan) -> Result<(), GeoPlanError> {
     validate_overlay_bijection(&plan.project_plan, &plan.geo_nodes)?;
     for node in &plan.geo_nodes {
         validate_node_cost_contract(plan, node)?;
+        if let Some(config) = &node.answer_config {
+            if node.stage != GeoPlanStage::ProjectCurrentAnswer
+                || config.question_hash != plan.question_ref.semantic_hash
+                || config.question_id != plan.question_ref.artifact_id
+                || node.entity_level != Some(config.entity_level)
+            {
+                return Err(GeoPlanError::new(
+                    GeoPlanErrorCode::ContractViolation,
+                    "answer_config must bind the answer stage, question and requested grain",
+                    [("project_node_id", node.project_node_id.as_str())],
+                ));
+            }
+            super::validate_answer_config(config).map_err(|error| {
+                GeoPlanError::new(
+                    GeoPlanErrorCode::ContractViolation,
+                    error.to_string(),
+                    [("project_node_id", node.project_node_id.as_str())],
+                )
+            })?;
+        }
         if node.stage == GeoPlanStage::FactorAndSolveExactResidual {
             if !node.bounded_section_required || !node.incidence_factorization_required {
                 return Err(GeoPlanError::new(
@@ -1614,6 +1645,10 @@ pub fn geo_plan_semantic_hash(plan: &GeoPlan) -> Result<String, GeoPlanError> {
             bounded_section_required: node.bounded_section_required,
             incidence_factorization_required: node.incidence_factorization_required,
             exact_solve_scope: &node.exact_solve_scope,
+            answer_config: node
+                .answer_config
+                .as_ref()
+                .map(super::canonicalize_answer_config),
             deterministic_bounds: &node.deterministic_bounds,
         })
         .collect();
@@ -2239,6 +2274,11 @@ fn grain_project_stages(
                     "recommendations expose the nondominated frontier; total ranking requires a declared loss model",
                 ),
             ],
+            GeoPlanStage::ProjectCurrentAnswer => vec![precondition(
+                GeoPlanGatePlane::SolverCorrectness,
+                GeoPlanGateStatus::PendingArtifact,
+                "current answer projects declared artifacts without solving or accepting identity",
+            )],
         };
         let exact_solve_scope =
             matches!(stage, GeoPlanStage::FactorAndSolveExactResidual).then(|| {
@@ -2368,6 +2408,7 @@ fn overlay_node(
         bounded_section_required,
         incidence_factorization_required,
         exact_solve_scope,
+        answer_config: None,
         deterministic_bounds,
         cost_estimate_ranges,
         transitions: GeoPlanTransitionSet {

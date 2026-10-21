@@ -23,6 +23,7 @@ const ACQUISITION_REQUEST_SCHEMA_JSON: &str =
     include_str!("../schemas/canon.geo.acquisition_request.v0.schema.json");
 const DISCOVERY_REQUEST_SCHEMA_JSON: &str =
     include_str!("../schemas/canon.geo.discovery_request.v0.schema.json");
+const ANSWER_SCHEMA_JSON: &str = include_str!("../schemas/canon.geo.answer.v0.schema.json");
 
 #[test]
 fn schema_declares_strict_geo_plan_overlay_contract() {
@@ -797,6 +798,7 @@ fn validate_ref(
         "canon.project.plan.v1.schema.json" => PROJECT_PLAN_SCHEMA_JSON,
         "canon.geo.acquisition_request.v0.schema.json" => ACQUISITION_REQUEST_SCHEMA_JSON,
         "canon.geo.discovery_request.v0.schema.json" => DISCOVERY_REQUEST_SCHEMA_JSON,
+        "canon.geo.answer.v0.schema.json" => ANSWER_SCHEMA_JSON,
         _ => panic!("unregistered external schema {reference}"),
     })
     .expect("external schema parses");

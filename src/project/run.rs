@@ -25,6 +25,7 @@ use std::{
     fs::{self, OpenOptions},
     io::{self, Write},
     path::{Component, Path, PathBuf},
+    time::Instant,
 };
 
 pub type ProjectRunResult<T> = Result<T, ProjectRunError>;
@@ -393,6 +394,9 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
                 break;
             }
 
+            // Failed attempts have no execution result to carry telemetry. Include
+            // the whole attempt, including validation and publication failures.
+            let attempt_started = Instant::now();
             match execute_node(
                 plan,
                 node,
@@ -416,7 +420,7 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
                     if error.code == ProjectRunErrorCode::ReceiptPoisoning {
                         return Err(error);
                     }
-                    let receipt = terminal_receipt(
+                    let mut receipt = terminal_receipt(
                         plan,
                         node,
                         &valid_receipts,
@@ -425,6 +429,8 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
                         &format!("{:?}", error.code),
                         &error.message,
                     )?;
+                    receipt.duration_millis = elapsed_millis(attempt_started);
+                    let receipt = finalized_node_receipt(receipt).map_err(ProjectRunError::from)?;
                     let receipt =
                         write_receipt(&policy, &receipt, prior_receipts.get(&node.node_id))?;
                     failed_nodes.insert(node.node_id.clone());
@@ -2208,7 +2214,11 @@ fn execute_node<E: ProjectNodeExecutor>(
         dependency_semantic_hashes: dependency_semantic_hashes.clone(),
         dependency_outputs,
     };
-    let result = executor.execute(node, &context)?;
+    let started = Instant::now();
+    let mut result = executor.execute(node, &context)?;
+    if result.duration_millis == 0 {
+        result.duration_millis = elapsed_millis(started);
+    }
     let output_receipts = prepare_outputs(
         node,
         &policy.workspace_root,
@@ -3957,6 +3967,10 @@ fn dependency_receipt_hashes(
         hashes.insert(dependency.clone(), receipt.receipt_hash.clone());
     }
     Ok(hashes)
+}
+
+fn elapsed_millis(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 fn terminal_receipt(

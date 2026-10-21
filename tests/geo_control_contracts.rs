@@ -186,6 +186,7 @@ fn contract_versions(contracts: &[GeoContractCapability]) -> BTreeSet<&str> {
 
 fn expected_implemented_contracts() -> BTreeSet<&'static str> {
     BTreeSet::from([
+        canon::geo::CANON_GEO_ANSWER_VERSION,
         canon::geo::descriptive::CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION,
         CANON_GEO_QUESTION_VERSION,
         CANON_GEO_FOOTPRINT_ROLL_EVIDENCE_REQUEST_VERSION,
@@ -462,6 +463,10 @@ fn expected_implemented_commands() -> BTreeMap<&'static str, ExpectedGeoCommand>
         (
             "canon.geo.stage.observe_admit.v0",
             unsurfaced_command(CANON_GEO_OBSERVATION_ROWS_VERSION, true, false),
+        ),
+        (
+            "canon.geo.stage.answer.v0",
+            unsurfaced_command(canon::geo::CANON_GEO_ANSWER_VERSION, true, false),
         ),
         (
             "canon.geo.stage.explain.v0",

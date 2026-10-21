@@ -1512,6 +1512,35 @@ fn validation_rejects_a_solve_relabelled_as_unbounded() {
 }
 
 #[test]
+fn answer_config_cannot_be_attached_to_an_unrelated_stage() {
+    let mut plan = compile_geo_plan(request(
+        question(false),
+        inventory("building-source", GeoSourceAvailability::Available),
+        budget(),
+    ))
+    .expect("plan");
+    let question_hash = plan.question_ref.semantic_hash.clone();
+    let question_id = plan.question_ref.artifact_id.clone();
+    let node = plan
+        .geo_nodes
+        .iter_mut()
+        .find(|node| node.stage == GeoPlanStage::ExplainResidual)
+        .expect("explanation overlay");
+    node.answer_config = Some(canon::geo::GeoAnswerConfig {
+        entity_level: GeoControlEntityLevel::Building,
+        answer_scope: canon::geo::GeoAnswerScope::CurrentAnswer,
+        requested_claim_classes: vec![GeoClaimClass::StableIdentity],
+        decision_policy: None,
+        question_hash,
+        question_id,
+        query_as_of: None,
+    });
+    let error = validate_geo_plan(&plan).expect_err("unrelated stage config refuses");
+    assert_eq!(error.code, GeoPlanErrorCode::ContractViolation);
+    assert!(error.message.contains("answer_config must bind"));
+}
+
+#[test]
 fn validation_rejects_a_solve_after_failed_candidate_reach() {
     let mut plan = compile_geo_plan(request(
         question(false),

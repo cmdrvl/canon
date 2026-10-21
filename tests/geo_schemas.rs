@@ -199,6 +199,9 @@ use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 use std::{collections::BTreeMap, fs, path::Path, str::FromStr};
 
+#[path = "common/geo_answer_fixture.rs"]
+mod geo_answer_fixture;
+
 const COMPOSITION_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.composition_request.v0.schema.json");
 const COMPOSITION_SCHEMA: &str = include_str!("../schemas/canon.geo.composition.v0.schema.json");
@@ -230,6 +233,7 @@ const TEMPORAL_CONTAINMENT_SCHEMA: &str =
 const PROPAGATION_SCHEMA: &str = include_str!("../schemas/canon.geo.propagation.v0.schema.json");
 const EXPLANATION_SCHEMA: &str = include_str!("../schemas/canon.geo.explanation.v0.schema.json");
 const INSPECTION_SCHEMA: &str = include_str!("../schemas/canon.geo.inspection.v0.schema.json");
+const ANSWER_SCHEMA: &str = include_str!("../schemas/canon.geo.answer.v0.schema.json");
 const NEXT_EVIDENCE_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.next_evidence_request.v0.schema.json");
 const NEXT_EVIDENCE_INPUTS_SCHEMA: &str =
@@ -390,8 +394,22 @@ fn resolve_ref<'a>(schema: &'a Value, reference: &str) -> &'a Value {
         .unwrap_or_else(|| panic!("$ref {reference} does not resolve"))
 }
 
+#[test]
+fn answer_artifact_schema_matches_a_real_retained_projection() {
+    let schema = parsed(ANSWER_SCHEMA);
+    assert_schema_shape(
+        &schema,
+        "canon.geo.answer.v0",
+        canon::geo::CANON_GEO_ANSWER_VERSION,
+    );
+    let answer = geo_answer_fixture::real_answer_instance();
+    let instance = serde_json::to_value(&answer).expect("answer serializes");
+    assert_instance_matches_schema(&schema, &schema, &instance, "answer");
+}
+
 fn external_schema_source(schema_file: &str, reference: &str) -> &'static str {
     match schema_file {
+        "canon.geo.answer.v0.schema.json" => ANSWER_SCHEMA,
         "canon.geo.address_parse_request.v0.schema.json" => ADDRESS_PARSE_REQUEST_SCHEMA,
         "canon.geo.address_parse_forest.v0.schema.json" => ADDRESS_PARSE_FOREST_SCHEMA,
         "canon.geo.acquisition_request.v0.schema.json" => ACQUISITION_REQUEST_SCHEMA,
