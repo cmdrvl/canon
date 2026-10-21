@@ -303,6 +303,8 @@ pub struct GeoQuestion {
     pub bounded_geography: GeoBoundedGeography,
     pub requested_grains: Vec<GeoRequestedGrain>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer_scope: Option<GeoAnswerScope>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query_as_of: Option<GeoAsOf>,
     pub requested_claim_classes: Vec<GeoClaimClass>,
     pub presentation_limits: Vec<GeoNumericBound>,

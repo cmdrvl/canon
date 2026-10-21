@@ -170,7 +170,8 @@
       "next_actions.artifact_id",
       "next_actions.expected_contract",
       "next_actions.media_type",
-      "next_actions.command",
+      "next_actions.command (legacy actions with absent command_identity only)",
+      "next_actions.command_identity (when present; command bytes are then operational and must match observation.invocation)",
       "deterministic_usage",
       "project_run_report.schema_version",
       "project_run_report.project_id",
@@ -193,6 +194,8 @@
     ],
     "semantic_identity_excludes": [
       "observation.workspace_path",
+      "observation.invocation",
+      "next_actions.input_path",
       "observation.observed_at_utc",
       "observation.host_id",
       "observation.process_id",
@@ -448,6 +451,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "invocation": { "$ref": "#/$defs/run_invocation" },
         "workspace_path": { "$ref": "#/$defs/non_empty_text" },
         "observed_at_utc": { "$ref": "#/$defs/non_empty_text" },
         "host_id": { "$ref": "#/$defs/non_empty_text" },
@@ -456,6 +460,44 @@
           "$ref": "#/$defs/usage_map",
           "description": "Operational observations excluded from semantic identity. Native offline execution keys: cost.nodes.executed, cost.nodes.resumed, cost.nodes.invalidated, cost.nodes.failed, cost.nodes.timing_unknown (attempted nodes without a verified timing receipt; totals cover known durations only); cost.millis.executed_total (attempted completed or failed work this invocation, excluding resumed receipt history), cost.millis.preparation, cost.millis.reasoning, cost.millis.stage.<geo_plan_stage_snake_case> (summed across grains, including project_current_answer); and cost.workload.cold / cost.workload.warm / cost.workload.refresh (exactly one is 1; invalidation takes priority, otherwise no resumed nodes is cold). Unmeasured acquisition/licensing, transfer, monetary charges and review terms remain unknown and have no fabricated zero entries. This is measured local execution, not a national or per-tile estimate."
         }
+      }
+    },
+    "run_invocation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["plan_path", "work_dir", "inputs", "satisfactions"],
+      "properties": {
+        "plan_path": {"$ref": "#/$defs/non_empty_text"},
+        "work_dir": {"$ref": "#/$defs/non_empty_text"},
+        "inputs": {"type": "array", "items": {"$ref": "#/$defs/invocation_input"}},
+        "satisfactions": {"type": "array", "items": {"$ref": "#/$defs/invocation_satisfaction"}}
+      }
+    },
+    "invocation_input": {
+      "type": "object", "additionalProperties": false,
+      "required": ["project_node_id", "binding_id", "path"],
+      "properties": {
+        "project_node_id": {"$ref": "#/$defs/project_node_id"},
+        "binding_id": {"$ref": "#/$defs/non_empty_text"},
+        "path": {"$ref": "#/$defs/non_empty_text"}
+      }
+    },
+    "invocation_satisfaction": {
+      "type": "object", "additionalProperties": false,
+      "required": ["request_id", "path"],
+      "properties": {
+        "request_id": {"$ref": "#/$defs/non_empty_text"},
+        "path": {"$ref": "#/$defs/non_empty_text"}
+      }
+    },
+    "command_identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["operation", "action", "project_node_id", "required_binding_id", "satisfaction_request_ids"],
+      "properties": {
+        "operation": {"enum": ["geo_run"]},
+        "action": {"enum": ["execute_project_node", "supply_local_artifact"]},
+        "project_node_id": {"$ref": "#/$defs/project_node_id"},
+        "required_binding_id": {"type": ["string", "null"]},
+        "satisfaction_request_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/non_empty_text"}}
       }
     },
     "run_blocker": {
@@ -468,6 +510,7 @@
           "type": "string",
           "enum": [
             "WAITING_FOR_INPUT",
+            "INVALID_INPUT",
             "UNSUPPORTED_GRAIN",
             "MISSING_LEAF_CAPABILITY",
             "PROJECT_FAILURE",
@@ -495,7 +538,8 @@
             "EXECUTE_PROJECT_NODE",
             "INSPECT_FAILURE",
             "RESUME",
-            "UNSUPPORTED_GRAIN"
+            "UNSUPPORTED_GRAIN",
+            "INVOCATION_CONTEXT_REQUIRED"
           ]
         },
         "project_node_id": { "$ref": "#/$defs/project_node_id" },
@@ -503,6 +547,8 @@
         "expected_contract": { "$ref": "#/$defs/expected_contract" },
         "media_type": { "$ref": "#/$defs/non_empty_text" },
         "command": { "$ref": "#/$defs/non_empty_text" },
+        "command_identity": { "$ref": "#/$defs/command_identity" },
+        "input_path": { "$ref": "#/$defs/non_empty_text" },
         "reason": { "$ref": "#/$defs/non_empty_text" }
       }
     }

@@ -3336,6 +3336,106 @@ fn normalize_profile(
     validate_composition_profile(profile)
 }
 
+/// Validate payload shape without inventing a universe or checking residual
+/// exhaustiveness. Membership and universe-relative bounds remain in
+/// `normalize_constraint` once actual candidates are available.
+pub(crate) fn validate_hard_constraint_shape(
+    constraint: &GeoHardConstraintKind,
+) -> Result<(), GeoCompositionError> {
+    let invalid = |message| {
+        GeoCompositionError::invalid_input(message, [("field", "prospective[].outcomes[].induced")])
+    };
+    let level = |value| match value {
+        GeoEntityLevel::Parcel | GeoEntityLevel::Building => Ok(()),
+        _ => Err(invalid(
+            "Composition constraints support only parcel and building levels",
+        )),
+    };
+    let member = |value: &GeoEntityRef| {
+        level(value.level)?;
+        validate_identifier("member.id", &value.id)
+    };
+    match constraint {
+        GeoHardConstraintKind::Require { member: value }
+        | GeoHardConstraintKind::Forbid { member: value } => member(value)?,
+        GeoHardConstraintKind::Requires {
+            if_member,
+            then_member,
+        } => {
+            member(if_member)?;
+            member(then_member)?;
+        }
+        GeoHardConstraintKind::Cardinality {
+            level: value,
+            min,
+            max,
+        } => {
+            level(*value)?;
+            if min > max {
+                return Err(invalid("Invalid Geo composition cardinality bounds"));
+            }
+        }
+        GeoHardConstraintKind::AllowedSets { level: value, sets } => {
+            level(*value)?;
+            if sets.is_empty() {
+                return Err(invalid("AllowedSets requires at least one allowed set"));
+            }
+            let mut canonical = sets.clone();
+            for set in &mut canonical {
+                validate_and_sort_ids("hard_constraints[].allowed_sets", set)?;
+            }
+            canonical.sort();
+            if canonical.windows(2).any(|pair| pair[0] == pair[1]) {
+                return Err(invalid("AllowedSets contains a duplicate set"));
+            }
+        }
+        GeoHardConstraintKind::AnyOf { members }
+        | GeoHardConstraintKind::AllOf { members }
+        | GeoHardConstraintKind::AllOrNone { members } => {
+            let minimum = if matches!(constraint, GeoHardConstraintKind::AllOrNone { .. }) {
+                2
+            } else {
+                1
+            };
+            if members.len() < minimum {
+                return Err(invalid("Membership constraint has too few members"));
+            }
+            let mut distinct = BTreeSet::new();
+            for value in members {
+                member(value)?;
+                if !distinct.insert(value) {
+                    return Err(invalid("Membership constraint contains a duplicate member"));
+                }
+            }
+        }
+        GeoHardConstraintKind::IntegerSumBand {
+            level: value,
+            measure,
+            values,
+            min,
+            max,
+        } => {
+            level(*value)?;
+            validate_identifier(
+                "hard_constraints[].integer_sum_band.semantic_id",
+                &measure.semantic_id,
+            )?;
+            validate_identifier("hard_constraints[].integer_sum_band.unit", &measure.unit)?;
+            if values.is_empty() || min > max {
+                return Err(invalid(
+                    "IntegerSumBand requires values and an ordered band",
+                ));
+            }
+            let mut ids = values
+                .iter()
+                .map(|value| value.id.clone())
+                .collect::<Vec<_>>();
+            validate_and_sort_ids("hard_constraints[].integer_sum_band", &mut ids)?;
+        }
+    }
+    Ok(())
+}
+
 fn normalize_constraint(
     constraint: &mut GeoHardConstraint,
     parcels: &BTreeSet<String>,

@@ -4,7 +4,9 @@
 > This document defines how an agent should operate Canon Geo as one coherent system.
 > The seven primary commands are implemented: capabilities, plan, run,
 > replan-from-acquisition, evaluate, inspect, and ledger. The default parcel/building
-> composition plan has nine stages; registered internal executors also support extensions
+> composition plan has nine stages. An explicit `answer_scope: current_answer` uses
+> eight stages through answer projection; `full_workflow` uses ten including future
+> evidence analysis. Registered internal executors also support extensions
 > to that DAG. `geo inspect` reads stored runs without re-executing them.
 > Standalone address input is part of the target; the native address-membership contract
 > is currently NYC/PAD-specific, and the complete address-first journey remains open.
@@ -623,9 +625,11 @@ leaves whole-run execution history unknown: it cannot consume its own future
 run report. Pure final assembly can additionally bind a validated retained run
 to the question and consumed output digests, exposing completed/reused nodes,
 failed or blocked nodes, waiting inputs and budget state independently of the
-geographic finding. Automatic current-answer planning and
-one-inspection rendering remain bd-2dvm/bd-1g18 work; the default nine-stage plan
-is unchanged. Separate abstention/contradiction/fallback collections, registry
+geographic finding. A question can request `answer_scope: current_answer` to
+project the finding without prospective-action inputs, or `full_workflow` to
+include the supplied future-evidence analysis. Omitting the scope preserves the
+default nine-stage plan. One-inspection rendering remains bd-1g18 work.
+Separate abstention/contradiction/fallback collections, registry
 proposal refs, ready-node claims and a cross-agent concurrency protocol remain
 open. Stored-run inspection over manifests, receipt lineage and referenced
 artifacts is provided separately by the shipped `geo inspect`.
@@ -731,7 +735,9 @@ canon geo inspect --run DIR [--component ID] [--compare OTHER_RUN] [--recommend-
 - `run` delegates scheduling, receipts, resume, and workspace safety to the shared project
   substrate; it orchestrates registered offline Geo stages, including the default
   nine-stage parcel/building plan (home cells, section, materialization, compilation,
-  propagation, solve, explanation, separation, next evidence), accepts explicit local
+  propagation, solve, explanation, separation, next evidence). A current-answer
+  question replaces the final two analysis stages with answer projection; a
+  full-workflow question appends answer projection to all nine. The runner accepts explicit local
   input bindings, may validate supplied
   acquisition receipts against those explicit bytes, emits `canon_geo_run.v0`, and resumes
   from verified project receipts in one work directory. The `--satisfy` validation path
@@ -749,7 +755,7 @@ canon geo inspect --run DIR [--component ID] [--compare OTHER_RUN] [--recommend-
   component focus, run comparison, and stored next-evidence recommendations. A missing
   question-specific artifact is unanswerable; corrupt or missing referenced bytes refuse.
 
-**Measured usability gap, 2026-09-16:** the retained Brooklyn run has a valid ambiguous
+**Historical usability gap, 2026-09-16:** the retained Brooklyn run has a valid ambiguous
 solve and seven completed stages, then fails because separation receives no prospective
 observations. Current inspection returns hash-oriented question identity, conflict/count
 summaries and generic retry advice; this does not yet satisfy the eight operator questions
@@ -757,14 +763,18 @@ in §1. bd-1g18 is reopened for the unmet answer/explanation/recovery contract; 
 bounded solve completion and early next-evidence input checks. Manual input assembly is
 accepted for this phase. The current artifacts and the fully working target are separated
 in [PLAN_CANON_GEO.md §16.1.2](PLAN_CANON_GEO.md#1612-command-usability-measured-baseline-and-completion-criteria).
-An explicit solve/explain endpoint is planned behavior, not a shipped flag or a relabeling
-of the failed baseline. Missing proposed actions must not be represented as proof that no
+The current-answer question scope now completes independently of those optional
+inputs. The original failed capture remains historical evidence; supplying empty
+prospective observations to a full workflow now yields `WAITING_FOR_INPUT` with
+an `INVALID_INPUT` preflight blocker and no executed nodes. Supplied input errors
+include their expected contract and schema. CLI execution and supply actions retain
+the real plan, workspace and input paths in runnable public commands. Missing
+proposed actions must not be represented as proof that no
 useful actions exist. The controller now records `action_discovery: not_attempted`
 for an empty caller list and `incomplete` for a nonempty one, and cannot infer
 `HonestAmbiguity` from either (`bd-3mrt`). Caller-supplied stop actions need an
 explicit reason and cannot assert exhausted discovery. Actual action generation
-and coverage declarations remain S4 work; bounded current-answer completion
-remains with bd-2dvm.
+and coverage declarations remain S4 work.
 
 `inspect` must emit structured next actions containing the exact command, required inputs,
 expected output contract, deterministic cost ceiling, and the reason the action can change

@@ -470,6 +470,7 @@ fn question(
             required_evidence_classes: vec![evidence_class],
             optional_evidence_classes: Vec::new(),
         }],
+        answer_scope: None,
         query_as_of: None,
         requested_claim_classes,
         presentation_limits: vec![GeoNumericBound {

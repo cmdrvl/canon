@@ -959,7 +959,10 @@ pub fn project_answer_execution(run: &GeoRun) -> Result<GeoAnswerRunExecution, G
         ));
     }
     for blocker in &run.blockers {
-        if blocker.kind != GeoRunBlockerKind::WaitingForInput {
+        if !matches!(
+            blocker.kind,
+            GeoRunBlockerKind::WaitingForInput | GeoRunBlockerKind::InvalidInput
+        ) {
             continue;
         }
         let actions: Vec<_> = run
@@ -967,12 +970,15 @@ pub fn project_answer_execution(run: &GeoRun) -> Result<GeoAnswerRunExecution, G
             .iter()
             .filter(|action| {
                 action.project_node_id == blocker.project_node_id
-                    && matches!(
+                    && (matches!(
                         action.kind,
                         GeoRunNextActionKind::SupplyLocalArtifact
                             | GeoRunNextActionKind::SatisfyAcquisition
                             | GeoRunNextActionKind::SatisfyDiscovery
-                    )
+                    ) || (action.kind == GeoRunNextActionKind::InvocationContextRequired
+                        && action.command_identity.as_ref().is_some_and(|identity| {
+                            identity.action == super::GeoRunCommandAction::SupplyLocalArtifact
+                        })))
             })
             .collect();
         snapshot.awaiting_inputs.push(GeoAnswerAwaitingInput {

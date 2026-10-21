@@ -129,6 +129,7 @@ fn question() -> canon::geo::GeoQuestion {
                 GeoEvidenceClass::AssertedAttribute,
             ],
         }],
+        answer_scope: None,
         query_as_of: None,
         requested_claim_classes: vec![GeoClaimClass::CollateralComposition],
         presentation_limits: vec![bound(

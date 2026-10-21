@@ -217,6 +217,296 @@
           "new": "blake3:d66b32d39a6a1fe81404ecb0ce0988b4a1b2ed0c0b6a3222ff4faf6a52885f36",
           "old": "blake3:d27cb43cd8b3f5b2dfef2a18ac943cb11471fc4758692917913fca025744a541",
           "semantic_note": "Register the answer executor: each executed stage truthfully reports 19 supported commands instead of 18; only this counter and derived receipt/run hashes change. All Geo output references, artifact digests, statuses and domain outcomes remain identical. Receipt-array pointers cover all 54 reviewed changed leaves."
+        },
+        {
+          "bead": "bd-2dvm",
+          "commit": null,
+          "date": "2026-10-21",
+          "kind": "invariant_change",
+          "new": [
+            {
+              "kind": "pointer_equals",
+              "pointer": "/status",
+              "value": "WAITING_FOR_INPUT"
+            },
+            {
+              "kind": "pointer_equals",
+              "pointer": "/phase",
+              "value": "PREFLIGHTED"
+            },
+            {
+              "kind": "pointer_equals",
+              "pointer": "/blockers",
+              "value": [
+                {
+                  "blocker_id": "invalid_input:geo.parcel.separation:request",
+                  "kind": "INVALID_INPUT",
+                  "project_node_id": "geo.parcel.separation",
+                  "reason": "InvalidInput: Geo separation requests require at least one prospective observation; field=prospective; detail={\"field\": \"prospective\"}; expected_contract=canon_geo_separation_inputs.v0; schema=schemas/canon.geo.separation_inputs.v0.schema.json"
+                }
+              ]
+            }
+          ],
+          "old": [
+            {
+              "kind": "run_status",
+              "value": "FAILED"
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "kind": "composition_status",
+              "value": "ambiguous"
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "kind": "residual_saturated"
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "count": 3,
+              "key": "parcel:3051090025",
+              "kind": "component_hard_feasible"
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "buildings": [],
+              "kind": "forced_members",
+              "parcels": []
+            },
+            {
+              "kind": "failed_node",
+              "message_contains": "at least one prospective observation",
+              "node_id": "geo.parcel.separation"
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "kind": "pointer_equals",
+              "pointer": "/summary/parcel_candidates",
+              "value": 92
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "kind": "pointer_equals",
+              "pointer": "/summary/building_candidates",
+              "value": 98
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "kind": "pointer_equals",
+              "pointer": "/summary/hard_constraint_evaluations",
+              "value": 0
+            },
+            {
+              "artifact_id": "geo.parcel.compile_evidence/compile_evidence",
+              "kind": "pointer_equals",
+              "pointer": "/admissions",
+              "projection": "admission_summary",
+              "value": []
+            },
+            {
+              "artifact_id": "geo.parcel.compile_evidence/compile_evidence",
+              "kind": "pointer_equals",
+              "pointer": "/composition_request/soft_preferences",
+              "value": []
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "kind": "pointer_equals",
+              "pointer": "/soft_ranked",
+              "value": []
+            },
+            {
+              "artifact_id": null,
+              "kind": "pointer_equals",
+              "pointer": "/phase",
+              "value": "SOLVED"
+            },
+            {
+              "artifact_id": null,
+              "kind": "pointer_equals",
+              "pointer": "/next_actions",
+              "value": [
+                {
+                  "action_id": "execute:geo.parcel.separation",
+                  "command": "canon.geo.stage.separation.v0",
+                  "kind": "EXECUTE_PROJECT_NODE",
+                  "project_node_id": "geo.parcel.separation",
+                  "reason": "project node is ready under the shared run receipt state"
+                },
+                {
+                  "action_id": "inspect:geo.parcel.separation",
+                  "kind": "INSPECT_FAILURE",
+                  "project_node_id": "geo.parcel.separation",
+                  "reason": "inspect the failed project node receipt before retrying"
+                }
+              ]
+            }
+          ],
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution: WAITING_FOR_INPUT/PREFLIGHTED with no project report or outputs. The corresponding current_answer case preserves all seven original kernel artifacts and its saturated residual.",
+          "target": "execution_invariants"
+        },
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/blockers",
+            "/deterministic_usage",
+            "/next_actions",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs",
+            "/phase",
+            "/project_run_report",
+            "/run_id",
+            "/semantic_hash",
+            "/status"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:ba70f32f1cf254f5b1a3a26a8fcf6048f1fff4b6cedb7bb3d4ced85b4ba1b0f5",
+          "old": "blake3:d66b32d39a6a1fe81404ecb0ce0988b4a1b2ed0c0b6a3222ff4faf6a52885f36",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution: WAITING_FOR_INPUT/PREFLIGHTED with no project report or outputs. The corresponding current_answer case preserves all seven original kernel artifacts and its saturated residual. Run diff reviewed against the actual matching post-bd-1uo5 runtime, not only archived pre-change JSON."
+        },
+        {
+          "artifact_ids": [
+            "run_status"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "WAITING_FOR_INPUT",
+          "old": "FAILED",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution: WAITING_FOR_INPUT/PREFLIGHTED with no project report or outputs. The corresponding current_answer case preserves all seven original kernel artifacts and its saturated residual."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.compile_evidence/compile_evidence"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_evidence_compilation.v0"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:56bb2b361f550d15257c7505004ab205adfb4ededffea6a9a9a5f7746565df8d",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution: WAITING_FOR_INPUT/PREFLIGHTED with no project report or outputs. The corresponding current_answer case preserves all seven original kernel artifacts and its saturated residual."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.explain/explanation"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_explanation.v0"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:c81bbe8ae1035eae6b224a9713779f0ac54932b1a40bab6dbb7e9224b5c77ba0",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution: WAITING_FOR_INPUT/PREFLIGHTED with no project report or outputs. The corresponding current_answer case preserves all seven original kernel artifacts and its saturated residual."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.home_cells/home_cells"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_home_cell_assignment.v1"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:d48ffd8fc9b493bb41c3290df3e903eb180d5b09601ccb52c653d40243defb35",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution: WAITING_FOR_INPUT/PREFLIGHTED with no project report or outputs. The corresponding current_answer case preserves all seven original kernel artifacts and its saturated residual."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.materialize_evidence/materialize_evidence"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_evidence_request.v0"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:31a55dfbfdbcd440bdc94ae1e44f825e25ccc27693024129bddfe74a49cd6d21",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution: WAITING_FOR_INPUT/PREFLIGHTED with no project report or outputs. The corresponding current_answer case preserves all seven original kernel artifacts and its saturated residual."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.propagate/propagation"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_propagation.v0"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:643575c53f6189f02e4ccbef95ad5fc9ce3106e2be072e0b498116f13e832289",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution: WAITING_FOR_INPUT/PREFLIGHTED with no project report or outputs. The corresponding current_answer case preserves all seven original kernel artifacts and its saturated residual."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.section/section"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_tile_work_unit.v1"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:0b1dd9c98418564494f5c18015109d0e15227e750eb29fe44249c507f4810f09",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution: WAITING_FOR_INPUT/PREFLIGHTED with no project report or outputs. The corresponding current_answer case preserves all seven original kernel artifacts and its saturated residual."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.solve/solve"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_composition.v0"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:91e8c9411f81de8b792545fd4f69bbc1167cf33674b4a5cadce05babe2931dd4",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution: WAITING_FOR_INPUT/PREFLIGHTED with no project report or outputs. The corresponding current_answer case preserves all seven original kernel artifacts and its saturated residual."
         }
       ],
       "before": {
@@ -511,6 +801,317 @@
           "new": "blake3:0e308c3fe27ffe209e120398fb3a65a88ad4d91acc90955bbb6e1cb6f91560a1",
           "old": "blake3:d21099aae54337162c41078f4aea5477e06adb2590df33b1c27cf182d48f478f",
           "semantic_note": "Register the answer executor: each executed stage truthfully reports 19 supported commands instead of 18; only this counter and derived receipt/run hashes change. All Geo output references, artifact digests, statuses and domain outcomes remain identical. Receipt-array pointers cover all 54 reviewed changed leaves."
+        },
+        {
+          "bead": "bd-2dvm",
+          "commit": null,
+          "date": "2026-10-21",
+          "kind": "invariant_change",
+          "new": [
+            {
+              "kind": "pointer_equals",
+              "pointer": "/status",
+              "value": "WAITING_FOR_INPUT"
+            },
+            {
+              "kind": "pointer_equals",
+              "pointer": "/phase",
+              "value": "PREFLIGHTED"
+            },
+            {
+              "kind": "pointer_equals",
+              "pointer": "/blockers",
+              "value": [
+                {
+                  "blocker_id": "invalid_input:geo.parcel.separation:request",
+                  "kind": "INVALID_INPUT",
+                  "project_node_id": "geo.parcel.separation",
+                  "reason": "InvalidInput: Geo separation requests require at least one prospective observation; field=prospective; detail={\"field\": \"prospective\"}; expected_contract=canon_geo_separation_inputs.v0; schema=schemas/canon.geo.separation_inputs.v0.schema.json"
+                }
+              ]
+            }
+          ],
+          "old": [
+            {
+              "kind": "run_status",
+              "value": "FAILED"
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "kind": "composition_status",
+              "value": "ambiguous"
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "kind": "residual_saturated"
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "count": 2,
+              "key": "parcel:3051090025",
+              "kind": "component_hard_feasible"
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "buildings": [],
+              "kind": "forced_members",
+              "parcels": [
+                "3051090025"
+              ]
+            },
+            {
+              "kind": "failed_node",
+              "message_contains": "at least one prospective observation",
+              "node_id": "geo.parcel.separation"
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "kind": "pointer_equals",
+              "pointer": "/summary/parcel_candidates",
+              "value": 92
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "kind": "pointer_equals",
+              "pointer": "/summary/building_candidates",
+              "value": 98
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "kind": "pointer_equals",
+              "pointer": "/summary/hard_constraint_evaluations",
+              "value": 3
+            },
+            {
+              "artifact_id": "geo.parcel.compile_evidence/compile_evidence",
+              "kind": "pointer_equals",
+              "pointer": "/admissions",
+              "projection": "admission_summary",
+              "value": [
+                {
+                  "admission_reason": null,
+                  "disposition": "hard_constraint",
+                  "observation_id": "obs.bank18.address.pad",
+                  "source_lineage_ids": [
+                    "NYC_DCP_PAD:26B"
+                  ]
+                }
+              ]
+            },
+            {
+              "artifact_id": "geo.parcel.compile_evidence/compile_evidence",
+              "kind": "pointer_equals",
+              "pointer": "/composition_request/soft_preferences",
+              "value": []
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "kind": "pointer_equals",
+              "pointer": "/soft_ranked",
+              "value": []
+            },
+            {
+              "artifact_id": null,
+              "kind": "pointer_equals",
+              "pointer": "/phase",
+              "value": "SOLVED"
+            },
+            {
+              "artifact_id": null,
+              "kind": "pointer_equals",
+              "pointer": "/next_actions",
+              "value": [
+                {
+                  "action_id": "execute:geo.parcel.separation",
+                  "command": "canon.geo.stage.separation.v0",
+                  "kind": "EXECUTE_PROJECT_NODE",
+                  "project_node_id": "geo.parcel.separation",
+                  "reason": "project node is ready under the shared run receipt state"
+                },
+                {
+                  "action_id": "inspect:geo.parcel.separation",
+                  "kind": "INSPECT_FAILURE",
+                  "project_node_id": "geo.parcel.separation",
+                  "reason": "inspect the failed project node receipt before retrying"
+                }
+              ]
+            },
+            {
+              "artifact_id": "geo.parcel.compile_evidence/compile_evidence",
+              "kind": "pointer_equals",
+              "observation_ids": [
+                "obs.bank18.address.pad"
+              ],
+              "pointer": "/admissions",
+              "projection": "lineage_components",
+              "value": 1
+            }
+          ],
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts and forced parcel; the legacy full-workflow input now waits for repair without executing.",
+          "target": "execution_invariants"
+        },
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/blockers",
+            "/deterministic_usage",
+            "/next_actions",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs",
+            "/phase",
+            "/project_run_report",
+            "/run_id",
+            "/semantic_hash",
+            "/status"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:595372b3858cc3f668ed29db754741344dcdda86518846bc96b9b8b4f7e31c87",
+          "old": "blake3:0e308c3fe27ffe209e120398fb3a65a88ad4d91acc90955bbb6e1cb6f91560a1",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts and forced parcel; the legacy full-workflow input now waits for repair without executing. Run diff reviewed against the actual matching post-bd-1uo5 runtime, not only archived pre-change JSON."
+        },
+        {
+          "artifact_ids": [
+            "run_status"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "WAITING_FOR_INPUT",
+          "old": "FAILED",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts and forced parcel; the legacy full-workflow input now waits for repair without executing."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.compile_evidence/compile_evidence"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_evidence_compilation.v0"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:928a7afa9544fcaddd4da869ec807744694cb6f3d463a3a47cac821d80b40694",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts and forced parcel; the legacy full-workflow input now waits for repair without executing."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.explain/explanation"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_explanation.v0"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:3ec20132b6a2f841dc957f26dd10cc7bbbf6736ce2be268e5294fed2c285ef61",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts and forced parcel; the legacy full-workflow input now waits for repair without executing."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.home_cells/home_cells"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_home_cell_assignment.v1"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:d48ffd8fc9b493bb41c3290df3e903eb180d5b09601ccb52c653d40243defb35",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts and forced parcel; the legacy full-workflow input now waits for repair without executing."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.materialize_evidence/materialize_evidence"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_evidence_request.v0"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:6e8272906869defd39a6dfb9c78ada939bf8665387f711814076f007e5512f34",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts and forced parcel; the legacy full-workflow input now waits for repair without executing."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.propagate/propagation"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_propagation.v0"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:e6bf161c22ac759ad06c35e8cb9f04f97211ebd774112a5702582c5f01a31d03",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts and forced parcel; the legacy full-workflow input now waits for repair without executing."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.section/section"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_tile_work_unit.v1"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:0b1dd9c98418564494f5c18015109d0e15227e750eb29fe44249c507f4810f09",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts and forced parcel; the legacy full-workflow input now waits for repair without executing."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.solve/solve"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_composition.v0"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:7e624bd143babcba11512615af1529549d1b23302a8861063f8ac15a9e442a2a",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts and forced parcel; the legacy full-workflow input now waits for repair without executing."
         }
       ],
       "before": {
@@ -816,6 +1417,328 @@
           "new": "blake3:16869bac09c4697cc7f97a0d5ad5b84d85399f01e243a9b215c9964bccb4756e",
           "old": "blake3:cb3733b113560772d31f1f1da28e0ea1ae948f26604249de4df1e147babe6708",
           "semantic_note": "Register the answer executor: each executed stage truthfully reports 19 supported commands instead of 18; only this counter and derived receipt/run hashes change. All Geo output references, artifact digests, statuses and domain outcomes remain identical. Receipt-array pointers cover all 54 reviewed changed leaves."
+        },
+        {
+          "bead": "bd-2dvm",
+          "commit": null,
+          "date": "2026-10-21",
+          "kind": "invariant_change",
+          "new": [
+            {
+              "kind": "pointer_equals",
+              "pointer": "/status",
+              "value": "WAITING_FOR_INPUT"
+            },
+            {
+              "kind": "pointer_equals",
+              "pointer": "/phase",
+              "value": "PREFLIGHTED"
+            },
+            {
+              "kind": "pointer_equals",
+              "pointer": "/blockers",
+              "value": [
+                {
+                  "blocker_id": "invalid_input:geo.parcel.separation:request",
+                  "kind": "INVALID_INPUT",
+                  "project_node_id": "geo.parcel.separation",
+                  "reason": "InvalidInput: Geo separation requests require at least one prospective observation; field=prospective; detail={\"field\": \"prospective\"}; expected_contract=canon_geo_separation_inputs.v0; schema=schemas/canon.geo.separation_inputs.v0.schema.json"
+                }
+              ]
+            }
+          ],
+          "old": [
+            {
+              "kind": "run_status",
+              "value": "FAILED"
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "kind": "composition_status",
+              "value": "ambiguous"
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "kind": "residual_saturated"
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "count": 1,
+              "key": "parcel:3051090025",
+              "kind": "component_hard_feasible"
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "buildings": [
+                "3117371"
+              ],
+              "kind": "forced_members",
+              "parcels": [
+                "3051090025"
+              ]
+            },
+            {
+              "kind": "failed_node",
+              "message_contains": "at least one prospective observation",
+              "node_id": "geo.parcel.separation"
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "kind": "pointer_equals",
+              "pointer": "/summary/parcel_candidates",
+              "value": 92
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "kind": "pointer_equals",
+              "pointer": "/summary/building_candidates",
+              "value": 98
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "kind": "pointer_equals",
+              "pointer": "/summary/hard_constraint_evaluations",
+              "value": 5
+            },
+            {
+              "artifact_id": "geo.parcel.compile_evidence/compile_evidence",
+              "kind": "pointer_equals",
+              "pointer": "/admissions",
+              "projection": "admission_summary",
+              "value": [
+                {
+                  "admission_reason": null,
+                  "disposition": "hard_constraint",
+                  "observation_id": "obs.bank18.address.pad",
+                  "source_lineage_ids": [
+                    "NYC_DCP_PAD:26B"
+                  ]
+                },
+                {
+                  "admission_reason": null,
+                  "disposition": "hard_constraint",
+                  "observation_id": "obs.brooklyn.pad.bin",
+                  "source_lineage_ids": [
+                    "NYC_DCP_PAD:26B"
+                  ]
+                }
+              ]
+            },
+            {
+              "artifact_id": "geo.parcel.compile_evidence/compile_evidence",
+              "kind": "pointer_equals",
+              "pointer": "/composition_request/soft_preferences",
+              "value": []
+            },
+            {
+              "artifact_id": "geo.parcel.solve/solve",
+              "kind": "pointer_equals",
+              "pointer": "/soft_ranked",
+              "value": []
+            },
+            {
+              "artifact_id": null,
+              "kind": "pointer_equals",
+              "pointer": "/phase",
+              "value": "SOLVED"
+            },
+            {
+              "artifact_id": null,
+              "kind": "pointer_equals",
+              "pointer": "/next_actions",
+              "value": [
+                {
+                  "action_id": "execute:geo.parcel.separation",
+                  "command": "canon.geo.stage.separation.v0",
+                  "kind": "EXECUTE_PROJECT_NODE",
+                  "project_node_id": "geo.parcel.separation",
+                  "reason": "project node is ready under the shared run receipt state"
+                },
+                {
+                  "action_id": "inspect:geo.parcel.separation",
+                  "kind": "INSPECT_FAILURE",
+                  "project_node_id": "geo.parcel.separation",
+                  "reason": "inspect the failed project node receipt before retrying"
+                }
+              ]
+            },
+            {
+              "artifact_id": "geo.parcel.compile_evidence/compile_evidence",
+              "kind": "pointer_equals",
+              "observation_ids": [
+                "obs.bank18.address.pad",
+                "obs.brooklyn.pad.bin"
+              ],
+              "pointer": "/admissions",
+              "projection": "lineage_components",
+              "value": 1
+            }
+          ],
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts, forced parcel/building and saturated wider residual; this legacy input now waits for repair.",
+          "target": "execution_invariants"
+        },
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/blockers",
+            "/deterministic_usage",
+            "/next_actions",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs",
+            "/phase",
+            "/project_run_report",
+            "/run_id",
+            "/semantic_hash",
+            "/status"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:4457333ab9906696e6f9a333e62b2ccd6cd453236f216f1560c45eb69d16f9fa",
+          "old": "blake3:16869bac09c4697cc7f97a0d5ad5b84d85399f01e243a9b215c9964bccb4756e",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts, forced parcel/building and saturated wider residual; this legacy input now waits for repair. Run diff reviewed against the actual matching post-bd-1uo5 runtime, not only archived pre-change JSON."
+        },
+        {
+          "artifact_ids": [
+            "run_status"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "WAITING_FOR_INPUT",
+          "old": "FAILED",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts, forced parcel/building and saturated wider residual; this legacy input now waits for repair."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.compile_evidence/compile_evidence"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_evidence_compilation.v0"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:025ecc9475f17ea7554c65716e9bc435a155e1d39c7f10a71345d2189bb7b5fd",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts, forced parcel/building and saturated wider residual; this legacy input now waits for repair."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.explain/explanation"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_explanation.v0"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:c73a93b1ad61021c69161689bf472426b000850ee6d1eaa07c6b0ea98f1ca0dc",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts, forced parcel/building and saturated wider residual; this legacy input now waits for repair."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.home_cells/home_cells"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_home_cell_assignment.v1"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:d48ffd8fc9b493bb41c3290df3e903eb180d5b09601ccb52c653d40243defb35",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts, forced parcel/building and saturated wider residual; this legacy input now waits for repair."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.materialize_evidence/materialize_evidence"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_evidence_request.v0"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:3186579e1bd8abb095b544fc6c5755174bcdbaf094084bd904d050fd34a0d93a",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts, forced parcel/building and saturated wider residual; this legacy input now waits for repair."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.propagate/propagation"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_propagation.v0"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:3a560ab7b28844a671401d39717d56e696a862b2138d604666120413e6f57318",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts, forced parcel/building and saturated wider residual; this legacy input now waits for repair."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.section/section"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_tile_work_unit.v1"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:0b1dd9c98418564494f5c18015109d0e15227e750eb29fe44249c507f4810f09",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts, forced parcel/building and saturated wider residual; this legacy input now waits for repair."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.solve/solve"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_composition.v0"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:55b3ff520a34d72d61bfcc87eeb48e07f1e7b978d7ef4155ad7261789ac14b3e",
+          "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts, forced parcel/building and saturated wider residual; this legacy input now waits for repair."
         }
       ],
       "before": {
@@ -2875,6 +3798,12 @@
     },
     {
       "case_id": "courtney.initial_hints",
+      "duplicate_of": "courtney.final_hints",
+      "classification_change": {
+        "bead": "bd-1rsv",
+        "old_role": "replay",
+        "semantic_note": "Authoritative pass3: identical retained inquiry inputs and semantic hash; validate as duplicate and retain timing, never count as recompute."
+      },
       "tier": "full",
       "proof_class": "retained",
       "mode": "legacy_full_workflow",
@@ -4356,6 +5285,128 @@
           "new": "blake3:120a06ed535160da0d2330133fbc852b1041f608d56383388ea278911a7bb412",
           "old": "blake3:59322adf9028c3a4b08cb27c0c75819067631f2f7e1006528db117f29fb97e8e",
           "semantic_note": "Register the answer executor: each executed stage truthfully reports 19 supported commands instead of 18; only this counter and derived receipt/run hashes change. All Geo output references, artifact digests, statuses and domain outcomes remain identical. Receipt-array pointers cover all 16 reviewed changed leaves."
+        },
+        {
+          "bead": "bd-2dvm",
+          "commit": null,
+          "date": "2026-10-21",
+          "kind": "invariant_change",
+          "new": [
+            {
+              "kind": "pointer_equals",
+              "pointer": "/status",
+              "value": "WAITING_FOR_INPUT"
+            },
+            {
+              "kind": "pointer_equals",
+              "pointer": "/phase",
+              "value": "PREFLIGHTED"
+            },
+            {
+              "kind": "pointer_equals",
+              "pointer": "/blockers",
+              "value": [
+                {
+                  "blocker_id": "invalid_input:geo.parcel.materialize_evidence:rows",
+                  "kind": "INVALID_INPUT",
+                  "project_node_id": "geo.parcel.materialize_evidence",
+                  "reason": "InvalidInput: Descriptive source attributes require uncalibrated or empirically calibrated admission; logical relaxation is not a comparability proof; field=rows; detail={\"profile\": \"descriptive_asset_single_member_v0\"}; expected_contract=canon_geo_descriptive_asset_request.v0; schema=schemas/canon.geo.descriptive_asset_request.v0.schema.json"
+                }
+              ]
+            }
+          ],
+          "old": [
+            {
+              "kind": "run_status",
+              "value": "FAILED"
+            },
+            {
+              "kind": "failed_node",
+              "message_contains": "logical relaxation is not a comparability proof",
+              "node_id": "geo.parcel.materialize_evidence"
+            }
+          ],
+          "semantic_note": "Reject the same unsound logical-relaxation admission at preflight before upstream work. Preserve the historical failed-baseline experiment. No resolution or historical-cache upgrade is established by this wait.",
+          "target": "execution_invariants"
+        },
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/blockers",
+            "/deterministic_usage",
+            "/next_actions",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs",
+            "/phase",
+            "/project_run_report",
+            "/run_id",
+            "/semantic_hash",
+            "/status"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:a3915b860b0fbafb8e06290669c2f0ac429844dcce4dfa775f8d41a052ca867e",
+          "old": "blake3:120a06ed535160da0d2330133fbc852b1041f608d56383388ea278911a7bb412",
+          "semantic_note": "Reject the same unsound logical-relaxation admission at preflight before upstream work. Preserve the historical failed-baseline experiment. No resolution or historical-cache upgrade is established by this wait. Run diff reviewed against the actual matching post-bd-1uo5 runtime, not only archived pre-change JSON."
+        },
+        {
+          "artifact_ids": [
+            "run_status"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "WAITING_FOR_INPUT",
+          "old": "FAILED",
+          "semantic_diff_base": "immutable_archive_json; old digest is prior approved golden; compare prior retained runtime before approval",
+          "semantic_note": "Reject the same unsound logical-relaxation admission at preflight before upstream work. Preserve the historical failed-baseline experiment. No resolution or historical-cache upgrade is established by this wait."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.home_cells/home_cells"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_home_cell_assignment.v1"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:b6c1018c62299be24d03545bcfecf60cd6960fd5c555ca271827b137cdba001d",
+          "semantic_note": "Reject the same unsound logical-relaxation admission at preflight before upstream work. Preserve the historical failed-baseline experiment. No resolution or historical-cache upgrade is established by this wait."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.section/section"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_tile_work_unit.v1"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:b85ea4f9e0c389d558ce66d25ad697a81897b39b393aabc685e4ec2fffe8d1cd",
+          "semantic_note": "Reject the same unsound logical-relaxation admission at preflight before upstream work. Preserve the historical failed-baseline experiment. No resolution or historical-cache upgrade is established by this wait."
         }
       ],
       "before": {
@@ -5021,7 +6072,14 @@
       "proof_class": "retained",
       "mode": "legacy_full_workflow",
       "role": "replay",
-      "experiment_class": "integration",
+      "experiment_class": "failed_baseline",
+      "classification_change": {
+        "bead": "bd-1rsv",
+        "old": "integration",
+        "new": "failed_baseline",
+        "provenance": "canonical nxrt.experiment source classification",
+        "semantic_note": "Correct erroneous resume-alias classification; retained archive, ABSTAINED outcome, hashes and current expected refusal remain unchanged."
+      },
       "archive": {
         "path": "scripts/geo_measurements/fixtures/addressless_nxrt_2026-09-17/run.tar.gz",
         "format": "tar_gz",
@@ -5152,6 +6210,55 @@
             "status": "ABSTAINED"
           },
           "semantic_note": "Approved bd-3mrt canonical-byte contract effect: legacy next-evidence deserializes but stored executor bytes no longer match canonical output. Current resume refuses; no current answer or generic cache invalidation fix is claimed. Historical stored ABSTAINED result and NXRT resume/recompute divergence remain retained integration evidence.",
+          "target": "resume_current_outcome"
+        },
+        {
+          "bead": "bd-2dvm",
+          "case_id": "resume.nxrt.experiment",
+          "changed_paths": [
+            "/blockers",
+            "/code",
+            "/current_cached_success",
+            "/geo_run_error_code",
+            "/message",
+            "/node_id",
+            "/outcome",
+            "/phase",
+            "/process_exit",
+            "/semantic_hash",
+            "/status"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0",
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "kind": "invariant_change",
+          "new": {
+            "blockers": [
+              {
+                "blocker_id": "invalid_input:geo.parcel.materialize_evidence:rows",
+                "kind": "INVALID_INPUT",
+                "project_node_id": "geo.parcel.materialize_evidence",
+                "reason": "InvalidInput: Descriptive source attributes require uncalibrated or empirically calibrated admission; logical relaxation is not a comparability proof; field=rows; detail={\"profile\": \"descriptive_asset_single_member_v0\"}; expected_contract=canon_geo_descriptive_asset_request.v0; schema=schemas/canon.geo.descriptive_asset_request.v0.schema.json"
+              }
+            ],
+            "current_cached_success": false,
+            "phase": "PREFLIGHTED",
+            "process_exit": 0,
+            "semantic_hash": "blake3:a3915b860b0fbafb8e06290669c2f0ac429844dcce4dfa775f8d41a052ca867e",
+            "status": "WAITING_FOR_INPUT"
+          },
+          "old": {
+            "code": "E_ENTITY_ARTIFACT_CONTRACT",
+            "geo_run_error_code": "PROJECT_RUN_FAILED",
+            "message": "project run failed: canon_geo_next_evidence.v0 bytes are not canonical executor output",
+            "node_id": "geo.parcel.next_evidence",
+            "outcome": "REFUSAL",
+            "process_exit": 2
+          },
+          "semantic_note": "Reviewed actual current resume invocation: unsound logical-relaxation descriptive input now stops at typed preflight before any execution, receipt seeding, project report or output publication. Historical refusal and archived ABSTAINED result remain retained; this wait is not a cache upgrade, successful reuse, or new property answer.",
           "target": "resume_current_outcome"
         }
       ],
@@ -5334,6 +6441,127 @@
           "new": "blake3:ec729cebde4e84fbe5c5f4ab827eb84f6dc284590b794e6cefe0e7e6d88bc599",
           "old": "blake3:e605a09f82511f4ed0f374bc58dae3fd5d7a5afb9ff74052e72bff266ee12748",
           "semantic_note": "Register the answer executor: each executed stage truthfully reports 19 supported commands instead of 18; only this counter and derived receipt/run hashes change. All Geo output references, artifact digests, statuses and domain outcomes remain identical. Receipt-array pointers cover all 16 reviewed changed leaves."
+        },
+        {
+          "bead": "bd-2dvm",
+          "commit": null,
+          "date": "2026-10-21",
+          "kind": "invariant_change",
+          "new": [
+            {
+              "kind": "pointer_equals",
+              "pointer": "/status",
+              "value": "WAITING_FOR_INPUT"
+            },
+            {
+              "kind": "pointer_equals",
+              "pointer": "/phase",
+              "value": "PREFLIGHTED"
+            },
+            {
+              "kind": "pointer_equals",
+              "pointer": "/blockers",
+              "value": [
+                {
+                  "blocker_id": "invalid_input:geo.parcel.materialize_evidence:rows",
+                  "kind": "INVALID_INPUT",
+                  "project_node_id": "geo.parcel.materialize_evidence",
+                  "reason": "InvalidInput: Geo rho contract lineage ids must be strictly sorted and distinct; field=rows; detail={\"contract_id\": \"rho.descriptive.property_name\"}; expected_contract=canon_geo_descriptive_asset_request.v0; schema=schemas/canon.geo.descriptive_asset_request.v0.schema.json"
+                }
+              ]
+            }
+          ],
+          "old": [
+            {
+              "kind": "run_status",
+              "value": "FAILED"
+            },
+            {
+              "kind": "failed_node",
+              "message_contains": "lineage ids must be strictly sorted and distinct",
+              "node_id": "geo.parcel.materialize_evidence"
+            }
+          ],
+          "semantic_note": "Reject the same unsorted lineage IDs at preflight before upstream work, preserving the invalid admission diagnostic. No geometric or solver output is published for invalid input.",
+          "target": "execution_invariants"
+        },
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/blockers",
+            "/deterministic_usage",
+            "/next_actions",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs",
+            "/phase",
+            "/project_run_report",
+            "/run_id",
+            "/semantic_hash",
+            "/status"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:a2e454b4602638a6e4d4d0786ca67859a5cc1fcec05573543b76d9ec0bb4fb38",
+          "old": "blake3:ec729cebde4e84fbe5c5f4ab827eb84f6dc284590b794e6cefe0e7e6d88bc599",
+          "semantic_note": "Reject the same unsorted lineage IDs at preflight before upstream work, preserving the invalid admission diagnostic. No geometric or solver output is published for invalid input. Run diff reviewed against the actual matching post-bd-1uo5 runtime, not only archived pre-change JSON."
+        },
+        {
+          "artifact_ids": [
+            "run_status"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "WAITING_FOR_INPUT",
+          "old": "FAILED",
+          "semantic_note": "Reject the same unsorted lineage IDs at preflight before upstream work, preserving the invalid admission diagnostic. No geometric or solver output is published for invalid input."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.home_cells/home_cells"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_home_cell_assignment.v1"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:d6d2a3ac7121384709c33974c5de34069029ac49cb4333e1eefd03db8c741e1a",
+          "semantic_note": "Reject the same unsorted lineage IDs at preflight before upstream work, preserving the invalid admission diagnostic. No geometric or solver output is published for invalid input."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.section/section"
+          ],
+          "bead": "bd-2dvm",
+          "changed_paths": [
+            "/"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_tile_work_unit.v1"
+          ],
+          "date": "2026-10-21",
+          "new": null,
+          "old": "blake3:5e35f7386d8f75b1c78aef40536e3b2e8699fa38157f9eb7e12a01a5e565d971",
+          "semantic_note": "Reject the same unsorted lineage IDs at preflight before upstream work, preserving the invalid admission diagnostic. No geometric or solver output is published for invalid input."
         }
       ],
       "before": {
@@ -6089,7 +7317,25 @@
         "bindings": 5
       },
       "adapter_version": null,
-      "golden_changes": [],
+      "golden_changes": [
+        {
+          "bead": "bd-2dvm",
+          "commit": null,
+          "date": "2026-10-21",
+          "kind": "invariant_change",
+          "new": {
+            "code": "E_ENTITY_ARTIFACT_CONTRACT",
+            "field": "work_dir",
+            "geo_run_error_code": "INVALID_INPUT",
+            "outcome": "REFUSAL",
+            "path_binding": "requested_work_dir",
+            "process_exit": 2
+          },
+          "old": "777a0401ad8a605b05cb641faaa500a716757b314e0ba6931650bf8bd1ea1bb4",
+          "semantic_note": "Identify the actual requested work_dir rather than an unrelated compilation node. Assert exit2, typed refusal, exact requested path and no created directory; the operational random path is not a frozen envelope hash.",
+          "target": "workspace_refusal_contract"
+        }
+      ],
       "expected_refusal": true,
       "retained_stdout_sha256": "777a0401ad8a605b05cb641faaa500a716757b314e0ba6931650bf8bd1ea1bb4",
       "before": {
@@ -6151,6 +7397,729 @@
         "acquisition_reexecuted": false,
         "subject_facts": 3
       }
+    },
+    {
+      "case_id": "current_answer.brooklyn.00_neighborhood",
+      "source_case_id": "brooklyn.00_neighborhood",
+      "mode": "current_answer",
+      "tier": "fast",
+      "proof_class": "retained",
+      "invariants": [
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.parcel.answer/answer",
+          "pointer": "/logical_consequence/hard_forced",
+          "value": {
+            "parcels": [],
+            "buildings": []
+          }
+        },
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.parcel.answer/answer",
+          "pointer": "/logical_consequence/residual_model_count",
+          "value": null
+        },
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.parcel.answer/answer",
+          "pointer": "/logical_consequence/residual_model_count_saturated",
+          "value": true
+        },
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.parcel.answer/answer",
+          "pointer": "/preference/state/kind",
+          "value": "no_soft_evidence"
+        }
+      ],
+      "expected_current_answer": {
+        "output_digests": {
+          "geo.parcel.answer/answer": "blake3:14650346078afa6abf6fe7a1158fa5a66c0163117d1dc492026591d80781af82",
+          "geo.parcel.compile_evidence/compile_evidence": "blake3:56bb2b361f550d15257c7505004ab205adfb4ededffea6a9a9a5f7746565df8d",
+          "geo.parcel.explain/explanation": "blake3:c81bbe8ae1035eae6b224a9713779f0ac54932b1a40bab6dbb7e9224b5c77ba0",
+          "geo.parcel.home_cells/home_cells": "blake3:d48ffd8fc9b493bb41c3290df3e903eb180d5b09601ccb52c653d40243defb35",
+          "geo.parcel.materialize_evidence/materialize_evidence": "blake3:31a55dfbfdbcd440bdc94ae1e44f825e25ccc27693024129bddfe74a49cd6d21",
+          "geo.parcel.propagate/propagation": "blake3:643575c53f6189f02e4ccbef95ad5fc9ce3106e2be072e0b498116f13e832289",
+          "geo.parcel.section/section": "blake3:0b1dd9c98418564494f5c18015109d0e15227e750eb29fe44249c507f4810f09",
+          "geo.parcel.solve/solve": "blake3:91e8c9411f81de8b792545fd4f69bbc1167cf33674b4a5cadce05babe2931dd4"
+        },
+        "plan_sha256": "7c1c34198936f08d1ea0ac44c716865a31f7e1ce6ad8a3be2488b024ba8cf774",
+        "run_semantic_hash": "blake3:4724b33089f5b7a67b3dd4f65d0791c874be400ff3cd244eb9e574d607acb5b9",
+        "run_status": "ABSTAINED"
+      }
+    },
+    {
+      "case_id": "current_answer.brooklyn.01_address_parcel",
+      "source_case_id": "brooklyn.01_address_parcel",
+      "mode": "current_answer",
+      "tier": "fast",
+      "proof_class": "retained",
+      "invariants": [
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.parcel.answer/answer",
+          "pointer": "/logical_consequence/hard_forced",
+          "value": {
+            "parcels": [
+              "3051090025"
+            ],
+            "buildings": []
+          }
+        },
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.parcel.answer/answer",
+          "pointer": "/logical_consequence/residual_model_count",
+          "value": null
+        },
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.parcel.answer/answer",
+          "pointer": "/logical_consequence/residual_model_count_saturated",
+          "value": true
+        },
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.parcel.answer/answer",
+          "pointer": "/preference/state/kind",
+          "value": "no_soft_evidence"
+        }
+      ],
+      "expected_current_answer": {
+        "output_digests": {
+          "geo.parcel.answer/answer": "blake3:a96b238a0e9db6122c3ca64bf970454ee0f097fca74c16f3e235c06162654398",
+          "geo.parcel.compile_evidence/compile_evidence": "blake3:928a7afa9544fcaddd4da869ec807744694cb6f3d463a3a47cac821d80b40694",
+          "geo.parcel.explain/explanation": "blake3:3ec20132b6a2f841dc957f26dd10cc7bbbf6736ce2be268e5294fed2c285ef61",
+          "geo.parcel.home_cells/home_cells": "blake3:d48ffd8fc9b493bb41c3290df3e903eb180d5b09601ccb52c653d40243defb35",
+          "geo.parcel.materialize_evidence/materialize_evidence": "blake3:6e8272906869defd39a6dfb9c78ada939bf8665387f711814076f007e5512f34",
+          "geo.parcel.propagate/propagation": "blake3:e6bf161c22ac759ad06c35e8cb9f04f97211ebd774112a5702582c5f01a31d03",
+          "geo.parcel.section/section": "blake3:0b1dd9c98418564494f5c18015109d0e15227e750eb29fe44249c507f4810f09",
+          "geo.parcel.solve/solve": "blake3:7e624bd143babcba11512615af1529549d1b23302a8861063f8ac15a9e442a2a"
+        },
+        "plan_sha256": "7c1c34198936f08d1ea0ac44c716865a31f7e1ce6ad8a3be2488b024ba8cf774",
+        "run_semantic_hash": "blake3:96ebe755bb6660fd7dfa733378d39801643b787480c972574f0002d55262f167",
+        "run_status": "ABSTAINED"
+      }
+    },
+    {
+      "case_id": "current_answer.brooklyn.02_address_building",
+      "source_case_id": "brooklyn.02_address_building",
+      "mode": "current_answer",
+      "tier": "fast",
+      "proof_class": "retained",
+      "invariants": [
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.parcel.answer/answer",
+          "pointer": "/logical_consequence/hard_forced",
+          "value": {
+            "parcels": [
+              "3051090025"
+            ],
+            "buildings": [
+              "3117371"
+            ]
+          }
+        },
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.parcel.answer/answer",
+          "pointer": "/logical_consequence/residual_model_count",
+          "value": null
+        },
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.parcel.answer/answer",
+          "pointer": "/logical_consequence/residual_model_count_saturated",
+          "value": true
+        },
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.parcel.answer/answer",
+          "pointer": "/preference/state/kind",
+          "value": "no_soft_evidence"
+        }
+      ],
+      "expected_current_answer": {
+        "output_digests": {
+          "geo.parcel.answer/answer": "blake3:a59c34f5adb401beb65edfd60868a7be1ca4a1a015bfc40f510dffbafe72dfe5",
+          "geo.parcel.compile_evidence/compile_evidence": "blake3:025ecc9475f17ea7554c65716e9bc435a155e1d39c7f10a71345d2189bb7b5fd",
+          "geo.parcel.explain/explanation": "blake3:c73a93b1ad61021c69161689bf472426b000850ee6d1eaa07c6b0ea98f1ca0dc",
+          "geo.parcel.home_cells/home_cells": "blake3:d48ffd8fc9b493bb41c3290df3e903eb180d5b09601ccb52c653d40243defb35",
+          "geo.parcel.materialize_evidence/materialize_evidence": "blake3:3186579e1bd8abb095b544fc6c5755174bcdbaf094084bd904d050fd34a0d93a",
+          "geo.parcel.propagate/propagation": "blake3:3a560ab7b28844a671401d39717d56e696a862b2138d604666120413e6f57318",
+          "geo.parcel.section/section": "blake3:0b1dd9c98418564494f5c18015109d0e15227e750eb29fe44249c507f4810f09",
+          "geo.parcel.solve/solve": "blake3:55b3ff520a34d72d61bfcc87eeb48e07f1e7b978d7ef4155ad7261789ac14b3e"
+        },
+        "plan_sha256": "7c1c34198936f08d1ea0ac44c716865a31f7e1ce6ad8a3be2488b024ba8cf774",
+        "run_semantic_hash": "blake3:5e5eb39c6ae3698c9bb36ca2ffb50d737e3dc14ca77e6c5dc856924fdb263fe1",
+        "run_status": "ABSTAINED"
+      }
+    },
+    {
+      "case_id": "current_answer.cornerstone.national_building_supported",
+      "source_case_id": "cornerstone.national_building_supported",
+      "mode": "current_answer",
+      "tier": "fast",
+      "proof_class": "retained",
+      "invariants": [
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.building.answer/answer",
+          "pointer": "/logical_consequence/residual_model_count",
+          "value": 347
+        },
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.building.answer/answer",
+          "pointer": "/preference/composition_view/tie_count",
+          "value": 2
+        },
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.building.answer/answer",
+          "pointer": "/preference/grouped_view/tie_count",
+          "value": 2
+        }
+      ],
+      "expected_current_answer": {
+        "output_digests": {
+          "geo.building.answer/answer": "blake3:76651260c852f8eee011dd134b2a68cd423c17d38e39a7f258689528266698d7",
+          "geo.building.compile_evidence/compile_evidence": "blake3:469ef56590c3e6ff66e4e78cbf3546a70f31616afc0d87d8eb42cf724f3349a4",
+          "geo.building.explain/explanation": "blake3:5bff32f6935aa415d0a7009e472b387e2221efb92d0b944cac85da061e943aa2",
+          "geo.building.home_cells/home_cells": "blake3:c7f225275243ecf120760e5f1d0d043946371cdb25ebe11abd231372ce40fe0a",
+          "geo.building.materialize_evidence/materialize_evidence": "blake3:40318d421043648dcceb866cf410138093851a94298be4cd560bb6be301cc8c5",
+          "geo.building.propagate/propagation": "blake3:173a49248f9ca4201bd295ddb074a3c53cc5128470b99d1172119753e377b5f5",
+          "geo.building.section/section": "blake3:cfeb94b5684902d1074c6074cfa8c646f182d463b256db28c071cd53b005444b",
+          "geo.building.solve/solve": "blake3:6342c0b4d8790437be4e2604a30c5b3ecf09e6d763527f0eb117689fad961e12"
+        },
+        "plan_sha256": "e48cd355efe8d7116a029663ccd6d65a104354e9c94286e76f86084061d503e9",
+        "run_semantic_hash": "blake3:542aefb6fa4e64ce05432314a66f3d58bdd0ebd8c9dfd3ad6650af5d3ffcaf2a",
+        "run_status": "ABSTAINED"
+      }
+    },
+    {
+      "case_id": "current_answer.cornerstone.national_building",
+      "source_case_id": "cornerstone.national_building",
+      "mode": "current_answer",
+      "tier": "fast",
+      "proof_class": "retained",
+      "invariants": [
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.building.answer/answer",
+          "pointer": "/preference/state/kind",
+          "value": "no_soft_evidence"
+        },
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.building.answer/answer",
+          "pointer": "/preference/composition_view/preferred",
+          "value": []
+        },
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.building.answer/answer",
+          "pointer": "/preference/grouped_view/preferred",
+          "value": []
+        }
+      ],
+      "expected_current_answer": {
+        "output_digests": {
+          "geo.building.answer/answer": "blake3:17cadea56af1af62e669c45f17b235257af726db723212a2ef6096523363670c",
+          "geo.building.compile_evidence/compile_evidence": "blake3:ffbb9fccf80e2556c9ee404ad2c9bfe6154f9df5d0e441415b869ddfa4fcedc3",
+          "geo.building.explain/explanation": "blake3:f09ea12388c921f91f99820a6cecbf48316e4f7af5a70f305ee0dfe533d4093a",
+          "geo.building.home_cells/home_cells": "blake3:7bf376207b16cc1a1f70d9970b3018f59ff678531c17a66276c38d6ccfaca7da",
+          "geo.building.materialize_evidence/materialize_evidence": "blake3:07d67337a0539598fe6c8ec487d77b100e32bdbd985977e93ad984e80f22baae",
+          "geo.building.propagate/propagation": "blake3:615fd1749896eb539126e94f96f51dbe04ddb2b33df48b5c598fb02e39679004",
+          "geo.building.section/section": "blake3:c60e8152c6e8319d13a833ba042378b3089a6045b8f9d0822997f49b44595b72",
+          "geo.building.solve/solve": "blake3:960b48da84c06eb28a1937e8bdbb3ba192b9845d17fdeeafb49512d5f2e36317"
+        },
+        "plan_sha256": "01a9e1f47b8582a2302c97fce57d831cfb3df969d0e36a931bbd1d3660b7d711",
+        "run_semantic_hash": "blake3:05dd257300fb2d24a7f9fa933489774493b9b664a742bdec2c06a57b5e735940",
+        "run_status": "ABSTAINED"
+      }
+    },
+    {
+      "case_id": "current_answer.cornerstone.national_parcel_supported",
+      "source_case_id": "cornerstone.national_parcel_supported",
+      "mode": "current_answer",
+      "tier": "full",
+      "proof_class": "retained",
+      "invariants": [
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.parcel.answer/answer",
+          "pointer": "/logical_consequence/residual_model_count",
+          "value": 2983
+        },
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.parcel.answer/answer",
+          "pointer": "/preference/composition_view/preferred",
+          "value": [
+            {
+              "members": {
+                "parcels": [
+                  "302304550403000"
+                ],
+                "buildings": []
+              },
+              "cost": 0
+            }
+          ]
+        },
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.parcel.answer/answer",
+          "pointer": "/preference/grouped_view/tie_count",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "case_id": "current_answer.courtney.final_hints",
+      "source_case_id": "courtney.final_hints",
+      "mode": "current_answer",
+      "tier": "full",
+      "proof_class": "retained",
+      "invariants": [
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.parcel.answer/answer",
+          "pointer": "/logical_consequence/residual_model_count",
+          "value": 889
+        },
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.parcel.answer/answer",
+          "pointer": "/preference/composition_view/preferred",
+          "value": [
+            {
+              "members": {
+                "parcels": [
+                  "1029330100"
+                ],
+                "buildings": []
+              },
+              "cost": 6
+            }
+          ]
+        },
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.parcel.answer/answer",
+          "pointer": "/preference/composition_view/next_best_tie_count",
+          "value": 6
+        },
+        {
+          "kind": "pointer_equals",
+          "artifact_id": "geo.parcel.answer/answer",
+          "pointer": "/preference/grouped_view/preferred",
+          "value": [
+            {
+              "members": {
+                "parcels": [
+                  "1029330100"
+                ],
+                "buildings": []
+              },
+              "cost": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "nxrt.truth_probe",
+      "source_case_id": "nxrt.experiment",
+      "mode": "evaluation_solve",
+      "tier": "full",
+      "proof_class": "retained",
+      "role": "evaluation_only",
+      "request": "experiment/truth-feasibility-request.json",
+      "retained_stdout": "experiment/truth-feasibility.json",
+      "invariants": []
+    },
+    {
+      "case_id": "resume.cornerstone.foursquare_parcel_supported",
+      "source_case_id": "cornerstone.foursquare_parcel_supported",
+      "mode": "retained_resume",
+      "tier": "resume",
+      "proof_class": "retained",
+      "role": "integrity_only",
+      "invariants": [],
+      "expected_resume": {
+        "code": "E_ENTITY_ARTIFACT_CONTRACT",
+        "current_cached_success": false,
+        "detail": {
+          "node_id": "geo.parcel.next_evidence",
+          "project_run_error_code": "ArtifactContract"
+        },
+        "geo_run_error_code": "PROJECT_RUN_FAILED",
+        "inspect_contract": {
+          "run_id": "canon_geo_run.v0:98e9076297975f2314aaa31916df9671d16fe0f2a11e995c7e2bbc83b1fe514b",
+          "version": "canon_geo_inspection.v0"
+        },
+        "inspect_deterministic": true,
+        "message": "project run failed: canon_geo_next_evidence.v0 bytes are not canonical executor output",
+        "outcome": "REFUSAL"
+      }
+    },
+    {
+      "case_id": "resume.cornerstone.foursquare_parcel",
+      "source_case_id": "cornerstone.foursquare_parcel",
+      "mode": "retained_resume",
+      "tier": "resume",
+      "proof_class": "retained",
+      "role": "integrity_only",
+      "invariants": [],
+      "expected_resume": {
+        "code": "E_ENTITY_ARTIFACT_CONTRACT",
+        "current_cached_success": false,
+        "detail": {
+          "node_id": "geo.parcel.next_evidence",
+          "project_run_error_code": "ArtifactContract"
+        },
+        "geo_run_error_code": "PROJECT_RUN_FAILED",
+        "inspect_contract": {
+          "run_id": "canon_geo_run.v0:33e9d809193c35521a4cfcf65b58fdc9e3de050434f18acd79739023e64db3d3",
+          "version": "canon_geo_inspection.v0"
+        },
+        "inspect_deterministic": true,
+        "message": "project run failed: canon_geo_next_evidence.v0 bytes are not canonical executor output",
+        "outcome": "REFUSAL"
+      }
+    },
+    {
+      "case_id": "resume.cornerstone.national_building_supported",
+      "source_case_id": "cornerstone.national_building_supported",
+      "mode": "retained_resume",
+      "tier": "resume",
+      "proof_class": "retained",
+      "role": "integrity_only",
+      "invariants": [],
+      "expected_resume": {
+        "code": "E_ENTITY_ARTIFACT_CONTRACT",
+        "current_cached_success": false,
+        "detail": {
+          "node_id": "geo.building.next_evidence",
+          "project_run_error_code": "ArtifactContract"
+        },
+        "geo_run_error_code": "PROJECT_RUN_FAILED",
+        "inspect_contract": {
+          "run_id": "canon_geo_run.v0:66de1a6f3154814b9095a51425366adaa003a4bdbc55d21928aa87cb20d4903e",
+          "version": "canon_geo_inspection.v0"
+        },
+        "inspect_deterministic": true,
+        "message": "project run failed: canon_geo_next_evidence.v0 bytes are not canonical executor output",
+        "outcome": "REFUSAL"
+      }
+    },
+    {
+      "case_id": "resume.cornerstone.national_building",
+      "source_case_id": "cornerstone.national_building",
+      "mode": "retained_resume",
+      "tier": "resume",
+      "proof_class": "retained",
+      "role": "integrity_only",
+      "invariants": [],
+      "expected_resume": {
+        "code": "E_ENTITY_ARTIFACT_CONTRACT",
+        "current_cached_success": false,
+        "detail": {
+          "node_id": "geo.building.next_evidence",
+          "project_run_error_code": "ArtifactContract"
+        },
+        "geo_run_error_code": "PROJECT_RUN_FAILED",
+        "inspect_contract": {
+          "run_id": "canon_geo_run.v0:10f65a075b142b322587c75574354407cd6856a3bb0bc96af59bcab20e587290",
+          "version": "canon_geo_inspection.v0"
+        },
+        "inspect_deterministic": true,
+        "message": "project run failed: canon_geo_next_evidence.v0 bytes are not canonical executor output",
+        "outcome": "REFUSAL"
+      }
+    },
+    {
+      "case_id": "resume.cornerstone.national_parcel",
+      "source_case_id": "cornerstone.national_parcel",
+      "mode": "retained_resume",
+      "tier": "resume",
+      "proof_class": "retained",
+      "role": "integrity_only",
+      "invariants": [],
+      "expected_resume": {
+        "code": "E_ENTITY_ARTIFACT_CONTRACT",
+        "current_cached_success": false,
+        "detail": {
+          "node_id": "geo.parcel.next_evidence",
+          "project_run_error_code": "ArtifactContract"
+        },
+        "geo_run_error_code": "PROJECT_RUN_FAILED",
+        "inspect_contract": {
+          "run_id": "canon_geo_run.v0:a8e863e668aaac5910eb1669762e9503fdaa7a2ac2f893430f82bcb3689429f2",
+          "version": "canon_geo_inspection.v0"
+        },
+        "inspect_deterministic": true,
+        "message": "project run failed: canon_geo_next_evidence.v0 bytes are not canonical executor output",
+        "outcome": "REFUSAL"
+      }
+    },
+    {
+      "case_id": "resume.courtney.final_address",
+      "source_case_id": "courtney.final_address",
+      "mode": "retained_resume",
+      "tier": "resume",
+      "proof_class": "retained",
+      "role": "integrity_only",
+      "invariants": [],
+      "expected_resume": {
+        "code": "E_ENTITY_ARTIFACT_CONTRACT",
+        "current_cached_success": false,
+        "detail": {
+          "node_id": "geo.parcel.next_evidence",
+          "project_run_error_code": "ArtifactContract"
+        },
+        "geo_run_error_code": "PROJECT_RUN_FAILED",
+        "inspect_contract": {
+          "run_id": "canon_geo_run.v0:2e7e1ce402f3f722fe2b8393a1afc88321285eb10f79ddcaa59f0a57a9283994",
+          "version": "canon_geo_inspection.v0"
+        },
+        "inspect_deterministic": true,
+        "message": "project run failed: canon_geo_next_evidence.v0 bytes are not canonical executor output",
+        "outcome": "REFUSAL"
+      }
+    },
+    {
+      "case_id": "resume.courtney.final_summit",
+      "source_case_id": "courtney.final_summit",
+      "mode": "retained_resume",
+      "tier": "resume",
+      "proof_class": "retained",
+      "role": "integrity_only",
+      "invariants": [],
+      "expected_resume": {
+        "code": "E_ENTITY_ARTIFACT_CONTRACT",
+        "current_cached_success": false,
+        "detail": {
+          "node_id": "geo.parcel.next_evidence",
+          "project_run_error_code": "ArtifactContract"
+        },
+        "geo_run_error_code": "PROJECT_RUN_FAILED",
+        "inspect_contract": {
+          "run_id": "canon_geo_run.v0:1c8872375f131f7dd6c79dc9691befac85fbe43decb5b3d728bd7c8d5533a256",
+          "version": "canon_geo_inspection.v0"
+        },
+        "inspect_deterministic": true,
+        "message": "project run failed: canon_geo_next_evidence.v0 bytes are not canonical executor output",
+        "outcome": "REFUSAL"
+      }
+    },
+    {
+      "case_id": "resume.orlando.case_0.address",
+      "source_case_id": "orlando.case_0.address",
+      "mode": "retained_resume",
+      "tier": "resume",
+      "proof_class": "retained",
+      "role": "integrity_only",
+      "invariants": [],
+      "expected_resume": {
+        "code": "E_ENTITY_ARTIFACT_CONTRACT",
+        "current_cached_success": false,
+        "detail": {
+          "node_id": "geo.parcel.next_evidence",
+          "project_run_error_code": "ArtifactContract"
+        },
+        "geo_run_error_code": "PROJECT_RUN_FAILED",
+        "inspect_contract": {
+          "run_id": "canon_geo_run.v0:bb43e8b79406db5d7ec4dd64d753075f45cdc444c5d8e3fbb64c5e3e60912a13",
+          "version": "canon_geo_inspection.v0"
+        },
+        "inspect_deterministic": true,
+        "message": "project run failed: canon_geo_next_evidence.v0 bytes are not canonical executor output",
+        "outcome": "REFUSAL"
+      }
+    },
+    {
+      "case_id": "resume.orlando.case_0.hints",
+      "source_case_id": "orlando.case_0.hints",
+      "mode": "retained_resume",
+      "tier": "resume",
+      "proof_class": "retained",
+      "role": "integrity_only",
+      "invariants": [],
+      "expected_resume": {
+        "code": "E_ENTITY_ARTIFACT_CONTRACT",
+        "current_cached_success": false,
+        "detail": {
+          "node_id": "geo.parcel.next_evidence",
+          "project_run_error_code": "ArtifactContract"
+        },
+        "geo_run_error_code": "PROJECT_RUN_FAILED",
+        "inspect_contract": {
+          "run_id": "canon_geo_run.v0:8325cd2d4aa49f83c86730bb18715e1e4f314c904b5c3c5521eb170db4f118b3",
+          "version": "canon_geo_inspection.v0"
+        },
+        "inspect_deterministic": true,
+        "message": "project run failed: canon_geo_next_evidence.v0 bytes are not canonical executor output",
+        "outcome": "REFUSAL"
+      }
+    },
+    {
+      "case_id": "resume.orlando.case_1.address",
+      "source_case_id": "orlando.case_1.address",
+      "mode": "retained_resume",
+      "tier": "resume",
+      "proof_class": "retained",
+      "role": "integrity_only",
+      "invariants": [],
+      "expected_resume": {
+        "code": "E_ENTITY_ARTIFACT_CONTRACT",
+        "current_cached_success": false,
+        "detail": {
+          "node_id": "geo.parcel.next_evidence",
+          "project_run_error_code": "ArtifactContract"
+        },
+        "geo_run_error_code": "PROJECT_RUN_FAILED",
+        "inspect_contract": {
+          "run_id": "canon_geo_run.v0:53a731a82534f7f4e9cb8e0421110d1d93f309e7dd701cca7fc1735fa4729afe",
+          "version": "canon_geo_inspection.v0"
+        },
+        "inspect_deterministic": true,
+        "message": "project run failed: canon_geo_next_evidence.v0 bytes are not canonical executor output",
+        "outcome": "REFUSAL"
+      }
+    },
+    {
+      "case_id": "resume.orlando.case_1.hints",
+      "source_case_id": "orlando.case_1.hints",
+      "mode": "retained_resume",
+      "tier": "resume",
+      "proof_class": "retained",
+      "role": "integrity_only",
+      "invariants": [],
+      "expected_resume": {
+        "code": "E_ENTITY_ARTIFACT_CONTRACT",
+        "current_cached_success": false,
+        "detail": {
+          "node_id": "geo.parcel.next_evidence",
+          "project_run_error_code": "ArtifactContract"
+        },
+        "geo_run_error_code": "PROJECT_RUN_FAILED",
+        "inspect_contract": {
+          "run_id": "canon_geo_run.v0:60c79c9009f43857f36e20a3f6c89d6b2b447ccad0bcc204abec621e2edb8f61",
+          "version": "canon_geo_inspection.v0"
+        },
+        "inspect_deterministic": true,
+        "message": "project run failed: canon_geo_next_evidence.v0 bytes are not canonical executor output",
+        "outcome": "REFUSAL"
+      }
+    },
+    {
+      "case_id": "resume.orlando.case_2.address",
+      "source_case_id": "orlando.case_2.address",
+      "mode": "retained_resume",
+      "tier": "resume",
+      "proof_class": "retained",
+      "role": "integrity_only",
+      "invariants": [],
+      "expected_resume": {
+        "code": "E_ENTITY_ARTIFACT_CONTRACT",
+        "current_cached_success": false,
+        "detail": {
+          "node_id": "geo.parcel.next_evidence",
+          "project_run_error_code": "ArtifactContract"
+        },
+        "geo_run_error_code": "PROJECT_RUN_FAILED",
+        "inspect_contract": {
+          "run_id": "canon_geo_run.v0:b001b389e2cb57504e30ca3ef7119b6e9a8f823e27d6363ec0d5d45dab89f43a",
+          "version": "canon_geo_inspection.v0"
+        },
+        "inspect_deterministic": true,
+        "message": "project run failed: canon_geo_next_evidence.v0 bytes are not canonical executor output",
+        "outcome": "REFUSAL"
+      }
+    },
+    {
+      "case_id": "resume.orlando.case_2.hints",
+      "source_case_id": "orlando.case_2.hints",
+      "mode": "retained_resume",
+      "tier": "resume",
+      "proof_class": "retained",
+      "role": "integrity_only",
+      "invariants": [],
+      "expected_resume": {
+        "code": "E_ENTITY_ARTIFACT_CONTRACT",
+        "current_cached_success": false,
+        "detail": {
+          "node_id": "geo.parcel.next_evidence",
+          "project_run_error_code": "ArtifactContract"
+        },
+        "geo_run_error_code": "PROJECT_RUN_FAILED",
+        "inspect_contract": {
+          "run_id": "canon_geo_run.v0:3b2d8f3acabb0302c8116b18c29576992b47a773fb1c5b53350422ed84f670af",
+          "version": "canon_geo_inspection.v0"
+        },
+        "inspect_deterministic": true,
+        "message": "project run failed: canon_geo_next_evidence.v0 bytes are not canonical executor output",
+        "outcome": "REFUSAL"
+      }
+    },
+    {
+      "case_id": "cost.orlando.case_0.address.numeric_mask",
+      "source_case_id": "orlando.case_0.address",
+      "mode": "cost_observation",
+      "tier": "cost",
+      "proof_class": "retained",
+      "role": "cost_observation",
+      "invariants": []
+    },
+    {
+      "case_id": "cost.orlando.case_0.hints.numeric_mask",
+      "source_case_id": "orlando.case_0.hints",
+      "mode": "cost_observation",
+      "tier": "cost",
+      "proof_class": "retained",
+      "role": "cost_observation",
+      "invariants": []
+    },
+    {
+      "case_id": "cost.orlando.case_1.address.numeric_mask",
+      "source_case_id": "orlando.case_1.address",
+      "mode": "cost_observation",
+      "tier": "cost",
+      "proof_class": "retained",
+      "role": "cost_observation",
+      "invariants": []
+    },
+    {
+      "case_id": "cost.orlando.case_1.hints.numeric_mask",
+      "source_case_id": "orlando.case_1.hints",
+      "mode": "cost_observation",
+      "tier": "cost",
+      "proof_class": "retained",
+      "role": "cost_observation",
+      "invariants": []
+    },
+    {
+      "case_id": "cost.orlando.case_2.address.numeric_mask",
+      "source_case_id": "orlando.case_2.address",
+      "mode": "cost_observation",
+      "tier": "cost",
+      "proof_class": "retained",
+      "role": "cost_observation",
+      "invariants": []
+    },
+    {
+      "case_id": "cost.orlando.case_2.hints.numeric_mask",
+      "source_case_id": "orlando.case_2.hints",
+      "mode": "cost_observation",
+      "tier": "cost",
+      "proof_class": "retained",
+      "role": "cost_observation",
+      "invariants": []
     }
   ],
   "external_coverage": [

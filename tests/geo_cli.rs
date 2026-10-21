@@ -157,6 +157,31 @@ fn geo_agent_guide_example_runs_and_added_evidence_preserves_uncalibrated_ambigu
         source_digest
     );
     let steps = guide["examples"][0]["steps"].as_array().unwrap();
+    assert_eq!(
+        guide["examples"][0]["write_files"]["question.json"]["answer_scope"],
+        "current_answer"
+    );
+    assert!(
+        guide["examples"][0]["write_files"]
+            .get("separation.json")
+            .is_none()
+    );
+    assert!(
+        guide["examples"][0]["write_files"]
+            .get("next-evidence.json")
+            .is_none()
+    );
+    for step in [&steps[1], &steps[3]] {
+        assert_eq!(
+            step["argv"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|arg| arg.as_str() == Some("--input"))
+                .count(),
+            3
+        );
+    }
     let plan = run_geo_agent_guide_step(dir.path(), &steps[0]);
     assert_eq!(plan["status"], "planned");
     assert_eq!(plan["external_requests"], json!([]));
@@ -167,9 +192,10 @@ fn geo_agent_guide_example_runs_and_added_evidence_preserves_uncalibrated_ambigu
             .as_array()
             .unwrap()
             .len(),
-        9
+        8
     );
     assert_eq!(run["project_run_report"]["failed_nodes"], json!([]));
+    assert!(run.get("blockers").is_none());
     let work = dir.path().join("work");
     let solve = read_geo_run_output_ref_artifact(
         &run,
@@ -180,6 +206,29 @@ fn geo_agent_guide_example_runs_and_added_evidence_preserves_uncalibrated_ambigu
     assert_eq!(solve["summary"]["building_candidates"], 2);
     assert_eq!(solve["summary"]["residual_model_count"], 2);
     assert_eq!(solve["hard_forced"]["buildings"], json!([]));
+    let answer = read_geo_run_output_ref_artifact(
+        &run,
+        &work,
+        "geo.building.answer/answer",
+        "canon_geo_answer.v0",
+    );
+    assert_eq!(answer["answer_scope"], "current_answer");
+    assert_eq!(answer["further_work"]["source"], "not_in_scope");
+    assert_eq!(answer["further_work"]["action_discovery"], "not_attempted");
+    assert_eq!(answer["further_work"]["stop"], Value::Null);
+    assert_eq!(answer["preference"]["state"]["kind"], "ranked");
+    assert_eq!(answer["preference"]["calibration"], "uncalibrated");
+    assert_eq!(
+        answer["preference"]["composition_view"]["preferred"][0]["members"]["buildings"],
+        json!(["building-a"])
+    );
+    assert_eq!(answer["logical_consequence"]["residual_model_count"], 2);
+    assert_eq!(answer["acceptance"]["status"], "no_policy_declared");
+    assert_eq!(answer["extent_and_reach"]["complete_extent_claimed"], false);
+    assert_eq!(
+        answer["execution"]["actual_runner_history_available"],
+        false
+    );
     let evidence = read_geo_run_output_ref_artifact(
         &run,
         &work,
@@ -220,6 +269,21 @@ fn geo_agent_guide_example_runs_and_added_evidence_preserves_uncalibrated_ambigu
     );
     assert_eq!(updated_solve["summary"]["residual_model_count"], 2);
     assert_eq!(updated_solve["hard_forced"]["buildings"], json!([]));
+    let updated_answer = read_geo_run_output_ref_artifact(
+        &updated,
+        &work,
+        "geo.building.answer/answer",
+        "canon_geo_answer.v0",
+    );
+    assert_eq!(
+        updated_answer["logical_consequence"]["residual_model_count"],
+        2
+    );
+    assert_eq!(updated_answer["acceptance"]["status"], "no_policy_declared");
+    assert_eq!(
+        updated_answer["further_work"]["action_discovery"],
+        "not_attempted"
+    );
     let updated_evidence = read_geo_run_output_ref_artifact(
         &updated,
         &work,
@@ -238,6 +302,56 @@ fn geo_agent_guide_example_runs_and_added_evidence_preserves_uncalibrated_ambigu
             .any(|o| o["id"] == "descriptive:property_name:building-a")
     );
     run_geo_agent_guide_step(dir.path(), &steps[4]);
+    let extension = &guide["examples"][0]["full_workflow_extension"];
+    for (filename, value) in extension["write_files"].as_object().unwrap() {
+        fs::write(
+            dir.path().join(filename),
+            serde_json::to_vec(value).unwrap(),
+        )
+        .unwrap();
+    }
+    let full_steps = extension["steps"].as_array().unwrap();
+    let full_plan = run_geo_agent_guide_step(dir.path(), &full_steps[0]);
+    assert_eq!(
+        full_plan["project_plan"]["nodes"].as_array().unwrap().len(),
+        10
+    );
+    let full = run_geo_agent_guide_step(dir.path(), &full_steps[1]);
+    assert_eq!(full["status"], "ABSTAINED", "{full}");
+    assert_eq!(
+        full["project_run_report"]["resumed_nodes"]
+            .as_array()
+            .unwrap()
+            .len(),
+        7
+    );
+    assert_eq!(
+        full["project_run_report"]["executed_nodes"],
+        json!([
+            "geo.building.answer",
+            "geo.building.next_evidence",
+            "geo.building.separation"
+        ])
+    );
+    let full_answer = read_geo_run_output_ref_artifact(
+        &full,
+        &work,
+        "geo.building.answer/answer",
+        "canon_geo_answer.v0",
+    );
+    assert_eq!(full_answer["answer_scope"], "full_workflow");
+    assert_eq!(
+        full_answer["further_work"]["source"],
+        "next_evidence_artifact"
+    );
+    assert_eq!(
+        full_answer["further_work"]["action_discovery"],
+        "incomplete"
+    );
+    assert_eq!(
+        full_answer["logical_consequence"]["residual_model_count"],
+        2
+    );
 }
 
 #[test]
@@ -293,29 +407,58 @@ fn geo_agent_guide_rejects_invented_clues_wrong_binding_and_changed_release() {
         let mut command = canon_command();
         command.current_dir(dir.path()).args(args);
         if !mutation.starts_with("release_") {
-            let refusal = command.assert().code(2);
-            let refusal: Value = serde_json::from_slice(&refusal.get_output().stdout).unwrap();
-            assert_eq!(refusal["outcome"], "REFUSAL", "{mutation}: {refusal}");
-            assert_eq!(refusal["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+            let output = command.assert().success();
+            let run: Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+            assert_eq!(run["status"], "WAITING_FOR_INPUT", "{mutation}: {run}");
+            assert_eq!(run["phase"], "PREFLIGHTED");
             assert!(
-                refusal.get("output_refs").is_none(),
-                "preflight rejection must not produce solve artifacts"
+                run.get("project_run_report").is_none(),
+                "invalid input must execute zero nodes"
             );
-            if mutation != "wrong_version" {
-                let detail = &refusal["refusal"]["detail"];
-                assert_eq!(detail["geo_run_error_code"], "ARTIFACT_CONTRACT");
-                assert_eq!(
-                    detail["detail"]["node_id"],
-                    "geo.building.materialize_evidence"
-                );
+            assert!(
+                run.get("output_refs").is_none(),
+                "invalid input must not publish solve or answer artifacts"
+            );
+            let blocker = run["blockers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|blocker| blocker["project_node_id"] == "geo.building.materialize_evidence")
+                .expect("specific invalid input blocker");
+            assert_eq!(blocker["kind"], "INVALID_INPUT");
+            let reason = blocker["reason"].as_str().unwrap();
+            if mutation == "wrong_version" {
                 assert!(
-                    detail["message"]
-                        .as_str()
-                        .unwrap()
-                        .contains(&format!("unknown field `{mutation}`")),
-                    "specific unsupported field must be named: {refusal}"
+                    reason.contains("actual=invented_descriptive.v9"),
+                    "{reason}"
+                );
+                assert!(reason.contains("expected="), "{reason}");
+            } else {
+                assert!(
+                    reason.contains(&format!("unknown field `{mutation}`")),
+                    "specific unsupported field must be named: {reason}"
                 );
             }
+            assert!(reason.contains("schema=schemas/canon.geo."));
+            let action = run["next_actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|action| action["project_node_id"] == "geo.building.materialize_evidence")
+                .expect("public input repair action");
+            assert_eq!(action["kind"], "SUPPLY_LOCAL_ARTIFACT");
+            let repair_path = Path::new(action["input_path"].as_str().unwrap());
+            assert!(repair_path.is_absolute());
+            assert_eq!(
+                fs::canonicalize(repair_path).unwrap(),
+                fs::canonicalize(dir.path().join("descriptive.json")).unwrap()
+            );
+            assert!(
+                action["command"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("canon geo run --plan ")
+            );
         } else {
             let output = command.assert().success();
             let run: Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
@@ -937,12 +1080,19 @@ fn geo_run_building_question() -> Value {
 }
 
 fn write_geo_run_building_plan_via_public_geo_plan(dir: &std::path::Path) -> PathBuf {
+    write_geo_run_building_plan_with_scope_via_public_geo_plan(dir, None)
+}
+
+fn write_geo_run_building_plan_with_scope_via_public_geo_plan(
+    dir: &Path,
+    answer_scope: Option<&str>,
+) -> PathBuf {
+    let mut question = geo_run_building_question();
+    if let Some(scope) = answer_scope {
+        question["answer_scope"] = scope.into();
+    }
     let paths = GeoPlanInputPaths {
-        question: write_json(
-            dir,
-            "synthetic-not-live-question.json",
-            &geo_run_building_question(),
-        ),
+        question: write_json(dir, "synthetic-not-live-question.json", &question),
         capabilities: write_geo_plan_capabilities(dir),
         inventory: write_json(
             dir,
@@ -966,8 +1116,14 @@ fn write_geo_run_building_plan_via_public_geo_plan(dir: &std::path::Path) -> Pat
     assert_eq!(plan["status"], "planned");
     assert_eq!(
         plan["project_plan"]["nodes"].as_array().unwrap().len(),
-        9,
-        "synthetic building demo must exercise the generated Geo run chain"
+        if answer_scope == Some("current_answer") {
+            8
+        } else if answer_scope.is_some() {
+            10
+        } else {
+            9
+        },
+        "synthetic building demo must exercise the selected generated Geo run chain"
     );
     let path = dir.join("synthetic-not-live-building-plan.json");
     fs::write(&path, &assert.get_output().stdout).expect("write synthetic Geo plan");
@@ -1989,6 +2145,780 @@ fn geo_plan_is_byte_identical_for_reordered_inputs() {
     let first = geo_plan_command(&paths_a).assert().success();
     let second = geo_plan_command(&paths_b).assert().success();
     assert_eq!(first.get_output().stdout, second.get_output().stdout);
+}
+
+fn scoped_building_run_command(plan: &Path, work: &Path, inputs: &[(String, PathBuf)]) -> Command {
+    let mut command = canon_command();
+    command
+        .args(["geo", "run", "--plan"])
+        .arg(plan)
+        .arg("--work-dir")
+        .arg(work);
+    for (binding, path) in inputs {
+        command
+            .arg("--input")
+            .arg(format!("{binding}={}", path.display()));
+    }
+    command
+}
+
+fn scoped_building_inputs(dir: &Path) -> Vec<(String, PathBuf)> {
+    let (home, tile, rows, _, _) = write_geo_run_synthetic_input_set(dir);
+    vec![
+        ("geo.building.home_cells:rows".into(), home),
+        ("geo.building.section:request".into(), tile),
+        ("geo.building.materialize_evidence:rows".into(), rows),
+    ]
+}
+
+#[test]
+fn cur_14_scoped_completed_runs_are_deterministic_across_fresh_processes_and_binding_order() {
+    let temp = tempdir().unwrap();
+    let inputs_dir = temp.path().join("synthetic-not-live-inputs");
+    fs::create_dir(&inputs_dir).unwrap();
+    let plan = write_geo_run_building_plan_with_scope_via_public_geo_plan(
+        &inputs_dir,
+        Some("current_answer"),
+    );
+    let mut inputs = scoped_building_inputs(&inputs_dir);
+    let mut runs = Vec::new();
+    let mut answer_bytes = Vec::new();
+    for index in 0..2 {
+        let work = temp.path().join(format!("fresh-work-{index}"));
+        fs::create_dir(&work).unwrap();
+        if index == 1 {
+            inputs.reverse();
+        }
+        let output = scoped_building_run_command(&plan, &work, &inputs)
+            .output()
+            .unwrap();
+        eprint!("{}", String::from_utf8_lossy(&output.stderr));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        let run: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(
+            run["status"], "COMPLETED",
+            "fixture has one feasible composition"
+        );
+        assert_eq!(run["phase"], "SOLVED");
+        assert_eq!(
+            run["project_run_report"]["executed_nodes"]
+                .as_array()
+                .unwrap()
+                .len(),
+            8
+        );
+        let typed_run: canon::geo::GeoRun = serde_json::from_value(run.clone()).unwrap();
+        assert!(
+            typed_run
+                .project_run_report
+                .as_ref()
+                .unwrap()
+                .resumed_nodes
+                .is_empty()
+        );
+        assert!(typed_run.blockers.is_empty());
+        assert_eq!(run["output_refs"].as_array().unwrap().len(), 8);
+        let ids: BTreeSet<_> = run["output_refs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|reference| reference["output_id"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            ids,
+            BTreeSet::from([
+                "home_cells",
+                "section",
+                "materialize_evidence",
+                "compile_evidence",
+                "propagation",
+                "solve",
+                "explanation",
+                "answer",
+            ])
+        );
+        let reference = run["output_refs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|reference| reference["output_id"] == "answer")
+            .unwrap();
+        let digest = reference["content_digest"]
+            .as_str()
+            .unwrap()
+            .strip_prefix("blake3:")
+            .unwrap();
+        let bytes = fs::read(
+            work.join(".canon/geo-run/artifacts/cas")
+                .join(format!("{digest}.bin")),
+        )
+        .unwrap();
+        assert_eq!(blake3::hash(&bytes).to_hex().as_str(), digest);
+        let answer: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(answer["answer_scope"], "current_answer");
+        assert_eq!(answer["further_work"]["source"], "not_in_scope");
+        assert_eq!(answer["further_work"]["action_discovery"], "not_attempted");
+        assert_eq!(answer["acceptance"]["status"], "no_policy_declared");
+        answer_bytes.push(bytes);
+        runs.push(run);
+    }
+    assert_eq!(runs[0]["semantic_hash"], runs[1]["semantic_hash"]);
+    assert_eq!(runs[0]["run_id"], runs[1]["run_id"]);
+    assert_eq!(
+        runs[0]["output_refs"], runs[1]["output_refs"],
+        "all seven upstream artifacts and the answer must agree"
+    );
+    assert_eq!(answer_bytes[0], answer_bytes[1]);
+    assert_ne!(
+        runs[0]["observation"]["invocation"]["work_dir"],
+        runs[1]["observation"]["invocation"]["work_dir"]
+    );
+}
+
+#[test]
+fn cur_15_scoped_public_run_refuses_poisoned_solve_cas_even_when_published_output_is_intact() {
+    let temp = tempdir().unwrap();
+    let inputs_dir = temp.path().join("synthetic-not-live-inputs");
+    fs::create_dir(&inputs_dir).unwrap();
+    let plan = write_geo_run_building_plan_with_scope_via_public_geo_plan(
+        &inputs_dir,
+        Some("current_answer"),
+    );
+    let inputs = scoped_building_inputs(&inputs_dir);
+    let work = temp.path().join("work");
+    fs::create_dir(&work).unwrap();
+    let first = scoped_building_run_command(&plan, &work, &inputs)
+        .output()
+        .unwrap();
+    eprint!("{}", String::from_utf8_lossy(&first.stderr));
+    assert!(
+        first.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first.stdout)
+    );
+    let baseline: Value = serde_json::from_slice(&first.stdout).unwrap();
+    assert_eq!(baseline["status"], "COMPLETED");
+    let reference = baseline["output_refs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|reference| reference["output_id"] == "solve")
+        .unwrap();
+    let digest = reference["content_digest"]
+        .as_str()
+        .unwrap()
+        .strip_prefix("blake3:")
+        .unwrap();
+    let cas = work
+        .join(".canon/geo-run/artifacts/cas")
+        .join(format!("{digest}.bin"));
+    let original = fs::read(&cas).unwrap();
+    assert_eq!(blake3::hash(&original).to_hex().as_str(), digest);
+    let published = work.join("geo/building/solve.json");
+    assert_eq!(fs::read(&published).unwrap(), original);
+    let mut corrupted = original.clone();
+    corrupted[0] ^= 1;
+    fs::write(&cas, &corrupted).unwrap();
+    let retry = scoped_building_run_command(&plan, &work, &inputs)
+        .output()
+        .unwrap();
+    eprint!("{}", String::from_utf8_lossy(&retry.stderr));
+    assert_eq!(
+        retry.status.code(),
+        Some(2),
+        "{}",
+        String::from_utf8_lossy(&retry.stdout)
+    );
+    let refusal: Value = serde_json::from_slice(&retry.stdout).unwrap();
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(refusal["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(
+        refusal["refusal"]["detail"]["geo_run_error_code"],
+        "PROJECT_RUN_FAILED"
+    );
+    assert_eq!(
+        refusal["refusal"]["detail"]["detail"]["project_run_error_code"],
+        "ReceiptPoisoning"
+    );
+    assert_eq!(
+        refusal["refusal"]["detail"]["detail"]["node_id"],
+        "geo.building.solve"
+    );
+    let message = refusal["refusal"]["detail"]["message"].as_str().unwrap();
+    assert!(
+        message.contains("content-addressed artifact")
+            && message.contains("does not match its receipt digest/count"),
+        "{message}"
+    );
+    assert_eq!(
+        fs::read(&cas).unwrap(),
+        corrupted,
+        "refusal must not silently repair or accept poisoned CAS bytes"
+    );
+    assert_eq!(
+        fs::read(&published).unwrap(),
+        original,
+        "the negative targets CAS alone"
+    );
+}
+
+#[test]
+fn bound_analysis_parse_faults_emit_repairable_preflight_without_executing_nodes() {
+    for mutation in 0..5 {
+        let temp = tempdir().unwrap();
+        let inputs = temp.path().join("inputs");
+        fs::create_dir(&inputs).unwrap();
+        let plan = write_geo_run_building_plan_via_public_geo_plan(&inputs);
+        let (home, tile, rows, separation, next) = write_geo_run_synthetic_input_set(&inputs);
+        let work = temp.path().join("work");
+        fs::create_dir(&work).unwrap();
+        let (broken, node) = if mutation >= 2 {
+            (&next, "geo.building.next_evidence")
+        } else {
+            (&separation, "geo.building.separation")
+        };
+        let original = fs::read(broken).unwrap();
+        let malformed = if mutation == 0 {
+            b"not JSON".to_vec()
+        } else {
+            let mut value: Value = serde_json::from_slice(&original).unwrap();
+            if mutation == 1 {
+                value.as_object_mut().unwrap().remove("version");
+            } else {
+                value["version"] = match mutation {
+                    2 => "canon_geo_next_evidence_inputs.v9",
+                    3 => "bogus",
+                    _ => "canon_geo_next_evidence_inputs.vbogus",
+                }
+                .into();
+            }
+            serde_json::to_vec(&value).unwrap()
+        };
+        fs::write(broken, malformed).unwrap();
+        let mut command = canon_command();
+        command
+            .args(["geo", "run", "--plan"])
+            .arg(&plan)
+            .arg("--work-dir")
+            .arg(&work);
+        for (id, binding, path) in [
+            ("geo.building.home_cells", "rows", &home),
+            ("geo.building.section", "request", &tile),
+            ("geo.building.materialize_evidence", "rows", &rows),
+            ("geo.building.separation", "request", &separation),
+            ("geo.building.next_evidence", "request", &next),
+        ] {
+            command
+                .arg("--input")
+                .arg(format!("{id}:{binding}={}", path.display()));
+        }
+        let output = command.assert().success();
+        let run: Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+        assert_eq!(run["status"], "WAITING_FOR_INPUT");
+        assert_eq!(run["phase"], "PREFLIGHTED");
+        assert!(run["project_run_report"].is_null());
+        let typed_run: canon::geo::GeoRun = serde_json::from_value(run.clone()).unwrap();
+        assert!(typed_run.output_refs.is_empty());
+        assert!(!work.join("geo").exists());
+        assert!(run["blockers"].as_array().unwrap().iter().any(|blocker| {
+            blocker["kind"] == "INVALID_INPUT" && blocker["project_node_id"] == node
+        }));
+        if mutation >= 2 {
+            let version = match mutation {
+                2 => "canon_geo_next_evidence_inputs.v9",
+                3 => "bogus",
+                _ => "canon_geo_next_evidence_inputs.vbogus",
+            };
+            assert!(
+                run["blockers"].as_array().unwrap().iter().any(|blocker| {
+                    let reason = blocker["reason"].as_str().unwrap();
+                    reason.contains(&format!("actual={version}"))
+                        && reason.contains("expected=canon_geo_next_evidence_inputs.v0")
+                        && reason.contains("field=version")
+                }),
+                "unsupported version must identify the actual retained value: {run}"
+            );
+        }
+        let repair = run["next_actions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|action| {
+                action["kind"] == "SUPPLY_LOCAL_ARTIFACT" && action["project_node_id"] == node
+            })
+            .unwrap();
+        assert_eq!(repair["input_path"], broken.to_str().unwrap());
+        let repair_command = repair["command"].as_str().unwrap();
+        assert_eq!(
+            repair_command.matches(&format!("{node}:request=")).count(),
+            1
+        );
+        fs::write(broken, original).unwrap();
+        let repaired = execute_public_continuation(temp.path(), repair_command);
+        assert_eq!(repaired["status"], "COMPLETED");
+        assert_eq!(
+            repaired["project_run_report"]["executed_nodes"]
+                .as_array()
+                .unwrap()
+                .len(),
+            9
+        );
+    }
+}
+
+#[test]
+fn public_supply_continuations_execute_with_quoted_paths_and_preserve_existing_inputs() {
+    let temp = tempdir().unwrap();
+    let inputs = temp.path().join("inputs ' ; $(touch SHOULD_NOT_EXIST)");
+    fs::create_dir(&inputs).unwrap();
+    let plan = write_geo_run_building_plan_via_public_geo_plan(&inputs);
+    let (home, tile, rows, separation, next) = write_geo_run_synthetic_input_set(&inputs);
+    let work = temp.path().join("work ' ; quoted");
+    fs::create_dir(&work).unwrap();
+    let initial = canon_command()
+        .args(["geo", "run", "--plan"])
+        .arg(&plan)
+        .arg("--work-dir")
+        .arg(&work)
+        .arg("--input")
+        .arg(format!("geo.building.home_cells:rows={}", home.display()))
+        .assert()
+        .success();
+    let mut run: Value = serde_json::from_slice(&initial.get_output().stdout).unwrap();
+    assert_eq!(run["status"], "WAITING_FOR_INPUT");
+    let mut supplied = 1;
+    while run["status"] == "WAITING_FOR_INPUT" {
+        let actions = run["next_actions"].as_array().unwrap();
+        for action in actions
+            .iter()
+            .filter(|action| action["kind"] == "SUPPLY_LOCAL_ARTIFACT")
+        {
+            let command = action["command"]
+                .as_str()
+                .expect("CLI supply must be executable");
+            let node = action["project_node_id"].as_str().unwrap();
+            let binding = action["command_identity"]["required_binding_id"]
+                .as_str()
+                .unwrap();
+            assert!(command.starts_with("canon geo run --plan "));
+            assert_eq!(command.matches(&format!("{node}:{binding}=")).count(), 1);
+            assert!(!command.contains("<PATH>"));
+            let destination = Path::new(action["input_path"].as_str().unwrap());
+            assert!(destination.is_absolute());
+            assert_eq!(destination.parent().unwrap(), work);
+            let tuple = serde_json::to_vec(&(node, binding)).unwrap();
+            let expected = format!("canon-geo-input-{}.json", blake3::hash(&tuple).to_hex());
+            assert_eq!(destination.file_name().unwrap(), expected.as_str());
+            assert!(command.contains("geo.building.home_cells:rows="));
+            let reason = action["reason"].as_str().unwrap();
+            assert!(reason.contains(destination.to_str().unwrap()));
+            for contract in action["expected_contract"].as_str().unwrap().split('|') {
+                assert!(reason.contains(contract));
+                let schema = format!(
+                    "schemas/canon.geo.{}.schema.json",
+                    contract.strip_prefix("canon_geo_").unwrap()
+                );
+                assert!(reason.contains(&schema));
+                assert!(Path::new(env!("CARGO_MANIFEST_DIR")).join(schema).is_file());
+            }
+        }
+        let action = actions
+            .iter()
+            .find(|action| action["kind"] == "SUPPLY_LOCAL_ARTIFACT")
+            .expect("waiting CLI must expose a real supply action");
+        let path = match action["project_node_id"].as_str().unwrap() {
+            "geo.building.section" => &tile,
+            "geo.building.materialize_evidence" => &rows,
+            "geo.building.separation" => &separation,
+            "geo.building.next_evidence" => &next,
+            other => panic!("unexpected target {other}"),
+        };
+        let destination = Path::new(action["input_path"].as_str().unwrap());
+        assert!(
+            !destination.exists(),
+            "rendering must not create input files"
+        );
+        fs::write(destination, fs::read(path).unwrap()).unwrap();
+        run = execute_public_continuation(temp.path(), action["command"].as_str().unwrap());
+        supplied += 1;
+        assert_eq!(run["artifact_inputs"].as_array().unwrap().len(), supplied);
+        assert!(
+            supplied <= 5,
+            "continuation did not advance its own binding"
+        );
+    }
+    assert_eq!(supplied, 5);
+    assert_eq!(run["status"], "COMPLETED");
+    assert_eq!(run["output_refs"].as_array().unwrap().len(), 9);
+    assert!(!temp.path().join("SHOULD_NOT_EXIST").exists());
+}
+
+fn execute_public_continuation(cwd: &Path, command: &str) -> Value {
+    let binary_dir = Path::new(env!("CARGO_BIN_EXE_canon")).parent().unwrap();
+    let mut paths = vec![binary_dir.to_path_buf()];
+    paths.extend(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    ));
+    let output = std::process::Command::new("sh")
+        .args(["-c", command])
+        .current_dir(cwd)
+        .env("PATH", std::env::join_paths(paths).unwrap())
+        .output()
+        .unwrap();
+    eprint!("{}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let run: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(run["version"], "canon_geo_run.v0");
+    run
+}
+
+#[test]
+fn public_continuation_paths_and_input_order_are_operational_but_targets_and_commands_are_checked()
+{
+    let temp = tempdir().unwrap();
+    let inputs = temp.path().join("input a");
+    fs::create_dir(&inputs).unwrap();
+    let plan = write_geo_run_building_plan_via_public_geo_plan(&inputs);
+    let (home, tile, _, _, _) = write_geo_run_synthetic_input_set(&inputs);
+    let mut runs = Vec::new();
+    for index in 0..2 {
+        let directory = temp.path().join(format!("copy {index}"));
+        fs::create_dir(&directory).unwrap();
+        let plan_copy = directory.join("plan.json");
+        let home_copy = directory.join("home.json");
+        let tile_copy = directory.join("tile.json");
+        fs::copy(&plan, &plan_copy).unwrap();
+        fs::copy(&home, &home_copy).unwrap();
+        fs::copy(&tile, &tile_copy).unwrap();
+        let mut assignments = vec![
+            format!("geo.building.home_cells:rows={}", home_copy.display()),
+            format!("geo.building.section:request={}", tile_copy.display()),
+        ];
+        if index == 1 {
+            assignments.reverse();
+        }
+        let mut command = canon_command();
+        command
+            .args(["geo", "run", "--plan"])
+            .arg(&plan_copy)
+            .arg("--work-dir")
+            .arg(&directory);
+        for assignment in assignments {
+            command.arg("--input").arg(assignment);
+        }
+        let output = command.assert().success();
+        let run: canon::geo::GeoRun = serde_json::from_slice(&output.get_output().stdout).unwrap();
+        assert_eq!(run.status, canon::geo::GeoRunStatus::WaitingForInput);
+        canon::geo::validate_geo_run(&run).unwrap();
+        runs.push(run);
+    }
+    assert_eq!(runs[0].semantic_hash, runs[1].semantic_hash);
+    assert_eq!(runs[0].run_id, runs[1].run_id);
+    assert_ne!(
+        runs[0].next_actions[0].command,
+        runs[1].next_actions[0].command
+    );
+    let mut wrong_verb = runs[0].clone();
+    wrong_verb.next_actions[0].command = Some(
+        wrong_verb.next_actions[0]
+            .command
+            .as_ref()
+            .unwrap()
+            .replace("canon geo run", "canon geo solve"),
+    );
+    assert_eq!(
+        canon::geo::geo_run_semantic_hash(&wrong_verb).unwrap(),
+        runs[0].semantic_hash
+    );
+    assert!(
+        canon::geo::validate_geo_run(&wrong_verb)
+            .unwrap_err()
+            .message
+            .contains("exactly match")
+    );
+    let mut wrong_target = runs[0].clone();
+    wrong_target.next_actions[0]
+        .command_identity
+        .as_mut()
+        .unwrap()
+        .required_binding_id = Some("unrelated".into());
+    wrong_target.semantic_hash = canon::geo::geo_run_semantic_hash(&wrong_target).unwrap();
+    wrong_target.run_id = format!(
+        "canon_geo_run.v0:{}",
+        wrong_target.semantic_hash.trim_start_matches("blake3:")
+    );
+    assert!(
+        canon::geo::validate_geo_run(&wrong_target)
+            .unwrap_err()
+            .message
+            .contains("own artifact")
+    );
+    let mut unknown_verb = serde_json::to_value(&runs[0]).unwrap();
+    let mut wrong_destination = runs[0].clone();
+    wrong_destination.next_actions[0].input_path = Some("/unrelated/input.json".into());
+    assert_eq!(
+        canon::geo::geo_run_semantic_hash(&wrong_destination).unwrap(),
+        runs[0].semantic_hash
+    );
+    assert!(
+        canon::geo::validate_geo_run(&wrong_destination)
+            .unwrap_err()
+            .message
+            .contains("exactly match")
+    );
+    unknown_verb["next_actions"][0]["command_identity"]["operation"] = "geo_solve".into();
+    assert!(serde_json::from_value::<canon::geo::GeoRun>(unknown_verb).is_err());
+    let mut legacy = runs[0].clone();
+    legacy.next_actions[0].command_identity = None;
+    legacy.next_actions[0].input_path = None;
+    let first = canon::geo::geo_run_semantic_hash(&legacy).unwrap();
+    legacy.next_actions[0].command = Some("historical command bytes remain semantic".into());
+    assert_ne!(canon::geo::geo_run_semantic_hash(&legacy).unwrap(), first);
+}
+
+#[test]
+fn public_execute_continuation_recovers_an_actual_executor_failure_using_the_same_bindings() {
+    struct FailExecutor;
+    impl canon::project::ProjectNodeExecutor for FailExecutor {
+        fn execute(
+            &mut self,
+            node: &canon::project::ProjectPlanNode,
+            _: &canon::project::ProjectNodeExecutionContext,
+        ) -> Result<canon::project::ProjectNodeExecutionResult, canon::project::ProjectRunError>
+        {
+            Err(canon::project::ProjectRunError::new(
+                canon::project::ProjectRunErrorCode::ExecutionFailed,
+                Some(node.node_id.clone()),
+                "injected execution failure for continuation recovery",
+            ))
+        }
+    }
+    let temp = tempdir().unwrap();
+    let inputs = temp.path().join("inputs ' recovery");
+    fs::create_dir(&inputs).unwrap();
+    let plan_path = write_geo_run_building_plan_via_public_geo_plan(&inputs);
+    let plan = serde_json::from_slice(&fs::read(&plan_path).unwrap()).unwrap();
+    let (home, tile, rows, separation, next) = write_geo_run_synthetic_input_set(&inputs);
+    let work = temp.path().join("recover work");
+    fs::create_dir(&work).unwrap();
+    let entries = [
+        ("geo.building.home_cells", "rows", home),
+        ("geo.building.section", "request", tile),
+        ("geo.building.materialize_evidence", "rows", rows),
+        ("geo.building.separation", "request", separation),
+        ("geo.building.next_evidence", "request", next),
+    ];
+    let bindings = entries
+        .iter()
+        .map(|(node, binding, path)| {
+            let bytes = fs::read(path).unwrap();
+            let value: Value = serde_json::from_slice(&bytes).unwrap();
+            canon::geo::GeoRunInputBinding::from_bytes(
+                *node,
+                *binding,
+                value["version"].as_str().unwrap(),
+                bytes,
+            )
+        })
+        .collect();
+    let mut request = canon::geo::GeoRunRequest::new(
+        plan,
+        canon::project::ProjectRunPolicy::new(&work, ".canon/geo-run"),
+        bindings,
+    );
+    request.observation.invocation = Some(canon::geo::GeoRunInvocation {
+        plan_path: plan_path.to_str().unwrap().into(),
+        work_dir: work.to_str().unwrap().into(),
+        inputs: entries
+            .iter()
+            .map(|(node, binding, path)| canon::geo::GeoRunInvocationInput {
+                project_node_id: (*node).into(),
+                binding_id: (*binding).into(),
+                path: path.to_str().unwrap().into(),
+            })
+            .collect(),
+        satisfactions: Vec::new(),
+    });
+    let failed =
+        canon::geo::run_geo_plan_with_project_executor(request, &mut FailExecutor).unwrap();
+    assert_eq!(failed.status, canon::geo::GeoRunStatus::Failed);
+    let execute = failed
+        .next_actions
+        .iter()
+        .filter(|action| action.kind == canon::geo::GeoRunNextActionKind::ExecuteProjectNode)
+        .collect::<Vec<_>>();
+    assert!(
+        !execute.is_empty(),
+        "failure must expose an actual execution continuation"
+    );
+    for action in &execute {
+        assert!(
+            action
+                .command
+                .as_ref()
+                .unwrap()
+                .starts_with("canon geo run --plan ")
+        );
+        assert!(
+            !action
+                .command
+                .as_ref()
+                .unwrap()
+                .contains("canon.geo.stage.")
+        );
+    }
+    let recovered = execute_public_continuation(temp.path(), execute[0].command.as_ref().unwrap());
+    assert_eq!(recovered["status"], "COMPLETED");
+    assert_eq!(recovered["artifact_inputs"].as_array().unwrap().len(), 5);
+    assert_eq!(recovered["output_refs"].as_array().unwrap().len(), 9);
+}
+
+#[test]
+fn invocation_context_changes_waiting_presentation_without_changing_semantic_identity() {
+    use canon::geo::{
+        GeoRun, GeoRunInputBinding, GeoRunInvocation, GeoRunNextActionKind, GeoRunRequest,
+        geo_run_semantic_hash, run_geo_plan, validate_geo_run,
+    };
+    let temp = tempdir().unwrap();
+    let input_dir = temp.path().join("synthetic-not-live-inputs");
+    fs::create_dir(&input_dir).unwrap();
+    let plan_path = write_geo_run_building_plan_via_public_geo_plan(&input_dir);
+    let plan: canon::geo::GeoPlan = serde_json::from_slice(&fs::read(&plan_path).unwrap()).unwrap();
+    let mut runs: Vec<GeoRun> = Vec::new();
+    for has_context in [false, true] {
+        let work = temp.path().join(if has_context {
+            "with-context"
+        } else {
+            "without-context"
+        });
+        fs::create_dir(&work).unwrap();
+        let mut request = GeoRunRequest::new(
+            plan.clone(),
+            canon::project::ProjectRunPolicy::new(&work, ".canon/geo-run"),
+            Vec::<GeoRunInputBinding>::new(),
+        );
+        if has_context {
+            request.observation.invocation = Some(GeoRunInvocation {
+                plan_path: plan_path.to_str().unwrap().into(),
+                work_dir: work.to_str().unwrap().into(),
+                inputs: Vec::new(),
+                satisfactions: Vec::new(),
+            });
+        }
+        let run = run_geo_plan(request).unwrap();
+        validate_geo_run(&run).unwrap();
+        assert_eq!(run.status, canon::geo::GeoRunStatus::WaitingForInput);
+        assert_eq!(run.next_actions.len(), 5);
+        assert!(run.project_run_report.is_none());
+        assert!(run.output_refs.is_empty());
+        for action in &run.next_actions {
+            assert!(action.command_identity.is_some());
+            if has_context {
+                assert_eq!(action.kind, GeoRunNextActionKind::SupplyLocalArtifact);
+                assert!(
+                    action
+                        .command
+                        .as_ref()
+                        .unwrap()
+                        .starts_with("canon geo run --plan ")
+                );
+                assert!(action.input_path.is_some());
+            } else {
+                assert_eq!(action.kind, GeoRunNextActionKind::InvocationContextRequired);
+                assert!(action.command.is_none());
+                assert!(action.input_path.is_none());
+            }
+        }
+        runs.push(run);
+    }
+    assert_eq!(runs[0].artifact_inputs, runs[1].artifact_inputs);
+    assert_eq!(runs[0].plan_ref, runs[1].plan_ref);
+    assert_eq!(
+        runs[0].semantic_hash, runs[1].semantic_hash,
+        "operational invocation availability must not change the same five typed supply operations"
+    );
+    assert_eq!(runs[0].run_id, runs[1].run_id);
+    assert_ne!(runs[0].next_actions[0].kind, runs[1].next_actions[0].kind);
+
+    let mut dishonest_context = runs[1].clone();
+    dishonest_context.next_actions[0].kind = GeoRunNextActionKind::InvocationContextRequired;
+    assert_eq!(
+        geo_run_semantic_hash(&dishonest_context).unwrap(),
+        runs[1].semantic_hash
+    );
+    assert!(
+        validate_geo_run(&dishonest_context)
+            .unwrap_err()
+            .message
+            .contains("exactly match"),
+        "normalizing identity must not permit hiding an actual runnable CLI continuation"
+    );
+    let mut dishonest_no_context = runs[0].clone();
+    dishonest_no_context.next_actions[0].kind = GeoRunNextActionKind::SupplyLocalArtifact;
+    assert_eq!(
+        geo_run_semantic_hash(&dishonest_no_context).unwrap(),
+        runs[0].semantic_hash
+    );
+    assert!(
+        validate_geo_run(&dishonest_no_context)
+            .unwrap_err()
+            .message
+            .contains("exactly match"),
+        "a context-free handoff cannot claim a runnable command"
+    );
+
+    let mut historical = runs[1].clone();
+    historical.next_actions[0].command_identity = None;
+    historical.next_actions[0].input_path = None;
+    let before = geo_run_semantic_hash(&historical).unwrap();
+    historical.next_actions[0].kind = GeoRunNextActionKind::UnsupportedGrain;
+    assert_ne!(
+        geo_run_semantic_hash(&historical).unwrap(),
+        before,
+        "absent typed identity retains historical kind semantics"
+    );
+}
+
+#[test]
+fn library_run_without_file_context_exposes_an_explicit_invocation_handoff() {
+    let temp = tempdir().unwrap();
+    let plan_path = write_geo_run_building_plan_via_public_geo_plan(temp.path());
+    let plan = serde_json::from_slice(&fs::read(plan_path).unwrap()).unwrap();
+    let work = temp.path().join("library");
+    fs::create_dir(&work).unwrap();
+    let run = canon::geo::run_geo_plan(canon::geo::GeoRunRequest::new(
+        plan,
+        canon::project::ProjectRunPolicy::new(&work, ".canon/geo-run"),
+        Vec::new(),
+    ))
+    .unwrap();
+    assert_eq!(run.status, canon::geo::GeoRunStatus::WaitingForInput);
+    assert_eq!(run.next_actions.len(), 5);
+    for action in run.next_actions {
+        assert_eq!(
+            action.kind,
+            canon::geo::GeoRunNextActionKind::InvocationContextRequired
+        );
+        assert!(action.command.is_none());
+        assert!(action.input_path.is_none());
+        assert!(
+            action
+                .command_identity
+                .unwrap()
+                .required_binding_id
+                .is_some()
+        );
+        assert!(action.reason.contains("observation.invocation"));
+        assert!(action.reason.contains("schemas/canon.geo."));
+    }
 }
 
 #[test]

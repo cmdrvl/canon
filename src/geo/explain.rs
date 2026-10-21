@@ -678,10 +678,13 @@ fn validate_prospective_observations(
             ));
         }
         previous_observation = Some(&observation.id);
-        if observation.outcomes.is_empty() {
+        if observation.outcomes.len() < 2 {
             return Err(GeoExplanationError::invalid(
-                "Geo separation prospective observations require an exhaustive outcome domain",
-                [("observation_id", observation.id.as_str())],
+                "Geo separation prospective observations require at least two outcomes",
+                [
+                    ("field", "prospective[].outcomes"),
+                    ("observation_id", observation.id.as_str()),
+                ],
             ));
         }
         let mut previous_outcome: Option<&str> = None;
@@ -699,6 +702,9 @@ fn validate_prospective_observations(
                     "Geo separation outcomes must induce at least one hard constraint",
                     [("outcome_id", outcome.outcome_id.as_str())],
                 ));
+            }
+            for constraint in &outcome.induced {
+                super::composition::validate_hard_constraint_shape(constraint)?;
             }
         }
     }

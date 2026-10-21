@@ -19,6 +19,10 @@
     "query_as_of": {
       "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/as_of" }]
     },
+    "answer_scope": {
+      "description": "Omitted preserves the legacy nine-stage workflow. Explicit scope adds the current-answer artifact.",
+      "enum": ["current_answer", "full_workflow", null]
+    },
     "requested_claim_classes": {
       "type": "array",
       "items": { "$ref": "#/$defs/claim_class" }

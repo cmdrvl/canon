@@ -270,6 +270,7 @@ fn question() -> canon::geo::GeoQuestion {
             required_evidence_classes: vec![GeoEvidenceClass::BuildingFootprint],
             optional_evidence_classes: Vec::new(),
         }],
+        answer_scope: None,
         query_as_of: Some(GeoAsOf {
             utc_day: "2026-08-31".to_string(),
             semantic_id: "query.as_of".to_string(),

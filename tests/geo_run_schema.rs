@@ -801,6 +801,7 @@ fn complete_run_manifest() -> GeoRun {
         project_run_report: Some(project_run_report()),
         observation: GeoRunObservation {
             workspace_path: Some("work/geo-run".to_string()),
+            invocation: None,
             observed_at_utc: Some("2026-08-31T20:00:00Z".to_string()),
             host_id: Some("host.fixture".to_string()),
             process_id: Some(32451),
@@ -891,6 +892,8 @@ fn next_action() -> GeoRunNextAction {
         expected_contract: Some(CANON_GEO_HOME_CELL_ROWS_VERSION.to_string()),
         media_type: Some("application/json".to_string()),
         command: None,
+        command_identity: None,
+        input_path: None,
         reason: "bind local bytes by project node id, binding id, artifact id, canonical lowercase BLAKE3 digest, media type, and input contract; filesystem paths remain operational".to_string(),
     }
 }

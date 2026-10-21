@@ -131,7 +131,8 @@ use super::{
     },
     propagate::{CANON_GEO_PROPAGATION_VERSION, canonical_propagation_bytes},
     run::{
-        CANON_GEO_RUN_VERSION, GeoRunError, GeoRunInputBinding, GeoRunRequest,
+        CANON_GEO_RUN_VERSION, GeoRunError, GeoRunErrorCode, GeoRunInputBinding, GeoRunInvocation,
+        GeoRunInvocationInput, GeoRunInvocationSatisfaction, GeoRunRequest,
         canonical_geo_run_bytes, run_geo_plan,
     },
     satisfy::{
@@ -312,6 +313,10 @@ fn run_geo_run(args: &GeoRunCli) -> Result<u8, Box<dyn Error>> {
         Err(exit_code) => return Ok(exit_code),
     };
 
+    let invocation = match capture_geo_run_invocation(args, &input_files) {
+        Ok(invocation) => invocation,
+        Err(error) => return emit_run_error(error),
+    };
     let input_bindings = input_files
         .into_iter()
         .map(|input| {
@@ -355,11 +360,12 @@ fn run_geo_run(args: &GeoRunCli) -> Result<u8, Box<dyn Error>> {
             }
         }
     }
-    let request = GeoRunRequest::new(
+    let mut request = GeoRunRequest::new(
         plan,
         ProjectRunPolicy::new(&args.work_dir, ".canon/geo-run"),
         input_bindings.into_values().collect(),
     );
+    request.observation.invocation = Some(invocation);
     let run = match run_geo_plan(request) {
         Ok(run) => run,
         Err(error) => return emit_run_error(error),
@@ -368,6 +374,59 @@ fn run_geo_run(args: &GeoRunCli) -> Result<u8, Box<dyn Error>> {
         Ok(bytes) => write_canonical(&bytes),
         Err(error) => emit_run_error(error),
     }
+}
+
+fn capture_geo_run_invocation(
+    args: &GeoRunCli,
+    inputs: &[GeoRunInputFile],
+) -> Result<GeoRunInvocation, GeoRunError> {
+    let cwd = std::env::current_dir().map_err(|error| {
+        GeoRunError::new(
+            GeoRunErrorCode::ArtifactContract,
+            "Cannot capture the current directory for runnable continuations",
+            [("source_error", error.to_string())],
+        )
+    })?;
+    let absolute = |path: &Path| {
+        let path = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            cwd.join(path)
+        };
+        path.to_str().map(str::to_string).ok_or_else(|| {
+            GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Runnable continuation paths must be UTF-8",
+                [("field", "observation.invocation")],
+            )
+        })
+    };
+    Ok(GeoRunInvocation {
+        plan_path: absolute(&args.plan)?,
+        work_dir: absolute(&args.work_dir)?,
+        inputs: inputs
+            .iter()
+            .map(|input| {
+                Ok(GeoRunInvocationInput {
+                    project_node_id: input.node_id.clone(),
+                    binding_id: input.binding_id.clone(),
+                    path: absolute(&input.path)?,
+                })
+            })
+            .collect::<Result<_, GeoRunError>>()?,
+        satisfactions: args
+            .satisfy
+            .iter()
+            .map(|value| {
+                let assignment = parse_geo_satisfaction_assignment(value)
+                    .expect("satisfaction assignments already validated");
+                Ok(GeoRunInvocationSatisfaction {
+                    request_id: assignment.request_id,
+                    path: absolute(&assignment.receipt_path)?,
+                })
+            })
+            .collect::<Result<_, GeoRunError>>()?,
+    })
 }
 
 fn run_inspect(args: &GeoInspectCli) -> Result<u8, Box<dyn Error>> {
@@ -2101,6 +2160,23 @@ fn geo_run_input_contract_version(
 ) -> Result<String, u8> {
     if is_client_tile_source_binding(plan, assignment) {
         return Ok(CANON_GEO_CLIENT_TILE_SOURCE_VERSION.to_string());
+    }
+    if let Some(contracts) =
+        super::run::bound_analysis_contracts(plan, &assignment.node_id, &assignment.binding_id)
+    {
+        // This declared slot supplies the expected shape when malformed bytes
+        // cannot supply a version. Shared preflight retains the actual bytes
+        // and reports INVALID_INPUT; it never accepts them on this default.
+        let version = serde_json::from_slice::<Value>(bytes)
+            .ok()
+            .and_then(|value| {
+                value
+                    .get("version")
+                    .and_then(Value::as_str)
+                    .filter(|version| super::run::is_contract_version(version))
+                    .map(str::to_string)
+            });
+        return Ok(version.unwrap_or_else(|| contracts[0].to_string()));
     }
     json_contract_version(bytes, path)
 }

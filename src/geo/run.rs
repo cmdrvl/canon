@@ -249,6 +249,7 @@ pub struct GeoRunProgressEvent {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum GeoRunBlockerKind {
     WaitingForInput,
+    InvalidInput,
     UnsupportedGrain,
     MissingLeafCapability,
     ProjectFailure,
@@ -266,6 +267,55 @@ pub enum GeoRunNextActionKind {
     InspectFailure,
     Resume,
     UnsupportedGrain,
+    InvocationContextRequired,
+}
+
+/// Public operation identity; local invocation paths are operational only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoRunPublicOperation {
+    GeoRun,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoRunCommandAction {
+    ExecuteProjectNode,
+    SupplyLocalArtifact,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoRunCommandIdentity {
+    pub operation: GeoRunPublicOperation,
+    pub action: GeoRunCommandAction,
+    pub project_node_id: String,
+    pub required_binding_id: Option<String>,
+    pub satisfaction_request_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoRunInvocationInput {
+    pub project_node_id: String,
+    pub binding_id: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoRunInvocationSatisfaction {
+    pub request_id: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoRunInvocation {
+    pub plan_path: String,
+    pub work_dir: String,
+    pub inputs: Vec<GeoRunInvocationInput>,
+    pub satisfactions: Vec<GeoRunInvocationSatisfaction>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -431,6 +481,8 @@ impl From<&GeoAcquisitionSatisfaction> for GeoRunAcquisitionSatisfactionRef {
 #[serde(deny_unknown_fields)]
 pub struct GeoRunObservation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub invocation: Option<GeoRunInvocation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observed_at_utc: Option<String>,
@@ -496,6 +548,10 @@ pub struct GeoRunNextAction {
     pub media_type: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_identity: Option<GeoRunCommandIdentity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_path: Option<String>,
     pub reason: String,
 }
 
@@ -689,7 +745,12 @@ impl<'a> GeoRunProgressWriter<'a> {
             self.counters.blocked_nodes = run
                 .blockers
                 .iter()
-                .filter(|blocker| blocker.kind == GeoRunBlockerKind::WaitingForInput)
+                .filter(|blocker| {
+                    matches!(
+                        blocker.kind,
+                        GeoRunBlockerKind::WaitingForInput | GeoRunBlockerKind::InvalidInput
+                    )
+                })
                 .count() as u64;
         }
         self.emit(
@@ -913,15 +974,16 @@ fn run_geo_plan_with_geo_executor(
     for binding in prepared.input_bindings.values() {
         executor.insert_input_binding(geo_executor_input_binding(binding));
     }
-    let reusable_receipts = if prepared.missing_inputs.is_empty() {
-        seed_geo_project_executor_from_valid_receipts(
-            &prepared.effective_project_plan,
-            &request.policy,
-            executor,
-        )?
-    } else {
-        BTreeMap::new()
-    };
+    let reusable_receipts =
+        if prepared.missing_inputs.is_empty() && prepared.invalid_inputs.is_empty() {
+            seed_geo_project_executor_from_valid_receipts(
+                &prepared.effective_project_plan,
+                &request.policy,
+                executor,
+            )?
+        } else {
+            BTreeMap::new()
+        };
     let mut progress = GeoRunProgressWriter::new(
         &request.plan,
         &prepared.effective_project_plan.graph_hash,
@@ -1057,7 +1119,13 @@ fn execute_prepared_geo_run<E: ProjectNodeExecutor>(
                     Some(
                         run.blockers
                             .iter()
-                            .filter(|blocker| blocker.kind == GeoRunBlockerKind::WaitingForInput)
+                            .filter(|blocker| {
+                                matches!(
+                                    blocker.kind,
+                                    GeoRunBlockerKind::WaitingForInput
+                                        | GeoRunBlockerKind::InvalidInput
+                                )
+                            })
                             .map(|blocker| blocker.reason.as_str())
                             .collect::<Vec<_>>()
                             .join("; "),
@@ -1123,7 +1191,7 @@ fn execute_prepared_geo_run_after_start<E: ProjectNodeExecutor>(
     validate_acquisition_satisfaction_refs(&request.acquisition_satisfactions, &run_input_refs)?;
     let artifact_inputs = artifact_refs_from_bindings(&prepared.input_bindings);
     let acquisition_satisfactions = request.acquisition_satisfactions.clone();
-    let mut preflight_blockers = Vec::new();
+    let mut preflight_blockers = prepared.invalid_inputs.clone();
     let mut preflight_actions = Vec::new();
     for input in &prepared.missing_inputs {
         preflight_blockers.push(GeoRunBlocker {
@@ -1141,7 +1209,62 @@ fn execute_prepared_geo_run_after_start<E: ProjectNodeExecutor>(
             expected_contract: Some(input.accepted_contracts.join("|")),
             media_type: Some(GEO_RUN_JSON_MEDIA_TYPE.to_string()),
             command: None,
-            reason: "bind local bytes by project node id, binding id, artifact id, canonical lowercase BLAKE3 digest, media type, and input contract; filesystem paths remain operational".to_string(),
+            command_identity: Some(GeoRunCommandIdentity {
+                operation: GeoRunPublicOperation::GeoRun,
+                action: GeoRunCommandAction::SupplyLocalArtifact,
+                project_node_id: input.node_id.clone(),
+                required_binding_id: Some(input.binding_id.clone()),
+                satisfaction_request_ids: Vec::new(),
+            }),
+            input_path: None,
+            reason: format!(
+                "Supply {}:{} as {}; schema: {}.",
+                input.node_id,
+                input.binding_id,
+                input.accepted_contracts.join("|"),
+                input
+                    .accepted_contracts
+                    .iter()
+                    .map(|contract| geo_run_input_schema_path(contract))
+                    .collect::<Vec<_>>()
+                    .join(" or ")
+            ),
+        });
+    }
+
+    for binding in prepared.input_bindings.values() {
+        let blocker_id = format!("invalid_input:{}:{}", binding.node_id, binding.binding_id);
+        if !prepared
+            .invalid_inputs
+            .iter()
+            .any(|blocker| blocker.blocker_id == blocker_id)
+        {
+            continue;
+        }
+        let expected =
+            bound_analysis_contracts(&request.plan, &binding.node_id, &binding.binding_id)
+                .expect("invalid analysis blocker has a declared binding");
+        preflight_actions.push(GeoRunNextAction {
+            action_id: format!("supply:{}", binding.artifact_id),
+            kind: GeoRunNextActionKind::SupplyLocalArtifact,
+            project_node_id: Some(binding.node_id.clone()),
+            artifact_id: Some(binding.artifact_id.clone()),
+            expected_contract: Some(expected.join("|")),
+            media_type: Some(GEO_RUN_JSON_MEDIA_TYPE.to_string()),
+            command: None,
+            command_identity: Some(GeoRunCommandIdentity {
+                operation: GeoRunPublicOperation::GeoRun,
+                action: GeoRunCommandAction::SupplyLocalArtifact,
+                project_node_id: binding.node_id.clone(),
+                required_binding_id: Some(binding.binding_id.clone()),
+                satisfaction_request_ids: Vec::new(),
+            }),
+            input_path: None,
+            reason: format!(
+                "Correct {}:{} as {}; schema: {}. The corrected bytes replace this binding without duplicating --input.",
+                binding.node_id, binding.binding_id, expected.join("|"),
+                expected.iter().map(|contract| geo_run_input_schema_path(contract)).collect::<Vec<_>>().join(" or ")
+            ),
         });
     }
 
@@ -2013,6 +2136,7 @@ pub fn validate_geo_run(run: &GeoRun) -> GeoRunResult<()> {
         validate_project_run_report_schema_shape(report)?;
     }
     validate_run_state_shapes(run)?;
+    validate_public_continuations(run)?;
     validate_run_state_invariants(run)?;
     validate_canonical_run_order(run)?;
     let expected_hash = geo_run_semantic_hash(run)?;
@@ -2091,6 +2215,7 @@ fn build_geo_run(
         project_run_report.as_ref(),
     ));
     next_actions.extend(context.extra_actions);
+    render_public_continuations(&mut next_actions, observation.invocation.as_ref());
     let mut acquisition_satisfactions = context.acquisition_satisfactions;
     sort_and_dedup_run_parts(
         &mut grain_states,
@@ -2291,6 +2416,7 @@ struct PreparedGeoRun {
     effective_project_plan: ProjectPlan,
     input_bindings: BTreeMap<(String, String), GeoRunArtifactBinding>,
     missing_inputs: Vec<RequiredGeoInput>,
+    invalid_inputs: Vec<GeoRunBlocker>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -2318,8 +2444,12 @@ fn prepare_geo_run(
     validate_geo_plan(plan).map_err(plan_error)?;
     validate_run_policy(policy)?;
     validate_effective_geo_project_nodes(plan, &plan.project_plan)?;
-    let input_bindings = normalize_artifact_bindings(policy, bindings)?;
+    let input_bindings = normalize_artifact_bindings(plan, policy, bindings)?;
     validate_input_bindings_against_plan(plan, &input_bindings)?;
+    // Pure bound-payload checks must precede receipt seeding as well as node
+    // execution. Partition exhaustiveness and section membership need actual
+    // upstream outputs and remain executor-time obligations.
+    let invalid_inputs = validate_bound_analysis_inputs(plan, &input_bindings);
     let required_inputs = required_geo_inputs(plan)?;
     let missing_inputs = required_inputs
         .into_values()
@@ -2337,7 +2467,175 @@ fn prepare_geo_run(
         effective_project_plan,
         input_bindings,
         missing_inputs,
+        invalid_inputs,
     })
+}
+
+fn validate_bound_analysis_inputs(
+    plan: &GeoPlan,
+    bindings: &BTreeMap<(String, String), GeoRunArtifactBinding>,
+) -> Vec<GeoRunBlocker> {
+    use crate::geo::{
+        GeoNextEvidenceInputs, GeoSeparationInputs, GeoWarehouseRowsRequest,
+        descriptive::materialize_descriptive_asset, materialize_warehouse_rows,
+        validate_next_evidence_inputs, validate_separation_inputs,
+    };
+    let mut blockers = Vec::new();
+    for binding in bindings.values() {
+        let Some(expected_contracts) =
+            bound_analysis_contracts(plan, &binding.node_id, &binding.binding_id)
+        else {
+            continue;
+        };
+        // A CLI binding may use the slot's canonical metadata contract when
+        // malformed bytes cannot declare one. Inspect the retained payload's
+        // own version before choosing a typed validator so an unknown source
+        // shape is reported as a version fault, not as unrelated field errors.
+        if let Ok(payload) = serde_json::from_slice::<serde_json::Value>(&binding.bytes) {
+            let declared = payload.get("version");
+            if !declared
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|version| expected_contracts.contains(&version))
+            {
+                let actual = declared
+                    .map(|value| {
+                        value
+                            .as_str()
+                            .map(str::to_string)
+                            .unwrap_or_else(|| value.to_string())
+                    })
+                    .unwrap_or_else(|| "<missing>".to_string());
+                let expected = expected_contracts.join("|");
+                let schemas = expected_contracts
+                    .iter()
+                    .map(|contract| geo_run_input_schema_path(contract))
+                    .collect::<Vec<_>>()
+                    .join(" or ");
+                blockers.push(GeoRunBlocker {
+                    blocker_id: format!("invalid_input:{}:{}", binding.node_id, binding.binding_id),
+                    kind: GeoRunBlockerKind::InvalidInput,
+                    project_node_id: Some(binding.node_id.clone()),
+                    entity_level: None,
+                    reason: format!("UNSUPPORTED_VERSION: bound payload version mismatch; field=version; actual={actual}; expected={expected}; expected_contract={expected}; schema={schemas}"),
+                });
+                continue;
+            }
+        }
+        if !expected_contracts.contains(&binding.contract_version.as_str()) {
+            let expected = expected_contracts.join("|");
+            let schema = match expected_contracts[0] {
+                CANON_GEO_SEPARATION_INPUTS_VERSION => {
+                    "schemas/canon.geo.separation_inputs.v0.schema.json"
+                }
+                CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION => {
+                    "schemas/canon.geo.next_evidence_inputs.v0.schema.json"
+                }
+                _ => "schemas/canon.geo.warehouse_rows.v0.schema.json",
+            };
+            blockers.push(GeoRunBlocker {
+                blocker_id: format!("invalid_input:{}:{}", binding.node_id, binding.binding_id),
+                kind: GeoRunBlockerKind::InvalidInput,
+                project_node_id: Some(binding.node_id.clone()), entity_level: None,
+                reason: format!("UNSUPPORTED_VERSION: bound input contract mismatch; field=version; actual={}; expected={expected}; expected_contract={expected}; schema={schema}", binding.contract_version),
+            });
+            continue;
+        }
+        // The existing validators own semantics; this layer only translates
+        // their failures into typed preflight input blockers.
+        macro_rules! check {
+            ($ty:ty, $validate:expr) => {
+                serde_json::from_slice::<$ty>(&binding.bytes)
+                    .map_err(|error| {
+                        format!("INVALID_INPUT: {error}; field={}", binding.binding_id)
+                    })
+                    .and_then(|input| {
+                        ($validate)(&input).map(|_| ()).map_err(|error| {
+                            format!(
+                                "{:?}: {}; field={}; detail={:?}",
+                                error.code,
+                                error.message,
+                                error
+                                    .detail
+                                    .get("field")
+                                    .map(String::as_str)
+                                    .unwrap_or(&binding.binding_id),
+                                error.detail
+                            )
+                        })
+                    })
+            };
+        }
+        let (schema, result) = match binding.contract_version.as_str() {
+            CANON_GEO_SEPARATION_INPUTS_VERSION => (
+                "schemas/canon.geo.separation_inputs.v0.schema.json",
+                check!(GeoSeparationInputs, validate_separation_inputs),
+            ),
+            CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION => (
+                "schemas/canon.geo.next_evidence_inputs.v0.schema.json",
+                check!(GeoNextEvidenceInputs, validate_next_evidence_inputs),
+            ),
+            CANON_GEO_WAREHOUSE_ROWS_VERSION => (
+                "schemas/canon.geo.warehouse_rows.v0.schema.json",
+                check!(GeoWarehouseRowsRequest, materialize_warehouse_rows),
+            ),
+            CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION => {
+                let result = serde_json::from_slice::<GeoDescriptiveAssetRequest>(&binding.bytes)
+                    .map_err(|error| format!("INVALID_INPUT: {error}; field=rows"))
+                    .and_then(|input| {
+                        materialize_descriptive_asset(&input).map_err(|error| format!("{:?}: {}; field=rows; detail={:?}", error.code, error.message, error.detail))?;
+                        // Plan-relative metadata needs neither geometry nor a solve.
+                        if input.inventory_source.inventory_ref != plan.inventory_ref
+                            || input.profile.selection_level != plan.profile_ref.selection_level {
+                            return Err("INVALID_INPUT: Descriptive asset inventory and selected grain must match the plan; field=inventory_source".into());
+                        }
+                        Ok(())
+                    });
+                (
+                    "schemas/canon.geo.descriptive_asset_request.v0.schema.json",
+                    result,
+                )
+            }
+            _ => continue,
+        };
+        if let Err(reason) = result {
+            blockers.push(GeoRunBlocker {
+                blocker_id: format!("invalid_input:{}:{}", binding.node_id, binding.binding_id),
+                kind: GeoRunBlockerKind::InvalidInput,
+                project_node_id: Some(binding.node_id.clone()),
+                entity_level: None,
+                reason: format!(
+                    "{reason}; expected_contract={}; schema={schema}",
+                    binding.contract_version
+                ),
+            });
+        }
+    }
+    blockers
+}
+
+pub(crate) fn bound_analysis_contracts(
+    plan: &GeoPlan,
+    node_id: &str,
+    binding_id: &str,
+) -> Option<&'static [&'static str]> {
+    let node = plan
+        .project_plan
+        .nodes
+        .iter()
+        .find(|node| node.node_id == node_id)?;
+    match (node.command.as_str(), binding_id) {
+        (GEO_MATERIALIZE_EVIDENCE_COMMAND, GEO_ROWS_BINDING_ID) => Some(&[
+            CANON_GEO_WAREHOUSE_ROWS_VERSION,
+            CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION,
+        ]),
+        (GEO_SEPARATION_STAGE_COMMAND, GEO_REQUEST_BINDING_ID) => {
+            Some(&[CANON_GEO_SEPARATION_INPUTS_VERSION])
+        }
+        (GEO_NEXT_EVIDENCE_STAGE_COMMAND, GEO_REQUEST_BINDING_ID) => {
+            Some(&[CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION])
+        }
+        _ => None,
+    }
 }
 
 fn validate_effective_geo_project_nodes(
@@ -2675,6 +2973,7 @@ fn required_geo_inputs(
 }
 
 fn normalize_artifact_bindings(
+    plan: &GeoPlan,
     policy: &ProjectRunPolicy,
     bindings: Vec<GeoRunArtifactBinding>,
 ) -> GeoRunResult<BTreeMap<(String, String), GeoRunArtifactBinding>> {
@@ -2696,7 +2995,10 @@ fn normalize_artifact_bindings(
                 ));
             }
         }
-        validate_artifact_binding(&binding)?;
+        validate_artifact_binding(
+            &binding,
+            bound_analysis_contracts(plan, &binding.node_id, &binding.binding_id).is_some(),
+        )?;
         let key = (binding.node_id.clone(), binding.binding_id.clone());
         if by_id.insert(key.clone(), binding.clone()).is_some() {
             return Err(GeoRunError::new(
@@ -2713,7 +3015,10 @@ fn normalize_artifact_bindings(
     Ok(by_id)
 }
 
-fn validate_artifact_binding(binding: &GeoRunArtifactBinding) -> GeoRunResult<()> {
+fn validate_artifact_binding(
+    binding: &GeoRunArtifactBinding,
+    defer_analysis_payload: bool,
+) -> GeoRunResult<()> {
     if binding.node_id.trim().is_empty()
         || binding.node_id.trim() != binding.node_id
         || binding.binding_id.trim().is_empty()
@@ -2776,7 +3081,9 @@ fn validate_artifact_binding(binding: &GeoRunArtifactBinding) -> GeoRunResult<()
             ],
         ));
     }
-    if binding.contract_version == CANON_GEO_CLIENT_TILE_SOURCE_VERSION {
+    if binding.contract_version == CANON_GEO_CLIENT_TILE_SOURCE_VERSION || defer_analysis_payload {
+        // Analysis payload parsing and version checks become INVALID_INPUT
+        // blockers. Binding identity/digest/byte-count checks above still refuse.
         return Ok(());
     }
     validate_json_contract_bytes(
@@ -2855,25 +3162,6 @@ fn validate_input_bindings_against_plan(
         .map(|node| (node.node_id.as_str(), node))
         .collect::<BTreeMap<_, _>>();
     for binding in bindings.values() {
-        if binding.contract_version == CANON_GEO_DESCRIPTIVE_ASSET_REQUEST_VERSION {
-            let input: GeoDescriptiveAssetRequest = serde_json::from_slice(&binding.bytes)
-                .map_err(|e| {
-                    GeoRunError::new(
-                        GeoRunErrorCode::ArtifactContract,
-                        format!("Invalid descriptive asset input: {e}"),
-                        [("node_id", binding.node_id.as_str())],
-                    )
-                })?;
-            if input.inventory_source.inventory_ref != plan.inventory_ref
-                || input.profile.selection_level != plan.profile_ref.selection_level
-            {
-                return Err(GeoRunError::new(
-                    GeoRunErrorCode::ArtifactContract,
-                    "Descriptive asset inventory and selected grain must match the plan",
-                    [("node_id", binding.node_id.as_str())],
-                ));
-            }
-        }
         let Some(node) = nodes.get(binding.node_id.as_str()) else {
             return Err(GeoRunError::new(
                 GeoRunErrorCode::MissingInput,
@@ -2908,9 +3196,10 @@ fn validate_input_bindings_against_plan(
                 ],
             ));
         };
-        if !spec
-            .accepted_contracts
-            .contains(&binding.contract_version.as_str())
+        if bound_analysis_contracts(plan, &binding.node_id, &binding.binding_id).is_none()
+            && !spec
+                .accepted_contracts
+                .contains(&binding.contract_version.as_str())
         {
             return Err(GeoRunError::new(
                 GeoRunErrorCode::ArtifactContract,
@@ -3747,6 +4036,8 @@ fn next_actions_from_plan(plan: &GeoPlan) -> Vec<GeoRunNextAction> {
                     expected_contract: Some(handoff.expected_receipt_contract.clone()),
                     media_type: Some(GEO_RUN_JSON_MEDIA_TYPE.to_string()),
                     command: Some(handoff.continuation_command.clone()),
+                    command_identity: None,
+                    input_path: None,
                     reason: "satisfy the typed acquisition request and re-plan with the verified local artifact".to_string(),
                 });
             }
@@ -3759,6 +4050,8 @@ fn next_actions_from_plan(plan: &GeoPlan) -> Vec<GeoRunNextAction> {
                     expected_contract: None,
                     media_type: Some(GEO_RUN_JSON_MEDIA_TYPE.to_string()),
                     command: None,
+                    command_identity: None,
+                    input_path: None,
                     reason: "route the typed discovery request to an external executor; Canon does not reach the network from the run".to_string(),
                 });
             }
@@ -3771,6 +4064,8 @@ fn next_actions_from_plan(plan: &GeoPlan) -> Vec<GeoRunNextAction> {
                     expected_contract: None,
                     media_type: Some(GEO_RUN_JSON_MEDIA_TYPE.to_string()),
                     command: Some(gap.next_command.clone()),
+                    command_identity: None,
+                    input_path: None,
                     reason: gap.reason.clone(),
                 });
             }
@@ -3792,11 +4087,288 @@ fn next_actions_from_plan(plan: &GeoPlan) -> Vec<GeoRunNextAction> {
                 expected_contract: None,
                 media_type: None,
                 command: None,
+                command_identity: None,
+                input_path: None,
                 reason: outcome.next_action.clone(),
             });
         }
     }
     actions
+}
+
+fn geo_run_input_schema_path(contract: &str) -> String {
+    // Raw client source bytes are described by the ingest request contract.
+    let name = if contract == crate::geo::executor::CANON_GEO_CLIENT_TILE_SOURCE_VERSION {
+        "client_tile_ingest_request.v0"
+    } else {
+        contract.strip_prefix("canon_geo_").unwrap_or(contract)
+    };
+    format!("schemas/canon.geo.{name}.schema.json")
+}
+
+fn continuation_error(message: &str) -> GeoRunError {
+    GeoRunError::new(
+        GeoRunErrorCode::ArtifactContract,
+        message,
+        [("field", "next_action.command_identity")],
+    )
+}
+
+fn shell_argument(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn continuation_input_path(
+    invocation: &GeoRunInvocation,
+    identity: &GeoRunCommandIdentity,
+) -> Option<String> {
+    if identity.action != GeoRunCommandAction::SupplyLocalArtifact {
+        return None;
+    }
+    let binding = identity.required_binding_id.as_ref()?;
+    if let Some(input) = invocation.inputs.iter().find(|input| {
+        input.project_node_id == identity.project_node_id && input.binding_id == *binding
+    }) {
+        return Some(input.path.clone());
+    }
+    let tuple = serde_json::to_vec(&(identity.project_node_id.as_str(), binding.as_str()))
+        .expect("string tuples serialize");
+    let filename = format!("canon-geo-input-{}.json", blake3::hash(&tuple).to_hex());
+    Some(
+        Path::new(&invocation.work_dir)
+            .join(filename)
+            .to_string_lossy()
+            .into_owned(),
+    )
+}
+
+fn public_run_command(invocation: &GeoRunInvocation, identity: &GeoRunCommandIdentity) -> String {
+    let mut command = format!(
+        "canon geo run --plan {} --work-dir {}",
+        shell_argument(&invocation.plan_path),
+        shell_argument(&invocation.work_dir)
+    );
+    let mut inputs = invocation.inputs.iter().collect::<Vec<_>>();
+    inputs.sort_by_key(|input| (&input.project_node_id, &input.binding_id));
+    for input in inputs {
+        if identity.action == GeoRunCommandAction::SupplyLocalArtifact
+            && identity.project_node_id == input.project_node_id
+            && identity.required_binding_id.as_ref() == Some(&input.binding_id)
+        {
+            continue;
+        }
+        command.push_str(&format!(
+            " --input {}",
+            shell_argument(&format!(
+                "{}:{}={}",
+                input.project_node_id, input.binding_id, input.path
+            ))
+        ));
+    }
+    let mut satisfactions = invocation.satisfactions.iter().collect::<Vec<_>>();
+    satisfactions.sort_by_key(|satisfaction| &satisfaction.request_id);
+    for satisfaction in satisfactions {
+        command.push_str(&format!(
+            " --satisfy {}",
+            shell_argument(&format!(
+                "{}={}",
+                satisfaction.request_id, satisfaction.path
+            ))
+        ));
+    }
+    if let (Some(binding), Some(path)) = (
+        &identity.required_binding_id,
+        continuation_input_path(invocation, identity),
+    ) {
+        command.push_str(&format!(
+            " --input {}",
+            shell_argument(&format!("{}:{}={path}", identity.project_node_id, binding))
+        ));
+    }
+    command
+}
+
+fn render_public_continuations(
+    actions: &mut [GeoRunNextAction],
+    invocation: Option<&GeoRunInvocation>,
+) {
+    for action in actions {
+        let Some(identity) = &mut action.command_identity else {
+            continue;
+        };
+        if let Some(invocation) = invocation {
+            identity.satisfaction_request_ids = invocation
+                .satisfactions
+                .iter()
+                .map(|item| item.request_id.clone())
+                .collect();
+            identity.satisfaction_request_ids.sort();
+            action.input_path = continuation_input_path(invocation, identity);
+            if let Some(path) = &action.input_path {
+                action.reason.push_str(&format!(" Create or repair JSON at {path} using the declared schema, then run this command."));
+            }
+            action.command = Some(public_run_command(invocation, identity));
+        } else {
+            action.kind = GeoRunNextActionKind::InvocationContextRequired;
+            action.command = None;
+            action.input_path = None;
+            action.reason.push_str(" Runnable continuation requires observation.invocation with an actual plan file, work directory and retained input paths; this library result supplies target metadata only.");
+        }
+    }
+}
+
+fn validate_public_continuations(run: &GeoRun) -> GeoRunResult<()> {
+    let invocation = run.observation.invocation.as_ref();
+    if let Some(invocation) = invocation {
+        let validate_path = |path: &str| {
+            if path.is_empty() || path.contains('\0') {
+                Err(continuation_error(
+                    "Invocation paths must be nonempty shell arguments without NUL",
+                ))
+            } else {
+                Ok(())
+            }
+        };
+        validate_path(&invocation.plan_path)?;
+        validate_path(&invocation.work_dir)?;
+        if !Path::new(&invocation.work_dir).is_absolute() {
+            return Err(continuation_error(
+                "Continuation work directory must be an absolute operational path",
+            ));
+        }
+        let mut supplied = BTreeSet::new();
+        for input in &invocation.inputs {
+            validate_project_node_id(
+                "observation.invocation.input.project_node_id",
+                &input.project_node_id,
+            )?;
+            validate_local_id(
+                "observation.invocation.input.binding_id",
+                &input.binding_id,
+                256,
+            )?;
+            validate_path(&input.path)?;
+            if !supplied.insert((&input.project_node_id, &input.binding_id)) {
+                return Err(continuation_error(
+                    "Invocation contains duplicate input bindings",
+                ));
+            }
+        }
+        let retained = run
+            .artifact_inputs
+            .iter()
+            .map(|input| (&input.node_id, &input.binding_id))
+            .collect::<BTreeSet<_>>();
+        if supplied != retained {
+            return Err(continuation_error(
+                "Invocation input targets must match the retained run inputs",
+            ));
+        }
+        let mut satisfied = BTreeSet::new();
+        for satisfaction in &invocation.satisfactions {
+            validate_local_id(
+                "observation.invocation.satisfaction.request_id",
+                &satisfaction.request_id,
+                256,
+            )?;
+            validate_path(&satisfaction.path)?;
+            if !satisfied.insert(&satisfaction.request_id) {
+                return Err(continuation_error(
+                    "Invocation contains duplicate satisfaction targets",
+                ));
+            }
+        }
+    }
+    for action in &run.next_actions {
+        let Some(identity) = &action.command_identity else {
+            if action.kind == GeoRunNextActionKind::InvocationContextRequired
+                || action.input_path.is_some()
+            {
+                return Err(continuation_error(
+                    "An invocation handoff must retain its typed action target",
+                ));
+            }
+            continue; // Historical artifacts retain their original command semantics.
+        };
+        validate_project_node_id(
+            "next_action.command_identity.project_node_id",
+            &identity.project_node_id,
+        )?;
+        if !strictly_increasing(&identity.satisfaction_request_ids)
+            || identity.satisfaction_request_ids
+                != invocation
+                    .map(|invocation| {
+                        let mut ids = invocation
+                            .satisfactions
+                            .iter()
+                            .map(|item| item.request_id.clone())
+                            .collect::<Vec<_>>();
+                        ids.sort();
+                        ids
+                    })
+                    .unwrap_or_default()
+        {
+            return Err(continuation_error(
+                "Satisfaction request targets must match the typed command identity",
+            ));
+        }
+        if action.project_node_id.as_ref() != Some(&identity.project_node_id) {
+            return Err(continuation_error(
+                "Public command target disagrees with action metadata",
+            ));
+        }
+        let expected_kind = match identity.action {
+            GeoRunCommandAction::ExecuteProjectNode => {
+                if identity.required_binding_id.is_some()
+                    || action.action_id != format!("execute:{}", identity.project_node_id)
+                    || !run.project_run_report.as_ref().is_some_and(|report| {
+                        report.next_actions.contains_key(&identity.project_node_id)
+                    })
+                {
+                    return Err(continuation_error(
+                        "Execution continuation must identify an actual ready project node",
+                    ));
+                }
+                GeoRunNextActionKind::ExecuteProjectNode
+            }
+            GeoRunCommandAction::SupplyLocalArtifact => {
+                let binding = identity.required_binding_id.as_ref().ok_or_else(|| {
+                    continuation_error("Supply continuation requires its binding id")
+                })?;
+                validate_local_id(
+                    "next_action.command_identity.required_binding_id",
+                    binding,
+                    256,
+                )?;
+                let artifact = geo_run_input_artifact_id(&identity.project_node_id, binding);
+                if action.artifact_id.as_ref() != Some(&artifact)
+                    || action.action_id != format!("supply:{artifact}")
+                    || action.expected_contract.is_none()
+                {
+                    return Err(continuation_error(
+                        "Supply continuation must identify its own artifact, binding and expected contract",
+                    ));
+                }
+                GeoRunNextActionKind::SupplyLocalArtifact
+            }
+        };
+        match invocation {
+            Some(invocation)
+                if action.kind == expected_kind
+                    && action.input_path == continuation_input_path(invocation, identity)
+                    && action.command.as_deref()
+                        == Some(public_run_command(invocation, identity).as_str()) => {}
+            None if action.kind == GeoRunNextActionKind::InvocationContextRequired
+                && action.command.is_none()
+                && action.input_path.is_none() => {}
+            _ => {
+                return Err(continuation_error(
+                    "Public continuation must exactly match its structured invocation and typed action",
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn next_actions_from_project_report(report: Option<&ProjectRunReport>) -> Vec<GeoRunNextAction> {
@@ -3805,15 +4377,23 @@ fn next_actions_from_project_report(report: Option<&ProjectRunReport>) -> Vec<Ge
     };
     let mut actions = report
         .next_actions
-        .iter()
-        .map(|(node_id, command)| GeoRunNextAction {
+        .keys()
+        .map(|node_id| GeoRunNextAction {
             action_id: format!("execute:{node_id}"),
             kind: GeoRunNextActionKind::ExecuteProjectNode,
             project_node_id: Some(node_id.clone()),
             artifact_id: None,
             expected_contract: None,
             media_type: None,
-            command: Some(command.clone()),
+            command: None,
+            command_identity: Some(GeoRunCommandIdentity {
+                operation: GeoRunPublicOperation::GeoRun,
+                action: GeoRunCommandAction::ExecuteProjectNode,
+                project_node_id: node_id.clone(),
+                required_binding_id: None,
+                satisfaction_request_ids: Vec::new(),
+            }),
+            input_path: None,
             reason: "project node is ready under the shared run receipt state".to_string(),
         })
         .collect::<Vec<_>>();
@@ -3826,6 +4406,8 @@ fn next_actions_from_project_report(report: Option<&ProjectRunReport>) -> Vec<Ge
             expected_contract: None,
             media_type: None,
             command: None,
+            command_identity: None,
+            input_path: None,
             reason: "inspect the failed project node receipt before retrying".to_string(),
         });
     }
@@ -3838,6 +4420,8 @@ fn next_actions_from_project_report(report: Option<&ProjectRunReport>) -> Vec<Ge
             expected_contract: None,
             media_type: None,
             command: None,
+            command_identity: None,
+            input_path: None,
             reason: "resume the cancelled project run from the last valid receipt".to_string(),
         });
     }
@@ -3863,18 +4447,19 @@ fn run_status(
         Some(GeoCompositionStatus::Ambiguous) => return GeoRunStatus::Abstained,
         Some(GeoCompositionStatus::Resolved) | None => {}
     }
-    if blockers
-        .iter()
-        .any(|blocker| blocker.kind == GeoRunBlockerKind::WaitingForInput)
-        || next_actions.iter().any(|action| {
-            matches!(
-                action.kind,
-                GeoRunNextActionKind::SatisfyAcquisition
-                    | GeoRunNextActionKind::SatisfyDiscovery
-                    | GeoRunNextActionKind::SupplyLocalArtifact
-            )
-        })
-    {
+    if blockers.iter().any(|blocker| {
+        matches!(
+            blocker.kind,
+            GeoRunBlockerKind::WaitingForInput | GeoRunBlockerKind::InvalidInput
+        )
+    }) || next_actions.iter().any(|action| {
+        matches!(
+            action.kind,
+            GeoRunNextActionKind::SatisfyAcquisition
+                | GeoRunNextActionKind::SatisfyDiscovery
+                | GeoRunNextActionKind::SupplyLocalArtifact
+        )
+    }) {
         return GeoRunStatus::WaitingForInput;
     }
     if plan.status == GeoPlanStatus::Unsupported
@@ -4101,7 +4686,9 @@ struct GeoRunNextActionSemanticProjection<'a> {
     artifact_id: &'a Option<String>,
     expected_contract: &'a Option<String>,
     media_type: &'a Option<String>,
-    command: &'a Option<String>,
+    command: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    command_identity: Option<&'a GeoRunCommandIdentity>,
 }
 
 #[derive(Serialize)]
@@ -4162,12 +4749,33 @@ fn semantic_projection(run: &GeoRun) -> GeoRunSemanticProjection<'_> {
         .iter()
         .map(|action| GeoRunNextActionSemanticProjection {
             action_id: &action.action_id,
-            kind: action.kind,
+            kind: match (
+                action.kind,
+                action
+                    .command_identity
+                    .as_ref()
+                    .map(|identity| identity.action),
+            ) {
+                (
+                    GeoRunNextActionKind::InvocationContextRequired,
+                    Some(GeoRunCommandAction::ExecuteProjectNode),
+                ) => GeoRunNextActionKind::ExecuteProjectNode,
+                (
+                    GeoRunNextActionKind::InvocationContextRequired,
+                    Some(GeoRunCommandAction::SupplyLocalArtifact),
+                ) => GeoRunNextActionKind::SupplyLocalArtifact,
+                _ => action.kind,
+            },
             project_node_id: &action.project_node_id,
             artifact_id: &action.artifact_id,
             expected_contract: &action.expected_contract,
             media_type: &action.media_type,
-            command: &action.command,
+            command: if action.command_identity.is_some() {
+                None
+            } else {
+                action.command.as_deref()
+            },
+            command_identity: action.command_identity.as_ref(),
         })
         .collect();
     let acquisition_satisfactions = run
@@ -5448,7 +6056,7 @@ fn validate_project_node_id(field: &str, value: &str) -> GeoRunResult<()> {
     Err(invalid_identifier(field, value))
 }
 
-fn is_contract_version(value: &str) -> bool {
+pub(crate) fn is_contract_version(value: &str) -> bool {
     if value.len() > 128 {
         return false;
     }
@@ -5538,6 +6146,25 @@ fn invalid_digest(field: &str, value: &str) -> GeoRunError {
 }
 
 fn validate_run_policy(policy: &ProjectRunPolicy) -> GeoRunResult<()> {
+    let work_dir = policy.workspace_root.display().to_string();
+    let metadata = fs::metadata(&policy.workspace_root).map_err(|error| {
+        GeoRunError::new(
+            GeoRunErrorCode::InvalidInput,
+            "Geo run work directory must already exist and be readable",
+            [
+                ("field", "work_dir".to_string()),
+                ("path", work_dir.clone()),
+                ("error", error.to_string()),
+            ],
+        )
+    })?;
+    if !metadata.is_dir() {
+        return Err(GeoRunError::new(
+            GeoRunErrorCode::InvalidInput,
+            "Geo run work directory must be a directory",
+            [("field", "work_dir".to_string()), ("path", work_dir)],
+        ));
+    }
     if policy.allow_network {
         return Err(GeoRunError::new(
             GeoRunErrorCode::InvalidInput,
@@ -5598,6 +6225,47 @@ fn serialization_error(error: serde_json::Error) -> GeoRunError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn public_run_command_preserves_satisfaction_flags_and_replaces_only_its_supply_binding() {
+        let invocation = GeoRunInvocation {
+            plan_path: "/local/plan.json".into(),
+            work_dir: "/local/work".into(),
+            inputs: vec![
+                GeoRunInvocationInput {
+                    project_node_id: "geo.building.home_cells".into(),
+                    binding_id: "rows".into(),
+                    path: "/local/home.json".into(),
+                },
+                GeoRunInvocationInput {
+                    project_node_id: "geo.building.section".into(),
+                    binding_id: "request".into(),
+                    path: "/local/old-section.json".into(),
+                },
+            ],
+            satisfactions: vec![GeoRunInvocationSatisfaction {
+                request_id: "acquire.one".into(),
+                path: "/local/receipt ' one.json".into(),
+            }],
+        };
+        let identity = GeoRunCommandIdentity {
+            operation: GeoRunPublicOperation::GeoRun,
+            action: GeoRunCommandAction::SupplyLocalArtifact,
+            project_node_id: "geo.building.section".into(),
+            required_binding_id: Some("request".into()),
+            satisfaction_request_ids: vec!["acquire.one".into()],
+        };
+        let command = public_run_command(&invocation, &identity);
+        assert_eq!(
+            command,
+            "canon geo run --plan '/local/plan.json' --work-dir '/local/work' --input 'geo.building.home_cells:rows=/local/home.json' --satisfy 'acquire.one=/local/receipt '\\'' one.json' --input 'geo.building.section:request=/local/old-section.json'"
+        );
+        assert_eq!(command.matches("geo.building.section:request=").count(), 1);
+        assert_eq!(
+            continuation_input_path(&invocation, &identity).as_deref(),
+            Some("/local/old-section.json")
+        );
+    }
 
     #[test]
     fn answer_config_changes_only_its_consumer_cache_key() {
@@ -5851,6 +6519,8 @@ mod tests {
                 command: Some(
                     "canon geo replan-from-acquisition --base-plan PLAN.json".to_string(),
                 ),
+                command_identity: None,
+                input_path: None,
                 reason: "use an external executor; Canon remains offline".to_string(),
             }],
             deterministic_usage: BTreeMap::new(),

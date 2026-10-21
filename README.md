@@ -577,13 +577,20 @@ data, or prove candidate reach without an independent reference.
 
 `canon geo run --plan --work-dir` is a bounded offline run over the Geo plan's single
 validated project DAG. It delegates to the shared project runner and registered internal
-Geo executor. The default composition plan has nine stages: materialize home cells, build
-the bounded tile section, materialize evidence, compile evidence, propagate constraints,
-solve, explain, separate the residual, and select next evidence. Separation and next-evidence
-selection require explicit prospective-observation/action inputs; a completed solve can
-remain inspectable when a later stage fails. Additional registered stages can extend that DAG. `--input` is
+Geo executor. Set `question.answer_scope` to `current_answer` for eight stages:
+materialize home cells, build the bounded tile section, materialize evidence, compile
+evidence, propagate constraints, solve, explain, and project `canon_geo_answer.v0`.
+Only the home-cell, tile-work and materialize-evidence input bindings are required.
+`full_workflow` adds separation and next evidence before the final answer, for ten
+stages; those stages require explicit valid prospective-observation/action inputs.
+Omitting scope preserves the legacy nine-stage plan without an answer node.
+Detectably invalid inputs stop at preflight before execution. Additional registered
+stages can extend that DAG. `--input` is
 optional at invocation because a blocked plan or missing local artifacts can still produce
-a typed `WAITING_FOR_INPUT` run with exact next actions. When supplied, public inputs are
+a typed `WAITING_FOR_INPUT` run with exact next actions. Missing and invalid inputs
+have distinct blocker kinds. Supply actions identify a concrete `input_path`:
+create or repair that JSON using the named schema, then execute the supplied public
+command unchanged. When supplied, public inputs are
 local exogenous leaf artifacts only, including home-cell rows, tile-work requests, warehouse
 rows, and prospective-observation/action inputs. Each is bound by artifact id, media/contract,
 byte count, and canonical BLAKE3 digest.
@@ -755,11 +762,12 @@ artifact only with `--explicit`.
 
 The [2026-09-16 standalone-address baseline](scripts/geo_measurements/README.md#2026-09-16-four-address-bank-2019-bnk18-baseline)
 and [command-usability gap plan](docs/PLAN_CANON_GEO.md#1612-command-usability-measured-baseline-and-completion-criteria)
-separate observed behavior from the working target. Brooklyn demonstrates admitted
-parcel/building inclusion and exact local solving, but the nine-stage run stops after
-seven stages because prospective evidence inputs are missing. Clear explanations,
-actionable recovery and bounded completion remain open. Manual input assembly is accepted
-for that work; automated acquisition/assembly is a later milestone.
+separate the historical baseline from the working target. Brooklyn demonstrated admitted
+parcel/building inclusion and exact local solving before the legacy run failed on empty
+prospective evidence. Explicit `current_answer` now completes without prospective inputs;
+legacy/full-workflow invalid inputs stop at preflight. Complete one-call inspection and
+automated acquisition/assembly remain later milestones. These workflows still accept
+manually assembled evidence, and retained replays establish integration rather than live truth.
 
 ### Arguments
 
@@ -1774,11 +1782,15 @@ name a reference that proves it.
 Start an agent session with `canon geo capabilities --guide`. It emits a separate,
 deterministic `canon_geo_agent_guide.v0` JSON envelope containing installed input
 schemas (including local reference targets), task guidance and a complete synthetic
-descriptive plan → run → inspect → add-evidence example. No repository checkout or
+descriptive plan → run → inspect → add-evidence example using `answer_scope: current_answer`
+and three bindings, with no hypothetical future-action files. It also includes an optional
+valid full-workflow extension that reuses the seven shared stages. No repository checkout or
 network schema lookup is needed. Write the example's `write_files` values using
 its declared JSON encoding, create its listed directories, then invoke its
 `steps[].argv` with `canon` from that directory. The example is an
-uncalibrated workflow demonstration, not live identity proof.
+uncalibrated workflow demonstration, not live identity proof. Read the answer output handle
+for support, alternatives, preferences, acceptance and further-work state; the ordinary
+answer stage does not claim knowledge of its own final run history.
 
 The current descriptive profile accepts a bounded inventory and source-backed
 name, address, property type, unit count and construction year. Area, stories,

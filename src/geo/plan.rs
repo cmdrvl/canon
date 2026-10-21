@@ -8,9 +8,10 @@
 //! explicit discovery gap.
 
 use super::executor::{
-    GEO_EXPLAIN_OUTPUT_ID, GEO_EXPLAIN_STAGE_COMMAND, GEO_NEXT_EVIDENCE_OUTPUT_ID,
-    GEO_NEXT_EVIDENCE_STAGE_COMMAND, GEO_PROPAGATE_OUTPUT_ID, GEO_PROPAGATE_STAGE_COMMAND,
-    GEO_SEPARATION_OUTPUT_ID, GEO_SEPARATION_STAGE_COMMAND,
+    GEO_ANSWER_OUTPUT_ID, GEO_ANSWER_STAGE_COMMAND, GEO_EXPLAIN_OUTPUT_ID,
+    GEO_EXPLAIN_STAGE_COMMAND, GEO_NEXT_EVIDENCE_OUTPUT_ID, GEO_NEXT_EVIDENCE_STAGE_COMMAND,
+    GEO_PROPAGATE_OUTPUT_ID, GEO_PROPAGATE_STAGE_COMMAND, GEO_SEPARATION_OUTPUT_ID,
+    GEO_SEPARATION_STAGE_COMMAND,
 };
 use super::satisfy::{
     CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION, GeoInventoryAdvancementEffect,
@@ -465,6 +466,12 @@ pub fn compile_geo_plan(request: GeoPlanRequest) -> Result<GeoPlan, GeoPlanError
     let profile = validate_profile(&request.profile)?;
 
     let question_hash = question_semantic_hash(&question).map_err(control_error)?;
+    // The requested endpoint changes the final projection, not retained evidence
+    // meaning or the shared project's identity used for receipt reuse.
+    let mut upstream_question = question.clone();
+    upstream_question.answer_scope = None;
+    let upstream_question_hash =
+        question_semantic_hash(&upstream_question).map_err(control_error)?;
     let capabilities_hash = capabilities_semantic_hash(&capabilities).map_err(control_error)?;
     let inventory_hash = regional_inventory_semantic_hash(&inventory).map_err(control_error)?;
     let inventory_planning_hash =
@@ -484,7 +491,7 @@ pub fn compile_geo_plan(request: GeoPlanRequest) -> Result<GeoPlan, GeoPlanError
 
     let limits = project_limits(&budget);
     let input_refs = vec![
-        hash_ref("geo.question", &question_hash),
+        hash_ref("geo.question", &upstream_question_hash),
         hash_ref("geo.capabilities", &capabilities_hash),
         hash_ref("geo.inventory.planning", &inventory_planning_hash),
         hash_ref("geo.profile", &profile_hash),
@@ -597,7 +604,7 @@ pub fn compile_geo_plan(request: GeoPlanRequest) -> Result<GeoPlan, GeoPlanError
 
         validate_supported_grain_budget(&budget)?;
 
-        let required_commands = [
+        let mut required_commands = vec![
             (HOME_CELLS_COMMAND, CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION),
             (TILE_WORK_COMMAND, CANON_GEO_TILE_WORK_UNIT_VERSION),
             (
@@ -614,6 +621,14 @@ pub fn compile_geo_plan(request: GeoPlanRequest) -> Result<GeoPlan, GeoPlanError
             (SEPARATION_COMMAND, CANON_GEO_SEPARATION_VERSION),
             (NEXT_EVIDENCE_COMMAND, CANON_GEO_NEXT_EVIDENCE_VERSION),
         ];
+        if question.answer_scope == Some(super::GeoAnswerScope::CurrentAnswer) {
+            required_commands.retain(|(command, _)| {
+                *command != SEPARATION_COMMAND && *command != NEXT_EVIDENCE_COMMAND
+            });
+        }
+        if question.answer_scope.is_some() {
+            required_commands.push((GEO_ANSWER_STAGE_COMMAND, super::CANON_GEO_ANSWER_VERSION));
+        }
         let missing_commands = required_commands
             .iter()
             .filter(|(command, contract)| {
@@ -643,11 +658,11 @@ pub fn compile_geo_plan(request: GeoPlanRequest) -> Result<GeoPlan, GeoPlanError
             &prefix,
             grain.entity_level,
             grain.required_evidence_classes.clone(),
-            question.requested_claim_classes.clone(),
+            &question,
             input_refs.clone(),
             &budget.deterministic_bounds,
             &limits,
-        );
+        )?;
         let node_ids = stages
             .iter()
             .map(|(node, _)| node.node_id.clone())
@@ -674,7 +689,7 @@ pub fn compile_geo_plan(request: GeoPlanRequest) -> Result<GeoPlan, GeoPlanError
     diagnostics.dedup();
 
     let manifest_digest = digest_json(&(
-        &question_hash,
+        &upstream_question_hash,
         &capabilities_hash,
         &inventory_planning_hash,
         &profile_hash,
@@ -846,6 +861,9 @@ pub fn validate_geo_plan(plan: &GeoPlan) -> Result<(), GeoPlanError> {
                     [("project_node_id", node.project_node_id.as_str())],
                 )
             })?;
+        }
+        if node.stage == GeoPlanStage::ProjectCurrentAnswer {
+            validate_answer_plan_node(plan, node)?;
         }
         if node.stage == GeoPlanStage::FactorAndSolveExactResidual {
             if !node.bounded_section_required || !node.incidence_factorization_required {
@@ -2055,12 +2073,12 @@ fn grain_project_stages(
     prefix: &str,
     level: GeoControlEntityLevel,
     evidence_classes: Vec<GeoEvidenceClass>,
-    claim_classes: Vec<super::GeoClaimClass>,
+    question: &GeoQuestion,
     input_refs: Vec<ProjectPlanHashRef>,
     deterministic_bounds: &[GeoNumericBound],
     limits: &BTreeMap<String, u64>,
-) -> Vec<(ProjectExtensionDagNode, GeoPlanNodeOverlay)> {
-    let stages = [
+) -> Result<Vec<(ProjectExtensionDagNode, GeoPlanNodeOverlay)>, GeoPlanError> {
+    let mut stages = vec![
         (
             "home_cells",
             ProjectPlanNodeKind::Normalize,
@@ -2125,6 +2143,32 @@ fn grain_project_stages(
             GeoPlanStage::SelectNextEvidence,
         ),
     ];
+    if question.answer_scope == Some(super::GeoAnswerScope::CurrentAnswer) {
+        stages.truncate(7);
+    }
+    let answer_config = question
+        .answer_scope
+        .map(|answer_scope| {
+            Ok::<_, GeoPlanError>(super::GeoAnswerConfig {
+                entity_level: level,
+                answer_scope,
+                requested_claim_classes: question.requested_claim_classes.clone(),
+                decision_policy: question.decision_policy.clone(),
+                question_hash: question_semantic_hash(question).map_err(control_error)?,
+                question_id: question.question_id.clone(),
+                query_as_of: question.query_as_of.clone(),
+            })
+        })
+        .transpose()?;
+    if answer_config.is_some() {
+        stages.push((
+            "answer",
+            ProjectPlanNodeKind::Solve,
+            GEO_ANSWER_STAGE_COMMAND,
+            super::CANON_GEO_ANSWER_VERSION,
+            GeoPlanStage::ProjectCurrentAnswer,
+        ));
+    }
     let mut result = Vec::new();
     let mut dependency = None;
     for (suffix, kind, command, contract, stage) in stages {
@@ -2150,18 +2194,37 @@ fn grain_project_stages(
             GeoPlanStage::SelectNextEvidence => {
                 vec![format!("{prefix}.separation"), format!("{prefix}.solve")]
             }
+            GeoPlanStage::ProjectCurrentAnswer => {
+                let mut dependencies = vec![
+                    format!("{prefix}.section"),
+                    format!("{prefix}.compile_evidence"),
+                    format!("{prefix}.solve"),
+                    format!("{prefix}.explain"),
+                ];
+                if question.answer_scope == Some(super::GeoAnswerScope::FullWorkflow) {
+                    dependencies.push(format!("{prefix}.next_evidence"));
+                }
+                dependencies
+            }
             _ => dependency.iter().cloned().collect(),
         };
-        let content_hash_inputs = if dependency.is_none() {
+        let mut content_hash_inputs = if dependency.is_none() {
             input_refs.clone()
         } else {
             Vec::new()
         };
+        if stage == GeoPlanStage::ProjectCurrentAnswer {
+            let config = super::canonicalize_answer_config(
+                answer_config.as_ref().expect("scoped answer config"),
+            );
+            content_hash_inputs.push(hash_ref("geo.answer.config.v0", &digest_json(&config)?));
+        }
         let output_id = match stage {
             GeoPlanStage::PropagateConstraints => GEO_PROPAGATE_OUTPUT_ID,
             GeoPlanStage::ExplainResidual => GEO_EXPLAIN_OUTPUT_ID,
             GeoPlanStage::SeparateResidual => GEO_SEPARATION_OUTPUT_ID,
             GeoPlanStage::SelectNextEvidence => GEO_NEXT_EVIDENCE_OUTPUT_ID,
+            GeoPlanStage::ProjectCurrentAnswer => GEO_ANSWER_OUTPUT_ID,
             _ => suffix,
         };
         let node = project_node(
@@ -2298,12 +2361,12 @@ fn grain_project_stages(
                 component_key_field: "canon_geo_composition.v0.factorization[].key".to_string(),
             }
             });
-        let overlay = overlay_node(
+        let mut overlay = overlay_node(
             &node_id,
             stage,
             Some(level),
             evidence_classes.clone(),
-            claim_classes.clone(),
+            question.requested_claim_classes.clone(),
             contract,
             preconditions,
             GeoPlanClaimEffect::CanChangeRequestedClaim,
@@ -2312,10 +2375,13 @@ fn grain_project_stages(
             exact_solve_scope,
             deterministic_bounds.to_vec(),
         );
+        if stage == GeoPlanStage::ProjectCurrentAnswer {
+            overlay.answer_config = answer_config.clone();
+        }
         dependency = Some(node_id);
         result.push((node, overlay));
     }
-    result
+    Ok(result)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2562,6 +2628,74 @@ fn validate_node_cost_contract(
                 ],
             ));
         }
+    }
+    Ok(())
+}
+
+fn validate_answer_plan_node(
+    plan: &GeoPlan,
+    overlay: &GeoPlanNodeOverlay,
+) -> Result<(), GeoPlanError> {
+    let config = overlay.answer_config.as_ref().ok_or_else(|| {
+        GeoPlanError::new(
+            GeoPlanErrorCode::ContractViolation,
+            "answer stage requires its bound answer_config",
+            [("project_node_id", overlay.project_node_id.as_str())],
+        )
+    })?;
+    let node = plan
+        .project_plan
+        .nodes
+        .iter()
+        .find(|node| node.node_id == overlay.project_node_id)
+        .expect("validated overlay bijection");
+    let mut required_stages = vec![
+        GeoPlanStage::BuildBoundedSection,
+        GeoPlanStage::CompileEvidence,
+        GeoPlanStage::FactorAndSolveExactResidual,
+        GeoPlanStage::ExplainResidual,
+    ];
+    if config.answer_scope == super::GeoAnswerScope::FullWorkflow {
+        required_stages.push(GeoPlanStage::SelectNextEvidence);
+    }
+    let mut expected = Vec::new();
+    for stage in required_stages {
+        let producers = plan
+            .geo_nodes
+            .iter()
+            .filter(|candidate| {
+                candidate.entity_level == Some(config.entity_level)
+                    && candidate.stage == stage
+                    && node.dependencies.contains(&candidate.project_node_id)
+            })
+            .collect::<Vec<_>>();
+        if producers.len() != 1 {
+            return Err(GeoPlanError::new(
+                GeoPlanErrorCode::ContractViolation,
+                "answer stage must bind its exact scoped dependencies, contract and configuration digest",
+                [("project_node_id", overlay.project_node_id.as_str())],
+            ));
+        }
+        expected.push(producers[0].project_node_id.clone());
+    }
+    expected.sort();
+    let config_hash = digest_json(&super::canonicalize_answer_config(config))?;
+    let config_inputs = node
+        .content_hash_inputs
+        .iter()
+        .filter(|input| input.ref_id == "geo.answer.config.v0")
+        .map(|input| input.content_hash.as_str())
+        .collect::<Vec<_>>();
+    if node.command != GEO_ANSWER_STAGE_COMMAND
+        || overlay.expected_output_contract != super::CANON_GEO_ANSWER_VERSION
+        || node.dependencies != expected
+        || (!config_inputs.is_empty() && config_inputs != vec![config_hash.as_str()])
+    {
+        return Err(GeoPlanError::new(
+            GeoPlanErrorCode::ContractViolation,
+            "answer stage must bind its exact scoped dependencies, contract and configuration digest",
+            [("project_node_id", overlay.project_node_id.as_str())],
+        ));
     }
     Ok(())
 }

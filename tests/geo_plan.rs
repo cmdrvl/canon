@@ -66,6 +66,7 @@ fn question(include_parcel: bool) -> canon::geo::GeoQuestion {
         }],
         bounded_geography: region(),
         requested_grains,
+        answer_scope: None,
         query_as_of: None,
         requested_claim_classes: vec![GeoClaimClass::CollateralComposition],
         presentation_limits: vec![GeoNumericBound {
@@ -215,6 +216,279 @@ fn request(
         profile: GeoCompositionProfile::building(),
         budget,
     }
+}
+
+#[test]
+fn explicit_current_answer_has_eight_stages_and_four_direct_inputs() {
+    let mut target = question(false);
+    target.answer_scope = Some(canon::geo::GeoAnswerScope::CurrentAnswer);
+    let expected_hash = canon::geo::question_semantic_hash(&target).unwrap();
+    let plan = compile_geo_plan(request(
+        target.clone(),
+        inventory("buildings", GeoSourceAvailability::Available),
+        budget(),
+    ))
+    .unwrap();
+    assert_eq!(plan.status, GeoPlanStatus::Planned);
+    assert_eq!(plan.project_plan.nodes.len(), 8);
+    assert!(!plan.geo_nodes.iter().any(|node| matches!(
+        node.stage,
+        GeoPlanStage::SeparateResidual | GeoPlanStage::SelectNextEvidence
+    )));
+    let answer = plan
+        .geo_nodes
+        .iter()
+        .find(|node| node.stage == GeoPlanStage::ProjectCurrentAnswer)
+        .unwrap();
+    let config = answer.answer_config.as_ref().unwrap();
+    assert_eq!(config.question_hash, expected_hash);
+    assert_eq!(plan.question_ref.semantic_hash, expected_hash);
+    assert_eq!(config.question_id, target.question_id);
+    assert_eq!(
+        config.requested_claim_classes,
+        target.requested_claim_classes
+    );
+    assert_eq!(config.entity_level, GeoControlEntityLevel::Building);
+    assert_eq!(
+        config.answer_scope,
+        canon::geo::GeoAnswerScope::CurrentAnswer
+    );
+    let node = plan
+        .project_plan
+        .nodes
+        .iter()
+        .find(|node| node.node_id == answer.project_node_id)
+        .unwrap();
+    assert_eq!(
+        node.dependencies,
+        vec![
+            "geo.building.compile_evidence",
+            "geo.building.explain",
+            "geo.building.section",
+            "geo.building.solve"
+        ]
+    );
+    assert_eq!(node.command, "canon.geo.stage.answer.v0");
+    assert_eq!(node.outputs.len(), 1);
+    assert_eq!(node.outputs[0].output_id, "answer");
+    assert_eq!(
+        answer.expected_output_contract,
+        canon::geo::CANON_GEO_ANSWER_VERSION
+    );
+    validate_geo_plan(&plan).unwrap();
+}
+
+#[test]
+fn explicit_full_workflow_requires_next_evidence_but_reuses_all_seven_upstream_nodes() {
+    let make_plan = |scope| {
+        let mut target = question(false);
+        target.answer_scope = scope;
+        compile_geo_plan(request(
+            target,
+            inventory("buildings", GeoSourceAvailability::Available),
+            budget(),
+        ))
+        .unwrap()
+    };
+    let legacy = make_plan(None);
+    let current = make_plan(Some(canon::geo::GeoAnswerScope::CurrentAnswer));
+    let full = make_plan(Some(canon::geo::GeoAnswerScope::FullWorkflow));
+    assert_eq!(legacy.project_plan.nodes.len(), 9);
+    assert_eq!(full.project_plan.nodes.len(), 10);
+    assert_eq!(
+        legacy.project_plan.project_id,
+        current.project_plan.project_id
+    );
+    assert_eq!(
+        current.project_plan.project_id,
+        full.project_plan.project_id
+    );
+    assert_eq!(
+        legacy.project_plan.manifest_digest,
+        full.project_plan.manifest_digest
+    );
+    assert_ne!(
+        current.question_ref.semantic_hash,
+        full.question_ref.semantic_hash
+    );
+    assert_ne!(current.semantic_hash, full.semantic_hash);
+    for suffix in [
+        "home_cells",
+        "section",
+        "materialize_evidence",
+        "compile_evidence",
+        "propagate",
+        "solve",
+        "explain",
+    ] {
+        let id = format!("geo.building.{suffix}");
+        let legacy_node = legacy
+            .project_plan
+            .nodes
+            .iter()
+            .find(|node| node.node_id == id)
+            .unwrap();
+        let current_node = current
+            .project_plan
+            .nodes
+            .iter()
+            .find(|node| node.node_id == id)
+            .unwrap();
+        let full_node = full
+            .project_plan
+            .nodes
+            .iter()
+            .find(|node| node.node_id == id)
+            .unwrap();
+        assert_eq!(legacy_node, current_node, "legacy -> current changed {id}");
+        assert_eq!(current_node, full_node, "current -> full changed {id}");
+    }
+    let current_answer = current
+        .project_plan
+        .nodes
+        .iter()
+        .find(|node| node.node_id == "geo.building.answer")
+        .unwrap();
+    let full_answer = full
+        .project_plan
+        .nodes
+        .iter()
+        .find(|node| node.node_id == "geo.building.answer")
+        .unwrap();
+    assert_ne!(current_answer.cache.cache_key, full_answer.cache.cache_key);
+    assert_ne!(
+        current_answer.content_hash_inputs,
+        full_answer.content_hash_inputs
+    );
+    assert_eq!(
+        full_answer.dependencies,
+        vec![
+            "geo.building.compile_evidence",
+            "geo.building.explain",
+            "geo.building.next_evidence",
+            "geo.building.section",
+            "geo.building.solve"
+        ]
+    );
+    let config = full
+        .geo_nodes
+        .iter()
+        .find_map(|node| node.answer_config.as_ref())
+        .unwrap();
+    assert_eq!(
+        config.answer_scope,
+        canon::geo::GeoAnswerScope::FullWorkflow
+    );
+    assert_eq!(config.question_hash, full.question_ref.semantic_hash);
+}
+
+#[test]
+fn scoped_capability_requirements_do_not_make_optional_analysis_mandatory_for_current_answers() {
+    let mut target = question(false);
+    target.answer_scope = Some(canon::geo::GeoAnswerScope::CurrentAnswer);
+    let mut base = request(
+        target,
+        inventory("buildings", GeoSourceAvailability::Available),
+        budget(),
+    );
+    base.capabilities.commands.implemented.retain(|command| {
+        !matches!(
+            command.output_contract.as_str(),
+            "canon_geo_separation.v0" | "canon_geo_next_evidence.v0"
+        )
+    });
+    let current = compile_geo_plan(base.clone()).unwrap();
+    assert_eq!(current.status, GeoPlanStatus::Planned);
+    assert_eq!(current.project_plan.nodes.len(), 8);
+    base.question.answer_scope = Some(canon::geo::GeoAnswerScope::FullWorkflow);
+    let full = compile_geo_plan(base.clone()).unwrap();
+    assert_eq!(
+        full.grain_outcomes[0].status,
+        GeoPlanGrainStatus::MissingLeafCapability
+    );
+    assert!(full.project_plan.nodes.is_empty());
+    base.question.answer_scope = Some(canon::geo::GeoAnswerScope::CurrentAnswer);
+    base.capabilities
+        .commands
+        .implemented
+        .retain(|command| command.output_contract != canon::geo::CANON_GEO_ANSWER_VERSION);
+    let unavailable_answer = compile_geo_plan(base).unwrap();
+    assert_eq!(
+        unavailable_answer.grain_outcomes[0].status,
+        GeoPlanGrainStatus::MissingLeafCapability
+    );
+    assert!(unavailable_answer.project_plan.nodes.is_empty());
+}
+
+#[test]
+fn scoped_answer_config_refuses_wrong_question_missing_config_and_wrong_frontier_scope() {
+    let mut target = question(false);
+    target.answer_scope = Some(canon::geo::GeoAnswerScope::CurrentAnswer);
+    let plan = compile_geo_plan(request(
+        target,
+        inventory("buildings", GeoSourceAvailability::Available),
+        budget(),
+    ))
+    .unwrap();
+    let index = plan
+        .geo_nodes
+        .iter()
+        .position(|node| node.stage == GeoPlanStage::ProjectCurrentAnswer)
+        .unwrap();
+    let mut wrong_question = plan.clone();
+    wrong_question.geo_nodes[index]
+        .answer_config
+        .as_mut()
+        .unwrap()
+        .question_hash = digest("different question");
+    assert!(
+        validate_geo_plan(&wrong_question)
+            .unwrap_err()
+            .message
+            .contains("answer_config must bind")
+    );
+    let mut missing = plan.clone();
+    missing.geo_nodes[index].answer_config = None;
+    assert!(
+        validate_geo_plan(&missing)
+            .unwrap_err()
+            .message
+            .contains("requires its bound answer_config")
+    );
+    let mut missing_frontier = plan.clone();
+    missing_frontier.geo_nodes[index]
+        .answer_config
+        .as_mut()
+        .unwrap()
+        .answer_scope = canon::geo::GeoAnswerScope::FullWorkflow;
+    assert!(
+        validate_geo_plan(&missing_frontier)
+            .unwrap_err()
+            .message
+            .contains("exact scoped dependencies")
+    );
+}
+
+#[test]
+fn question_scope_is_optional_strict_and_absent_scope_preserves_serialized_question() {
+    let target = question(false);
+    let canonical = canon::geo::canonical_question_bytes(&target).unwrap();
+    let mut value: serde_json::Value = serde_json::from_slice(&canonical).unwrap();
+    assert!(value.get("answer_scope").is_none());
+    value["answer_scope"] = serde_json::Value::Null;
+    let null_scope: canon::geo::GeoQuestion = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(
+        canon::geo::canonical_question_bytes(&null_scope).unwrap(),
+        canonical
+    );
+    for scope in ["current_answer", "full_workflow"] {
+        value["answer_scope"] = scope.into();
+        let typed: canon::geo::GeoQuestion = serde_json::from_value(value.clone()).unwrap();
+        assert!(typed.answer_scope.is_some());
+        canon::geo::canonicalize_question(&typed).unwrap();
+    }
+    value["answer_scope"] = "guess_the_answer".into();
+    assert!(serde_json::from_value::<canon::geo::GeoQuestion>(value).is_err());
 }
 
 #[test]

@@ -228,7 +228,12 @@ fn descriptive_asset_runs_through_shared_plan_and_rejects_wrong_inventory() {
         &wrong,
     )
     .unwrap();
-    assert!(run_geo_plan(GeoRunRequest::new(plan, policy(temp.path()), bindings)).is_err());
+    let invalid = run_geo_plan(GeoRunRequest::new(plan, policy(temp.path()), bindings)).unwrap();
+    assert_eq!(invalid.status, GeoRunStatus::WaitingForInput);
+    assert!(invalid.project_run_report.is_none());
+    assert!(invalid.blockers.iter().any(|blocker| blocker.kind
+        == run::GeoRunBlockerKind::InvalidInput
+        && blocker.reason.contains("inventory_source")));
 }
 
 #[test]
@@ -940,6 +945,7 @@ fn unchanged_geo_run_resumes_and_ignores_operational_observation() {
         acquisition_satisfactions: Vec::new(),
         observation: GeoRunObservation {
             workspace_path: Some("/tmp/first".to_string()),
+            invocation: None,
             observed_at_utc: Some("2026-08-31T10:00:00Z".to_string()),
             host_id: Some("host-a".to_string()),
             process_id: Some(100),
@@ -960,6 +966,7 @@ fn unchanged_geo_run_resumes_and_ignores_operational_observation() {
         acquisition_satisfactions: Vec::new(),
         observation: GeoRunObservation {
             workspace_path: Some("/tmp/second".to_string()),
+            invocation: None,
             observed_at_utc: Some("2026-08-31T11:00:00Z".to_string()),
             host_id: Some("host-b".to_string()),
             process_id: Some(200),
@@ -1086,6 +1093,8 @@ fn canonical_run_rejects_state_order_and_reference_drift() {
         expected_contract: Some("not-a-contract".to_string()),
         media_type: None,
         command: None,
+        command_identity: None,
+        input_path: None,
         reason: "bounded negative fixture".to_string(),
     });
     restamp_geo_run(&mut invalid_action);
@@ -2234,6 +2243,275 @@ impl ProjectNodeExecutor for FailingProjectExecutor {
             self.message.clone(),
         ))
     }
+}
+
+fn assert_preflight_invalid(run: &GeoRun, node: &str, reason: &str) {
+    assert_eq!(run.status, GeoRunStatus::WaitingForInput);
+    assert_eq!(run.phase, run::GeoRunPhase::Preflighted);
+    assert!(
+        run.project_run_report.is_none(),
+        "no node may execute before input validity is known"
+    );
+    assert!(run.output_refs.is_empty());
+    let invalid = run
+        .blockers
+        .iter()
+        .find(|blocker| {
+            blocker.kind == run::GeoRunBlockerKind::InvalidInput
+                && blocker.project_node_id.as_deref() == Some(node)
+        })
+        .expect("invalid input blocker for bound payload");
+    assert!(invalid.reason.contains(reason), "{}", invalid.reason);
+    assert!(invalid.reason.contains("field="));
+    assert!(invalid.reason.contains("expected_contract="));
+    let schema = invalid.reason.split("schema=").nth(1).unwrap();
+    assert!(Path::new(env!("CARGO_MANIFEST_DIR")).join(schema).is_file());
+    canonical_geo_run_bytes(run).unwrap();
+}
+
+#[test]
+fn cur_05_07_bound_separation_shape_faults_wait_before_any_executor_call() {
+    for mutation in 0..6 {
+        let temp = tempfile::tempdir().unwrap();
+        let plan = building_plan(
+            "release.fixture.one",
+            GeoSourceAvailability::Available,
+            None,
+        );
+        let mut separation = default_separation_inputs();
+        let expected = match mutation {
+            0 => {
+                separation.prospective.clear();
+                "at least one prospective observation"
+            }
+            1 => {
+                separation.prospective[0].outcomes.clear();
+                "at least two outcomes"
+            }
+            2 => {
+                separation.prospective[0].outcomes.truncate(1);
+                "at least two outcomes"
+            }
+            3 => {
+                let first = separation.prospective[0].outcomes[0].outcome_id.clone();
+                separation.prospective[0].outcomes[1].outcome_id = first;
+                "strictly sorted by id"
+            }
+            4 => {
+                separation.prospective[0].outcomes[0].induced.clear();
+                "at least one hard constraint"
+            }
+            5 => {
+                separation.prospective[0].outcomes[0].induced =
+                    vec![GeoHardConstraintKind::Cardinality {
+                        level: GeoEntityLevel::Building,
+                        min: 2,
+                        max: 1,
+                    }];
+                "cardinality bounds"
+            }
+            _ => unreachable!(),
+        };
+        let bindings = run_bindings_with_separation_and_next_inputs(
+            warehouse_rows(),
+            separation,
+            default_next_evidence_inputs(),
+        );
+        let mut executor = FailingProjectExecutor {
+            message: "preflight must not invoke executor".into(),
+        };
+        let run = run_geo_plan_with_project_executor(
+            GeoRunRequest::new(plan, policy(temp.path()), bindings),
+            &mut executor,
+        )
+        .unwrap();
+        assert_preflight_invalid(&run, "geo.building.separation", expected);
+        if mutation == 0 {
+            assert!(run.blockers[0].reason.contains("field=prospective"));
+        }
+        assert!(!receipt_path(temp.path(), "geo.building.home_cells").exists());
+    }
+}
+
+#[test]
+fn cur_06_next_evidence_unknown_declared_and_payload_versions_are_invalid_inputs() {
+    for unknown_metadata in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let plan = building_plan(
+            "release.fixture.one",
+            GeoSourceAvailability::Available,
+            None,
+        );
+        let mut next = default_next_evidence_inputs();
+        next.version = "canon_geo_next_evidence_inputs.v9".into();
+        let mut bindings = run_bindings_with_next_inputs(warehouse_rows(), next);
+        if unknown_metadata {
+            bindings
+                .iter_mut()
+                .find(|binding| binding.node_id == "geo.building.next_evidence")
+                .unwrap()
+                .contract_version = "canon_geo_next_evidence_inputs.v9".into();
+        }
+        let run = run_geo_plan(GeoRunRequest::new(plan, policy(temp.path()), bindings)).unwrap();
+        assert_preflight_invalid(
+            &run,
+            "geo.building.next_evidence",
+            "canon_geo_next_evidence_inputs.v9",
+        );
+        assert!(run.blockers.iter().any(|blocker| {
+            blocker
+                .reason
+                .contains(CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION)
+        }));
+    }
+}
+
+#[test]
+fn cur_08_missing_required_binding_is_a_wait_not_invalid_data() {
+    let temp = tempfile::tempdir().unwrap();
+    let plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    let mut bindings = run_bindings(warehouse_rows());
+    bindings.retain(|binding| binding.node_id != "geo.building.separation");
+    let run = run_geo_plan(GeoRunRequest::new(plan, policy(temp.path()), bindings)).unwrap();
+    assert_eq!(run.status, GeoRunStatus::WaitingForInput);
+    assert_eq!(run.phase, run::GeoRunPhase::Preflighted);
+    assert!(run.project_run_report.is_none());
+    assert_eq!(run.blockers.len(), 1);
+    assert_eq!(
+        run.blockers[0].kind,
+        run::GeoRunBlockerKind::WaitingForInput
+    );
+    assert_eq!(
+        run.blockers[0].project_node_id.as_deref(),
+        Some("geo.building.separation")
+    );
+}
+
+#[test]
+fn cur_bound_warehouse_lineage_is_validated_before_upstream_work() {
+    let temp = tempfile::tempdir().unwrap();
+    let plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    let mut rows = warehouse_rows();
+    rows.contracts[0].source_lineage_ids = vec!["z-last".into(), "a-first".into()];
+    let run = run_geo_plan(GeoRunRequest::new(
+        plan,
+        policy(temp.path()),
+        run_bindings(rows),
+    ))
+    .unwrap();
+    assert_preflight_invalid(&run, "geo.building.materialize_evidence", "lineage");
+    assert!(!receipt_path(temp.path(), "geo.building.home_cells").exists());
+}
+
+#[test]
+fn cur_invalid_payload_blocks_receipt_seeding_as_well_as_execution() {
+    let temp = tempfile::tempdir().unwrap();
+    let plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    let baseline = run_geo_plan(GeoRunRequest::new(
+        plan.clone(),
+        policy(temp.path()),
+        run_bindings(warehouse_rows()),
+    ))
+    .unwrap();
+    assert_eq!(baseline.status, GeoRunStatus::Completed);
+    let receipt = receipt_path(temp.path(), "geo.building.home_cells");
+    // A corrupt retained receipt would make seeding fail if attempted. Invalid
+    // bound analysis must instead yield the typed preflight wait, untouched.
+    fs::write(&receipt, b"planted invalid receipt JSON").unwrap();
+    let mut separation = default_separation_inputs();
+    separation.prospective.clear();
+    let run = run_geo_plan(GeoRunRequest::new(
+        plan,
+        policy(temp.path()),
+        run_bindings_with_separation_and_next_inputs(
+            warehouse_rows(),
+            separation,
+            default_next_evidence_inputs(),
+        ),
+    ))
+    .unwrap();
+    assert_preflight_invalid(
+        &run,
+        "geo.building.separation",
+        "at least one prospective observation",
+    );
+    assert_eq!(fs::read(receipt).unwrap(), b"planted invalid receipt JSON");
+}
+
+#[test]
+fn cur_malformed_analysis_json_is_invalid_input_while_digest_tampering_still_refuses() {
+    let temp = tempfile::tempdir().unwrap();
+    let plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    let mut bindings = run_bindings(warehouse_rows());
+    let index = bindings
+        .iter()
+        .position(|binding| binding.node_id == "geo.building.separation")
+        .unwrap();
+    bindings[index] = GeoRunArtifactBinding::from_bytes(
+        "geo.building.separation",
+        GEO_REQUEST_BINDING_ID,
+        CANON_GEO_SEPARATION_INPUTS_VERSION,
+        b"not JSON".to_vec(),
+    );
+    let run = run_geo_plan(GeoRunRequest::new(
+        plan.clone(),
+        policy(temp.path()),
+        bindings.clone(),
+    ))
+    .unwrap();
+    assert_preflight_invalid(&run, "geo.building.separation", "INVALID_INPUT");
+    bindings[index].bytes.push(b'!');
+    let error = run_geo_plan(GeoRunRequest::new(plan, policy(temp.path()), bindings)).unwrap_err();
+    assert_eq!(error.code, GeoRunErrorCode::InputDigestMismatch);
+}
+
+#[test]
+fn cur_15_corrupt_solve_output_cannot_be_silently_reused() {
+    let temp = tempfile::tempdir().unwrap();
+    let plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    let bindings = run_bindings(warehouse_rows());
+    let baseline = run_geo_plan(GeoRunRequest::new(
+        plan.clone(),
+        policy(temp.path()),
+        bindings.clone(),
+    ))
+    .unwrap();
+    assert_eq!(baseline.status, GeoRunStatus::Completed);
+    let receipt = read_node_receipt(&receipt_path(temp.path(), "geo.building.solve")).unwrap();
+    let output = receipt
+        .outputs
+        .iter()
+        .find(|output| output.output_id == "solve")
+        .unwrap();
+    let path = temp.path().join(&output.path);
+    let mut corrupt = fs::read(&path).unwrap();
+    corrupt[0] ^= 1;
+    fs::write(&path, &corrupt).unwrap();
+    let error = run_geo_plan(GeoRunRequest::new(plan, policy(temp.path()), bindings)).unwrap_err();
+    assert_eq!(error.code, GeoRunErrorCode::ProjectRunFailed);
+    assert!(error.message.contains("no longer match their receipt"));
+    assert_eq!(error.detail["project_node_id"], "geo.building.solve");
+    assert_eq!(fs::read(path).unwrap(), corrupt);
 }
 
 fn run_bindings(rows: GeoWarehouseRowsRequest) -> Vec<GeoRunArtifactBinding> {
@@ -3480,6 +3758,7 @@ fn question(
 ) -> canon::geo::GeoQuestion {
     canon::geo::GeoQuestion {
         version: CANON_GEO_QUESTION_VERSION.to_string(),
+        answer_scope: None,
         question_id: "question.fixture.run".to_string(),
         subject_bindings: vec![GeoSubjectBinding {
             role: "target".to_string(),
@@ -3848,6 +4127,33 @@ fn rho_contract_with_id(id: &str) -> GeoRhoContract {
             invariant_id: "candidate-set-is-a-superset".to_string(),
         },
     }
+}
+
+#[test]
+fn invalid_work_directory_is_attributed_before_any_directory_or_artifact_creation() {
+    let temp = tempfile::tempdir().unwrap();
+    let missing = temp.path().join("missing-parent").join("workspace");
+    let file = temp.path().join("ordinary-file");
+    std::fs::write(&file, b"preserve this file").unwrap();
+    for work in [&missing, &file] {
+        let error = run_geo_plan(GeoRunRequest::new(
+            building_plan(
+                "release.fixture.one",
+                GeoSourceAvailability::Available,
+                None,
+            ),
+            policy(work),
+            run_bindings(warehouse_rows()),
+        ))
+        .unwrap_err();
+        assert_eq!(error.code, GeoRunErrorCode::InvalidInput);
+        assert_eq!(error.detail["field"], "work_dir");
+        assert_eq!(error.detail["path"], work.display().to_string());
+        assert!(!error.detail.contains_key("project_node_id"));
+    }
+    assert!(!temp.path().join("missing-parent").exists());
+    assert_eq!(std::fs::read(file).unwrap(), b"preserve this file");
+    assert!(!temp.path().join(".canon").exists());
 }
 
 fn record(id: &str) -> GeoEvidenceRecordRef {

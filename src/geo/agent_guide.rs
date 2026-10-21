@@ -14,6 +14,7 @@ macro_rules! schemas {
 
 const SCHEMAS: &[(&str, &str)] = &schemas![
     "canon.geo.acquisition_request.v0.schema.json",
+    "canon.geo.answer.v0.schema.json",
     "canon.geo.capabilities.v0.schema.json",
     "canon.geo.composition_request.v0.schema.json",
     "canon.geo.descriptive_asset_request.v0.schema.json",
@@ -47,7 +48,7 @@ pub fn agent_guide() -> Result<Value, Box<dyn Error>> {
                 "status": "experimental_bounded_descriptive_intake",
                 "command": "canon geo plan --question question.json --capabilities capabilities.json --inventory inventory.json --profile profile.json --budget budget.json",
                 "required_local_inputs": ["bounded regional candidate inventory", "retained claim and candidate source records", "explicit profile and budget"],
-                "outputs": ["plan", "bounded candidate/evidence artifacts", "residual and explanation"],
+                "outputs": ["plan", "bounded candidate/evidence artifacts", "residual and explanation", "canon_geo_answer.v0 when question.answer_scope is current_answer or full_workflow"],
                 "supported_attributes": ["property_name", "address", "property_type", "unit_count", "year_built"],
                 "missing": "A facts-only inquiry is not implemented: do not use --inquiry. This profile does not derive an area from prose or acquire datasets. bd-2s32/bd-3s20 own the complete discovery journey."
             },
@@ -70,8 +71,14 @@ pub fn agent_guide() -> Result<Value, Box<dyn Error>> {
                 "command": "canon geo inspect --run work --recommend-next",
                 "required_local_inputs": ["stored run workspace"],
                 "outputs": ["artifact handles", "residual state", "stored next-evidence state"],
-                "missing": "Current-answer projection and the complete one-call agent answer remain bd-1uo5/bd-1g18. Read output_refs and receipt paths; do not guess filenames."
+                "missing": "The complete one-call inspection rendering remains bd-1g18. Read the canon_geo_answer.v0 handle from run.output_refs and its declared receipt path; do not guess filenames. The answer separates support, preference, consequences, acceptance, reach and further work."
             }
+        },
+        "answer_scope": {
+            "current_answer": "Set question.answer_scope to current_answer for a present answer. Eight stages run through explain and answer; bind home_cells:rows, section:request and materialize_evidence:rows. No separation or next-evidence files are needed. further_work.source is not_in_scope and action_discovery is not_attempted, never exhausted.",
+            "full_workflow": "Set question.answer_scope to full_workflow and supply valid canon_geo_separation_inputs.v0 plus canon_geo_next_evidence_inputs.v0. Ten stages include separation, next_evidence and final answer; the answer reads the actual next-evidence frontier. Prospective observations require at least two distinct outcome IDs and valid induced constraints; an empty prospective list is invalid. Generated action discovery is not implemented by this endpoint.",
+            "omitted": "Omitting answer_scope preserves the legacy nine-stage plan and does not add an answer node. Its required prospective inputs are still preflighted.",
+            "scope_change": "With unchanged inputs, switching current_answer to full_workflow in one work directory reuses the seven shared evidence/solve/explain stages and executes separation, next_evidence and answer. Scope and full-question identity affect the final answer; upstream evidence meaning is scope-independent."
         },
         "input_contracts": {
             "question": {"schema": "canon.geo.question.v0.schema.json", "meaning": "Question, bounded geography, grain and as-of date; subject labels are assertions, not evidence constraints."},
@@ -88,6 +95,9 @@ pub fn agent_guide() -> Result<Value, Box<dyn Error>> {
             "separation": {"schema": "canon.geo.separation_inputs.v0.schema.json", "meaning": "Prospective outcomes, not observations already acquired."},
             "next_evidence": {"schema": "canon.geo.next_evidence_inputs.v0.schema.json", "meaning": "Prospective action candidates and cost budget, not acceptance authority."}
         },
+        "output_contracts": {
+            "answer": {"schema": "canon.geo.answer.v0.schema.json", "meaning": "Read support and alternatives independently of optional future work. Uncalibrated preference is not accepted identity; source count is not confidence, and a member association does not prove complete property extent."}
+        },
         "schema_documents": {},
         "schema_resolution": "Keys are schema basenames. Resolve local $ref document names within schema_documents and fragments as JSON pointers. $id URLs identify schemas; no network lookup or repository checkout is required.",
         "examples": [],
@@ -100,7 +110,10 @@ pub fn agent_guide() -> Result<Value, Box<dyn Error>> {
         "recovery": {
             "wrong_input_family": "Use each input_contracts entry and the generated plan's bindings. Existing E_ENTITY_ARTIFACT_CONTRACT details identify geo_control_error_code, geo_plan_error_code or geo_run_error_code as applicable.",
             "unsupported_flag": "Unknown flags such as --inquiry remain CLI errors; start with canon geo capabilities --guide.",
-            "release_mismatch": "Use the same source release/digest binding in home-cell rows, section features and descriptive inventory_source; acquire and replan for an actual release change. Never edit a digest to disguise changed bytes."
+            "release_mismatch": "Use the same source release/digest binding in home-cell rows, section features and descriptive inventory_source; acquire and replan for an actual release change. Never edit a digest to disguise changed bytes.",
+            "run_status": "geo run exit 0 means a run artifact was emitted; inspect status and phase. ABSTAINED/SOLVED can be a completed current answer with unresolved alternatives. FAILED means actual execution failed. A soft preference does not become accepted identity under either status.",
+            "preflight": "Missing or detectably malformed exogenous inputs produce WAITING_FOR_INPUT/PREFLIGHTED with zero executed nodes. blockers.kind distinguishes WAITING_FOR_INPUT from INVALID_INPUT; reasons name fields, expected contracts and schemas. Outer REFUSAL still exits 2, including invalid workspace paths.",
+            "repair_input": "For a CLI SUPPLY_LOCAL_ARTIFACT action, create or repair the JSON at action.input_path using the declared schema, then execute action.command unchanged. An existing binding keeps its actual path; a missing binding gets a concrete destination under the existing work directory. Canon does not create the input file. The command retains the actual plan, work directory, other inputs and satisfaction flags. Library calls without file context return INVOCATION_CONTEXT_REQUIRED rather than inventing paths."
         },
         "next_command": "canon geo capabilities > capabilities.json"
     }"#,
@@ -183,7 +196,7 @@ fn synthetic_example() -> Result<Value, Box<dyn Error>> {
         &super::control::canonical_capabilities_bytes(&super::control::default_geo_capabilities()?)?,
     )?;
     let files = json!({
-            "question.json": {"version": "canon_geo_question.v0", "question_id": "guide.synthetic.question", "subject_bindings": [{"role": "target", "binding_class": "operator_label", "value": "An office in the synthetic bounded region"}], "bounded_geography": region, "requested_grains": [{"entity_level": "building", "required_evidence_classes": ["building_footprint"], "optional_evidence_classes": ["asserted_attribute"]}], "query_as_of": {"utc_day": "2026-08-31", "semantic_id": "guide.synthetic.as_of", "unit": "utc_day", "origin": "caller_declared"}, "requested_claim_classes": ["candidate_reach", "stable_identity"], "presentation_limits": [bound("models", 16, "model"), bound("candidates", 16, "candidate")], "abstention_policy": {"unsupported_grain": "report_unsupported", "unresolved_residual": "report_residual", "budget_fallback": "report_residual"}, "decision_policy": null, "resource_budget_ref": "guide.synthetic.budget"},
+            "question.json": {"version": "canon_geo_question.v0", "question_id": "guide.synthetic.question", "subject_bindings": [{"role": "target", "binding_class": "operator_label", "value": "An office in the synthetic bounded region"}], "bounded_geography": region, "requested_grains": [{"entity_level": "building", "required_evidence_classes": ["building_footprint"], "optional_evidence_classes": ["asserted_attribute"]}], "answer_scope": "current_answer", "query_as_of": {"utc_day": "2026-08-31", "semantic_id": "guide.synthetic.as_of", "unit": "utc_day", "origin": "caller_declared"}, "requested_claim_classes": ["candidate_reach", "stable_identity"], "presentation_limits": [bound("models", 16, "model"), bound("candidates", 16, "candidate")], "abstention_policy": {"unsupported_grain": "report_unsupported", "unresolved_residual": "report_residual", "budget_fallback": "report_residual"}, "decision_policy": null, "resource_budget_ref": "guide.synthetic.budget"},
             "capabilities.json": capabilities,
             "inventory.json": inventory,
             "inventory-rows.json": inventory_rows,
@@ -192,30 +205,47 @@ fn synthetic_example() -> Result<Value, Box<dyn Error>> {
             "home-cells.json": {"version": "canon_geo_home_cell_rows.v1", "coordinate_crs": "EPSG:4326", "coordinate_decimal_places": 9, "h3_resolution": 9, "stability_radius_fixed": 1000, "rows": home_rows, "max_rows": 16},
             "tile-work.json": {"version": "canon_geo_tile_work_request.v1", "center_cell": "892a100d62bffff", "halo_k": 1, "features": features, "max_features": 16, "max_work_cells": 7},
             "descriptive.json": descriptive,
-            "updated-descriptive.json": updated,
-            "separation.json": {"version": "canon_geo_separation_inputs.v0", "prospective": [{"id": "guide.synthetic.prospective", "contract_id": "guide.synthetic.prospective", "cost_units": 1, "outcomes": [{"outcome_id": "a", "induced": [{"kind": "require", "member": {"level": "building", "id": "building-a"}}]}, {"outcome_id": "b", "induced": [{"kind": "forbid", "member": {"level": "building", "id": "building-a"}}]}]}]},
-            "next-evidence.json": {"version": "canon_geo_next_evidence_inputs.v0", "candidates": [{"action_id": "guide.synthetic.action", "class": "separate_residual", "kind": {"kind": "observe", "payload": "guide.synthetic.prospective"}, "observation_id": "guide.synthetic.prospective", "cost_units": 1}], "budget": budget}
+            "updated-descriptive.json": updated
     });
     let mut example: Value = serde_json::from_str(
         r#"{
         "id": "synthetic_descriptive_not_live",
         "proof_class": "synthetic_contract_demonstration",
-        "warning": "Not a real property, calibrated identity result or complete campus. The single-member cardinality is a declared question profile; soft clues do not establish truth. Two candidates remain feasible. Prospective actions below are tutorial inputs, not collected evidence.",
+        "warning": "Not a real property, calibrated identity result or complete campus. The single-member cardinality is a declared question profile; soft clues do not establish truth. Two candidates remain feasible. No hypothetical future-action input is needed for this current answer.",
         "create_directories": ["work"],
         "file_encoding": "Serialize write_files values as compact UTF-8 JSON with no trailing newline. inventory-rows.json is retained source data and its exact bytes are pinned by inventory.json local_ref.content_hash and source release_digest.",
         "write_files": {},
         "steps": [
             {"argv": ["geo", "plan", "--question", "question.json", "--capabilities", "capabilities.json", "--inventory", "inventory.json", "--profile", "profile.json", "--budget", "budget.json"], "stdout_file": "plan.json"},
-            {"argv": ["geo", "run", "--plan", "plan.json", "--work-dir", "work", "--input", "geo.building.home_cells:rows=home-cells.json", "--input", "geo.building.section:request=tile-work.json", "--input", "geo.building.materialize_evidence:rows=descriptive.json", "--input", "geo.building.separation:request=separation.json", "--input", "geo.building.next_evidence:request=next-evidence.json"], "stdout_file": "run.json"},
+            {"argv": ["geo", "run", "--plan", "plan.json", "--work-dir", "work", "--input", "geo.building.home_cells:rows=home-cells.json", "--input", "geo.building.section:request=tile-work.json", "--input", "geo.building.materialize_evidence:rows=descriptive.json"], "stdout_file": "run.json"},
             {"argv": ["geo", "inspect", "--run", "work", "--recommend-next"], "stdout_file": "inspection.json"},
-            {"argv": ["geo", "run", "--plan", "plan.json", "--work-dir", "work", "--input", "geo.building.home_cells:rows=home-cells.json", "--input", "geo.building.section:request=tile-work.json", "--input", "geo.building.materialize_evidence:rows=updated-descriptive.json", "--input", "geo.building.separation:request=separation.json", "--input", "geo.building.next_evidence:request=next-evidence.json"], "stdout_file": "updated-run.json"},
+            {"argv": ["geo", "run", "--plan", "plan.json", "--work-dir", "work", "--input", "geo.building.home_cells:rows=home-cells.json", "--input", "geo.building.section:request=tile-work.json", "--input", "geo.building.materialize_evidence:rows=updated-descriptive.json"], "stdout_file": "updated-run.json"},
             {"argv": ["geo", "inspect", "--run", "work", "--recommend-next"], "stdout_file": "updated-inspection.json"}
         ],
-        "execution": "Write each write_files value using file_encoding under its filename in one empty directory. Create create_directories first (mkdir work). For each step, invoke canon with argv in that directory, retain stdout as stdout_file and check exit status and domain status before the next step. Runs finish all nine stages with ABSTAINED because two candidates remain feasible; ABSTAINED is a legitimate result, not a failed executor. Read output_refs and bound receipt paths for candidate/evidence/solve artifacts.",
-        "expected": {"run_status": "ABSTAINED", "executed_stages": 9, "candidate_count": 2, "residual_model_count": 2, "hard_forced_buildings": [], "added_evidence": "one additional soft name preference for building-a; no candidate eliminated"}
+        "execution": "Write each write_files value using file_encoding under its filename in one empty directory. Create create_directories first (mkdir work). For each step, invoke canon with argv in that directory, retain stdout as stdout_file and check exit status and domain status before the next step. The first run finishes eight stages with ABSTAINED because two candidates remain feasible; ABSTAINED is a legitimate result, not a failed executor. Read the canon_geo_answer.v0 output_ref and its declared receipt path for support, preference, acceptance and further work; actual run completion comes from the run report, not the answer's supplied-artifact execution scope.",
+        "expected": {"run_status": "ABSTAINED", "executed_stages": 8, "input_bindings": 3, "candidate_count": 2, "residual_model_count": 2, "hard_forced_buildings": [], "answer_scope": "current_answer", "further_work_source": "not_in_scope", "action_discovery": "not_attempted", "added_evidence": "one additional soft name preference for building-a; no candidate eliminated"}
     }"#,
     )?;
     example["write_files"] = files;
+    let mut full_question = example["write_files"]["question.json"].clone();
+    full_question["answer_scope"] = json!("full_workflow");
+    let mut full: Value = serde_json::from_str(
+        r#"{
+        "when": "Optional: after the main example and its evidence update, deliberately request future-work analysis. These prospective outcomes are synthetic tutorial inputs, not collected evidence.",
+        "write_files": {},
+        "steps": [
+            {"argv": ["geo", "plan", "--question", "full-question.json", "--capabilities", "capabilities.json", "--inventory", "inventory.json", "--profile", "profile.json", "--budget", "budget.json"], "stdout_file": "full-plan.json"},
+            {"argv": ["geo", "run", "--plan", "full-plan.json", "--work-dir", "work", "--input", "geo.building.home_cells:rows=home-cells.json", "--input", "geo.building.section:request=tile-work.json", "--input", "geo.building.materialize_evidence:rows=updated-descriptive.json", "--input", "geo.building.separation:request=separation.json", "--input", "geo.building.next_evidence:request=next-evidence.json"], "stdout_file": "full-run.json"}
+        ],
+        "expected": {"run_status": "ABSTAINED", "plan_stages": 10, "resumed_stages": 7, "executed_stages": 3, "answer_scope": "full_workflow", "further_work_source": "next_evidence_artifact", "action_discovery": "incomplete"}
+    }"#,
+    )?;
+    full["write_files"] = json!({
+        "full-question.json": full_question,
+        "separation.json": {"version": "canon_geo_separation_inputs.v0", "prospective": [{"id": "guide.synthetic.prospective", "contract_id": "guide.synthetic.prospective", "cost_units": 1, "outcomes": [{"outcome_id": "a", "induced": [{"kind": "require", "member": {"level": "building", "id": "building-a"}}]}, {"outcome_id": "b", "induced": [{"kind": "forbid", "member": {"level": "building", "id": "building-a"}}]}]}]},
+        "next-evidence.json": {"version": "canon_geo_next_evidence_inputs.v0", "candidates": [{"action_id": "guide.synthetic.action", "class": "separate_residual", "kind": {"kind": "observe", "payload": "guide.synthetic.prospective"}, "observation_id": "guide.synthetic.prospective", "cost_units": 1}], "budget": budget}
+    });
+    example["full_workflow_extension"] = full;
     Ok(example)
 }
 
@@ -259,7 +289,12 @@ mod tests {
             assert_eq!(docs[*name], serde_json::from_str::<Value>(source).unwrap());
             refs(&docs[*name], name, docs);
         }
-        for entry in guide["input_contracts"].as_object().unwrap().values() {
+        for entry in guide["input_contracts"]
+            .as_object()
+            .unwrap()
+            .values()
+            .chain(guide["output_contracts"].as_object().unwrap().values())
+        {
             let doc = &docs[entry["schema"].as_str().unwrap()];
             assert!(doc.is_object());
             if let Some(pointer) = entry["pointer"].as_str() {

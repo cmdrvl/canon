@@ -421,6 +421,7 @@ fn building_question() -> GeoQuestion {
             required_evidence_classes: vec![GeoEvidenceClass::BuildingFootprint],
             optional_evidence_classes: vec![GeoEvidenceClass::AddressSet],
         }],
+        answer_scope: None,
         query_as_of: None,
         requested_claim_classes: vec![GeoClaimClass::StableIdentity, GeoClaimClass::CandidateReach],
         presentation_limits: vec![GeoNumericBound {
