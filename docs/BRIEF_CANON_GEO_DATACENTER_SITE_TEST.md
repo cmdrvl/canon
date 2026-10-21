@@ -390,12 +390,13 @@ global optimizer is not required to show the Hilliard finding.
    identity or requiring hypothetical future observations. This converts existing
    evidence into a usable answer. Preserve global preference unavailability when
    the solver did not materialize the models.
-2. **Remove the custom spatial solver glue.** `bd-v8gv` adds native
-   point-to-parcel evidence to the existing run DAG, with positive and negative
-   behavioral tests. Agents prepare typed spatial observations externally;
-   source-document extraction is not a product deliverable. Provenance and
-   uncertain controls remain visible. Area arithmetic repair helps the outline
-   route but does not block positive point support.
+2. **Make the supplied clues executable.** `bd-gixj` adds typed area and
+   relative-location recipes to the existing discovery inquiry. `bd-v8gv` is an
+   optional native point-to-parcel route when point evidence is actually present;
+   it is not a prerequisite for every article. Agents prepare typed observations
+   externally, while Canon applies the supported geographic comparisons.
+   Source-document extraction is not a product deliverable. Provenance and
+   uncertain controls remain visible. Area arithmetic repair remains independent.
 3. **Prove transfer and incremental value.** `bd-he43` runs a different physical
    news subject through the public inquiry/acquisition interfaces. Its dependency
    graph includes the actual S1–S3 integration owners. It need not await S4's full
@@ -457,3 +458,85 @@ versioned local adapters, then the predeclared multi-subject quality/cost
 evaluation. The existing per-mode held-out population, false-acceptance,
 coverage, grain and latency gates in bd-244j remain unchanged. Hilliard and any
 subject used to tune the adapter are never counted as held-out proof.
+
+## 12. Article-clue intake and agent usability (2026-10-20)
+
+The user's product example is an office remembered by approximate location,
+stories and floor area. Data-center news is the same discovery problem with
+different observations. Canon should combine evidence across datasets without
+requiring a trusted address or an externally identified target parcel. This is
+the existing region-and-attributes inquiry plan, not a new geocoder product.
+
+### Where an agent gets stuck today
+
+At `b65674b`, `geo plan --inquiry` is unrecognized. The operator contract lists
+five planning files, while the inquiry intake and automatic bindings remain open
+under `bd-2s32`; discovery remains open under `bd-3s20`. The current descriptive
+profile in `src/geo/descriptive.rs` accepts name, address, type, unit count and
+year. An operator label does not compile acreage, stories or road relations into
+constraints. The low-level integer measure solver vocabulary is not a complete
+agent-facing recipe for interpreting such claims.
+
+Two additional owners close distinct gaps:
+
+- **`bd-pd2y` (P0): agent-facing CLI guidance and evidence intake.** Implement a
+  focused pass using the user-invoked agent-ergonomics skill: task-first help,
+  machine-resolvable schemas and valid examples, precise recovery, capability
+  limits and a fresh-agent supported journey. Measure actual mistakes and
+  interventions. Do not advertise unimplemented flags, rename abstention into
+  confidence, or create new primary Geo verbs. Filing the bead is not completion
+  of the skill's audit/apply/test cycle.
+- **`bd-gixj` (P1): typed area and relative-location clue recipes.** Retain each
+  clue's subject, source/span, measurement, grain, units, time and uncertainty;
+  compute supported comparisons in Canon and show each clue's effect. Missing or
+  incompatible observations cannot exclude candidates. Campus acreage does not
+  establish a single parcel, and road polylines need real supported semantics.
+
+`bd-he43` now tests region-and-clues discovery, not mandatory point containment.
+`bd-v8gv` stays available for actual point-source evidence. PDF packaging remains
+cancelled. The CLI bead can improve truthful current guidance before the entire
+inquiry ships; it cannot close the underlying feature gaps with documentation.
+
+### A second development case exposes the right issues
+
+The current MCP record `798b03eaf53ad6b8b642f7f2cdcd068e` has clues for a campus
+on US 23, north of Scioto Downs, approximately 480 acres. The
+[source article](https://mix1065.iheart.com/content/2026-09-21-what-the-developer-of-the-proposed-data-center-has-said/)
+also describes a different project occupying part of a 490-acre paper-mill
+property in Chillicothe. Its extracted quantity evidence pools both. These are
+different subjects, not automatically contradictory estimates for one site.
+The source display date also differs from the URL/extracted date; preserve the
+distinction when retaining temporal evidence.
+
+A complete MCP projection returned 21 geographic mentions across seven article
+IDs, all sharing text hash
+`d88e6637af540eef60f09670465b0bda686161563fa487ffdc13145a0465ca2f`.
+They repeat three place/road mentions, not independent geographic corroboration.
+Receipt:
+`sha256:6f59a8719dfe6425560401ba32bba56fd18700705a2b9eed01c043300d7a1972`.
+The initial broad evidence response was truncated; this complete projection
+replaced it for the stated mention count. This inspected case is exploratory
+development/preflight evidence, not held-out transfer proof. No target parcel
+was identified or resolved in this preflight.
+
+Franklin parcel schema inspection already exposes `ACRES`, `STATEDAREA`,
+`BLDGAREA` and `RESFLRAREA` (receipt
+`sha256:0d45b696989787e15a263f5a870663a41742077f7f8f2611f63e77f5f7f2607a`).
+Field names alone do not establish units, aggregation grain, source accuracy or
+comparability. Check source definitions and regional coverage before landing a
+duplicate dataset. Road/landmark geometry is a possible bounded acquisition gap;
+the local Hilliard road selection is not a complete county release and does not
+prove polyline predicate support. No additional dataset was landed in this pass.
+
+### Concrete implementation order
+
+1. Make the current supported entry points discoverable through `bd-pd2y`, while
+   finishing S1's current-answer behavior.
+2. Deliver the existing facts-only inquiry and discovery handoff (`bd-2s32`,
+   `bd-3s20`) with typed pending source/boundary requests and automatic bindings.
+3. Add the bounded clue recipes (`bd-gixj`) and retrieve or spot-land only the
+   source evidence those recipes identify as missing. No agent-side geometry
+   solver or hand-authored identity constraints.
+4. Run a fresh agent on the article-clue workflow, add evidence and resume,
+   compare clue ablations and errors, then independently score a separately
+   selected subject under `bd-he43`. Preserve the wider release gates.
