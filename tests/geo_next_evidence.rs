@@ -2,16 +2,18 @@
 
 use canon::geo::{
     CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION,
-    CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION,
-    CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_SEPARATION_VERSION, GeoBudgetAction,
-    GeoCompositionArtifact, GeoCompositionBackbone, GeoCompositionProfile, GeoCompositionStatus,
-    GeoCompositionSummary, GeoDecisionPolicyRef, GeoDominanceBasis, GeoLossModelRef,
-    GeoModelCountScope, GeoNextAction, GeoNextActionClass, GeoNextActionKind,
-    GeoNextEvidencePolicy, GeoNextEvidenceRequest, GeoNumericBound, GeoObservationSeparation,
-    GeoOutcomeSeparation, GeoResourceBudget, GeoResourceCounter, GeoSeparationArtifact,
-    GeoStopReason, GeoValueOrigin, canonical_composition_bytes, canonical_next_evidence_bytes,
-    canonical_next_evidence_request_bytes, canonical_separation_bytes, recommend,
-    recommend_from_request,
+    CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION, CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION,
+    CANON_GEO_NEXT_EVIDENCE_VERSION, CANON_GEO_RESOURCE_BUDGET_VERSION,
+    CANON_GEO_SEPARATION_VERSION, GeoActionDiscoveryState, GeoBudgetAction, GeoCompositionArtifact,
+    GeoCompositionBackbone, GeoCompositionProfile, GeoCompositionStatus, GeoCompositionSummary,
+    GeoDecisionPolicyRef, GeoDominanceBasis, GeoLossModelRef, GeoModelCountScope, GeoNextAction,
+    GeoNextActionClass, GeoNextActionKind, GeoNextEvidenceCandidateInput, GeoNextEvidenceErrorCode,
+    GeoNextEvidenceInputs, GeoNextEvidencePolicy, GeoNextEvidenceRequest, GeoNumericBound,
+    GeoObservationSeparation, GeoOutcomeSeparation, GeoResourceBudget, GeoResourceCounter,
+    GeoSeparationArtifact, GeoStopReason, GeoValueOrigin, canonical_composition_bytes,
+    canonical_next_evidence_bytes, canonical_next_evidence_request_bytes,
+    canonical_separation_bytes, recommend, recommend_from_request, validate_next_evidence_artifact,
+    validate_next_evidence_inputs, validate_next_evidence_request,
 };
 use serde_json::Value;
 use std::{collections::BTreeMap, fs};
@@ -21,6 +23,216 @@ const CASE_444: &str =
 const CASE_312: &str =
     "h7-subject:non-round:ae5fa9ee31b1670d1af89f8fd3632c4f207957a15486b4007a6776495f960309";
 const D1_FIXTURE_DIR: &str = "scripts/geo_measurements/fixtures/d1_residuals/mcp_stack_2026-09-03";
+
+#[test]
+fn empty_action_list_is_not_exhausted_discovery() {
+    let composition = composition(GeoCompositionStatus::Ambiguous, 4, false);
+    let separation = separation(
+        4,
+        vec![observation(
+            "A",
+            outcomes(&[("left", 2, true), ("right", 2, true)]),
+            false,
+        )],
+    );
+    let artifact = recommend(
+        &composition,
+        &separation,
+        &[],
+        None,
+        &budget(10),
+        &BTreeMap::new(),
+    )
+    .expect("an empty caller action list still yields a useful controller result");
+    assert_eq!(artifact.stop, None, "no action search was performed");
+    assert!(artifact.frontier.is_empty());
+    assert!(artifact.dominated.is_empty());
+    let value = serde_json::to_value(&artifact).expect("next evidence serializes");
+    assert_eq!(value["action_discovery"], "not_attempted");
+}
+
+#[test]
+fn empty_action_list_preserves_actual_forced_and_budget_stops() {
+    for (status, forced, operations, expected_stop) in [
+        (
+            GeoCompositionStatus::Resolved,
+            true,
+            10,
+            GeoStopReason::ClaimForced,
+        ),
+        (
+            GeoCompositionStatus::Ambiguous,
+            false,
+            0,
+            GeoStopReason::BudgetExceeded,
+        ),
+    ] {
+        let artifact = recommend(
+            &composition(status, 1, forced),
+            &unchanged_separation(1),
+            &[],
+            None,
+            &budget(operations),
+            &BTreeMap::new(),
+        )
+        .expect("a justified domain or budget stop remains useful");
+        assert_eq!(artifact.stop, Some(expected_stop));
+        assert_eq!(
+            artifact.action_discovery,
+            GeoActionDiscoveryState::NotAttempted
+        );
+    }
+}
+
+#[test]
+fn every_stop_is_validated_before_forced_budget_or_first_stop_priority() {
+    for (reason, expected_reason) in [
+        (None, "stop_candidate_requires_explicit_reason"),
+        (
+            Some(GeoStopReason::HonestAmbiguity),
+            "honest_ambiguity_requires_exhausted_action_discovery",
+        ),
+    ] {
+        let candidates = vec![
+            stop_action("A-valid", Some(GeoStopReason::GrainUnsupported)),
+            stop_action("B-invalid", reason),
+        ];
+        for (status, forced, operations) in [
+            (GeoCompositionStatus::Ambiguous, false, 10),
+            (GeoCompositionStatus::Resolved, true, 10),
+            (GeoCompositionStatus::Ambiguous, false, 0),
+        ] {
+            let composition = composition(status, 1, forced);
+            let separation = unchanged_separation(1);
+            let error = recommend(
+                &composition,
+                &separation,
+                &candidates,
+                None,
+                &budget(operations),
+                &BTreeMap::new(),
+            )
+            .expect_err("a malformed later stop cannot hide behind a valid or computed stop");
+            assert_eq!(error.code, GeoNextEvidenceErrorCode::InvalidInput);
+            assert_eq!(error.detail["action_id"], "B-invalid");
+            assert_eq!(error.detail["field"], "stop_reason");
+            assert_eq!(error.detail["reason"], expected_reason);
+        }
+        let request = GeoNextEvidenceRequest {
+            version: CANON_GEO_NEXT_EVIDENCE_REQUEST_VERSION.to_string(),
+            composition_blake3: format!("blake3:{}", "0".repeat(64)),
+            separation_blake3: format!("blake3:{}", "1".repeat(64)),
+            candidates: candidates.clone(),
+            policy: None,
+            budget: budget(10),
+            budget_spent: BTreeMap::new(),
+        };
+        assert_eq!(
+            validate_next_evidence_request(&request).unwrap_err().detail["reason"],
+            expected_reason,
+        );
+        let inputs = GeoNextEvidenceInputs {
+            version: CANON_GEO_NEXT_EVIDENCE_INPUTS_VERSION.to_string(),
+            candidates: candidates
+                .into_iter()
+                .map(|candidate| GeoNextEvidenceCandidateInput {
+                    action_id: candidate.action_id,
+                    class: candidate.class,
+                    kind: candidate.kind,
+                    observation_id: None,
+                    cost_units: 0,
+                    redundant: false,
+                    lineage_ids: Vec::new(),
+                    stop_reason: candidate.stop_reason,
+                })
+                .collect(),
+            policy: None,
+            budget: budget(10),
+            budget_spent: BTreeMap::new(),
+        };
+        assert_eq!(
+            validate_next_evidence_inputs(&inputs).unwrap_err().detail["reason"],
+            expected_reason,
+        );
+    }
+}
+
+#[test]
+fn nonempty_redundant_actions_preserve_justified_stop() {
+    let candidates = vec![action(
+        "redundant",
+        GeoNextActionClass::SeparateResidual,
+        1,
+        outcomes(&[("unchanged", 4, true)]),
+        true,
+    )];
+    let artifact = recommend(
+        &composition(GeoCompositionStatus::Ambiguous, 4, false),
+        &separation(
+            4,
+            vec![observation(
+                "redundant",
+                outcomes(&[("unchanged", 4, true)]),
+                true,
+            )],
+        ),
+        &candidates,
+        None,
+        &budget(10),
+        &BTreeMap::new(),
+    )
+    .expect("nonempty genuinely redundant actions have a justified stop");
+    log_artifact("all-redundant", &candidates, None, &artifact);
+    assert_eq!(artifact.stop, Some(GeoStopReason::AllActionsRedundant));
+    assert_eq!(
+        artifact.action_discovery,
+        GeoActionDiscoveryState::Incomplete
+    );
+    assert!(artifact.frontier.is_empty());
+}
+
+#[test]
+fn explicit_non_exhaustion_stop_reasons_remain_available() {
+    for reason in [
+        GeoStopReason::ClaimForced,
+        GeoStopReason::AllActionsRedundant,
+        GeoStopReason::GrainUnsupported,
+        GeoStopReason::BudgetExceeded,
+    ] {
+        let artifact = recommend(
+            &composition(GeoCompositionStatus::Ambiguous, 4, false),
+            &unchanged_separation(4),
+            &[stop_action("stop", Some(reason))],
+            None,
+            &budget(10),
+            &BTreeMap::new(),
+        )
+        .expect("existing explicit policy stops remain supported");
+        assert_eq!(artifact.stop, Some(reason));
+        assert_eq!(
+            artifact.action_discovery,
+            GeoActionDiscoveryState::Incomplete
+        );
+    }
+}
+
+#[test]
+fn serialized_ambiguity_cannot_claim_exhaustion_from_a_caller_list() {
+    let mut artifact = recommend(
+        &composition(GeoCompositionStatus::Ambiguous, 4, false),
+        &unchanged_separation(4),
+        &[],
+        None,
+        &budget(10),
+        &BTreeMap::new(),
+    )
+    .expect("empty recommendation");
+    artifact.stop = Some(GeoStopReason::HonestAmbiguity);
+    let error = validate_next_evidence_artifact(&artifact)
+        .expect_err("a stop must not overstate discovery coverage");
+    assert_eq!(error.code, GeoNextEvidenceErrorCode::InvalidInput);
+    assert_eq!(error.detail["field"], "action_discovery");
+}
 
 #[test]
 fn t18_frontier_without_loss_model_and_total_ranking_with_loss_model() {
@@ -73,6 +285,10 @@ fn t18_frontier_without_loss_model_and_total_ranking_with_loss_model() {
     assert_eq!(artifact.dominated[0].dominated_by, ["A"]);
     assert!(artifact.total_ranking.is_none());
     assert!(artifact.stop.is_none());
+    assert_eq!(
+        artifact.action_discovery,
+        GeoActionDiscoveryState::Incomplete
+    );
     assert_eq!(
         artifact
             .ranking_abstention
@@ -179,6 +395,10 @@ fn negative_hard_forced_claim_stops_with_empty_frontier() {
     assert!(artifact.frontier.is_empty());
     assert!(artifact.dominated.is_empty());
     assert_eq!(artifact.stop, Some(GeoStopReason::ClaimForced));
+    assert_eq!(
+        artifact.action_discovery,
+        GeoActionDiscoveryState::Incomplete
+    );
 }
 
 #[test]
@@ -357,6 +577,10 @@ fn negative_operations_budget_exhaustion_stops_but_keeps_frontier() {
 
     assert_eq!(ids(&artifact.frontier), ["A"]);
     assert_eq!(artifact.stop, Some(GeoStopReason::BudgetExceeded));
+    assert_eq!(
+        artifact.action_discovery,
+        GeoActionDiscoveryState::Incomplete
+    );
     assert_eq!(artifact.budget_remaining.get("ops"), Some(&0));
 }
 
@@ -612,6 +836,10 @@ fn d1_fixture_444_86th_street_selects_separate_residual_action() {
     .expect("444 fixture recommendation should build");
     log_artifact("d1/444", &candidates, None, &artifact);
     assert_eq!(
+        artifact.action_discovery,
+        GeoActionDiscoveryState::Incomplete
+    );
+    assert_eq!(
         ids(&artifact.frontier),
         ["fixture.444_86th_street.roll_gsf_band"]
     );
@@ -668,6 +896,10 @@ fn d1_fixture_312_97th_street_selects_conflict_diagnosis_action() {
     )
     .expect("312 fixture recommendation should build");
     log_artifact("d1/312", &candidates, None, &artifact);
+    assert_eq!(
+        artifact.action_discovery,
+        GeoActionDiscoveryState::Incomplete
+    );
     assert_eq!(
         ids(&artifact.frontier),
         ["fixture.312_97th_street.conflict_core"]
@@ -727,6 +959,17 @@ fn composition(
         budget_fallback: None,
         entity_projection: None,
     }
+}
+
+fn unchanged_separation(models: u64) -> GeoSeparationArtifact {
+    separation(
+        models,
+        vec![observation(
+            "unused",
+            outcomes(&[("unchanged", models, true)]),
+            true,
+        )],
+    )
 }
 
 fn separation(
@@ -797,6 +1040,22 @@ fn action(
         lineage_ids: Vec::new(),
         dominated_by: Vec::new(),
         stop_reason: None,
+    }
+}
+
+fn stop_action(action_id: &str, reason: Option<GeoStopReason>) -> GeoNextAction {
+    GeoNextAction {
+        action_id: action_id.to_string(),
+        class: GeoNextActionClass::Stop,
+        kind: GeoNextActionKind::Stop,
+        observation_id: None,
+        cost_units: 0,
+        separation: Vec::new(),
+        worst_case_remaining: 0,
+        redundant: false,
+        lineage_ids: Vec::new(),
+        dominated_by: Vec::new(),
+        stop_reason: reason,
     }
 }
 
@@ -904,7 +1163,7 @@ fn log_artifact(
     artifact: &canon::geo::GeoNextEvidenceArtifact,
 ) {
     eprintln!(
-        "{label} candidates={:?} policy={:?} frontier={:?} dominated={:?} total_ranking={:?} stop={:?} dominance_basis={:?}",
+        "{label} candidates={:?} policy={:?} frontier={:?} dominated={:?} total_ranking={:?} stop={:?} action_discovery={:?} dominance_basis={:?}",
         candidates
             .iter()
             .map(|candidate| (
@@ -942,6 +1201,7 @@ fn log_artifact(
             .collect::<Vec<_>>(),
         artifact.total_ranking,
         artifact.stop,
+        artifact.action_discovery,
         artifact.dominance_basis
     );
 }

@@ -1212,6 +1212,52 @@ fn typed_composition_status_projects_to_geo_run_status() {
 }
 
 #[test]
+fn geo_run_next_evidence_with_empty_candidates_reports_not_attempted_not_honest_ambiguity() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let run_policy = policy(temp.path());
+    let cas_root = temp.path().join(&run_policy.work_dir).join("artifacts/cas");
+    let plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    let mut rows = warehouse_rows();
+    rows.contracts.clear();
+    rows.evidence_rows.clear();
+    let mut next = default_next_evidence_inputs();
+    next.candidates.clear();
+    let run = run_geo_plan(GeoRunRequest::new(
+        plan,
+        run_policy,
+        run_bindings_with_next_inputs(rows, next),
+    ))
+    .expect("registered run completes with an honest ambiguous result");
+    assert_eq!(run.status, GeoRunStatus::Abstained);
+    let output = run
+        .output_refs
+        .iter()
+        .find(|output| output.artifact_id == "geo.building.next_evidence/next_evidence")
+        .expect("next-evidence artifact remains published");
+    let digest = output
+        .content_digest
+        .strip_prefix("blake3:")
+        .expect("BLAKE3 output");
+    let bytes =
+        fs::read(cas_root.join(format!("{digest}.bin"))).expect("content-addressed next evidence");
+    assert_eq!(
+        format!("blake3:{}", blake3::hash(&bytes).to_hex()),
+        output.content_digest
+    );
+    let artifact: Value = serde_json::from_slice(&bytes).expect("next evidence JSON");
+    assert_eq!(artifact["action_discovery"], "not_attempted");
+    assert!(
+        artifact.get("stop").is_none(),
+        "no false irreducible-ambiguity stop"
+    );
+    assert!(artifact["frontier"].as_array().unwrap().is_empty());
+}
+
+#[test]
 fn geo_run_explains_conflict_and_recommends_diagnosis_from_generated_separation() {
     let temp = tempfile::tempdir().expect("tempdir");
     let plan = building_plan(

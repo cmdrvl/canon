@@ -418,7 +418,7 @@ canon project lock refresh --manifest <MANIFEST> --out <LOCK> [--emit json|summa
 canon project plan --manifest <MANIFEST> --lock <LOCK> [--out <PLAN>] [--cache-hit <NODE>...] [--emit json|summary]
 canon project run [--plan <PLAN>] [--manifest <MANIFEST>] [--lock <LOCK>] [--node <NODE>...] [--workspace <DIR>] [--work-dir <DIR>] [--max-parallelism <N>] [--allow-network] [--allow-mutation-gates] [--emit json|summary]
 # Geo — primary surface (the commands used in the course of business)
-canon geo capabilities [--emit json]
+canon geo capabilities [--guide] [--emit json]
 canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>
 canon geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]
 canon geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVENTORY.json> --question <QUESTION.json> --capabilities <CAPABILITIES.json> --profile <PROFILE.json> --budget <BUDGET.json> --satisfy <REQUEST_ID=RECEIPT.json> --local-artifact <LOCAL_ARTIFACT_ID=PATH>... [--result <DIGEST_ID=PATH>...] --advancement-out <ADVANCEMENT.json>
@@ -1770,6 +1770,22 @@ compiled Geo control contracts. Use `canon geo plan --question <QUESTION.json>
 --budget <BUDGET.json>` to emit `canon_geo_plan.v0`. The current composition profile is
 parcel/building only; candidate reach remains independently unverified unless the inputs
 name a reference that proves it.
+
+Start an agent session with `canon geo capabilities --guide`. It emits a separate,
+deterministic `canon_geo_agent_guide.v0` JSON envelope containing installed input
+schemas (including local reference targets), task guidance and a complete synthetic
+descriptive plan → run → inspect → add-evidence example. No repository checkout or
+network schema lookup is needed. Write the example's `write_files` values using
+its declared JSON encoding, create its listed directories, then invoke its
+`steps[].argv` with `canon` from that directory. The example is an
+uncalibrated workflow demonstration, not live identity proof.
+
+The current descriptive profile accepts a bounded inventory and source-backed
+name, address, property type, unit count and construction year. Area, stories,
+near-road relations and a facts-only `--inquiry` interface remain unavailable.
+Do not put square footage in unit count or treat an article's street name as parcel
+membership. Acquisition and source interpretation happen outside Canon. The guide
+is documentation; obtain the planning capability artifact **without** `--guide`.
 
 Drive Geo from the primary surface: `geo capabilities`, `geo plan`, `geo run`,
 `geo replan-from-acquisition`, `geo evaluate`, `geo inspect`, and `geo ledger` today. The eleven stage leaves and three measurement adapters remain

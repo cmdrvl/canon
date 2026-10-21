@@ -976,11 +976,14 @@
     },
     {
       "name": "geo capabilities",
-      "usage": "canon geo capabilities --emit json",
-      "description": "Emit the compiled offline Canon Geo control capability contract, including source-generic contract versions, vocabularies, deterministic ceilings, property scope, and implemented planning/run/inspect/ledger validation commands",
+      "usage": "canon geo capabilities [--guide] --emit json",
+      "description": "Emit the compiled offline Canon Geo control capability contract; --guide instead emits installed task guidance, source schemas and an executable synthetic descriptive workflow as canon_geo_agent_guide.v0. Only the default capability artifact is a planning input",
       "surface": "primary",
       "output_mode": "json",
       "output_schema": "canon_geo_capabilities.v0",
+      "alternate_output_schemas": [
+        "canon_geo_agent_guide.v0"
+      ],
       "status": "implemented",
       "read_only": true,
       "safety": {
@@ -1021,12 +1024,19 @@
           "domain": "error"
         }
       },
-      "next_command": "canon --describe",
+      "next_command": "canon geo capabilities --guide",
       "recovery": {
         "next_command": "canon geo capabilities --emit json",
         "refusal_exit_code": 2
       },
       "options": [
+        {
+          "name": "guide",
+          "flag": "--guide",
+          "type": "boolean",
+          "default": false,
+          "description": "Emit canon_geo_agent_guide.v0 with installed schemas, supported tasks and a synthetic offline workflow; this is not a planning capability artifact"
+        },
         {
           "name": "emit",
           "flag": "--emit",

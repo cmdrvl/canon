@@ -212,6 +212,9 @@ pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
 }
 
 fn run_capabilities(args: &GeoCapabilitiesCli) -> Result<u8, Box<dyn Error>> {
+    if args.guide {
+        return write_canonical(&serde_json::to_vec(&super::agent_guide::agent_guide()?)?);
+    }
     match args.emit {
         GeoCapabilitiesEmitMode::Json => {
             let capabilities = match default_geo_capabilities() {

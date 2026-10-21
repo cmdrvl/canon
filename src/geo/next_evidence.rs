@@ -52,6 +52,18 @@ pub enum GeoStopReason {
     BudgetExceeded,
 }
 
+/// Coverage of the search for actions, independent of the supplied action list.
+/// A caller-provided list cannot certify that every useful action was considered.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoActionDiscoveryState {
+    #[default]
+    NotAttempted,
+    Incomplete,
+    ExhaustedWithinDeclaredCapabilitiesAndBudget,
+    StoppedByPolicy,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GeoDominanceBasis {
@@ -158,6 +170,8 @@ pub struct GeoNextEvidenceArtifact {
     pub subject_ref: Option<GeoExplanationSubjectRef>,
     pub composition_blake3: String,
     pub separation_blake3: String,
+    #[serde(default)]
+    pub action_discovery: GeoActionDiscoveryState,
     pub frontier: Vec<GeoNextAction>,
     pub dominated: Vec<GeoNextAction>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -263,6 +277,14 @@ pub fn recommend(
     let separation_blake3 = prefixed_hash(&separation_bytes);
 
     let mut normalized = normalize_candidates(candidates, separation)?;
+    // These are caller-supplied candidates, not the result of an exhaustive
+    // discovery procedure. Future generated actions must bind their own proof
+    // of discovery coverage before they may claim exhaustion.
+    let action_discovery = if candidates.is_empty() {
+        GeoActionDiscoveryState::NotAttempted
+    } else {
+        GeoActionDiscoveryState::Incomplete
+    };
     let budget_remaining = remaining_budget(budget, spent);
     let budget_exceeded = operations_budget_exhausted(budget, spent);
 
@@ -279,7 +301,10 @@ pub fn recommend(
         Some(reason)
     } else if !normalized.is_empty() && no_actionable_candidates {
         Some(GeoStopReason::AllActionsRedundant)
-    } else if normalized.is_empty() && composition.status == GeoCompositionStatus::Ambiguous {
+    } else if action_discovery
+        == GeoActionDiscoveryState::ExhaustedWithinDeclaredCapabilitiesAndBudget
+        && composition.status == GeoCompositionStatus::Ambiguous
+    {
         Some(GeoStopReason::HonestAmbiguity)
     } else {
         None
@@ -327,6 +352,7 @@ pub fn recommend(
         subject_ref: separation.subject_ref.clone(),
         composition_blake3,
         separation_blake3,
+        action_discovery,
         frontier,
         dominated,
         total_ranking,
@@ -434,6 +460,7 @@ pub fn validate_next_evidence_inputs(
     validate_budget(&inputs.budget, &inputs.budget_spent)?;
     validate_candidate_input_order(&inputs.candidates)?;
     for candidate in &inputs.candidates {
+        validate_stop_reason(candidate.class, candidate.stop_reason, &candidate.action_id)?;
         if candidate.action_id.is_empty() {
             return Err(GeoNextEvidenceError::invalid(
                 "Geo next-evidence candidate action_id must be nonempty",
@@ -495,6 +522,15 @@ pub fn validate_next_evidence_artifact(
     }
     validate_prefixed_blake3("composition_blake3", &artifact.composition_blake3)?;
     validate_prefixed_blake3("separation_blake3", &artifact.separation_blake3)?;
+    if artifact.stop == Some(GeoStopReason::HonestAmbiguity)
+        && artifact.action_discovery
+            != GeoActionDiscoveryState::ExhaustedWithinDeclaredCapabilitiesAndBudget
+    {
+        return Err(GeoNextEvidenceError::invalid(
+            "Honest ambiguity requires exhausted action discovery within declared capabilities and budget",
+            [("field", "action_discovery")],
+        ));
+    }
     validate_candidate_order(&artifact.frontier)?;
     validate_candidate_order(&artifact.dominated)?;
     reject_overlap(&artifact.frontier, &artifact.dominated)?;
@@ -1042,11 +1078,32 @@ fn explicit_stop_reason(candidate: &GeoNextAction) -> Option<GeoStopReason> {
     if candidate.class != GeoNextActionClass::Stop {
         return None;
     }
-    Some(
-        candidate
-            .stop_reason
-            .unwrap_or(GeoStopReason::HonestAmbiguity),
-    )
+    candidate.stop_reason
+}
+
+fn validate_stop_reason(
+    class: GeoNextActionClass,
+    reason: Option<GeoStopReason>,
+    action_id: &str,
+) -> Result<(), GeoNextEvidenceError> {
+    if class != GeoNextActionClass::Stop {
+        return Ok(());
+    }
+    let refusal_reason = match reason {
+        None => "stop_candidate_requires_explicit_reason",
+        Some(GeoStopReason::HonestAmbiguity) => {
+            "honest_ambiguity_requires_exhausted_action_discovery"
+        }
+        Some(_) => return Ok(()),
+    };
+    Err(GeoNextEvidenceError::invalid(
+        "Caller-supplied stop actions need an explicit reason and cannot certify exhausted action discovery",
+        [
+            ("action_id", action_id),
+            ("field", "stop_reason"),
+            ("reason", refusal_reason),
+        ],
+    ))
 }
 
 fn next_evidence_run_id(
@@ -1090,6 +1147,7 @@ fn next_evidence_run_id(
 fn validate_candidate_order(candidates: &[GeoNextAction]) -> Result<(), GeoNextEvidenceError> {
     let mut previous: Option<&str> = None;
     for candidate in candidates {
+        validate_stop_reason(candidate.class, candidate.stop_reason, &candidate.action_id)?;
         if previous.is_some_and(|prior| prior >= candidate.action_id.as_str()) {
             return Err(GeoNextEvidenceError::invalid(
                 "Geo next-evidence candidates must be strictly sorted by action_id",

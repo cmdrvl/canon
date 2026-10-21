@@ -19,6 +19,7 @@
     },
     "candidates": {
       "type": "array",
+      "description": "Caller-supplied actions do not certify discovery coverage. Stop actions require stop_reason; honest_ambiguity cannot be asserted by the caller.",
       "items": {
         "$ref": "#/$defs/next_action"
       }

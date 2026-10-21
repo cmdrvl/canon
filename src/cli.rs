@@ -197,6 +197,9 @@ pub struct GeoCli {
 }
 
 const GEO_STAGE_LEAF_HELP: &str = "\
+Agent guide: canon geo capabilities --guide
+  Installed input schemas, supported clue types, and a runnable offline example.
+
 Stage leaves (used by geo run and Demo 0):
   link-sources                    Materialize three or more named sources into one budgeted consistency artifact
   materialize-home-cells          Derive auditable H3 home cells from release-bound representative points
@@ -331,6 +334,9 @@ pub enum GeoSubcommand {
 
 #[derive(Args, Debug, Clone)]
 pub struct GeoCapabilitiesCli {
+    /// Emit the installed agent guide, schemas, and synthetic workflow example
+    #[arg(long)]
+    pub guide: bool,
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: GeoCapabilitiesEmitMode,

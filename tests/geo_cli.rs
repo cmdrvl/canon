@@ -26,6 +26,321 @@ fn canon_command() -> Command {
     Command::new(env!("CARGO_BIN_EXE_canon"))
 }
 
+fn geo_agent_guide() -> Value {
+    let output = canon_command()
+        .args(["geo", "capabilities", "--guide"])
+        .assert()
+        .success();
+    assert!(output.get_output().stderr.is_empty());
+    serde_json::from_slice(&output.get_output().stdout).expect("guide JSON")
+}
+
+fn write_geo_agent_guide_example(dir: &Path, guide: &Value) {
+    for (name, contents) in guide["examples"][0]["write_files"].as_object().unwrap() {
+        fs::write(dir.join(name), serde_json::to_vec(contents).unwrap()).unwrap();
+    }
+    for directory in guide["examples"][0]["create_directories"]
+        .as_array()
+        .unwrap()
+    {
+        fs::create_dir_all(dir.join(directory.as_str().unwrap())).unwrap();
+    }
+}
+
+fn run_geo_agent_guide_step(dir: &Path, step: &Value) -> Value {
+    let args: Vec<_> = step["argv"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    let output = canon_command()
+        .current_dir(dir)
+        .args(args)
+        .assert()
+        .success();
+    assert!(output.get_output().stderr.is_empty());
+    let value: Value = serde_json::from_slice(&output.get_output().stdout).expect("step JSON");
+    fs::write(
+        dir.join(step["stdout_file"].as_str().unwrap()),
+        &output.get_output().stdout,
+    )
+    .unwrap();
+    value
+}
+
+#[test]
+fn geo_agent_guide_is_installed_deterministic_read_only_and_separate_from_capabilities() {
+    let dir = tempdir().unwrap();
+    let first = canon_command()
+        .current_dir(dir.path())
+        .args(["geo", "capabilities", "--guide"])
+        .assert()
+        .success();
+    let second = canon_command()
+        .current_dir(dir.path())
+        .args(["geo", "capabilities", "--guide", "--emit", "json"])
+        .assert()
+        .success();
+    assert_eq!(first.get_output().stdout, second.get_output().stdout);
+    assert!(first.get_output().stderr.is_empty());
+    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
+    let guide: Value = serde_json::from_slice(&first.get_output().stdout).unwrap();
+    assert_eq!(guide["version"], "canon_geo_agent_guide.v0");
+    assert_eq!(
+        guide["tasks"]["discover_from_clues"]["status"],
+        "experimental_bounded_descriptive_intake"
+    );
+    assert_eq!(
+        guide["limitations"][0]["status"],
+        "unavailable_in_descriptive_v0"
+    );
+    let default = canon_command()
+        .args(["geo", "capabilities"])
+        .assert()
+        .success();
+    let typed = canon::geo::default_geo_capabilities().unwrap();
+    let mut expected = canon::geo::canonical_capabilities_bytes(&typed).unwrap();
+    expected.push(b'\n');
+    assert_eq!(
+        default.get_output().stdout,
+        expected,
+        "guide must not alter default semantic capability bytes"
+    );
+    assert!(serde_json::from_value::<canon::geo::GeoCapabilities>(guide.clone()).is_err());
+    write_geo_agent_guide_example(dir.path(), &guide);
+    write_json(dir.path(), "capabilities.json", &guide);
+    let args: Vec<_> = guide["examples"][0]["steps"][0]["argv"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    let refusal = canon_command()
+        .current_dir(dir.path())
+        .args(args)
+        .assert()
+        .code(2);
+    let refusal: Value = serde_json::from_slice(&refusal.get_output().stdout).unwrap();
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(refusal["refusal"]["code"], "E_PARSE");
+    assert_eq!(
+        refusal["refusal"]["message"],
+        "Could not parse the Geo --capabilities file"
+    );
+    assert_eq!(
+        refusal["refusal"]["detail"]["expected_version"],
+        "canon_geo_capabilities.v0"
+    );
+    assert!(
+        refusal["refusal"]["detail"]["error"]
+            .as_str()
+            .unwrap()
+            .contains("unknown field")
+    );
+}
+
+#[test]
+fn geo_agent_guide_example_runs_and_added_evidence_preserves_uncalibrated_ambiguity() {
+    let dir = tempdir().unwrap();
+    let guide = geo_agent_guide();
+    write_geo_agent_guide_example(dir.path(), &guide);
+    let source_bytes = fs::read(dir.path().join("inventory-rows.json")).unwrap();
+    let inventory = &guide["examples"][0]["write_files"]["inventory.json"];
+    let source_digest = format!("blake3:{}", blake3::hash(&source_bytes).to_hex());
+    assert_eq!(
+        inventory["sources"][0]["local_state"]["local_ref"]["content_hash"],
+        source_digest
+    );
+    assert_eq!(
+        inventory["sources"][0]["release"]["release_digest"],
+        source_digest
+    );
+    let steps = guide["examples"][0]["steps"].as_array().unwrap();
+    let plan = run_geo_agent_guide_step(dir.path(), &steps[0]);
+    assert_eq!(plan["status"], "planned");
+    assert_eq!(plan["external_requests"], json!([]));
+    let run = run_geo_agent_guide_step(dir.path(), &steps[1]);
+    assert_eq!(run["status"], "ABSTAINED", "{run}");
+    assert_eq!(
+        run["project_run_report"]["executed_nodes"]
+            .as_array()
+            .unwrap()
+            .len(),
+        9
+    );
+    assert_eq!(run["project_run_report"]["failed_nodes"], json!([]));
+    let work = dir.path().join("work");
+    let solve = read_geo_run_output_ref_artifact(
+        &run,
+        &work,
+        "geo.building.solve/solve",
+        "canon_geo_composition.v0",
+    );
+    assert_eq!(solve["summary"]["building_candidates"], 2);
+    assert_eq!(solve["summary"]["residual_model_count"], 2);
+    assert_eq!(solve["hard_forced"]["buildings"], json!([]));
+    let evidence = read_geo_run_output_ref_artifact(
+        &run,
+        &work,
+        "geo.building.materialize_evidence/materialize_evidence",
+        "canon_geo_evidence_request.v0",
+    );
+    assert_eq!(
+        evidence["observations"].as_array().unwrap().len(),
+        2,
+        "one declared cardinality plus one soft office observation; unknown does not earn support"
+    );
+    assert_eq!(
+        evidence["observations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|o| o["observation"]["kind"] == "prefer_member")
+            .count(),
+        1
+    );
+    run_geo_agent_guide_step(dir.path(), &steps[2]);
+    let updated = run_geo_agent_guide_step(dir.path(), &steps[3]);
+    assert_eq!(updated["status"], "ABSTAINED", "{updated}");
+    assert_eq!(updated["project_run_report"]["failed_nodes"], json!([]));
+    assert!(
+        updated["project_run_report"]["executed_nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|node| node == "geo.building.materialize_evidence")
+    );
+    assert_ne!(run["semantic_hash"], updated["semantic_hash"]);
+    let updated_solve = read_geo_run_output_ref_artifact(
+        &updated,
+        &work,
+        "geo.building.solve/solve",
+        "canon_geo_composition.v0",
+    );
+    assert_eq!(updated_solve["summary"]["residual_model_count"], 2);
+    assert_eq!(updated_solve["hard_forced"]["buildings"], json!([]));
+    let updated_evidence = read_geo_run_output_ref_artifact(
+        &updated,
+        &work,
+        "geo.building.materialize_evidence/materialize_evidence",
+        "canon_geo_evidence_request.v0",
+    );
+    assert_eq!(
+        updated_evidence["observations"].as_array().unwrap().len(),
+        3
+    );
+    assert!(
+        updated_evidence["observations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|o| o["id"] == "descriptive:property_name:building-a")
+    );
+    run_geo_agent_guide_step(dir.path(), &steps[4]);
+}
+
+#[test]
+fn geo_agent_guide_rejects_invented_clues_wrong_binding_and_changed_release() {
+    let guide = geo_agent_guide();
+    let base = &guide["examples"][0]["write_files"]["descriptive.json"];
+    for field in ["area", "story_count", "near_road"] {
+        let mut unsupported = base.clone();
+        unsupported["claim"]["attributes"][field] = json!(43_000);
+        assert!(
+            serde_json::from_value::<canon::geo::descriptive::GeoDescriptiveAssetRequest>(
+                unsupported
+            )
+            .is_err(),
+            "unsupported {field} must not acquire semantics"
+        );
+    }
+    canon_command()
+        .args(["geo", "plan", "--inquiry", "facts.json"])
+        .assert()
+        .code(2);
+    for mutation in [
+        "release_id",
+        "release_digest",
+        "wrong_version",
+        "area",
+        "story_count",
+        "near_road",
+    ] {
+        let dir = tempdir().unwrap();
+        write_geo_agent_guide_example(dir.path(), &guide);
+        let steps = guide["examples"][0]["steps"].as_array().unwrap();
+        run_geo_agent_guide_step(dir.path(), &steps[0]);
+        let mut changed = base.clone();
+        match mutation {
+            "release_id" => {
+                changed["inventory_source"]["release"]["release_id"] = json!("other-release")
+            }
+            "release_digest" => {
+                changed["inventory_source"]["release"]["release_digest"] =
+                    json!(geo_plan_digest("other-release"))
+            }
+            "wrong_version" => changed["version"] = json!("invented_descriptive.v9"),
+            field => changed["claim"]["attributes"][field] = json!(43_000),
+        }
+        write_json(dir.path(), "descriptive.json", &changed);
+        let args: Vec<_> = steps[1]["argv"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        let mut command = canon_command();
+        command.current_dir(dir.path()).args(args);
+        if !mutation.starts_with("release_") {
+            let refusal = command.assert().code(2);
+            let refusal: Value = serde_json::from_slice(&refusal.get_output().stdout).unwrap();
+            assert_eq!(refusal["outcome"], "REFUSAL", "{mutation}: {refusal}");
+            assert_eq!(refusal["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+            assert!(
+                refusal.get("output_refs").is_none(),
+                "preflight rejection must not produce solve artifacts"
+            );
+            if mutation != "wrong_version" {
+                let detail = &refusal["refusal"]["detail"];
+                assert_eq!(detail["geo_run_error_code"], "ARTIFACT_CONTRACT");
+                assert_eq!(
+                    detail["detail"]["node_id"],
+                    "geo.building.materialize_evidence"
+                );
+                assert!(
+                    detail["message"]
+                        .as_str()
+                        .unwrap()
+                        .contains(&format!("unknown field `{mutation}`")),
+                    "specific unsupported field must be named: {refusal}"
+                );
+            }
+        } else {
+            let output = command.assert().success();
+            let run: Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+            assert_eq!(run["status"], "FAILED", "{mutation}: {run}");
+            assert_eq!(
+                run["project_run_report"]["failed_nodes"],
+                json!(["geo.building.materialize_evidence"])
+            );
+            assert!(
+                !run["output_refs"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|output| output["contract_version"] == "canon_geo_composition.v0"),
+                "invalid {mutation} must never produce a solve"
+            );
+            let detail = serde_json::to_string(&run).unwrap();
+            assert!(
+                detail.contains("descriptive inventory source/release"),
+                "specific input rejection must survive in the run report: {detail}"
+            );
+        }
+    }
+}
+
 fn write_json(dir: &std::path::Path, name: &str, value: &Value) -> PathBuf {
     let path = dir.join(name);
     fs::write(

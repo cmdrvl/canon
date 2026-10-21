@@ -495,6 +495,14 @@ fn print_robot_docs() {
     println!("  canon doctor health --json");
     println!("  canon doctor capabilities --json");
     println!("  canon doctor --robot-triage");
+    println!("  canon geo capabilities --guide");
+    println!("geo:");
+    println!(
+        "  - start with the installed Geo guide for supported clues, input schemas, and an offline example"
+    );
+    println!(
+        "  - the guide is documentation, not a planning capability artifact; use geo capabilities without --guide for --capabilities"
+    );
     println!("read_only:");
     println!(
         "  - does not read stdin, input tapes, registries, schemas, review queues, or SQLite indexes"

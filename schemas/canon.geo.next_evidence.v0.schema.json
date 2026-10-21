@@ -24,6 +24,17 @@
       "type": "string",
       "pattern": "^blake3:[0-9a-f]{64}$"
     },
+    "action_discovery": {
+      "type": "string",
+      "default": "not_attempted",
+      "description": "Coverage of action discovery, not completeness of the caller-supplied action list.",
+      "enum": [
+        "not_attempted",
+        "incomplete",
+        "exhausted_within_declared_capabilities_and_budget",
+        "stopped_by_policy"
+      ]
+    },
     "frontier": {
       "type": "array",
       "items": {

@@ -7,6 +7,7 @@
 
 pub mod address;
 pub mod adjudicate;
+pub mod agent_guide;
 pub mod assessment_roll;
 pub mod card;
 pub mod cli;

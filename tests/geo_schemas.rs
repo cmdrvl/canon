@@ -3995,11 +3995,45 @@ fn next_evidence_schema_matches_a_real_instance() {
         canonical_next_evidence_bytes(&artifact).expect("next-evidence artifact canonicalizes");
     let instance: Value =
         serde_json::from_slice(&canonical_bytes).expect("canonical next-evidence JSON parses");
+    assert_eq!(instance["action_discovery"], "incomplete");
     assert_drift_free(
         NEXT_EVIDENCE_SCHEMA,
         "canon.geo.next_evidence.v0",
         CANON_GEO_NEXT_EVIDENCE_VERSION,
         &instance,
+    );
+}
+
+#[test]
+fn next_evidence_legacy_instance_without_action_discovery_deserializes() {
+    let (composition, separation, request) = next_evidence_fixture();
+    let artifact = recommend(
+        &composition,
+        &separation,
+        &request.candidates,
+        request.policy.as_ref(),
+        &request.budget,
+        &request.budget_spent,
+    )
+    .expect("next-evidence artifact");
+    let current = String::from_utf8(canonical_next_evidence_bytes(&artifact).unwrap())
+        .expect("canonical UTF-8");
+    let field = "\"action_discovery\":\"incomplete\",";
+    assert_eq!(current.matches(field).count(), 1);
+    let legacy = current.replace(field, "");
+    let parsed: canon::geo::GeoNextEvidenceArtifact =
+        serde_json::from_str(&legacy).expect("legacy artifact still deserializes");
+    assert_eq!(
+        parsed.action_discovery,
+        canon::geo::GeoActionDiscoveryState::NotAttempted
+    );
+    let upgraded = canonical_next_evidence_bytes(&parsed).expect("new canonical artifact");
+    let value: Value = serde_json::from_slice(&upgraded).unwrap();
+    assert_eq!(value["action_discovery"], "not_attempted");
+    assert_ne!(
+        blake3::hash(legacy.as_bytes()),
+        blake3::hash(&upgraded),
+        "legacy deserialization does not certify byte-identical cached reuse"
     );
 }
 

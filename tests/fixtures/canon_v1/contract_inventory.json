@@ -183,7 +183,7 @@
       "family": "geo",
       "clap_path": "geo capabilities",
       "operator_name": "geo capabilities",
-      "primary_contracts": ["canon_geo_capabilities.v0"],
+      "primary_contracts": ["canon_geo_capabilities.v0", "canon_geo_agent_guide.v0"],
       "action": "preserve"
     },
     {
@@ -1510,6 +1510,13 @@
       "action": "preserve",
       "access_boundary": "public_crate_api",
       "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_agent_guide.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo::agent_guide"
     },
     {
       "id": "canon_geo_plan.v0",

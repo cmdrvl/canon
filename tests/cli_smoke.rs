@@ -1589,6 +1589,7 @@ fn test_doctor_robot_docs_is_plain_text_and_read_only() {
         .success()
         .stdout(predicate::str::contains("cmdrvl.read_only_doctor.v1"))
         .stdout(predicate::str::contains("canon doctor health --json"))
+        .stdout(predicate::str::contains("canon geo capabilities --guide"))
         .stdout(predicate::str::contains("composition:"))
         .stdout(predicate::str::contains(
             "shape old.canon.csv new.canon.csv",

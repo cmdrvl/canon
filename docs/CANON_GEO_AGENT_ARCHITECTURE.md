@@ -736,10 +736,12 @@ accepted for this phase. The current artifacts and the fully working target are 
 in [PLAN_CANON_GEO.md §16.1.2](PLAN_CANON_GEO.md#1612-command-usability-measured-baseline-and-completion-criteria).
 An explicit solve/explain endpoint is planned behavior, not a shipped flag or a relabeling
 of the failed baseline. Missing proposed actions must not be represented as proof that no
-useful actions exist. The current controller does exactly that for an empty supplied action
-list with an ambiguous composition (`src/geo/next_evidence.rs`, `HonestAmbiguity`);
-bd-2dvm owns the correction as slice S1 of the agent-complete roadmap. No implementation is
-part of this planning update.
+useful actions exist. The controller now records `action_discovery: not_attempted`
+for an empty caller list and `incomplete` for a nonempty one, and cannot infer
+`HonestAmbiguity` from either (`bd-3mrt`). Caller-supplied stop actions need an
+explicit reason and cannot assert exhausted discovery. Actual action generation
+and coverage declarations remain S4 work; bounded current-answer completion
+remains with bd-2dvm.
 
 `inspect` must emit structured next actions containing the exact command, required inputs,
 expected output contract, deterministic cost ceiling, and the reason the action can change

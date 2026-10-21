@@ -11,6 +11,7 @@
     },
     "candidates": {
       "type": "array",
+      "description": "Caller-supplied actions yield not_attempted when empty and incomplete otherwise. Stop actions require an explicit reason and cannot assert honest_ambiguity.",
       "items": {
         "$ref": "#/$defs/candidate_input"
       }
