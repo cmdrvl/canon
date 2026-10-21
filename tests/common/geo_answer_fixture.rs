@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 //! Digest-bound retained development inputs. Loading these fixtures never solves.
+//! Execution projection uses an explicitly constructed current-contract envelope
+//! around unchanged historical receipts, not a freshly executed or upgraded run.
 
 #[path = "retained_archive.rs"]
 mod retained_archive;
@@ -33,6 +35,7 @@ pub struct RetainedAnswerFixture {
     pub next_evidence: Option<GeoNextEvidenceArtifact>,
     pub plan: GeoPlan,
     pub retained_run: GeoRun,
+    pub current_contract_test_run: GeoRun,
     pub source_files: BTreeMap<String, Vec<u8>>,
 }
 
@@ -66,7 +69,7 @@ impl RetainedAnswerFixture {
             &self.inputs(),
             &self.config,
             &GeoAnswerLimits::default(),
-            &self.retained_run,
+            &self.current_contract_test_run,
         )
         .unwrap_or_else(|e| panic!("retained execution projection {}: {e}", self.case_id))
     }
@@ -277,6 +280,21 @@ fn decode<T: DeserializeOwned>(files: &BTreeMap<String, Vec<u8>>, member: &str) 
     .unwrap_or_else(|e| panic!("retained member {member}: {e}"))
 }
 
+/// Construct a projection fixture under the current Geo hash contract. The
+/// immutable retained run remains separately available and is never rewritten.
+/// This changes only the envelope identity; it neither executes stages nor
+/// claims that historical receipts were produced under current stage semantics.
+fn current_contract_test_run_from_retained_history(retained: &GeoRun) -> GeoRun {
+    let mut constructed = retained.clone();
+    constructed.semantic_hash = geo_run_semantic_hash(&constructed).unwrap();
+    constructed.run_id = format!(
+        "{CANON_GEO_RUN_VERSION}:{}",
+        constructed.semantic_hash.trim_start_matches("blake3:")
+    );
+    validate_geo_run(&constructed).unwrap();
+    constructed
+}
+
 fn load_fixture(case_id: &str) -> RetainedAnswerFixture {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let catalog: Value = serde_json::from_slice(
@@ -401,7 +419,13 @@ fn load_fixture(case_id: &str) -> RetainedAnswerFixture {
         query_as_of: question.query_as_of.clone(),
     };
     let plan = decode(&files, row["retained_plan"].as_str().unwrap());
-    let retained_run = serde_json::from_value(run.clone()).unwrap();
+    let retained_run: GeoRun = serde_json::from_value(run.clone()).unwrap();
+    assert_eq!(
+        retained_run.semantic_hash,
+        row["retained"]["run_semantic_hash"].as_str().unwrap(),
+        "immutable historical run identity"
+    );
+    let current_contract_test_run = current_contract_test_run_from_retained_history(&retained_run);
     RetainedAnswerFixture {
         case_id: case_id.into(),
         catalog_row: row.clone(),
@@ -414,6 +438,7 @@ fn load_fixture(case_id: &str) -> RetainedAnswerFixture {
         next_evidence: None,
         plan,
         retained_run,
+        current_contract_test_run,
         source_files: files,
     }
 }

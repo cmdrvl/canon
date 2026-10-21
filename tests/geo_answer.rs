@@ -1,5 +1,7 @@
 //! Retained projection integration. No fresh acquisition, held-out accuracy, policy
 //! acceptance or E5 claim is made by these tests. Synthetic mutations are named.
+//! Historical execution receipts are projected through constructed current-contract
+//! test envelopes; this does not execute or upgrade their producing stages.
 #[path = "common/geo_answer_fixture.rs"]
 mod fixture;
 
@@ -260,7 +262,7 @@ fn ans_03c_retained_successful_execution_is_verified_and_unknown_history_stays_u
     assert_eq!(snapshot["report_only_terminal_project_node_ids"], json!([]));
     assert_eq!(
         snapshot["run_semantic_hash"],
-        fixture.retained_run.semantic_hash
+        fixture.current_contract_test_run.semantic_hash
     );
     assert_eq!(snapshot["composition_budget_fallback"], false);
     let unknown = serde_json::to_value(fixture.answer()).unwrap();
@@ -278,7 +280,8 @@ fn ans_03c_retained_successful_execution_is_verified_and_unknown_history_stays_u
         "four supplied artifacts do not describe nine actual executed stages"
     );
     let pure_snapshot =
-        serde_json::to_value(project_answer_execution(&fixture.retained_run).unwrap()).unwrap();
+        serde_json::to_value(project_answer_execution(&fixture.current_contract_test_run).unwrap())
+            .unwrap();
     assert!(
         pure_snapshot["composition_budget_fallback"].is_null(),
         "a run-only projection has no composition input from which to claim composition fallback"
@@ -496,6 +499,44 @@ fn restamp_run(run: &mut GeoRun) {
 }
 
 #[test]
+fn historical_hash_is_rejected_while_explicit_current_contract_fixture_preserves_history() {
+    let fixture = retained_answer_fixture("cornerstone.national_building_supported");
+    let historical = &fixture.retained_run;
+    let constructed = &fixture.current_contract_test_run;
+    assert_eq!(
+        historical.semantic_hash,
+        fixture.catalog_row["retained"]["run_semantic_hash"]
+            .as_str()
+            .unwrap()
+    );
+    assert_ne!(historical.semantic_hash, constructed.semantic_hash);
+    let error = validate_geo_run(historical).unwrap_err();
+    assert!(error.message.contains("semantic_hash"));
+    assert!(
+        project_answer_with_execution(
+            &fixture.inputs(),
+            &fixture.config,
+            &GeoAnswerLimits::default(),
+            historical,
+        )
+        .is_err(),
+        "historical identity is not accepted by a runtime compatibility fallback"
+    );
+    validate_geo_run(constructed).unwrap();
+    let mut original_fields = serde_json::to_value(historical).unwrap();
+    let mut constructed_fields = serde_json::to_value(constructed).unwrap();
+    for fields in [&mut original_fields, &mut constructed_fields] {
+        fields.as_object_mut().unwrap().remove("semantic_hash");
+        fields.as_object_mut().unwrap().remove("run_id");
+    }
+    assert_eq!(
+        original_fields, constructed_fields,
+        "fixture adaptation cannot invent execution, change receipts or alter evidence"
+    );
+    fixture.answer_with_execution();
+}
+
+#[test]
 fn ans_07d_actual_run_history_must_bind_the_question_and_exact_supplied_outputs() {
     let fixture = retained_answer_fixture("cornerstone.national_building_supported");
     let mut wrong_question = fixture.config.clone();
@@ -504,26 +545,26 @@ fn ans_07d_actual_run_history_must_bind_the_question_and_exact_supplied_outputs(
         &fixture.inputs(),
         &wrong_question,
         &GeoAnswerLimits::default(),
-        &fixture.retained_run,
+        &fixture.current_contract_test_run,
     )
     .unwrap_err();
     assert_eq!(error.code, GeoAnswerErrorCode::AnswerInputMismatch);
     assert!(error.detail["artifact"].starts_with("execution.question"));
     let different = retained_answer_fixture("cornerstone.national_building");
     assert_eq!(
-        fixture.retained_run.plan_ref.question_hash,
-        different.retained_run.plan_ref.question_hash
+        fixture.current_contract_test_run.plan_ref.question_hash,
+        different.current_contract_test_run.plan_ref.question_hash
     );
     let error = project_answer_with_execution(
         &fixture.inputs(),
         &fixture.config,
         &GeoAnswerLimits::default(),
-        &different.retained_run,
+        &different.current_contract_test_run,
     )
     .unwrap_err();
     assert_eq!(error.code, GeoAnswerErrorCode::AnswerInputMismatch);
     assert!(error.detail["artifact"].starts_with("execution.output."));
-    let mut wrong_bytes = fixture.retained_run.clone();
+    let mut wrong_bytes = fixture.current_contract_test_run.clone();
     wrong_bytes
         .output_refs
         .iter_mut()
@@ -545,7 +586,7 @@ fn ans_07d_actual_run_history_must_bind_the_question_and_exact_supplied_outputs(
 #[test]
 fn ans_07e_duplicate_output_or_forged_project_report_is_not_verified_execution() {
     let fixture = retained_answer_fixture("cornerstone.national_building_supported");
-    let mut duplicate = fixture.retained_run.clone();
+    let mut duplicate = fixture.current_contract_test_run.clone();
     duplicate.output_refs.push(duplicate.output_refs[0].clone());
     restamp_run(&mut duplicate);
     let error = project_answer_with_execution(
@@ -556,7 +597,7 @@ fn ans_07e_duplicate_output_or_forged_project_report_is_not_verified_execution()
     )
     .unwrap_err();
     assert_eq!(error.code, GeoAnswerErrorCode::InvalidInput);
-    let mut forged = fixture.retained_run.clone();
+    let mut forged = fixture.current_contract_test_run.clone();
     forged
         .project_run_report
         .as_mut()
@@ -578,11 +619,11 @@ fn ans_07e_duplicate_output_or_forged_project_report_is_not_verified_execution()
 fn ans_07f_retained_failed_history_requires_unique_terminal_report_metadata() {
     use canon::project::ProjectRunNodeOutcome;
     let fixture = retained_answer_fixture("brooklyn.02_address_building");
-    // The original failed run is a positive: seven verified bodies plus one
-    // report-only failure, rather than a fabricated completed workflow.
+    // The current-contract fixture preserves the historical seven verified
+    // bodies plus one report-only failure, not a fabricated completed workflow.
     fixture.answer_with_execution();
     for mutation in 0..5 {
-        let mut forged = fixture.retained_run.clone();
+        let mut forged = fixture.current_contract_test_run.clone();
         let reports = &mut forged.project_run_report.as_mut().unwrap().node_reports;
         let index = reports
             .iter()
@@ -639,7 +680,7 @@ fn ans_07h_validly_hashed_failed_body_is_not_a_shared_embedded_completed_receipt
         finalized_node_receipt, finalized_run_receipt, validate_node_receipt,
     };
     let fixture = retained_answer_fixture("brooklyn.02_address_building");
-    let mut forged = fixture.retained_run.clone();
+    let mut forged = fixture.current_contract_test_run.clone();
     let report = forged.project_run_report.as_mut().unwrap();
     // This deliberately forged negative has internally consistent hashes at
     // every layer. It must fail on the shared completed-body contract itself.

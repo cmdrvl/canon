@@ -111,6 +111,8 @@ fn replay(case: &str) {
         commands.len(),
         if case == "courtney.initial_hints" {
             0
+        } else if case.starts_with("resume_current.") {
+            6
         } else if catalog()["cases"]
             .as_array()
             .unwrap()
@@ -121,10 +123,9 @@ fn replay(case: &str) {
             4
         } else if case.ends_with("workspace_refusal") || case.starts_with("resume.") {
             2
-        } else if case.ends_with("address_evidence")
-            || case == "g4.retry_recovery"
-            || case == "nxrt.truth_probe"
-        {
+        } else if case == "g4.retry_recovery" {
+            81
+        } else if case.ends_with("address_evidence") || case == "nxrt.truth_probe" {
             1
         } else {
             3
@@ -251,16 +252,23 @@ fn fast_orlando_workspace_refusal() {
     replay("orlando.case0_hints.workspace_refusal");
 }
 #[test]
+#[ignore = "bd-2no5 historical unversioned refresh recomputes 2983 candidates; explicit full/release gate"]
 fn resume_cornerstone_national_parcel_supported() {
     replay("resume.cornerstone.national_parcel_supported");
 }
 #[test]
+#[ignore = "bd-2no5 historical unversioned refresh recomputes 889 candidates; explicit full/release gate"]
 fn resume_courtney_final_hints() {
     replay("resume.courtney.final_hints");
 }
 #[test]
 fn rpl_16_resume_nxrt_preserves_visible_recompute_divergence() {
     replay("resume.nxrt.experiment");
+}
+
+#[test]
+fn current_version_receipts_resume_byte_identically_after_a_strict_cold_run() {
+    replay("resume_current.cornerstone.national_building_supported");
 }
 
 macro_rules! full_replay_test {
@@ -395,12 +403,18 @@ fn rpf_06_every_full_row_has_an_ignored_consumer_and_truth_is_evaluation_only() 
         r#"
 import runpy,json,pathlib,re
 m=runpy.run_path('scripts/geo_replay/replay.py');catalog=json.loads(pathlib.Path('tests/fixtures/geo/replay/catalog.json').read_text());text=pathlib.Path('tests/geo_replay_retained.rs').read_text()
-full=[c for c in catalog['cases'] if c['tier']=='full'];assert len(full)==17
-assert len([c for c in full if not c.get('duplicate_of')])==16
-assert len([c for c in catalog['cases'] if c['tier']=='fast'])==16
-assert len([c for c in catalog['cases'] if c['tier']=='resume'])==16
+full=[c for c in catalog['cases'] if c['tier']=='full'];assert len(full)==19
+assert len([c for c in full if not c.get('duplicate_of') and not c.get('retained_workspace')])==16
+assert len([c for c in catalog['cases'] if c['tier']=='fast'])==17
+assert len([c for c in catalog['cases'] if c['tier']=='resume'])==14
 assert len([c for c in catalog['cases'] if c['mode']=='cost_observation'])==6
 for c in full:
+ if c.get('retained_workspace'):
+  change=next(g for g in c['golden_changes'] if g.get('target')=='replay_tier')
+  assert change['old']=='resume' and change['new']=='full' and change['bead']=='bd-2no5'
+  name=c['case_id'].replace('.','_')
+  assert re.search(r'#\[ignore = "bd-2no5 historical unversioned refresh[^\n]+\nfn '+re.escape(name)+r'\(',text),c['case_id']
+  continue
  name='geo_replay_full_'+c['case_id'].replace('.','_')
  assert re.search(r'full_replay_test!\(\s*'+re.escape(name)+r',\s*"'+re.escape(c['case_id'])+r'"\s*\)',text),c['case_id']
 evaluations=[m['resolve_case'](c,catalog) for c in catalog['cases'] if c.get('mode')=='evaluation_solve']
@@ -545,7 +559,7 @@ for row in rows:
  c=m['resolve_case'](row,catalog);files=m['load_archive'](c);old=m['retained'](c,files)
  source=next(x for x in catalog['cases'] if x['case_id']==row['source_case_id'])
  assert c['retained']==source['retained'] and c['member_sha256']==source['member_sha256']
- assert c['golden_changes']==[]
+ assert all(g.get('artifact_ids')==['current_answer_capture'] for g in c['golden_changes'])
  kernel=[ref for ref in old['output_refs'] if ref['output_id'] in m['CURRENT_UPSTREAM']]
  retained_kernel=copy.deepcopy(old);retained_kernel['output_refs']=kernel
  m['validate_current_answer_upstream'](c,retained_kernel)
@@ -566,12 +580,56 @@ for row in rows:
 }
 
 #[test]
+fn derived_capture_history_preserves_sources_and_rejects_rewritten_prefixes() {
+    python_test(
+        r#"
+import copy,json,pathlib,runpy
+m=runpy.run_path('scripts/geo_replay/replay.py');catalog=json.loads(pathlib.Path('tests/fixtures/geo/replay/catalog.json').read_text())
+row=copy.deepcopy(next(c for c in catalog['cases'] if c['mode']=='current_answer' and c.get('expected_current_answer')));row.pop('golden_changes',None)
+initial=row['expected_current_answer'];initial['plan_sha256']=m['sha'](b'plan');original=copy.deepcopy(initial)
+run=dict(status=initial['run_status'],semantic_hash='blake3:'+'b'*64,blockers=[],output_refs=[dict(artifact_id=k,output_id=k.rsplit('/',1)[1],content_digest=v) for k,v in initial['output_digests'].items()])
+c=m['resolve_case'](row,catalog);change=m['validate_current_answer_capture'](c,b'plan',run,'bd-test')
+assert change['old']==original and change['artifact_ids']==['current_answer_capture'] and row['expected_current_answer']==original
+row['golden_changes']=[change];resolved=m['resolve_case'](row,catalog)
+assert m['validate_current_answer_capture'](resolved,b'plan',run) is None
+assert row['expected_current_answer']==original and resolved['retained']==c['retained']
+bad=copy.deepcopy(row);bad['golden_changes'][0]['old']['run_semantic_hash']='blake3:'+'a'*64
+try:m['validate_current_answer_capture'](m['resolve_case'](bad,catalog),b'plan',run,'bd-test')
+except m['ReplayError'] as e:assert e.code=='invalid_golden_change'
+else:raise AssertionError('proposal mode rewrote an approved prefix')
+for patch in [dict(artifact_ids=['geo.parcel.solve/solve']),dict(kind='invariant_change')]:
+ bad=copy.deepcopy(row);bad['golden_changes'][0].update(patch)
+ try:m['resolve_case'](bad,catalog)
+ except m['ReplayError'] as e:assert e.code=='invalid_capture_change'
+ else:raise AssertionError('derived history overrode source expectations')
+bad=copy.deepcopy(row);bad.pop('expected_current_answer')
+try:m['resolve_case'](bad,catalog)
+except m['ReplayError'] as e:assert e.code=='invalid_capture_change'
+else:raise AssertionError('history without an initial capture passed')
+tampered=copy.deepcopy(run);ref=next(r for r in tampered['output_refs'] if r['output_id']=='solve');ref['content_digest']='blake3:'+'0'*64
+bad=copy.deepcopy(row);bad['golden_changes'][0]['new']['output_digests'][ref['artifact_id']]=ref['content_digest']
+try:m['validate_current_answer_capture'](m['resolve_case'](bad,catalog),b'plan',tampered,'bd-test')
+except m['ReplayError'] as e:assert e.code=='digest_drift'
+else:raise AssertionError('history concealed changed source solver bytes')
+resume=copy.deepcopy(next(c for c in catalog['cases'] if c['mode']=='retained_resume' and c.get('expected_resume')));resume.pop('golden_changes',None)
+before=copy.deepcopy(resume['expected_resume']);after=copy.deepcopy(before);after['inspect_contract']['run_id']='canon_geo_run.v0:'+'b'*64
+resume['golden_changes']=[m['capture_change_proposal'](resume,'resume_capture',before,after,'bd-test')]
+assert m['expected_digest'](m['resolve_case'](resume,catalog),'resume_capture',before)==after and resume['expected_resume']==before
+bad=copy.deepcopy(resume);bad['golden_changes'][0]['old']=after
+try:m['expected_digest'](m['resolve_case'](bad,catalog),'resume_capture',before)
+except m['ReplayError'] as e:assert e.code=='invalid_golden_change'
+else:raise AssertionError('resume history skipped the initial capture')
+"#,
+    );
+}
+
+#[test]
 fn current_answer_missing_capture_refuses_before_canon_instead_of_recording_success() {
     python_test(
         r#"
 import copy,runpy,json,pathlib,tempfile
 m=runpy.run_path('scripts/geo_replay/replay.py');catalog=json.loads(pathlib.Path('tests/fixtures/geo/replay/catalog.json').read_text())
-row=copy.deepcopy(next(c for c in catalog['cases'] if c['mode']=='current_answer'));row.pop('expected_current_answer',None)
+row=copy.deepcopy(next(c for c in catalog['cases'] if c['mode']=='current_answer'));row.pop('expected_current_answer',None);row.pop('golden_changes',None)
 out=pathlib.Path(tempfile.mkdtemp(prefix='canon-missing-capture-'))/'case'
 try:m['replay'](row,pathlib.Path('/must-not-execute-canon'),out)
 except m['ReplayError'] as e:assert e.code=='missing_expected_capture'
@@ -589,6 +647,45 @@ for patch in [dict(project_run_report={}),dict(output_refs=[{}]),dict(blockers=[
 try:m['pointer'](minimal,'/output_refs')
 except KeyError:pass
 else:raise AssertionError('generic pointer silently defaulted a missing field')
+"#,
+    );
+}
+
+#[test]
+fn historical_refresh_requires_complete_reexecution_and_typed_missing_versions() {
+    python_test(
+        r#"
+import copy,runpy
+m=runpy.run_path('scripts/geo_replay/replay.py')
+nodes=['stage.'+str(i) for i in range(9)]
+report=dict(node_reports=[dict(node_id=n,outcome='completed') for n in nodes],executed_nodes=nodes,
+ resumed_nodes=[],invalidated_nodes=nodes,
+ invalidation_reasons=[dict(node_id=n,reason='stage_semantics_unrecorded',detail=dict(
+ previous_content_hash='missing',current_content_hash='blake3:'+'a'*64,
+ ref_id='project.executor.stage_semantics.v0')) for n in nodes])
+run=dict(status='ABSTAINED',phase='SOLVED',project_run_report=report)
+assert m['historical_refresh_invariants'](run)==report
+assert m['historical_refresh_invariants'](dict(run,status='COMPLETED'))==report
+try:m['historical_refresh_invariants'](dict(run,status='RESOLVED'))
+except m['ReplayError'] as e:assert e.code=='invalid_historical_refresh'
+else:raise AssertionError('composition status accepted as a GeoRun status')
+for patch in [dict(resumed_nodes=nodes),dict(executed_nodes=[]),dict(invalidated_nodes=[]),
+ dict(invalidation_reasons=[]),dict(node_reports=report['node_reports'][:-1]),
+ dict(node_reports=report['node_reports']+[report['node_reports'][0]]),dict(failed_nodes=[nodes[0]]),
+ dict(cancelled_nodes=[nodes[0]]),dict(blocked_nodes=[nodes[0]]),
+ dict(executed_nodes=nodes+[nodes[0]]),dict(invalidated_nodes=nodes+[nodes[0]]),
+ dict(node_reports=[dict(node_id=n,outcome='failed') for n in nodes])]:
+ bad=copy.deepcopy(run);bad['project_run_report'].update(patch)
+ try:m['historical_refresh_invariants'](bad)
+ except m['ReplayError'] as e:assert e.code=='invalid_historical_refresh'
+ else:raise AssertionError('incomplete historical refresh accepted')
+for field,value in [('reason','stage_semantics_changed'),('previous_content_hash','blake3:'+'b'*64),
+ ('current_content_hash','missing'),('ref_id','other')]:
+ bad=copy.deepcopy(run);reason=bad['project_run_report']['invalidation_reasons'][0]
+ (reason if field=='reason' else reason['detail'])[field]=value
+ try:m['historical_refresh_invariants'](bad)
+ except m['ReplayError'] as e:assert e.code=='invalid_historical_refresh'
+ else:raise AssertionError('unqualified producer version accepted')
 "#,
     );
 }
@@ -723,7 +820,7 @@ fn rpl_17_missing_evidence_fails_never_skips() {
             .iter()
             .filter(|c| c["tier"] == "fast")
             .count(),
-        16
+        17
     );
 }
 

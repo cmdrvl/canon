@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Offline public-command replay. Retained integration is never live or accuracy proof."""
 import argparse
+import copy
 import datetime
 import gzip
 import hashlib
@@ -53,15 +54,40 @@ class _ResolvedCurrentAnswer(dict):
     """In-process marker; a catalog JSON field cannot bypass source validation."""
 
 
+def derived_capture_changes(case, artifact):
+    changes = case.get("golden_changes", [])
+    require(isinstance(changes, list), "invalid_capture_change")
+    initial = "expected_current_answer" if artifact == "current_answer_capture" else "expected_resume"
+    require(not changes or isinstance(case.get(initial), dict), "invalid_capture_change")
+    for change in changes:
+        require(isinstance(change, dict) and not change.get("kind")
+                and change.get("artifact_ids") == [artifact], "invalid_capture_change")
+    return changes
+
+
 def resolve_case(case, catalog=None):
+    if case.get("mode") == "current_resume" and not isinstance(case, _ResolvedCurrentAnswer):
+        catalog = catalog or json.loads(CATALOG.read_bytes())
+        sources = [row for row in catalog["cases"] if row["case_id"] == case["source_case_id"]]
+        require(len(sources) == 1 and sources[0]["mode"] == "legacy_full_workflow"
+                and not sources[0].get("retained_workspace")
+                and set(case) == {"case_id", "source_case_id", "mode", "tier", "proof_class", "role", "invariants"}
+                and case["invariants"] == []
+                and case["proof_class"] == "retained" and case["role"] == "current_run_reuse",
+                "invalid_current_resume_source")
+        return _ResolvedCurrentAnswer(dict(sources[0], **case))
     if case.get("mode") in ("retained_resume", "evaluation_solve", "cost_observation") and not isinstance(case, _ResolvedCurrentAnswer):
         catalog = catalog or json.loads(CATALOG.read_bytes())
         sources = [row for row in catalog["cases"] if row["case_id"] == case["source_case_id"]]
         require(len(sources) == 1 and sources[0]["mode"] == "legacy_full_workflow", "invalid_full_source")
-        permitted = {"case_id", "source_case_id", "mode", "tier", "proof_class", "role", "invariants", "expected_resume", "request", "retained_stdout"}
+        permitted = {"case_id", "source_case_id", "mode", "tier", "proof_class", "role", "invariants", "expected_resume", "request", "retained_stdout", "golden_changes"}
         require(case["proof_class"] == "retained" and not case.keys()-permitted, "invalid_full_source")
         require(case["role"] == {"retained_resume":"integrity_only", "evaluation_solve":"evaluation_only", "cost_observation":"cost_observation"}[case["mode"]], "invalid_full_source_role")
-        return _ResolvedCurrentAnswer(dict(sources[0], **case, golden_changes=[]))
+        changes = derived_capture_changes(case, "resume_capture")
+        require(case["mode"] == "retained_resume" or not changes, "invalid_capture_change")
+        merged = _ResolvedCurrentAnswer(dict(sources[0], **case))
+        merged["golden_changes"] = changes
+        return merged
     if case.get("mode") != "current_answer" or isinstance(case, _ResolvedCurrentAnswer):
         return case
     require(case["proof_class"] == "retained", "proof_class_invalid", case_id=case["case_id"])
@@ -70,9 +96,10 @@ def resolve_case(case, catalog=None):
     require(len(sources) == 1 and sources[0]["mode"] == "legacy_full_workflow",
             "invalid_current_answer_source", case_id=case["case_id"])
     source = sources[0]
-    permitted = {"case_id", "source_case_id", "mode", "tier", "proof_class", "invariants", "expected_current_answer"}
+    permitted = {"case_id", "source_case_id", "mode", "tier", "proof_class", "invariants", "expected_current_answer", "golden_changes"}
     require(not case.keys() - permitted, "invalid_current_answer_override", case_id=case["case_id"])
-    merged = _ResolvedCurrentAnswer(dict(source, **case, golden_changes=[]))
+    merged = _ResolvedCurrentAnswer(dict(source, **case))
+    merged["golden_changes"] = derived_capture_changes(case, "current_answer_capture")
     # Analysis stages are deliberately absent in current-answer mode. Preserve
     # every source kernel assertion; historical terminal status is read from
     # the immutable run, not from later approved legacy execution changes.
@@ -233,6 +260,15 @@ def parity(case, artifact, original, actual, version="unknown"):
     expected = expected_digest(case, artifact, original)
     require(actual == expected, "digest_drift", case_id=case["case_id"],
             artifact_id=artifact, old=expected, new=actual, contract_version=version)
+
+
+def capture_change_proposal(case, artifact, expected, actual, bead):
+    return dict(case_id=case["case_id"], bead=bead,
+                date=datetime.datetime.now(datetime.timezone.utc).date().isoformat(),
+                commit=None, artifact_ids=[artifact], old=copy.deepcopy(expected), new=copy.deepcopy(actual),
+                contract_versions=["canon_geo_run.v0", "canon_geo_run.v0"],
+                changed_paths=paths_changed(expected, actual)[:50],
+                semantic_note="REVIEW REQUIRED: append-only capture transition; original source and initial capture remain unchanged")
 
 
 def paths_changed(old, new, prefix=""):
@@ -413,6 +449,9 @@ def validate_current_answer_capture(case, plan_bytes, run, propose=None):
         return dict(kind="current_answer_capture", case_id=case["case_id"], source_case_id=case["source_case_id"],
                     bead=propose, expected_current_answer=actual, semantic_note="REVIEW REQUIRED: initial current-answer capture; seven upstream bytes unchanged")
     require(expected is not None, "missing_expected_capture", case_id=case["case_id"])
+    expected = expected_digest(case, "current_answer_capture", expected)
+    if propose and expected != actual:
+        return capture_change_proposal(case, "current_answer_capture", expected, actual, propose)
     require(expected == actual, "digest_drift", case_id=case["case_id"], field="expected_current_answer", old=expected, new=actual)
     return None
 
@@ -424,6 +463,29 @@ def preflight_invariants(run):
             "invalid_preflight_transition")
     return [dict(kind="pointer_equals", pointer=path, value=pointer(run, path))
             for path in ["/status", "/phase", "/blockers"]]
+
+
+def historical_refresh_invariants(run):
+    """Qualify positive recomputation; retained receipts must never count as warm reuse."""
+    report = run.get("project_run_report") or {}
+    node_reports = report.get("node_reports", [])
+    nodes = {node["node_id"] for node in node_reports}
+    require(run.get("phase") == "SOLVED" and run.get("status") in ("ABSTAINED", "COMPLETED")
+            and len(node_reports) == len(nodes) == 9
+            and all(node.get("outcome") == "completed" for node in node_reports)
+            and len(report.get("executed_nodes", [])) == 9 and set(report["executed_nodes"]) == nodes
+            and len(report.get("invalidated_nodes", [])) == 9 and set(report["invalidated_nodes"]) == nodes
+            and all(not report.get(key) for key in ("resumed_nodes", "failed_nodes", "cancelled_nodes", "blocked_nodes")),
+            "invalid_historical_refresh")
+    reasons = report.get("invalidation_reasons", [])
+    require(len(reasons) == len(nodes) and {reason["node_id"] for reason in reasons} == nodes
+            and all(reason["reason"] == "stage_semantics_unrecorded"
+                    and reason.get("detail", {}).get("previous_content_hash") == "missing"
+                    and reason.get("detail", {}).get("current_content_hash", "").startswith("blake3:")
+                    and reason.get("detail", {}).get("ref_id") == "project.executor.stage_semantics.v0"
+                    for reason in reasons),
+            "invalid_historical_refresh")
+    return report
 
 
 def execution_invariants(case):
@@ -545,8 +607,63 @@ def invariant(check, run, artifacts):
     raise ReplayError("unknown_invariant", kind=kind)
 
 
+def recompute_retry_measurement(log, binary, case, files):
+    """Rebuild derived runs through Canon; never relabel historical hashes as current."""
+    require(case["argv"][0] == "measure-retry-recovery", "unknown_measurement_recipe")
+    args = dict(zip(case["argv"][1::2], case["argv"][2::2]))
+    require(set(args) == {"--population", "--loops", "--runs", "--receipts"}, "unknown_measurement_recipe")
+    population = json.loads((ROOT/args["--population"]).read_bytes())
+    points = {point["subject_id"]: point for point in population["points"]}
+    source = pathlib.PurePosixPath(case["archive"]["path"]).parent
+    loops_prefix = pathlib.PurePosixPath(args["--loops"]).relative_to(source).as_posix()+"/"
+    receipts_prefix = pathlib.PurePosixPath(args["--receipts"]).relative_to(source).as_posix()+"/"
+    receipts = {}
+    for name, data in files.items():
+        if name.startswith(receipts_prefix) and name.endswith(".receipt.json"):
+            receipt = json.loads(data)
+            receipts[receipt["request_semantic_hash"]] = name
+    prepared = log.out/"current-measurement"
+    for name in ("seeds", "loops", "runs", "receipts"):
+        (prepared/name).mkdir(parents=True)
+    for name, data in files.items():
+        if name.startswith(receipts_prefix):
+            (prepared/"receipts"/pathlib.PurePosixPath(name).name).write_bytes(data)
+    loops = [(name, json.loads(data)) for name, data in sorted(files.items()) if name.startswith(loops_prefix)]
+    require(len(loops) == len(points) and {loop["subject_id"] for _, loop in loops} == set(points),
+            "invariant_failed", field="measurement_recompute_subjects")
+    for index, (name, historical) in enumerate(loops):
+        require(len(historical["passes"]) == 1, "unsupported_measurement_history", member=name)
+        point = points[historical["subject_id"]]
+        # This is a new inquiry seed with the retained policy, not an edited old pass.
+        seed = dict(version=historical["version"], subject_id=historical["subject_id"],
+                    policy=historical["policy"], passes=[], terminal=None)
+        seed_path = prepared/"seeds"/f"{index}.json"
+        seed_path.write_text(json.dumps(seed, separators=(",", ":")))
+        request_hash = "blake3:"+historical["policy"]["regeocode_request_template"]["request_id"].rsplit(":", 1)[1]
+        receipt = prepared/"receipts"/pathlib.PurePosixPath(receipts[request_hash]).name
+        candidate_rows = prepared/"receipts"/(request_hash+".rows.json")
+        require(candidate_rows.is_file(), "missing_member", member=str(candidate_rows))
+        run = prepared/"runs"/f"{index}.json"
+        log.command(f"materialize-{index}", binary, ["materialize-retry-recovery-run",
+                    "--population", args["--population"], "--point-id", point["point_id"],
+                    "--loop", str(seed_path), "--receipt", str(receipt), "--candidate-rows", str(candidate_rows),
+                    "--work-dir", str(prepared/f"home-{index}"), "--out-run", str(run)], ROOT)
+        log.command(f"record-{index}", binary, ["record-retry-recovery-pass", "--loop", str(seed_path),
+                    "--latest-run", str(run), "--receipt", str(receipt),
+                    "--work-dir", str(prepared/f"record-{index}"),
+                    "--out-loop", str(prepared/"loops"/f"{index}.json"),
+                    "--out-run", str(prepared/f"record-{index}.json")], ROOT)
+    log.event("measurement_recomputation", subjects=len(loops), current_execution=True,
+              proof_scope="retained acquisition inputs; fresh derived runs, no live acquisition or precision claim")
+    return ["measure-retry-recovery", "--population", args["--population"],
+            "--loops", str(prepared/"loops"), "--runs", str(prepared/"runs"),
+            "--receipts", str(prepared/"receipts")]
+
+
 def replay(case, binary, out, propose=None):
     case = resolve_case(case)
+    if case["mode"] == "current_resume":
+        return replay_current_resume(case, binary, out)
     if case["mode"] in ("retained_resume", "evaluation_solve", "cost_observation"):
         return replay_full_source(case, binary, out, propose)
     started = time.monotonic()
@@ -580,7 +697,9 @@ def replay(case, binary, out, propose=None):
         log.event("finish", status="evidence_only_no_native_association_claim")
         return
     if case["mode"] == "measurement_replay":
-        data = log.command("measurement", binary.with_name("canon_geo_measurements"), case["argv"], ROOT)
+        measurement_binary = binary.with_name("canon_geo_measurements")
+        args = recompute_retry_measurement(log, measurement_binary, case, files)
+        data = log.command("measurement", measurement_binary, args, ROOT)
         require(sha(data) == case["retained_stdout_sha256"], "digest_drift", case_id=case["case_id"], artifact_id="measurement_stdout")
         result = json.loads(data)
         for check in case["evidence_invariants"]:
@@ -629,7 +748,7 @@ def replay(case, binary, out, propose=None):
     work = out / "missing-parent/work" if case.get("expected_refusal") else out / "work"
     if not case.get("expected_refusal"):
         work.mkdir()
-    if case["tier"] == "resume":
+    if case.get("retained_workspace"):
         prefix = case["retained_workspace"]
         for name, data in files.items():
             if name.startswith(prefix):
@@ -639,7 +758,7 @@ def replay(case, binary, out, propose=None):
     args = ["geo", "run", "--plan", str(out / "plan.json"), "--work-dir", str(work)]
     for binding in bindings:
         args += ["--input", binding["node_id"] + ":" + binding["binding_id"] + "=" + str(inputs / binding["path"])]
-    if case["tier"] == "resume":
+    if case.get("retained_workspace"):
         # Historical solve facts remain tested as retained facts, even when current code
         # correctly refuses the old executor's noncanonical next-evidence bytes.
         old_artifacts = {ref["artifact_id"]: json.loads(artifact_bytes(files, old_run, ref)) for ref in old_run["output_refs"]}
@@ -663,6 +782,17 @@ def replay(case, binary, out, propose=None):
                         and actual["node_id"].endswith(".next_evidence") and "bytes are not canonical executor output" in actual["message"], "invariant_failed", outcome=actual)
                 label = "current_resume_refusal"
                 status = "REFUSAL"
+            elif envelope.get("project_run_report") is not None:
+                report = historical_refresh_invariants(envelope)
+                require(log.last_exit == 0, "invalid_historical_refresh")
+                actual = dict(process_exit=0, status=envelope["status"], phase=envelope["phase"],
+                              semantic_hash=envelope["semantic_hash"], executed_nodes=report["executed_nodes"],
+                              resumed_nodes=report["resumed_nodes"], invalidated_nodes=report["invalidated_nodes"],
+                              invalidation_reasons=report["invalidation_reasons"],
+                              output_digests={r["artifact_id"]:r["content_digest"] for r in envelope["output_refs"]},
+                              current_cached_success=False)
+                label = "current_resume_refresh"
+                status = envelope["status"]
             else:
                 preflight_invariants(envelope)
                 require(log.last_exit == 0, "invariant_failed", field="resume_preflight_process_exit")
@@ -679,9 +809,11 @@ def replay(case, binary, out, propose=None):
                 print(json.dumps(proposal, sort_keys=True))
             else:
                 require(expected == actual, "invariant_failed", expected=expected, observed=actual)
-            log.event(label, **actual, previous_stored_status=old_run["status"], current_answer_produced=False)
-            log.event("USAGE", argv=log.executed, burden=dict(caller_files=len(case["member_sha256"]), hand_written_bindings=len(case["run_bindings"])), invariants=["retained facts preserved", "strict current canonical-byte refusal or INVALID zero-work preflight", "no current cached success or answer produced"])
-            log.event("finish", status=status, current_answer_produced=False, current_cached_success=False)
+            produced = any(ref.get("contract_version") == "canon_geo_answer.v0" for ref in envelope.get("output_refs", []))
+            log.event(label, **actual, previous_stored_status=old_run["status"], current_answer_produced=produced)
+            log.event("USAGE", argv=log.executed, burden=dict(caller_files=len(case["member_sha256"]), hand_written_bindings=len(case["run_bindings"])), invariants=["retained facts preserved", "current outcome separately verified", "historical receipts never treated as current cached success"])
+            log.event("finish", status=status, current_answer_produced=produced,
+                      current_recomputation=label == "current_resume_refresh", current_cached_success=False)
             return
     if case.get("expected_refusal"):
         data = log.command("run", binary, args, ROOT, exit_code=2)
@@ -928,6 +1060,10 @@ def replay_full_source(case, binary, out, propose=None, ceiling=1200):
         observed = dict(outcome="REFUSAL", code=refusal["code"], geo_run_error_code=detail["geo_run_error_code"],
                         message=detail["message"], detail=detail["detail"], current_cached_success=False)
     else:
+        if value.get("project_run_report") is not None:
+            historical_refresh_invariants(value)
+        else:
+            preflight_invariants(value)
         observed = dict(status=value["status"], phase=value["phase"], semantic_hash=value["semantic_hash"],
                         resumed_nodes=(value.get("project_run_report") or {}).get("resumed_nodes", []),
                         executed_nodes=(value.get("project_run_report") or {}).get("executed_nodes", []),
@@ -939,9 +1075,48 @@ def replay_full_source(case, binary, out, propose=None, ceiling=1200):
                         semantic_note="REVIEW REQUIRED: actual current resume outcome; a refusal does not establish current cached success")
         log.event("golden_proposal", proposal=proposal); print(json.dumps(proposal, sort_keys=True))
     else:
-        require(case["expected_resume"] == observed, "digest_drift", field="expected_resume", actual=observed)
+        expected = expected_digest(case, "resume_capture", case["expected_resume"])
+        if propose and expected != observed:
+            proposal = capture_change_proposal(case, "resume_capture", expected, observed, propose)
+            log.event("golden_proposal", proposal=proposal); print(json.dumps(proposal, sort_keys=True))
+        else:
+            require(expected == observed, "digest_drift", field="expected_resume", actual=observed)
     log.event("USAGE", argv=log.executed, burden={}, invariants=["historical nine-node resume preserved", "current outcome separately frozen", "two deterministic inspections"])
     log.event("finish", **observed, elapsed_seconds=time.monotonic()-started)
+
+
+def replay_current_resume(case, binary, out):
+    catalog = json.loads(CATALOG.read_bytes())
+    source = next(row for row in catalog["cases"] if row["case_id"] == case["source_case_id"])
+    replay(source, binary, out/"cold")  # Strict source oracle, not proposal mode.
+    log = Log(out, case["case_id"])
+    log.case_tier = case["tier"]
+    events = [json.loads(line) for line in (out/"cold"/"run.log").read_text().splitlines()]
+    for event in events:
+        if event["event"] == "command":
+            log.executed.append(event["argv"])
+            log.event("command", **{key: value for key, value in event.items()
+                                   if key not in ("event", "case_id", "proof_class", "ts", "argv_relative")})
+    argv = next(event["argv"] for event in events if event["event"] == "command"
+                and event["argv"][1:3] == ["geo", "run"])
+    before = json.loads((out/"cold"/"run.json").read_bytes())
+    cold = before["project_run_report"]
+    require(len(cold["executed_nodes"]) == 9 and not cold["resumed_nodes"], "invalid_current_cold_run")
+    data = log.command("warm-run", binary, argv[1:], ROOT)
+    after = json.loads(data)
+    warm = after["project_run_report"]
+    require(not warm["executed_nodes"] and not warm["invalidated_nodes"]
+            and warm["resumed_nodes"] == sorted(cold["executed_nodes"])
+            and before["semantic_hash"] == after["semantic_hash"]
+            and before["output_refs"] == after["output_refs"]
+            and cold["receipt"]["node_receipts"] == warm["receipt"]["node_receipts"],
+            "invalid_current_warm_reuse")
+    (out/"warm-run.json").write_bytes(data)
+    inspect_resume_twice(log, binary, out/"cold"/"work")
+    log.event("USAGE", argv=log.executed, burden={}, invariants=["strict fresh source oracle",
+              "nine current-version receipts reused unchanged", "same answer hash and output refs", "two deterministic inspections"])
+    log.event("finish", status=after["status"], current_cached_success=True,
+              proof_scope="current-build reuse over retained inputs; no historical receipt upgrade or live accuracy")
 
 
 def full_suite(args, catalog, out):
@@ -957,9 +1132,10 @@ def full_suite(args, catalog, out):
             merged_logs.add(case_id)
     selected = [row for row in catalog["cases"] if row["tier"] in (("fast", "full") if args.tier == "all" else (args.tier,))]
     full = args.tier in ("full", "all")
-    semantic = [row for row in selected if not row.get("duplicate_of")]
+    semantic = [row for row in selected if not row.get("duplicate_of") and not row.get("retained_workspace")]
     duplicates = [row for row in selected if row.get("duplicate_of")]
-    resumes = [row for row in catalog["cases"] if row["tier"] == "resume"] if full else []
+    resumes = [row for row in catalog["cases"] if row["tier"] == "resume"
+               or (row["tier"] == "full" and row.get("retained_workspace"))] if full else []
     costs = [row for row in catalog["cases"] if row["mode"] == "cost_observation"] if full else []
     rows = []; executed = 0; failed = 0; duplicate_count = 0; resume_count = 0; cost_count = 0
     try:

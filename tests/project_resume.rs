@@ -1305,6 +1305,241 @@ fn t67_boundary_feature_change_invalidates_home_and_controlled_halo_sections() {
 }
 
 #[test]
+fn stage_semantics_change_recomputes_only_the_stage_and_descendants_then_reuses_current_receipts() {
+    let temp = tempfile::tempdir().unwrap();
+    let old_versions = [
+        ("alpha", "validator.v1"),
+        ("beta", "validator.v1"),
+        ("gamma", "validator.v1"),
+    ];
+    let old = stage_semantics_plan(&old_versions);
+    let policy = approving_policy(temp.path());
+    let mut initial_executor = StageSemanticsExecutor::new(&old_versions);
+    let initial = run_project_plan(&old, &policy, &mut initial_executor).unwrap();
+    assert_eq!(initial.executed_nodes, vec!["alpha", "beta", "gamma"]);
+    let gamma_before = fs::read(receipt_path(temp.path(), "gamma")).unwrap();
+    let new_versions = [
+        ("alpha", "validator.v2"),
+        ("beta", "validator.v1"),
+        ("gamma", "validator.v1"),
+    ];
+    let current = stage_semantics_plan(&new_versions);
+    let mut executor = StageSemanticsExecutor::new(&new_versions);
+    let changed = run_project_plan(&current, &policy, &mut executor).unwrap();
+    assert_eq!(changed.executed_nodes, vec!["alpha", "beta"]);
+    assert_eq!(changed.resumed_nodes, vec!["gamma"]);
+    assert_eq!(changed.invalidated_nodes, vec!["alpha", "beta"]);
+    let reason = changed
+        .invalidation_reasons
+        .iter()
+        .find(|reason| {
+            reason.node_id == "alpha"
+                && reason.reason == ProjectRunInvalidationReason::StageSemanticsChanged
+        })
+        .unwrap();
+    assert_eq!(reason.detail["ref_id"], run::PROJECT_STAGE_SEMANTICS_REF_ID);
+    assert_ne!(
+        reason.detail["previous_content_hash"],
+        reason.detail["current_content_hash"]
+    );
+    assert!(
+        changed
+            .invalidation_reasons
+            .iter()
+            .any(|reason| reason.node_id == "beta"
+                && reason.reason == ProjectRunInvalidationReason::DownstreamDependencyInvalidated)
+    );
+    assert_eq!(
+        fs::read(receipt_path(temp.path(), "gamma")).unwrap(),
+        gamma_before
+    );
+    let mut erased_history = changed.clone();
+    erased_history.invalidated_nodes.clear();
+    erased_history.receipt.invalidated_nodes.clear();
+    assert!(
+        project_run_manifest_revision_for_report(&current, &erased_history, None)
+            .unwrap_err()
+            .message
+            .contains("run receipt hash mismatch"),
+        "erasing actual invalidation history must not bypass receipt integrity"
+    );
+    let mut forged = changed.clone();
+    forged
+        .invalidation_reasons
+        .iter_mut()
+        .find(|reason| reason.reason == ProjectRunInvalidationReason::StageSemanticsChanged)
+        .unwrap()
+        .detail
+        .insert(
+            "current_content_hash".into(),
+            digest_bytes(b"forged stage semantics"),
+        );
+    assert!(
+        project_run_manifest_revision_for_report(&current, &forged, None)
+            .unwrap_err()
+            .message
+            .contains("actual command, prior pin and current pin")
+    );
+    let before = without_run_manifest(tree_bytes(temp.path()));
+    let mut resume_executor = StageSemanticsExecutor::new(&new_versions);
+    let resumed = run_project_plan(&current, &policy, &mut resume_executor).unwrap();
+    assert!(resume_executor.inner.calls.is_empty());
+    assert!(resumed.executed_nodes.is_empty());
+    assert_eq!(resumed.resumed_nodes, vec!["alpha", "beta", "gamma"]);
+    assert_eq!(before, without_run_manifest(tree_bytes(temp.path())));
+}
+
+#[test]
+fn unversioned_receipts_are_all_invalidated_without_trusting_descendants() {
+    let temp = tempfile::tempdir().unwrap();
+    let legacy = stage_semantics_plan(&[]);
+    let policy = approving_policy(temp.path());
+    let old = run_project_plan(&legacy, &policy, &mut DeterministicExecutor::default()).unwrap();
+    assert_eq!(old.executed_nodes.len(), 3);
+    let versions = [
+        ("alpha", "validator.v1"),
+        ("beta", "validator.v1"),
+        ("gamma", "validator.v1"),
+    ];
+    let current = stage_semantics_plan(&versions);
+    let mut executor = StageSemanticsExecutor::new(&versions);
+    let upgraded = run_project_plan(&current, &policy, &mut executor).unwrap();
+    assert_eq!(upgraded.executed_nodes, vec!["alpha", "beta", "gamma"]);
+    assert!(upgraded.resumed_nodes.is_empty());
+    assert_eq!(upgraded.invalidated_nodes, vec!["alpha", "beta", "gamma"]);
+    let missing = upgraded
+        .invalidation_reasons
+        .iter()
+        .filter(|reason| reason.reason == ProjectRunInvalidationReason::StageSemanticsUnrecorded)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        missing.len(),
+        3,
+        "each pre-version receipt must expose unrecorded semantics"
+    );
+    for reason in missing {
+        assert_eq!(reason.detail["previous_content_hash"], "missing");
+    }
+    for receipt in &upgraded.receipt.node_receipts {
+        assert!(
+            receipt
+                .content_hash_inputs
+                .iter()
+                .any(|input| input.ref_id == run::PROJECT_STAGE_SEMANTICS_REF_ID)
+        );
+    }
+}
+
+#[test]
+fn registered_executor_rejects_missing_or_forged_plan_semantics_before_reuse() {
+    let temp = tempfile::tempdir().unwrap();
+    let versions = [
+        ("alpha", "validator.v1"),
+        ("beta", "validator.v1"),
+        ("gamma", "validator.v1"),
+    ];
+    let plan = stage_semantics_plan(&versions);
+    let policy = approving_policy(temp.path());
+    run_project_plan(&plan, &policy, &mut StageSemanticsExecutor::new(&versions)).unwrap();
+    let changed = [
+        ("alpha", "validator.v2"),
+        ("beta", "validator.v1"),
+        ("gamma", "validator.v1"),
+    ];
+    let mut changed_executor = StageSemanticsExecutor::new(&changed);
+    let error = run_project_plan(&plan, &policy, &mut changed_executor).unwrap_err();
+    assert_eq!(error.code, ProjectRunErrorCode::ArtifactContract);
+    assert_eq!(error.node_id.as_deref(), Some("alpha"));
+    assert!(error.message.contains("stage semantics"));
+    assert!(changed_executor.inner.calls.is_empty());
+    let mut executor = StageSemanticsExecutor::new(&versions);
+    assert!(run_project_plan(&stage_semantics_plan(&[]), &policy, &mut executor).is_err());
+    assert!(executor.inner.calls.is_empty());
+}
+
+struct StageSemanticsExecutor {
+    versions: BTreeMap<String, &'static str>,
+    inner: DeterministicExecutor,
+}
+
+impl StageSemanticsExecutor {
+    fn new(versions: &[(&str, &'static str)]) -> Self {
+        Self {
+            versions: versions
+                .iter()
+                .map(|(node, version)| (test_node_command(node), *version))
+                .collect(),
+            inner: DeterministicExecutor::default(),
+        }
+    }
+}
+
+impl ProjectNodeExecutor for StageSemanticsExecutor {
+    fn semantics_version(&self, command: &str) -> Option<&'static str> {
+        self.versions.get(command).copied()
+    }
+    fn execute(
+        &mut self,
+        node: &ProjectPlanNode,
+        context: &ProjectNodeExecutionContext,
+    ) -> Result<ProjectNodeExecutionResult, ProjectRunError> {
+        self.inner.execute(node, context)
+    }
+}
+
+fn stage_semantics_plan(versions: &[(&str, &str)]) -> ProjectPlan {
+    let mut base = chain_plan();
+    let mut gamma = base.nodes[0].clone();
+    gamma.node_id = "gamma".into();
+    gamma.command = test_node_command("gamma");
+    gamma.outputs[0].output_id = "gamma.output".into();
+    gamma.outputs[0].path = "work/gamma.json".into();
+    base.nodes.push(gamma);
+    let nodes = base
+        .nodes
+        .into_iter()
+        .map(|node| {
+            let mut inputs = node
+                .content_hash_inputs
+                .into_iter()
+                .filter(|input| !input.ref_id.starts_with("node."))
+                .collect::<Vec<_>>();
+            if let Some((_, version)) = versions.iter().find(|(id, _)| *id == node.node_id) {
+                inputs.push(run::project_stage_semantics_input(&node.command, version));
+            }
+            plan::ProjectExtensionDagNode {
+                node_id: node.node_id,
+                kind: node.kind,
+                class: node.class,
+                command: node.command,
+                dependencies: node.dependencies,
+                content_hash_inputs: inputs,
+                outputs: node
+                    .outputs
+                    .into_iter()
+                    .map(|output| plan::ProjectExtensionDagOutput {
+                        output_id: output.output_id,
+                        path: output.path,
+                        materialization: output.materialization,
+                    })
+                    .collect(),
+                limits: node.limits,
+                cache_eligible: node.cache.eligible,
+                side_effects: node.side_effects,
+                refusal_conditions: node.refusal_conditions,
+            }
+        })
+        .collect();
+    plan::compile_extension_project_plan(plan::ProjectExtensionDagRequest::offline_read_only(
+        "stage-semantics-fixture",
+        digest_bytes(b"stage semantics manifest"),
+        digest_bytes(b"stage semantics lock"),
+        nodes,
+    ))
+    .unwrap()
+}
+
+#[test]
 fn native_executor_timing_is_operational_and_resume_preserves_original_receipt() {
     let plan = chain_plan();
     let fast_dir = tempfile::tempdir().expect("fast workspace");

@@ -293,6 +293,8 @@
           "type": "string",
           "enum": [
             "content_hash_input_changed",
+            "stage_semantics_unrecorded",
+            "stage_semantics_changed",
             "node_cache_key_changed",
             "dependency_unavailable",
             "dependency_semantic_changed",

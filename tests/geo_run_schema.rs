@@ -324,6 +324,7 @@ fn schema_accepts_serialized_rust_unsigned_numeric_boundaries() {
     node_receipt
         .resource_observations
         .insert("rss_bytes".to_string(), u64::MAX);
+    seal_project_report(report);
     stamp_run_identity(&mut run);
 
     let manifest = serde_json::to_value(&run).expect("GeoRun serializes at numeric boundaries");
@@ -928,7 +929,7 @@ fn project_run_report() -> ProjectRunReport {
         telemetry_hash: digest('6'),
         receipt_hash: digest('7'),
     };
-    ProjectRunReport {
+    let mut report = ProjectRunReport {
         schema_version: CANON_PROJECT_RUN_VERSION.to_string(),
         project_id: "geo-run-fixture".to_string(),
         plan_graph_hash: digest('b'),
@@ -962,7 +963,27 @@ fn project_run_report() -> ProjectRunReport {
         }],
         invalidation_reasons: Vec::new(),
         resource_reuse: Default::default(),
+    };
+    seal_project_report(&mut report);
+    report
+}
+
+fn seal_project_report(report: &mut ProjectRunReport) {
+    for receipt in &mut report.receipt.node_receipts {
+        *receipt = canon::project::finalized_node_receipt(receipt.clone())
+            .expect("positive schema fixture node receipt seals");
     }
+    for node in &mut report.node_reports {
+        node.receipt_hash = report
+            .receipt
+            .node_receipts
+            .iter()
+            .find(|receipt| receipt.node_id == node.node_id)
+            .map(|receipt| receipt.receipt_hash.clone());
+    }
+    report.receipt = canon::project::finalized_run_receipt(report.receipt.clone())
+        .expect("positive schema fixture run receipt seals");
+    report.run_receipt_hash = report.receipt.receipt_hash.clone();
 }
 
 fn stamp_run_identity(run: &mut GeoRun) {

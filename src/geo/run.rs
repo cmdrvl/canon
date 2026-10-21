@@ -897,6 +897,10 @@ impl<'executor, 'progress, 'writer, E>
 }
 
 impl<E: ProjectNodeExecutor> ProjectNodeExecutor for GeoProgressProjectExecutor<'_, '_, '_, E> {
+    fn semantics_version(&self, command: &str) -> Option<&'static str> {
+        self.inner.semantics_version(command)
+    }
+
     fn execute(
         &mut self,
         node: &ProjectPlanNode,
@@ -1027,6 +1031,10 @@ struct GeoContractValidatingExecutor<'a, E> {
 }
 
 impl<E: ProjectNodeExecutor> ProjectNodeExecutor for GeoContractValidatingExecutor<'_, E> {
+    fn semantics_version(&self, command: &str) -> Option<&'static str> {
+        crate::geo::executor::geo_stage_semantics_version(command)
+    }
+
     fn execute(
         &mut self,
         node: &ProjectPlanNode,
@@ -1086,15 +1094,16 @@ fn execute_prepared_geo_run<E: ProjectNodeExecutor>(
         .iter()
         .map(|node| (node.project_node_id.clone(), node.stage))
         .collect::<BTreeMap<_, _>>();
-    let result = read_geo_run_manifest_head(&request.policy).and_then(|previous_geo_manifest| {
-        execute_prepared_geo_run_after_start(
-            request,
-            prepared,
-            previous_geo_manifest,
-            executor,
-            progress,
-        )
-    });
+    let result =
+        read_geo_run_manifest_head_bytes(&request.policy).and_then(|previous_geo_manifest| {
+            execute_prepared_geo_run_after_start(
+                request,
+                prepared,
+                previous_geo_manifest,
+                executor,
+                progress,
+            )
+        });
     match result {
         Ok(run) => {
             let terminal_node = run
@@ -1183,7 +1192,7 @@ fn execute_prepared_geo_run<E: ProjectNodeExecutor>(
 fn execute_prepared_geo_run_after_start<E: ProjectNodeExecutor>(
     request: GeoRunRequest,
     prepared: PreparedGeoRun,
-    previous_geo_manifest: Option<GeoRun>,
+    previous_geo_manifest: Option<Vec<u8>>,
     executor: &mut E,
     progress: &mut GeoRunProgressWriter<'_>,
 ) -> GeoRunResult<GeoRun> {
@@ -1283,7 +1292,7 @@ fn execute_prepared_geo_run_after_start<E: ProjectNodeExecutor>(
                 extra_actions: preflight_actions,
             },
         )?;
-        publish_geo_run_manifest(&request.policy, &run, previous_geo_manifest.as_ref())?;
+        publish_geo_run_manifest(&request.policy, &run, previous_geo_manifest.as_deref())?;
         return Ok(run);
     }
 
@@ -1325,7 +1334,7 @@ fn execute_prepared_geo_run_after_start<E: ProjectNodeExecutor>(
             extra_actions: Vec::new(),
         },
     )?;
-    publish_geo_run_manifest(&request.policy, &run, previous_geo_manifest.as_ref())?;
+    publish_geo_run_manifest(&request.policy, &run, previous_geo_manifest.as_deref())?;
     Ok(run)
 }
 
@@ -1526,6 +1535,15 @@ pub fn geo_run_semantic_hash(run: &GeoRun) -> GeoRunResult<String> {
 }
 
 pub fn read_geo_run_manifest_head(policy: &ProjectRunPolicy) -> GeoRunResult<Option<GeoRun>> {
+    read_geo_run_manifest_head_bytes(policy)?
+        .map(|bytes| parse_canonical_geo_run_manifest(&bytes, "Geo run manifest head"))
+        .transpose()
+}
+
+// Publication uses the prior bytes only as an atomic compare-and-swap token.
+// Shared project receipts and current stage versions independently determine
+// execution; a prior answer is never trusted merely because its CAS is intact.
+fn read_geo_run_manifest_head_bytes(policy: &ProjectRunPolicy) -> GeoRunResult<Option<Vec<u8>>> {
     let head_path = geo_run_manifest_head_path_for(policy, PlannedAccess::Read)?;
     if !head_path.exists() {
         return Ok(None);
@@ -1538,7 +1556,6 @@ pub fn read_geo_run_manifest_head(policy: &ProjectRunPolicy) -> GeoRunResult<Opt
             error,
         )
     })?;
-    let head = parse_canonical_geo_run_manifest(&head_bytes, "Geo run manifest head")?;
     let content_hash = digest_bytes(&head_bytes);
     let revision_path =
         geo_run_manifest_revision_path_for(policy, &content_hash, PlannedAccess::Read)?;
@@ -1561,7 +1578,7 @@ pub fn read_geo_run_manifest_head(policy: &ProjectRunPolicy) -> GeoRunResult<Opt
             ],
         ));
     }
-    Ok(Some(head))
+    Ok(Some(head_bytes))
 }
 
 pub fn geo_run_manifest_head_path(policy: &ProjectRunPolicy) -> GeoRunResult<PathBuf> {
@@ -1578,7 +1595,7 @@ pub fn geo_run_manifest_revision_path(
 fn publish_geo_run_manifest(
     policy: &ProjectRunPolicy,
     run: &GeoRun,
-    expected_existing_head: Option<&GeoRun>,
+    expected_existing_head: Option<&[u8]>,
 ) -> GeoRunResult<()> {
     validate_project_run_manifest_head_matches_geo_run(policy, run)?;
     let bytes = canonical_geo_run_bytes(run)?;
@@ -1587,12 +1604,8 @@ fn publish_geo_run_manifest(
         geo_run_manifest_revision_path_for(policy, &content_hash, PlannedAccess::Write)?;
     write_geo_run_manifest_revision_cas(&revision_path, &content_hash, &bytes)?;
 
-    let expected_head_bytes = expected_existing_head
-        .map(canonical_geo_run_bytes)
-        .transpose()?;
     let head_path = geo_run_manifest_head_path_for(policy, PlannedAccess::Write)?;
-    match write_geo_run_manifest_atomic_replace(&head_path, &bytes, expected_head_bytes.as_deref())?
-    {
+    match write_geo_run_manifest_atomic_replace(&head_path, &bytes, expected_existing_head)? {
         GeoRunManifestSlotWrite::Intended => Ok(()),
         GeoRunManifestSlotWrite::Existing => Err(GeoRunError::new(
             GeoRunErrorCode::ProjectRunFailed,
@@ -3224,6 +3237,11 @@ fn effective_project_plan_with_input_hashes(
     let mut extension_nodes = Vec::with_capacity(project_plan.nodes.len());
     for node in &project_plan.nodes {
         let mut content_hash_inputs = node.content_hash_inputs.clone();
+        if let Some(version) = crate::geo::executor::geo_stage_semantics_version(&node.command) {
+            let pin = crate::project::project_stage_semantics_input(&node.command, version);
+            content_hash_inputs.retain(|input| input.ref_id != pin.ref_id);
+            content_hash_inputs.push(pin);
+        }
         if let Some(config) = overlays
             .iter()
             .find(|overlay| overlay.project_node_id == node.node_id)
@@ -4699,7 +4717,6 @@ struct GeoProjectRunSemanticProjection<'a> {
     completed_nodes: &'a [String],
     failed_nodes: &'a [String],
     cancelled_nodes: &'a [String],
-    invalidated_nodes: &'a [String],
     blocked_nodes: &'a [String],
     nodes: Vec<GeoProjectNodeSemanticProjection<'a>>,
 }
@@ -4831,7 +4848,6 @@ fn project_run_semantic_projection(
         completed_nodes: &report.receipt.completed_nodes,
         failed_nodes: &report.receipt.failed_nodes,
         cancelled_nodes: &report.receipt.cancelled_nodes,
-        invalidated_nodes: &report.receipt.invalidated_nodes,
         blocked_nodes: &report.receipt.blocked_nodes,
         nodes: report
             .receipt
@@ -5688,6 +5704,8 @@ fn validate_project_run_report_schema_shape(report: &ProjectRunReport) -> GeoRun
         validate_project_non_empty_text("project_run_report.next_actions", command)?;
     }
     validate_project_run_receipt_schema_shape("project_run_report.receipt", &report.receipt)?;
+    crate::project::validate_project_run_report_receipt_integrity(report)
+        .map_err(|error| project_report_contract_error("project_run_report", &error.message))?;
     for node_report in &report.node_reports {
         validate_project_non_empty_text(
             "project_run_report.node_reports.node_id",
@@ -6390,11 +6408,22 @@ mod tests {
             node(&after, "answer"),
             "changed question/config cannot reuse a stale answer"
         );
-        assert_eq!(
-            project,
-            effective_project_plan_with_input_hashes(&project, &BTreeMap::new(), &[]).unwrap(),
-            "legacy project bytes stay unchanged"
-        );
+        let unconfigured =
+            effective_project_plan_with_input_hashes(&project, &BTreeMap::new(), &[]).unwrap();
+        for node in &unconfigured.nodes {
+            let version = crate::geo::executor::geo_stage_semantics_version(&node.command).unwrap();
+            let pin = crate::project::project_stage_semantics_input(&node.command, version);
+            assert!(
+                node.content_hash_inputs.contains(&pin),
+                "every registered stage is version-bound even without answer configuration"
+            );
+            assert!(
+                !node
+                    .content_hash_inputs
+                    .iter()
+                    .any(|input| input.ref_id == "geo.answer.config.v0")
+            );
+        }
     }
 
     #[test]
@@ -6432,7 +6461,7 @@ mod tests {
             observed.semantic_hash, run.semantic_hash,
             "operational observation changes must not alter semantic identity"
         );
-        publish_geo_run_manifest(&policy, &observed, Some(&run))
+        publish_geo_run_manifest(&policy, &observed, Some(&canonical))
             .expect("publish observation-only revision");
         let observed_canonical = canonical_geo_run_bytes(&observed).expect("observed canonical");
         let observed_hash = digest_bytes(&observed_canonical);
@@ -6467,6 +6496,77 @@ mod tests {
             error.message.contains("does not match"),
             "wrong implementation would silently trust the manifest head: {error:?}"
         );
+        assert!(read_geo_run_manifest_head_bytes(&policy).is_err());
+    }
+
+    #[test]
+    fn publication_token_does_not_certify_an_old_answer_or_overwrite_a_concurrent_head() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let policy = ProjectRunPolicy::new(temp.path(), "work");
+        let run = waiting_run_manifest();
+        publish_geo_run_manifest(&policy, &run, None).unwrap();
+        let head = geo_run_manifest_head_path(&policy).unwrap();
+        let mut old_contract = serde_json::to_value(&run).unwrap();
+        old_contract["semantic_hash"] = serde_json::json!(digest_label("older semantic contract"));
+        let old_bytes = serde_json::to_vec(&old_contract).unwrap();
+        let revision = geo_run_manifest_revision_path_for(
+            &policy,
+            &digest_bytes(&old_bytes),
+            PlannedAccess::Write,
+        )
+        .unwrap();
+        write_geo_run_manifest_revision_cas(&revision, &digest_bytes(&old_bytes), &old_bytes)
+            .unwrap();
+        fs::write(&head, &old_bytes).unwrap();
+        assert!(
+            read_geo_run_manifest_head(&policy).is_err(),
+            "strict answer reads reject stale semantics"
+        );
+        let token = read_geo_run_manifest_head_bytes(&policy).unwrap().unwrap();
+        assert_eq!(token, old_bytes);
+        publish_geo_run_manifest(&policy, &run, Some(&token)).unwrap();
+        assert_eq!(
+            read_geo_run_manifest_head(&policy).unwrap(),
+            Some(run.clone())
+        );
+        let mut competing = run.clone();
+        competing.observation.host_id = Some("competing-publisher".into());
+        restamp_run_manifest(&mut competing);
+        let error = publish_geo_run_manifest(&policy, &competing, Some(&token)).unwrap_err();
+        assert!(error.message.contains("changed during publication"));
+        assert_eq!(read_geo_run_manifest_head(&policy).unwrap(), Some(run));
+    }
+
+    #[test]
+    fn publication_token_requires_its_content_revision() {
+        let temp = tempfile::tempdir().unwrap();
+        let policy = ProjectRunPolicy::new(temp.path(), "work");
+        let run = waiting_run_manifest();
+        let head = geo_run_manifest_head_path_for(&policy, PlannedAccess::Write).unwrap();
+        fs::create_dir_all(head.parent().unwrap()).unwrap();
+        fs::write(head, canonical_geo_run_bytes(&run).unwrap()).unwrap();
+        let error = read_geo_run_manifest_head_bytes(&policy).unwrap_err();
+        assert!(error.message.contains("revision is missing or unreadable"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn publication_token_refuses_a_head_symlink_outside_the_workspace() {
+        let temp = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let policy = ProjectRunPolicy::new(temp.path(), "work");
+        let head = geo_run_manifest_head_path_for(&policy, PlannedAccess::Write).unwrap();
+        fs::create_dir_all(head.parent().unwrap()).unwrap();
+        let outside_head = outside.path().join("head.json");
+        fs::write(
+            &outside_head,
+            canonical_geo_run_bytes(&waiting_run_manifest()).unwrap(),
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(outside_head, head).unwrap();
+        let error = read_geo_run_manifest_head_bytes(&policy).unwrap_err();
+        assert_eq!(error.code, GeoRunErrorCode::InvalidInput);
+        assert!(error.message.contains("workspace safety"));
     }
 
     fn waiting_run_manifest() -> GeoRun {

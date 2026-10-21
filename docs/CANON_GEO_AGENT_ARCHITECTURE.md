@@ -41,6 +41,15 @@
 > claims, crash-stale lock recovery, live acquisition, and concurrent scheduling remain
 > open. Geo must extend this substrate, not build a parallel orchestrator.
 
+Registered Geo stages pin an explicit producer-semantics version through the shared
+project DAG's content references. A changed version, or an old receipt with no
+version, invalidates that stage and its dependents before reuse. Current receipts
+with unchanged versions remain reusable. Inspection reports these invalidation
+reasons separately from the resulting geographic answer. Invalidation history is
+retained and receipt-verified, but does not change the Geo answer's semantic hash.
+An old Geo manifest may serve as a byte-verified publication token during a run;
+that does not make it a valid current answer or authorize cached stage reuse.
+
 ## 1. Purpose
 
 **Canon Geo is an agent tool for evidence-backed geographic association.** It should

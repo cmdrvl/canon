@@ -507,6 +507,36 @@
           "new": null,
           "old": "blake3:91e8c9411f81de8b792545fd4f69bbc1167cf33674b4a5cadce05babe2931dd4",
           "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution: WAITING_FOR_INPUT/PREFLIGHTED with no project report or outputs. The corresponding current_answer case preserves all seven original kernel artifacts and its saturated residual."
+        },
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2no5",
+          "case_id": "brooklyn.00_neighborhood",
+          "changed_paths": [
+            "/blockers",
+            "/deterministic_usage",
+            "/next_actions",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs",
+            "/phase",
+            "/plan_ref/project_graph_hash",
+            "/project_run_report",
+            "/run_id",
+            "/semantic_hash",
+            "/status"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:aca201d8ae3ea618585601477ba83c430252ecacab81d4b4f33543bd5eb729b5",
+          "old": "blake3:ba70f32f1cf254f5b1a3a26a8fcf6048f1fff4b6cedb7bb3d4ced85b4ba1b0f5",
+          "semantic_diff_base": "immutable_archive_json; old digest is prior approved golden; compare prior retained runtime before approval",
+          "semantic_note": "GOLDEN-CHANGE bd-2no5: producer-semantics pins and operational invalidation-history exclusion change only the run envelope. Independent review folded the existing expected chain and compared actual prior/current runs: all 58 referenced artifact bodies across 12 transitions, including all five answer bodies, are unchanged. No association, acceptance, forced-member or reach claim changes."
         }
       ],
       "before": {
@@ -1112,6 +1142,36 @@
           "new": null,
           "old": "blake3:7e624bd143babcba11512615af1529549d1b23302a8861063f8ac15a9e442a2a",
           "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts and forced parcel; the legacy full-workflow input now waits for repair without executing."
+        },
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2no5",
+          "case_id": "brooklyn.01_address_parcel",
+          "changed_paths": [
+            "/blockers",
+            "/deterministic_usage",
+            "/next_actions",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs",
+            "/phase",
+            "/plan_ref/project_graph_hash",
+            "/project_run_report",
+            "/run_id",
+            "/semantic_hash",
+            "/status"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:f775b5d58c5999daa5b57f389d5cf4bcdb1f4ede755d8277e9bd4baf821a3174",
+          "old": "blake3:595372b3858cc3f668ed29db754741344dcdda86518846bc96b9b8b4f7e31c87",
+          "semantic_diff_base": "immutable_archive_json; old digest is prior approved golden; compare prior retained runtime before approval",
+          "semantic_note": "GOLDEN-CHANGE bd-2no5: producer-semantics pins and operational invalidation-history exclusion change only the run envelope. Independent review folded the existing expected chain and compared actual prior/current runs: all 58 referenced artifact bodies across 12 transitions, including all five answer bodies, are unchanged. No association, acceptance, forced-member or reach claim changes."
         }
       ],
       "before": {
@@ -1739,6 +1799,36 @@
           "new": null,
           "old": "blake3:55b3ff520a34d72d61bfcc87eeb48e07f1e7b978d7ef4155ad7261789ac14b3e",
           "semantic_note": "Validate empty prospective inputs before receipt seeding or stage execution. The current_answer case preserves the original seven kernel artifacts, forced parcel/building and saturated wider residual; this legacy input now waits for repair."
+        },
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2no5",
+          "case_id": "brooklyn.02_address_building",
+          "changed_paths": [
+            "/blockers",
+            "/deterministic_usage",
+            "/next_actions",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs",
+            "/phase",
+            "/plan_ref/project_graph_hash",
+            "/project_run_report",
+            "/run_id",
+            "/semantic_hash",
+            "/status"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:dd31b792197d7e993a21bee2deb5c684150173a567eaeafee971ebae8c79027f",
+          "old": "blake3:4457333ab9906696e6f9a333e62b2ccd6cd453236f216f1560c45eb69d16f9fa",
+          "semantic_diff_base": "immutable_archive_json; old digest is prior approved golden; compare prior retained runtime before approval",
+          "semantic_note": "GOLDEN-CHANGE bd-2no5: producer-semantics pins and operational invalidation-history exclusion change only the run envelope. Independent review folded the existing expected chain and compared actual prior/current runs: all 58 referenced artifact bodies across 12 transitions, including all five answer bodies, are unchanged. No association, acceptance, forced-member or reach claim changes."
         }
       ],
       "before": {
@@ -1902,7 +1992,93 @@
         "bindings": 5
       },
       "adapter_version": "national_place_support.v0",
-      "golden_changes": [],
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2dvm",
+          "case_id": "cornerstone.foursquare_parcel_supported",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs/4/byte_count",
+            "/output_refs/4/content_digest",
+            "/project_run_report/node_reports/0/receipt_hash",
+            "/project_run_report/node_reports/1/receipt_hash",
+            "/project_run_report/node_reports/2/receipt_hash",
+            "/project_run_report/node_reports/3/receipt_hash",
+            "/project_run_report/node_reports/4/receipt_hash",
+            "/project_run_report/node_reports/5/receipt_hash",
+            "/project_run_report/node_reports/6/receipt_hash",
+            "/project_run_report/node_reports/7/receipt_hash",
+            "/project_run_report/node_reports/8/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/dependency_receipt_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/dependency_semantic_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/0/duration_millis",
+            "/project_run_report/receipt/node_receipts/0/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/semantic_hash",
+            "/project_run_report/receipt/node_receipts/0/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/1/duration_millis",
+            "/project_run_report/receipt/node_receipts/1/receipt_hash",
+            "/project_run_report/receipt/node_receipts/1/semantic_hash",
+            "/project_run_report/receipt/node_receipts/1/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/2/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/2/duration_millis",
+            "/project_run_report/receipt/node_receipts/2/receipt_hash",
+            "/project_run_report/receipt/node_receipts/2/semantic_hash",
+            "/project_run_report/receipt/node_receipts/2/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/3/dependency_receipt_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/dependency_semantic_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/3/duration_millis",
+            "/project_run_report/receipt/node_receipts/3/receipt_hash",
+            "/project_run_report/receipt/node_receipts/3/semantic_hash",
+            "/project_run_report/receipt/node_receipts/3/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/4/duration_millis"
+          ],
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:7ed637e38765a11748459131cdd307f188e9ea5a03579931289717704f8314a3",
+          "old": "blake3:98e9076297975f2314aaa31916df9671d16fe0f2a11e995c7e2bbc83b1fe514b",
+          "semantic_note": "GOLDEN-CHANGE: independently verified actual e59 release replay over retained sources; nineteen-command registration changes receipt deterministic usage and dependent hashes; reviewed current next-evidence metadata incorporated. All eight other stage artifacts including separation unchanged. Not producer-version, live or held-out proof."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.next_evidence/next_evidence"
+          ],
+          "bead": "bd-3mrt",
+          "case_id": "cornerstone.foursquare_parcel_supported",
+          "changed_paths": [
+            "/action_discovery"
+          ],
+          "commit": "a62eafcd496b98b2fc304a2a4e80700f24453598",
+          "contract_versions": [
+            "canon_geo_next_evidence.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:ad2d8a3419e858cf15e54ea07806fbce150c9fdc90266d48ee6eb9a7e05e6495",
+          "old": "blake3:26dcac55faf2f281d4e8ec8aae03c1dcd0ed5a8e42e626eb01e7e466dfec926b",
+          "semantic_note": "GOLDEN-CHANGE: actual e59 release replay independently compared to original artifact; sole JSON change is action_discovery=incomplete under bd-3mrt. Empty actions do not establish irreducible ambiguity. Spatial/solver/separation bytes unchanged; no identity acceptance or reach proof."
+        }
+      ],
       "before": {
         "proof_class": "retained_preparation_records_not_reexecuted",
         "canon_invocations": 4,
@@ -2087,7 +2263,93 @@
         "bindings": 5
       },
       "adapter_version": "national_place_support.v0",
-      "golden_changes": [],
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2dvm",
+          "case_id": "cornerstone.foursquare_parcel",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs/4/byte_count",
+            "/output_refs/4/content_digest",
+            "/project_run_report/node_reports/0/receipt_hash",
+            "/project_run_report/node_reports/1/receipt_hash",
+            "/project_run_report/node_reports/2/receipt_hash",
+            "/project_run_report/node_reports/3/receipt_hash",
+            "/project_run_report/node_reports/4/receipt_hash",
+            "/project_run_report/node_reports/5/receipt_hash",
+            "/project_run_report/node_reports/6/receipt_hash",
+            "/project_run_report/node_reports/7/receipt_hash",
+            "/project_run_report/node_reports/8/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/dependency_receipt_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/dependency_semantic_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/0/duration_millis",
+            "/project_run_report/receipt/node_receipts/0/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/semantic_hash",
+            "/project_run_report/receipt/node_receipts/0/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/1/duration_millis",
+            "/project_run_report/receipt/node_receipts/1/receipt_hash",
+            "/project_run_report/receipt/node_receipts/1/semantic_hash",
+            "/project_run_report/receipt/node_receipts/1/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/2/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/2/duration_millis",
+            "/project_run_report/receipt/node_receipts/2/receipt_hash",
+            "/project_run_report/receipt/node_receipts/2/semantic_hash",
+            "/project_run_report/receipt/node_receipts/2/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/3/dependency_receipt_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/dependency_semantic_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/3/duration_millis",
+            "/project_run_report/receipt/node_receipts/3/receipt_hash",
+            "/project_run_report/receipt/node_receipts/3/semantic_hash",
+            "/project_run_report/receipt/node_receipts/3/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/4/duration_millis"
+          ],
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:cdf88f4d4062927e005fff1b9dfcd4caecc38f0fded16af1d12ca944f73ff050",
+          "old": "blake3:33e9d809193c35521a4cfcf65b58fdc9e3de050434f18acd79739023e64db3d3",
+          "semantic_note": "GOLDEN-CHANGE: independently verified actual e59 release replay over retained sources; nineteen-command registration changes receipt deterministic usage and dependent hashes; reviewed current next-evidence metadata incorporated. All eight other stage artifacts including separation unchanged. Not producer-version, live or held-out proof."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.next_evidence/next_evidence"
+          ],
+          "bead": "bd-3mrt",
+          "case_id": "cornerstone.foursquare_parcel",
+          "changed_paths": [
+            "/action_discovery"
+          ],
+          "commit": "a62eafcd496b98b2fc304a2a4e80700f24453598",
+          "contract_versions": [
+            "canon_geo_next_evidence.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:555769320bfc08eb2a24bffc55a1ad4348d53858958d4f63d936347be96fcb62",
+          "old": "blake3:958908c1b8de7317665b4fb665a9141ab3b018f3b44519e97c71855a3be7866e",
+          "semantic_note": "GOLDEN-CHANGE: actual e59 release replay independently compared to original artifact; sole JSON change is action_discovery=incomplete under bd-3mrt. Empty actions do not establish irreducible ambiguity. Spatial/solver/separation bytes unchanged; no identity acceptance or reach proof."
+        }
+      ],
       "before": {
         "proof_class": "retained_preparation_records_not_reexecuted",
         "canon_invocations": 4,
@@ -2487,6 +2749,74 @@
           "new": "blake3:d9fd8b2b16c917c1727d95b53490013dce115f0eb6e37e7cbbb31de818fd6f0a",
           "old": "blake3:daf1164907d47f75ad81629114de8416d92d505134fd102ad0428f963bec39b9",
           "semantic_note": "Register the answer executor: each executed stage truthfully reports 19 supported commands instead of 18; only this counter and derived receipt/run hashes change. All Geo output references, artifact digests, statuses and domain outcomes remain identical. Receipt-array pointers cover all 71 reviewed changed leaves."
+        },
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2no5",
+          "case_id": "cornerstone.national_building_supported",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs/4/byte_count",
+            "/output_refs/4/content_digest",
+            "/plan_ref/project_graph_hash",
+            "/project_run_report/node_reports/0/receipt_hash",
+            "/project_run_report/node_reports/1/receipt_hash",
+            "/project_run_report/node_reports/2/receipt_hash",
+            "/project_run_report/node_reports/3/receipt_hash",
+            "/project_run_report/node_reports/4/receipt_hash",
+            "/project_run_report/node_reports/5/receipt_hash",
+            "/project_run_report/node_reports/6/receipt_hash",
+            "/project_run_report/node_reports/7/receipt_hash",
+            "/project_run_report/node_reports/8/receipt_hash",
+            "/project_run_report/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/0/content_hash_inputs",
+            "/project_run_report/receipt/node_receipts/0/dependency_receipt_hashes/geo.building.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/dependency_semantic_hashes/geo.building.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/0/duration_millis",
+            "/project_run_report/receipt/node_receipts/0/node_cache_key",
+            "/project_run_report/receipt/node_receipts/0/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/0/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/semantic_hash",
+            "/project_run_report/receipt/node_receipts/0/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/1/content_hash_inputs",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.building.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.building.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.building.solve",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.building.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.building.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.building.solve",
+            "/project_run_report/receipt/node_receipts/1/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/1/duration_millis",
+            "/project_run_report/receipt/node_receipts/1/node_cache_key",
+            "/project_run_report/receipt/node_receipts/1/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/1/receipt_hash",
+            "/project_run_report/receipt/node_receipts/1/semantic_hash",
+            "/project_run_report/receipt/node_receipts/1/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/2/content_hash_inputs",
+            "/project_run_report/receipt/node_receipts/2/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/2/duration_millis",
+            "/project_run_report/receipt/node_receipts/2/node_cache_key",
+            "/project_run_report/receipt/node_receipts/2/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/2/receipt_hash",
+            "/project_run_report/receipt/node_receipts/2/semantic_hash",
+            "/project_run_report/receipt/node_receipts/2/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/3/content_hash_inputs",
+            "/project_run_report/receipt/node_receipts/3/dependency_receipt_hashes/geo.building.section"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:98681e93b9f2c0f330a034827b98536e1f747118d1b88b5c3f7cc608203a374f",
+          "old": "blake3:d9fd8b2b16c917c1727d95b53490013dce115f0eb6e37e7cbbb31de818fd6f0a",
+          "semantic_diff_base": "immutable_archive_json; old digest is prior approved golden; compare prior retained runtime before approval",
+          "semantic_note": "GOLDEN-CHANGE bd-2no5: producer-semantics pins and operational invalidation-history exclusion change only the run envelope. Independent review folded the existing expected chain and compared actual prior/current runs: all 58 referenced artifact bodies across 12 transitions, including all five answer bodies, are unchanged. No association, acceptance, forced-member or reach claim changes."
         }
       ],
       "before": {
@@ -2866,6 +3196,74 @@
           "new": "blake3:e8b2030969fbc8065432241c6fca868281f3f6e56d48e9e07740df26acd3b8e4",
           "old": "blake3:da50f4456cb9640a36b2891249446f63161dc30ec66cd34539e1de1ac5a868b2",
           "semantic_note": "Register the answer executor: each executed stage truthfully reports 19 supported commands instead of 18; only this counter and derived receipt/run hashes change. All Geo output references, artifact digests, statuses and domain outcomes remain identical. Receipt-array pointers cover all 71 reviewed changed leaves."
+        },
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2no5",
+          "case_id": "cornerstone.national_building",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs/4/byte_count",
+            "/output_refs/4/content_digest",
+            "/plan_ref/project_graph_hash",
+            "/project_run_report/node_reports/0/receipt_hash",
+            "/project_run_report/node_reports/1/receipt_hash",
+            "/project_run_report/node_reports/2/receipt_hash",
+            "/project_run_report/node_reports/3/receipt_hash",
+            "/project_run_report/node_reports/4/receipt_hash",
+            "/project_run_report/node_reports/5/receipt_hash",
+            "/project_run_report/node_reports/6/receipt_hash",
+            "/project_run_report/node_reports/7/receipt_hash",
+            "/project_run_report/node_reports/8/receipt_hash",
+            "/project_run_report/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/0/content_hash_inputs",
+            "/project_run_report/receipt/node_receipts/0/dependency_receipt_hashes/geo.building.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/dependency_semantic_hashes/geo.building.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/0/duration_millis",
+            "/project_run_report/receipt/node_receipts/0/node_cache_key",
+            "/project_run_report/receipt/node_receipts/0/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/0/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/semantic_hash",
+            "/project_run_report/receipt/node_receipts/0/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/1/content_hash_inputs",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.building.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.building.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.building.solve",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.building.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.building.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.building.solve",
+            "/project_run_report/receipt/node_receipts/1/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/1/duration_millis",
+            "/project_run_report/receipt/node_receipts/1/node_cache_key",
+            "/project_run_report/receipt/node_receipts/1/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/1/receipt_hash",
+            "/project_run_report/receipt/node_receipts/1/semantic_hash",
+            "/project_run_report/receipt/node_receipts/1/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/2/content_hash_inputs",
+            "/project_run_report/receipt/node_receipts/2/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/2/duration_millis",
+            "/project_run_report/receipt/node_receipts/2/node_cache_key",
+            "/project_run_report/receipt/node_receipts/2/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/2/receipt_hash",
+            "/project_run_report/receipt/node_receipts/2/semantic_hash",
+            "/project_run_report/receipt/node_receipts/2/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/3/content_hash_inputs",
+            "/project_run_report/receipt/node_receipts/3/dependency_receipt_hashes/geo.building.section"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:9eace271c3fe2b6a0f826a59999c75569f7b1672f1559a0e238f7979a35e7536",
+          "old": "blake3:e8b2030969fbc8065432241c6fca868281f3f6e56d48e9e07740df26acd3b8e4",
+          "semantic_diff_base": "immutable_archive_json; old digest is prior approved golden; compare prior retained runtime before approval",
+          "semantic_note": "GOLDEN-CHANGE bd-2no5: producer-semantics pins and operational invalidation-history exclusion change only the run envelope. Independent review folded the existing expected chain and compared actual prior/current runs: all 58 referenced artifact bodies across 12 transitions, including all five answer bodies, are unchanged. No association, acceptance, forced-member or reach claim changes."
         }
       ],
       "before": {
@@ -3052,7 +3450,93 @@
         "bindings": 5
       },
       "adapter_version": "national_place_support.v0",
-      "golden_changes": [],
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2dvm",
+          "case_id": "cornerstone.national_parcel_supported",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs/4/byte_count",
+            "/output_refs/4/content_digest",
+            "/project_run_report/node_reports/0/receipt_hash",
+            "/project_run_report/node_reports/1/receipt_hash",
+            "/project_run_report/node_reports/2/receipt_hash",
+            "/project_run_report/node_reports/3/receipt_hash",
+            "/project_run_report/node_reports/4/receipt_hash",
+            "/project_run_report/node_reports/5/receipt_hash",
+            "/project_run_report/node_reports/6/receipt_hash",
+            "/project_run_report/node_reports/7/receipt_hash",
+            "/project_run_report/node_reports/8/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/dependency_receipt_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/dependency_semantic_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/0/duration_millis",
+            "/project_run_report/receipt/node_receipts/0/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/semantic_hash",
+            "/project_run_report/receipt/node_receipts/0/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/1/duration_millis",
+            "/project_run_report/receipt/node_receipts/1/receipt_hash",
+            "/project_run_report/receipt/node_receipts/1/semantic_hash",
+            "/project_run_report/receipt/node_receipts/1/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/2/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/2/duration_millis",
+            "/project_run_report/receipt/node_receipts/2/receipt_hash",
+            "/project_run_report/receipt/node_receipts/2/semantic_hash",
+            "/project_run_report/receipt/node_receipts/2/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/3/dependency_receipt_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/dependency_semantic_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/3/duration_millis",
+            "/project_run_report/receipt/node_receipts/3/receipt_hash",
+            "/project_run_report/receipt/node_receipts/3/semantic_hash",
+            "/project_run_report/receipt/node_receipts/3/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/4/duration_millis"
+          ],
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:b617338e738f08f81c2e82a267b9a7e517d2de0e55ff367ab42c24245f04e177",
+          "old": "blake3:9a5721275953dc616cf8bf2d3a8e0e3f90301c271e200a8bb5fce802f32aab81",
+          "semantic_note": "GOLDEN-CHANGE: independently verified actual e59 release replay over retained sources; nineteen-command registration changes receipt deterministic usage and dependent hashes; reviewed current next-evidence metadata incorporated. All eight other stage artifacts including separation unchanged. Not producer-version, live or held-out proof."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.next_evidence/next_evidence"
+          ],
+          "bead": "bd-3mrt",
+          "case_id": "cornerstone.national_parcel_supported",
+          "changed_paths": [
+            "/action_discovery"
+          ],
+          "commit": "a62eafcd496b98b2fc304a2a4e80700f24453598",
+          "contract_versions": [
+            "canon_geo_next_evidence.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:64c55e135832035da865e8338d199cbb1094b18a71fd397e83e6e67ea07b1604",
+          "old": "blake3:280d0b4d500fc805e9e029ba34c83d192ae8486badb173d87b6f821eb3dee032",
+          "semantic_note": "GOLDEN-CHANGE: actual e59 release replay independently compared to original artifact; sole JSON change is action_discovery=incomplete under bd-3mrt. Empty actions do not establish irreducible ambiguity. Spatial/solver/separation bytes unchanged; no identity acceptance or reach proof."
+        }
+      ],
       "before": {
         "proof_class": "retained_preparation_records_not_reexecuted",
         "canon_invocations": 4,
@@ -3237,7 +3721,93 @@
         "bindings": 5
       },
       "adapter_version": "national_place_support.v0",
-      "golden_changes": [],
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2dvm",
+          "case_id": "cornerstone.national_parcel",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs/4/byte_count",
+            "/output_refs/4/content_digest",
+            "/project_run_report/node_reports/0/receipt_hash",
+            "/project_run_report/node_reports/1/receipt_hash",
+            "/project_run_report/node_reports/2/receipt_hash",
+            "/project_run_report/node_reports/3/receipt_hash",
+            "/project_run_report/node_reports/4/receipt_hash",
+            "/project_run_report/node_reports/5/receipt_hash",
+            "/project_run_report/node_reports/6/receipt_hash",
+            "/project_run_report/node_reports/7/receipt_hash",
+            "/project_run_report/node_reports/8/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/dependency_receipt_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/dependency_semantic_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/0/duration_millis",
+            "/project_run_report/receipt/node_receipts/0/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/semantic_hash",
+            "/project_run_report/receipt/node_receipts/0/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/1/duration_millis",
+            "/project_run_report/receipt/node_receipts/1/receipt_hash",
+            "/project_run_report/receipt/node_receipts/1/semantic_hash",
+            "/project_run_report/receipt/node_receipts/1/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/2/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/2/duration_millis",
+            "/project_run_report/receipt/node_receipts/2/receipt_hash",
+            "/project_run_report/receipt/node_receipts/2/semantic_hash",
+            "/project_run_report/receipt/node_receipts/2/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/3/dependency_receipt_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/dependency_semantic_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/3/duration_millis",
+            "/project_run_report/receipt/node_receipts/3/receipt_hash",
+            "/project_run_report/receipt/node_receipts/3/semantic_hash",
+            "/project_run_report/receipt/node_receipts/3/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/4/duration_millis"
+          ],
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:5447230a25066e94deab7d3974698959368f4a56fcbca956a5e200cd46dac283",
+          "old": "blake3:a8e863e668aaac5910eb1669762e9503fdaa7a2ac2f893430f82bcb3689429f2",
+          "semantic_note": "GOLDEN-CHANGE: independently verified actual e59 release replay over retained sources; nineteen-command registration changes receipt deterministic usage and dependent hashes; reviewed current next-evidence metadata incorporated. All eight other stage artifacts including separation unchanged. Not producer-version, live or held-out proof."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.next_evidence/next_evidence"
+          ],
+          "bead": "bd-3mrt",
+          "case_id": "cornerstone.national_parcel",
+          "changed_paths": [
+            "/action_discovery"
+          ],
+          "commit": "a62eafcd496b98b2fc304a2a4e80700f24453598",
+          "contract_versions": [
+            "canon_geo_next_evidence.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:fcb1898b161e2007cc16a81a0a058e9488b3c9102f43734e084ddfe7ab508e61",
+          "old": "blake3:5abaa0a7058f7bfdb16ad41f5247052721dbe59506d58a5214c535ace30a21d7",
+          "semantic_note": "GOLDEN-CHANGE: actual e59 release replay independently compared to original artifact; sole JSON change is action_discovery=incomplete under bd-3mrt. Empty actions do not establish irreducible ambiguity. Spatial/solver/separation bytes unchanged; no identity acceptance or reach proof."
+        }
+      ],
       "before": {
         "proof_class": "retained_preparation_records_not_reexecuted",
         "canon_invocations": 4,
@@ -3422,7 +3992,93 @@
         "bindings": 5
       },
       "adapter_version": null,
-      "golden_changes": [],
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2dvm",
+          "case_id": "courtney.final_address",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs/4/byte_count",
+            "/output_refs/4/content_digest",
+            "/project_run_report/node_reports/0/receipt_hash",
+            "/project_run_report/node_reports/1/receipt_hash",
+            "/project_run_report/node_reports/2/receipt_hash",
+            "/project_run_report/node_reports/3/receipt_hash",
+            "/project_run_report/node_reports/4/receipt_hash",
+            "/project_run_report/node_reports/5/receipt_hash",
+            "/project_run_report/node_reports/6/receipt_hash",
+            "/project_run_report/node_reports/7/receipt_hash",
+            "/project_run_report/node_reports/8/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/dependency_receipt_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/dependency_semantic_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/0/duration_millis",
+            "/project_run_report/receipt/node_receipts/0/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/semantic_hash",
+            "/project_run_report/receipt/node_receipts/0/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/1/duration_millis",
+            "/project_run_report/receipt/node_receipts/1/receipt_hash",
+            "/project_run_report/receipt/node_receipts/1/semantic_hash",
+            "/project_run_report/receipt/node_receipts/1/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/2/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/2/duration_millis",
+            "/project_run_report/receipt/node_receipts/2/receipt_hash",
+            "/project_run_report/receipt/node_receipts/2/semantic_hash",
+            "/project_run_report/receipt/node_receipts/2/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/3/dependency_receipt_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/dependency_semantic_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/3/duration_millis",
+            "/project_run_report/receipt/node_receipts/3/receipt_hash",
+            "/project_run_report/receipt/node_receipts/3/semantic_hash",
+            "/project_run_report/receipt/node_receipts/3/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/4/duration_millis"
+          ],
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:eedf86f7633041d34762113b5fd185f230eba429f0fd7b59c0cd99b26e0b8082",
+          "old": "blake3:2e7e1ce402f3f722fe2b8393a1afc88321285eb10f79ddcaa59f0a57a9283994",
+          "semantic_note": "GOLDEN-CHANGE: independently verified actual e59 release replay over retained sources; nineteen-command registration changes receipt deterministic usage and dependent hashes; reviewed current next-evidence metadata incorporated. All eight other stage artifacts including separation unchanged. Not producer-version, live or held-out proof."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.next_evidence/next_evidence"
+          ],
+          "bead": "bd-3mrt",
+          "case_id": "courtney.final_address",
+          "changed_paths": [
+            "/action_discovery"
+          ],
+          "commit": "a62eafcd496b98b2fc304a2a4e80700f24453598",
+          "contract_versions": [
+            "canon_geo_next_evidence.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:33df635d50a347c02e162655646ecfb90777183b3e8d9c711fa2e0ff44a652fc",
+          "old": "blake3:5a2806b76adfe759347b610874763a1765818da2e8df0a4e7c5b9f7d9c5ddb2a",
+          "semantic_note": "GOLDEN-CHANGE: actual e59 release replay independently compared to original artifact; sole JSON change is action_discovery=incomplete under bd-3mrt. Empty actions do not establish irreducible ambiguity. Spatial/solver/separation bytes unchanged; no identity acceptance or reach proof."
+        }
+      ],
       "before": {
         "proof_class": "retained_preparation_records_not_reexecuted",
         "canon_invocations": 4,
@@ -3582,7 +4238,93 @@
         "bindings": 5
       },
       "adapter_version": null,
-      "golden_changes": [],
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2dvm",
+          "case_id": "courtney.final_hints",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs/4/byte_count",
+            "/output_refs/4/content_digest",
+            "/project_run_report/node_reports/0/receipt_hash",
+            "/project_run_report/node_reports/1/receipt_hash",
+            "/project_run_report/node_reports/2/receipt_hash",
+            "/project_run_report/node_reports/3/receipt_hash",
+            "/project_run_report/node_reports/4/receipt_hash",
+            "/project_run_report/node_reports/5/receipt_hash",
+            "/project_run_report/node_reports/6/receipt_hash",
+            "/project_run_report/node_reports/7/receipt_hash",
+            "/project_run_report/node_reports/8/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/dependency_receipt_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/dependency_semantic_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/0/duration_millis",
+            "/project_run_report/receipt/node_receipts/0/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/semantic_hash",
+            "/project_run_report/receipt/node_receipts/0/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/1/duration_millis",
+            "/project_run_report/receipt/node_receipts/1/receipt_hash",
+            "/project_run_report/receipt/node_receipts/1/semantic_hash",
+            "/project_run_report/receipt/node_receipts/1/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/2/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/2/duration_millis",
+            "/project_run_report/receipt/node_receipts/2/receipt_hash",
+            "/project_run_report/receipt/node_receipts/2/semantic_hash",
+            "/project_run_report/receipt/node_receipts/2/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/3/dependency_receipt_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/dependency_semantic_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/3/duration_millis",
+            "/project_run_report/receipt/node_receipts/3/receipt_hash",
+            "/project_run_report/receipt/node_receipts/3/semantic_hash",
+            "/project_run_report/receipt/node_receipts/3/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/4/duration_millis"
+          ],
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:78f4deb0d48e7a4c28e4f3468422d4e0b3e2aacf17a764c49aa80502e2cf7c05",
+          "old": "blake3:97b93d577a4ccaf4aa8a6f6433817febcc3ef8d71a2e7a2f43357d11dd8c0b18",
+          "semantic_note": "GOLDEN-CHANGE: independently verified actual e59 release replay over retained sources; nineteen-command registration changes receipt deterministic usage and dependent hashes; reviewed current next-evidence metadata incorporated. All eight other stage artifacts including separation unchanged. Not producer-version, live or held-out proof."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.next_evidence/next_evidence"
+          ],
+          "bead": "bd-3mrt",
+          "case_id": "courtney.final_hints",
+          "changed_paths": [
+            "/action_discovery"
+          ],
+          "commit": "a62eafcd496b98b2fc304a2a4e80700f24453598",
+          "contract_versions": [
+            "canon_geo_next_evidence.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:e97e19835293102e0b6b659eb1138c14bcce2c9eb5ec9936d48878a41cfd70f8",
+          "old": "blake3:aa698507c9941b6a850cdc21f46ac3b82d5974005c37d1846af4f07fe7b00d58",
+          "semantic_note": "GOLDEN-CHANGE: actual e59 release replay independently compared to original artifact; sole JSON change is action_discovery=incomplete under bd-3mrt. Empty actions do not establish irreducible ambiguity. Spatial/solver/separation bytes unchanged; no identity acceptance or reach proof."
+        }
+      ],
       "before": {
         "proof_class": "retained_preparation_records_not_reexecuted",
         "canon_invocations": 4,
@@ -3742,7 +4484,93 @@
         "bindings": 5
       },
       "adapter_version": null,
-      "golden_changes": [],
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2dvm",
+          "case_id": "courtney.final_summit",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs/4/byte_count",
+            "/output_refs/4/content_digest",
+            "/project_run_report/node_reports/0/receipt_hash",
+            "/project_run_report/node_reports/1/receipt_hash",
+            "/project_run_report/node_reports/2/receipt_hash",
+            "/project_run_report/node_reports/3/receipt_hash",
+            "/project_run_report/node_reports/4/receipt_hash",
+            "/project_run_report/node_reports/5/receipt_hash",
+            "/project_run_report/node_reports/6/receipt_hash",
+            "/project_run_report/node_reports/7/receipt_hash",
+            "/project_run_report/node_reports/8/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/dependency_receipt_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/dependency_semantic_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/0/duration_millis",
+            "/project_run_report/receipt/node_receipts/0/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/semantic_hash",
+            "/project_run_report/receipt/node_receipts/0/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/1/duration_millis",
+            "/project_run_report/receipt/node_receipts/1/receipt_hash",
+            "/project_run_report/receipt/node_receipts/1/semantic_hash",
+            "/project_run_report/receipt/node_receipts/1/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/2/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/2/duration_millis",
+            "/project_run_report/receipt/node_receipts/2/receipt_hash",
+            "/project_run_report/receipt/node_receipts/2/semantic_hash",
+            "/project_run_report/receipt/node_receipts/2/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/3/dependency_receipt_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/dependency_semantic_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/3/duration_millis",
+            "/project_run_report/receipt/node_receipts/3/receipt_hash",
+            "/project_run_report/receipt/node_receipts/3/semantic_hash",
+            "/project_run_report/receipt/node_receipts/3/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/4/duration_millis"
+          ],
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:eec564f55b8f3e2824ae97cca8b3f5c6de9a6c5a07179ce5f3ee000f76a49556",
+          "old": "blake3:1c8872375f131f7dd6c79dc9691befac85fbe43decb5b3d728bd7c8d5533a256",
+          "semantic_note": "GOLDEN-CHANGE: independently verified actual e59 release replay over retained sources; nineteen-command registration changes receipt deterministic usage and dependent hashes; reviewed current next-evidence metadata incorporated. All eight other stage artifacts including separation unchanged. Not producer-version, live or held-out proof."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.next_evidence/next_evidence"
+          ],
+          "bead": "bd-3mrt",
+          "case_id": "courtney.final_summit",
+          "changed_paths": [
+            "/action_discovery"
+          ],
+          "commit": "a62eafcd496b98b2fc304a2a4e80700f24453598",
+          "contract_versions": [
+            "canon_geo_next_evidence.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:7b85c7a2a747eb24a0844b888fc8443833ac7cf4b8a1e6f6b10e36f412a033ac",
+          "old": "blake3:1c62827dd462359322b1e9959756fe4b385349b2af011398185c08b9ccc22886",
+          "semantic_note": "GOLDEN-CHANGE: actual e59 release replay independently compared to original artifact; sole JSON change is action_discovery=incomplete under bd-3mrt. Empty actions do not establish irreducible ambiguity. Spatial/solver/separation bytes unchanged; no identity acceptance or reach proof."
+        }
+      ],
       "before": {
         "proof_class": "retained_preparation_records_not_reexecuted",
         "canon_invocations": 4,
@@ -4065,7 +4893,93 @@
         "bindings": 5
       },
       "adapter_version": null,
-      "golden_changes": [],
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2dvm",
+          "case_id": "orlando.case_0.address",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs/4/byte_count",
+            "/output_refs/4/content_digest",
+            "/project_run_report/executed_nodes",
+            "/project_run_report/max_ready_width",
+            "/project_run_report/node_reports",
+            "/project_run_report/receipt/node_receipts/0/dependency_receipt_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/dependency_semantic_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/0/duration_millis",
+            "/project_run_report/receipt/node_receipts/0/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/0/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/semantic_hash",
+            "/project_run_report/receipt/node_receipts/0/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/1/duration_millis",
+            "/project_run_report/receipt/node_receipts/1/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/1/receipt_hash",
+            "/project_run_report/receipt/node_receipts/1/semantic_hash",
+            "/project_run_report/receipt/node_receipts/1/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/2/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/2/duration_millis",
+            "/project_run_report/receipt/node_receipts/2/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/2/receipt_hash",
+            "/project_run_report/receipt/node_receipts/2/semantic_hash",
+            "/project_run_report/receipt/node_receipts/2/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/3/dependency_receipt_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/dependency_semantic_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/3/duration_millis",
+            "/project_run_report/receipt/node_receipts/3/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/3/receipt_hash",
+            "/project_run_report/receipt/node_receipts/3/semantic_hash",
+            "/project_run_report/receipt/node_receipts/3/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/4/duration_millis",
+            "/project_run_report/receipt/node_receipts/4/outputs/0/byte_count",
+            "/project_run_report/receipt/node_receipts/4/outputs/0/content_digest"
+          ],
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:b68dce5eff37f4bae899db5b17084853809cceb0f702932dd956e82f912866a4",
+          "old": "blake3:bb43e8b79406db5d7ec4dd64d753075f45cdc444c5d8e3fbb64c5e3e60912a13",
+          "semantic_note": "GOLDEN-CHANGE: independently verified actual e59 release replay over retained sources; nineteen-command registration changes receipt deterministic usage and dependent hashes; reviewed current next-evidence metadata incorporated. All eight other stage artifacts including separation unchanged. Not producer-version, live or held-out proof."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.next_evidence/next_evidence"
+          ],
+          "bead": "bd-3mrt",
+          "case_id": "orlando.case_0.address",
+          "changed_paths": [
+            "/action_discovery"
+          ],
+          "commit": "a62eafcd496b98b2fc304a2a4e80700f24453598",
+          "contract_versions": [
+            "canon_geo_next_evidence.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:3eb8281ac7ff8b6cf515e3e2fde00aed177325fa28d022f3b5d5d3c6a92756cc",
+          "old": "blake3:194b93e3bf685e32968ad5ddd8390a2cfd0cc97723692596bfa5f09ab4562125",
+          "semantic_note": "GOLDEN-CHANGE: actual e59 release replay independently compared to original artifact; sole JSON change is action_discovery=incomplete under bd-3mrt. Empty actions do not establish irreducible ambiguity. Spatial/solver/separation bytes unchanged; no identity acceptance or reach proof."
+        }
+      ],
       "before": {
         "proof_class": "retained_preparation_records_not_reexecuted",
         "canon_invocations": 4,
@@ -4230,7 +5144,93 @@
         "bindings": 5
       },
       "adapter_version": null,
-      "golden_changes": [],
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2dvm",
+          "case_id": "orlando.case_0.hints",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs/4/byte_count",
+            "/output_refs/4/content_digest",
+            "/project_run_report/executed_nodes",
+            "/project_run_report/max_ready_width",
+            "/project_run_report/node_reports",
+            "/project_run_report/receipt/node_receipts/0/dependency_receipt_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/dependency_semantic_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/0/duration_millis",
+            "/project_run_report/receipt/node_receipts/0/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/0/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/semantic_hash",
+            "/project_run_report/receipt/node_receipts/0/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/1/duration_millis",
+            "/project_run_report/receipt/node_receipts/1/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/1/receipt_hash",
+            "/project_run_report/receipt/node_receipts/1/semantic_hash",
+            "/project_run_report/receipt/node_receipts/1/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/2/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/2/duration_millis",
+            "/project_run_report/receipt/node_receipts/2/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/2/receipt_hash",
+            "/project_run_report/receipt/node_receipts/2/semantic_hash",
+            "/project_run_report/receipt/node_receipts/2/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/3/dependency_receipt_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/dependency_semantic_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/3/duration_millis",
+            "/project_run_report/receipt/node_receipts/3/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/3/receipt_hash",
+            "/project_run_report/receipt/node_receipts/3/semantic_hash",
+            "/project_run_report/receipt/node_receipts/3/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/4/duration_millis",
+            "/project_run_report/receipt/node_receipts/4/outputs/0/byte_count",
+            "/project_run_report/receipt/node_receipts/4/outputs/0/content_digest"
+          ],
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:f7eb0778fbd0379c75e300e11f46ec574703d423a33acf643477c11a7f049528",
+          "old": "blake3:8325cd2d4aa49f83c86730bb18715e1e4f314c904b5c3c5521eb170db4f118b3",
+          "semantic_note": "GOLDEN-CHANGE: independently verified actual e59 release replay over retained sources; nineteen-command registration changes receipt deterministic usage and dependent hashes; reviewed current next-evidence metadata incorporated. All eight other stage artifacts including separation unchanged. Not producer-version, live or held-out proof."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.next_evidence/next_evidence"
+          ],
+          "bead": "bd-3mrt",
+          "case_id": "orlando.case_0.hints",
+          "changed_paths": [
+            "/action_discovery"
+          ],
+          "commit": "a62eafcd496b98b2fc304a2a4e80700f24453598",
+          "contract_versions": [
+            "canon_geo_next_evidence.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:35705eb26d7bfe06126f63e79d86bfc57a8a4334486aa77ffdb07f36f6dcf97c",
+          "old": "blake3:3a812ece8ec799f8983467f06b429c76f56c582237d5b35585933ba882ca726d",
+          "semantic_note": "GOLDEN-CHANGE: actual e59 release replay independently compared to original artifact; sole JSON change is action_discovery=incomplete under bd-3mrt. Empty actions do not establish irreducible ambiguity. Spatial/solver/separation bytes unchanged; no identity acceptance or reach proof."
+        }
+      ],
       "before": {
         "proof_class": "retained_preparation_records_not_reexecuted",
         "canon_invocations": 4,
@@ -4395,7 +5395,93 @@
         "bindings": 5
       },
       "adapter_version": null,
-      "golden_changes": [],
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2dvm",
+          "case_id": "orlando.case_1.address",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs/4/byte_count",
+            "/output_refs/4/content_digest",
+            "/project_run_report/executed_nodes",
+            "/project_run_report/max_ready_width",
+            "/project_run_report/node_reports",
+            "/project_run_report/receipt/node_receipts/0/dependency_receipt_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/dependency_semantic_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/0/duration_millis",
+            "/project_run_report/receipt/node_receipts/0/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/0/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/semantic_hash",
+            "/project_run_report/receipt/node_receipts/0/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/1/duration_millis",
+            "/project_run_report/receipt/node_receipts/1/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/1/receipt_hash",
+            "/project_run_report/receipt/node_receipts/1/semantic_hash",
+            "/project_run_report/receipt/node_receipts/1/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/2/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/2/duration_millis",
+            "/project_run_report/receipt/node_receipts/2/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/2/receipt_hash",
+            "/project_run_report/receipt/node_receipts/2/semantic_hash",
+            "/project_run_report/receipt/node_receipts/2/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/3/dependency_receipt_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/dependency_semantic_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/3/duration_millis",
+            "/project_run_report/receipt/node_receipts/3/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/3/receipt_hash",
+            "/project_run_report/receipt/node_receipts/3/semantic_hash",
+            "/project_run_report/receipt/node_receipts/3/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/4/duration_millis",
+            "/project_run_report/receipt/node_receipts/4/outputs/0/byte_count",
+            "/project_run_report/receipt/node_receipts/4/outputs/0/content_digest"
+          ],
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:4cc4ae0a05512dcbf435c844014416c874565919aebb9b3d78af6a45ec70459a",
+          "old": "blake3:53a731a82534f7f4e9cb8e0421110d1d93f309e7dd701cca7fc1735fa4729afe",
+          "semantic_note": "GOLDEN-CHANGE: independently verified actual e59 release replay over retained sources; nineteen-command registration changes receipt deterministic usage and dependent hashes; reviewed current next-evidence metadata incorporated. All eight other stage artifacts including separation unchanged. Not producer-version, live or held-out proof."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.next_evidence/next_evidence"
+          ],
+          "bead": "bd-3mrt",
+          "case_id": "orlando.case_1.address",
+          "changed_paths": [
+            "/action_discovery"
+          ],
+          "commit": "a62eafcd496b98b2fc304a2a4e80700f24453598",
+          "contract_versions": [
+            "canon_geo_next_evidence.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:2b460180c379e37be6378d3f41b3c5e1679502da27f5c6413539d291216d4eeb",
+          "old": "blake3:7906b9cef2a1bc2caacfdacb9d912d09c45498b449b5fccbfb1abd3027b935d0",
+          "semantic_note": "GOLDEN-CHANGE: actual e59 release replay independently compared to original artifact; sole JSON change is action_discovery=incomplete under bd-3mrt. Empty actions do not establish irreducible ambiguity. Spatial/solver/separation bytes unchanged; no identity acceptance or reach proof."
+        }
+      ],
       "before": {
         "proof_class": "retained_preparation_records_not_reexecuted",
         "canon_invocations": 4,
@@ -4560,7 +5646,93 @@
         "bindings": 5
       },
       "adapter_version": null,
-      "golden_changes": [],
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2dvm",
+          "case_id": "orlando.case_1.hints",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs/4/byte_count",
+            "/output_refs/4/content_digest",
+            "/project_run_report/executed_nodes",
+            "/project_run_report/max_ready_width",
+            "/project_run_report/node_reports",
+            "/project_run_report/receipt/node_receipts/0/dependency_receipt_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/dependency_semantic_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/0/duration_millis",
+            "/project_run_report/receipt/node_receipts/0/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/0/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/semantic_hash",
+            "/project_run_report/receipt/node_receipts/0/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/1/duration_millis",
+            "/project_run_report/receipt/node_receipts/1/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/1/receipt_hash",
+            "/project_run_report/receipt/node_receipts/1/semantic_hash",
+            "/project_run_report/receipt/node_receipts/1/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/2/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/2/duration_millis",
+            "/project_run_report/receipt/node_receipts/2/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/2/receipt_hash",
+            "/project_run_report/receipt/node_receipts/2/semantic_hash",
+            "/project_run_report/receipt/node_receipts/2/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/3/dependency_receipt_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/dependency_semantic_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/3/duration_millis",
+            "/project_run_report/receipt/node_receipts/3/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/3/receipt_hash",
+            "/project_run_report/receipt/node_receipts/3/semantic_hash",
+            "/project_run_report/receipt/node_receipts/3/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/4/duration_millis",
+            "/project_run_report/receipt/node_receipts/4/outputs/0/byte_count",
+            "/project_run_report/receipt/node_receipts/4/outputs/0/content_digest"
+          ],
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:4379ad3210e5eaf17c46a907f2e9cd3ee28095c33113abf82fdb781174be4aca",
+          "old": "blake3:60c79c9009f43857f36e20a3f6c89d6b2b447ccad0bcc204abec621e2edb8f61",
+          "semantic_note": "GOLDEN-CHANGE: independently verified actual e59 release replay over retained sources; nineteen-command registration changes receipt deterministic usage and dependent hashes; reviewed current next-evidence metadata incorporated. All eight other stage artifacts including separation unchanged. Not producer-version, live or held-out proof."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.next_evidence/next_evidence"
+          ],
+          "bead": "bd-3mrt",
+          "case_id": "orlando.case_1.hints",
+          "changed_paths": [
+            "/action_discovery"
+          ],
+          "commit": "a62eafcd496b98b2fc304a2a4e80700f24453598",
+          "contract_versions": [
+            "canon_geo_next_evidence.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:67966a732a9b783072dd4107705cc43c0a258143f4a98db9d62a3316e554172a",
+          "old": "blake3:4620053d30581521c947078a50860292884a63eba960a82356e76ecdccbfc101",
+          "semantic_note": "GOLDEN-CHANGE: actual e59 release replay independently compared to original artifact; sole JSON change is action_discovery=incomplete under bd-3mrt. Empty actions do not establish irreducible ambiguity. Spatial/solver/separation bytes unchanged; no identity acceptance or reach proof."
+        }
+      ],
       "before": {
         "proof_class": "retained_preparation_records_not_reexecuted",
         "canon_invocations": 4,
@@ -4725,7 +5897,93 @@
         "bindings": 5
       },
       "adapter_version": null,
-      "golden_changes": [],
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2dvm",
+          "case_id": "orlando.case_2.address",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs/4/byte_count",
+            "/output_refs/4/content_digest",
+            "/project_run_report/executed_nodes",
+            "/project_run_report/max_ready_width",
+            "/project_run_report/node_reports",
+            "/project_run_report/receipt/node_receipts/0/dependency_receipt_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/dependency_semantic_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/0/duration_millis",
+            "/project_run_report/receipt/node_receipts/0/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/0/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/semantic_hash",
+            "/project_run_report/receipt/node_receipts/0/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/1/duration_millis",
+            "/project_run_report/receipt/node_receipts/1/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/1/receipt_hash",
+            "/project_run_report/receipt/node_receipts/1/semantic_hash",
+            "/project_run_report/receipt/node_receipts/1/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/2/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/2/duration_millis",
+            "/project_run_report/receipt/node_receipts/2/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/2/receipt_hash",
+            "/project_run_report/receipt/node_receipts/2/semantic_hash",
+            "/project_run_report/receipt/node_receipts/2/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/3/dependency_receipt_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/dependency_semantic_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/3/duration_millis",
+            "/project_run_report/receipt/node_receipts/3/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/3/receipt_hash",
+            "/project_run_report/receipt/node_receipts/3/semantic_hash",
+            "/project_run_report/receipt/node_receipts/3/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/4/duration_millis",
+            "/project_run_report/receipt/node_receipts/4/outputs/0/byte_count",
+            "/project_run_report/receipt/node_receipts/4/outputs/0/content_digest"
+          ],
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:2916d5787c51a7ef523320bfdb1215bd7bd85e789455eb802b7908806610489a",
+          "old": "blake3:b001b389e2cb57504e30ca3ef7119b6e9a8f823e27d6363ec0d5d45dab89f43a",
+          "semantic_note": "GOLDEN-CHANGE: independently verified actual e59 release replay over retained sources; nineteen-command registration changes receipt deterministic usage and dependent hashes; reviewed current next-evidence metadata incorporated. All eight other stage artifacts including separation unchanged. Not producer-version, live or held-out proof."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.next_evidence/next_evidence"
+          ],
+          "bead": "bd-3mrt",
+          "case_id": "orlando.case_2.address",
+          "changed_paths": [
+            "/action_discovery"
+          ],
+          "commit": "a62eafcd496b98b2fc304a2a4e80700f24453598",
+          "contract_versions": [
+            "canon_geo_next_evidence.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:4bc6271db8a8b891ea6d2892e9ff9927c2a46ae35e183625bf9d69ecad57eb3b",
+          "old": "blake3:6a22cb1db1d2b622fc67340a06ab695c8cb67834e1f63025052b5cc85598bf6f",
+          "semantic_note": "GOLDEN-CHANGE: actual e59 release replay independently compared to original artifact; sole JSON change is action_discovery=incomplete under bd-3mrt. Empty actions do not establish irreducible ambiguity. Spatial/solver/separation bytes unchanged; no identity acceptance or reach proof."
+        }
+      ],
       "before": {
         "proof_class": "retained_preparation_records_not_reexecuted",
         "canon_invocations": 4,
@@ -4890,7 +6148,93 @@
         "bindings": 5
       },
       "adapter_version": null,
-      "golden_changes": [],
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2dvm",
+          "case_id": "orlando.case_2.hints",
+          "changed_paths": [
+            "/deterministic_usage/executor_supported_command_count",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs/4/byte_count",
+            "/output_refs/4/content_digest",
+            "/project_run_report/executed_nodes",
+            "/project_run_report/max_ready_width",
+            "/project_run_report/node_reports",
+            "/project_run_report/receipt/node_receipts/0/dependency_receipt_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/dependency_semantic_hashes/geo.parcel.materialize_evidence",
+            "/project_run_report/receipt/node_receipts/0/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/0/duration_millis",
+            "/project_run_report/receipt/node_receipts/0/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/0/receipt_hash",
+            "/project_run_report/receipt/node_receipts/0/semantic_hash",
+            "/project_run_report/receipt/node_receipts/0/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.compile_evidence",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.propagate",
+            "/project_run_report/receipt/node_receipts/1/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/1/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/1/duration_millis",
+            "/project_run_report/receipt/node_receipts/1/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/1/receipt_hash",
+            "/project_run_report/receipt/node_receipts/1/semantic_hash",
+            "/project_run_report/receipt/node_receipts/1/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/2/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/2/duration_millis",
+            "/project_run_report/receipt/node_receipts/2/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/2/receipt_hash",
+            "/project_run_report/receipt/node_receipts/2/semantic_hash",
+            "/project_run_report/receipt/node_receipts/2/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/3/dependency_receipt_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/dependency_semantic_hashes/geo.parcel.section",
+            "/project_run_report/receipt/node_receipts/3/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/3/duration_millis",
+            "/project_run_report/receipt/node_receipts/3/plan_graph_hash",
+            "/project_run_report/receipt/node_receipts/3/receipt_hash",
+            "/project_run_report/receipt/node_receipts/3/semantic_hash",
+            "/project_run_report/receipt/node_receipts/3/telemetry_hash",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_receipt_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.separation",
+            "/project_run_report/receipt/node_receipts/4/dependency_semantic_hashes/geo.parcel.solve",
+            "/project_run_report/receipt/node_receipts/4/deterministic_usage/executor_supported_command_count",
+            "/project_run_report/receipt/node_receipts/4/duration_millis",
+            "/project_run_report/receipt/node_receipts/4/outputs/0/byte_count",
+            "/project_run_report/receipt/node_receipts/4/outputs/0/content_digest"
+          ],
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:948772fb11bb3c709e68d1a2126f6ea165421d2121f19aef8b0f22a5f6599539",
+          "old": "blake3:3b2d8f3acabb0302c8116b18c29576992b47a773fb1c5b53350422ed84f670af",
+          "semantic_note": "GOLDEN-CHANGE: independently verified actual e59 release replay over retained sources; nineteen-command registration changes receipt deterministic usage and dependent hashes; reviewed current next-evidence metadata incorporated. All eight other stage artifacts including separation unchanged. Not producer-version, live or held-out proof."
+        },
+        {
+          "artifact_ids": [
+            "geo.parcel.next_evidence/next_evidence"
+          ],
+          "bead": "bd-3mrt",
+          "case_id": "orlando.case_2.hints",
+          "changed_paths": [
+            "/action_discovery"
+          ],
+          "commit": "a62eafcd496b98b2fc304a2a4e80700f24453598",
+          "contract_versions": [
+            "canon_geo_next_evidence.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:933af4b2ebc5a5782f36e585d5ffdca1c9fe7dd828faf1b693c5a2597cd83705",
+          "old": "blake3:4139e3a1012847baae948d88582d76d7de7a3198db779f27eea633b4a19ec579",
+          "semantic_note": "GOLDEN-CHANGE: actual e59 release replay independently compared to original artifact; sole JSON change is action_discovery=incomplete under bd-3mrt. Empty actions do not establish irreducible ambiguity. Spatial/solver/separation bytes unchanged; no identity acceptance or reach proof."
+        }
+      ],
       "before": {
         "proof_class": "retained_preparation_records_not_reexecuted",
         "canon_invocations": 4,
@@ -5407,6 +6751,36 @@
           "new": null,
           "old": "blake3:b85ea4f9e0c389d558ce66d25ad697a81897b39b393aabc685e4ec2fffe8d1cd",
           "semantic_note": "Reject the same unsound logical-relaxation admission at preflight before upstream work. Preserve the historical failed-baseline experiment. No resolution or historical-cache upgrade is established by this wait."
+        },
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2no5",
+          "case_id": "nxrt.experiment",
+          "changed_paths": [
+            "/blockers",
+            "/deterministic_usage",
+            "/next_actions",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs",
+            "/phase",
+            "/plan_ref/project_graph_hash",
+            "/project_run_report",
+            "/run_id",
+            "/semantic_hash",
+            "/status"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:16d7c274c35a24ad8d390a83be211b7cc55dd8014cfcce28b8f1576a6a1f68ef",
+          "old": "blake3:a3915b860b0fbafb8e06290669c2f0ac429844dcce4dfa775f8d41a052ca867e",
+          "semantic_diff_base": "immutable_archive_json; old digest is prior approved golden; compare prior retained runtime before approval",
+          "semantic_note": "GOLDEN-CHANGE bd-2no5: producer-semantics pins and operational invalidation-history exclusion change only the run envelope. Independent review folded the existing expected chain and compared actual prior/current runs: all 58 referenced artifact bodies across 12 transitions, including all five answer bodies, are unchanged. No association, acceptance, forced-member or reach claim changes."
         }
       ],
       "before": {
@@ -5647,7 +7021,7 @@
     },
     {
       "case_id": "resume.cornerstone.national_parcel_supported",
-      "tier": "resume",
+      "tier": "full",
       "proof_class": "retained",
       "mode": "legacy_full_workflow",
       "role": "replay",
@@ -5786,6 +7160,16 @@
           },
           "semantic_note": "Approved bd-3mrt canonical-byte contract effect: legacy next-evidence deserializes but stored executor bytes no longer match canonical output. Current resume refuses; no current answer or generic cache invalidation fix is claimed. Historical stored ABSTAINED result and NXRT resume/recompute divergence remain retained integration evidence.",
           "target": "resume_current_outcome"
+        },
+        {
+          "kind": "invariant_change",
+          "target": "replay_tier",
+          "bead": "bd-2no5",
+          "date": "2026-10-21",
+          "commit": null,
+          "old": "resume",
+          "new": "full",
+          "semantic_note": "Unversioned historical receipts must be recomputed over 2983 candidates, not treated as a fast warm resume. Explicit full/release consumer; original retained hashes and evidence unchanged."
         }
       ],
       "retained_workspace": "national-parcel-supported/run/",
@@ -5870,7 +7254,7 @@
     },
     {
       "case_id": "resume.courtney.final_hints",
-      "tier": "resume",
+      "tier": "full",
       "proof_class": "retained",
       "mode": "legacy_full_workflow",
       "role": "replay",
@@ -6009,6 +7393,16 @@
           },
           "semantic_note": "Approved bd-3mrt canonical-byte contract effect: legacy next-evidence deserializes but stored executor bytes no longer match canonical output. Current resume refuses; no current answer or generic cache invalidation fix is claimed. Historical stored ABSTAINED result and NXRT resume/recompute divergence remain retained integration evidence.",
           "target": "resume_current_outcome"
+        },
+        {
+          "kind": "invariant_change",
+          "target": "replay_tier",
+          "bead": "bd-2no5",
+          "date": "2026-10-21",
+          "commit": null,
+          "old": "resume",
+          "new": "full",
+          "semantic_note": "Unversioned historical receipts must be recomputed over 889 candidates, not treated as a fast warm resume. Explicit full/release consumer; original retained hashes and evidence unchanged."
         }
       ],
       "retained_workspace": "runs/final-hints/run/",
@@ -6259,6 +7653,52 @@
             "process_exit": 2
           },
           "semantic_note": "Reviewed actual current resume invocation: unsound logical-relaxation descriptive input now stops at typed preflight before any execution, receipt seeding, project report or output publication. Historical refusal and archived ABSTAINED result remain retained; this wait is not a cache upgrade, successful reuse, or new property answer.",
+          "target": "resume_current_outcome"
+        },
+        {
+          "bead": "bd-2no5",
+          "case_id": "resume.nxrt.experiment",
+          "changed_paths": [
+            "/semantic_hash"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0",
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "kind": "invariant_change",
+          "new": {
+            "blockers": [
+              {
+                "blocker_id": "invalid_input:geo.parcel.materialize_evidence:rows",
+                "kind": "INVALID_INPUT",
+                "project_node_id": "geo.parcel.materialize_evidence",
+                "reason": "InvalidInput: Descriptive source attributes require uncalibrated or empirically calibrated admission; logical relaxation is not a comparability proof; field=rows; detail={\"profile\": \"descriptive_asset_single_member_v0\"}; expected_contract=canon_geo_descriptive_asset_request.v0; schema=schemas/canon.geo.descriptive_asset_request.v0.schema.json"
+              }
+            ],
+            "current_cached_success": false,
+            "phase": "PREFLIGHTED",
+            "process_exit": 0,
+            "semantic_hash": "blake3:16d7c274c35a24ad8d390a83be211b7cc55dd8014cfcce28b8f1576a6a1f68ef",
+            "status": "WAITING_FOR_INPUT"
+          },
+          "old": {
+            "blockers": [
+              {
+                "blocker_id": "invalid_input:geo.parcel.materialize_evidence:rows",
+                "kind": "INVALID_INPUT",
+                "project_node_id": "geo.parcel.materialize_evidence",
+                "reason": "InvalidInput: Descriptive source attributes require uncalibrated or empirically calibrated admission; logical relaxation is not a comparability proof; field=rows; detail={\"profile\": \"descriptive_asset_single_member_v0\"}; expected_contract=canon_geo_descriptive_asset_request.v0; schema=schemas/canon.geo.descriptive_asset_request.v0.schema.json"
+              }
+            ],
+            "current_cached_success": false,
+            "phase": "PREFLIGHTED",
+            "process_exit": 0,
+            "semantic_hash": "blake3:a3915b860b0fbafb8e06290669c2f0ac429844dcce4dfa775f8d41a052ca867e",
+            "status": "WAITING_FOR_INPUT"
+          },
+          "semantic_note": "GOLDEN-CHANGE bd-2no5: current run envelope hash changes with producer-semantics graph pins and operational-history exclusion; independently verified unchanged INVALID_INPUT blockers and zero-work WAITING_FOR_INPUT/PREFLIGHTED. This is not invalidation-report, FAILED-outcome, cache-upgrade or association proof.",
           "target": "resume_current_outcome"
         }
       ],
@@ -6562,6 +8002,36 @@
           "new": null,
           "old": "blake3:5e35f7386d8f75b1c78aef40536e3b2e8699fa38157f9eb7e12a01a5e565d971",
           "semantic_note": "Reject the same unsorted lineage IDs at preflight before upstream work, preserving the invalid admission diagnostic. No geometric or solver output is published for invalid input."
+        },
+        {
+          "artifact_ids": [
+            "run_semantic_hash"
+          ],
+          "bead": "bd-2no5",
+          "case_id": "orlando.case0_hints.lineage_order_failure",
+          "changed_paths": [
+            "/blockers",
+            "/deterministic_usage",
+            "/next_actions",
+            "/observation/invocation",
+            "/observation/resource_observations",
+            "/output_refs",
+            "/phase",
+            "/plan_ref/project_graph_hash",
+            "/project_run_report",
+            "/run_id",
+            "/semantic_hash",
+            "/status"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": "blake3:961d53b947cdea3e03767fb153be788c66ce964522b4d7eafdb39b0d424ba2c8",
+          "old": "blake3:a2e454b4602638a6e4d4d0786ca67859a5cc1fcec05573543b76d9ec0bb4fb38",
+          "semantic_diff_base": "immutable_archive_json; old digest is prior approved golden; compare prior retained runtime before approval",
+          "semantic_note": "GOLDEN-CHANGE bd-2no5: producer-semantics pins and operational invalidation-history exclusion change only the run envelope. Independent review folded the existing expected chain and compared actual prior/current runs: all 58 referenced artifact bodies across 12 transitions, including all five answer bodies, are unchanged. No association, acceptance, forced-member or reach claim changes."
         }
       ],
       "before": {
@@ -7447,7 +8917,56 @@
         "plan_sha256": "7c1c34198936f08d1ea0ac44c716865a31f7e1ce6ad8a3be2488b024ba8cf774",
         "run_semantic_hash": "blake3:4724b33089f5b7a67b3dd4f65d0791c874be400ff3cd244eb9e574d607acb5b9",
         "run_status": "ABSTAINED"
-      }
+      },
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "current_answer_capture"
+          ],
+          "bead": "bd-2no5",
+          "case_id": "current_answer.brooklyn.00_neighborhood",
+          "changed_paths": [
+            "/run_semantic_hash"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0",
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": {
+            "output_digests": {
+              "geo.parcel.answer/answer": "blake3:14650346078afa6abf6fe7a1158fa5a66c0163117d1dc492026591d80781af82",
+              "geo.parcel.compile_evidence/compile_evidence": "blake3:56bb2b361f550d15257c7505004ab205adfb4ededffea6a9a9a5f7746565df8d",
+              "geo.parcel.explain/explanation": "blake3:c81bbe8ae1035eae6b224a9713779f0ac54932b1a40bab6dbb7e9224b5c77ba0",
+              "geo.parcel.home_cells/home_cells": "blake3:d48ffd8fc9b493bb41c3290df3e903eb180d5b09601ccb52c653d40243defb35",
+              "geo.parcel.materialize_evidence/materialize_evidence": "blake3:31a55dfbfdbcd440bdc94ae1e44f825e25ccc27693024129bddfe74a49cd6d21",
+              "geo.parcel.propagate/propagation": "blake3:643575c53f6189f02e4ccbef95ad5fc9ce3106e2be072e0b498116f13e832289",
+              "geo.parcel.section/section": "blake3:0b1dd9c98418564494f5c18015109d0e15227e750eb29fe44249c507f4810f09",
+              "geo.parcel.solve/solve": "blake3:91e8c9411f81de8b792545fd4f69bbc1167cf33674b4a5cadce05babe2931dd4"
+            },
+            "plan_sha256": "7c1c34198936f08d1ea0ac44c716865a31f7e1ce6ad8a3be2488b024ba8cf774",
+            "run_semantic_hash": "blake3:f8681dd8e16c45215b2486ae66af2d7cedb6ea32f2e1a8c1cd4ae68643db6055",
+            "run_status": "ABSTAINED"
+          },
+          "old": {
+            "output_digests": {
+              "geo.parcel.answer/answer": "blake3:14650346078afa6abf6fe7a1158fa5a66c0163117d1dc492026591d80781af82",
+              "geo.parcel.compile_evidence/compile_evidence": "blake3:56bb2b361f550d15257c7505004ab205adfb4ededffea6a9a9a5f7746565df8d",
+              "geo.parcel.explain/explanation": "blake3:c81bbe8ae1035eae6b224a9713779f0ac54932b1a40bab6dbb7e9224b5c77ba0",
+              "geo.parcel.home_cells/home_cells": "blake3:d48ffd8fc9b493bb41c3290df3e903eb180d5b09601ccb52c653d40243defb35",
+              "geo.parcel.materialize_evidence/materialize_evidence": "blake3:31a55dfbfdbcd440bdc94ae1e44f825e25ccc27693024129bddfe74a49cd6d21",
+              "geo.parcel.propagate/propagation": "blake3:643575c53f6189f02e4ccbef95ad5fc9ce3106e2be072e0b498116f13e832289",
+              "geo.parcel.section/section": "blake3:0b1dd9c98418564494f5c18015109d0e15227e750eb29fe44249c507f4810f09",
+              "geo.parcel.solve/solve": "blake3:91e8c9411f81de8b792545fd4f69bbc1167cf33674b4a5cadce05babe2931dd4"
+            },
+            "plan_sha256": "7c1c34198936f08d1ea0ac44c716865a31f7e1ce6ad8a3be2488b024ba8cf774",
+            "run_semantic_hash": "blake3:4724b33089f5b7a67b3dd4f65d0791c874be400ff3cd244eb9e574d607acb5b9",
+            "run_status": "ABSTAINED"
+          },
+          "semantic_note": "GOLDEN-CHANGE bd-2no5: producer-semantics pins and operational invalidation-history exclusion change only the run envelope. Independent review folded the existing expected chain and compared actual prior/current runs: all 58 referenced artifact bodies across 12 transitions, including all five answer bodies, are unchanged. No association, acceptance, forced-member or reach claim changes."
+        }
+      ]
     },
     {
       "case_id": "current_answer.brooklyn.01_address_parcel",
@@ -7500,7 +9019,56 @@
         "plan_sha256": "7c1c34198936f08d1ea0ac44c716865a31f7e1ce6ad8a3be2488b024ba8cf774",
         "run_semantic_hash": "blake3:96ebe755bb6660fd7dfa733378d39801643b787480c972574f0002d55262f167",
         "run_status": "ABSTAINED"
-      }
+      },
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "current_answer_capture"
+          ],
+          "bead": "bd-2no5",
+          "case_id": "current_answer.brooklyn.01_address_parcel",
+          "changed_paths": [
+            "/run_semantic_hash"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0",
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": {
+            "output_digests": {
+              "geo.parcel.answer/answer": "blake3:a96b238a0e9db6122c3ca64bf970454ee0f097fca74c16f3e235c06162654398",
+              "geo.parcel.compile_evidence/compile_evidence": "blake3:928a7afa9544fcaddd4da869ec807744694cb6f3d463a3a47cac821d80b40694",
+              "geo.parcel.explain/explanation": "blake3:3ec20132b6a2f841dc957f26dd10cc7bbbf6736ce2be268e5294fed2c285ef61",
+              "geo.parcel.home_cells/home_cells": "blake3:d48ffd8fc9b493bb41c3290df3e903eb180d5b09601ccb52c653d40243defb35",
+              "geo.parcel.materialize_evidence/materialize_evidence": "blake3:6e8272906869defd39a6dfb9c78ada939bf8665387f711814076f007e5512f34",
+              "geo.parcel.propagate/propagation": "blake3:e6bf161c22ac759ad06c35e8cb9f04f97211ebd774112a5702582c5f01a31d03",
+              "geo.parcel.section/section": "blake3:0b1dd9c98418564494f5c18015109d0e15227e750eb29fe44249c507f4810f09",
+              "geo.parcel.solve/solve": "blake3:7e624bd143babcba11512615af1529549d1b23302a8861063f8ac15a9e442a2a"
+            },
+            "plan_sha256": "7c1c34198936f08d1ea0ac44c716865a31f7e1ce6ad8a3be2488b024ba8cf774",
+            "run_semantic_hash": "blake3:c3f9912e1b0352fb36119c18114647f02b055d833d3f2d5703ff797ab73bfad2",
+            "run_status": "ABSTAINED"
+          },
+          "old": {
+            "output_digests": {
+              "geo.parcel.answer/answer": "blake3:a96b238a0e9db6122c3ca64bf970454ee0f097fca74c16f3e235c06162654398",
+              "geo.parcel.compile_evidence/compile_evidence": "blake3:928a7afa9544fcaddd4da869ec807744694cb6f3d463a3a47cac821d80b40694",
+              "geo.parcel.explain/explanation": "blake3:3ec20132b6a2f841dc957f26dd10cc7bbbf6736ce2be268e5294fed2c285ef61",
+              "geo.parcel.home_cells/home_cells": "blake3:d48ffd8fc9b493bb41c3290df3e903eb180d5b09601ccb52c653d40243defb35",
+              "geo.parcel.materialize_evidence/materialize_evidence": "blake3:6e8272906869defd39a6dfb9c78ada939bf8665387f711814076f007e5512f34",
+              "geo.parcel.propagate/propagation": "blake3:e6bf161c22ac759ad06c35e8cb9f04f97211ebd774112a5702582c5f01a31d03",
+              "geo.parcel.section/section": "blake3:0b1dd9c98418564494f5c18015109d0e15227e750eb29fe44249c507f4810f09",
+              "geo.parcel.solve/solve": "blake3:7e624bd143babcba11512615af1529549d1b23302a8861063f8ac15a9e442a2a"
+            },
+            "plan_sha256": "7c1c34198936f08d1ea0ac44c716865a31f7e1ce6ad8a3be2488b024ba8cf774",
+            "run_semantic_hash": "blake3:96ebe755bb6660fd7dfa733378d39801643b787480c972574f0002d55262f167",
+            "run_status": "ABSTAINED"
+          },
+          "semantic_note": "GOLDEN-CHANGE bd-2no5: producer-semantics pins and operational invalidation-history exclusion change only the run envelope. Independent review folded the existing expected chain and compared actual prior/current runs: all 58 referenced artifact bodies across 12 transitions, including all five answer bodies, are unchanged. No association, acceptance, forced-member or reach claim changes."
+        }
+      ]
     },
     {
       "case_id": "current_answer.brooklyn.02_address_building",
@@ -7555,7 +9123,56 @@
         "plan_sha256": "7c1c34198936f08d1ea0ac44c716865a31f7e1ce6ad8a3be2488b024ba8cf774",
         "run_semantic_hash": "blake3:5e5eb39c6ae3698c9bb36ca2ffb50d737e3dc14ca77e6c5dc856924fdb263fe1",
         "run_status": "ABSTAINED"
-      }
+      },
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "current_answer_capture"
+          ],
+          "bead": "bd-2no5",
+          "case_id": "current_answer.brooklyn.02_address_building",
+          "changed_paths": [
+            "/run_semantic_hash"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0",
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": {
+            "output_digests": {
+              "geo.parcel.answer/answer": "blake3:a59c34f5adb401beb65edfd60868a7be1ca4a1a015bfc40f510dffbafe72dfe5",
+              "geo.parcel.compile_evidence/compile_evidence": "blake3:025ecc9475f17ea7554c65716e9bc435a155e1d39c7f10a71345d2189bb7b5fd",
+              "geo.parcel.explain/explanation": "blake3:c73a93b1ad61021c69161689bf472426b000850ee6d1eaa07c6b0ea98f1ca0dc",
+              "geo.parcel.home_cells/home_cells": "blake3:d48ffd8fc9b493bb41c3290df3e903eb180d5b09601ccb52c653d40243defb35",
+              "geo.parcel.materialize_evidence/materialize_evidence": "blake3:3186579e1bd8abb095b544fc6c5755174bcdbaf094084bd904d050fd34a0d93a",
+              "geo.parcel.propagate/propagation": "blake3:3a560ab7b28844a671401d39717d56e696a862b2138d604666120413e6f57318",
+              "geo.parcel.section/section": "blake3:0b1dd9c98418564494f5c18015109d0e15227e750eb29fe44249c507f4810f09",
+              "geo.parcel.solve/solve": "blake3:55b3ff520a34d72d61bfcc87eeb48e07f1e7b978d7ef4155ad7261789ac14b3e"
+            },
+            "plan_sha256": "7c1c34198936f08d1ea0ac44c716865a31f7e1ce6ad8a3be2488b024ba8cf774",
+            "run_semantic_hash": "blake3:cf6e98f59fe35548505ba763bb0bb69751a048adad1ebecaad3a49ba3d1c58f2",
+            "run_status": "ABSTAINED"
+          },
+          "old": {
+            "output_digests": {
+              "geo.parcel.answer/answer": "blake3:a59c34f5adb401beb65edfd60868a7be1ca4a1a015bfc40f510dffbafe72dfe5",
+              "geo.parcel.compile_evidence/compile_evidence": "blake3:025ecc9475f17ea7554c65716e9bc435a155e1d39c7f10a71345d2189bb7b5fd",
+              "geo.parcel.explain/explanation": "blake3:c73a93b1ad61021c69161689bf472426b000850ee6d1eaa07c6b0ea98f1ca0dc",
+              "geo.parcel.home_cells/home_cells": "blake3:d48ffd8fc9b493bb41c3290df3e903eb180d5b09601ccb52c653d40243defb35",
+              "geo.parcel.materialize_evidence/materialize_evidence": "blake3:3186579e1bd8abb095b544fc6c5755174bcdbaf094084bd904d050fd34a0d93a",
+              "geo.parcel.propagate/propagation": "blake3:3a560ab7b28844a671401d39717d56e696a862b2138d604666120413e6f57318",
+              "geo.parcel.section/section": "blake3:0b1dd9c98418564494f5c18015109d0e15227e750eb29fe44249c507f4810f09",
+              "geo.parcel.solve/solve": "blake3:55b3ff520a34d72d61bfcc87eeb48e07f1e7b978d7ef4155ad7261789ac14b3e"
+            },
+            "plan_sha256": "7c1c34198936f08d1ea0ac44c716865a31f7e1ce6ad8a3be2488b024ba8cf774",
+            "run_semantic_hash": "blake3:5e5eb39c6ae3698c9bb36ca2ffb50d737e3dc14ca77e6c5dc856924fdb263fe1",
+            "run_status": "ABSTAINED"
+          },
+          "semantic_note": "GOLDEN-CHANGE bd-2no5: producer-semantics pins and operational invalidation-history exclusion change only the run envelope. Independent review folded the existing expected chain and compared actual prior/current runs: all 58 referenced artifact bodies across 12 transitions, including all five answer bodies, are unchanged. No association, acceptance, forced-member or reach claim changes."
+        }
+      ]
     },
     {
       "case_id": "current_answer.cornerstone.national_building_supported",
@@ -7597,7 +9214,56 @@
         "plan_sha256": "e48cd355efe8d7116a029663ccd6d65a104354e9c94286e76f86084061d503e9",
         "run_semantic_hash": "blake3:542aefb6fa4e64ce05432314a66f3d58bdd0ebd8c9dfd3ad6650af5d3ffcaf2a",
         "run_status": "ABSTAINED"
-      }
+      },
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "current_answer_capture"
+          ],
+          "bead": "bd-2no5",
+          "case_id": "current_answer.cornerstone.national_building_supported",
+          "changed_paths": [
+            "/run_semantic_hash"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0",
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": {
+            "output_digests": {
+              "geo.building.answer/answer": "blake3:76651260c852f8eee011dd134b2a68cd423c17d38e39a7f258689528266698d7",
+              "geo.building.compile_evidence/compile_evidence": "blake3:469ef56590c3e6ff66e4e78cbf3546a70f31616afc0d87d8eb42cf724f3349a4",
+              "geo.building.explain/explanation": "blake3:5bff32f6935aa415d0a7009e472b387e2221efb92d0b944cac85da061e943aa2",
+              "geo.building.home_cells/home_cells": "blake3:c7f225275243ecf120760e5f1d0d043946371cdb25ebe11abd231372ce40fe0a",
+              "geo.building.materialize_evidence/materialize_evidence": "blake3:40318d421043648dcceb866cf410138093851a94298be4cd560bb6be301cc8c5",
+              "geo.building.propagate/propagation": "blake3:173a49248f9ca4201bd295ddb074a3c53cc5128470b99d1172119753e377b5f5",
+              "geo.building.section/section": "blake3:cfeb94b5684902d1074c6074cfa8c646f182d463b256db28c071cd53b005444b",
+              "geo.building.solve/solve": "blake3:6342c0b4d8790437be4e2604a30c5b3ecf09e6d763527f0eb117689fad961e12"
+            },
+            "plan_sha256": "e48cd355efe8d7116a029663ccd6d65a104354e9c94286e76f86084061d503e9",
+            "run_semantic_hash": "blake3:44f75fd323adc8ca2499bf124e30ba54e4fac686eb3e9fa1ecd8a25018cbcb92",
+            "run_status": "ABSTAINED"
+          },
+          "old": {
+            "output_digests": {
+              "geo.building.answer/answer": "blake3:76651260c852f8eee011dd134b2a68cd423c17d38e39a7f258689528266698d7",
+              "geo.building.compile_evidence/compile_evidence": "blake3:469ef56590c3e6ff66e4e78cbf3546a70f31616afc0d87d8eb42cf724f3349a4",
+              "geo.building.explain/explanation": "blake3:5bff32f6935aa415d0a7009e472b387e2221efb92d0b944cac85da061e943aa2",
+              "geo.building.home_cells/home_cells": "blake3:c7f225275243ecf120760e5f1d0d043946371cdb25ebe11abd231372ce40fe0a",
+              "geo.building.materialize_evidence/materialize_evidence": "blake3:40318d421043648dcceb866cf410138093851a94298be4cd560bb6be301cc8c5",
+              "geo.building.propagate/propagation": "blake3:173a49248f9ca4201bd295ddb074a3c53cc5128470b99d1172119753e377b5f5",
+              "geo.building.section/section": "blake3:cfeb94b5684902d1074c6074cfa8c646f182d463b256db28c071cd53b005444b",
+              "geo.building.solve/solve": "blake3:6342c0b4d8790437be4e2604a30c5b3ecf09e6d763527f0eb117689fad961e12"
+            },
+            "plan_sha256": "e48cd355efe8d7116a029663ccd6d65a104354e9c94286e76f86084061d503e9",
+            "run_semantic_hash": "blake3:542aefb6fa4e64ce05432314a66f3d58bdd0ebd8c9dfd3ad6650af5d3ffcaf2a",
+            "run_status": "ABSTAINED"
+          },
+          "semantic_note": "GOLDEN-CHANGE bd-2no5: producer-semantics pins and operational invalidation-history exclusion change only the run envelope. Independent review folded the existing expected chain and compared actual prior/current runs: all 58 referenced artifact bodies across 12 transitions, including all five answer bodies, are unchanged. No association, acceptance, forced-member or reach claim changes."
+        }
+      ]
     },
     {
       "case_id": "current_answer.cornerstone.national_building",
@@ -7639,7 +9305,56 @@
         "plan_sha256": "01a9e1f47b8582a2302c97fce57d831cfb3df969d0e36a931bbd1d3660b7d711",
         "run_semantic_hash": "blake3:05dd257300fb2d24a7f9fa933489774493b9b664a742bdec2c06a57b5e735940",
         "run_status": "ABSTAINED"
-      }
+      },
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "current_answer_capture"
+          ],
+          "bead": "bd-2no5",
+          "case_id": "current_answer.cornerstone.national_building",
+          "changed_paths": [
+            "/run_semantic_hash"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0",
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-10-21",
+          "new": {
+            "output_digests": {
+              "geo.building.answer/answer": "blake3:17cadea56af1af62e669c45f17b235257af726db723212a2ef6096523363670c",
+              "geo.building.compile_evidence/compile_evidence": "blake3:ffbb9fccf80e2556c9ee404ad2c9bfe6154f9df5d0e441415b869ddfa4fcedc3",
+              "geo.building.explain/explanation": "blake3:f09ea12388c921f91f99820a6cecbf48316e4f7af5a70f305ee0dfe533d4093a",
+              "geo.building.home_cells/home_cells": "blake3:7bf376207b16cc1a1f70d9970b3018f59ff678531c17a66276c38d6ccfaca7da",
+              "geo.building.materialize_evidence/materialize_evidence": "blake3:07d67337a0539598fe6c8ec487d77b100e32bdbd985977e93ad984e80f22baae",
+              "geo.building.propagate/propagation": "blake3:615fd1749896eb539126e94f96f51dbe04ddb2b33df48b5c598fb02e39679004",
+              "geo.building.section/section": "blake3:c60e8152c6e8319d13a833ba042378b3089a6045b8f9d0822997f49b44595b72",
+              "geo.building.solve/solve": "blake3:960b48da84c06eb28a1937e8bdbb3ba192b9845d17fdeeafb49512d5f2e36317"
+            },
+            "plan_sha256": "01a9e1f47b8582a2302c97fce57d831cfb3df969d0e36a931bbd1d3660b7d711",
+            "run_semantic_hash": "blake3:5211b66181cd7d9f44a2e0b4ebe499bd8e006807f52d6260329bf328713ab7a5",
+            "run_status": "ABSTAINED"
+          },
+          "old": {
+            "output_digests": {
+              "geo.building.answer/answer": "blake3:17cadea56af1af62e669c45f17b235257af726db723212a2ef6096523363670c",
+              "geo.building.compile_evidence/compile_evidence": "blake3:ffbb9fccf80e2556c9ee404ad2c9bfe6154f9df5d0e441415b869ddfa4fcedc3",
+              "geo.building.explain/explanation": "blake3:f09ea12388c921f91f99820a6cecbf48316e4f7af5a70f305ee0dfe533d4093a",
+              "geo.building.home_cells/home_cells": "blake3:7bf376207b16cc1a1f70d9970b3018f59ff678531c17a66276c38d6ccfaca7da",
+              "geo.building.materialize_evidence/materialize_evidence": "blake3:07d67337a0539598fe6c8ec487d77b100e32bdbd985977e93ad984e80f22baae",
+              "geo.building.propagate/propagation": "blake3:615fd1749896eb539126e94f96f51dbe04ddb2b33df48b5c598fb02e39679004",
+              "geo.building.section/section": "blake3:c60e8152c6e8319d13a833ba042378b3089a6045b8f9d0822997f49b44595b72",
+              "geo.building.solve/solve": "blake3:960b48da84c06eb28a1937e8bdbb3ba192b9845d17fdeeafb49512d5f2e36317"
+            },
+            "plan_sha256": "01a9e1f47b8582a2302c97fce57d831cfb3df969d0e36a931bbd1d3660b7d711",
+            "run_semantic_hash": "blake3:05dd257300fb2d24a7f9fa933489774493b9b664a742bdec2c06a57b5e735940",
+            "run_status": "ABSTAINED"
+          },
+          "semantic_note": "GOLDEN-CHANGE bd-2no5: producer-semantics pins and operational invalidation-history exclusion change only the run envelope. Independent review folded the existing expected chain and compared actual prior/current runs: all 58 referenced artifact bodies across 12 transitions, including all five answer bodies, are unchanged. No association, acceptance, forced-member or reach claim changes."
+        }
+      ]
     },
     {
       "case_id": "current_answer.cornerstone.national_parcel_supported",
@@ -8149,6 +9864,15 @@
       "tier": "cost",
       "proof_class": "retained",
       "role": "cost_observation",
+      "invariants": []
+    },
+    {
+      "case_id": "resume_current.cornerstone.national_building_supported",
+      "source_case_id": "cornerstone.national_building_supported",
+      "mode": "current_resume",
+      "tier": "fast",
+      "proof_class": "retained",
+      "role": "current_run_reuse",
       "invariants": []
     }
   ],

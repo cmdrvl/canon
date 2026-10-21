@@ -1544,7 +1544,7 @@ fn base_run(seed: &str, status: GeoRunStatus) -> GeoRun {
 }
 
 fn project_run_report(seed: &str, outcome: ProjectRunNodeOutcome) -> ProjectRunReport {
-    let node_receipt = ProjectRunNodeReceipt {
+    let node_receipt = canon::project::finalized_node_receipt(ProjectRunNodeReceipt {
         schema_version: CANON_PROJECT_RUN_VERSION.to_string(),
         project_id: format!("geo.retry-recovery.{seed}.project"),
         plan_graph_hash: digest_label(&format!("{seed}:project-graph")),
@@ -1578,8 +1578,9 @@ fn project_run_report(seed: &str, outcome: ProjectRunNodeOutcome) -> ProjectRunR
         semantic_hash: digest_label(&format!("{seed}:node-semantic")),
         telemetry_hash: digest_label(&format!("{seed}:node-telemetry")),
         receipt_hash: digest_label(&format!("{seed}:node-receipt")),
-    };
-    ProjectRunReport {
+    })
+    .expect("synthetic recovery node receipt seals");
+    let mut report = ProjectRunReport {
         schema_version: CANON_PROJECT_RUN_VERSION.to_string(),
         project_id: format!("geo.retry-recovery.{seed}.project"),
         plan_graph_hash: digest_label(&format!("{seed}:project-graph")),
@@ -1620,7 +1621,11 @@ fn project_run_report(seed: &str, outcome: ProjectRunNodeOutcome) -> ProjectRunR
         node_reports: Vec::new(),
         invalidation_reasons: Vec::new(),
         resource_reuse: Default::default(),
-    }
+    };
+    report.receipt = canon::project::finalized_run_receipt(report.receipt)
+        .expect("synthetic recovery run receipt seals");
+    report.run_receipt_hash = report.receipt.receipt_hash.clone();
+    report
 }
 
 fn different_home_cell(index: usize, home_cells: &[String]) -> &str {

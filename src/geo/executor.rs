@@ -2352,6 +2352,10 @@ impl Default for GeoProjectNodeExecutor {
 }
 
 impl ProjectNodeExecutor for GeoProjectNodeExecutor {
+    fn semantics_version(&self, command: &str) -> Option<&'static str> {
+        geo_stage_semantics_version(command)
+    }
+
     fn execute(
         &mut self,
         node: &ProjectPlanNode,
@@ -2384,6 +2388,16 @@ enum GeoExecutorCommand {
     Solve,
 }
 
+/// Output/admission validator versions, deliberately independent of crate versions.
+/// Bump only the affected stage when previously accepted inputs can change output
+/// bytes or admission. New registered stages must declare their own row.
+pub fn geo_stage_semantics_version(command: &str) -> Option<&'static str> {
+    GeoExecutorCommand::SUPPORTED.into_iter().find_map(|stage| {
+        let (registered, version) = stage.semantics_registration();
+        (registered == command).then_some(version)
+    })
+}
+
 impl GeoExecutorCommand {
     const SUPPORTED: [Self; 19] = [
         Self::MaterializeHomeCells,
@@ -2408,31 +2422,84 @@ impl GeoExecutorCommand {
     ];
 
     fn from_command(node: &ProjectPlanNode) -> ProjectRunResult<Self> {
-        match node.command.as_str() {
-            GEO_MATERIALIZE_HOME_CELLS_COMMAND => Ok(Self::MaterializeHomeCells),
-            GEO_TILE_WORK_COMMAND => Ok(Self::TileWork),
-            GEO_CLIENT_TILE_INGEST_STAGE_COMMAND => Ok(Self::ClientTileIngest),
-            GEO_MATERIALIZE_EVIDENCE_COMMAND => Ok(Self::MaterializeEvidence),
-            GEO_COMPILE_EVIDENCE_COMMAND => Ok(Self::CompileEvidence),
-            GEO_ASSESSMENT_ROLL_OWNER_STAGE_COMMAND => Ok(Self::AssessmentRollOwner),
-            GEO_CONDO_BRIDGE_STAGE_COMMAND => Ok(Self::CondoBridge),
-            GEO_RETRY_PASS_STAGE_COMMAND => Ok(Self::RetryPass),
-            GEO_AS_OF_RESOLUTION_STAGE_COMMAND => Ok(Self::AsOfResolution),
-            GEO_TILE_IDENTIFIER_STABILITY_STAGE_COMMAND => Ok(Self::TileIdentifierStability),
-            GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND => Ok(Self::FootprintRollEvidence),
-            GEO_LEDGER_STAGE_COMMAND => Ok(Self::Ledger),
-            GEO_OBSERVE_ADMIT_STAGE_COMMAND => Ok(Self::ObserveAdmit),
-            GEO_PROPAGATE_STAGE_COMMAND => Ok(Self::Propagate),
-            GEO_EXPLAIN_STAGE_COMMAND => Ok(Self::Explain),
-            GEO_ANSWER_STAGE_COMMAND => Ok(Self::Answer),
-            GEO_SEPARATION_STAGE_COMMAND => Ok(Self::Separation),
-            GEO_NEXT_EVIDENCE_STAGE_COMMAND => Ok(Self::NextEvidence),
-            GEO_SOLVE_COMMAND => Ok(Self::Solve),
-            actual => Err(error(
-                node,
-                ProjectRunErrorCode::ExecutionFailed,
-                format!("Geo executor does not implement command {actual}"),
-            )),
+        Self::SUPPORTED
+            .into_iter()
+            .find(|stage| stage.semantics_registration().0 == node.command)
+            .ok_or_else(|| {
+                error(
+                    node,
+                    ProjectRunErrorCode::ExecutionFailed,
+                    format!("Geo executor does not implement command {}", node.command),
+                )
+            })
+    }
+
+    fn semantics_registration(self) -> (&'static str, &'static str) {
+        match self {
+            Self::MaterializeHomeCells => (
+                GEO_MATERIALIZE_HOME_CELLS_COMMAND,
+                "home_cells.validation_and_output.v1",
+            ),
+            Self::TileWork => (GEO_TILE_WORK_COMMAND, "tile_work.validation_and_output.v1"),
+            Self::ClientTileIngest => (
+                GEO_CLIENT_TILE_INGEST_STAGE_COMMAND,
+                "client_tile_ingest.validation_and_output.v1",
+            ),
+            Self::MaterializeEvidence => (
+                GEO_MATERIALIZE_EVIDENCE_COMMAND,
+                "materialize_evidence.admission_and_validation.v1",
+            ),
+            Self::CompileEvidence => (
+                GEO_COMPILE_EVIDENCE_COMMAND,
+                "compile_evidence.admission_and_validation.v1",
+            ),
+            Self::AssessmentRollOwner => (
+                GEO_ASSESSMENT_ROLL_OWNER_STAGE_COMMAND,
+                "assessment_roll_owner.validation_and_output.v1",
+            ),
+            Self::CondoBridge => (
+                GEO_CONDO_BRIDGE_STAGE_COMMAND,
+                "condo_bridge.validation_and_output.v1",
+            ),
+            Self::RetryPass => (
+                GEO_RETRY_PASS_STAGE_COMMAND,
+                "retry_pass.validation_and_output.v1",
+            ),
+            Self::AsOfResolution => (
+                GEO_AS_OF_RESOLUTION_STAGE_COMMAND,
+                "as_of_resolution.validation_and_output.v1",
+            ),
+            Self::TileIdentifierStability => (
+                GEO_TILE_IDENTIFIER_STABILITY_STAGE_COMMAND,
+                "tile_identifier_stability.validation_and_output.v1",
+            ),
+            Self::FootprintRollEvidence => (
+                GEO_FOOTPRINT_ROLL_EVIDENCE_STAGE_COMMAND,
+                "footprint_roll_evidence.validation_and_output.v1",
+            ),
+            Self::Ledger => (GEO_LEDGER_STAGE_COMMAND, "ledger.validation_and_output.v1"),
+            Self::ObserveAdmit => (
+                GEO_OBSERVE_ADMIT_STAGE_COMMAND,
+                "observe_admit.admission_and_validation.v1",
+            ),
+            Self::Propagate => (
+                GEO_PROPAGATE_STAGE_COMMAND,
+                "propagate.validation_and_output.v1",
+            ),
+            Self::Explain => (
+                GEO_EXPLAIN_STAGE_COMMAND,
+                "explain.validation_and_output.v1",
+            ),
+            Self::Answer => (GEO_ANSWER_STAGE_COMMAND, "answer.validation_and_output.v1"),
+            Self::Separation => (
+                GEO_SEPARATION_STAGE_COMMAND,
+                "separation.validation_and_output.v1",
+            ),
+            Self::NextEvidence => (
+                GEO_NEXT_EVIDENCE_STAGE_COMMAND,
+                "next_evidence.discovery_state_and_output.v1",
+            ),
+            Self::Solve => (GEO_SOLVE_COMMAND, "solve.validation_and_output.v1"),
         }
     }
 
@@ -3431,5 +3498,35 @@ impl fmt::Debug for GeoProjectNodeExecutor {
                 &self.dependency_outputs.keys().collect::<Vec<_>>(),
             )
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod stage_semantics_registration_tests {
+    use super::*;
+
+    #[test]
+    fn every_supported_executor_has_one_explicit_stage_semantics_registration() {
+        let executor = GeoProjectNodeExecutor::new();
+        let mut commands = std::collections::BTreeSet::new();
+        for stage in GeoExecutorCommand::SUPPORTED {
+            let (command, version) = stage.semantics_registration();
+            assert!(
+                commands.insert(command),
+                "duplicate command registration: {command}"
+            );
+            assert!(!version.trim().is_empty());
+            assert_ne!(
+                version, GEO_EXECUTOR_VERSION,
+                "crate version is not stage semantics"
+            );
+            assert_eq!(executor.semantics_version(command), Some(version));
+        }
+        assert_eq!(commands.len(), GeoExecutorCommand::SUPPORTED.len());
+        assert_eq!(executor.semantics_version("unregistered-stage"), None);
+        assert_ne!(
+            geo_stage_semantics_version(GEO_MATERIALIZE_EVIDENCE_COMMAND),
+            geo_stage_semantics_version(GEO_NEXT_EVIDENCE_STAGE_COMMAND)
+        );
     }
 }

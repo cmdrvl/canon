@@ -1015,6 +1015,46 @@ fn unchanged_geo_run_resumes_and_ignores_operational_observation() {
 }
 
 #[test]
+fn standalone_geo_run_preserves_integrity_of_nonsemantic_invalidation_history() {
+    let temp = tempfile::tempdir().unwrap();
+    let run = run_geo_plan(GeoRunRequest {
+        plan: building_plan(
+            "release.fixture.one",
+            GeoSourceAvailability::Available,
+            None,
+        ),
+        policy: policy(temp.path()),
+        input_bindings: run_bindings(warehouse_rows()),
+        acquisition_satisfactions: Vec::new(),
+        observation: GeoRunObservation::default(),
+    })
+    .unwrap();
+    for mutation in 0..3 {
+        let mut corrupted = run.clone();
+        let report = corrupted.project_run_report.as_mut().unwrap();
+        let node = report.receipt.completed_nodes[0].clone();
+        if mutation != 1 {
+            report.invalidated_nodes.push(node.clone());
+        }
+        if mutation != 0 {
+            report.receipt.invalidated_nodes.push(node);
+        }
+        assert_eq!(
+            geo_run_semantic_hash(&corrupted).unwrap(),
+            run.semantic_hash,
+            "cache history is operational even when an untrusted object changes it"
+        );
+        for error in [
+            canonical_geo_run_bytes(&corrupted).unwrap_err(),
+            canonical_geo_run_semantic_bytes(&corrupted).unwrap_err(),
+        ] {
+            assert_eq!(error.code, GeoRunErrorCode::ArtifactContract);
+            assert_eq!(error.detail["field"], "project_run_report");
+        }
+    }
+}
+
+#[test]
 fn canonical_run_rejects_state_order_and_reference_drift() {
     let temp = tempfile::tempdir().expect("tempdir");
     let run = run_geo_plan(GeoRunRequest::new(

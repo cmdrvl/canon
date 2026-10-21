@@ -35,12 +35,12 @@ use canon::{
     },
     project::{
         ProjectDependencyOutput, ProjectExtensionDagNode, ProjectExtensionDagOutput,
-        ProjectExtensionDagRequest, ProjectNodeExecutionContext, ProjectNodeExecutor, ProjectPlan,
-        ProjectPlanErrorCode, ProjectPlanHashRef, ProjectPlanNodeClass, ProjectPlanNodeKind,
-        ProjectPlanOutputMaterialization, ProjectPlanRefusalCondition, ProjectPlanSideEffect,
-        ProjectPlanSideEffectKind, ProjectRunFailurePolicy, ProjectRunNodeOutcome,
-        ProjectRunPolicy, compile_extension_project_plan, digest_bytes, read_node_receipt,
-        run_project_plan,
+        ProjectExtensionDagRequest, ProjectNodeExecutionContext, ProjectNodeExecutionResult,
+        ProjectNodeExecutor, ProjectPlan, ProjectPlanErrorCode, ProjectPlanHashRef,
+        ProjectPlanNodeClass, ProjectPlanNodeKind, ProjectPlanOutputMaterialization,
+        ProjectPlanRefusalCondition, ProjectPlanSideEffect, ProjectPlanSideEffectKind,
+        ProjectRunFailurePolicy, ProjectRunNodeOutcome, ProjectRunPolicy,
+        compile_extension_project_plan, digest_bytes, read_node_receipt, run_project_plan,
     },
 };
 use executor::{
@@ -54,6 +54,125 @@ use executor::{
 use h3o::CellIndex;
 use serde_json::Value;
 use std::{collections::BTreeMap, fs, path::Path, str::FromStr};
+
+#[test]
+fn registered_stage_versions_allow_byte_identical_full_resume_without_reexecuting_any_geo_node() {
+    let temp = tempfile::tempdir().unwrap();
+    let plan = five_node_plan();
+    let cold = run_project_plan(
+        &plan,
+        &policy(temp.path()),
+        &mut executor_with_fixture_inputs(),
+    )
+    .unwrap();
+    assert_eq!(cold.executed_nodes.len(), 6);
+    assert!(cold.failed_nodes.is_empty());
+    let before = plan
+        .nodes
+        .iter()
+        .map(|node| {
+            (
+                node.node_id.clone(),
+                fs::read(receipt_path(temp.path(), &node.node_id)).unwrap(),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    // No raw bindings or exact-solve configuration: an accidental execution
+    // would fail rather than imitate a successful resume.
+    let resumed = run_project_plan(
+        &plan,
+        &policy(temp.path()),
+        &mut GeoProjectNodeExecutor::new(),
+    )
+    .unwrap();
+    assert!(resumed.executed_nodes.is_empty());
+    assert!(resumed.failed_nodes.is_empty());
+    assert_eq!(resumed.resumed_nodes.len(), 6);
+    for node in &plan.nodes {
+        let receipt = read_node_receipt(&receipt_path(temp.path(), &node.node_id)).unwrap();
+        let version = executor::geo_stage_semantics_version(&node.command).unwrap();
+        let pin = canon::project::project_stage_semantics_input(&node.command, version);
+        assert!(
+            receipt
+                .content_hash_inputs
+                .iter()
+                .any(|input| input.ref_id == pin.ref_id && input.content_hash == pin.content_hash)
+        );
+        assert_eq!(
+            fs::read(receipt_path(temp.path(), &node.node_id)).unwrap(),
+            before[&node.node_id]
+        );
+    }
+}
+
+#[test]
+fn synthetic_unversioned_geo_producer_is_recomputed_under_registered_semantics() {
+    struct UnversionedProducer(GeoProjectNodeExecutor);
+    impl ProjectNodeExecutor for UnversionedProducer {
+        fn execute(
+            &mut self,
+            node: &canon::project::ProjectPlanNode,
+            context: &ProjectNodeExecutionContext,
+        ) -> canon::project::ProjectRunResult<ProjectNodeExecutionResult> {
+            self.0.execute(node, context)
+        }
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let mut nodes = fixture_chain_nodes();
+    for node in &mut nodes {
+        node.content_hash_inputs
+            .retain(|input| input.ref_id != canon::project::PROJECT_STAGE_SEMANTICS_REF_ID);
+    }
+    let old_plan = compile_extension_project_plan(ProjectExtensionDagRequest::offline_read_only(
+        "geo-executor-fixture",
+        digest_bytes(b"geo executor manifest"),
+        digest_bytes(b"geo executor lock"),
+        nodes,
+    ))
+    .unwrap();
+    let old = run_project_plan(
+        &old_plan,
+        &policy(temp.path()),
+        &mut UnversionedProducer(executor_with_fixture_inputs()),
+    )
+    .unwrap();
+    assert!(old.failed_nodes.is_empty());
+    let before = old
+        .receipt
+        .node_receipts
+        .iter()
+        .flat_map(|receipt| receipt.outputs.iter())
+        .map(|output| {
+            (
+                output.path.clone(),
+                fs::read(temp.path().join(&output.path)).unwrap(),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let current = run_project_plan(
+        &five_node_plan(),
+        &policy(temp.path()),
+        &mut executor_with_fixture_inputs(),
+    )
+    .unwrap();
+    assert_eq!(current.executed_nodes.len(), 6);
+    assert_eq!(current.invalidated_nodes.len(), 6);
+    assert!(current.resumed_nodes.is_empty());
+    assert!(current.failed_nodes.is_empty());
+    assert_eq!(
+        current
+            .invalidation_reasons
+            .iter()
+            .filter(|reason| reason.reason
+                == canon::project::ProjectRunInvalidationReason::StageSemanticsUnrecorded)
+            .count(),
+        6
+    );
+    for (path, bytes) in before {
+        assert_eq!(fs::read(temp.path().join(path)).unwrap(), bytes);
+    }
+    // This is a synthetic producer-metadata regression, not retained NXRT proof.
+}
 
 #[test]
 fn geo_project_node_executor_runs_the_six_planner_leaf_chain() {
@@ -1671,8 +1790,13 @@ fn extension_node(
     dependencies: Vec<String>,
     output_id: &str,
     path: &str,
-    content_hash_inputs: Vec<ProjectPlanHashRef>,
+    mut content_hash_inputs: Vec<ProjectPlanHashRef>,
 ) -> ProjectExtensionDagNode {
+    if let Some(version) = executor::geo_stage_semantics_version(command) {
+        content_hash_inputs.push(canon::project::project_stage_semantics_input(
+            command, version,
+        ));
+    }
     ProjectExtensionDagNode {
         node_id: node_id.to_string(),
         kind,

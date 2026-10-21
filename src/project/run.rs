@@ -161,6 +161,12 @@ impl ProjectNodeExecutionResult {
 }
 
 pub trait ProjectNodeExecutor {
+    /// Version of the command's output validators/admission semantics. This is
+    /// independent of crate releases and must be pinned before registered reuse.
+    fn semantics_version(&self, _command: &str) -> Option<&'static str> {
+        None
+    }
+
     fn execute(
         &mut self,
         node: &ProjectPlanNode,
@@ -169,6 +175,40 @@ pub trait ProjectNodeExecutor {
 }
 
 pub const PROJECT_INTERNAL_COPY_FILE_EXECUTOR: &str = "copy-file-v1";
+pub const PROJECT_STAGE_SEMANTICS_REF_ID: &str = "project.executor.stage_semantics.v0";
+
+pub fn project_stage_semantics_input(command: &str, version: &str) -> ProjectPlanHashRef {
+    let bytes = serde_json::to_vec(&(command, version)).expect("string tuples serialize");
+    ProjectPlanHashRef {
+        ref_id: PROJECT_STAGE_SEMANTICS_REF_ID.to_string(),
+        content_hash: digest_bytes(&bytes),
+    }
+}
+
+fn validate_executor_stage_semantics<E: ProjectNodeExecutor>(
+    plan: &ProjectPlan,
+    executor: &E,
+) -> ProjectRunResult<()> {
+    for node in &plan.nodes {
+        let Some(version) = executor.semantics_version(&node.command) else {
+            continue;
+        };
+        let expected = project_stage_semantics_input(&node.command, version);
+        let pins = node
+            .content_hash_inputs
+            .iter()
+            .filter(|input| input.ref_id == PROJECT_STAGE_SEMANTICS_REF_ID)
+            .collect::<Vec<_>>();
+        if version.trim().is_empty() || pins != vec![&expected] {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(node.node_id.clone()),
+                "Registered executor stage semantics must match exactly one declared node semantics pin",
+            ));
+        }
+    }
+    Ok(())
+}
 pub const CANON_PROJECT_RUN_MANIFEST_REVISION_VERSION: &str =
     "canon.project.run.manifest_revision.v1";
 
@@ -185,6 +225,8 @@ pub struct ProjectRunNodeReport {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProjectRunInvalidationReason {
+    StageSemanticsUnrecorded,
+    StageSemanticsChanged,
     ContentHashInputChanged,
     NodeCacheKeyChanged,
     DependencyUnavailable,
@@ -291,6 +333,7 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
     executor: &mut E,
 ) -> ProjectRunResult<ProjectRunReport> {
     validate_plan_shape(plan)?;
+    validate_executor_stage_semantics(plan, executor)?;
     let policy = finalize_policy(policy)?;
     let _manifest_head = read_project_run_manifest_head_for_plan(plan, &policy)?;
     let plan_nodes = plan_node_ids(plan);
@@ -1122,6 +1165,34 @@ fn validate_project_run_manifest_revision(
     Ok(revision)
 }
 
+/// Validate embedded receipt integrity without reconstructing a project plan.
+/// Plan membership, dependency binding and invalidation reasons still require
+/// the full plan-aware validation performed by the shared runner.
+pub fn validate_project_run_report_receipt_integrity(
+    report: &ProjectRunReport,
+) -> ProjectRunResult<()> {
+    canonical_run_receipt_bytes(&report.receipt).map_err(ProjectRunError::from)?;
+    if report.schema_version != report.receipt.schema_version
+        || report.project_id != report.receipt.project_id
+        || report.plan_graph_hash != report.receipt.plan_graph_hash
+        || report.run_receipt_hash != report.receipt.receipt_hash
+        || report.failed_nodes != report.receipt.failed_nodes
+        || report.cancelled_nodes != report.receipt.cancelled_nodes
+        || report.invalidated_nodes != report.receipt.invalidated_nodes
+        || report.blocked_nodes != report.receipt.blocked_nodes
+    {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ArtifactContract,
+            None,
+            "project run report identity, receipt hash and status lists must match its embedded receipt",
+        ));
+    }
+    for receipt in &report.receipt.node_receipts {
+        canonical_node_receipt_bytes(receipt).map_err(ProjectRunError::from)?;
+    }
+    Ok(())
+}
+
 fn validate_report_receipt_binding(
     plan: &ProjectPlan,
     report: &ProjectRunReport,
@@ -1336,6 +1407,50 @@ fn validate_report_invalidation_reasons(
                     ProjectRunErrorCode::ArtifactContract,
                     Some(invalidation.node_id.clone()),
                     "project run invalidation reason details must be non-empty",
+                ));
+            }
+        }
+        if matches!(
+            invalidation.reason,
+            ProjectRunInvalidationReason::StageSemanticsChanged
+                | ProjectRunInvalidationReason::StageSemanticsUnrecorded
+        ) {
+            let node = nodes_by_id
+                .get(invalidation.node_id.as_str())
+                .expect("known node validated");
+            let current = node
+                .content_hash_inputs
+                .iter()
+                .find(|input| input.ref_id == PROJECT_STAGE_SEMANTICS_REF_ID)
+                .map(|input| input.content_hash.as_str())
+                .unwrap_or("missing");
+            let previous = invalidation
+                .detail
+                .get("previous_content_hash")
+                .map(String::as_str);
+            if invalidation.detail.get("ref_id").map(String::as_str)
+                != Some(PROJECT_STAGE_SEMANTICS_REF_ID)
+                || invalidation.detail.get("command").map(String::as_str)
+                    != Some(node.command.as_str())
+                || invalidation
+                    .detail
+                    .get("current_content_hash")
+                    .map(String::as_str)
+                    != Some(current)
+                || previous.is_none()
+                || previous == Some(current)
+                || previous.is_some_and(|previous| {
+                    previous != "missing" && !is_lowercase_blake3_digest(previous)
+                })
+                || (invalidation.reason == ProjectRunInvalidationReason::StageSemanticsUnrecorded
+                    && (previous != Some("missing") || current == "missing"))
+                || (invalidation.reason == ProjectRunInvalidationReason::StageSemanticsChanged
+                    && previous == Some("missing"))
+            {
+                return Err(ProjectRunError::new(
+                    ProjectRunErrorCode::ArtifactContract,
+                    Some(invalidation.node_id.clone()),
+                    "Stage semantics invalidation must bind its actual command, prior pin and current pin",
                 ));
             }
         }
@@ -2494,12 +2609,15 @@ fn validate_existing_receipts(
         let Ok(expected_dependency_semantics) =
             dependency_semantic_hashes(node, &existing.valid_receipts)
         else {
-            if existing.completed_receipts.contains_key(&node.node_id) {
-                let invalidation = dependency_binding_invalidation(
-                    node,
-                    &existing.valid_receipts,
-                    &existing.invalidated_nodes,
-                );
+            if let Some(receipt) = existing.completed_receipts.get(&node.node_id) {
+                let invalidation =
+                    stage_semantics_invalidation(node, receipt).unwrap_or_else(|| {
+                        dependency_binding_invalidation(
+                            node,
+                            &existing.valid_receipts,
+                            &existing.invalidated_nodes,
+                        )
+                    });
                 existing.invalidate(invalidation);
             }
             continue;
@@ -2854,6 +2972,9 @@ fn current_mismatch_invalidation(
     node: &ProjectPlanNode,
     receipt: &ProjectRunNodeReceipt,
 ) -> ProjectRunInvalidation {
+    if let Some(invalidation) = stage_semantics_invalidation(node, receipt) {
+        return invalidation;
+    }
     if let Some(invalidation) = content_hash_input_invalidation(node, receipt) {
         return invalidation;
     }
@@ -2885,6 +3006,45 @@ fn current_mismatch_invalidation(
         reason: ProjectRunInvalidationReason::NodeCacheKeyChanged,
         detail: BTreeMap::from([("receipt_hash".to_string(), receipt.receipt_hash.clone())]),
     }
+}
+
+fn stage_semantics_invalidation(
+    node: &ProjectPlanNode,
+    receipt: &ProjectRunNodeReceipt,
+) -> Option<ProjectRunInvalidation> {
+    let previous = receipt
+        .content_hash_inputs
+        .iter()
+        .find(|input| input.ref_id == PROJECT_STAGE_SEMANTICS_REF_ID)
+        .map(|input| input.content_hash.as_str());
+    let current = node
+        .content_hash_inputs
+        .iter()
+        .find(|input| input.ref_id == PROJECT_STAGE_SEMANTICS_REF_ID)
+        .map(|input| input.content_hash.as_str());
+    if previous == current {
+        return None;
+    }
+    Some(ProjectRunInvalidation {
+        node_id: node.node_id.clone(),
+        reason: if previous.is_none() && current.is_some() {
+            ProjectRunInvalidationReason::StageSemanticsUnrecorded
+        } else {
+            ProjectRunInvalidationReason::StageSemanticsChanged
+        },
+        detail: BTreeMap::from([
+            ("ref_id".into(), PROJECT_STAGE_SEMANTICS_REF_ID.into()),
+            ("command".into(), node.command.clone()),
+            (
+                "previous_content_hash".into(),
+                previous.unwrap_or("missing").into(),
+            ),
+            (
+                "current_content_hash".into(),
+                current.unwrap_or("missing").into(),
+            ),
+        ]),
+    })
 }
 
 fn content_hash_input_invalidation(

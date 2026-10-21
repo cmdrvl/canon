@@ -1449,10 +1449,29 @@ fn answer_q7(stored: &StoredRun) -> GeoInspectionAnswer {
         .as_ref()
         .map(|report| report.invalidated_nodes.len())
         .unwrap_or(0);
+    let semantics_changed = stored.run.project_run_report.as_ref().map_or(0, |report| {
+        report
+            .invalidation_reasons
+            .iter()
+            .filter(|reason| {
+                reason.reason == crate::project::ProjectRunInvalidationReason::StageSemanticsChanged
+            })
+            .count()
+    });
+    let semantics_unrecorded = stored.run.project_run_report.as_ref().map_or(0, |report| {
+        report
+            .invalidation_reasons
+            .iter()
+            .filter(|reason| {
+                reason.reason
+                    == crate::project::ProjectRunInvalidationReason::StageSemanticsUnrecorded
+            })
+            .count()
+    });
     answer(
         GeoInspectionQuestion::Q7,
         format!(
-            "Reusable prior work is stored in run receipts: resumed_nodes={reused}, invalidated_nodes={invalidated}."
+            "Reusable prior work is stored in run receipts: resumed_nodes={reused}, invalidated_nodes={invalidated}, stage_semantics_changed={semantics_changed}, stage_semantics_unrecorded={semantics_unrecorded}."
         ),
         manifest_and_first_output_ref(stored),
     )
