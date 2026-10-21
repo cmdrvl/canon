@@ -12,6 +12,11 @@
     "run_id": {
       "type": "string"
     },
+    "status": {"$ref": "canon.geo.run.v0.schema.json#/$defs/run_status"},
+    "phase": {"$ref": "canon.geo.run.v0.schema.json#/$defs/run_phase"},
+    "blockers": {"type": "array", "maxItems": 8, "items": {"$ref": "canon.geo.run.v0.schema.json#/$defs/run_blocker"}},
+    "next_actions": {"type": "array", "maxItems": 8, "items": {"$ref": "canon.geo.run.v0.schema.json#/$defs/next_action"}},
+    "current_answers": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/current_answer"}},
     "semantic_hash": {
       "$ref": "#/$defs/blake3_digest"
     },
@@ -48,6 +53,11 @@
   "required": [
     "version",
     "run_id",
+    "status",
+    "phase",
+    "blockers",
+    "next_actions",
+    "current_answers",
     "semantic_hash",
     "plan_ref",
     "recommend_next",
@@ -57,6 +67,50 @@
     "answers"
   ],
   "$defs": {
+    "member_finding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["member", "forced", "support_origin", "hard_observations", "soft_observations", "diagnostic_observations", "independent_support_groups", "observation_ids", "observation_count", "observations_truncated"],
+      "properties": {
+        "member": {"$ref": "canon.geo.answer.v0.schema.json#/$defs/entity_ref"},
+        "forced": {"type": "boolean"},
+        "support_origin": {"enum": ["recorded_observation", "logical_consequence", "observation_and_consequence"]},
+        "hard_observations": {"$ref": "#/$defs/uint64"},
+        "soft_observations": {"$ref": "#/$defs/uint64"},
+        "diagnostic_observations": {"$ref": "#/$defs/uint64"},
+        "independent_support_groups": {"$ref": "#/$defs/uint64"},
+        "observation_ids": {"type": "array", "maxItems": 8, "items": {"type": "string"}},
+        "observation_count": {"$ref": "#/$defs/uint64"},
+        "observations_truncated": {"type": "boolean"}
+      }
+    },
+    "current_answer": {
+      "type": "object", "additionalProperties": false,
+      "required": ["artifact_ref", "question_id", "query_as_of", "entity_level", "answer_scope", "claim_label", "support_members", "support_members_total", "support_members_truncated", "preference_state", "composition_tie_count", "grouped_tie_count", "acceptance", "residual_model_count", "residual_model_count_complete", "residual_model_count_saturated", "backbone_complete", "hard_forced_parcel_count", "hard_forced_building_count", "extent_and_reach", "further_work_source", "action_discovery"],
+      "properties": {
+        "artifact_ref": {"$ref": "#/$defs/artifact_ref"},
+        "question_id": {"type": "string"},
+        "query_as_of": {"oneOf": [{"type": "null"}, {"$ref": "canon.geo.answer.v0.schema.json#/$defs/as_of"}]},
+        "entity_level": {"enum": ["parcel", "building"]},
+        "answer_scope": {"enum": ["current_answer", "full_workflow"]},
+        "claim_label": {"$ref": "canon.geo.answer.v0.schema.json#/$defs/claim_label"},
+        "support_members": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/member_finding"}},
+        "support_members_total": {"$ref": "#/$defs/uint64"},
+        "support_members_truncated": {"type": "boolean"},
+        "preference_state": {"$ref": "canon.geo.answer.v0.schema.json#/$defs/preference_state"},
+        "composition_tie_count": {"$ref": "#/$defs/uint64"},
+        "grouped_tie_count": {"$ref": "#/$defs/uint64"},
+        "acceptance": {"$ref": "canon.geo.answer.v0.schema.json#/$defs/acceptance"},
+        "residual_model_count": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/uint64"}]},
+        "residual_model_count_complete": {"type": "boolean"},
+        "residual_model_count_saturated": {"type": "boolean"},
+        "backbone_complete": {"type": "boolean"},
+        "hard_forced_parcel_count": {"$ref": "#/$defs/uint64"},
+        "hard_forced_building_count": {"$ref": "#/$defs/uint64"},
+        "extent_and_reach": {"$ref": "canon.geo.answer.v0.schema.json#/$defs/extent"},
+        "further_work_source": {"enum": ["next_evidence_artifact", "not_in_scope"]},
+        "action_discovery": {"enum": ["not_attempted", "incomplete", "exhausted_within_declared_capabilities_and_budget", "stopped_by_policy"]}
+      }
+    },
     "blake3_digest": {
       "type": "string",
       "pattern": "^blake3:[0-9a-f]{64}$"
@@ -271,12 +325,20 @@
         },
         "component_refs_truncated": {
           "type": "boolean"
-        }
+        },
+        "max_detail_refs": {"const": 8},
+        "blocker_count": {"$ref": "#/$defs/uint64"},
+        "blockers_truncated": {"type": "boolean"},
+        "next_action_count": {"$ref": "#/$defs/uint64"},
+        "next_actions_truncated": {"type": "boolean"},
+        "current_answer_count": {"$ref": "#/$defs/uint64"},
+        "current_answers_truncated": {"type": "boolean"}
       },
       "required": [
         "max_component_refs",
         "component_ref_count",
-        "component_refs_truncated"
+        "component_refs_truncated",
+        "max_detail_refs", "blocker_count", "blockers_truncated", "next_action_count", "next_actions_truncated", "current_answer_count", "current_answers_truncated"
       ]
     },
     "claim_class": {

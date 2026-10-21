@@ -12,7 +12,7 @@ use canon::{
 };
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
 };
@@ -924,4 +924,290 @@ fn geo_inspection_answers_are_architecture_questions_in_order() {
         serialized,
         json!(["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8"])
     );
+}
+
+fn run_installed_point_example(discovery_only: bool) -> SyntheticRun {
+    let temp = tempdir().unwrap();
+    let output = canon_command()
+        .args(["geo", "capabilities", "--guide"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let guide: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let example = guide["examples"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|example| example["id"] == "synthetic_point_parcel_not_live")
+        .unwrap();
+    for (name, value) in example["write_files"].as_object().unwrap() {
+        let mut value = value.clone();
+        if value["version"] == "canon_geo_point_parcel_request.v0" {
+            value["max_materialized_models"] = json!(0);
+        }
+        if discovery_only && value["version"] == "canon_geo_regional_inventory.v1" {
+            value["sources"] = json!([]);
+        }
+        fs::write(temp.path().join(name), serde_json::to_vec(&value).unwrap()).unwrap();
+    }
+    let work_dir = temp.path().join("work");
+    fs::create_dir(&work_dir).unwrap();
+    let plan_args: Vec<_> = example["steps"][0]["argv"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|arg| arg.as_str().unwrap())
+        .collect();
+    let plan = canon_command()
+        .current_dir(temp.path())
+        .args(plan_args)
+        .output()
+        .unwrap();
+    assert!(
+        plan.status.success(),
+        "{}",
+        String::from_utf8_lossy(&plan.stdout)
+    );
+    fs::write(temp.path().join("plan.json"), &plan.stdout).unwrap();
+    let run = if discovery_only {
+        canon_command()
+            .current_dir(temp.path())
+            .args(["geo", "run", "--plan", "plan.json", "--work-dir", "work"])
+            .output()
+            .unwrap()
+    } else {
+        let args: Vec<_> = example["steps"][1]["argv"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|arg| arg.as_str().unwrap())
+            .collect();
+        canon_command()
+            .current_dir(temp.path())
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stdout)
+    );
+    SyntheticRun {
+        _temp: temp,
+        work_dir,
+        run: serde_json::from_slice(&run.stdout).unwrap(),
+    }
+}
+
+fn stored_file_digests(root: &Path) -> BTreeMap<PathBuf, String> {
+    fn visit(root: &Path, path: &Path, out: &mut BTreeMap<PathBuf, String>) {
+        for entry in fs::read_dir(path).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                visit(root, &path, out);
+            } else {
+                out.insert(
+                    path.strip_prefix(root).unwrap().to_path_buf(),
+                    format!("{}", blake3::hash(&fs::read(&path).unwrap())),
+                );
+            }
+        }
+    }
+    let mut out = BTreeMap::new();
+    visit(root, root, &mut out);
+    out
+}
+
+#[test]
+fn current_answer_inspection_exposes_soft_support_without_future_inputs_or_global_models() {
+    let fixture = run_installed_point_example(false);
+    assert_eq!(fixture.run["status"], "ABSTAINED");
+    let before = stored_file_digests(&fixture.work_dir);
+    let first = canon_command()
+        .args(["geo", "inspect", "--run"])
+        .arg(&fixture.work_dir)
+        .arg("--recommend-next")
+        .output()
+        .unwrap();
+    let second = canon_command()
+        .args(["geo", "inspect", "--run"])
+        .arg(&fixture.work_dir)
+        .arg("--recommend-next")
+        .output()
+        .unwrap();
+    assert!(first.status.success() && second.status.success());
+    assert_eq!(first.stdout, second.stdout);
+    assert_eq!(
+        before,
+        stored_file_digests(&fixture.work_dir),
+        "inspection must not write or execute stages"
+    );
+    let inspection = parse_inspection(&first.stdout);
+    assert_eq!(inspection.status, canon::geo::GeoRunStatus::Abstained);
+    assert_eq!(inspection.phase, canon::geo::GeoRunPhase::Solved);
+    let current = &inspection.current_answers[0];
+    assert_eq!(current.support_members_total, 1);
+    assert!(!current.support_members_truncated);
+    assert_eq!(current.support_members[0].member.id, "parcel-a");
+    assert!(!current.support_members[0].forced);
+    assert_eq!(current.support_members[0].soft_observations, 1);
+    assert_eq!(current.support_members[0].hard_observations, 0);
+    assert_eq!(current.support_members[0].independent_support_groups, 1);
+    assert_eq!(
+        current.preference_state,
+        canon::geo::GeoAnswerPreferenceState::Unavailable {
+            reason: canon::geo::GeoAnswerPreferenceUnavailable::ResidualModelsNotMaterialized
+        }
+    );
+    assert_eq!(
+        current.acceptance.status,
+        canon::geo::GeoAnswerAcceptanceStatus::NoPolicyDeclared
+    );
+    assert!(!current.extent_and_reach.complete_extent_claimed);
+    assert_eq!(
+        current.further_work_source,
+        canon::geo::GeoAnswerFurtherWorkSource::NotInScope
+    );
+    assert!(inspection.answers[5].answer.contains("parcel-a"));
+    assert!(inspection.answers[7].abstention.is_none());
+    assert!(!inspection.answers[7].answer.contains("rerun"));
+    assert!(
+        fixture.run["output_refs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["contract_version"] != canon::geo::CANON_GEO_NEXT_EVIDENCE_VERSION)
+    );
+    let summary = canon_command()
+        .args(["geo", "inspect", "--run"])
+        .arg(&fixture.work_dir)
+        .args(["--emit", "summary"])
+        .output()
+        .unwrap();
+    assert!(summary.status.success());
+    let summary = String::from_utf8(summary.stdout).unwrap();
+    assert!(
+        summary.contains("parcel-a")
+            && summary.contains("ResidualModelsNotMaterialized")
+            && summary.contains("NoPolicyDeclared")
+            && summary.contains("complete_extent=false")
+    );
+}
+
+#[test]
+fn discovery_wait_inspection_preserves_existing_actions_and_bounds_long_handoffs() {
+    let fixture = run_installed_point_example(true);
+    let mut run: GeoRun = serde_json::from_value(fixture.run).unwrap();
+    assert_eq!(run.status, canon::geo::GeoRunStatus::WaitingForInput);
+    assert!(run.output_refs.is_empty());
+    let before = stored_file_digests(&fixture.work_dir);
+    let inspection = inspect(&fixture.work_dir).unwrap();
+    assert_eq!(inspection.next_actions, run.next_actions);
+    assert_eq!(inspection.blockers, run.blockers);
+    assert!(inspection.current_answers.is_empty());
+    assert_eq!(
+        inspection.next_actions[0].kind,
+        canon::geo::GeoRunNextActionKind::SatisfyDiscovery
+    );
+    assert!(inspection.answers[7].abstention.is_none());
+    assert!(!inspection.answers[7].answer.contains("rerun"));
+    assert_eq!(before, stored_file_digests(&fixture.work_dir));
+    let blocker = run.blockers[0].clone();
+    let action = run.next_actions[0].clone();
+    run.blockers = (0..20)
+        .map(|i| canon::geo::GeoRunBlocker {
+            blocker_id: format!("synthetic.blocker.{i:02}"),
+            ..blocker.clone()
+        })
+        .collect();
+    run.next_actions = (0..20)
+        .map(|i| canon::geo::GeoRunNextAction {
+            action_id: format!("synthetic.action.{i:02}"),
+            ..action.clone()
+        })
+        .collect();
+    restamp_and_write_run_manifest(&fixture.work_dir, &mut run);
+    let mut bounded = inspect(&fixture.work_dir).unwrap();
+    assert_eq!((bounded.blockers.len(), bounded.next_actions.len()), (8, 8));
+    assert_eq!(
+        (
+            bounded.bounds.blocker_count,
+            bounded.bounds.next_action_count
+        ),
+        (20, 20)
+    );
+    assert!(bounded.bounds.blockers_truncated && bounded.bounds.next_actions_truncated);
+    bounded.next_actions.push(run.next_actions[8].clone());
+    let error = validate_inspection_artifact(&bounded).unwrap_err();
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("next_actions")
+    );
+}
+
+#[test]
+fn inspect_rejects_semantically_misbound_current_answers_even_with_sealed_byte_receipts() {
+    for field in ["question_hash", "section_blake3"] {
+        let fixture = run_installed_point_example(false);
+        let mut run: GeoRun = serde_json::from_value(fixture.run).unwrap();
+        let reference = run
+            .output_refs
+            .iter_mut()
+            .find(|r| r.contract_version == canon::geo::CANON_GEO_ANSWER_VERSION)
+            .unwrap();
+        let mut value: Value = serde_json::from_slice(
+            &fs::read(cas_path(&fixture.work_dir, &reference.content_digest)).unwrap(),
+        )
+        .unwrap();
+        if field == "question_hash" {
+            value[field] = json!(digest("wrong question"));
+        } else {
+            value["inputs"][field] = json!(digest("wrong retained input"));
+        }
+        let typed: canon::geo::GeoAnswerArtifact = serde_json::from_value(value.clone()).unwrap();
+        canon::geo::validate_answer_artifact(&typed)
+            .expect("planted artifact is internally valid, but belongs to another input");
+        let bytes = serde_json::to_vec(&value).unwrap();
+        reference.content_digest = format!("blake3:{}", blake3::hash(&bytes));
+        reference.byte_count = bytes.len() as u64;
+        fs::write(
+            cas_path(&fixture.work_dir, &reference.content_digest),
+            &bytes,
+        )
+        .unwrap();
+        let report = run.project_run_report.as_mut().unwrap();
+        let node = report
+            .receipt
+            .node_receipts
+            .iter_mut()
+            .find(|node| node.node_id == reference.project_node_id)
+            .unwrap();
+        let output = node
+            .outputs
+            .iter_mut()
+            .find(|output| output.output_id == reference.output_id)
+            .unwrap();
+        output.content_digest = reference.content_digest.clone();
+        output.byte_count = reference.byte_count;
+        *node = canon::project::finalized_node_receipt(node.clone()).unwrap();
+        for entry in &mut report.node_reports {
+            if entry.node_id == node.node_id {
+                entry.receipt_hash = Some(node.receipt_hash.clone());
+            }
+        }
+        report.receipt = canon::project::finalized_run_receipt(report.receipt.clone()).unwrap();
+        report.run_receipt_hash = report.receipt.receipt_hash.clone();
+        restamp_and_write_run_manifest(&fixture.work_dir, &mut run);
+        let error = inspect(&fixture.work_dir).unwrap_err();
+        assert_eq!(error.code, GeoInspectErrorCode::InspectArtifactMissing);
+        assert!(
+            error.message.contains(if field == "question_hash" {
+                "another question"
+            } else {
+                "input is not bound"
+            }),
+            "{error:?}"
+        );
+    }
 }

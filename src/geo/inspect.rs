@@ -6,11 +6,16 @@
 //! content-addressed output bytes. It does not execute Geo plan nodes.
 
 use super::{
-    CANON_GEO_COMPOSITION_VERSION, CANON_GEO_EVIDENCE_COMPILATION_VERSION,
-    CANON_GEO_EXPLANATION_VERSION, CANON_GEO_NEXT_EVIDENCE_VERSION, CANON_GEO_PROPAGATION_VERSION,
-    CANON_GEO_RUN_VERSION, CANON_GEO_SEPARATION_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
-    GeoClaimClass, GeoEvidenceDisposition, GeoRun, GeoRunArtifactRef, GeoRunOutputRef,
-    GeoRunPlanRef, canonical_geo_run_bytes, geo_run_manifest_head_path, read_geo_run_manifest_head,
+    CANON_GEO_ANSWER_VERSION, CANON_GEO_COMPOSITION_VERSION,
+    CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EXPLANATION_VERSION,
+    CANON_GEO_NEXT_EVIDENCE_VERSION, CANON_GEO_PROPAGATION_VERSION, CANON_GEO_RUN_VERSION,
+    CANON_GEO_SEPARATION_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION, GeoActionDiscoveryState,
+    GeoAnswerAcceptance, GeoAnswerArtifact, GeoAnswerClaimLabel, GeoAnswerExtent,
+    GeoAnswerFurtherWorkSource, GeoAnswerPreferenceState, GeoAnswerScope, GeoAnswerSupportOrigin,
+    GeoAsOf, GeoClaimClass, GeoControlEntityLevel, GeoEntityRef, GeoEvidenceDisposition, GeoRun,
+    GeoRunArtifactRef, GeoRunBlocker, GeoRunNextAction, GeoRunOutputRef, GeoRunPhase,
+    GeoRunPlanRef, GeoRunStatus, canonical_geo_run_bytes, geo_run_manifest_head_path,
+    read_geo_run_manifest_head, validate_answer_artifact,
 };
 use crate::{
     project::receipt::digest_bytes,
@@ -166,6 +171,57 @@ pub struct GeoInspectionBounds {
     pub max_component_refs: u64,
     pub component_ref_count: u64,
     pub component_refs_truncated: bool,
+    pub max_detail_refs: u64,
+    pub blocker_count: u64,
+    pub blockers_truncated: bool,
+    pub next_action_count: u64,
+    pub next_actions_truncated: bool,
+    pub current_answer_count: u64,
+    pub current_answers_truncated: bool,
+}
+
+/// A bounded finding copied from the stored answer, not a newly scored candidate.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoInspectionMemberFinding {
+    pub member: GeoEntityRef,
+    pub forced: bool,
+    pub support_origin: GeoAnswerSupportOrigin,
+    pub hard_observations: u64,
+    pub soft_observations: u64,
+    pub diagnostic_observations: u64,
+    pub independent_support_groups: u64,
+    pub observation_ids: Vec<String>,
+    pub observation_count: u64,
+    pub observations_truncated: bool,
+}
+
+/// Compact current answer; the verified artifact reference retains full provenance.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoInspectionCurrentAnswer {
+    pub artifact_ref: GeoRunArtifactRef,
+    pub question_id: String,
+    pub query_as_of: Option<GeoAsOf>,
+    pub entity_level: GeoControlEntityLevel,
+    pub answer_scope: GeoAnswerScope,
+    pub claim_label: GeoAnswerClaimLabel,
+    pub support_members: Vec<GeoInspectionMemberFinding>,
+    pub support_members_total: u64,
+    pub support_members_truncated: bool,
+    pub preference_state: GeoAnswerPreferenceState,
+    pub composition_tie_count: u64,
+    pub grouped_tie_count: u64,
+    pub acceptance: GeoAnswerAcceptance,
+    pub residual_model_count: Option<u64>,
+    pub residual_model_count_complete: bool,
+    pub residual_model_count_saturated: bool,
+    pub backbone_complete: bool,
+    pub hard_forced_parcel_count: u64,
+    pub hard_forced_building_count: u64,
+    pub extent_and_reach: GeoAnswerExtent,
+    pub further_work_source: GeoAnswerFurtherWorkSource,
+    pub action_discovery: GeoActionDiscoveryState,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -202,6 +258,8 @@ pub struct GeoInspectionDelta {
 pub struct GeoInspection {
     pub version: String,
     pub run_id: String,
+    pub status: GeoRunStatus,
+    pub phase: GeoRunPhase,
     pub semantic_hash: String,
     pub plan_ref: GeoRunPlanRef,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -210,6 +268,9 @@ pub struct GeoInspection {
     pub planes: GeoInspectionPlanes,
     pub bounds: GeoInspectionBounds,
     pub metrics: GeoInspectionMetrics,
+    pub blockers: Vec<GeoRunBlocker>,
+    pub next_actions: Vec<GeoRunNextAction>,
+    pub current_answers: Vec<GeoInspectionCurrentAnswer>,
     pub answers: Vec<GeoInspectionAnswer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compare: Option<GeoInspectionDelta>,
@@ -628,6 +689,77 @@ pub fn validate_inspection_artifact(inspection: &GeoInspection) -> Result<(), Ge
         ));
     }
     validate_nonempty("metrics.proof_class", &inspection.metrics.proof_class)?;
+    if inspection.bounds.max_detail_refs != DEFAULT_MAX_COMPONENT_REFS {
+        return Err(GeoInspectError::invalid(
+            "Geo inspection detail limit is fixed and bounded",
+            [("field", "bounds.max_detail_refs")],
+        ));
+    }
+    for (field, count, total, truncated) in [
+        (
+            "blockers",
+            inspection.blockers.len(),
+            inspection.bounds.blocker_count,
+            inspection.bounds.blockers_truncated,
+        ),
+        (
+            "next_actions",
+            inspection.next_actions.len(),
+            inspection.bounds.next_action_count,
+            inspection.bounds.next_actions_truncated,
+        ),
+        (
+            "current_answers",
+            inspection.current_answers.len(),
+            inspection.bounds.current_answer_count,
+            inspection.bounds.current_answers_truncated,
+        ),
+    ] {
+        validate_detail_count(field, count, total, truncated, true)?;
+    }
+    for current in &inspection.current_answers {
+        validate_artifact_ref(&current.artifact_ref)?;
+        if current.artifact_ref.contract_version != CANON_GEO_ANSWER_VERSION
+            || inspection
+                .metrics
+                .artifact_digests
+                .get(&current.artifact_ref.artifact_id)
+                != Some(&current.artifact_ref.content_digest)
+            || current.extent_and_reach.complete_extent_claimed
+        {
+            return Err(GeoInspectError::invalid(
+                "Current answer must retain its verified artifact and extent limits",
+                [("field", "current_answers")],
+            ));
+        }
+        validate_nonempty("current_answers.question_id", &current.question_id)?;
+        validate_detail_count(
+            "current_answers.support_members",
+            current.support_members.len(),
+            current.support_members_total,
+            current.support_members_truncated,
+            false,
+        )?;
+        for member in &current.support_members {
+            validate_detail_count(
+                "current_answers.observation_ids",
+                member.observation_ids.len(),
+                member.observation_count,
+                member.observations_truncated,
+                true,
+            )?;
+            if member
+                .observation_ids
+                .windows(2)
+                .any(|pair| pair[0] >= pair[1])
+            {
+                return Err(GeoInspectError::invalid(
+                    "Finding observation references must be sorted and distinct",
+                    [("field", "current_answers.observation_ids")],
+                ));
+            }
+        }
+    }
     if inspection.metrics.component_keys.len() as u64 > inspection.bounds.max_component_refs {
         return Err(GeoInspectError::invalid(
             "Geo inspection component detail exceeds max_component_refs",
@@ -720,6 +852,27 @@ pub fn validate_inspection_artifact(inspection: &GeoInspection) -> Result<(), Ge
     Ok(())
 }
 
+fn validate_detail_count(
+    field: &str,
+    count: usize,
+    total: u64,
+    truncated: bool,
+    exact_prefix: bool,
+) -> Result<(), GeoInspectError> {
+    let count = count as u64;
+    if count > DEFAULT_MAX_COMPONENT_REFS
+        || count > total
+        || truncated != (count < total)
+        || (exact_prefix && count != total.min(DEFAULT_MAX_COMPONENT_REFS))
+    {
+        return Err(GeoInspectError::invalid(
+            "Geo inspection detail exceeds its bound or disagrees with its retained total",
+            [("field", field)],
+        ));
+    }
+    Ok(())
+}
+
 pub fn canonical_inspection_bytes(inspection: &GeoInspection) -> Result<Vec<u8>, GeoInspectError> {
     validate_inspection_artifact(inspection)?;
     serde_json::to_vec(inspection).map_err(|error| {
@@ -735,12 +888,17 @@ pub fn inspection_semantic_hash(inspection: &GeoInspection) -> Result<String, Ge
     struct Projection<'a> {
         version: &'a str,
         run_id: &'a str,
+        status: GeoRunStatus,
+        phase: GeoRunPhase,
         plan_ref: &'a GeoRunPlanRef,
         component_id: &'a Option<String>,
         recommend_next: bool,
         planes: &'a GeoInspectionPlanes,
         bounds: &'a GeoInspectionBounds,
         metrics: &'a GeoInspectionMetrics,
+        blockers: &'a [GeoRunBlocker],
+        next_actions: &'a [GeoRunNextAction],
+        current_answers: &'a [GeoInspectionCurrentAnswer],
         answers: &'a [GeoInspectionAnswer],
         compare: &'a Option<GeoInspectionDelta>,
     }
@@ -748,12 +906,17 @@ pub fn inspection_semantic_hash(inspection: &GeoInspection) -> Result<String, Ge
     let projection = Projection {
         version: &inspection.version,
         run_id: &inspection.run_id,
+        status: inspection.status,
+        phase: inspection.phase,
         plan_ref: &inspection.plan_ref,
         component_id: &inspection.component_id,
         recommend_next: inspection.recommend_next,
         planes: &inspection.planes,
         bounds: &inspection.bounds,
         metrics: &inspection.metrics,
+        blockers: &inspection.blockers,
+        next_actions: &inspection.next_actions,
+        current_answers: &inspection.current_answers,
         answers: &inspection.answers,
         compare: &inspection.compare,
     };
@@ -772,7 +935,43 @@ pub fn inspection_summary(inspection: &GeoInspection) -> String {
     lines.push(format!("version: {}", inspection.version));
     lines.push(format!("run_id: {}", inspection.run_id));
     lines.push(format!("semantic_hash: {}", inspection.semantic_hash));
-    lines.push(format!("status: {}", inspection.planes.solver_exactness));
+    lines.push(format!(
+        "status: {:?}; phase: {:?}",
+        inspection.status, inspection.phase
+    ));
+    lines.push(format!(
+        "solver_exactness: {}",
+        inspection.planes.solver_exactness
+    ));
+    for current in &inspection.current_answers {
+        lines.push(current_answer_summary(current));
+    }
+    for blocker in &inspection.blockers {
+        lines.push(format!(
+            "blocker {}: {}",
+            blocker.blocker_id, blocker.reason
+        ));
+    }
+    for action in &inspection.next_actions {
+        lines.push(format!(
+            "next_action {}: {:?}; {}; command={}; artifact={}; expected_contract={}",
+            action.action_id,
+            action.kind,
+            action.reason,
+            action.command.as_deref().unwrap_or("not_recorded"),
+            action.artifact_id.as_deref().unwrap_or("not_recorded"),
+            action
+                .expected_contract
+                .as_deref()
+                .unwrap_or("not_recorded")
+        ));
+    }
+    lines.push(format!("detail_limit={}; blockers={}/{}; next_actions={}/{}; current_answers={}/{}; truncated={}/{}/{}",
+        inspection.bounds.max_detail_refs, inspection.blockers.len(), inspection.bounds.blocker_count,
+        inspection.next_actions.len(), inspection.bounds.next_action_count,
+        inspection.current_answers.len(), inspection.bounds.current_answer_count,
+        inspection.bounds.blockers_truncated, inspection.bounds.next_actions_truncated,
+        inspection.bounds.current_answers_truncated));
     lines.push(format!(
         "candidate_reach: {}",
         inspection.planes.candidate_reach
@@ -805,15 +1004,65 @@ fn build_inspection(
     let propagation = stored.first_by_contract(CANON_GEO_PROPAGATION_VERSION);
 
     let planes = inspection_planes(stored, section, evidence, composition, explanation);
-    let bounds = inspection_bounds(options.component_id.clone(), composition);
-    let metrics = inspection_metrics(stored, composition, explanation, &bounds);
+    let current_answers = stored_current_answers(stored)?;
+    let mut bounds = inspection_bounds(options.component_id.clone(), composition);
+    bounds.blocker_count = stored.run.blockers.len() as u64;
+    bounds.blockers_truncated = bounds.blocker_count > bounds.max_detail_refs;
+    bounds.next_action_count = stored.run.next_actions.len() as u64;
+    bounds.next_actions_truncated = bounds.next_action_count > bounds.max_detail_refs;
+    bounds.current_answer_count = stored
+        .artifacts_by_contract
+        .get(CANON_GEO_ANSWER_VERSION)
+        .map_or(0, |ids| ids.len() as u64);
+    bounds.current_answers_truncated = bounds.current_answer_count > bounds.max_detail_refs;
+    let mut metrics = inspection_metrics(stored, composition, explanation, &bounds);
+    metrics.claim_class = current_answers
+        .first()
+        .and_then(|current| match &current.claim_label {
+            GeoAnswerClaimLabel::Composition { claim_class } => Some(*claim_class),
+            GeoAnswerClaimLabel::SingleMemberAssociation => None,
+        });
     let answers = vec![
-        answer_q1(stored),
+        if let Some(current) = current_answers.first() {
+            answer(
+                GeoInspectionQuestion::Q1,
+                format!(
+                    "Question {}; grain={:?}; as_of={}; claim={:?}; run_status={:?}; phase={:?}.",
+                    current.question_id,
+                    current.entity_level,
+                    current
+                        .query_as_of
+                        .as_ref()
+                        .map_or("unrecorded", |value| value.utc_day.as_str()),
+                    current.claim_label,
+                    stored.run.status,
+                    stored.run.phase
+                ),
+                vec![stored.manifest_ref.clone(), current.artifact_ref.clone()],
+            )
+        } else {
+            answer_q1(stored)
+        },
         answer_q2(stored, evidence),
         answer_q3(stored, evidence),
         answer_q4(stored, section),
         answer_q5(stored, composition, &bounds),
-        answer_q6(stored, composition, explanation),
+        if current_answers.is_empty() {
+            answer_q6(stored, composition, explanation)
+        } else {
+            answer(
+                GeoInspectionQuestion::Q6,
+                current_answers
+                    .iter()
+                    .map(current_answer_summary)
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                current_answers
+                    .iter()
+                    .map(|current| current.artifact_ref.clone())
+                    .collect(),
+            )
+        },
         answer_q7(stored),
         answer_q8(
             stored,
@@ -821,11 +1070,14 @@ fn build_inspection(
             separation,
             propagation,
             options.recommend_next,
+            &current_answers,
         ),
     ];
     stamp_inspection(GeoInspection {
         version: CANON_GEO_INSPECTION_VERSION.to_string(),
         run_id: stored.run.run_id.clone(),
+        status: stored.run.status,
+        phase: stored.run.phase,
         semantic_hash: String::new(),
         plan_ref: stored.run.plan_ref.clone(),
         component_id: options.component_id,
@@ -833,6 +1085,21 @@ fn build_inspection(
         planes,
         bounds,
         metrics,
+        blockers: stored
+            .run
+            .blockers
+            .iter()
+            .take(DEFAULT_MAX_COMPONENT_REFS as usize)
+            .cloned()
+            .collect(),
+        next_actions: stored
+            .run
+            .next_actions
+            .iter()
+            .take(DEFAULT_MAX_COMPONENT_REFS as usize)
+            .cloned()
+            .collect(),
+        current_answers,
         answers,
         compare: None,
     })
@@ -843,6 +1110,184 @@ fn stamp_inspection(mut inspection: GeoInspection) -> Result<GeoInspection, GeoI
     inspection.semantic_hash = inspection_semantic_hash(&inspection)?;
     validate_inspection_artifact(&inspection)?;
     Ok(inspection)
+}
+
+fn stored_current_answers(
+    stored: &StoredRun,
+) -> Result<Vec<GeoInspectionCurrentAnswer>, GeoInspectError> {
+    let mut current = Vec::new();
+    for id in stored
+        .artifacts_by_contract
+        .get(CANON_GEO_ANSWER_VERSION)
+        .into_iter()
+        .flatten()
+    {
+        let artifact = &stored.artifacts[id];
+        let answer: GeoAnswerArtifact =
+            serde_json::from_value(artifact.value.clone()).map_err(|error| {
+                GeoInspectError::artifact_missing(
+                    id,
+                    CANON_GEO_ANSWER_VERSION,
+                    "invalid",
+                    "Geo inspect could not decode the stored current answer",
+                    [("error", error.to_string())],
+                )
+            })?;
+        validate_answer_artifact(&answer).map_err(|error| {
+            GeoInspectError::artifact_missing(
+                id,
+                CANON_GEO_ANSWER_VERSION,
+                "invalid",
+                "Geo inspect could not validate the stored current answer",
+                [("error", error.to_string())],
+            )
+        })?;
+        if answer.question_hash != stored.run.plan_ref.question_hash {
+            return Err(GeoInspectError::artifact_missing(
+                id,
+                &stored.run.plan_ref.question_hash,
+                &answer.question_hash,
+                "Stored current answer belongs to another question",
+                [] as [(&str, &str); 0],
+            ));
+        }
+        let mut inputs = vec![
+            (
+                CANON_GEO_TILE_WORK_UNIT_VERSION,
+                &answer.inputs.section_blake3,
+            ),
+            (
+                CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+                &answer.inputs.evidence_compilation_blake3,
+            ),
+            (
+                CANON_GEO_COMPOSITION_VERSION,
+                &answer.inputs.composition_blake3,
+            ),
+            (
+                CANON_GEO_EXPLANATION_VERSION,
+                &answer.inputs.explanation_blake3,
+            ),
+        ];
+        if let Some(digest) = &answer.inputs.next_evidence_blake3 {
+            inputs.push((CANON_GEO_NEXT_EVIDENCE_VERSION, digest));
+        }
+        for (contract, digest) in inputs {
+            if !stored.artifacts.values().any(|input| {
+                input.reference.contract_version == contract
+                    && input.reference.content_digest == *digest
+            }) {
+                return Err(GeoInspectError::artifact_missing(
+                    id,
+                    digest,
+                    "missing_or_mismatched",
+                    "Stored current answer input is not bound to this run",
+                    [("input_contract", contract)],
+                ));
+            }
+        }
+        // Validate every answer, including ones beyond the presentation bound.
+        if current.len() >= DEFAULT_MAX_COMPONENT_REFS as usize {
+            continue;
+        }
+        let members = answer
+            .association_support
+            .members
+            .iter()
+            .take(DEFAULT_MAX_COMPONENT_REFS as usize)
+            .map(|member| {
+                let ids: BTreeSet<_> = member
+                    .hard
+                    .iter()
+                    .chain(&member.soft)
+                    .chain(&member.diagnostic)
+                    .map(|evidence| evidence.observation_id.clone())
+                    .collect();
+                GeoInspectionMemberFinding {
+                    member: member.member.clone(),
+                    forced: member.forced,
+                    support_origin: member.support_origin,
+                    hard_observations: member.hard.len() as u64,
+                    soft_observations: member.soft.len() as u64,
+                    diagnostic_observations: member.diagnostic.len() as u64,
+                    independent_support_groups: member.independent_support_groups,
+                    observation_count: ids.len() as u64,
+                    observations_truncated: ids.len() as u64 > DEFAULT_MAX_COMPONENT_REFS,
+                    observation_ids: ids
+                        .into_iter()
+                        .take(DEFAULT_MAX_COMPONENT_REFS as usize)
+                        .collect(),
+                }
+            })
+            .collect::<Vec<_>>();
+        current.push(GeoInspectionCurrentAnswer {
+            artifact_ref: artifact.reference.clone(),
+            question_id: answer.question_id,
+            query_as_of: answer.query_as_of,
+            entity_level: answer.entity_level,
+            answer_scope: answer.answer_scope,
+            claim_label: answer.claim_label,
+            support_members_total: answer.association_support.members_total,
+            support_members_truncated: answer.association_support.members_total
+                > members.len() as u64,
+            support_members: members,
+            preference_state: answer.preference.state,
+            composition_tie_count: answer.preference.composition_view.tie_count,
+            grouped_tie_count: answer.preference.grouped_view.tie_count,
+            acceptance: answer.acceptance,
+            residual_model_count: answer.logical_consequence.residual_model_count,
+            residual_model_count_complete: answer.logical_consequence.residual_model_count_complete,
+            residual_model_count_saturated: answer
+                .logical_consequence
+                .residual_model_count_saturated,
+            backbone_complete: answer.logical_consequence.backbone_complete,
+            hard_forced_parcel_count: answer.logical_consequence.hard_forced.parcels.len() as u64,
+            hard_forced_building_count: answer.logical_consequence.hard_forced.buildings.len()
+                as u64,
+            extent_and_reach: answer.extent_and_reach,
+            further_work_source: answer.further_work.source,
+            action_discovery: answer.further_work.action_discovery,
+        });
+    }
+    Ok(current)
+}
+
+fn current_answer_summary(current: &GeoInspectionCurrentAnswer) -> String {
+    let members = current
+        .support_members
+        .iter()
+        .map(|member| {
+            format!(
+                "{:?}:{} forced={} hard={} soft={} diagnostic={} support_groups={}",
+                member.member.level,
+                member.member.id,
+                member.forced,
+                member.hard_observations,
+                member.soft_observations,
+                member.diagnostic_observations,
+                member.independent_support_groups
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "Current answer {}; grain={:?}; support=[{}]; listed={}/{}; truncated={}; preference={:?}; composition_ties={}; grouped_ties={}; acceptance={:?}; residual_count={:?}; saturated={}; backbone_complete={}; truth_reach={:?}; complete_extent={}. Support groups are provenance, not confidence. Matching payload digests are byte identity only; semantic reconciliation requires its own artifact/verdict.",
+        current.question_id,
+        current.entity_level,
+        members,
+        current.support_members.len(),
+        current.support_members_total,
+        current.support_members_truncated,
+        current.preference_state,
+        current.composition_tie_count,
+        current.grouped_tie_count,
+        current.acceptance.status,
+        current.residual_model_count,
+        current.residual_model_count_saturated,
+        current.backbone_complete,
+        current.extent_and_reach.truth_reach,
+        current.extent_and_reach.complete_extent_claimed
+    )
 }
 
 fn read_stored_run(work_dir: &Path) -> Result<StoredRun, GeoInspectError> {
@@ -1241,7 +1686,7 @@ fn inspection_metrics(
         backbone_members,
         contradictions,
         component_keys,
-        claim_class: composition.map(|_| GeoClaimClass::CollateralComposition),
+        claim_class: None,
         proof_class: proof_class(stored),
     }
 }
@@ -1491,7 +1936,19 @@ fn answer_q8(
     separation: Option<&StoredArtifact>,
     propagation: Option<&StoredArtifact>,
     recommend_next: bool,
+    current_answers: &[GeoInspectionCurrentAnswer],
 ) -> GeoInspectionAnswer {
+    if !stored.run.next_actions.is_empty() || !stored.run.blockers.is_empty() {
+        return answer(
+            GeoInspectionQuestion::Q8,
+            format!(
+                "Stored run has {} continuation actions and {} blockers; inspect next_actions and blockers for the bounded retained handoff. No optional future-evidence stage needs to run to expose this action; recommend_next={recommend_next} does not generate new actions.",
+                stored.run.next_actions.len(),
+                stored.run.blockers.len()
+            ),
+            vec![stored.manifest_ref.clone()],
+        );
+    }
     if let Some(next_evidence) = next_evidence {
         let stop = next_evidence
             .value
@@ -1516,6 +1973,26 @@ fn answer_q8(
                 "Stored next-evidence frontier has {frontier} nondominated actions and stop={stop}; recommend_next={recommend_next} reads this artifact only."
             ),
             refs,
+        );
+    }
+    if !current_answers.is_empty() {
+        return answer(
+            GeoInspectionQuestion::Q8,
+            format!(
+                "Current answer is available; stored further-work state: {}. No run continuation action is recorded; this does not establish irreducible ambiguity or complete action discovery.",
+                current_answers
+                    .iter()
+                    .map(|value| format!(
+                        "{:?}/{:?}",
+                        value.further_work_source, value.action_discovery
+                    ))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            current_answers
+                .iter()
+                .map(|value| value.artifact_ref.clone())
+                .collect(),
         );
     }
     unanswerable(
@@ -1548,7 +2025,7 @@ fn unanswerable(
     GeoInspectionAnswer {
         question,
         answer: format!(
-            "inspect_question_unanswerable: stored artifact for {missing_contract} is absent; rerun canon geo run with the generated stage that publishes it."
+            "inspect_question_unanswerable: stored artifact for {missing_contract} is absent; inspect the stored run blockers and next_actions before resuming its plan."
         ),
         artifact_refs: vec![manifest_ref.clone()],
         abstention: Some(GeoInspectionAbstention {
@@ -1572,6 +2049,13 @@ fn inspection_bounds(
         max_component_refs: DEFAULT_MAX_COMPONENT_REFS,
         component_ref_count,
         component_refs_truncated: component_ref_count > DEFAULT_MAX_COMPONENT_REFS,
+        max_detail_refs: DEFAULT_MAX_COMPONENT_REFS,
+        blocker_count: 0,
+        blockers_truncated: false,
+        next_action_count: 0,
+        next_actions_truncated: false,
+        current_answer_count: 0,
+        current_answers_truncated: false,
     }
 }
 

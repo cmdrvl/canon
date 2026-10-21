@@ -1349,7 +1349,7 @@
     {
       "name": "geo inspect",
       "usage": "canon geo inspect --run <DIR> [--component <ID>] [--compare <OTHER_RUN>] [--recommend-next]",
-      "description": "Inspect a completed Geo run from stored run manifests, project receipts, and content-addressed output artifacts without rerunning acquisition, materialization, compilation, solving, or evaluation",
+      "description": "Inspect a stored Geo run: bounded current answers, status, blockers and retained continuation actions, with verified artifact references and explicit limits; never reruns acquisition, materialization, compilation, solving or evaluation",
       "surface": "primary",
       "output_mode": "json",
       "output_schema": "canon_geo_inspection.v0",
@@ -1425,7 +1425,7 @@
           "flag": "--recommend-next",
           "type": "boolean",
           "default": false,
-          "description": "Project stored next-evidence state when the run published it"
+          "description": "Read retained continuation actions and optional next-evidence state; never generates actions or reruns a stage"
         },
         {
           "name": "emit",

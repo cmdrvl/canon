@@ -765,8 +765,14 @@ and [command-usability gap plan](docs/PLAN_CANON_GEO.md#1612-command-usability-m
 separate the historical baseline from the working target. Brooklyn demonstrated admitted
 parcel/building inclusion and exact local solving before the legacy run failed on empty
 prospective evidence. Explicit `current_answer` now completes without prospective inputs;
-legacy/full-workflow invalid inputs stop at preflight. Complete one-call inspection and
-automated acquisition/assembly remain later milestones. These workflows still accept
+legacy/full-workflow invalid inputs stop at preflight. `geo inspect` now includes bounded
+`current_answers`, execution status/phase, blockers and the run's retained `next_actions`.
+Answer findings preserve soft support, hard conclusions, acceptance and reach limits;
+totals and truncation flags link to the full verified answer artifact. Discovery actions
+remain visible before any solve, with their full request in the original plan's
+`external_requests`. Inspection reads stored artifacts without executing stages.
+Complete inspection/comparison/cost acceptance and automated acquisition/assembly remain
+later milestones. These workflows still accept
 manually assembled evidence, and retained replays establish integration rather than live truth.
 
 ### Arguments

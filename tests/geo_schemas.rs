@@ -195,7 +195,7 @@ use canon::geo::{
     canonical_adjudication_request_bytes,
 };
 use h3o::{LatLng, Resolution};
-use serde_json::Value;
+use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
 use std::{collections::BTreeMap, fs, path::Path, str::FromStr};
 
@@ -420,6 +420,7 @@ fn external_schema_source(schema_file: &str, reference: &str) -> &'static str {
             include_str!("../schemas/canon.geo.tile_work_request.v1.schema.json")
         }
         "canon.geo.answer.v0.schema.json" => ANSWER_SCHEMA,
+        "canon.geo.run.v0.schema.json" => include_str!("../schemas/canon.geo.run.v0.schema.json"),
         "canon.geo.address_parse_request.v0.schema.json" => ADDRESS_PARSE_REQUEST_SCHEMA,
         "canon.geo.address_parse_forest.v0.schema.json" => ADDRESS_PARSE_FOREST_SCHEMA,
         "canon.geo.acquisition_request.v0.schema.json" => ACQUISITION_REQUEST_SCHEMA,
@@ -3194,6 +3195,59 @@ fn inspection_schema_matches_a_real_instance() {
     );
 }
 
+#[test]
+fn inspection_schema_covers_bounded_current_answer_and_retained_discovery_action() {
+    let answer = geo_answer_fixture::real_answer_instance();
+    let mut value = serde_json::to_value(inspection_fixture()).unwrap();
+    value["status"] = json!("WAITING_FOR_INPUT");
+    value["next_actions"] = json!([{
+        "action_id": "schema.discovery.action", "kind": "SATISFY_DISCOVERY",
+        "artifact_id": "schema.discovery.gap", "media_type": "application/json",
+        "reason": "retrieve the original plan discovery request"
+    }]);
+    value["bounds"]["next_action_count"] = json!(1);
+    value["bounds"]["current_answer_count"] = json!(1);
+    let member = &answer.association_support.members[0];
+    value["current_answers"] = json!([{
+        "artifact_ref": inspection_ref("geo.answer", "answer", "schema.answer", canon::geo::CANON_GEO_ANSWER_VERSION),
+        "question_id": answer.question_id, "query_as_of": answer.query_as_of,
+        "entity_level": answer.entity_level, "answer_scope": answer.answer_scope,
+        "claim_label": answer.claim_label,
+        "support_members": [{"member": member.member, "forced": member.forced,
+            "support_origin": member.support_origin, "hard_observations": member.hard.len(),
+            "soft_observations": member.soft.len(), "diagnostic_observations": member.diagnostic.len(),
+            "independent_support_groups": member.independent_support_groups,
+            "observation_ids": [], "observation_count": 0, "observations_truncated": false}],
+        "support_members_total": answer.association_support.members_total,
+        "support_members_truncated": answer.association_support.members_total > 1,
+        "preference_state": answer.preference.state,
+        "composition_tie_count": answer.preference.composition_view.tie_count,
+        "grouped_tie_count": answer.preference.grouped_view.tie_count,
+        "acceptance": answer.acceptance,
+        "residual_model_count": answer.logical_consequence.residual_model_count,
+        "residual_model_count_complete": answer.logical_consequence.residual_model_count_complete,
+        "residual_model_count_saturated": answer.logical_consequence.residual_model_count_saturated,
+        "backbone_complete": answer.logical_consequence.backbone_complete,
+        "hard_forced_parcel_count": answer.logical_consequence.hard_forced.parcels.len(),
+        "hard_forced_building_count": answer.logical_consequence.hard_forced.buildings.len(),
+        "extent_and_reach": answer.extent_and_reach,
+        "further_work_source": answer.further_work.source,
+        "action_discovery": answer.further_work.action_discovery
+    }]);
+    let schema = parsed(INSPECTION_SCHEMA);
+    assert_instance_matches_schema(&schema, &schema, &value, "inspection with current answer");
+    value["current_answers"][0]["support_members"][0]["invented_confidence"] = json!(1);
+    assert!(
+        std::panic::catch_unwind(|| assert_instance_matches_schema(
+            &schema,
+            &schema,
+            &value,
+            "unknown finding key"
+        ))
+        .is_err()
+    );
+}
+
 fn inspection_fixture() -> GeoInspection {
     let manifest_ref = inspection_ref(
         "geo.run",
@@ -3247,6 +3301,11 @@ fn inspection_fixture() -> GeoInspection {
     }
     let mut inspection = GeoInspection {
         version: CANON_GEO_INSPECTION_VERSION.to_string(),
+        status: canon::geo::GeoRunStatus::Completed,
+        phase: canon::geo::GeoRunPhase::Solved,
+        blockers: vec![],
+        next_actions: vec![],
+        current_answers: vec![],
         run_id: format!(
             "{CANON_GEO_RUN_VERSION}:{}",
             control_digest("schema.inspection.run").trim_start_matches("blake3:")
@@ -3283,6 +3342,13 @@ fn inspection_fixture() -> GeoInspection {
             max_component_refs: 8,
             component_ref_count: 1,
             component_refs_truncated: false,
+            max_detail_refs: 8,
+            blocker_count: 0,
+            blockers_truncated: false,
+            next_action_count: 0,
+            next_actions_truncated: false,
+            current_answer_count: 0,
+            current_answers_truncated: false,
         },
         metrics: GeoInspectionMetrics {
             residual_model_count: Some(1),

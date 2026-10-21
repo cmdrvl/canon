@@ -388,7 +388,7 @@ pub struct GeoInspectCli {
     /// Optional second Geo run workspace to compare against
     #[arg(long)]
     pub compare: Option<PathBuf>,
-    /// Include stored next-evidence recommendation state when available
+    /// Read retained continuation actions and optional next-evidence state; never generates actions
     #[arg(long = "recommend-next")]
     pub recommend_next: bool,
     /// Output mode

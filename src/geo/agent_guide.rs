@@ -75,7 +75,7 @@ pub fn agent_guide() -> Result<Value, Box<dyn Error>> {
                 "command": "canon geo inspect --run work --recommend-next",
                 "required_local_inputs": ["stored run workspace"],
                 "outputs": ["artifact handles", "residual state", "stored next-evidence state"],
-                "missing": "The complete one-call inspection rendering remains bd-1g18. Read the canon_geo_answer.v0 handle from run.output_refs and its declared receipt path; do not guess filenames. The answer separates support, preference, consequences, acceptance, reach and further work."
+                "missing": "Inspection exposes bounded current_answers, run status/phase, blockers and retained next_actions, with totals/truncation and full answer artifact references. Discovery/acquisition payloads remain in the original plan.external_requests; resolve the copied action artifact_id there. A missing optional next-evidence artifact does not suppress a current answer or discovery action. Complete inspection/comparison/cost acceptance remains bd-1g18."
             }
         },
         "answer_scope": {
