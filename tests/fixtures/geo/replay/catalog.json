@@ -220,7 +220,7 @@
         },
         {
           "bead": "bd-2dvm",
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "date": "2026-10-21",
           "kind": "invariant_change",
           "new": [
@@ -363,7 +363,7 @@
             "/semantic_hash",
             "/status"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -380,7 +380,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -397,7 +397,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_evidence_compilation.v0"
           ],
@@ -414,7 +414,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_explanation.v0"
           ],
@@ -431,7 +431,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_home_cell_assignment.v1"
           ],
@@ -448,7 +448,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_evidence_request.v0"
           ],
@@ -465,7 +465,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_propagation.v0"
           ],
@@ -482,7 +482,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_tile_work_unit.v1"
           ],
@@ -499,7 +499,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_composition.v0"
           ],
@@ -804,7 +804,7 @@
         },
         {
           "bead": "bd-2dvm",
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "date": "2026-10-21",
           "kind": "invariant_change",
           "new": [
@@ -968,7 +968,7 @@
             "/semantic_hash",
             "/status"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -985,7 +985,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -1002,7 +1002,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_evidence_compilation.v0"
           ],
@@ -1019,7 +1019,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_explanation.v0"
           ],
@@ -1036,7 +1036,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_home_cell_assignment.v1"
           ],
@@ -1053,7 +1053,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_evidence_request.v0"
           ],
@@ -1070,7 +1070,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_propagation.v0"
           ],
@@ -1087,7 +1087,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_tile_work_unit.v1"
           ],
@@ -1104,7 +1104,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_composition.v0"
           ],
@@ -1420,7 +1420,7 @@
         },
         {
           "bead": "bd-2dvm",
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "date": "2026-10-21",
           "kind": "invariant_change",
           "new": [
@@ -1595,7 +1595,7 @@
             "/semantic_hash",
             "/status"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -1612,7 +1612,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -1629,7 +1629,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_evidence_compilation.v0"
           ],
@@ -1646,7 +1646,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_explanation.v0"
           ],
@@ -1663,7 +1663,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_home_cell_assignment.v1"
           ],
@@ -1680,7 +1680,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_evidence_request.v0"
           ],
@@ -1697,7 +1697,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_propagation.v0"
           ],
@@ -1714,7 +1714,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_tile_work_unit.v1"
           ],
@@ -1731,7 +1731,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_composition.v0"
           ],
@@ -5288,7 +5288,7 @@
         },
         {
           "bead": "bd-2dvm",
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "date": "2026-10-21",
           "kind": "invariant_change",
           "new": [
@@ -5347,7 +5347,7 @@
             "/semantic_hash",
             "/status"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -5364,7 +5364,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -5382,7 +5382,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_home_cell_assignment.v1"
           ],
@@ -5399,7 +5399,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_tile_work_unit.v1"
           ],
@@ -6228,7 +6228,7 @@
             "/semantic_hash",
             "/status"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_run.v0",
             "canon_geo_run.v0"
@@ -6444,7 +6444,7 @@
         },
         {
           "bead": "bd-2dvm",
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "date": "2026-10-21",
           "kind": "invariant_change",
           "new": [
@@ -6503,7 +6503,7 @@
             "/semantic_hash",
             "/status"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -6520,7 +6520,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_run.v0"
           ],
@@ -6537,7 +6537,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_home_cell_assignment.v1"
           ],
@@ -6554,7 +6554,7 @@
           "changed_paths": [
             "/"
           ],
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "contract_versions": [
             "canon_geo_tile_work_unit.v1"
           ],
@@ -7320,7 +7320,7 @@
       "golden_changes": [
         {
           "bead": "bd-2dvm",
-          "commit": null,
+          "commit": "e59a5eb66ca9a97a196a6f3a06dba87fa8493585",
           "date": "2026-10-21",
           "kind": "invariant_change",
           "new": {
@@ -7676,7 +7676,22 @@
           "pointer": "/preference/grouped_view/tie_count",
           "value": 1
         }
-      ]
+      ],
+      "expected_current_answer": {
+        "output_digests": {
+          "geo.parcel.answer/answer": "blake3:9269a6ebe667ebdd754aba244c3e71b42c6517621a4835703acc3f7049640c3a",
+          "geo.parcel.compile_evidence/compile_evidence": "blake3:de5a04edb9f01bcc071820ff2c8dfff57632c2ca64bb1cc22f4f029e34789f9c",
+          "geo.parcel.explain/explanation": "blake3:5a2f1f1f172a9b94c4e7b7489ef697c8e514d0edafa8c9028188864e4d8c20bd",
+          "geo.parcel.home_cells/home_cells": "blake3:ed14ae1959738481293395a223140e2f602adc5512bdaf57f901747a9d9000fd",
+          "geo.parcel.materialize_evidence/materialize_evidence": "blake3:54338232952d0fcd4b397eabb0a66820a461246d1c98cfa70165a221c32f9466",
+          "geo.parcel.propagate/propagation": "blake3:39762cfe210dee6d8841f0bcc4c2bf3e58472a95979d0557ec7c14e1e4934d8d",
+          "geo.parcel.section/section": "blake3:08b537c4a1d0542c6d0c19ee2e4260b08e96a0143985536f88c6918ed2ce35ba",
+          "geo.parcel.solve/solve": "blake3:7af7c8b02c99ecf835dd12fe6ad8643e1430db5631235c231838fb4b1e8c9048"
+        },
+        "plan_sha256": "59d05c98ba66cc9de4049493835f86659c05ba0c1a1bd5e14573c043ae2b7c3b",
+        "run_semantic_hash": "blake3:f4a1934f8e8eb7c9d094173fe5717c94ddffd5cce5db65107b8dc7e588d7acba",
+        "run_status": "ABSTAINED"
+      }
     },
     {
       "case_id": "current_answer.courtney.final_hints",
@@ -7729,7 +7744,22 @@
             }
           ]
         }
-      ]
+      ],
+      "expected_current_answer": {
+        "output_digests": {
+          "geo.parcel.answer/answer": "blake3:21f60fe0e268eaac82d0b78b7d7c00493f5ac3138952e151997b4a1ca996e780",
+          "geo.parcel.compile_evidence/compile_evidence": "blake3:54caf443efcb1b8b004c1328d32eb5c9f996004cfcdae69618542502bb13808c",
+          "geo.parcel.explain/explanation": "blake3:23e72cf92094be0ff935f40135044a985785275142c68a042223a9350e0c2412",
+          "geo.parcel.home_cells/home_cells": "blake3:9efbf88c2734f38e1421b52aee68ccf6d6555d7a017da490804ad292096f3000",
+          "geo.parcel.materialize_evidence/materialize_evidence": "blake3:dec257bc88f55c5708f6b43cddbc3b025fc3fe930d1a2eabc3f7aae2e80fb9ed",
+          "geo.parcel.propagate/propagation": "blake3:f5d6256e64fb3f15184678307620dddf8cbe03cdd0c336cce1b7f6a840387019",
+          "geo.parcel.section/section": "blake3:a9abb96be70e60e0dc43e381994126bf8ffacf78f8581a45413526f9d81ccc37",
+          "geo.parcel.solve/solve": "blake3:ead25cf3c7437bf3a48d658cb2481f5ce6748c16020b3f3dda5ba3be0644fa64"
+        },
+        "plan_sha256": "6cb1267dc8f967af693f5d3b1947e3dc5ec4b5566e03f23c5796848f9ab07e07",
+        "run_semantic_hash": "blake3:d3c51f3368874794b02af136cf458924f035b7e07576d1f9ae2a6ae2f1258e87",
+        "run_status": "ABSTAINED"
+      }
     },
     {
       "case_id": "nxrt.truth_probe",
