@@ -511,10 +511,21 @@ pub(crate) fn apply_solve_promotion_policy(
         .diagnostics
         .review_group_seeds
         .retain(|group| !accepted.contains(group.component_id.as_str()));
+    let carried = [SUMMARY_SPLIT_DIRECT_CUT_EDGES, SUMMARY_STANDALONE_SURFACES]
+        .into_iter()
+        .filter_map(|key| {
+            artifact
+                .diagnostics
+                .summary
+                .get(key)
+                .map(|value| (key.to_string(), *value))
+        })
+        .collect::<Vec<_>>();
     artifact.diagnostics.summary = solve_diagnostics_summary(
         &artifact.diagnostics.components,
         &artifact.diagnostics.review_group_seeds,
     );
+    artifact.diagnostics.summary.extend(carried);
     artifact.promotable_aliases = solve_alias_proposals(
         &artifact.entities,
         surfaces,
@@ -607,6 +618,82 @@ pub fn evaluate_solve_component_budget(
         .expect("single component report has one decision"))
 }
 
+const STANDALONE_SURFACE_CONSTRAINT_REASON: &str = "standalone_surface_no_support";
+
+/// Strategy `solve:` section. Both settings default to the historical
+/// behavior; nothing changes unless a strategy declares them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SolveGraphOptions {
+    /// `hard_cannot_link: split_direct` (default `contradiction`).
+    pub split_direct_hard_cannot_links: bool,
+    /// `standalone_surfaces: include` (default `omit`).
+    pub include_standalone_surfaces: bool,
+}
+
+impl SolveGraphOptions {
+    pub fn from_strategy_document(document: &str) -> Result<Self, Refusal> {
+        let value: serde_yaml::Value = serde_yaml::from_str(document)
+            .map_err(|_| solve_options_refusal("invalid_strategy_document", None))?;
+        let Some(section) = value.get("solve") else {
+            return Ok(Self::default());
+        };
+        let Some(map) = section.as_mapping() else {
+            return Err(solve_options_refusal(
+                "solve_section_must_be_a_mapping",
+                None,
+            ));
+        };
+        let mut options = Self::default();
+        for (key, setting) in map {
+            let key = key.as_str().unwrap_or_default();
+            let setting = setting.as_str().unwrap_or_default();
+            match (key, setting) {
+                ("hard_cannot_link", "contradiction") => {}
+                ("hard_cannot_link", "split_direct") => {
+                    options.split_direct_hard_cannot_links = true
+                }
+                ("standalone_surfaces", "omit") => {}
+                ("standalone_surfaces", "include") => options.include_standalone_surfaces = true,
+                _ => {
+                    return Err(solve_options_refusal(
+                        "unsupported_solve_setting",
+                        Some((key, setting)),
+                    ));
+                }
+            }
+        }
+        Ok(options)
+    }
+
+    /// Apply the declared options to the evidence graph before solving.
+    pub fn apply(self, mut graph: EntityEvidenceGraph) -> EntityEvidenceGraph {
+        if self.split_direct_hard_cannot_links {
+            graph = graph.split_direct_hard_cannot_links();
+        }
+        if self.include_standalone_surfaces {
+            graph = graph.include_standalone_surfaces();
+        }
+        graph
+    }
+}
+
+fn solve_options_refusal(code: &str, setting: Option<(&str, &str)>) -> Refusal {
+    solve_artifact_refusal(
+        "Strategy `solve:` section is invalid",
+        json!({
+            "stage": "solve",
+            "field": "solve",
+            "code": code,
+            "setting": setting.map(|(key, value)| json!({ "key": key, "value": value })),
+            "supported": {
+                "hard_cannot_link": ["contradiction", "split_direct"],
+                "standalone_surfaces": ["omit", "include"]
+            },
+            "writes_performed": false
+        }),
+    )
+}
+
 pub fn evaluate_signed_graph_components(
     graph: &EntityEvidenceGraph,
 ) -> SolveComponentConstraintReport {
@@ -650,6 +737,19 @@ pub fn evaluate_signed_graph_components(
             evaluate_component_constraints(component, &support, &cannot_link)
         })
         .collect::<Vec<_>>();
+    // Opt-in standalone surfaces (`graph.retained_surface_ids`): tag lone
+    // surfaces with no support edge so reconciliation can report them as such.
+    for decision in &mut decisions {
+        if decision.surface_ids.len() == 1
+            && decision.support_edge_count == 0
+            && decision.action == SolveComponentAction::AutoMergeCandidate
+            && graph
+                .retained_surface_ids
+                .contains(&decision.surface_ids[0])
+        {
+            decision.reason = STANDALONE_SURFACE_CONSTRAINT_REASON.to_string();
+        }
+    }
     decisions.sort_by(component_constraint_decision_cmp);
 
     SolveComponentConstraintReport {
@@ -719,12 +819,31 @@ pub fn build_solve_diagnostics(
         .collect::<Vec<_>>();
     review_group_seeds.sort_by(review_group_seed_cmp);
 
+    let mut summary = solve_diagnostics_summary(&components, &review_group_seeds);
+    // Opt-in modes only; absent keys keep default-mode artifacts byte-identical.
+    if graph.split_direct_cut_edge_count > 0 {
+        summary.insert(
+            SUMMARY_SPLIT_DIRECT_CUT_EDGES.to_string(),
+            graph.split_direct_cut_edge_count,
+        );
+    }
+    let standalone = components
+        .iter()
+        .filter(|component| component.reason == STANDALONE_SURFACE_CONSTRAINT_REASON)
+        .count() as u64;
+    if standalone > 0 {
+        summary.insert(SUMMARY_STANDALONE_SURFACES.to_string(), standalone);
+    }
+
     SolveDiagnosticsReport {
-        summary: solve_diagnostics_summary(&components, &review_group_seeds),
+        summary,
         components,
         review_group_seeds,
     }
 }
+
+const SUMMARY_SPLIT_DIRECT_CUT_EDGES: &str = "split_direct_cut_edges";
+const SUMMARY_STANDALONE_SURFACES: &str = "standalone_surfaces";
 
 fn validate_solve_metadata(metadata: &EntityArtifactMetadata) -> Result<(), Refusal> {
     if !metadata.profile.is_complete() {
@@ -1510,6 +1629,17 @@ fn reconcile_component(
                     None,
                 )
             }
+        } else if component.reason == STANDALONE_SURFACE_CONSTRAINT_REASON {
+            // Only reachable when the strategy retains standalone surfaces
+            // (`solve:` section). A lone surface carries no merge claim and can
+            // never be auto-promoted (the policy requires multi-surface
+            // evidence), so it is surfaced for review and batch minting.
+            (
+                SolveReconciliationState::Escrow,
+                "standalone_surface_no_support",
+                None,
+                None,
+            )
         } else if component.adjusted_support_score_units < config.minimum_adjusted_support_units {
             (
                 SolveReconciliationState::Escrow,
@@ -1711,6 +1841,9 @@ fn positive_components(graph: &EntityEvidenceGraph) -> Vec<PositiveSolveComponen
         if node.incumbent_canonical_id.is_some() {
             union_find.insert(node.surface_id.clone());
         }
+    }
+    for surface_id in &graph.retained_surface_ids {
+        union_find.insert(surface_id.clone());
     }
     for edge in &graph.support_edges {
         union_find.union(&edge.left_surface_id, &edge.right_surface_id);

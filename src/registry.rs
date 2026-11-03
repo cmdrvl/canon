@@ -41,7 +41,11 @@ pub use add_entry::{
 pub use id_scheme::{
     RegistryDefaultIdSchemeOutput, RegistryDefaultIdSchemeRequest, set_default_id_scheme,
 };
-pub use mint::{RegistryMintOutput, RegistryMintRequest, mint, mint_with_scope};
+pub use mint::{
+    RegistryMintBatchEntry, RegistryMintBatchItem, RegistryMintBatchOutput,
+    RegistryMintBatchRequest, RegistryMintOutput, RegistryMintRequest, mint, mint_batch,
+    mint_with_scope, read_batch_items,
+};
 pub use next_id::{RegistryNextIdOutput, RegistryNextIdRequest, next_id};
 pub use package::{
     REGISTRY_MERGE_PLAN_SCHEMA_VERSION, REGISTRY_PACKAGE_SCHEMA_VERSION, RegistryMergeBlastRadius,

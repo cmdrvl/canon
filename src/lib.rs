@@ -63,12 +63,12 @@ use crate::cli::{
     EntityStreamEmitMode, EntitySubcommand, PackageCli, PackagePackCli, PackageSubcommand,
     RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli, RegistryDefaultIdSchemeCli,
     RegistryDiffCli, RegistryEmitMode, RegistryExportCli, RegistryExportFormatCli, RegistryLintCli,
-    RegistryLintProfile, RegistryMintCli, RegistryNextIdCli, RegistryPlainJsonEmitMode,
-    RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand, RegistryVersionBumpMode,
-    StrategyAuditCli, StrategyCommand, StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli,
-    StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli, StrategyProfileCli, StrategyPromoteCli,
-    StrategyRegisterCli, StrategyResolveCli, StrategyStatusArg, StrategySubcommand,
-    StrategyUpdateCli,
+    RegistryLintProfile, RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli,
+    RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand,
+    RegistryVersionBumpMode, StrategyAuditCli, StrategyCommand, StrategyDeprecateCli,
+    StrategyDiffCli, StrategyExplainCli, StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli,
+    StrategyProfileCli, StrategyPromoteCli, StrategyRegisterCli, StrategyResolveCli,
+    StrategyStatusArg, StrategySubcommand, StrategyUpdateCli,
 };
 use crate::entity::runtime as entity_runtime;
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
@@ -192,6 +192,7 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
             RegistrySubcommand::NextId(next_id) => run_registry_next_id(next_id),
             RegistrySubcommand::AddEntry(add_entry) => run_registry_add_entry(add_entry),
             RegistrySubcommand::Mint(mint) => run_registry_mint(mint),
+            RegistrySubcommand::MintBatch(batch) => run_registry_mint_batch(batch),
             RegistrySubcommand::DefaultIdScheme(id_scheme) => {
                 run_registry_default_id_scheme(id_scheme)
             }
@@ -3554,6 +3555,39 @@ fn run_registry_mint(mint: &RegistryMintCli) -> Result<u8, Box<dyn Error>> {
         Err(refusal) => {
             let output = refusal.to_canon_output();
             match mint.emit {
+                RegistryPlainJsonEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryPlainJsonEmitMode::Plain => {
+                    eprintln!("{}", serde_json::to_string(&output)?)
+                }
+            }
+            Ok(2)
+        }
+    }
+}
+
+fn run_registry_mint_batch(batch: &RegistryMintBatchCli) -> Result<u8, Box<dyn Error>> {
+    let result = registry::read_batch_items(&batch.registry, &batch.from).and_then(|items| {
+        registry::mint_batch(registry::RegistryMintBatchRequest {
+            registry: batch.registry.clone(),
+            prefix: batch.prefix.clone(),
+            canonical_type: batch.canonical_type.clone(),
+            items,
+            bump: batch.bump.map(registry_version_bump),
+            next_version: batch.next_version.clone(),
+            no_lint: batch.no_lint,
+        })
+    });
+    match result {
+        Ok(output) => {
+            match batch.emit {
+                RegistryPlainJsonEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryPlainJsonEmitMode::Plain => println!("{}", output.render_plain()),
+            }
+            Ok(0)
+        }
+        Err(refusal) => {
+            let output = refusal.to_canon_output();
+            match batch.emit {
                 RegistryPlainJsonEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
                 RegistryPlainJsonEmitMode::Plain => {
                     eprintln!("{}", serde_json::to_string(&output)?)

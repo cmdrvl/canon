@@ -1203,6 +1203,9 @@ pub enum RegistrySubcommand {
     AddEntry(RegistryAddEntryCli),
     /// Mint one self-authored canonical ID with one or more starting aliases
     Mint(RegistryMintCli),
+    /// Mint many self-authored canonical IDs from a JSONL file in one registry version
+    #[command(name = "mint-batch")]
+    MintBatch(RegistryMintBatchCli),
     /// Persist a registry's default self-authored canonical ID scheme
     #[command(name = "default-id-scheme")]
     DefaultIdScheme(RegistryDefaultIdSchemeCli),
@@ -1347,6 +1350,46 @@ pub struct RegistryAddEntryCli {
     /// Exact lookup scope binding, repeatable: DIMENSION=VALUE
     #[arg(long = "scope")]
     pub scope: Vec<String>,
+
+    /// Numeric semver bump to apply; defaults to patch when --next-version is absent
+    #[arg(long, value_enum)]
+    pub bump: Option<RegistryVersionBumpMode>,
+
+    /// Explicit next registry version for non-numeric or calendar versions
+    #[arg(long = "next-version")]
+    pub next_version: Option<String>,
+
+    /// Skip standard registry lint before accepting the write
+    #[arg(long = "no-lint")]
+    pub no_lint: bool,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryPlainJsonEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+#[command(group(
+    ArgGroup::new("version_update")
+        .multiple(false)
+        .args(["bump", "next_version"])
+))]
+pub struct RegistryMintBatchCli {
+    /// Registry directory to update
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Prefix override for allocation; defaults to the registry's default_id_scheme
+    #[arg(long)]
+    pub prefix: Option<String>,
+
+    /// Default canonical type for batch items that do not name their own
+    #[arg(long = "canonical-type")]
+    pub canonical_type: String,
+
+    /// JSONL file: one {"with_alias": ["FILE=INPUT:RULE_ID", ...]} object per line
+    #[arg(long)]
+    pub from: PathBuf,
 
     /// Numeric semver bump to apply; defaults to patch when --next-version is absent
     #[arg(long, value_enum)]

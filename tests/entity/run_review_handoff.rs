@@ -601,3 +601,212 @@ fn profile_refusals_name_the_supported_operators() {
     assert!(refusal.contains("supported_operators"), "{refusal}");
     assert!(refusal.contains("protected_token_conflict"), "{refusal}");
 }
+
+// ---- strategy `solve:` section (bd-i6o7 split, bd-vula standalone) ----
+
+impl Fixture {
+    fn run_with_strategy(&self, work: &str, solve_section: &str) -> Output {
+        fs::write(
+            self.root.join("strategy.yaml"),
+            format!("strategy_id: solve_options\nstrategy_version: 0.1.0\n{solve_section}"),
+        )
+        .unwrap();
+        self.canon(&[
+            "entity",
+            "run",
+            "rows.csv",
+            "--profile",
+            "profile.yaml",
+            "--strategy",
+            "strategy.yaml",
+            "--registry",
+            "registry",
+            "--work-dir",
+            work,
+            "--emit",
+            "summary",
+            "--no-witness",
+        ])
+    }
+}
+
+fn solve_entities(fixture: &Fixture, work: &str) -> Vec<(usize, String, String)> {
+    let solve = fixture.json(&format!("{work}/solve/solve.json"));
+    let mut entities = solve["entities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entity| {
+            (
+                entity["surface_ids"].as_array().unwrap().len(),
+                entity["state"].as_str().unwrap().to_string(),
+                entity["reason"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect::<Vec<_>>();
+    entities.sort();
+    entities
+}
+
+#[test]
+fn solve_section_absent_keeps_the_contradiction_with_a_separate_strategy_file() {
+    let fixture = Fixture::new(GUARD);
+    let output = fixture.run_with_strategy("wd", "");
+    assert!(output.status.success(), "{}", stderr(&output));
+    let entities = solve_entities(&fixture, "wd");
+    assert!(
+        entities
+            .iter()
+            .any(|(n, state, _)| *n == 3 && state == "contradiction"),
+        "{entities:?}"
+    );
+    let counts = &fixture.json("wd/solve/solve.json")["summary"]["counts"];
+    assert!(counts.get("diagnostics_split_direct_cut_edges").is_none());
+    assert!(counts.get("diagnostics_standalone_surfaces").is_none());
+}
+
+#[test]
+fn split_direct_turns_the_sibling_contradiction_into_reviewable_singletons() {
+    let fixture = Fixture::new(GUARD);
+    let output = fixture.run_with_strategy("wd", "solve:\n  hard_cannot_link: split_direct\n");
+    assert!(output.status.success(), "{}", stderr(&output));
+    let entities = solve_entities(&fixture, "wd");
+    assert!(
+        entities
+            .iter()
+            .all(|(_, state, _)| state != "contradiction"),
+        "{entities:?}"
+    );
+    // III / IV / XIV each stand alone; the Acme variants stay one component.
+    assert_eq!(
+        entities.iter().map(|(n, _, _)| *n).collect::<Vec<_>>(),
+        vec![1, 1, 1, 2],
+        "{entities:?}"
+    );
+    assert_eq!(
+        entities
+            .iter()
+            .filter(|(_, _, r)| r == "standalone_surface_no_support")
+            .count(),
+        3
+    );
+    let solve = fixture.json("wd/solve/solve.json");
+    assert_eq!(
+        solve["summary"]["counts"]["diagnostics_split_direct_cut_edges"],
+        3
+    );
+    assert_eq!(solve["summary"]["counts"]["contradictions"], 0);
+    // The cut is auditable: the evidence artifact still records both the
+    // support and the hard cannot-link on each cut pair.
+    let cut_pairs = pair_hits(&fixture, "wd")
+        .into_iter()
+        .filter(|(l, r, _)| l.contains("Sub") && r.contains("Sub"))
+        .collect::<Vec<_>>();
+    assert_eq!(cut_pairs.len(), 3);
+    assert!(cut_pairs.iter().all(|(_, _, hits)| {
+        is_cut(hits)
+            && hits
+                .iter()
+                .any(|(op, _)| op.starts_with("string_similarity"))
+    }));
+
+    // Every singleton is now a reviewable item that survives export + import.
+    let export = fixture.canon(&[
+        "entity",
+        "review",
+        "export",
+        "wd/run/run.json",
+        "--include",
+        "all",
+        "--emit",
+        "json",
+    ]);
+    let queue = parse(&export);
+    assert_eq!(queue["review_items"].as_array().unwrap().len(), 4);
+    fs::write(fixture.root.join("queue.json"), &export.stdout).unwrap();
+    let import = fixture.canon(&[
+        "entity",
+        "review",
+        "import",
+        "queue.json",
+        "--registry",
+        "registry",
+        "--next-version",
+        "1.0.1",
+        "--emit",
+        "summary",
+    ]);
+    assert!(import.status.success(), "{}", stderr(&import));
+}
+
+#[test]
+fn standalone_surfaces_are_listed_only_when_the_strategy_includes_them() {
+    let fixture = Fixture::new(GUARD);
+    fs::write(
+        fixture.root.join("rows.csv"),
+        format!(
+            "{ROWS}r6,D1,L1,P6,Zephyr Quantum Logistics\nr7,D1,L1,P7,Obsidian Harbor Partners\n"
+        ),
+    )
+    .unwrap();
+    assert!(fixture.run_with_strategy("omit", "").status.success());
+    let omitted = solve_entities(&fixture, "omit");
+    assert_eq!(
+        omitted.iter().map(|(n, _, _)| n).sum::<usize>(),
+        5,
+        "{omitted:?}"
+    );
+
+    assert!(
+        fixture
+            .run_with_strategy("incl", "solve:\n  standalone_surfaces: include\n")
+            .status
+            .success()
+    );
+    let included = solve_entities(&fixture, "incl");
+    assert_eq!(
+        included.iter().map(|(n, _, _)| n).sum::<usize>(),
+        7,
+        "{included:?}"
+    );
+    let lone = included
+        .iter()
+        .filter(|(n, state, reason)| {
+            *n == 1 && state == "escrow" && reason == "standalone_surface_no_support"
+        })
+        .count();
+    assert_eq!(lone, 2, "{included:?}");
+    assert_eq!(
+        fixture.json("incl/solve/solve.json")["summary"]["counts"]["diagnostics_standalone_surfaces"],
+        2
+    );
+    // Never promotable: a lone surface cannot reach PromotableNew.
+    assert_eq!(
+        fixture.json("incl/solve/solve.json")["summary"]["counts"]["promotable_new"],
+        0
+    );
+}
+
+#[test]
+fn invalid_solve_section_refuses_before_any_solve_output() {
+    for (index, section) in [
+        "solve:\n  hard_cannot_link: yolo\n",
+        "solve:\n  unknown_setting: include\n",
+        "solve: split_direct\n",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let fixture = Fixture::new(GUARD);
+        let work = format!("wd{index}");
+        let output = fixture.run_with_strategy(&work, section);
+        assert_eq!(output.status.code(), Some(2), "{section}");
+        let message = stderr(&output);
+        assert!(
+            message.contains("unsupported_solve_setting")
+                || message.contains("solve_section_must_be_a_mapping"),
+            "{message}"
+        );
+        assert!(!fixture.root.join(&work).join("solve/solve.json").exists());
+    }
+}

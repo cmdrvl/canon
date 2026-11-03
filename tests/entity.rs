@@ -52,6 +52,8 @@ mod prepare_golden;
 mod prepare_streaming;
 #[path = "entity/run_review_handoff.rs"]
 mod run_review_handoff;
+#[path = "entity/solve_options.rs"]
+mod solve_options;
 #[path = "entity/surface_id.rs"]
 mod surface_id;
 

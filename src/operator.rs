@@ -296,7 +296,7 @@ pub const COMMAND_SAFETY_DECLARATIONS: &[CommandSafetyDeclaration] = &[
     CommandSafetyDeclaration {
         command: "registry mutation",
         operator_contract_name: Some("registry add-entry"),
-        usage: "canon registry add-entry|mint|default-id-scheme --registry <DIR> ...",
+        usage: "canon registry add-entry|mint|mint-batch|default-id-scheme --registry <DIR> ...",
         read_only: false,
         mutation: MutationClass::RegistryMutation,
         network: NetworkClass::Offline,

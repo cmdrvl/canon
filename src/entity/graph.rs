@@ -36,9 +36,67 @@ pub struct EntityEvidenceGraph {
     pub hard_cannot_links: BTreeSet<SurfacePair>,
     pub component_diagnostics_inputs: Vec<ComponentDiagnosticsInput>,
     pub diagnostics: EvidenceGraphDiagnostics,
+    /// Surfaces that must become components even without a support edge or an
+    /// incumbent id. Empty unless the strategy opts in (`solve:` section).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub retained_surface_ids: BTreeSet<String>,
+    /// Support edges removed by `split_direct_hard_cannot_links`.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub split_direct_cut_edge_count: u64,
+}
+
+fn is_zero_u64(value: &u64) -> bool {
+    *value == 0
 }
 
 impl EntityEvidenceGraph {
+    /// Opt-in handling of a positive component that contains a hard
+    /// cannot-link (`solve: {hard_cannot_link: split_direct}`).
+    ///
+    /// Drops exactly the support edges whose endpoints are *directly* hard
+    /// cannot-linked, so the positive components are recomputed without them.
+    /// Every endpoint of a dropped edge is retained as a component, so a split
+    /// never makes evidence-bearing surfaces vanish. A conflict that survives
+    /// the cut (A~B~C with A and C cannot-linked) keeps both support paths and
+    /// is still reported as a contradiction for a human. Hyperedges are never
+    /// cut. Deterministic: depends only on the edge set.
+    #[must_use]
+    pub fn split_direct_hard_cannot_links(mut self) -> Self {
+        let hard = self.hard_cannot_links.clone();
+        let mut kept = Vec::with_capacity(self.support_edges.len());
+        let mut cut = 0u64;
+        for edge in std::mem::take(&mut self.support_edges) {
+            let directly_contradicted =
+                SurfacePair::new(&edge.left_surface_id, &edge.right_surface_id)
+                    .is_some_and(|pair| hard.contains(&pair));
+            if directly_contradicted {
+                cut += 1;
+                self.retained_surface_ids.insert(edge.left_surface_id);
+                self.retained_surface_ids.insert(edge.right_surface_id);
+            } else {
+                kept.push(edge);
+            }
+        }
+        self.support_edges = kept;
+        self.split_direct_cut_edge_count += cut;
+        self.diagnostics.support_edge_count = self.support_edges.len() as u64;
+        self
+    }
+
+    /// Opt-in (`solve: {standalone_surfaces: include}`): every surface becomes
+    /// a component, so surfaces with no matching evidence are visible as
+    /// singleton escrow items instead of being absent from the solve.
+    #[must_use]
+    pub fn include_standalone_surfaces(mut self) -> Self {
+        let ids = self
+            .surface_nodes
+            .iter()
+            .map(|node| node.surface_id.clone())
+            .collect::<Vec<_>>();
+        self.retained_surface_ids.extend(ids);
+        self
+    }
+
     pub fn from_exact_bucket_assertions(assertions: &[ExactBucketAssertion]) -> Self {
         let mut exact_bucket_hyperedges = assertions
             .iter()
@@ -75,6 +133,8 @@ impl EntityEvidenceGraph {
             hard_cannot_links: BTreeSet::new(),
             component_diagnostics_inputs,
             diagnostics,
+            retained_surface_ids: BTreeSet::new(),
+            split_direct_cut_edge_count: 0,
         }
     }
 
@@ -334,6 +394,8 @@ pub fn build_signed_evidence_graph(
         hard_cannot_links,
         component_diagnostics_inputs,
         diagnostics,
+        retained_surface_ids: BTreeSet::new(),
+        split_direct_cut_edge_count: 0,
     })
 }
 

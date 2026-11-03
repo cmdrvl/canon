@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- Strategies can opt into `solve: {hard_cannot_link: split_direct}`. Support edges
+  between directly hard-cannot-linked surfaces are cut and components recomputed,
+  so numbered siblings ("Sub III" / "Sub IV") become separate entities instead of
+  one `contradiction`; spelling variants stay merged and a transitive conflict
+  still reports as a contradiction. Default behavior is unchanged.
+- Strategies can opt into `solve: {standalone_surfaces: include}`: surfaces with no
+  support edge become one-surface `escrow` components (reason
+  `standalone_surface_no_support`) instead of being absent from the solve. They
+  are never auto-promotable.
+- New `canon registry mint-batch --from FILE.jsonl`: mint N canonical IDs, each with
+  exact starting aliases, in one atomic registry version (one version bump, one
+  lint pass; any refusal leaves the registry unchanged).
+- The dev profile no longer uses incremental compilation (`.cargo/config.toml`), so
+  `target/` stays near 5.5 GB instead of growing ~5 GB per rebuild.
+
 ## 0.15.0 — 2026-11-02
 
 - `entity run` now executes `protected_token_conflict`. It was accepted by profile

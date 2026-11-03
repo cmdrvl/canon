@@ -37,8 +37,9 @@ Notes from running this loop:
 - Alias proposals take `accept_alias` or `reject_alias` as their `decision`.
 - A component whose positive-support edges contain a hard cannot-link is
   reported as state `contradiction` (reason `hard_cannot_link_constraint`),
-  never merged and never promotable. The solver does not split components; a
-  human resolves them.
+  never merged and never promotable. By default the solver does not split it.
+  To resolve numbered or lettered siblings deterministically, opt in with
+  `solve: {hard_cannot_link: split_direct}` (see "Solver options" below).
 
 ## What the agent decides vs. what a human must
 
@@ -50,6 +51,59 @@ Notes from running this loop:
   audit, may stand in for that. No policy may accept a component containing a
   hard cannot-link.
 - Nobody: matching at lookup time. It stays exact.
+
+## Solver options (`solve:` in the strategy file)
+
+Both settings are opt-in; without a `solve:` section the solver behaves exactly
+as described above. They live in the file passed as `--strategy` (not in the
+profile).
+
+```yaml
+strategy_id: my_strategy
+strategy_version: 0.1.0
+solve:
+  hard_cannot_link: split_direct   # default: contradiction
+  standalone_surfaces: include     # default: omit
+```
+
+**`hard_cannot_link: split_direct`.** Support edges whose two endpoints are
+*directly* hard-cannot-linked are cut, and components are recomputed. "Sub III"
+and "Sub IV" stop sharing a component; spelling variants of one vehicle
+("Sub III LLC" / "Sub III, L.L.C.") stay merged because no hard cannot-link sits
+between them. Every surface that lost an edge is kept as its own component, so
+nothing disappears. A conflict that survives the cut (A~B and B~C supported,
+A and C cannot-linked, no direct A~C support edge) stays a `contradiction` for a
+human. The cut edges stay visible in `evidence/evidence.jsonl` (both the support
+and the cannot-link hits), and `summary.counts.diagnostics_split_direct_cut_edges`
+records how many were cut. Hyperedges from exact buckets are never cut.
+
+**`standalone_surfaces: include`.** By default a surface with no support edge
+and no incumbent ID is absent from the solve: it is not an entity and not a
+review item. With `include` it becomes a one-surface component in state
+`escrow`, reason `standalone_surface_no_support`, and is counted in
+`summary.counts.diagnostics_standalone_surfaces`.
+
+## Minting IDs for entities that matched nothing
+
+`entity run` never mints an ID for a lone surface, and that is by design: the
+only new-ID route is `promotion.new_ids: auto_accept`, which refuses any policy
+that allows a one-surface component or zero positive support, and requires a
+passing frozen audit. An ID for an entity with no matching evidence is an
+operator-accepted fact, so it goes through the registry maintenance commands:
+
+1. Run with `standalone_surfaces: include` (and `split_direct` if you have
+   sibling vehicles) to list every surface that still needs an ID.
+2. Review the list, then write one JSON object per line:
+   `{"with_alias": ["aliases.json=Acme Fund II, LLC:MANUAL"], "canonical_type": "vehicle"}`
+   (`with_alias` is the same `FILE=INPUT:RULE_ID` spec as `registry mint`;
+   `canonical_type` is optional per line).
+3. `canon registry mint-batch --registry REG --canonical-type vehicle --from batch.jsonl`
+
+`mint-batch` allocates sequential IDs from the registry's `default_id_scheme`
+(or `--prefix`), writes every alias, and bumps the version **once**. It is
+atomic: any refusal (a duplicate input inside the batch or already in the
+registry, a bad alias file, a lint error) leaves the registry byte-identical.
+`--emit plain` prints one new ID per line.
 
 ## Authoring a profile
 

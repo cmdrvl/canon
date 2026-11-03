@@ -2897,11 +2897,16 @@ fn build_and_write_solve(
     mirror_stable_paths: bool,
 ) -> Result<(SolveArtifact, Value, Vec<EntityPublicationFileInput>), Refusal> {
     let graph_edge_records = graph_edge_records(input.edge_records)?;
-    let graph = build_signed_evidence_graph(SignedEvidenceGraphInput {
+    let strategy_document = fs::read_to_string(request.strategy)
+        .map_err(|_| crate::entity::promotion_policy::refusal("unreadable_strategy"))?;
+    let graph = crate::entity::solve::SolveGraphOptions::from_strategy_document(
+        &strategy_document,
+    )?
+    .apply(build_signed_evidence_graph(SignedEvidenceGraphInput {
         edge_records: graph_edge_records,
         exact_bucket_assertions: input.exact_buckets.to_vec(),
         incumbent_ids: incumbent_ids(input.surfaces),
-    })?;
+    })?);
     let mut metadata = input.edge.metadata.clone();
     metadata.strategy = stage_strategy(base_strategy, "solve");
     let mut upstream_artifacts = metadata.upstream_artifacts.clone();
@@ -2924,8 +2929,6 @@ fn build_and_write_solve(
         },
         solve_alias_proposal_surfaces(input.surfaces),
     )?;
-    let strategy_document = fs::read_to_string(request.strategy)
-        .map_err(|_| crate::entity::promotion_policy::refusal("unreadable_strategy"))?;
     let human_overrides =
         if crate::entity::promotion_policy::load_policy(&strategy_document)?.is_some() {
             crate::entity::promotion_policy::read_human_overrides(request.registry)?
