@@ -4,8 +4,17 @@
 # dependencies and reducing project debug to line-tables-only cuts link time
 # ~2-3x with no change to test correctness. The release profile is unaffected,
 # so shipped binaries are identical.
+#
+# Incremental compilation is off (bd-gg0m). Measured on clean target dirs:
+# with it on, every edit-and-rebuild added ~5 GB of per-target cache (target
+# reached 43 GB in one session and filled the disk); with it off, target stays
+# ~5.5 GB and a cold build is ~2x faster, at the price of ~2x slower
+# edit-and-rebuild (~7 min vs ~3.5 min, dominated by relinking every test
+# binary). Opt back in for one shell with CARGO_INCREMENTAL=1 and clean
+# target/debug/incremental when done.
 [profile.dev]
 debug = "line-tables-only"
+incremental = false
 
 [profile.dev.package."*"]
 debug = false
