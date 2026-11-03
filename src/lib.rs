@@ -3106,20 +3106,34 @@ fn run_entity_review_export_command(export: &EntityReviewExportCli) -> Result<u8
     }
 
     if entity_artifact_value_is_v1(&result_probe) {
-        let artifact =
-            match entity::review::build_review_v1_artifact(entity::review::ReviewV1ExportRequest {
-                result_artifact: result_probe,
-                include: map_entity_review_include_v1(&export.include),
-            }) {
-                Ok(artifact) => artifact,
-                Err(refusal) => {
-                    return emit_entity_refusal(
-                        refusal.to_canon_output(),
-                        matches!(export.emit, EntityReviewExportEmitMode::Json),
-                        false,
-                    );
-                }
-            };
+        let bound_solve = match resolve_entity_run_v1_review_source(&export.result, &result_probe) {
+            Ok(value) => value,
+            Err(refusal_output) => {
+                return emit_entity_refusal(
+                    refusal_output,
+                    matches!(export.emit, EntityReviewExportEmitMode::Json),
+                    false,
+                );
+            }
+        };
+        let request = entity::review::ReviewV1ExportRequest {
+            result_artifact: result_probe,
+            include: map_entity_review_include_v1(&export.include),
+        };
+        let built = match bound_solve {
+            Some(solve) => entity::review::build_review_v1_artifact_for_run(request, solve),
+            None => entity::review::build_review_v1_artifact(request),
+        };
+        let artifact = match built {
+            Ok(artifact) => artifact,
+            Err(refusal) => {
+                return emit_entity_refusal(
+                    refusal.to_canon_output(),
+                    matches!(export.emit, EntityReviewExportEmitMode::Json),
+                    false,
+                );
+            }
+        };
         let output = match export.emit {
             EntityReviewExportEmitMode::Json => serde_json::to_string(&artifact)?,
             EntityReviewExportEmitMode::Csv => {
@@ -3873,6 +3887,11 @@ fn render_provider_schema_summary(schema: &registry::ProviderSchema) -> String {
 fn run_entity_run_pipeline(run: &EntityRunCli) -> Result<EntityRunExecution, CanonOutput> {
     match (run.profile.as_deref(), run.work_dir.as_deref()) {
         (Some(profile), Some(work_dir)) => {
+            // stderr stays empty in JSON mode (machine channel); the warning is
+            // for the human-facing summary mode.
+            if matches!(run.emit, EntityEmitMode::Summary) {
+                warn_entity_run_unwired_operators(profile);
+            }
             let result = entity::run::run_entity_workbench_with_cache_mode(
                 entity::run::EntityRunRequest {
                     rows: &run.rows,
@@ -3899,6 +3918,23 @@ fn run_entity_run_pipeline(run: &EntityRunCli) -> Result<EntityRunExecution, Can
             &run.work_dir,
             None,
         )),
+    }
+}
+
+/// Profiles may declare evidence operators the validator accepts but `entity
+/// run` does not execute. Say so on stderr; artifacts and exit codes are
+/// untouched. A profile that fails to load is reported by the run itself.
+fn warn_entity_run_unwired_operators(profile: &str) {
+    let Ok(document) = entity::prepare::load_prepare_profile(profile) else {
+        return;
+    };
+    let unwired = entity::run::unwired_run_operators(&document);
+    if !unwired.is_empty() {
+        eprintln!(
+            "warning: profile {} declares evidence operators that `canon entity run` does not execute (declared but inert): {}",
+            document.profile,
+            unwired.join(", ")
+        );
     }
 }
 
@@ -5015,8 +5051,20 @@ fn run_entity_native_review_artifact_export_command(
     } else if entity_artifact_value_looks_like_native_link_v1(result_probe) {
         run_entity_native_link_review_artifact_export(export, result_probe, result_bytes)
     } else {
-        Err(native_entity_artifact_contract_refusal(
-            "Native review export requires a native solve, run, or link artifact",
+        let actual = entity_artifact_version(result_probe).unwrap_or("<missing>");
+        let v1_queue_artifact = matches!(
+            actual,
+            entity::contracts::CANON_ENTITY_RUN_VERSION_V1
+                | entity::contracts::CANON_ENTITY_SOLVE_VERSION_V1
+        );
+        let next_command = if v1_queue_artifact {
+            "Native review artifacts exist for canon_entity_link.v1 and legacy v0 run/solve only; for this v1 artifact drop --artifact native-review and run: canon entity review export <RESULT.json> --include all --emit json"
+        } else {
+            "Use the matching native entity artifact handoff and rerun the command"
+        };
+        Err(refusal::create_refusal(
+            RefusalCode::EEntityArtifactContract,
+            "Native review export requires a native solve, run, or link artifact".to_string(),
             serde_json::json!({
                 "stage": "native_review_export",
                 "field": "version",
@@ -5025,9 +5073,10 @@ fn run_entity_native_review_artifact_export_command(
                     entity::CANON_ENTITY_RUN_VERSION,
                     entity::run::link::ENTITY_LINK_VERSION
                 ],
-                "actual": entity_artifact_version(result_probe).unwrap_or("<missing>"),
+                "actual": actual,
                 "writes_performed": false
             }),
+            Some(next_command.to_string()),
         ))
     };
 
@@ -6146,6 +6195,114 @@ fn map_entity_review_include_v1(
         EntityReviewInclude::Contradictions => entity::review::ReviewExportInclude::Contradictions,
         EntityReviewInclude::All => entity::review::ReviewExportInclude::All,
     }
+}
+
+/// A `canon_entity_run.v1` artifact is a pointer envelope: its review items
+/// live in the hash-bound solve artifact. Return that solve (verified against
+/// the run's stage reference) so the run can be exported; the queue itself
+/// stays bound to the run. `None` for any other artifact or a run without a
+/// solve stage.
+#[allow(clippy::result_large_err)]
+fn resolve_entity_run_v1_review_source(
+    result_path: &Path,
+    run: &serde_json::Value,
+) -> Result<Option<serde_json::Value>, CanonOutput> {
+    if run.get("version").and_then(serde_json::Value::as_str)
+        != Some(entity::contracts::CANON_ENTITY_RUN_VERSION_V1)
+    {
+        return Ok(None);
+    }
+    let solve_stages = run
+        .get("stage_artifacts")
+        .and_then(serde_json::Value::as_array)
+        .map(|stages| {
+            stages
+                .iter()
+                .filter(|stage| {
+                    stage.get("stage").and_then(serde_json::Value::as_str) == Some("solve")
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let refuse = |message: &str, field: &str, detail: serde_json::Value| {
+        native_entity_artifact_contract_refusal(
+            message,
+            serde_json::json!({
+                "stage": "review_export",
+                "field": field,
+                "detail": detail,
+                "writes_performed": false
+            }),
+        )
+    };
+    let stage = match solve_stages.as_slice() {
+        [] => return Ok(None),
+        [stage] => *stage,
+        many => {
+            return Err(refuse(
+                "Run artifact must contain exactly one solve stage reference",
+                "stage_artifacts.solve",
+                serde_json::json!({ "actual_count": many.len() }),
+            ));
+        }
+    };
+    let relative = stage
+        .get("path")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    let expected_hash = stage
+        .get("artifact_content_hash")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    let relative_path = Path::new(relative);
+    if relative.is_empty()
+        || relative_path.is_absolute()
+        || relative_path
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return Err(refuse(
+            "Run solve stage path must be safe and work-dir-relative",
+            "stage_artifacts.solve.path",
+            serde_json::json!({ "path": relative }),
+        ));
+    }
+    // The run artifact sits at `metadata.workdir.artifact_relpath` inside its
+    // work dir; strip that many components to find the root without relying on
+    // the cwd the run was created from.
+    let artifact_relpath = run
+        .pointer("/metadata/workdir/artifact_relpath")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("run/run.json");
+    let depth = Path::new(artifact_relpath).components().count();
+    let Some(root) = result_path.ancestors().nth(depth) else {
+        return Err(refuse(
+            "Run artifact path is shallower than its recorded work-dir layout",
+            "metadata.workdir.artifact_relpath",
+            serde_json::json!({ "artifact_relpath": artifact_relpath }),
+        ));
+    };
+    let solve_path = root.join(relative_path);
+    let (solve, _) = read_entity_lifecycle_json_artifact(&solve_path, "run-bound solve artifact")?;
+    let solve_version = solve.get("version").and_then(serde_json::Value::as_str);
+    let solve_hash = solve
+        .get("artifact_content_hash")
+        .and_then(serde_json::Value::as_str);
+    if solve_version != Some(entity::contracts::CANON_ENTITY_SOLVE_VERSION_V1)
+        || solve_hash != Some(expected_hash)
+    {
+        return Err(refuse(
+            "Run-bound solve artifact does not match the run's solve stage reference",
+            "stage_artifacts.solve.artifact_content_hash",
+            serde_json::json!({
+                "expected_hash": expected_hash,
+                "actual_hash": solve_hash,
+                "actual_version": solve_version,
+                "path": solve_path.display().to_string()
+            }),
+        ));
+    }
+    Ok(Some(solve))
 }
 
 fn entity_artifact_value_is_v1(value: &serde_json::Value) -> bool {

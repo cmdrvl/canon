@@ -50,6 +50,8 @@ mod prepare_exact_lookup;
 mod prepare_golden;
 #[path = "entity/prepare_streaming.rs"]
 mod prepare_streaming;
+#[path = "entity/run_review_handoff.rs"]
+mod run_review_handoff;
 #[path = "entity/surface_id.rs"]
 mod surface_id;
 

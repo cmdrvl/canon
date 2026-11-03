@@ -233,5 +233,6 @@ fn build_registry_bytes(
             "zero_pad": new_scheme.zero_pad,
         }),
     );
+    add_entry::stamp_updated(object);
     add_entry::to_pretty_bytes(&value, registry)
 }

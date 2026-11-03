@@ -80,6 +80,7 @@ industry ontology, provider knowledge, or probabilistic runtime lookup.
 | `src/witness/` | Witness append behavior (BLAKE3 hashing) |
 | `operator.json` | Machine-readable operator contract |
 | `docs/PLAN_CANON.md` | Full specification |
+| `docs/ENTITY_WORKBENCH_AGENT_GUIDE.md` | `canon entity` how-to and operator catalog (which profile operators `run` executes) |
 | `docs/CANON_GEO_AGENT_ARCHITECTURE.md` | Geo abstraction tower, control loop, resumability, and agent API target |
 | `docs/PLAN_CANON_GEO.md` | Geo mathematics, empirical state, and E1–E5 gates |
 

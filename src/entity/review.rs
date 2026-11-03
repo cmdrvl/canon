@@ -302,20 +302,34 @@ pub struct ReviewV1ExportRequest {
 }
 
 pub fn build_review_v1_artifact(request: ReviewV1ExportRequest) -> Result<Value, Refusal> {
-    build_review_v1_artifact_inner(request, None)
+    build_review_v1_artifact_inner(request, None, None)
+}
+
+/// Export the queue of a `canon_entity_run.v1` artifact. The run is only a
+/// pointer envelope, so its items come from `bound_solve` (the solve artifact
+/// the run hash-binds), while the queue stays bound to the run itself: that is
+/// the artifact `audit` certifies and `promote` consumes.
+pub fn build_review_v1_artifact_for_run(
+    request: ReviewV1ExportRequest,
+    bound_solve: Value,
+) -> Result<Value, Refusal> {
+    validate_review_v1_source(&bound_solve)?;
+    build_review_v1_artifact_inner(request, None, Some(bound_solve))
 }
 
 pub fn build_review_v1_artifact_with_cluster_shape(
     request: ReviewV1ExportRequest,
     cluster_shape: EntityClusterShapeReport,
 ) -> Result<Value, Refusal> {
-    build_review_v1_artifact_inner(request, Some(cluster_shape))
+    build_review_v1_artifact_inner(request, Some(cluster_shape), None)
 }
 
 fn build_review_v1_artifact_inner(
     request: ReviewV1ExportRequest,
     cluster_shape: Option<EntityClusterShapeReport>,
+    items_from: Option<Value>,
 ) -> Result<Value, Refusal> {
+    let items_source = items_from.as_ref().unwrap_or(&request.result_artifact);
     validate_review_v1_source(&request.result_artifact)?;
     let source_hash = required_value_string(
         &request.result_artifact,
@@ -329,15 +343,31 @@ fn build_review_v1_artifact_inner(
         EntityArtifactStageV1::Review,
         vec![source_ref],
     )?;
-    let mut review_items = review_items_from_v1_result(&request.result_artifact, request.include)?;
+    let mut review_items = review_items_from_v1_result(items_source, request.include)?;
     if let Some(cluster_shape) = cluster_shape.as_ref() {
         sort_v1_review_items_by_cluster_suspicion(&mut review_items, cluster_shape);
     }
     let review_item_count = review_items.len() as u64;
     let source_review_groups = summary_count_any(
-        &request.result_artifact,
+        items_source,
         &["review_groups", "review_group_count", "review_items"],
     );
+    if review_item_count == 0
+        && source_review_groups > 0
+        && matches!(request.include, ReviewExportInclude::All)
+    {
+        return Err(review_refusal(
+            EntityRefusalKind::ArtifactContract,
+            "Review export found no items although the source artifact counts review groups",
+            json!({
+                "stage": "review",
+                "field": "review_items",
+                "source_version": source_version,
+                "source_review_groups": source_review_groups,
+                "writes_performed": false
+            }),
+        ));
+    }
     let effective_review_groups = review_item_count.max(source_review_groups);
     let rows = required_value_u64(
         &request.result_artifact,
@@ -832,21 +862,34 @@ fn review_items_from_v1_result(
     include: ReviewExportInclude,
 ) -> Result<Vec<Value>, Refusal> {
     let mut items = review_items_from_v1_alias_proposals(result, include)?;
-    items.extend(
-        [
-            "review_items",
-            "review_groups",
-            "entities",
-            "abstentions",
-            "contradictions",
-        ]
-        .into_iter()
-        .filter_map(|field| result.get(field).and_then(Value::as_array))
-        .flat_map(|items| items.iter().cloned())
-        .filter(|item| v1_item_included(item, include))
-        .map(normalize_v1_review_item)
-        .collect::<Vec<_>>(),
-    );
+    // A solve artifact describes one escrow component twice: as an `entities`
+    // record and as a `review_groups` record. Both normalize to the same
+    // review_id, and `review import` refuses duplicate ids. Merge them into
+    // one item; the richer `entities` record is listed first so its values win.
+    let mut merged: BTreeMap<String, Map<String, Value>> = BTreeMap::new();
+    for item in [
+        "review_items",
+        "entities",
+        "review_groups",
+        "abstentions",
+        "contradictions",
+    ]
+    .into_iter()
+    .filter_map(|field| result.get(field).and_then(Value::as_array))
+    .flat_map(|items| items.iter().cloned())
+    .filter(|item| v1_item_included(item, include))
+    .map(normalize_v1_review_item)
+    {
+        let Some(object) = item.as_object() else {
+            continue;
+        };
+        let review_id = value_string_or(&item, &["review_id"], "").to_string();
+        let slot = merged.entry(review_id).or_default();
+        for (key, value) in object {
+            slot.entry(key.clone()).or_insert_with(|| value.clone());
+        }
+    }
+    items.extend(merged.into_values().map(Value::Object));
     items.sort_by(|left, right| {
         value_string_or(left, &["review_id"], "").cmp(value_string_or(right, &["review_id"], ""))
     });

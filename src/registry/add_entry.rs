@@ -655,7 +655,19 @@ fn build_registry_bytes_from_source(
         "entry_count".to_string(),
         Value::Number(serde_json::Number::from(entry_count_after)),
     );
+    stamp_updated(object);
     to_pretty_bytes(&value, registry)
+}
+
+/// `updated` is the date of the last registry mutation, as `registry build`
+/// already stamps it; a version bump that leaves it behind misdates the
+/// registry. Callers reach this only on a successful mutation, so refusals
+/// leave the metadata untouched.
+pub(super) fn stamp_updated(object: &mut serde_json::Map<String, Value>) {
+    object.insert(
+        "updated".to_string(),
+        Value::String(chrono::Utc::now().format("%Y-%m-%d").to_string()),
+    );
 }
 
 pub(super) fn build_alias_bytes_with_entries(

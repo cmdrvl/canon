@@ -16,8 +16,9 @@ use crate::{
         EntityArtifactStageV1, EntityDeterministicSummary, EntityStrategyReference,
         anti_merge::{
             AnchorConflictRequest, AttributeConflictComparison, AttributeConflictOptions,
-            AttributeConflictRequest, BasisPointScale, StructuredAntiMergeError,
-            anchor_conflict_hit, attribute_conflict_hit_with_options,
+            AttributeConflictRequest, BasisPointScale, ProtectedTokenConflictRequest,
+            StructuredAntiMergeError, anchor_conflict_hit, attribute_conflict_hit_with_options,
+            protected_token_conflict_hit,
         },
         block::{
             BlockCandidateBudgetConfig, BlockCandidateBudgetObservation,
@@ -3811,6 +3812,9 @@ fn cannot_link_hits_for_candidate(
         let hit = match spec.op.as_str() {
             "anchor_conflict" => anchor_conflict_for_spec(spec, left, right, context)?,
             "attribute_conflict" => attribute_conflict_for_spec(spec, left, right, context)?,
+            "protected_token_conflict" => {
+                protected_token_conflict_for_spec(spec, left, right, context)?
+            }
             _ => None,
         };
         if let Some(hit) = hit {
@@ -3963,6 +3967,165 @@ fn anchor_conflict_for_spec(
         right_values: &right_values,
         score_units,
     }))
+}
+
+/// Operators in the profile `cannot_link` lane that `entity run` executes.
+/// Everything else the profile validator accepts is declarable but inert in
+/// this lane; see [`unwired_run_operators`].
+pub const RUN_CANNOT_LINK_OPS: &[&str] = &[
+    "anchor_conflict",
+    "attribute_conflict",
+    "protected_token_conflict",
+];
+pub const RUN_SUPPORT_OPS: &[&str] = &[
+    "exact_view",
+    "anchor_match",
+    "isin_cusip_arithmetic",
+    "string_similarity",
+    "tfidf_cosine",
+    "date_transposed_digits",
+    "two_token_reversal",
+];
+
+/// Evidence operators a profile declares that `entity run` does not execute.
+/// Relation hints are never executed per-operator: `run` emits one generic
+/// review hint per retained candidate, so every declared hint op is listed.
+/// Returned as `lane:op` strings in declaration order, deduplicated.
+pub fn unwired_run_operators(profile: &EntityProfileDocument) -> Vec<String> {
+    let mut unwired = Vec::new();
+    let mut note = |lane: &str, specs: &[EntityOperatorSpec], wired: &[&str]| {
+        for spec in specs {
+            let label = format!("{lane}:{}", spec.op);
+            if !wired.contains(&spec.op.as_str()) && !unwired.contains(&label) {
+                unwired.push(label);
+            }
+        }
+    };
+    note("support", &profile.evidence.support, RUN_SUPPORT_OPS);
+    note(
+        "cannot_link",
+        &profile.evidence.cannot_link,
+        RUN_CANNOT_LINK_OPS,
+    );
+    note("relation_hints", &profile.evidence.relation_hints, &[]);
+    unwired
+}
+
+const PROTECT_DIGITS: &str = "digits";
+const PROTECT_ROMAN: &str = "roman";
+
+/// Series numerals i..xxxix written with only i/v/x, two letters or longer.
+/// Single letters are initials as often as numerals ("X Holdings"), and
+/// letters beyond i/v/x spell ordinary words ("mix", "civil"), so neither is
+/// protected by default; use the `protected_tokens` param for those.
+fn is_series_roman_numeral(token: &str) -> bool {
+    if token.len() < 2
+        || !token
+            .bytes()
+            .all(|b| matches!(b.to_ascii_lowercase(), b'i' | b'v' | b'x'))
+    {
+        return false;
+    }
+    const UNITS: [&str; 10] = ["", "i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix"];
+    const TENS: [&str; 4] = ["", "x", "xx", "xxx"];
+    let lower = token.to_ascii_lowercase();
+    (2..40usize).any(|n| format!("{}{}", TENS[n / 10], UNITS[n % 10]) == lower)
+}
+
+fn protected_token_classes(spec: &EntityOperatorSpec) -> Result<(bool, bool), Refusal> {
+    let Some(raw) = optional_non_empty_param(spec, "protect")? else {
+        return Ok((true, true));
+    };
+    let (mut digits, mut roman) = (false, false);
+    for class in raw.split(',').map(str::trim).filter(|c| !c.is_empty()) {
+        match class {
+            PROTECT_DIGITS => digits = true,
+            PROTECT_ROMAN => roman = true,
+            "none" => {}
+            other => {
+                return Err(edge_support_config_refusal(
+                    "protected_token_conflict `protect` accepts only digits, roman, none",
+                    &spec.op,
+                    "protect",
+                    json!({ "value": other }),
+                ));
+            }
+        }
+    }
+    Ok((digits, roman))
+}
+
+fn protected_token_conflict_for_spec(
+    spec: &EntityOperatorSpec,
+    left: &PreparedSurfaceRecord,
+    right: &PreparedSurfaceRecord,
+    context: &EdgeSupportScoringContext<'_>,
+) -> Result<Option<EdgeEvidenceHit>, Refusal> {
+    let score_units =
+        optional_score_units_param(spec, "score_units", "score")?.unwrap_or(ScoreUnits::MAX);
+    if score_units == ScoreUnits::ZERO {
+        return Ok(None);
+    }
+    let view_name = required_support_view_name(spec, "protected_token_conflict")?;
+    let (digits, roman) = protected_token_classes(spec)?;
+    let listed = optional_non_empty_param(spec, "protected_tokens")?
+        .map(|raw| {
+            raw.split(',')
+                .map(|token| token.trim().to_ascii_lowercase())
+                .filter(|token| !token.is_empty())
+                .collect::<BTreeSet<_>>()
+        })
+        .unwrap_or_default();
+    let is_protected = |token: &str| {
+        (digits && token.bytes().any(|b| b.is_ascii_digit()))
+            || (roman && is_series_roman_numeral(token))
+            || listed.contains(&token.to_ascii_lowercase())
+    };
+    let split = |value: &str| {
+        let (mut protected, mut rest) = (BTreeSet::new(), BTreeSet::new());
+        for token in value.split_whitespace() {
+            if is_protected(token) {
+                protected.insert(token.to_ascii_lowercase());
+            } else {
+                rest.insert(token.to_ascii_lowercase());
+            }
+        }
+        (protected, rest)
+    };
+    let (left_protected, left_rest) = split(support_view_value(
+        left,
+        view_name,
+        "protected_token_conflict",
+    )?);
+    let (right_protected, right_rest) = split(support_view_value(
+        right,
+        view_name,
+        "protected_token_conflict",
+    )?);
+    // Differing protected sets only conflict between names that otherwise
+    // read alike; unrelated names are not made "distinct" by a stray digit.
+    if left_protected == right_protected || left_rest.is_disjoint(&right_rest) {
+        return Ok(None);
+    }
+    let left_tokens = left_protected
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    let right_tokens = right_protected
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    let operator_id = support_operator_id(spec);
+    Ok(protected_token_conflict_hit(
+        ProtectedTokenConflictRequest {
+            namespace: context.profile.patch_namespaces.distinct.as_str(),
+            operator_id: &operator_id,
+            reason_code: "protected_token_conflict",
+            left_tokens: &left_tokens,
+            right_tokens: &right_tokens,
+            score_units,
+        },
+    ))
 }
 
 fn attribute_conflict_for_spec(
@@ -4175,6 +4338,14 @@ fn validate_edge_operator_params(profile: &EntityProfileDocument) -> Result<(), 
                     != Some(ScoreUnits::ZERO) =>
             {
                 required_field_param(spec, "anchor_conflict")?;
+            }
+            "protected_token_conflict"
+                if optional_score_units_param(spec, "score_units", "score")?
+                    != Some(ScoreUnits::ZERO) =>
+            {
+                required_support_view_name(spec, "protected_token_conflict")?;
+                protected_token_classes(spec)?;
+                optional_non_empty_param(spec, "protected_tokens")?;
             }
             "attribute_conflict"
                 if optional_score_units_param(spec, "score_units", "score")?

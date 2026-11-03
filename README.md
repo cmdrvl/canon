@@ -37,7 +37,8 @@ project workflows. It does not ship industry ontology, provider knowledge, or a
 probabilistic runtime lookup engine. Domain expertise lives in registries,
 profiles, strategies, packages, or out-of-tree extensions that operators choose
 and audit. See [`docs/IDENTITY_ARCHITECTURE.md`](docs/IDENTITY_ARCHITECTURE.md)
-for the boundary.
+for the boundary. For the `canon entity` workflow and its operator catalog, see
+[`docs/ENTITY_WORKBENCH_AGENT_GUIDE.md`](docs/ENTITY_WORKBENCH_AGENT_GUIDE.md).
 
 ### What makes this different
 

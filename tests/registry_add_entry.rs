@@ -119,6 +119,19 @@ fn add_entry_json_appends_metadata_preserves_unknowns_and_round_trips() {
     assert_eq!(registry_json["version"], "1.2.4");
     assert_eq!(registry_json["entry_count"], 1);
     assert_eq!(registry_json["owner"], "test-suite");
+    // `updated` tracks the mutation date (fixture started at 2026-05-27).
+    let updated = chrono::NaiveDate::parse_from_str(
+        registry_json["updated"]
+            .as_str()
+            .expect("updated is a string"),
+        "%Y-%m-%d",
+    )
+    .expect("updated is YYYY-MM-DD");
+    let today = chrono::Utc::now().date_naive();
+    assert!(
+        updated == today || Some(updated) == today.pred_opt(),
+        "updated {updated} should be today ({today}) after a successful mutation"
+    );
     assert_eq!(registry_json["default_id_scheme"]["prefix"], "PPL");
 
     let aliases = read_json(&registry.path().join("aliases.json"));

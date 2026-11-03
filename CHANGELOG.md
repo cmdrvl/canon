@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.15.0 — 2026-11-02
+
+- `entity run` now executes `protected_token_conflict`. It was accepted by profile
+  validation but never evaluated, so numbered siblings ("Sub III", "Sub IV",
+  "Fund II") could share a component. Digit-bearing and series-Roman tokens
+  (i–xxxix, two letters or longer) are protected by default; `protect` and
+  `protected_tokens` params adjust that. A pair is cut only when its protected
+  sets differ and the names share an unprotected token, so "Acme Coffee" vs
+  "Acme Coffee Shop" is unaffected. A component containing such a cut is state
+  `contradiction`. Profiles that declare the operator (including the shipped
+  `cmbs_tenant_label`) may now produce hard cannot-link evidence they did not before.
+- `entity run --emit summary` warns on stderr about profile operators that are
+  declared but not executed by `run` (for example the shipped `regab_firm_identity`
+  guards). JSON mode stays silent. Profile refusals now list the supported
+  operators per lane. The operator catalog and an agent how-to are in
+  `docs/ENTITY_WORKBENCH_AGENT_GUIDE.md`.
+- `entity review export` on a `canon_entity_run.v1` artifact now returns the run's
+  items (it returned an empty queue), read from the solve the run hash-binds; the
+  queue stays bound to the run. A mismatched solve is refused.
+- `entity review export` of a solve no longer emits each escrow component twice
+  with the same `review_id`; `review import` refused those queues. An export with
+  zero items for a source that counts review groups is refused. The
+  `--artifact native-review` refusal for v1 run/solve artifacts names the
+  working command.
+- `registry mint`, `add-entry`, and `default-id-scheme` now set `updated` to the
+  mutation date, as `registry build` does. Refusals leave `registry.json` untouched.
+
 ## 0.14.0 — 2026-09-28
 
 - Cluster strategies can declare audit-gated policy acceptance for new identities.

@@ -117,7 +117,7 @@ impl EntityProfileDocument {
             return Err(EntityProfileError::new(
                 EntityRefusalKind::Profile,
                 "Entity profile is missing required identity-semantics fields",
-                json!({ "missing": missing }),
+                json!({ "missing": missing, "supported_operators": supported_operators_detail() }),
             ));
         }
 
@@ -1000,6 +1000,25 @@ const SUPPORTED_RELATION_HINT_OPS: &[&str] = &[
 
 const CROSS_PROFILE_RELATION_OPS: &[&str] = &["cross_profile_alignment"];
 
+/// Operators the profile validator accepts per evidence lane, in declaration
+/// order. Whether `canon entity run` executes each one is a separate question;
+/// see `entity::run::unwired_run_operators`.
+pub fn supported_evidence_operators() -> [(&'static str, &'static [&'static str]); 3] {
+    [
+        ("support", SUPPORTED_SUPPORT_OPS),
+        ("cannot_link", SUPPORTED_CANNOT_LINK_OPS),
+        ("relation_hints", SUPPORTED_RELATION_HINT_OPS),
+    ]
+}
+
+fn supported_operators_detail() -> serde_json::Value {
+    let lanes = supported_evidence_operators()
+        .into_iter()
+        .map(|(lane, ops)| (lane.to_string(), json!(ops)))
+        .collect::<serde_json::Map<_, _>>();
+    serde_json::Value::Object(lanes)
+}
+
 fn validate_evidence_lane(
     lane: &str,
     operators: &[EntityOperatorSpec],
@@ -1048,6 +1067,7 @@ fn unsupported_operator(lane: &str, op: &str) -> EntityProfileError {
         json!({
             "lane": lane,
             "operator": op,
+            "supported_operators": supported_operators_detail(),
             "next_command": "Run strategy lint/doctor and replace the unsupported operator"
         }),
     )

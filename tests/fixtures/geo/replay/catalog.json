@@ -9095,6 +9095,54 @@
             "/run_semantic_hash"
           ],
           "semantic_note": "GOLDEN-CHANGE bd-v8gv: advertising the two new native point contracts changes capabilities and plan identity, then the run envelope hash. Independent comparison verified that removing exactly those two capability entries reproduces prior capabilities; all eight artifact bodies and answer/status remain byte-identical. Original captures and all prior transitions are preserved. Retained integration only; no new geographic truth claim."
+        },
+        {
+          "artifact_ids": [
+            "current_answer_capture"
+          ],
+          "bead": "bd-8czc",
+          "case_id": "current_answer.brooklyn.00_neighborhood",
+          "changed_paths": [
+            "/plan_sha256",
+            "/run_semantic_hash"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0",
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-11-03",
+          "new": {
+            "output_digests": {
+              "geo.parcel.answer/answer": "blake3:14650346078afa6abf6fe7a1158fa5a66c0163117d1dc492026591d80781af82",
+              "geo.parcel.compile_evidence/compile_evidence": "blake3:56bb2b361f550d15257c7505004ab205adfb4ededffea6a9a9a5f7746565df8d",
+              "geo.parcel.explain/explanation": "blake3:c81bbe8ae1035eae6b224a9713779f0ac54932b1a40bab6dbb7e9224b5c77ba0",
+              "geo.parcel.home_cells/home_cells": "blake3:d48ffd8fc9b493bb41c3290df3e903eb180d5b09601ccb52c653d40243defb35",
+              "geo.parcel.materialize_evidence/materialize_evidence": "blake3:31a55dfbfdbcd440bdc94ae1e44f825e25ccc27693024129bddfe74a49cd6d21",
+              "geo.parcel.propagate/propagation": "blake3:643575c53f6189f02e4ccbef95ad5fc9ce3106e2be072e0b498116f13e832289",
+              "geo.parcel.section/section": "blake3:0b1dd9c98418564494f5c18015109d0e15227e750eb29fe44249c507f4810f09",
+              "geo.parcel.solve/solve": "blake3:91e8c9411f81de8b792545fd4f69bbc1167cf33674b4a5cadce05babe2931dd4"
+            },
+            "plan_sha256": "fe1a986480a2f450519eed0e22dbee27fd8e079abb171c5fe9da168baea3c48e",
+            "run_semantic_hash": "blake3:b08119c96bad8387a1e01cc46123d05877d34259742040f943ec0db7bd2dd3e3",
+            "run_status": "ABSTAINED"
+          },
+          "old": {
+            "output_digests": {
+              "geo.parcel.answer/answer": "blake3:14650346078afa6abf6fe7a1158fa5a66c0163117d1dc492026591d80781af82",
+              "geo.parcel.compile_evidence/compile_evidence": "blake3:56bb2b361f550d15257c7505004ab205adfb4ededffea6a9a9a5f7746565df8d",
+              "geo.parcel.explain/explanation": "blake3:c81bbe8ae1035eae6b224a9713779f0ac54932b1a40bab6dbb7e9224b5c77ba0",
+              "geo.parcel.home_cells/home_cells": "blake3:d48ffd8fc9b493bb41c3290df3e903eb180d5b09601ccb52c653d40243defb35",
+              "geo.parcel.materialize_evidence/materialize_evidence": "blake3:31a55dfbfdbcd440bdc94ae1e44f825e25ccc27693024129bddfe74a49cd6d21",
+              "geo.parcel.propagate/propagation": "blake3:643575c53f6189f02e4ccbef95ad5fc9ce3106e2be072e0b498116f13e832289",
+              "geo.parcel.section/section": "blake3:0b1dd9c98418564494f5c18015109d0e15227e750eb29fe44249c507f4810f09",
+              "geo.parcel.solve/solve": "blake3:91e8c9411f81de8b792545fd4f69bbc1167cf33674b4a5cadce05babe2931dd4"
+            },
+            "plan_sha256": "5e5448316fbb9922b8d60e2fb93c1c53f2dba29b83dae99f8b13b728943fb26a",
+            "run_semantic_hash": "blake3:af3ef20aff03a97cf45ad78587dfe96c473944e799f82f899f913a14f6b63159",
+            "run_status": "ABSTAINED"
+          },
+          "semantic_note": "REVIEW REQUIRED: append-only capture transition for the 0.15.0 version bump (GEO_EXECUTOR_VERSION is hashed into the plan). All stage output digests and run_status are identical; only plan_sha256 and run_semantic_hash changed. See bd-8czc."
         }
       ]
     },
@@ -9244,6 +9292,54 @@
             "/run_semantic_hash"
           ],
           "semantic_note": "GOLDEN-CHANGE bd-v8gv: advertising the two new native point contracts changes capabilities and plan identity, then the run envelope hash. Independent comparison verified that removing exactly those two capability entries reproduces prior capabilities; all eight artifact bodies and answer/status remain byte-identical. Original captures and all prior transitions are preserved. Retained integration only; no new geographic truth claim."
+        },
+        {
+          "artifact_ids": [
+            "current_answer_capture"
+          ],
+          "bead": "bd-8czc",
+          "case_id": "current_answer.brooklyn.01_address_parcel",
+          "changed_paths": [
+            "/plan_sha256",
+            "/run_semantic_hash"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0",
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-11-03",
+          "new": {
+            "output_digests": {
+              "geo.parcel.answer/answer": "blake3:a96b238a0e9db6122c3ca64bf970454ee0f097fca74c16f3e235c06162654398",
+              "geo.parcel.compile_evidence/compile_evidence": "blake3:928a7afa9544fcaddd4da869ec807744694cb6f3d463a3a47cac821d80b40694",
+              "geo.parcel.explain/explanation": "blake3:3ec20132b6a2f841dc957f26dd10cc7bbbf6736ce2be268e5294fed2c285ef61",
+              "geo.parcel.home_cells/home_cells": "blake3:d48ffd8fc9b493bb41c3290df3e903eb180d5b09601ccb52c653d40243defb35",
+              "geo.parcel.materialize_evidence/materialize_evidence": "blake3:6e8272906869defd39a6dfb9c78ada939bf8665387f711814076f007e5512f34",
+              "geo.parcel.propagate/propagation": "blake3:e6bf161c22ac759ad06c35e8cb9f04f97211ebd774112a5702582c5f01a31d03",
+              "geo.parcel.section/section": "blake3:0b1dd9c98418564494f5c18015109d0e15227e750eb29fe44249c507f4810f09",
+              "geo.parcel.solve/solve": "blake3:7e624bd143babcba11512615af1529549d1b23302a8861063f8ac15a9e442a2a"
+            },
+            "plan_sha256": "fe1a986480a2f450519eed0e22dbee27fd8e079abb171c5fe9da168baea3c48e",
+            "run_semantic_hash": "blake3:0cde67a85e7415fd7c76d6d5d8c274952f55a6c8a33612b5a136ddf163f887f1",
+            "run_status": "ABSTAINED"
+          },
+          "old": {
+            "output_digests": {
+              "geo.parcel.answer/answer": "blake3:a96b238a0e9db6122c3ca64bf970454ee0f097fca74c16f3e235c06162654398",
+              "geo.parcel.compile_evidence/compile_evidence": "blake3:928a7afa9544fcaddd4da869ec807744694cb6f3d463a3a47cac821d80b40694",
+              "geo.parcel.explain/explanation": "blake3:3ec20132b6a2f841dc957f26dd10cc7bbbf6736ce2be268e5294fed2c285ef61",
+              "geo.parcel.home_cells/home_cells": "blake3:d48ffd8fc9b493bb41c3290df3e903eb180d5b09601ccb52c653d40243defb35",
+              "geo.parcel.materialize_evidence/materialize_evidence": "blake3:6e8272906869defd39a6dfb9c78ada939bf8665387f711814076f007e5512f34",
+              "geo.parcel.propagate/propagation": "blake3:e6bf161c22ac759ad06c35e8cb9f04f97211ebd774112a5702582c5f01a31d03",
+              "geo.parcel.section/section": "blake3:0b1dd9c98418564494f5c18015109d0e15227e750eb29fe44249c507f4810f09",
+              "geo.parcel.solve/solve": "blake3:7e624bd143babcba11512615af1529549d1b23302a8861063f8ac15a9e442a2a"
+            },
+            "plan_sha256": "5e5448316fbb9922b8d60e2fb93c1c53f2dba29b83dae99f8b13b728943fb26a",
+            "run_semantic_hash": "blake3:e61f5b941d87935c69973f8a1fdbc333736178613724e1c599f14af71dff6fcf",
+            "run_status": "ABSTAINED"
+          },
+          "semantic_note": "REVIEW REQUIRED: append-only capture transition for the 0.15.0 version bump (GEO_EXECUTOR_VERSION is hashed into the plan). All stage output digests and run_status are identical; only plan_sha256 and run_semantic_hash changed. See bd-8czc."
         }
       ]
     },
@@ -9395,6 +9491,54 @@
             "/run_semantic_hash"
           ],
           "semantic_note": "GOLDEN-CHANGE bd-v8gv: advertising the two new native point contracts changes capabilities and plan identity, then the run envelope hash. Independent comparison verified that removing exactly those two capability entries reproduces prior capabilities; all eight artifact bodies and answer/status remain byte-identical. Original captures and all prior transitions are preserved. Retained integration only; no new geographic truth claim."
+        },
+        {
+          "artifact_ids": [
+            "current_answer_capture"
+          ],
+          "bead": "bd-8czc",
+          "case_id": "current_answer.brooklyn.02_address_building",
+          "changed_paths": [
+            "/plan_sha256",
+            "/run_semantic_hash"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0",
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-11-03",
+          "new": {
+            "output_digests": {
+              "geo.parcel.answer/answer": "blake3:a59c34f5adb401beb65edfd60868a7be1ca4a1a015bfc40f510dffbafe72dfe5",
+              "geo.parcel.compile_evidence/compile_evidence": "blake3:025ecc9475f17ea7554c65716e9bc435a155e1d39c7f10a71345d2189bb7b5fd",
+              "geo.parcel.explain/explanation": "blake3:c73a93b1ad61021c69161689bf472426b000850ee6d1eaa07c6b0ea98f1ca0dc",
+              "geo.parcel.home_cells/home_cells": "blake3:d48ffd8fc9b493bb41c3290df3e903eb180d5b09601ccb52c653d40243defb35",
+              "geo.parcel.materialize_evidence/materialize_evidence": "blake3:3186579e1bd8abb095b544fc6c5755174bcdbaf094084bd904d050fd34a0d93a",
+              "geo.parcel.propagate/propagation": "blake3:3a560ab7b28844a671401d39717d56e696a862b2138d604666120413e6f57318",
+              "geo.parcel.section/section": "blake3:0b1dd9c98418564494f5c18015109d0e15227e750eb29fe44249c507f4810f09",
+              "geo.parcel.solve/solve": "blake3:55b3ff520a34d72d61bfcc87eeb48e07f1e7b978d7ef4155ad7261789ac14b3e"
+            },
+            "plan_sha256": "fe1a986480a2f450519eed0e22dbee27fd8e079abb171c5fe9da168baea3c48e",
+            "run_semantic_hash": "blake3:aa3a3d9def9c8b9cea8ef0a14c570b01202bdf87ed66a9b003b4beb5b92ce6ce",
+            "run_status": "ABSTAINED"
+          },
+          "old": {
+            "output_digests": {
+              "geo.parcel.answer/answer": "blake3:a59c34f5adb401beb65edfd60868a7be1ca4a1a015bfc40f510dffbafe72dfe5",
+              "geo.parcel.compile_evidence/compile_evidence": "blake3:025ecc9475f17ea7554c65716e9bc435a155e1d39c7f10a71345d2189bb7b5fd",
+              "geo.parcel.explain/explanation": "blake3:c73a93b1ad61021c69161689bf472426b000850ee6d1eaa07c6b0ea98f1ca0dc",
+              "geo.parcel.home_cells/home_cells": "blake3:d48ffd8fc9b493bb41c3290df3e903eb180d5b09601ccb52c653d40243defb35",
+              "geo.parcel.materialize_evidence/materialize_evidence": "blake3:3186579e1bd8abb095b544fc6c5755174bcdbaf094084bd904d050fd34a0d93a",
+              "geo.parcel.propagate/propagation": "blake3:3a560ab7b28844a671401d39717d56e696a862b2138d604666120413e6f57318",
+              "geo.parcel.section/section": "blake3:0b1dd9c98418564494f5c18015109d0e15227e750eb29fe44249c507f4810f09",
+              "geo.parcel.solve/solve": "blake3:55b3ff520a34d72d61bfcc87eeb48e07f1e7b978d7ef4155ad7261789ac14b3e"
+            },
+            "plan_sha256": "5e5448316fbb9922b8d60e2fb93c1c53f2dba29b83dae99f8b13b728943fb26a",
+            "run_semantic_hash": "blake3:23b35b4ffcec18708bff80d24712216cf9af964a0a4efb20c626720231269171",
+            "run_status": "ABSTAINED"
+          },
+          "semantic_note": "REVIEW REQUIRED: append-only capture transition for the 0.15.0 version bump (GEO_EXECUTOR_VERSION is hashed into the plan). All stage output digests and run_status are identical; only plan_sha256 and run_semantic_hash changed. See bd-8czc."
         }
       ]
     },
@@ -9533,6 +9677,54 @@
             "/run_semantic_hash"
           ],
           "semantic_note": "GOLDEN-CHANGE bd-v8gv: advertising the two new native point contracts changes capabilities and plan identity, then the run envelope hash. Independent comparison verified that removing exactly those two capability entries reproduces prior capabilities; all eight artifact bodies and answer/status remain byte-identical. Original captures and all prior transitions are preserved. Retained integration only; no new geographic truth claim."
+        },
+        {
+          "artifact_ids": [
+            "current_answer_capture"
+          ],
+          "bead": "bd-8czc",
+          "case_id": "current_answer.cornerstone.national_building_supported",
+          "changed_paths": [
+            "/plan_sha256",
+            "/run_semantic_hash"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0",
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-11-03",
+          "new": {
+            "output_digests": {
+              "geo.building.answer/answer": "blake3:76651260c852f8eee011dd134b2a68cd423c17d38e39a7f258689528266698d7",
+              "geo.building.compile_evidence/compile_evidence": "blake3:469ef56590c3e6ff66e4e78cbf3546a70f31616afc0d87d8eb42cf724f3349a4",
+              "geo.building.explain/explanation": "blake3:5bff32f6935aa415d0a7009e472b387e2221efb92d0b944cac85da061e943aa2",
+              "geo.building.home_cells/home_cells": "blake3:c7f225275243ecf120760e5f1d0d043946371cdb25ebe11abd231372ce40fe0a",
+              "geo.building.materialize_evidence/materialize_evidence": "blake3:40318d421043648dcceb866cf410138093851a94298be4cd560bb6be301cc8c5",
+              "geo.building.propagate/propagation": "blake3:173a49248f9ca4201bd295ddb074a3c53cc5128470b99d1172119753e377b5f5",
+              "geo.building.section/section": "blake3:cfeb94b5684902d1074c6074cfa8c646f182d463b256db28c071cd53b005444b",
+              "geo.building.solve/solve": "blake3:6342c0b4d8790437be4e2604a30c5b3ecf09e6d763527f0eb117689fad961e12"
+            },
+            "plan_sha256": "4c2aed8418242d36faa101f83c0e238999b2faa9b04764bffa18524cc311cc8b",
+            "run_semantic_hash": "blake3:7b2a9c06c05714dd89db1c2a325ac42577fd904adebf519dccd9dabe99eb84c6",
+            "run_status": "ABSTAINED"
+          },
+          "old": {
+            "output_digests": {
+              "geo.building.answer/answer": "blake3:76651260c852f8eee011dd134b2a68cd423c17d38e39a7f258689528266698d7",
+              "geo.building.compile_evidence/compile_evidence": "blake3:469ef56590c3e6ff66e4e78cbf3546a70f31616afc0d87d8eb42cf724f3349a4",
+              "geo.building.explain/explanation": "blake3:5bff32f6935aa415d0a7009e472b387e2221efb92d0b944cac85da061e943aa2",
+              "geo.building.home_cells/home_cells": "blake3:c7f225275243ecf120760e5f1d0d043946371cdb25ebe11abd231372ce40fe0a",
+              "geo.building.materialize_evidence/materialize_evidence": "blake3:40318d421043648dcceb866cf410138093851a94298be4cd560bb6be301cc8c5",
+              "geo.building.propagate/propagation": "blake3:173a49248f9ca4201bd295ddb074a3c53cc5128470b99d1172119753e377b5f5",
+              "geo.building.section/section": "blake3:cfeb94b5684902d1074c6074cfa8c646f182d463b256db28c071cd53b005444b",
+              "geo.building.solve/solve": "blake3:6342c0b4d8790437be4e2604a30c5b3ecf09e6d763527f0eb117689fad961e12"
+            },
+            "plan_sha256": "b75ffe3beb9f36f6e0dc21540afa8e8c766501712b0f2397cb5d2e5d476b47f7",
+            "run_semantic_hash": "blake3:06b7a23e7a65f91d7345cdcb31e5f1007536661bb991819cc4dbb802f5f02cc4",
+            "run_status": "ABSTAINED"
+          },
+          "semantic_note": "REVIEW REQUIRED: append-only capture transition for the 0.15.0 version bump (GEO_EXECUTOR_VERSION is hashed into the plan). All stage output digests and run_status are identical; only plan_sha256 and run_semantic_hash changed. See bd-8czc."
         }
       ]
     },
@@ -9671,6 +9863,54 @@
             "/run_semantic_hash"
           ],
           "semantic_note": "GOLDEN-CHANGE bd-v8gv: advertising the two new native point contracts changes capabilities and plan identity, then the run envelope hash. Independent comparison verified that removing exactly those two capability entries reproduces prior capabilities; all eight artifact bodies and answer/status remain byte-identical. Original captures and all prior transitions are preserved. Retained integration only; no new geographic truth claim."
+        },
+        {
+          "artifact_ids": [
+            "current_answer_capture"
+          ],
+          "bead": "bd-8czc",
+          "case_id": "current_answer.cornerstone.national_building",
+          "changed_paths": [
+            "/plan_sha256",
+            "/run_semantic_hash"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0",
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-11-03",
+          "new": {
+            "output_digests": {
+              "geo.building.answer/answer": "blake3:17cadea56af1af62e669c45f17b235257af726db723212a2ef6096523363670c",
+              "geo.building.compile_evidence/compile_evidence": "blake3:ffbb9fccf80e2556c9ee404ad2c9bfe6154f9df5d0e441415b869ddfa4fcedc3",
+              "geo.building.explain/explanation": "blake3:f09ea12388c921f91f99820a6cecbf48316e4f7af5a70f305ee0dfe533d4093a",
+              "geo.building.home_cells/home_cells": "blake3:7bf376207b16cc1a1f70d9970b3018f59ff678531c17a66276c38d6ccfaca7da",
+              "geo.building.materialize_evidence/materialize_evidence": "blake3:07d67337a0539598fe6c8ec487d77b100e32bdbd985977e93ad984e80f22baae",
+              "geo.building.propagate/propagation": "blake3:615fd1749896eb539126e94f96f51dbe04ddb2b33df48b5c598fb02e39679004",
+              "geo.building.section/section": "blake3:c60e8152c6e8319d13a833ba042378b3089a6045b8f9d0822997f49b44595b72",
+              "geo.building.solve/solve": "blake3:960b48da84c06eb28a1937e8bdbb3ba192b9845d17fdeeafb49512d5f2e36317"
+            },
+            "plan_sha256": "2f93e3f9ff44c959169618d30c9b125580e885d688b5d54244f21597122dc76f",
+            "run_semantic_hash": "blake3:03fa1310b0e7f54905164e33bf9823c354e2516eec482af83f7dd24b37f44b80",
+            "run_status": "ABSTAINED"
+          },
+          "old": {
+            "output_digests": {
+              "geo.building.answer/answer": "blake3:17cadea56af1af62e669c45f17b235257af726db723212a2ef6096523363670c",
+              "geo.building.compile_evidence/compile_evidence": "blake3:ffbb9fccf80e2556c9ee404ad2c9bfe6154f9df5d0e441415b869ddfa4fcedc3",
+              "geo.building.explain/explanation": "blake3:f09ea12388c921f91f99820a6cecbf48316e4f7af5a70f305ee0dfe533d4093a",
+              "geo.building.home_cells/home_cells": "blake3:7bf376207b16cc1a1f70d9970b3018f59ff678531c17a66276c38d6ccfaca7da",
+              "geo.building.materialize_evidence/materialize_evidence": "blake3:07d67337a0539598fe6c8ec487d77b100e32bdbd985977e93ad984e80f22baae",
+              "geo.building.propagate/propagation": "blake3:615fd1749896eb539126e94f96f51dbe04ddb2b33df48b5c598fb02e39679004",
+              "geo.building.section/section": "blake3:c60e8152c6e8319d13a833ba042378b3089a6045b8f9d0822997f49b44595b72",
+              "geo.building.solve/solve": "blake3:960b48da84c06eb28a1937e8bdbb3ba192b9845d17fdeeafb49512d5f2e36317"
+            },
+            "plan_sha256": "10eac0f2927c46db9146ac34ea466c2b8a1cb06954563217ff58ee298c0a5728",
+            "run_semantic_hash": "blake3:688630cd4d7fdf1914bb0d30111fee3471de1691b6a05b9a25ccaaed8374c7e7",
+            "run_status": "ABSTAINED"
+          },
+          "semantic_note": "REVIEW REQUIRED: append-only capture transition for the 0.15.0 version bump (GEO_EXECUTOR_VERSION is hashed into the plan). All stage output digests and run_status are identical; only plan_sha256 and run_semantic_hash changed. See bd-8czc."
         }
       ]
     },
@@ -9724,7 +9964,57 @@
         "plan_sha256": "59d05c98ba66cc9de4049493835f86659c05ba0c1a1bd5e14573c043ae2b7c3b",
         "run_semantic_hash": "blake3:f4a1934f8e8eb7c9d094173fe5717c94ddffd5cce5db65107b8dc7e588d7acba",
         "run_status": "ABSTAINED"
-      }
+      },
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "current_answer_capture"
+          ],
+          "bead": "bd-8czc",
+          "case_id": "current_answer.cornerstone.national_parcel_supported",
+          "changed_paths": [
+            "/plan_sha256",
+            "/run_semantic_hash"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0",
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-11-03",
+          "new": {
+            "output_digests": {
+              "geo.parcel.answer/answer": "blake3:9269a6ebe667ebdd754aba244c3e71b42c6517621a4835703acc3f7049640c3a",
+              "geo.parcel.compile_evidence/compile_evidence": "blake3:de5a04edb9f01bcc071820ff2c8dfff57632c2ca64bb1cc22f4f029e34789f9c",
+              "geo.parcel.explain/explanation": "blake3:5a2f1f1f172a9b94c4e7b7489ef697c8e514d0edafa8c9028188864e4d8c20bd",
+              "geo.parcel.home_cells/home_cells": "blake3:ed14ae1959738481293395a223140e2f602adc5512bdaf57f901747a9d9000fd",
+              "geo.parcel.materialize_evidence/materialize_evidence": "blake3:54338232952d0fcd4b397eabb0a66820a461246d1c98cfa70165a221c32f9466",
+              "geo.parcel.propagate/propagation": "blake3:39762cfe210dee6d8841f0bcc4c2bf3e58472a95979d0557ec7c14e1e4934d8d",
+              "geo.parcel.section/section": "blake3:08b537c4a1d0542c6d0c19ee2e4260b08e96a0143985536f88c6918ed2ce35ba",
+              "geo.parcel.solve/solve": "blake3:7af7c8b02c99ecf835dd12fe6ad8643e1430db5631235c231838fb4b1e8c9048"
+            },
+            "plan_sha256": "25ae6dced75057165a691b064e135bac649e14a7bb4bfa9c5ef226689dde953a",
+            "run_semantic_hash": "blake3:6699ea9597e4cb4e080e72eadc4ecc9aca33f7f682ce1a0179e481c14c3a2bcd",
+            "run_status": "ABSTAINED"
+          },
+          "old": {
+            "output_digests": {
+              "geo.parcel.answer/answer": "blake3:9269a6ebe667ebdd754aba244c3e71b42c6517621a4835703acc3f7049640c3a",
+              "geo.parcel.compile_evidence/compile_evidence": "blake3:de5a04edb9f01bcc071820ff2c8dfff57632c2ca64bb1cc22f4f029e34789f9c",
+              "geo.parcel.explain/explanation": "blake3:5a2f1f1f172a9b94c4e7b7489ef697c8e514d0edafa8c9028188864e4d8c20bd",
+              "geo.parcel.home_cells/home_cells": "blake3:ed14ae1959738481293395a223140e2f602adc5512bdaf57f901747a9d9000fd",
+              "geo.parcel.materialize_evidence/materialize_evidence": "blake3:54338232952d0fcd4b397eabb0a66820a461246d1c98cfa70165a221c32f9466",
+              "geo.parcel.propagate/propagation": "blake3:39762cfe210dee6d8841f0bcc4c2bf3e58472a95979d0557ec7c14e1e4934d8d",
+              "geo.parcel.section/section": "blake3:08b537c4a1d0542c6d0c19ee2e4260b08e96a0143985536f88c6918ed2ce35ba",
+              "geo.parcel.solve/solve": "blake3:7af7c8b02c99ecf835dd12fe6ad8643e1430db5631235c231838fb4b1e8c9048"
+            },
+            "plan_sha256": "59d05c98ba66cc9de4049493835f86659c05ba0c1a1bd5e14573c043ae2b7c3b",
+            "run_semantic_hash": "blake3:f4a1934f8e8eb7c9d094173fe5717c94ddffd5cce5db65107b8dc7e588d7acba",
+            "run_status": "ABSTAINED"
+          },
+          "semantic_note": "REVIEW REQUIRED: append-only capture transition for the 0.15.0 version bump (GEO_EXECUTOR_VERSION is hashed into the plan). All stage output digests and run_status are identical; only plan_sha256 and run_semantic_hash changed. See bd-8czc."
+        }
+      ]
     },
     {
       "case_id": "current_answer.courtney.final_hints",
@@ -9792,7 +10082,57 @@
         "plan_sha256": "6cb1267dc8f967af693f5d3b1947e3dc5ec4b5566e03f23c5796848f9ab07e07",
         "run_semantic_hash": "blake3:d3c51f3368874794b02af136cf458924f035b7e07576d1f9ae2a6ae2f1258e87",
         "run_status": "ABSTAINED"
-      }
+      },
+      "golden_changes": [
+        {
+          "artifact_ids": [
+            "current_answer_capture"
+          ],
+          "bead": "bd-8czc",
+          "case_id": "current_answer.courtney.final_hints",
+          "changed_paths": [
+            "/plan_sha256",
+            "/run_semantic_hash"
+          ],
+          "commit": null,
+          "contract_versions": [
+            "canon_geo_run.v0",
+            "canon_geo_run.v0"
+          ],
+          "date": "2026-11-03",
+          "new": {
+            "output_digests": {
+              "geo.parcel.answer/answer": "blake3:21f60fe0e268eaac82d0b78b7d7c00493f5ac3138952e151997b4a1ca996e780",
+              "geo.parcel.compile_evidence/compile_evidence": "blake3:54caf443efcb1b8b004c1328d32eb5c9f996004cfcdae69618542502bb13808c",
+              "geo.parcel.explain/explanation": "blake3:23e72cf92094be0ff935f40135044a985785275142c68a042223a9350e0c2412",
+              "geo.parcel.home_cells/home_cells": "blake3:9efbf88c2734f38e1421b52aee68ccf6d6555d7a017da490804ad292096f3000",
+              "geo.parcel.materialize_evidence/materialize_evidence": "blake3:dec257bc88f55c5708f6b43cddbc3b025fc3fe930d1a2eabc3f7aae2e80fb9ed",
+              "geo.parcel.propagate/propagation": "blake3:f5d6256e64fb3f15184678307620dddf8cbe03cdd0c336cce1b7f6a840387019",
+              "geo.parcel.section/section": "blake3:a9abb96be70e60e0dc43e381994126bf8ffacf78f8581a45413526f9d81ccc37",
+              "geo.parcel.solve/solve": "blake3:ead25cf3c7437bf3a48d658cb2481f5ce6748c16020b3f3dda5ba3be0644fa64"
+            },
+            "plan_sha256": "6a949f7f05b7b57fa57e938db8ffbaee3f56a0b8d600e89ef226259258dfcbb4",
+            "run_semantic_hash": "blake3:41c28b716d0d269ba99d039cbf9f281f6c74f043a7748db05cf62a18e1d7f70a",
+            "run_status": "ABSTAINED"
+          },
+          "old": {
+            "output_digests": {
+              "geo.parcel.answer/answer": "blake3:21f60fe0e268eaac82d0b78b7d7c00493f5ac3138952e151997b4a1ca996e780",
+              "geo.parcel.compile_evidence/compile_evidence": "blake3:54caf443efcb1b8b004c1328d32eb5c9f996004cfcdae69618542502bb13808c",
+              "geo.parcel.explain/explanation": "blake3:23e72cf92094be0ff935f40135044a985785275142c68a042223a9350e0c2412",
+              "geo.parcel.home_cells/home_cells": "blake3:9efbf88c2734f38e1421b52aee68ccf6d6555d7a017da490804ad292096f3000",
+              "geo.parcel.materialize_evidence/materialize_evidence": "blake3:dec257bc88f55c5708f6b43cddbc3b025fc3fe930d1a2eabc3f7aae2e80fb9ed",
+              "geo.parcel.propagate/propagation": "blake3:f5d6256e64fb3f15184678307620dddf8cbe03cdd0c336cce1b7f6a840387019",
+              "geo.parcel.section/section": "blake3:a9abb96be70e60e0dc43e381994126bf8ffacf78f8581a45413526f9d81ccc37",
+              "geo.parcel.solve/solve": "blake3:ead25cf3c7437bf3a48d658cb2481f5ce6748c16020b3f3dda5ba3be0644fa64"
+            },
+            "plan_sha256": "6cb1267dc8f967af693f5d3b1947e3dc5ec4b5566e03f23c5796848f9ab07e07",
+            "run_semantic_hash": "blake3:d3c51f3368874794b02af136cf458924f035b7e07576d1f9ae2a6ae2f1258e87",
+            "run_status": "ABSTAINED"
+          },
+          "semantic_note": "REVIEW REQUIRED: append-only capture transition for the 0.15.0 version bump (GEO_EXECUTOR_VERSION is hashed into the plan). All stage output digests and run_status are identical; only plan_sha256 and run_semantic_hash changed. See bd-8czc."
+        }
+      ]
     },
     {
       "case_id": "nxrt.truth_probe",
