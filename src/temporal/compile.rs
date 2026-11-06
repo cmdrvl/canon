@@ -5,7 +5,8 @@ use super::conflict::{
     ConflictDisposition, ConflictPolicy, ConflictRecord, compile_conflict_artifact,
 };
 use super::fact::{
-    RecordedTime, SourceLocator, TemporalError, TemporalErrorCode, TemporalResult, TimeInterval,
+    AssertionStatus, RecordedTime, SourceLocator, TemporalError, TemporalErrorCode, TemporalResult,
+    TimeInterval,
 };
 use crate::RegistryDiffEntry;
 use crate::registry::{
@@ -100,6 +101,7 @@ pub struct TemporalCompileMappingProof {
 #[serde(rename_all = "snake_case")]
 pub enum TemporalCompileOmissionReason {
     ConflictAbstained,
+    AssertionNotAccepted,
     ScopeExcluded,
     NonGlobalVisibility,
     RelationSidecarOnly,
@@ -149,6 +151,20 @@ pub fn compile_exact_lookup_snapshot(
                 "global exact claim_id {claim_id} was not present in conflict artifact history"
             ))
         })?;
+
+        // Asserted claims remain in native snapshot/conflict analysis, but
+        // visibility and a conflict-policy winner do not confer acceptance.
+        if !matches!(claim.assertion_status, AssertionStatus::Accepted) {
+            omissions.push(TemporalCompileOmission {
+                reason: TemporalCompileOmissionReason::AssertionNotAccepted,
+                subject_key: claim.claim_id.clone(),
+                claim_ids: vec![claim.claim_id.clone()],
+                policy_clause_ids: Vec::new(),
+                message: "claim is not accepted and cannot enter an exact lookup package"
+                    .to_string(),
+            });
+            continue;
+        }
 
         let mut policy_clause_ids = policy_clause_ids_by_claim
             .get(claim_id)

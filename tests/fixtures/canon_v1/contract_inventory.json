@@ -3,6 +3,14 @@
   "bead": "bd-glo7",
   "command_rows": [
     {
+      "id": "canon temporal compile",
+      "family": "temporal",
+      "clap_path": "temporal compile",
+      "operator_name": "temporal compile",
+      "primary_contracts": ["canon.temporal.compile.v1"],
+      "action": "preserve"
+    },
+    {
       "id": "canon <INPUT>",
       "family": "core",
       "clap_path": null,

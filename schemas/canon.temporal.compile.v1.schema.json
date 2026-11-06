@@ -564,6 +564,7 @@
           "type": "string",
           "enum": [
             "conflict_abstained",
+            "assertion_not_accepted",
             "scope_excluded",
             "non_global_visibility",
             "relation_sidecar_only"

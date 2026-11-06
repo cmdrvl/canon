@@ -165,6 +165,8 @@ pub enum CanonCommand {
     Geo(GeoCli),
     /// Unresolved inbox triage, review export, and bounded entity planning
     Inbox(InboxCli),
+    /// Compile dated identity assertions into an exact-lookup snapshot
+    Temporal(crate::temporal::cli::TemporalCli),
     /// Registry maintenance and inspection commands
     Registry(RegistryCommand),
     /// Profiled entity workbench commands

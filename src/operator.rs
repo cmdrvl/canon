@@ -67,6 +67,18 @@ pub const CORE_PLATFORM_CLASSES: &[PlatformClass] = &[
 
 pub const COMMAND_SAFETY_DECLARATIONS: &[CommandSafetyDeclaration] = &[
     CommandSafetyDeclaration {
+        command: "temporal compile",
+        operator_contract_name: Some("temporal compile"),
+        usage: "canon temporal compile --request <REQUEST.json> --no-witness",
+        read_only: false,
+        mutation: MutationClass::OwnedOutput,
+        network: NetworkClass::Offline,
+        concurrency: ConcurrencyClass::IsolatedRunner,
+        platforms: &[PlatformClass::PortablePathUtf8],
+        owned_temp_fixtures_only: true,
+        notes: "offline snapshot to stdout; optional ambient witness append, disabled by --no-witness; no registry mutation",
+    },
+    CommandSafetyDeclaration {
         command: "doctor",
         operator_contract_name: Some("doctor"),
         usage: "canon doctor [health --json|capabilities --json|robot-docs|--robot-triage]",

@@ -32,7 +32,7 @@ review queues/inboxes, and promote only accepted knowledge back into registry
 files.
 
 That boundary is the product. `canon` can help create registries, package them,
-export them to dbt/search consumers, compare temporal snapshots, and run
+export them to dbt/search consumers, compile dated temporal snapshots, and run
 project workflows. It does not ship industry ontology, provider knowledge, or a
 probabilistic runtime lookup engine. Domain expertise lives in registries,
 profiles, strategies, packages, or out-of-tree extensions that operators choose
@@ -50,7 +50,7 @@ for the boundary. For the `canon entity` workflow and its operator catalog, see
 - **Evidence workbenches** — `canon entity` compiles profiled observations into registry proposals. Cluster mode finds same-entity groups within one corpus; link mode aligns a reference corpus to a target corpus through the same artifact path. Both keep relationship evidence separate from equivalence merge evidence.
 - **Geographic evidence for agents** — `canon geo` connects supplied property hints, addresses, source records, and geometry in bounded offline runs. Agents bring evidence from MCP-accessible datasets and source lookups; Geo preserves the supporting records, entity grain, alternatives, and solver guarantees. [REIT experiments](scripts/geo_measurements/fixtures/cornerstone_national_2026-09-17/README.md) demonstrate candidate discovery and corroboration; general source-neutral association acceptance remains in development.
 - **Cross-source structural linkage** — `canon entity link` aligns two local row sets under an explicit YAML strategy and emits hash-bound `canon_entity_link.v1` decisions plus observation/surface bindings. Accepted knowledge enters registries through review, audit, promotion, and exact apply; direct `--write-back` currently refuses before mutation.
-- **Distribution surfaces** — `canon registry export` preserves dbt seed and SQLite search-index consumers; package, project, and temporal workflows move the same registry knowledge through reproducible deployment and snapshot checks.
+- **Distribution surfaces** — `canon registry export` preserves dbt seed and SQLite search-index consumers; package and project workflows support reproducible deployment. `canon temporal compile` emits dated snapshot packages without installing them; temporal diff/explain remain library APIs.
 
 ---
 
@@ -112,7 +112,8 @@ yet know enough.
 | `canon entity calibrate sweep <RESULT> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml>` | Sweep integer threshold tuples against gold labels and emit a truth-space recommendation report. | Read-only workbench report; no registry writes, no strategy mutation, frozen `canon.entity.quality.v1` gates. |
 | `canon entity calibrate em <EVIDENCE.jsonl> --strategy <STRATEGY.yaml>` | Estimate support-evidence weights from aggregated agreement patterns and emit proposed support-score YAML. | Read-only calibration assist; fixed-point EM over existing evidence only, no registry writes, no strategy mutation, no automatic authority. |
 | `canon registry export --format dbt-seed|search-index` | Project exact registry knowledge into transform or serving artifacts. | Deterministic downstream snapshots; no new matching semantics. |
-| Package, project, and temporal workflows | Move registries and strategies through reproducible deployment, project locks, and snapshot comparison. | They package and check knowledge; they do not change exact lookup. |
+| `canon temporal compile --request <REQUEST.json> [--emit json\|summary] [--no-witness]` | Compile the native `TemporalCompileRequest` at explicit `valid_at` and `known_as_of` cutoffs into `canon.temporal.compile.v1`. | Offline snapshot artifact with mapping proofs and conflict omissions; no registry writes or promotion. Exit 0 means compilation succeeded, including an empty or conflict-omitting snapshot. Malformed or invalid requests refuse with exit 2. |
+| Package and project workflows | Move registries and strategies through reproducible deployment and project locks. | They package and check knowledge; they do not change exact lookup. |
 | Extensions and adapters | Add profiles, source mappings, provider materializers, and domain policies out of tree. | Domain expertise stays outside Canon core defaults unless explicitly packaged and audited. |
 
 The accretion loop is intentionally repetitive: unresolved or ambiguous evidence
@@ -406,6 +407,7 @@ canon doctor health [--json]
 canon doctor capabilities [--json]
 canon doctor robot-docs
 canon doctor --robot-triage
+canon temporal compile --request <REQUEST.json> [--emit json|summary] [--max-bytes <N>] [--no-witness]
 canon package pack --root <DIR> --package <package.json> --out <ARCHIVE>
 canon package inspect <ARCHIVE> [--emit json|summary]
 canon package verify <ARCHIVE> [--emit json|summary]

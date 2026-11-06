@@ -187,6 +187,7 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
         CanonCommand::Project(project) => project::cli::run(project),
         CanonCommand::Geo(geo) => geo::cli::run(geo),
         CanonCommand::Inbox(inbox) => inbox::cli::run(inbox),
+        CanonCommand::Temporal(temporal) => temporal::cli::run(temporal),
         CanonCommand::Registry(command) => match &command.command {
             RegistrySubcommand::Export(export) => run_registry_export(export),
             RegistrySubcommand::NextId(next_id) => run_registry_next_id(next_id),

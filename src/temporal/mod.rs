@@ -8,6 +8,7 @@
 
 pub mod alias;
 pub mod assignment;
+pub mod cli;
 pub mod compile;
 pub mod conflict;
 pub mod diff;

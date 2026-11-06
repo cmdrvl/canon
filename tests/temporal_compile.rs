@@ -45,7 +45,10 @@ use temporal_impl::compile::{
     TemporalCompileRequest, TemporalRelationSidecar, canonical_compile_bytes,
     compile_exact_lookup_snapshot,
 };
-use temporal_impl::conflict::{CANON_TEMPORAL_CONFLICT_POLICY_VERSION, ConflictPolicy};
+use temporal_impl::conflict::{
+    CANON_TEMPORAL_CONFLICT_POLICY_VERSION, ConflictClass, ConflictPolicy, ConflictPolicyClause,
+    ConflictResolution,
+};
 use temporal_impl::fact::{
     AssertionStatus, IntervalBoundary, RecordedTime, SourceLocator, TimeInterval,
 };
@@ -108,6 +111,79 @@ fn compile_is_deterministic_across_input_order_and_validates_package_firewall() 
         "deterministic snapshot: {} lookup entries, {} omissions",
         artifact_a.registry_package.lookup_entries.len(),
         artifact_a.omissions.len()
+    );
+}
+
+#[test]
+fn asserted_claims_do_not_acquire_acceptance_from_global_visibility() {
+    let accepted = global_claim("ACCEPTED", "ent:a", "accepted_source");
+    let mut asserted = global_claim("ASSERTED", "ent:b", "asserted_source");
+    asserted.assertion_status = AssertionStatus::Asserted;
+    let output = compile_exact_lookup_snapshot(compile_request(vec![accepted, asserted])).unwrap();
+    assert_eq!(output.registry_package.lookup_entries.len(), 1);
+    assert_eq!(output.registry_package.lookup_entries[0].input, "ACCEPTED");
+    assert_eq!(output.mapping_proofs.len(), 1);
+    let omission = output
+        .omissions
+        .iter()
+        .find(|item| item.reason == TemporalCompileOmissionReason::AssertionNotAccepted)
+        .unwrap();
+    assert_eq!(omission.claim_ids.len(), 1);
+    validate_registry_package(&output.registry_package).unwrap();
+    assert!(SCHEMA_JSON.contains("assertion_not_accepted"));
+
+    let accepted = global_claim("CONFLICT", "ent:a", "accepted_source");
+    let mut asserted = global_claim("CONFLICT", "ent:b", "asserted_source");
+    asserted.assertion_status = AssertionStatus::Asserted;
+    let conflict =
+        compile_exact_lookup_snapshot(compile_request(vec![accepted, asserted])).unwrap();
+    assert!(conflict.registry_package.lookup_entries.is_empty());
+    assert!(
+        conflict
+            .omissions
+            .iter()
+            .any(|item| item.reason == TemporalCompileOmissionReason::ConflictAbstained)
+    );
+}
+
+#[test]
+fn source_precedence_selects_evidence_without_granting_acceptance() {
+    let accepted = global_claim("CONFLICT", "ent:a", "accepted_source");
+    let mut asserted = global_claim("CONFLICT", "ent:b", "preferred_source");
+    asserted.assertion_status = AssertionStatus::Asserted;
+    let mut request = compile_request(vec![accepted, asserted]);
+    request.policy.clauses = vec![ConflictPolicyClause {
+        clause_id: "prefer-source".to_string(),
+        conflict_class: ConflictClass::SourceDisagreement,
+        resolution: ConflictResolution::PreferSourceOrder {
+            source_systems: vec![
+                "preferred_source".to_string(),
+                "accepted_source".to_string(),
+            ],
+        },
+    }];
+    let artifact = compile_exact_lookup_snapshot(request.clone()).unwrap();
+    assert!(artifact.registry_package.lookup_entries.is_empty());
+    assert!(artifact.mapping_proofs.is_empty());
+    assert!(artifact.omissions.iter().any(|omission| {
+        omission.reason == TemporalCompileOmissionReason::AssertionNotAccepted
+    }));
+    assert!(
+        !artifact.omissions.iter().any(|omission| {
+            omission.reason == TemporalCompileOmissionReason::ConflictAbstained
+        })
+    );
+
+    request.claims[1].assertion_status = AssertionStatus::Accepted;
+    let accepted = compile_exact_lookup_snapshot(request).unwrap();
+    assert_eq!(accepted.registry_package.lookup_entries.len(), 1);
+    assert_eq!(
+        accepted.registry_package.lookup_entries[0].canonical_id,
+        "ent:b"
+    );
+    assert_eq!(
+        accepted.mapping_proofs[0].policy_clause_ids,
+        vec!["prefer-source"]
     );
 }
 

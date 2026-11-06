@@ -80,6 +80,7 @@ canon doctor health [--json]
 canon doctor capabilities [--json]
 canon doctor robot-docs
 canon doctor --robot-triage
+canon temporal compile --request <REQUEST.json> [--emit json|summary] [--max-bytes <N>] [--no-witness]
 canon package pack --root <DIR> --package <package.json> --out <ARCHIVE>
 canon package inspect <ARCHIVE> [--emit json|summary]
 canon package verify <ARCHIVE> [--emit json|summary]
