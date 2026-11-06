@@ -5079,7 +5079,13 @@ fn run_entity_native_review_artifact_export_command(
     result_probe: &serde_json::Value,
     result_bytes: &[u8],
 ) -> Result<u8, Box<dyn Error>> {
-    let artifact = if entity_artifact_value_looks_like_native_solve_v0(result_probe) {
+    let artifact = if entity_artifact_version(result_probe)
+        == Some(entity::CANON_ENTITY_SOLVE_VERSION_V1)
+    {
+        run_entity_native_solve_v1_review_artifact_export(export, result_probe)
+    } else if entity_artifact_version(result_probe) == Some(entity::CANON_ENTITY_RUN_VERSION_V1) {
+        run_entity_native_run_v1_review_artifact_export(export, result_probe, result_bytes)
+    } else if entity_artifact_value_looks_like_native_solve_v0(result_probe) {
         run_entity_native_solve_review_artifact_export(export, result_bytes)
     } else if entity_artifact_value_looks_like_native_run_v0(result_probe) {
         run_entity_native_run_review_artifact_export(export, result_bytes)
@@ -5106,6 +5112,8 @@ fn run_entity_native_review_artifact_export_command(
                 "expected": [
                     entity::CANON_ENTITY_SOLVE_VERSION,
                     entity::CANON_ENTITY_RUN_VERSION,
+                    entity::CANON_ENTITY_SOLVE_VERSION_V1,
+                    entity::CANON_ENTITY_RUN_VERSION_V1,
                     entity::run::link::ENTITY_LINK_VERSION
                 ],
                 "actual": actual,
@@ -5144,6 +5152,62 @@ fn run_entity_native_solve_review_artifact_export(
     )?;
     let review_queue = build_entity_native_review_queue(export, solve)?;
     let source_execution_hash = review_queue.source_solve_hash.clone();
+    build_entity_native_review_artifact(review_queue, source_execution_hash)
+}
+
+#[allow(clippy::result_large_err)]
+fn run_entity_native_solve_v1_review_artifact_export(
+    export: &EntityReviewExportCli,
+    result_probe: &serde_json::Value,
+) -> Result<entity::review_export::NativeReviewArtifact, CanonOutput> {
+    let review_queue = build_entity_native_review_queue_from_v1(export, result_probe.clone())?;
+    let source_execution_hash = review_queue.source_solve_hash.clone();
+    build_entity_native_review_artifact(review_queue, source_execution_hash)
+}
+
+#[allow(clippy::result_large_err)]
+fn run_entity_native_run_v1_review_artifact_export(
+    export: &EntityReviewExportCli,
+    result_probe: &serde_json::Value,
+    result_bytes: &[u8],
+) -> Result<entity::review_export::NativeReviewArtifact, CanonOutput> {
+    entity::schema::validate_artifact_v1_core_contract(result_probe)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    entity::schema::validate_entity_v1_self_hash(result_probe)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    let run: entity::run::EntityRunArtifact = deserialize_native_entity_artifact(
+        result_bytes,
+        &export.result,
+        "entity run artifact",
+        "native_review_export",
+        entity::CANON_ENTITY_RUN_VERSION_V1,
+    )?;
+    if run.version != entity::CANON_ENTITY_RUN_VERSION_V1 {
+        return Err(native_entity_artifact_contract_refusal(
+            "Run artifact has the wrong native v1 contract version",
+            serde_json::json!({
+                "stage": "native_review_export",
+                "path": export.result.display().to_string(),
+                "field": "version",
+                "expected": entity::CANON_ENTITY_RUN_VERSION_V1,
+                "actual": run.version,
+                "writes_performed": false
+            }),
+        ));
+    }
+    let solve_value = resolve_entity_run_v1_review_source(&export.result, result_probe)?
+        .ok_or_else(|| {
+            native_entity_artifact_contract_refusal(
+                "Run v1 native review export requires one hash-bound solve stage",
+                serde_json::json!({
+                    "stage": "native_review_export",
+                    "field": "stage_artifacts.solve",
+                    "writes_performed": false
+                }),
+            )
+        })?;
+    let review_queue = build_entity_native_review_queue_from_v1(export, solve_value)?;
+    let source_execution_hash = run.artifact_content_hash.clone();
     build_entity_native_review_artifact(review_queue, source_execution_hash)
 }
 
@@ -5800,6 +5864,20 @@ fn build_entity_native_review_queue(
 }
 
 #[allow(clippy::result_large_err)]
+fn build_entity_native_review_queue_from_v1(
+    export: &EntityReviewExportCli,
+    solve_value: serde_json::Value,
+) -> Result<entity::review::ReviewQueueArtifact, CanonOutput> {
+    entity::review::build_review_queue_artifact_from_v1_solve(
+        solve_value,
+        map_entity_review_include_v1(&export.include),
+        Vec::new(),
+        Vec::new(),
+    )
+    .map_err(|refusal| refusal.to_canon_output())
+}
+
+#[allow(clippy::result_large_err)]
 fn render_entity_native_review_export(
     export: &EntityReviewExportCli,
     artifact: &entity::review::ReviewQueueArtifact,
@@ -6289,6 +6367,20 @@ fn resolve_entity_run_v1_review_source(
         .get("artifact_content_hash")
         .and_then(serde_json::Value::as_str)
         .unwrap_or_default();
+    let stage_version = stage
+        .get("version")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    if stage_version != entity::contracts::CANON_ENTITY_SOLVE_VERSION_V1 {
+        return Err(refuse(
+            "Run artifact solve stage must reference solve.v1",
+            "stage_artifacts.solve.version",
+            serde_json::json!({
+                "expected": entity::contracts::CANON_ENTITY_SOLVE_VERSION_V1,
+                "actual": stage_version
+            }),
+        ));
+    }
     let relative_path = Path::new(relative);
     if relative.is_empty()
         || relative_path.is_absolute()

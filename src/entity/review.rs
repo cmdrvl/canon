@@ -16,7 +16,7 @@ use crate::{
         schema::{
             CANON_ENTITY_REVIEW_QUEUE_VERSION, entity_v1_artifact_reference,
             entity_v1_lifecycle_metadata_from_source, finalize_entity_v1_self_hash,
-            validate_artifact_v1_core_contract,
+            validate_artifact_v1_core_contract, validate_entity_v1_self_hash,
         },
         solve::{
             SolveArtifact, SolveComponentDiagnostics, SolveEvidenceCut, SolveReconciliationState,
@@ -132,6 +132,63 @@ pub fn build_review_queue_artifact(
     request: ReviewQueueRequest,
 ) -> Result<ReviewQueueArtifact, Refusal> {
     validate_solve_artifact_contract(&request.solve_artifact)?;
+    build_review_queue_artifact_from_validated_solve(request, CANON_ENTITY_SOLVE_VERSION)
+}
+
+/// Build the native queue projection for a `canon_entity_solve.v1` artifact.
+/// The raw v1 self-hash is checked before deserializing; the typed envelope
+/// validator then checks the solve fields without recomputing a legacy typed
+/// hash over a different representation.
+pub fn build_review_queue_artifact_from_v1_solve(
+    solve_value: Value,
+    include: ReviewExportInclude,
+    provenance_samples: Vec<ReviewProvenanceSample>,
+    relation_hints: Vec<ReviewRelationHint>,
+) -> Result<ReviewQueueArtifact, Refusal> {
+    let contract = validate_artifact_v1_core_contract(&solve_value)?;
+    if contract.artifact_version != CANON_ENTITY_SOLVE_VERSION_V1 {
+        return Err(review_refusal(
+            EntityRefusalKind::ArtifactContract,
+            "Native review queue requires a canon_entity_solve.v1 artifact",
+            json!({
+                "stage": "review_export",
+                "field": "version",
+                "expected": CANON_ENTITY_SOLVE_VERSION_V1,
+                "actual": contract.artifact_version,
+                "writes_performed": false
+            }),
+        ));
+    }
+    let source_solve_version = contract.artifact_version;
+    validate_entity_v1_self_hash(&solve_value)?;
+    let solve_artifact = serde_json::from_value::<SolveArtifact>(solve_value).map_err(|error| {
+        review_refusal(
+            EntityRefusalKind::ArtifactContract,
+            "Native review solve.v1 artifact is malformed",
+            json!({
+                "stage": "review_export",
+                "field": "solve_artifact",
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    validate_solve_artifact_envelope_contract(&solve_artifact)?;
+    build_review_queue_artifact_from_validated_solve(
+        ReviewQueueRequest {
+            solve_artifact,
+            include,
+            provenance_samples,
+            relation_hints,
+        },
+        source_solve_version,
+    )
+}
+
+fn build_review_queue_artifact_from_validated_solve(
+    request: ReviewQueueRequest,
+    source_solve_version: &str,
+) -> Result<ReviewQueueArtifact, Refusal> {
     if request
         .solve_artifact
         .artifact_content_hash
@@ -152,7 +209,7 @@ pub fn build_review_queue_artifact(
     let mut metadata = request.solve_artifact.metadata.clone();
     metadata.artifact_content_hash.clear();
     metadata.upstream_artifacts = vec![EntityArtifactReference {
-        version: CANON_ENTITY_SOLVE_VERSION.to_string(),
+        version: source_solve_version.to_string(),
         content_hash: source_solve_hash.clone(),
     }];
 

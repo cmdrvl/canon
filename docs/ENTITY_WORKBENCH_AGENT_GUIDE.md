@@ -32,8 +32,16 @@ Notes from running this loop:
   Exporting the run reads the items from the solve the run hash-binds and keeps
   the queue bound to the run, which is the artifact `audit` and `promote`
   certify. A solve that does not match the run's recorded hash is refused.
-- `--artifact native-review` exists for `canon_entity_link.v1` and legacy v0
-  artifacts only. For `entity run` output use the default queue export.
+- `--artifact native-review` accepts `canon_entity_link.v1`, `canon_entity_run.v1`,
+  `canon_entity_solve.v1`, and legacy v0 run/solve artifacts. A v1 run export
+  follows its single hash-bound solve stage and binds the native review to the
+  run hash; the exact solve version and hash stay in the review's upstream
+  references. A direct solve export binds to that solve hash. The native review
+  envelope remains `canon_entity_native_review.v0`.
+- Import native decisions with `canon entity review import decisions.json
+  --registry REG --next-version X.Y.Z --source-review review.json`. Cluster
+  assignment requires an explicit `target_canonical_id`; import returns proposal
+  patches and does not write registry truth.
 - Alias proposals take `accept_alias` or `reject_alias` as their `decision`.
 - A component whose positive-support edges contain a hard cannot-link is
   reported as state `contradiction` (reason `hard_cannot_link_constraint`),

@@ -511,11 +511,18 @@ fn run_export_refuses_a_mirrored_solve_that_does_not_match_the_run() {
 }
 
 #[test]
-fn native_review_refusal_for_v1_artifacts_names_the_working_command() {
+fn native_review_v1_export_import_preserves_bindings_and_requires_explicit_assignment() {
     let fixture = Fixture::new(GUARD);
     assert!(fixture.run("wd").status.success());
-    for artifact in ["wd/run/run.json", "wd/solve/solve.json"] {
-        let output = fixture.canon(&[
+    let run = fixture.json("wd/run/run.json");
+    let solve = fixture.json("wd/solve/solve.json");
+    assert_eq!(run["version"], "canon_entity_run.v1");
+    assert_eq!(solve["version"], "canon_entity_solve.v1");
+    let registry_before = fs::read(fixture.root.join("registry/registry.json")).unwrap();
+    let aliases_before = fs::read(fixture.root.join("registry/aliases.json")).unwrap();
+
+    let export = |artifact: &str| {
+        fixture.canon(&[
             "entity",
             "review",
             "export",
@@ -526,16 +533,240 @@ fn native_review_refusal_for_v1_artifacts_names_the_working_command() {
             "all",
             "--emit",
             "json",
-        ]);
-        assert_eq!(output.status.code(), Some(2));
-        let refusal = &parse(&output)["refusal"];
-        assert_eq!(refusal["code"], "E_ENTITY_ARTIFACT_CONTRACT");
-        let next = refusal["next_command"].as_str().unwrap();
-        assert!(
-            next.contains("canon entity review export <RESULT.json> --include all"),
-            "{next}"
+        ])
+    };
+    let run_output = export("wd/run/run.json");
+    assert!(
+        run_output.status.success(),
+        "run native export failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&run_output.stdout),
+        stderr(&run_output)
+    );
+    let run_review = parse(&run_output);
+    let solve_output = export("wd/solve/solve.json");
+    assert!(
+        solve_output.status.success(),
+        "solve native export failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&solve_output.stdout),
+        stderr(&solve_output)
+    );
+    let solve_review = parse(&solve_output);
+
+    for (review, expected_run_hash) in [
+        (&run_review, run["artifact_content_hash"].as_str().unwrap()),
+        (
+            &solve_review,
+            solve["artifact_content_hash"].as_str().unwrap(),
+        ),
+    ] {
+        assert_eq!(review["version"], "canon_entity_native_review.v0");
+        assert_eq!(review["binding"]["run_content_hash"], expected_run_hash);
+        assert_eq!(
+            review["binding"]["policy_content_hash"],
+            solve["metadata"]["strategy"]["content_hash"]
         );
+        assert_eq!(
+            review["binding"]["strategy_hash"],
+            solve["metadata"]["strategy"]["content_hash"]
+        );
+        let solve_ref = review["metadata"]["upstream_artifacts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|reference| reference["content_hash"] == solve["artifact_content_hash"])
+            .expect("native review retains the source solve hash");
+        // The queue must retain the validated source version and exact hash.
+        assert_eq!(solve_ref["version"], solve["version"]);
+        let review_items = review["review_items"].as_array().unwrap();
+        assert!(!review_items.is_empty(), "fixture has review groups");
+        assert!(review_items.iter().all(|item| {
+            item["mode"] == "cluster"
+                && item["allowed_actions"]
+                    .as_array()
+                    .is_some_and(|actions| actions.iter().any(|action| action == "assignment"))
+        }));
     }
+
+    fs::write(
+        fixture.root.join("native-review.json"),
+        serde_json::to_vec_pretty(&run_review).unwrap(),
+    )
+    .unwrap();
+    let item = run_review["review_items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| {
+            item["mode_context"]["surface_ids"]
+                .as_array()
+                .is_some_and(|ids| ids.len() >= 2)
+        })
+        .expect("assignment uses a multi-surface cluster");
+    let binding = &run_review["binding"];
+    let decision = serde_json::json!({
+        "review_id": item["review_id"],
+        "mode": "cluster",
+        "action": "assignment",
+        "operator_id": "operator:bd-1y9s-test",
+        "reason_code": "explicit_human_assignment",
+        "note": "Test exercises the existing explicit assignment import contract.",
+        "source_review_artifact_hash": run_review["artifact_content_hash"],
+        "decision_binding_hash": item["decision_binding_hash"],
+        "run_content_hash": binding["run_content_hash"],
+        "policy_content_hash": binding["policy_content_hash"],
+        "registry_snapshot_hash": binding["registry_snapshot_hash"],
+        "mode_context": item["mode_context"],
+        "surface_ids": [],
+        "target_canonical_id": "TNT-EXPLICIT-TEST"
+    });
+    let envelope = serde_json::json!({
+        "version": canon::entity::review_export::CANON_ENTITY_NATIVE_REVIEW_DECISION_ENVELOPE_VERSION,
+        "decisions": [decision]
+    });
+    fs::write(
+        fixture.root.join("decisions.json"),
+        serde_json::to_vec_pretty(&envelope).unwrap(),
+    )
+    .unwrap();
+    let imported = fixture.canon(&[
+        "entity",
+        "review",
+        "import",
+        "decisions.json",
+        "--registry",
+        "registry",
+        "--next-version",
+        "1.0.1",
+        "--source-review",
+        "native-review.json",
+        "--emit",
+        "json",
+    ]);
+    assert!(
+        imported.status.success(),
+        "explicit assignment import failed: {}",
+        stderr(&imported)
+    );
+    let receipt = parse(&imported);
+    assert_eq!(receipt["accepted_decisions"], 1);
+    assert_eq!(
+        receipt["patches"]["assignment_patches"][0]["canonical_id"],
+        "TNT-EXPLICIT-TEST"
+    );
+
+    let mut missing_target = envelope;
+    missing_target["decisions"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("target_canonical_id");
+    fs::write(
+        fixture.root.join("missing-target.json"),
+        serde_json::to_vec_pretty(&missing_target).unwrap(),
+    )
+    .unwrap();
+    let refused = fixture.canon(&[
+        "entity",
+        "review",
+        "import",
+        "missing-target.json",
+        "--registry",
+        "registry",
+        "--next-version",
+        "1.0.1",
+        "--source-review",
+        "native-review.json",
+        "--emit",
+        "json",
+    ]);
+    assert_eq!(refused.status.code(), Some(2));
+    let refusal = &parse(&refused)["refusal"];
+    assert_eq!(refusal["code"], "E_ENTITY_REVIEW_IMPORT");
+    assert_eq!(refusal["detail"]["field"], "target_canonical_id");
+    assert_eq!(refusal["detail"]["writes_performed"], false);
+
+    let mut bad_solve = solve.clone();
+    bad_solve["summary"]["counts"]["entity_count"] = serde_json::json!(999);
+    fs::write(
+        fixture.root.join("bad-solve.json"),
+        serde_json::to_vec_pretty(&bad_solve).unwrap(),
+    )
+    .unwrap();
+    let refused = export("bad-solve.json");
+    assert_eq!(refused.status.code(), Some(2));
+    let refusal = &parse(&refused)["refusal"];
+    assert_eq!(refusal["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(refusal["detail"]["field"], "artifact_content_hash");
+    assert_eq!(refusal["detail"]["writes_performed"], false);
+
+    let write_unpublished_run = |directory: &str, artifact: &Value| {
+        let work_dir = fixture.root.join(directory);
+        fs::create_dir_all(work_dir.join("run")).unwrap();
+        fs::create_dir_all(work_dir.join("solve")).unwrap();
+        fs::copy(
+            fixture.root.join("wd/solve/solve.json"),
+            work_dir.join("solve/solve.json"),
+        )
+        .unwrap();
+        fs::write(
+            work_dir.join("run/run.json"),
+            serde_json::to_vec_pretty(artifact).unwrap(),
+        )
+        .unwrap();
+        format!("{directory}/run/run.json")
+    };
+
+    let mut bad_stage_version = run.clone();
+    let solve_stage = bad_stage_version["stage_artifacts"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|stage| stage["stage"] == "solve")
+        .expect("solve stage reference");
+    solve_stage["version"] = serde_json::json!(canon::entity::CANON_ENTITY_SOLVE_VERSION);
+    canon::entity::schema::finalize_entity_v1_self_hash(&mut bad_stage_version)
+        .expect("reseal mutated run envelope");
+    let bad_stage_version_path =
+        write_unpublished_run("unpublished-stage-version", &bad_stage_version);
+    let refused = export(&bad_stage_version_path);
+    assert_eq!(refused.status.code(), Some(2));
+    let refusal = &parse(&refused)["refusal"];
+    assert_eq!(refusal["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(
+        refusal["detail"]["field"], "stage_artifacts.solve.version",
+        "native refusal envelope: {refusal}"
+    );
+    assert_eq!(refusal["detail"]["writes_performed"], false);
+
+    let mut bad_stage_hash = run.clone();
+    let solve_stage = bad_stage_hash["stage_artifacts"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|stage| stage["stage"] == "solve")
+        .expect("solve stage reference");
+    solve_stage["artifact_content_hash"] = serde_json::json!("blake3:wrong");
+    canon::entity::schema::finalize_entity_v1_self_hash(&mut bad_stage_hash)
+        .expect("reseal mutated run envelope");
+    let bad_stage_hash_path = write_unpublished_run("unpublished-stage-hash", &bad_stage_hash);
+    let refused = export(&bad_stage_hash_path);
+    assert_eq!(refused.status.code(), Some(2));
+    let refusal = &parse(&refused)["refusal"];
+    assert_eq!(refusal["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(
+        refusal["detail"]["field"], "stage_artifacts.solve.artifact_content_hash",
+        "native refusal envelope: {refusal}"
+    );
+    assert_eq!(refusal["detail"]["writes_performed"], false);
+
+    assert_eq!(
+        fs::read(fixture.root.join("registry/registry.json")).unwrap(),
+        registry_before,
+        "native export/import returns patches and does not write registry truth"
+    );
+    assert_eq!(
+        fs::read(fixture.root.join("registry/aliases.json")).unwrap(),
+        aliases_before
+    );
 }
 
 /// The operator catalog in the agent guide must match the validator's
