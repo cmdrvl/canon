@@ -3,6 +3,14 @@
   "bead": "bd-glo7",
   "command_rows": [
     {
+      "id": "canon temporal relation finalize",
+      "family": "temporal",
+      "clap_path": "temporal relation finalize",
+      "operator_name": "temporal relation finalize",
+      "primary_contracts": ["canon.identity.relation.v1"],
+      "action": "preserve"
+    },
+    {
       "id": "canon temporal compile",
       "family": "temporal",
       "clap_path": "temporal compile",
@@ -1196,6 +1204,14 @@
       "action": "preserve",
       "access_boundary": "internal_source_only",
       "source_path": "src/temporal/compile.rs"
+    },
+    {
+      "id": "canon.identity.relation.v1",
+      "family": "temporal",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::temporal::relation",
+      "source_path": "src/temporal/relation.rs"
     },
     {
       "id": "canon.unresolved.inbox.v1",
