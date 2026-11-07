@@ -584,14 +584,18 @@ fn link_mode_context(
 }
 
 fn source_link_target_surface(item: &ReviewQueueItem) -> Result<String, Refusal> {
+    // Source-link queue producers bind component_id to the target record.
+    // surface_ids is a sorted inventory, not a directional endpoint pair.
     item.surface_ids
         .iter()
-        .find(|surface_id| !surface_id.trim().is_empty())
+        .find(|surface_id| {
+            !item.component_id.trim().is_empty() && *surface_id == &item.component_id
+        })
         .cloned()
         .ok_or_else(|| {
             native_review_refusal(
                 EntityRefusalKind::ArtifactContract,
-                "Native source-link review item requires a target surface",
+                "Native source-link review item requires its target in the surface inventory",
                 json!({
                     "stage": "native_review_export",
                     "review_id": item.review_id

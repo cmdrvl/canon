@@ -450,6 +450,56 @@ fn native_review_link_source_covers_ambiguous_and_unmatched_targets() {
 }
 
 #[test]
+fn native_source_link_direction_does_not_follow_lexical_order() {
+    for target in ["surf:alpha", "surf:zeta"] {
+        for state in [
+            SolveReconciliationState::ResolvedExisting,
+            SolveReconciliationState::Escrow,
+        ] {
+            let mut queue = source_link_review_queue();
+            queue.review_items.truncate(1);
+            let item = &mut queue.review_items[0];
+            item.component_id = target.to_string();
+            item.state = state;
+            item.surface_ids = vec![target.to_string(), "surf:middle".to_string()];
+            item.surface_ids.sort();
+            item.strongest_positive_cut = None;
+            item.relation_hints = vec![ReviewRelationHint {
+                left_surface_id: target.to_string(),
+                right_surface_id: "surf:middle".to_string(),
+                relation: "candidate".to_string(),
+                reason_code: "directional_candidate".to_string(),
+            }];
+            let review = native_review_from_queue(queue);
+            match &review.review_items[0].mode_context {
+                native_review_export::NativeReviewModeContext::Link {
+                    left_surface_id,
+                    right_surface_id,
+                    ..
+                } => {
+                    assert_eq!(left_surface_id, target);
+                    assert_eq!(right_surface_id.as_deref(), Some("surf:middle"));
+                }
+                other => panic!("expected link context, got {other:?}"),
+            }
+        }
+    }
+}
+
+#[test]
+fn native_source_link_refuses_an_unbound_target_instead_of_guessing() {
+    let mut queue = source_link_review_queue();
+    queue.review_items[0].component_id = "surf:not-observed".to_string();
+    let refusal = build_native_review_artifact(NativeReviewExportRequest {
+        review_queue: queue,
+        run_content_hash: sample_hash('r'),
+        policy_content_hash: sample_hash('p'),
+    })
+    .expect_err("an unrelated surface cannot replace a missing target");
+    assert_eq!(refusal.detail["stage"], "native_review_export");
+}
+
+#[test]
 fn native_review_html_renders_missing_candidate_honestly() {
     let html = render_native_review_html(&native_review_from_queue(source_link_review_queue()))
         .expect("html renders");
@@ -900,10 +950,12 @@ fn mixed_review_queue() -> ReviewQueueArtifact {
 fn source_link_review_queue() -> ReviewQueueArtifact {
     let mut queue = review_queue();
     queue.source_link_hash = Some(sample_hash('l'));
+    // Actual source-link queue producers store the target ID in component_id.
+    queue.review_items[0].component_id = "surf:alpha".to_string();
     queue.review_items.push(ReviewQueueItem {
         review_id: "review:unmatched_native".to_string(),
         ambiguity_key: "unmatched_native".to_string(),
-        component_id: "component:unmatched_native".to_string(),
+        component_id: "surf:unmatched_target".to_string(),
         state: SolveReconciliationState::Escrow,
         proposed_action: "defer_unmatched_link_target".to_string(),
         review_priority_units: 3000,
