@@ -81,6 +81,7 @@ canon doctor capabilities [--json]
 canon doctor robot-docs
 canon doctor --robot-triage
 canon temporal compile --request <REQUEST.json> [--emit json|summary] [--max-bytes <N>] [--no-witness]
+canon temporal relation finalize --facts <FACTS.json> [--emit json|summary] [--max-bytes <N>] [--no-witness]
 canon package pack --root <DIR> --package <package.json> --out <ARCHIVE>
 canon package inspect <ARCHIVE> [--emit json|summary]
 canon package verify <ARCHIVE> [--emit json|summary]
@@ -175,6 +176,17 @@ canon entity explain <RESULT.json> --row <ROW_ID>|--surface-id <SURFACE_ID>|--ca
 canon entity profile list [--emit json|summary]
 canon entity profile init <PROFILE> --output <PATH>
 ```
+
+`canon temporal relation finalize` canonicalizes supplied
+`canon.identity.relation.v1` facts through the native interval, provenance,
+deduplication, and graph-constraint validator, recomputing the generated relation
+and edge IDs. It validates declared evidence fields without verifying the cited
+source, accepting identity truth, creating aliases, or writing a registry. A
+relation's review disposition does not turn its edge into an equality fact; lookup
+changes require a separate identity fact.
+`canon temporal compile` continues to treat relation sidecars as opaque,
+hash-bound projection references and does not load or validate their contents.
+Finalizing a relation fact does not attach it to a temporal alias package.
 
 Project `run` validates `canon.project.plan.v1`, checks declared side-effect
 policy, reuses fully validated `canon.project.run.v2` receipts and output bytes,

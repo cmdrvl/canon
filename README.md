@@ -50,7 +50,7 @@ for the boundary. For the `canon entity` workflow and its operator catalog, see
 - **Evidence workbenches** — `canon entity` compiles profiled observations into registry proposals. Cluster mode finds same-entity groups within one corpus; link mode aligns a reference corpus to a target corpus through the same artifact path. Both keep relationship evidence separate from equivalence merge evidence.
 - **Geographic evidence for agents** — `canon geo` connects supplied property hints, addresses, source records, and geometry in bounded offline runs. Agents bring evidence from MCP-accessible datasets and source lookups; Geo preserves the supporting records, entity grain, alternatives, and solver guarantees. [REIT experiments](scripts/geo_measurements/fixtures/cornerstone_national_2026-09-17/README.md) demonstrate candidate discovery and corroboration; general source-neutral association acceptance remains in development.
 - **Cross-source structural linkage** — `canon entity link` aligns two local row sets under an explicit YAML strategy and emits hash-bound `canon_entity_link.v1` decisions plus observation/surface bindings. Accepted knowledge enters registries through review, audit, promotion, and exact apply; direct `--write-back` currently refuses before mutation.
-- **Distribution surfaces** — `canon registry export` preserves dbt seed and SQLite search-index consumers; package and project workflows support reproducible deployment. `canon temporal compile` emits dated snapshot packages without installing them; temporal diff/explain remain library APIs.
+- **Distribution surfaces** — `canon registry export` preserves dbt seed and SQLite search-index consumers; package and project workflows support reproducible deployment. `canon temporal compile` emits dated snapshot packages without installing them, and `canon temporal relation finalize` emits validated, canonical relation facts without registry writes.
 
 ---
 
@@ -113,8 +113,23 @@ yet know enough.
 | `canon entity calibrate em <EVIDENCE.jsonl> --strategy <STRATEGY.yaml>` | Estimate support-evidence weights from aggregated agreement patterns and emit proposed support-score YAML. | Read-only calibration assist; fixed-point EM over existing evidence only, no registry writes, no strategy mutation, no automatic authority. |
 | `canon registry export --format dbt-seed|search-index` | Project exact registry knowledge into transform or serving artifacts. | Deterministic downstream snapshots; no new matching semantics. |
 | `canon temporal compile --request <REQUEST.json> [--emit json\|summary] [--no-witness]` | Compile the native `TemporalCompileRequest` at explicit `valid_at` and `known_as_of` cutoffs into `canon.temporal.compile.v1`. | Offline snapshot artifact with mapping proofs and conflict omissions; no registry writes or promotion. Exit 0 means compilation succeeded, including an empty or conflict-omitting snapshot. Malformed or invalid requests refuse with exit 2. |
+| `canon temporal relation finalize --facts <FACTS.json> [--emit json\|summary] [--max-bytes <N>] [--no-witness]` | Finalize a JSON array of native `canon.identity.relation.v1` facts using Canon's relation interval, provenance, deduplication, and graph-constraint APIs. | Deterministic relation facts only; no registry writes, alias creation, or identity acceptance. |
 | Package and project workflows | Move registries and strategies through reproducible deployment and project locks. | They package and check knowledge; they do not change exact lookup. |
 | Extensions and adapters | Add profiles, source mappings, provider materializers, and domain policies out of tree. | Domain expertise stays outside Canon core defaults unless explicitly packaged and audited. |
+
+`canon temporal relation finalize` applies Canon's native `finalize_relations`
+implementation to the supplied facts. The input declares relation type, evidence
+locator, validity interval, review disposition, and graph constraints; finalization
+validates these fields and recomputes `relation_id` and `edge_key`, but does not
+independently verify the cited source or accept identity truth. Relation edges never
+create aliases or exact lookup mappings, even when review disposition is `same`;
+equality requires a separate identity fact. The command writes no registry.
+
+Relation sidecars supplied to `canon temporal compile` remain opaque, hash-bound
+references and projection-only omissions. Compile does not load or validate
+sidecar contents. Callers may retain finalized relation facts as a separate sidecar
+and bind its path and digest; relation finalization does not attach it to a temporal
+alias package.
 
 The accretion loop is intentionally repetitive: unresolved or ambiguous evidence
 enters a workbench, review accepts only defensible knowledge, the registry gets
@@ -408,6 +423,7 @@ canon doctor capabilities [--json]
 canon doctor robot-docs
 canon doctor --robot-triage
 canon temporal compile --request <REQUEST.json> [--emit json|summary] [--max-bytes <N>] [--no-witness]
+canon temporal relation finalize --facts <FACTS.json> [--emit json|summary] [--max-bytes <N>] [--no-witness]
 canon package pack --root <DIR> --package <package.json> --out <ARCHIVE>
 canon package inspect <ARCHIVE> [--emit json|summary]
 canon package verify <ARCHIVE> [--emit json|summary]
