@@ -182,6 +182,87 @@
   ],
   "subcommands": [
     {
+      "name": "temporal relation finalize",
+      "usage": "canon temporal relation finalize --facts <FACTS.json> [--emit json|summary] [--max-bytes <N>] [--no-witness]",
+      "description": "Validate and canonicalize a JSON array of native directed relation facts without creating aliases or mutating a registry",
+      "output_mode": "mixed",
+      "output_schema": "canon.identity.relation.v1[]",
+      "status": "implemented",
+      "read_only": false,
+      "exit_codes": {
+        "0": {
+          "meaning": "Relation facts finalized, including deterministic deduplication",
+          "domain": "report"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI or request contract error",
+          "domain": "error"
+        }
+      },
+      "options": [
+        {
+          "name": "facts",
+          "flag": "--facts",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON array of native DirectedRelationFact inputs"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "json or summary"
+        },
+        {
+          "name": "max-bytes",
+          "flag": "--max-bytes",
+          "type": "integer",
+          "default": 16777216,
+          "description": "Request byte limit, 1 through 1073741824"
+        },
+        {
+          "name": "no-witness",
+          "flag": "--no-witness",
+          "type": "boolean",
+          "default": false,
+          "description": "Disable ambient witness append"
+        }
+      ],
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "No registry mutation; stdout artifact and optional ambient witness append",
+        "mutation_class": "OwnedOutput",
+        "network_class": "Offline",
+        "concurrency_class": "IsolatedRunner",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "temporal relation finalize"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": true,
+        "creates_witness_directory": true,
+        "writes_migration_logs": true,
+        "writes_deprecation_notices": true,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "recovery": {
+        "next_command": "canon temporal relation finalize --help",
+        "refusal_exit_code": 2
+      }
+    },
+    {
       "name": "temporal compile",
       "usage": "canon temporal compile --request <REQUEST.json> [--emit json|summary] [--max-bytes <N>] [--no-witness]",
       "description": "Compile accepted dated alias evidence into an offline exact-lookup package without installing or promoting it",
