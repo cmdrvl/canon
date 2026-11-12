@@ -204,6 +204,246 @@ fn is_cut(hits: &[(String, bool)]) -> bool {
         .any(|(op, hard)| *hard && op.starts_with("protected_token_conflict"))
 }
 
+// Controlled source representations exercise the real CLI guard, not issuer
+// truth. Keep the lexical source forms distinct, including condensed names.
+fn shared_context_fixture(guard: &str, rows: &[(&str, &str, &str)]) -> Fixture {
+    let fixture = Fixture::new(guard);
+    let configured = profile(guard)
+        .replace(
+            "  tenant_core:\n",
+            "  shared_context:\n    operators: [identity]\n  representation:\n    operators: [identity]\n  tenant_core:\n",
+        )
+        .replace(
+            "  primary_surface_fields: [raw_tenant_name]",
+            "  primary_surface_fields: [raw_tenant_name]\n  surface_key_fields: [tenant_core, representation]",
+        )
+        .replace(
+            "    tenant_core: raw_tenant_name",
+            "    shared_context: source_context\n    representation: representation\n    tenant_core: raw_tenant_name",
+        );
+    fs::write(
+        fixture.root.join("profile.yaml"),
+        format!(
+            "{configured}\nblocking:\n  operators:\n    - op: exact_view\n      view: shared_context\n    - op: ngram_topk\n      view: tenant_core\n      k: 10\n      candidate_cap: 10\nsolve:\n  hard_cannot_link: split_direct\n  standalone_surfaces: include\n"
+        ),
+    )
+    .unwrap();
+    let mut writer = csv::Writer::from_path(fixture.root.join("rows.csv")).unwrap();
+    writer
+        .write_record([
+            "source_row_id",
+            "deal_id",
+            "loan_id",
+            "property_id",
+            "raw_tenant_name",
+            "source_context",
+            "representation",
+        ])
+        .unwrap();
+    for (index, (name, context, representation)) in rows.iter().enumerate() {
+        writer
+            .write_record([
+                &format!("r{index}"),
+                "D1",
+                "L1",
+                &format!("P{index}"),
+                name,
+                context,
+                representation,
+            ])
+            .unwrap();
+    }
+    writer.flush().unwrap();
+    fixture
+}
+
+const SHARED_CONTEXT_GUARD: &str = "    - op: protected_token_conflict\n      view: tenant_tokens\n      params:\n        shared_context_view: shared_context";
+
+#[test]
+fn shared_context_guard_cuts_condensed_three_source_conflict_with_unchanged_surfaces() {
+    let fixture = shared_context_fixture(
+        GUARD,
+        &[
+            ("Hudson 2 Bay Company ULC", "issuer:observed", "html"),
+            ("HudsonsBayCompanyULC", "issuer:observed", "xbrl"),
+            ("HudsonsBayCompanyULC", "issuer:observed", "dera"),
+        ],
+    );
+    let legacy = fixture.run("legacy");
+    assert!(legacy.status.success(), "{}", stderr(&legacy));
+    assert!(
+        pair_hits(&fixture, "legacy")
+            .iter()
+            .all(|(_, _, hits)| !is_cut(hits))
+    );
+    let legacy_surfaces = fs::read(fixture.root.join("legacy/prepare/surfaces.jsonl")).unwrap();
+    let configured = fs::read_to_string(fixture.root.join("profile.yaml"))
+        .unwrap()
+        .replace(GUARD, SHARED_CONTEXT_GUARD);
+    fs::write(fixture.root.join("profile.yaml"), configured).unwrap();
+    let output = fixture.run("scoped");
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(
+        legacy_surfaces,
+        fs::read(fixture.root.join("scoped/prepare/surfaces.jsonl")).unwrap()
+    );
+    let pairs = pair_hits(&fixture, "scoped");
+    assert_eq!(pairs.len(), 3);
+    for (left, right, hits) in &pairs {
+        assert_eq!(
+            is_cut(hits),
+            left.contains('2') || right.contains('2'),
+            "{left} <> {right}: {hits:?}"
+        );
+    }
+    let names = surface_names(&fixture, "scoped");
+    let solve = fixture.json("scoped/solve/solve.json");
+    let entities = solve["entities"].as_array().unwrap();
+    assert_eq!(entities.len(), 2);
+    for entity in entities {
+        let members = entity["surface_ids"].as_array().unwrap();
+        if members
+            .iter()
+            .any(|id| names[id.as_str().unwrap()].contains('2'))
+        {
+            assert_eq!(members.len(), 1, "wrong protected name must stay separate");
+        } else {
+            assert_eq!(
+                members.len(),
+                2,
+                "the two unchanged source names remain together"
+            );
+        }
+    }
+}
+
+#[test]
+fn shared_context_guard_keeps_genuine_unnumbered_source_variants_eligible() {
+    let fixture = shared_context_fixture(
+        SHARED_CONTEXT_GUARD,
+        &[
+            ("Hudson's Bay Company ULC", "issuer:observed", "html"),
+            ("HudsonsBayCompanyULC", "issuer:observed", "xbrl"),
+            ("HudsonsBayCompanyULC", "issuer:observed", "dera"),
+        ],
+    );
+    let output = fixture.run("wd");
+    assert!(output.status.success(), "{}", stderr(&output));
+    let pairs = pair_hits(&fixture, "wd");
+    assert_eq!(pairs.len(), 3);
+    assert!(pairs.iter().all(|(_, _, hits)| !is_cut(hits)));
+    let solve = fixture.json("wd/solve/solve.json");
+    let entities = solve["entities"].as_array().unwrap();
+    assert_eq!(entities.len(), 1);
+    assert_eq!(entities[0]["surface_ids"].as_array().unwrap().len(), 3);
+}
+
+#[test]
+fn shared_context_guard_requires_exact_nonempty_scope_on_both_surfaces() {
+    for (left, right) in [
+        ("", ""),
+        ("issuer:a", ""),
+        ("", "issuer:a"),
+        ("issuer:a", "issuer:b"),
+        ("   ", "   "),
+    ] {
+        let fixture = shared_context_fixture(
+            SHARED_CONTEXT_GUARD,
+            &[
+                ("Hudson 2 Bay Company ULC", left, "html"),
+                ("HudsonsBayCompanyULC", right, "xbrl"),
+            ],
+        );
+        let output = fixture.run("wd");
+        assert!(output.status.success(), "{}", stderr(&output));
+        let pairs = pair_hits(&fixture, "wd");
+        assert_eq!(pairs.len(), 1, "candidate must exist to test the guard");
+        assert!(!is_cut(&pairs[0].2), "scope {left:?} <> {right:?}");
+    }
+    // Source rows may omit the optional context column altogether.
+    let fixture = shared_context_fixture(SHARED_CONTEXT_GUARD, &[]);
+    fs::write(fixture.root.join("rows.csv"),
+        "source_row_id,deal_id,loan_id,property_id,raw_tenant_name,representation\na,D1,L1,P1,Hudson 2 Bay Company ULC,html\nb,D1,L1,P2,HudsonsBayCompanyULC,xbrl\n").unwrap();
+    assert!(fixture.run("missing").status.success());
+    let pairs = pair_hits(&fixture, "missing");
+    assert_eq!(pairs.len(), 1);
+    assert!(!is_cut(&pairs[0].2));
+}
+
+#[test]
+fn shared_context_guard_preserves_legacy_cuts_with_different_context() {
+    let fixture = shared_context_fixture(
+        SHARED_CONTEXT_GUARD,
+        &[
+            ("Example Fund II", "issuer:a", "html"),
+            ("Example Fund IV", "issuer:b", "xbrl"),
+        ],
+    );
+    assert!(fixture.run("wd").status.success());
+    let pairs = pair_hits(&fixture, "wd");
+    assert_eq!(pairs.len(), 1);
+    assert!(
+        is_cut(&pairs[0].2),
+        "different context cannot suppress a lexical conflict"
+    );
+}
+
+#[test]
+fn shared_context_guard_scopes_listed_role_tokens_too() {
+    let fixture = shared_context_fixture(
+        &format!("{SHARED_CONTEXT_GUARD}\n        protected_tokens: parent\n        protect: none"),
+        &[
+            ("Hudson Parent Bay Company ULC", "issuer:observed", "html"),
+            ("HudsonsBayCompanyULC", "issuer:observed", "xbrl"),
+        ],
+    );
+    assert!(fixture.run("wd").status.success());
+    let pairs = pair_hits(&fixture, "wd");
+    assert_eq!(pairs.len(), 1);
+    assert!(is_cut(&pairs[0].2));
+}
+
+#[test]
+fn shared_context_guard_keeps_whole_token_numbered_name_limit_explicit() {
+    let fixture = shared_context_fixture(
+        SHARED_CONTEXT_GUARD,
+        &[
+            ("Example 2 Company", "issuer:observed", "html"),
+            ("Example2Company", "issuer:observed", "xbrl"),
+        ],
+    );
+    assert!(fixture.run("wd").status.success());
+    let pairs = pair_hits(&fixture, "wd");
+    assert_eq!(pairs.len(), 1);
+    assert!(
+        is_cut(&pairs[0].2),
+        "whole protected tokens differ despite the same numeral; no invented word splitting"
+    );
+}
+
+#[test]
+fn shared_context_guard_refuses_unknown_or_blank_view_before_evidence() {
+    for view in ["unknown_view", "\"\""] {
+        let guard = format!("{GUARD}\n      params:\n        shared_context_view: {view}");
+        let fixture = shared_context_fixture(
+            &guard,
+            &[
+                ("Hudson 2 Bay Company ULC", "issuer:observed", "html"),
+                ("HudsonsBayCompanyULC", "issuer:observed", "xbrl"),
+            ],
+        );
+        let output = fixture.run("wd");
+        assert_eq!(output.status.code(), Some(2));
+        let refusal = format!(
+            "{}{}",
+            stderr(&output),
+            String::from_utf8_lossy(&output.stdout)
+        );
+        assert!(refusal.contains("shared_context_view"), "{refusal}");
+        assert!(!fixture.root.join("wd/evidence/evidence.jsonl").exists());
+    }
+}
+
 #[test]
 fn protected_token_conflict_cuts_numbered_siblings_and_leaves_name_variants_alone() {
     let fixture = Fixture::new(GUARD);

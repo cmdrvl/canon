@@ -191,12 +191,24 @@ Required: `view`. Optional params:
   Single letters and other Roman letters are not protected (initials and words
   like "mix" are common); list them in `protected_tokens` if you need them.
 - `protected_tokens` — extra comma-separated tokens to protect.
+- `shared_context_view` — optional declared normalized view. Exact, non-empty
+  equality on both surfaces can scope a protected-token conflict even when
+  their unprotected whitespace tokens are disjoint. Missing, blank or different
+  values supply no such scope; an unknown view refuses. This is conflict
+  evidence only, never identity support or acceptance authority.
 - `score_units` — `0` disables the operator.
 
-A pair is cut (hard cannot-link) only when its protected-token sets differ
+By default, a pair is cut (hard cannot-link) only when its protected-token sets differ
 **and** the two names still share an unprotected token. "Acme Coffee" vs
 "Acme Coffee Shop" is not cut; unrelated names are not made distinct by a
 stray digit.
+
+With `shared_context_view`, a differing protected-token set can also cut the
+pair within that explicitly shared context. Tokenization is unchanged: for
+example, `Example 2 Company` and `Example2Company` have different whole protected
+tokens and are conservatively cut when they share that context, despite the
+same numeral. This option does not establish numbered-name recall or split
+condensed identifiers into inferred words.
 
 ## Enrichment: where agent-sourced facts live
 

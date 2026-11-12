@@ -4105,9 +4105,17 @@ fn protected_token_conflict_for_spec(
         view_name,
         "protected_token_conflict",
     )?);
-    // Differing protected sets only conflict between names that otherwise
-    // read alike; unrelated names are not made "distinct" by a stray digit.
-    if left_protected == right_protected || left_rest.is_disjoint(&right_rest) {
+    // Preserve the lexical scope by default. An explicit shared-context view
+    // can also scope a conflict when one source writes a condensed identifier
+    // with no whitespace tokens in common with the displayed name.
+    let shared_context =
+        optional_non_empty_param(spec, "shared_context_view")?.is_some_and(|view| {
+            optional_support_view_value(left, view)
+                .zip(optional_support_view_value(right, view))
+                .is_some_and(|(left, right)| left == right)
+        });
+    if left_protected == right_protected || (left_rest.is_disjoint(&right_rest) && !shared_context)
+    {
         return Ok(None);
     }
     let left_tokens = left_protected
@@ -4349,6 +4357,16 @@ fn validate_edge_operator_params(profile: &EntityProfileDocument) -> Result<(), 
                 required_support_view_name(spec, "protected_token_conflict")?;
                 protected_token_classes(spec)?;
                 optional_non_empty_param(spec, "protected_tokens")?;
+                if let Some(view) = optional_non_empty_param(spec, "shared_context_view")?
+                    && !profile.normalized_views.contains_key(view)
+                {
+                    return Err(edge_support_config_refusal(
+                        "Protected-token shared context references an unknown normalized view",
+                        "protected_token_conflict",
+                        "shared_context_view",
+                        json!({ "view": view, "available_views": profile.normalized_views.keys().collect::<Vec<_>>() }),
+                    ));
+                }
             }
             "attribute_conflict"
                 if optional_score_units_param(spec, "score_units", "score")?
