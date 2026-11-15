@@ -9,6 +9,7 @@ use canon::{
         block_artifact::BlockCandidateArtifact,
         edge::{EdgeEvidenceRecord, EntityEvidenceStageRequest},
         edge_artifact::EdgeEvidenceArtifact,
+        profile::EntityProfileDocument,
         run::{
             EntityRunRequest, run_entity_block_stage, run_entity_evidence_stage,
             run_entity_solve_stage, run_entity_workbench,
@@ -750,6 +751,41 @@ fn malformed_support_threshold_refuses_before_edge_write() {
     assert_eq!(refusal.detail["field"], "min_score_units");
     assert_eq!(refusal.detail["writes_performed"], false);
     assert!(!work_dir.join("evidence/evidence.json").exists());
+}
+
+#[test]
+fn fuzzy_support_requires_an_explicit_threshold_or_disabled_value() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let profile_path = write_support_profile(temp.path(), "9000", "1");
+    let profile_yaml = fs::read_to_string(&profile_path).expect("support profile");
+
+    for (operator, threshold) in [
+        ("string_similarity", "        min_score_units: \"9000\"\n"),
+        ("tfidf_cosine", "        min_score_units: \"1\"\n"),
+    ] {
+        let missing_threshold = profile_yaml.replacen(threshold, "", 1);
+        let error = EntityProfileDocument::from_yaml_str(&missing_threshold)
+            .expect_err("thresholdless fuzzy support must refuse");
+        let refusal = error.to_refusal();
+        assert_eq!(refusal.code, RefusalCode::EEntityStrategy);
+        assert_eq!(error.detail["lane"], "support");
+        assert_eq!(error.detail["operator"], operator);
+        assert_eq!(error.detail["field"], "params.min_score_units");
+        assert!(
+            error.detail["fix"]
+                .as_str()
+                .is_some_and(|fix| !fix.is_empty())
+        );
+    }
+
+    EntityProfileDocument::from_yaml_str(&profile_yaml)
+        .expect("explicit zero/positive thresholds validate");
+
+    let disabled_profile = profile_yaml
+        .replace("min_score_units: \"9000\"", "min_score_units: \"0\"")
+        .replace("min_score_units: \"1\"", "min_score_units: \"0\"");
+    EntityProfileDocument::from_yaml_str(&disabled_profile)
+        .expect("explicit zero thresholds disable fuzzy support");
 }
 
 fn write_cmbs_registry(registry: &Path) {

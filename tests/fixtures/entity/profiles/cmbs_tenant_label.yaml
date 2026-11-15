@@ -53,8 +53,12 @@ evidence:
       view: tenant_core
     - op: string_similarity
       view: tenant_core
+      params:
+        min_score_units: "0"
     - op: tfidf_cosine
       view: tenant_tokens
+      params:
+        min_score_units: "0"
     - op: alias_patch_match
       view: tenant_core
   cannot_link:

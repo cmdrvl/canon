@@ -359,6 +359,8 @@ impl EntityProfileDocument {
             SUPPORTED_RELATION_HINT_OPS,
         )?;
 
+        validate_thresholded_support_operators(&self.evidence.support)?;
+
         for op in &self.evidence.support {
             if CROSS_PROFILE_RELATION_OPS.contains(&op.op.as_str()) {
                 return Err(EntityProfileError::new(
@@ -1035,6 +1037,33 @@ fn validate_evidence_lane(
         if !supported.contains(&operator.op.as_str()) {
             return Err(unsupported_operator(lane, &operator.op));
         }
+    }
+    Ok(())
+}
+
+fn validate_thresholded_support_operators(
+    operators: &[EntityOperatorSpec],
+) -> Result<(), EntityProfileError> {
+    for operator in operators {
+        if !matches!(operator.op.as_str(), "string_similarity" | "tfidf_cosine") {
+            continue;
+        }
+        if operator.params.contains_key("min_score_units")
+            || operator.params.contains_key("min_score")
+        {
+            continue;
+        }
+        return Err(EntityProfileError::new(
+            EntityRefusalKind::Strategy,
+            "Entity fuzzy support operator requires an explicit threshold or disabled value",
+            json!({
+                "lane": "support",
+                "operator": operator.op,
+                "field": "params.min_score_units",
+                "alternative_field": "params.min_score",
+                "fix": "Add params.min_score_units (or params.min_score); use 0 only to explicitly disable this operator"
+            }),
+        ));
     }
     Ok(())
 }
