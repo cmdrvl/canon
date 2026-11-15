@@ -433,11 +433,6 @@ fn project_prepare_csv_reader_with_rejections<R: Read>(
         let row = csv_row_to_raw(row_number, &headers, &record);
         match project_prepare_row(&row, contract) {
             Ok(observation) => observations.push(observation),
-            Err(refusal) if collect_rejections => rejected_rows.push(prepare_row_rejection(
-                row_number,
-                source_row_id_from_raw(&row),
-                refusal,
-            )),
             Err(refusal) => return Err(refusal),
         }
     }
@@ -513,11 +508,6 @@ fn project_prepare_jsonl_reader_with_rejections<R: BufRead>(
         let row = json_object_to_raw(row_number, object);
         match project_prepare_row(&row, contract) {
             Ok(observation) => observations.push(observation),
-            Err(refusal) if collect_rejections => rejected_rows.push(prepare_row_rejection(
-                row_number,
-                source_row_id_from_raw(&row),
-                refusal,
-            )),
             Err(refusal) => return Err(refusal),
         }
     }
@@ -2568,9 +2558,18 @@ fn prepare_summary(
     surfaces: &[PreparedSurfaceRecord],
     rejected_rows: &[PrepareRowRejection],
 ) -> BTreeMap<String, u64> {
-    let observation_count = u64::try_from(observations.len()).expect("observation count fits u64");
+    let rejected_row_numbers = rejected_rows
+        .iter()
+        .map(|rejection| rejection.row_number)
+        .collect::<BTreeSet<_>>();
+    let retained_observations = observations
+        .iter()
+        .filter(|observation| !rejected_row_numbers.contains(&observation.row_number))
+        .collect::<Vec<_>>();
+    let observation_count =
+        u64::try_from(retained_observations.len()).expect("observation count fits u64");
     let surface_count = u64::try_from(surfaces.len()).expect("surface count fits u64");
-    let raw_unique_surfaces = observations
+    let raw_unique_surfaces = retained_observations
         .iter()
         .map(|observation| observation.primary_surface.value.as_str())
         .collect::<BTreeSet<_>>()
@@ -2610,7 +2609,7 @@ fn prepare_summary(
         ("primary_surface_count".to_string(), observation_count),
         (
             "alias_surface_count".to_string(),
-            observations
+            retained_observations
                 .iter()
                 .map(|observation| {
                     u64::try_from(observation.alias_surfaces.len())
@@ -2620,7 +2619,7 @@ fn prepare_summary(
         ),
         (
             "mention_surface_count".to_string(),
-            observations
+            retained_observations
                 .iter()
                 .map(|observation| {
                     u64::try_from(observation.mention_surfaces.len())
@@ -2630,7 +2629,7 @@ fn prepare_summary(
         ),
         (
             "anchor_count".to_string(),
-            observations
+            retained_observations
                 .iter()
                 .map(|observation| {
                     u64::try_from(observation.anchors.len()).expect("anchor count fits u64")
@@ -2802,26 +2801,60 @@ mod tests {
     }
 
     #[test]
-    fn projection_collects_bad_rows_without_dropping_their_identity() {
-        let (_profile, contract) = cmbs_profile_and_contract();
-        let output = project_prepare_csv_reader_with_rejections(
-            Cursor::new(csv_with_one_bad_projection_row()),
+    fn surface_preparation_rejects_unnormalisable_rows() {
+        let (profile, contract) = cmbs_profile_and_contract();
+        let projection = project_prepare_csv_reader_with_rejections(
+            Cursor::new(csv_with_one_bad_surface(true)),
             b',',
             &contract,
             true,
         )
-        .expect("row-level collection succeeds");
+        .expect("unnormalisable surface still projects as an input observation");
 
-        assert_eq!(output.observations.len(), 2);
+        assert_eq!(projection.observations.len(), 3);
+        assert!(projection.rejected_rows.is_empty());
+        let output = prepare_surface_records_with_profile_and_rejections(
+            Some(&profile),
+            &contract.mapping,
+            &projection.observations,
+            true,
+        )
+        .expect("surface rejection is collected during preparation");
+
+        assert_eq!(output.surfaces.len(), 2);
         assert_eq!(output.rejected_rows.len(), 1);
         assert_eq!(output.rejected_rows[0].row_number, 2);
         assert_eq!(
             output.rejected_rows[0].source_row_id.as_deref(),
             Some("bad")
         );
-        assert_eq!(output.rejected_rows[0].code, "E_ENTITY_INPUT_CONTRACT");
+        assert_eq!(output.rejected_rows[0].code, "E_ENTITY_ARTIFACT_CONTRACT");
         assert!(
             output.rejected_rows[0]
+                .message
+                .contains("canonical normalized view")
+        );
+    }
+
+    #[test]
+    fn projection_refuses_structural_side_field_errors() {
+        let (_profile, contract) = cmbs_profile_and_contract();
+        let refusal = project_prepare_csv_reader_with_rejections(
+            Cursor::new(csv_with_one_bad_projection_row()),
+            b',',
+            &contract,
+            true,
+        )
+        .expect_err("structural side-field errors refuse the whole projection");
+
+        assert_eq!(
+            refusal.code,
+            EntityRefusalKind::InputContract.refusal_code()
+        );
+        assert_eq!(refusal.detail["row_number"], 2);
+        assert_eq!(refusal.detail["field"], "alias_surfaces_json");
+        assert!(
+            refusal
                 .message
                 .contains("Side field 'alias_surfaces_json' must be valid JSON")
         );

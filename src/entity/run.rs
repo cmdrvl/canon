@@ -2400,6 +2400,7 @@ fn build_and_write_block(
     Ok(EntityBlockRun {
         artifact,
         artifact_value,
+        diagnostics: result.diagnostics,
         candidates: result.candidates,
         exact_buckets: exact_bucket_assertions,
         record_link_candidate_set: record_link.map(|record_link| record_link.candidate_set),
@@ -3154,7 +3155,7 @@ fn run_artifact(
         .collect();
     metadata.artifact_content_hash.clear();
     let orchestration = run_orchestration(request, &stage_artifacts, prepare, solve);
-    let candidate_support_warning = candidate_support_warning(request, block);
+    let candidate_support_warning = candidate_support_warning(request, &block.diagnostics);
 
     let artifact = EntityRunArtifact {
         version: CANON_ENTITY_RUN_VERSION_V1.to_string(),
@@ -3698,7 +3699,7 @@ fn run_orchestration(
 
 fn candidate_support_warning(
     request: EntityRunRequest<'_>,
-    block: &BlockCandidateArtifact,
+    diagnostics: &crate::entity::block::BlockCandidateGenerationDiagnostics,
 ) -> bool {
     let Ok(loaded_profile) = load_prepare_profile_with_hash(request.profile) else {
         return false;
@@ -3717,26 +3718,9 @@ fn candidate_support_warning(
     {
         return false;
     }
-    let diagnostics_path = request.work_dir.join(&block.candidate_diagnostics_path);
-    let Ok(diagnostics) = read_json_file::<Value>(&diagnostics_path, "block diagnostics") else {
-        return false;
-    };
-    diagnostics
-        .get("operator_yield")
-        .and_then(Value::as_array)
-        .is_some_and(|operators| {
-            operators.iter().any(|operator| {
-                let emitted = operator
-                    .get("emitted_candidate_count")
-                    .and_then(Value::as_u64)
-                    .unwrap_or_default();
-                let operator_id = operator
-                    .get("operator_id")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                emitted > 0 && !operator_id.starts_with("exact_view")
-            })
-        })
+    diagnostics.operator_yield.iter().any(|operator| {
+        operator.emitted_candidate_count > 0 && !operator.operator_id.starts_with("exact_view")
+    })
 }
 
 struct RunSummaryContext<'a> {
@@ -6150,6 +6134,7 @@ struct EntityRunPublicationContext {
 struct EntityBlockRun {
     artifact: BlockCandidateArtifact,
     artifact_value: Value,
+    diagnostics: crate::entity::block::BlockCandidateGenerationDiagnostics,
     candidates: Vec<crate::entity::block::BlockCandidateRecord>,
     exact_buckets: Vec<ExactBucketAssertion>,
     record_link_candidate_set: Option<RecordLinkCandidateSet>,

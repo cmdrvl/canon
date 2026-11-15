@@ -199,7 +199,7 @@ fn candidate_budget_refusal_names_strategy_key_and_pasteable_fragment() {
     assert_eq!(refusal.detail["limit"], 100);
     assert_eq!(
         refusal.detail["suggested_fragment"],
-        "block:\n  max_candidates_per_run: 101"
+        "block:\n  max_candidates_per_run: 102"
     );
     assert!(refusal.message.contains("block.max_candidates_per_run"));
 }
@@ -294,7 +294,10 @@ fn profile_blocking_budget_is_reported_as_a_misplacement() {
     let refusal = validate_profile_budget_placement(Path::new(&profile))
         .expect_err("profile-owned block budget is misplaced");
     assert_eq!(refusal.code, RefusalCode::EEntityStrategy);
-    assert_eq!(refusal.detail["actual_file_role"], "profile file");
+    assert_eq!(
+        refusal.detail["actual_file_role"],
+        "profile `blocking:` section"
+    );
     assert_eq!(refusal.detail["expected_file_role"], "strategy file");
     assert_eq!(
         refusal.detail["actual_key_path"],
@@ -304,25 +307,18 @@ fn profile_blocking_budget_is_reported_as_a_misplacement() {
 
 #[test]
 fn absolute_run_ceiling_still_refuses_an_explicitly_large_budget() {
+    let per_surface = ABSOLUTE_BLOCK_MAX_CANDIDATES_PER_RUN / 2 + 1;
+    let configured_limit = ABSOLUTE_BLOCK_MAX_CANDIDATES_PER_RUN.saturating_mul(2);
     let refusal = validate_block_candidate_budget_before_artifact_emission(
-        &BlockCandidateBudgetConfig::new(
-            ABSOLUTE_BLOCK_MAX_CANDIDATES_PER_RUN,
-            ABSOLUTE_BLOCK_MAX_CANDIDATES_PER_RUN,
-            ABSOLUTE_BLOCK_MAX_CANDIDATES_PER_RUN.saturating_mul(2),
-        ),
-        &[observation(
-            "surface-a",
-            "operator-a",
-            ABSOLUTE_BLOCK_MAX_CANDIDATES_PER_RUN.saturating_add(1),
-            0,
-        )],
+        &BlockCandidateBudgetConfig::new(configured_limit, configured_limit, configured_limit),
+        &[
+            observation("surface-a", "operator-a", per_surface, 0),
+            observation("surface-b", "operator-b", per_surface, 0),
+        ],
     )
     .expect_err("absolute run ceiling must remain enforced");
 
-    assert_eq!(
-        refusal.detail["policy_id"],
-        "block.max_candidates_per_operator"
-    );
+    assert_eq!(refusal.detail["policy_id"], "block.max_candidates_per_run");
     assert_eq!(
         refusal.detail["configured"],
         ABSOLUTE_BLOCK_MAX_CANDIDATES_PER_RUN

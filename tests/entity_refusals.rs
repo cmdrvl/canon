@@ -127,6 +127,15 @@ fn artifact_backed_entity_run_refuses_dense_candidate_expansion_before_emission(
         }
     }
     fs::write(&rows, csv).expect("dense rows fixture");
+    let strategy = temp.path().join("low-budget-strategy.yaml");
+    let strategy_source =
+        fs::read_to_string("tests/fixtures/entity/strategies/regab_firm_identity.yaml")
+            .expect("strategy fixture");
+    fs::write(
+        &strategy,
+        format!("{strategy_source}\nblock:\n  max_candidates_per_run: 100\n"),
+    )
+    .expect("low-budget strategy");
     let work_dir = temp.path().join("entity-work");
 
     let output = Command::new(env!("CARGO_BIN_EXE_canon"))
@@ -137,7 +146,7 @@ fn artifact_backed_entity_run_refuses_dense_candidate_expansion_before_emission(
             "--profile",
             "regab_firm_identity",
             "--strategy",
-            "tests/fixtures/entity/strategies/regab_firm_identity.yaml",
+            strategy.to_str().expect("strategy path"),
             "--registry",
             "tests/fixtures/entity/regab/sec10d_baseline_public/registry_snapshot/firms",
             "--work-dir",
