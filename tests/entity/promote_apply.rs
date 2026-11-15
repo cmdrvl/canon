@@ -121,8 +121,18 @@ fn EN_PR002_promotion_fixture_matches_expected_registry_snapshot() {
 
     assert_eq!(output.registry.version_after, "1.0.1");
     assert_eq!(output.registry.entry_count_after, 2);
+    // `updated` is stamped with the promotion date, so it is checked on its own
+    // and every other field must match the fixture exactly.
+    let mut registry_after = read_json(&temp.path().join("registry.json"));
+    let stamped = registry_after["updated"]
+        .as_str()
+        .expect("updated is a string")
+        .to_string();
+    assert_ne!(stamped, "2026-06-26", "promotion must restamp updated");
+    assert_eq!(stamped.len(), 10);
+    registry_after["updated"] = Value::String("2026-06-26".to_string());
     assert_eq!(
-        read_json(&temp.path().join("registry.json")),
+        registry_after,
         serde_json::from_str::<Value>(REGISTRY_AFTER).expect("registry after")
     );
     assert_eq!(

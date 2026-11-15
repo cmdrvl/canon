@@ -503,6 +503,11 @@ fn print_robot_docs() {
     println!(
         "  - the guide is documentation, not a planning capability artifact; use geo capabilities without --guide for --capabilities"
     );
+    println!("entity:");
+    println!(
+        "  - the entity workbench how-to and operator catalog is docs/ENTITY_WORKBENCH_AGENT_GUIDE.md in the canon repo"
+    );
+    println!("  - start with canon entity profile list, then canon entity run");
     println!("read_only:");
     println!(
         "  - does not read stdin, input tapes, registries, schemas, review queues, or SQLite indexes"

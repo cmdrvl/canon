@@ -2139,6 +2139,13 @@ fn build_registry_bytes(
         "entity_profile".to_string(),
         registry_profile_metadata(profile),
     );
+    // `updated` is the date of the last registry mutation, as add-entry, mint
+    // and registry build stamp it. This runs only on the success path, so a
+    // refused promotion leaves the date untouched.
+    object.insert(
+        "updated".to_string(),
+        Value::String(chrono::Utc::now().format("%Y-%m-%d").to_string()),
+    );
     to_pretty_bytes(&registry_value)
 }
 

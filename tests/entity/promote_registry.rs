@@ -53,6 +53,19 @@ fn EN_PR002_promoted_alias_resolves_through_ordinary_exact_lookup() {
     let registry_json = read_json(&registry.path().join("registry.json"));
     assert_eq!(registry_json["version"], "1.0.1");
     assert_eq!(registry_json["entry_count"], 1);
+    let updated = registry_json["updated"].as_str().expect("updated string");
+    assert_ne!(updated, "2026-06-26", "success restamps updated");
+    let bytes = updated.as_bytes();
+    assert!(
+        updated.len() == 10
+            && bytes[4] == b'-'
+            && bytes[7] == b'-'
+            && bytes
+                .iter()
+                .enumerate()
+                .all(|(i, b)| i == 4 || i == 7 || b.is_ascii_digit()),
+        "updated is YYYY-MM-DD: {updated}"
+    );
     let aliases = read_json(&registry.path().join("aliases.json"));
     assert_eq!(aliases[0]["input"], "Sears");
     assert_eq!(aliases[0]["canonical_id"], "TNT-SEARS");
@@ -103,6 +116,11 @@ fn promotion_refuses_without_matching_passing_audit_before_registry_write() {
     assert_eq!(refusal.detail["stage"], "promote");
     assert_eq!(refusal.detail["field"], "audit_artifact_hash");
     assert_eq!(refusal.detail["writes_performed"], false);
+    assert_eq!(
+        read_json(&registry.path().join("registry.json"))["updated"],
+        "2026-06-26",
+        "a refused promotion leaves updated untouched"
+    );
     assert_eq!(
         file_bytes(&registry.path().join("registry.json")),
         registry_before
