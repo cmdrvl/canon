@@ -17,7 +17,8 @@ registry with the evidence that justified it. Once that loop is operating,
 three things become possible, and they are what this file records:
 
 1. **IDs** that agents and people can use anywhere, hosted at cmdrvl.com.
-2. **Evidence** behind any outcome, sealed, stored, indexed and sold.
+2. **Evidence** behind any outcome, sealed and addressable, and later stored
+   and indexed in S3.
 3. **Agent-facing services** that make the registry easy to use correctly and
    let agents improve it.
 
@@ -32,7 +33,7 @@ three things become possible, and they are what this file records:
 | Tracing a datum back to its source | Evidence MCP |
 | ID pages and registry hosting | cmdrvl.com |
 | Data products | the separate sites (dealcharts, privatecredit.watch) |
-| Selling evidence | a paid evidence-pack API |
+| Selling evidence | out of scope for this build; a separate future product (see D8) |
 
 ## Decisions
 
@@ -55,14 +56,21 @@ site hosts it.
 
 ### D3. Agent-friendly IDs
 
-Minted beside existing ids (`ORG-012` stays; the new id is one more key on the
-entity), not replacing anything published.
+The agent-friendly id will become the primary id (decided). A new registry
+mints it as primary from day one. A published registry keeps its ids for now
+(`ORG-012` stays), gains the new id as one more key on each entity, and
+migrates later: the new id becomes primary and the old one a retired id that
+still resolves to it.
 
-- Form: kind prefix, short opaque body, two check characters, for example
-  `org_7k3m9q2xh4tw`.
-- Lowercase, fixed length, an alphabet with no look-alikes, never purely
-  numeric, nothing mutable inside (no name, ticker or date).
-- Check characters so a mistyped or invented id fails before lookup.
+- Form: `<prefix>_` plus exactly 12 characters: a 10-character body and two
+  check characters. For example `org_7k3m9q2xh4tw`, `per_4f9k2m7q8xtn`.
+- Prefixes: `org_` organisation, `per_` person, `plc_` place, `deal_` deal,
+  `fund_` fund, `ins_` instrument.
+- Alphabet: `0123456789abcdefghjkmnpqrstvwxyz` (no i, l, o or u). Written
+  lowercase, accepted in any case, never purely numeric, nothing mutable
+  inside (no name, ticker or date).
+- Check characters so a mistyped or invented id fails before lookup. The exact
+  algorithm and test vectors are in bead `bd-vdcw.50`.
 - Derived deterministically from the founding evidence, so replays and two
   agents minting the same new entity get the same id.
 - Optional advisory label, `org_7k3m9q2xh4tw~blackrock-inc`: ignored for
@@ -84,16 +92,18 @@ having a model copy a few thousand ids in each format.
   decided on, and references upstream artifacts by id and receipt digest.
   Assignments handed to `decoding` carry the closure hash.
 - **Sealing** uses `pack` and `lock`.
-- **Storage** is a dedicated evidence home in S3, not beside the raw filing:
-  one outcome often rests on several filings, and packs carry a sensitivity.
-  Bucket names already in docs: `cmdrvl-receipt-packs`, `cmdrvl-databooks`.
-  Their contents were not checked.
-- **Index.** One row per outcome: what it is, its subject, closure hash, pack
-  id and location, sensitivity, sealed time. Files in S3 first, a Snowflake
-  table later.
-- **Two granularities, two prices.** A coarse pack per commit and a fine pack
-  per outcome. The per-commit closure lists the per-outcome hashes, so they
-  agree.
+- **Local first.** Closures and sealed packs are written to a local directory
+  to start. Persisting packs to S3 is a later bead, and the S3 layout is not
+  decided. The leaning is a dedicated evidence home, not beside the raw
+  filing: one outcome often rests on several filings, and packs carry a
+  sensitivity. Bucket names already in docs: `cmdrvl-receipt-packs`,
+  `cmdrvl-databooks`. Their contents were not checked.
+- **Index, later.** One row per outcome: what it is, its subject, closure
+  hash, pack id and location, sensitivity, sealed time. Files first, a
+  Snowflake table after.
+- **Two granularities.** A coarse pack per commit and a fine pack per outcome.
+  The per-commit closure lists the per-outcome hashes, so they agree. They
+  would be priced separately if evidence is sold.
 - **Sensitivity gates sale.** A pack is as sensitive as its most sensitive
   input; an input with no stated sensitivity is not public.
 
@@ -118,11 +128,21 @@ evidence hash; the packs for those hops are the answer. It never invents a hop.
 
 ### D7. Registries
 
-One registry per kind of thing, mapped in configuration: organisations (the
-existing `firms`, `ORG-*`), people (new), places (Geo), and things by kind
-(deals, instruments, funds). Roles are relations, not registries. A group
-inside a firm is its own entity with a part-of link. The existing publish
-chain stays: export, S3 version, pin, MCP servers resolve.
+People, places and things. One registry per kind, mapped in configuration:
+organisations (the existing `firms` registry, `ORG-*` today), people (new:
+registry `people`, ids `per_…`), places (Geo), and things by kind (deals,
+instruments, funds). Roles are relations, not registries. A group inside a
+firm is its own entity with a part-of link. `controlling-class-holders` folds
+into organisations: its holder vehicles become units linked to their
+sponsors. The existing publish chain stays: export, S3 version, pin, MCP
+servers resolve.
+
+### D8. Selling evidence is out of scope for this build
+
+A paid evidence API was discussed as a possible product. It is separate work,
+perhaps through the Stripe MCP or x402 so agents can pay on their own. Nothing
+in this build depends on it. What this build does is make the evidence exist,
+be sealed, and be addressable per outcome.
 
 ## Work to file, by home
 
@@ -132,8 +152,9 @@ chain stays: export, S3 version, pin, MCP servers resolve.
 - Registry sync with S3 and publish with an expected-base check.
 - Bounded batches, including name-like queries; drop rows that already resolve
   before a later batch; act on Canon's frontier and recorded misses.
-- Stitch Canon, `decoding` and fetch receipts into one closure per answer; seal
-  with `pack`; store; write the index.
+- Stitch Canon, `decoding` and fetch receipts into one closure per answer and
+  seal with `pack`, to a local directory first.
+- Later: persist sealed packs to S3 and write the index.
 - Decide the bulk-read path for very large pulls (its bead `em-1vp.7`).
 
 **evidence-protocol**
@@ -158,10 +179,6 @@ chain stays: export, S3 version, pin, MCP servers resolve.
 - One URL per id serving Canon's entity card.
 - Registry and id documentation for agents.
 
-**Paid evidence API**
-- Lookup by outcome, sensitivity gate, payment, return of the pack; two
-  granularities. The pay-per-call lane on the KYC server is a pattern.
-
 **Data pipeline**
 - Evidence index as a Snowflake table.
 - Decide whether the Reg AB Airflow registry sync stays or moves to the
@@ -173,11 +190,10 @@ chain stays: export, S3 version, pin, MCP servers resolve.
 
 ## Open decisions
 
-- S3 layout for packs and the index key.
-- What may be sold, and at what price for each granularity.
-- Whether the agent-friendly id later becomes the primary id.
-- People registry name and id scheme.
-- Whether `controlling-class-holders` folds into the organisations family.
+- S3 layout for packs and the index key (deferred by the operator).
+- When published registries migrate to the agent-friendly id as primary.
+- Whether the served `firms` registry is renamed once it holds all
+  organisations.
 
 ## Not verified
 
