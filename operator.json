@@ -4924,6 +4924,18 @@
       "output_schema": "canon_registry_init.v0",
       "status": "implemented",
       "read_only": false,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "creates registry metadata and aliases under an explicit registry root",
+        "mutation_class": "RegistryMutation",
+        "network_class": "Offline",
+        "concurrency_class": "ExclusiveRegistryMutation",
+        "platform_classes": [
+          "PortablePathUtf8",
+          "SameFilesystemAtomicReplace"
+        ],
+        "declaration_command": "registry mutation"
+      },
       "side_effects": {
         "reads_stdin": false,
         "reads_input_files": false,
@@ -6614,6 +6626,18 @@
       "output_schema": "canon_entity_session_init.v0",
       "status": "implemented",
       "read_only": false,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "publishes the explicit session manifest and optional empty registry without network access",
+        "mutation_class": "OwnedOutput",
+        "network_class": "Offline",
+        "concurrency_class": "CacheRaceSafe",
+        "platform_classes": [
+          "PortablePathUtf8",
+          "SameFilesystemAtomicReplace"
+        ],
+        "declaration_command": "entity workbench"
+      },
       "side_effects": {
         "reads_stdin": false,
         "reads_input_files": false,
