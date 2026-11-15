@@ -143,13 +143,12 @@ fn session_init_creates_registry_manifest_and_empty_lookup_is_unresolved() {
 
     let snapshot = open_current_stream_generation(&work_dir, SESSION_MANIFEST_STREAM_ID)
         .expect("session manifest stream");
-    assert_eq!(
+    assert!(
         snapshot
             .read_logical_file("session/session.json")
             .map(|bytes| bytes.len())
             .unwrap_or_default()
-            > 0,
-        true
+            > 0
     );
     let manifest: SessionManifest = serde_json::from_slice(
         snapshot
