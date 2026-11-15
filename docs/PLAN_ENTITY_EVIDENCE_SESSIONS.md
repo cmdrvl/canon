@@ -1,7 +1,7 @@
 # canon entity — Evidence Sessions
 
 > **Status**: Draft for operator review. Nothing here is implemented.
-> **Created**: 2026-11-15
+> **Created**: 2026-11-15. Revised the same day after a reuse study.
 > **Context**: `canon entity` was meant to let agents gather evidence about
 > entities, build a graph from it, and turn what the graph proves into registry
 > mappings, with a human queue for the long tail. A diagnosis on 2026-11-15
@@ -83,6 +83,66 @@ corroboration.
 
 ---
 
+## Reuse map (studied 2026-11-15)
+
+Operator direction: reuse as much as possible, and treat Geo as having the same
+problem. A code study found that most of the parts exist and are not connected.
+File and line citations for every row are in the comment on `bd-vdcw`.
+"Exists" means the code is present; the study ran no tests.
+
+| Session need | Existing piece | Gap |
+|---|---|---|
+| Append-only, content-addressed store with several writers | Entity publication streams (`src/entity/publication.rs`): objects, commits, atomic lineage claims, idempotent stream patches. Already used by `entity run` and `entity link` | Stream ids and paths for observation and evidence shards; no CLI |
+| Typed, sourced evidence record | `canon.evidence.v1` (`src/evidence/`): `PairSupport`, `AntiMergeVeto`, `ContextOnly`, provenance, content-derived ids, shard merge with conflict refusal | Only record-link produces it; no CLI reads it as input; one bad record fails the bundle; no relation kind |
+| Attribute agreement as positive evidence | Hit functions `numeric_within_tolerance`, `date_exact`, `categorical_match` (`src/entity/evidence.rs`); tolerance and range scoring in `src/resolve/scoring.rs` | No caller outside their own files; `resolve` scoring is unreachable from the CLI |
+| Observation intake | Entity prepare JSONL reader; N-source link module (`src/entity/multisource.rs`) | One file per command; one bad row refuses the batch |
+| Graph, components, cannot-link, split | Entity solve (`src/org/solve.rs` through `entity::runtime`) | Accepts only Canon-produced edge artifacts; no rule table |
+| Corroboration policy | Geo admission policy `HardOnlyWhenCorroborated` over `source_lineage_ids` (`src/geo/evidence.rs`) | Geo-typed; needs lifting out of `geo` |
+| Acquisition request and receipt | Geo contracts and validator (`src/geo/discovery.rs`): terminal states, proof class, executor trace, digests | Geo-named; validator never sees bytes; no recipe or per-page receipt (that is open `bd-3f0r`) |
+| Review queue for the long tail | Native review export with evidence-signature groups; hash-chained decision ledger | Bound to Canon-produced review ids; ledger append has no lock |
+| Commit to registry | `registry mint-batch` (new IDs, one version bump); `policy_authority` block written by `entity promote` | No evidence or tier on entries; cannot add aliases to existing IDs in batch; no command creates a registry |
+| Next action for the agent | Geo next-evidence controller (`src/geo/next_evidence.rs`) | Works only on caller-supplied actions; generated actions are open `bd-14uw` |
+| Replayable solve with receipts and resume | Project runner, receipts and CAS (`src/project/run.rs`) | Used only by Geo. The manifest-compiled entity DAG cannot execute: the only registered executor is `copy-file-v1` |
+
+Two findings change the design:
+
+1. **There are already three stores**: the project run store, the entity
+   publication store, and Geo's own run-manifest revisions. The session must
+   not add a fourth. This plan uses the entity publication store for the
+   session log, because it already has multi-writer claims and entity already
+   writes to it. Which store Geo's inquiry uses is the operator's call; Geo's
+   beads name the project store.
+2. **Evidence types map onto existing record kinds.** `same_key`, `same_slot`,
+   `attribute_agreement`, `name_equivalent` and `asserted_alias` are
+   `PairSupport` records distinguished by operator and reason code. `distinct`
+   is `AntiMergeVeto`. Only `related` needs a new kind.
+
+### Shared with Geo
+
+Geo has the same four failures: agents cannot drive it, acquisition is missing,
+nothing reaches a registry, and the gates are heavy. Its fix is specified in
+open P0 beads and unbuilt: the inquiry object (`bd-2s32`), recipes and page
+receipts (`bd-3f0r`), the acquisition loop (`bd-1b0g`), generated next actions
+(`bd-14uw`), acceptance policy (`bd-1t9f`) and registry publication
+(`bd-3uug`). No `inquiry` code exists in `src/geo`.
+
+Those are the same four parts this plan needs. Proposal: build each once,
+domain-neutral, and let entity and Geo differ only in evidence vocabulary and
+solver.
+
+| Shared part | Entity use | Geo use |
+|---|---|---|
+| Session: append-only log of observations and evidence, revisions | entity session | inquiry |
+| Acquisition: recipe, executor, page receipts, ingest with digest check | MCP query to observations | source release to evidence rows |
+| Admission: typed evidence, lineage, corroboration rule | tiers A, B, C | hard, soft, diagnostic |
+| Commit: accepted result to registry with tier and evidence | entity IDs and aliases | Geo claims |
+
+Entity goes first because its solver is simpler and the sponsor data is at
+hand. This plan does not edit the Geo beads; consolidating them is an operator
+decision.
+
+---
+
 ## Design
 
 ### 1. Session
@@ -103,8 +163,10 @@ canon entity session commit  S --next-version X.Y.Z
 called any number of times, by more than one agent, in any order. `-` reads
 JSONL from stdin.
 
-Open question for the operator: whether the session reuses the `canon project`
-workspace substrate, as Geo inquiries do, or is its own directory layout.
+The session log is a set of streams in the existing entity publication store
+(see the reuse map). `canon project` is not used for intake: its manifest DAG
+is fixed, cannot execute entity stages today, and invalidates everything from
+index down when a source is added.
 
 ### 2. Observations
 
@@ -145,8 +207,11 @@ Each record carries `basis` (the values compared and the rule applied),
 `source` (as for observations) and `asserted_by`. `related` exists so that
 Simon / Washington Prime has somewhere to go that is not a merge.
 
-Canon's existing support and cannot-link operators become producers of these
-records. The existing `protected_token_conflict` and `anchor_conflict` emit
+The record is the existing `canon.evidence.v1` shape, not a new one; the types
+above are operator and reason-code values on `PairSupport` and `AntiMergeVeto`,
+plus one new kind for `related`. Canon's existing support and cannot-link
+operators become producers of these records, and the unwired tolerance, date
+and categorical hit functions supply `attribute_agreement`. The existing `protected_token_conflict` and `anchor_conflict` emit
 `distinct`.
 
 ### 4. Acquisition
