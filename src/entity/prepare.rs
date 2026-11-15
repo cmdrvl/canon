@@ -270,6 +270,8 @@ pub struct PrepareRunArtifact {
     pub summary: BTreeMap<String, u64>,
     pub streaming: PrepareStreamingDiagnostics,
     pub surfaces_path: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rejected_rows: Vec<PrepareRowRejection>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -289,7 +291,32 @@ pub struct PrepareInputReference {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PrepareStreamOutput {
     pub observations: Vec<PreparedInputObservation>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rejected_rows: Vec<PrepareRowRejection>,
     pub diagnostics: PrepareStreamingDiagnostics,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrepareRowRejection {
+    pub row_number: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_row_id: Option<String>,
+    pub code: String,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PrepareProjectionOutput {
+    observations: Vec<PreparedInputObservation>,
+    rejected_rows: Vec<PrepareRowRejection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PrepareSurfaceOutput {
+    surfaces: Vec<PreparedSurfaceRecord>,
+    rejected_rows: Vec<PrepareRowRejection>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -353,6 +380,16 @@ pub fn project_prepare_csv_reader<R: Read>(
     delimiter: u8,
     contract: &PrepareInputContract,
 ) -> Result<Vec<PreparedInputObservation>, Refusal> {
+    project_prepare_csv_reader_with_rejections(reader, delimiter, contract, false)
+        .map(|output| output.observations)
+}
+
+fn project_prepare_csv_reader_with_rejections<R: Read>(
+    reader: R,
+    delimiter: u8,
+    contract: &PrepareInputContract,
+    collect_rejections: bool,
+) -> Result<PrepareProjectionOutput, Refusal> {
     let mut reader = ReaderBuilder::new()
         .delimiter(delimiter)
         .has_headers(true)
@@ -372,29 +409,60 @@ pub fn project_prepare_csv_reader<R: Read>(
     validate_headers(&headers, contract)?;
 
     let mut observations = Vec::new();
+    let mut rejected_rows = Vec::new();
     for (index, record) in reader.records().enumerate() {
-        let record = record.map_err(|error| {
-            EntityRefusalKind::InputContract.to_refusal(
-                "Failed to parse prepare CSV row",
-                json!({ "row_number": index + 1, "error": error.to_string() }),
-                None,
-            )
-        })?;
+        let row_number = index + 1;
+        let record = match record {
+            Ok(record) => record,
+            Err(error) => {
+                let refusal = EntityRefusalKind::InputContract.to_refusal(
+                    "Failed to parse prepare CSV row",
+                    json!({ "row_number": row_number, "error": error.to_string() }),
+                    None,
+                );
+                if collect_rejections {
+                    rejected_rows.push(prepare_row_rejection(row_number, None, refusal));
+                    continue;
+                }
+                return Err(refusal);
+            }
+        };
         if blank_record(&record) {
             continue;
         }
-        let row = csv_row_to_raw(index + 1, &headers, &record);
-        observations.push(project_prepare_row(&row, contract)?);
+        let row = csv_row_to_raw(row_number, &headers, &record);
+        match project_prepare_row(&row, contract) {
+            Ok(observation) => observations.push(observation),
+            Err(refusal) if collect_rejections => rejected_rows.push(prepare_row_rejection(
+                row_number,
+                source_row_id_from_raw(&row),
+                refusal,
+            )),
+            Err(refusal) => return Err(refusal),
+        }
     }
 
-    Ok(observations)
+    Ok(PrepareProjectionOutput {
+        observations,
+        rejected_rows,
+    })
 }
 
 pub fn project_prepare_jsonl_reader<R: BufRead>(
     mut reader: R,
     contract: &PrepareInputContract,
 ) -> Result<Vec<PreparedInputObservation>, Refusal> {
+    project_prepare_jsonl_reader_with_rejections(&mut reader, contract, false)
+        .map(|output| output.observations)
+}
+
+fn project_prepare_jsonl_reader_with_rejections<R: BufRead>(
+    mut reader: R,
+    contract: &PrepareInputContract,
+    collect_rejections: bool,
+) -> Result<PrepareProjectionOutput, Refusal> {
     let mut observations = Vec::new();
+    let mut rejected_rows = Vec::new();
     let mut line = String::new();
     let mut row_number = 0usize;
 
@@ -415,25 +483,49 @@ pub fn project_prepare_jsonl_reader<R: BufRead>(
         }
 
         row_number += 1;
-        let value = serde_json::from_str::<Value>(&line).map_err(|error| {
-            EntityRefusalKind::InputContract.to_refusal(
-                "Invalid prepare JSONL row",
-                json!({ "row_number": row_number, "error": error.to_string() }),
-                None,
-            )
-        })?;
-        let object = value.as_object().ok_or_else(|| {
-            EntityRefusalKind::InputContract.to_refusal(
+        let value = match serde_json::from_str::<Value>(&line) {
+            Ok(value) => value,
+            Err(error) => {
+                let refusal = EntityRefusalKind::InputContract.to_refusal(
+                    "Invalid prepare JSONL row",
+                    json!({ "row_number": row_number, "error": error.to_string() }),
+                    None,
+                );
+                if collect_rejections {
+                    rejected_rows.push(prepare_row_rejection(row_number, None, refusal));
+                    continue;
+                }
+                return Err(refusal);
+            }
+        };
+        let Some(object) = value.as_object() else {
+            let refusal = EntityRefusalKind::InputContract.to_refusal(
                 "Prepare JSONL rows must be JSON objects",
                 json!({ "row_number": row_number }),
                 None,
-            )
-        })?;
+            );
+            if collect_rejections {
+                rejected_rows.push(prepare_row_rejection(row_number, None, refusal));
+                continue;
+            }
+            return Err(refusal);
+        };
         let row = json_object_to_raw(row_number, object);
-        observations.push(project_prepare_row(&row, contract)?);
+        match project_prepare_row(&row, contract) {
+            Ok(observation) => observations.push(observation),
+            Err(refusal) if collect_rejections => rejected_rows.push(prepare_row_rejection(
+                row_number,
+                source_row_id_from_raw(&row),
+                refusal,
+            )),
+            Err(refusal) => return Err(refusal),
+        }
     }
 
-    Ok(observations)
+    Ok(PrepareProjectionOutput {
+        observations,
+        rejected_rows,
+    })
 }
 
 pub fn load_prepare_profile(profile: &str) -> Result<EntityProfileDocument, Refusal> {
@@ -523,6 +615,14 @@ pub fn project_prepare_path(
     rows: &Path,
     contract: &PrepareInputContract,
 ) -> Result<Vec<PreparedInputObservation>, Refusal> {
+    project_prepare_path_with_rejections(rows, contract, false).map(|output| output.observations)
+}
+
+fn project_prepare_path_with_rejections(
+    rows: &Path,
+    contract: &PrepareInputContract,
+    collect_rejections: bool,
+) -> Result<PrepareProjectionOutput, Refusal> {
     let file = File::open(rows).map_err(|error| {
         EntityRefusalKind::InputContract.to_refusal(
             "Failed to read prepare input rows",
@@ -532,8 +632,17 @@ pub fn project_prepare_path(
     })?;
 
     match prepare_input_format(rows)? {
-        PrepareInputFormat::Csv(delimiter) => project_prepare_csv_reader(file, delimiter, contract),
-        PrepareInputFormat::Jsonl => project_prepare_jsonl_reader(BufReader::new(file), contract),
+        PrepareInputFormat::Csv(delimiter) => project_prepare_csv_reader_with_rejections(
+            file,
+            delimiter,
+            contract,
+            collect_rejections,
+        ),
+        PrepareInputFormat::Jsonl => project_prepare_jsonl_reader_with_rejections(
+            BufReader::new(file),
+            contract,
+            collect_rejections,
+        ),
     }
 }
 
@@ -543,7 +652,9 @@ pub fn stream_prepare_path(
     target_rows_per_chunk: u64,
 ) -> Result<PrepareStreamOutput, Refusal> {
     let format = prepare_input_format(rows)?;
-    let observations = project_prepare_path(rows, contract)?;
+    let projection = project_prepare_path_with_rejections(rows, contract, true)?;
+    let observations = projection.observations;
+    let rejected_rows = projection.rejected_rows;
     let byte_count = fs::metadata(rows)
         .map_err(|error| {
             io_budget_refusal(
@@ -561,7 +672,8 @@ pub fn stream_prepare_path(
         entity_stream_format(&format),
         rows.display().to_string(),
         content_hash,
-        u64::try_from(observations.len()).expect("observation count fits u64"),
+        u64::try_from(observations.len() + rejected_rows.len())
+            .expect("prepare row count fits u64"),
         byte_count,
     );
     let chunks = deterministic_chunk_metadata(&input, target_rows_per_chunk)?;
@@ -570,6 +682,7 @@ pub fn stream_prepare_path(
 
     Ok(PrepareStreamOutput {
         observations,
+        rejected_rows,
         diagnostics: PrepareStreamingDiagnostics {
             input,
             chunks,
@@ -594,16 +707,32 @@ pub fn run_prepare_v1_with_target_rows_per_chunk(
     let loaded_profile = load_prepare_profile_with_hash(request.profile)?;
     let contract = prepare_contract_for_loaded_profile(&loaded_profile)?;
     let stream_output = stream_prepare_path(request.rows, &contract, target_rows_per_chunk)?;
-    let observations = stream_output.observations;
+    let PrepareStreamOutput {
+        observations,
+        mut rejected_rows,
+        diagnostics,
+    } = stream_output;
     let registry_snapshot = load_prepare_registry_snapshot(request.registry)?;
-    let mut surfaces =
-        prepare_surface_records_for_loaded_profile(request.rows, &loaded_profile, &observations)?;
+    let surface_output = prepare_surface_records_for_loaded_profile_with_rejections(
+        request.rows,
+        &loaded_profile,
+        &observations,
+        true,
+    )?;
+    let mut surfaces = surface_output.surfaces;
+    rejected_rows.extend(surface_output.rejected_rows);
+    sort_rejections(&mut rejected_rows);
     assign_exact_lookups(&mut surfaces, request.registry, &registry_snapshot)?;
     let input = PrepareInputReference {
-        row_count: u64::try_from(observations.len()).expect("observation count fits u64"),
-        content_hash: stream_output.diagnostics.input.content_hash.clone(),
+        row_count: diagnostics.input.row_count,
+        content_hash: diagnostics.input.content_hash.clone(),
     };
-    let summary = prepare_summary(&observations, &surfaces);
+    let summary = prepare_summary(
+        diagnostics.input.row_count,
+        &observations,
+        &surfaces,
+        &rejected_rows,
+    );
     let surfaces_relative = PathBuf::from("prepare").join("surfaces.jsonl");
     let surfaces_path = surfaces_relative.to_string_lossy().into_owned();
     let metadata =
@@ -617,9 +746,18 @@ pub fn run_prepare_v1_with_target_rows_per_chunk(
         "registry_snapshot": registry_snapshot,
         "input": input,
         "summary": summary,
-        "streaming": stream_output.diagnostics,
+        "streaming": diagnostics,
         "surfaces_path": surfaces_path
     });
+    if !rejected_rows.is_empty() {
+        artifact["rejected_rows"] = serde_json::to_value(&rejected_rows).map_err(|error| {
+            EntityRefusalKind::ArtifactContract.to_refusal(
+                "Failed to serialize prepare row rejections",
+                json!({ "error": error.to_string() }),
+                None,
+            )
+        })?;
+    }
     finalize_entity_v1_self_hash(&mut artifact)?;
     validate_artifact_v1_core_contract(&artifact)?;
 
@@ -643,14 +781,25 @@ pub fn run_prepare_with_target_rows_per_chunk(
     let loaded_profile = load_prepare_profile_with_hash(request.profile)?;
     let contract = prepare_contract_for_loaded_profile(&loaded_profile)?;
     let stream_output = stream_prepare_path(request.rows, &contract, target_rows_per_chunk)?;
-    let observations = stream_output.observations;
+    let PrepareStreamOutput {
+        observations,
+        mut rejected_rows,
+        diagnostics,
+    } = stream_output;
     let registry_snapshot = load_prepare_registry_snapshot(request.registry)?;
-    let mut surfaces =
-        prepare_surface_records_for_loaded_profile(request.rows, &loaded_profile, &observations)?;
+    let surface_output = prepare_surface_records_for_loaded_profile_with_rejections(
+        request.rows,
+        &loaded_profile,
+        &observations,
+        true,
+    )?;
+    let mut surfaces = surface_output.surfaces;
+    rejected_rows.extend(surface_output.rejected_rows);
+    sort_rejections(&mut rejected_rows);
     assign_exact_lookups(&mut surfaces, request.registry, &registry_snapshot)?;
     let input = PrepareInputReference {
-        row_count: u64::try_from(observations.len()).expect("observation count fits u64"),
-        content_hash: stream_output.diagnostics.input.content_hash.clone(),
+        row_count: diagnostics.input.row_count,
+        content_hash: diagnostics.input.content_hash.clone(),
     };
     let metadata = prepare_artifact_metadata(&contract, &registry_snapshot, &input)?;
 
@@ -674,9 +823,15 @@ pub fn run_prepare_with_target_rows_per_chunk(
         profile: contract.profile.clone(),
         registry_snapshot,
         input,
-        summary: prepare_summary(&observations, &surfaces),
-        streaming: stream_output.diagnostics,
+        summary: prepare_summary(
+            diagnostics.input.row_count,
+            &observations,
+            &surfaces,
+            &rejected_rows,
+        ),
+        streaming: diagnostics,
         surfaces_path: surfaces_relative.to_string_lossy().into_owned(),
+        rejected_rows,
     };
     artifact.artifact_content_hash = hash_artifact_without_self(&artifact)?;
     artifact.metadata.artifact_content_hash = artifact.artifact_content_hash.clone();
@@ -794,9 +949,20 @@ pub(crate) fn prepare_surface_records_with_profile(
     mapping: &PrepareFieldMapping,
     observations: &[PreparedInputObservation],
 ) -> Result<Vec<PreparedSurfaceRecord>, Refusal> {
+    prepare_surface_records_with_profile_and_rejections(profile, mapping, observations, false)
+        .map(|output| output.surfaces)
+}
+
+fn prepare_surface_records_with_profile_and_rejections(
+    profile: Option<&EntityProfileDocument>,
+    mapping: &PrepareFieldMapping,
+    observations: &[PreparedInputObservation],
+    collect_rejections: bool,
+) -> Result<PrepareSurfaceOutput, Refusal> {
     let mut groups: BTreeMap<String, PreparedSurfaceAccumulator> = BTreeMap::new();
     let mut builtin_profiles = BTreeMap::new();
     let mut composite_profiles = std::collections::BTreeSet::new();
+    let mut rejected_rows = Vec::new();
 
     for observation in observations {
         if profile.is_none() && !builtin_profiles.contains_key(&observation.profile_id) {
@@ -818,6 +984,26 @@ pub(crate) fn prepare_surface_records_with_profile(
         } else {
             generic_normalized_views(&observation.primary_surface.value)
         };
+        if marked_surface_id_view_name_from_views(&normalized_views).is_none() {
+            let refusal = EntityRefusalKind::ArtifactContract.to_refusal(
+                "Prepared surface must mark exactly one canonical normalized view",
+                json!({
+                    "profile_id": observation.profile_id,
+                    "surface_key": observation.primary_surface.value,
+                    "available_views": normalized_views.keys().collect::<Vec<_>>()
+                }),
+                None,
+            );
+            if collect_rejections {
+                rejected_rows.push(prepare_row_rejection(
+                    observation.row_number,
+                    observation.provenance.get("source_row_id").cloned(),
+                    refusal,
+                ));
+                continue;
+            }
+            return Err(refusal);
+        }
         let core_value = core_view_value(&observation.profile_id, &normalized_views)
             .unwrap_or_else(|| observation.primary_surface.value.trim().to_string());
         let surface_key = if selected_mapping.surface_key_fields.is_empty() {
@@ -849,7 +1035,10 @@ pub(crate) fn prepare_surface_records_with_profile(
             .cmp(&right.surface_id)
             .then_with(|| left.surface_key.cmp(&right.surface_key))
     });
-    Ok(surfaces)
+    Ok(PrepareSurfaceOutput {
+        surfaces,
+        rejected_rows,
+    })
 }
 
 fn composite_surface_key(
@@ -885,17 +1074,37 @@ pub(crate) fn prepare_surface_records_for_loaded_profile(
     loaded_profile: &LoadedPrepareProfile,
     observations: &[PreparedInputObservation],
 ) -> Result<Vec<PreparedSurfaceRecord>, Refusal> {
+    prepare_surface_records_for_loaded_profile_with_rejections(
+        rows,
+        loaded_profile,
+        observations,
+        false,
+    )
+    .map(|output| output.surfaces)
+}
+
+fn prepare_surface_records_for_loaded_profile_with_rejections(
+    rows: &Path,
+    loaded_profile: &LoadedPrepareProfile,
+    observations: &[PreparedInputObservation],
+    collect_rejections: bool,
+) -> Result<PrepareSurfaceOutput, Refusal> {
     let Some(package) = loaded_profile.package.as_ref() else {
         let contract = prepare_contract_for_loaded_profile(loaded_profile)?;
-        return prepare_surface_records_with_profile(
+        return prepare_surface_records_with_profile_and_rejections(
             Some(&loaded_profile.document),
             &contract.mapping,
             observations,
+            collect_rejections,
         );
     };
     let execution =
         execute_prepare_profile_package(rows, package, loaded_profile.content_hash.as_str())?;
-    prepare_surface_records_from_profile_execution(observations, &execution)
+    prepare_surface_records_from_profile_execution_with_rejections(
+        observations,
+        &execution,
+        collect_rejections,
+    )
 }
 
 fn execute_prepare_profile_package(
@@ -1033,9 +1242,19 @@ fn prepare_surface_records_from_profile_execution(
     observations: &[PreparedInputObservation],
     execution: &EntityProfilePackageExecution,
 ) -> Result<Vec<PreparedSurfaceRecord>, Refusal> {
+    prepare_surface_records_from_profile_execution_with_rejections(observations, execution, false)
+        .map(|output| output.surfaces)
+}
+
+fn prepare_surface_records_from_profile_execution_with_rejections(
+    observations: &[PreparedInputObservation],
+    execution: &EntityProfilePackageExecution,
+    collect_rejections: bool,
+) -> Result<PrepareSurfaceOutput, Refusal> {
     validate_profile_execution_row_count(observations.len(), execution)?;
 
     let mut groups: BTreeMap<String, PreparedSurfaceAccumulator> = BTreeMap::new();
+    let mut rejected_rows = Vec::new();
     for (observation, record) in observations.iter().zip(&execution.records) {
         if record.object_type != execution.plan.mode.source_object_type {
             return Err(EntityRefusalKind::Profile.to_refusal(
@@ -1049,21 +1268,47 @@ fn prepare_surface_records_from_profile_execution(
                 None,
             ));
         }
-        let canonical_value = record
-            .normalized_views
-            .get(&execution.canonical_view)
-            .ok_or_else(|| {
-                EntityRefusalKind::Profile.to_refusal(
-                    "Entity profile package execution did not emit its canonical view",
-                    json!({
-                        "profile": execution.profile,
-                        "canonical_view": execution.canonical_view,
-                        "ordinal": record.ordinal,
-                        "available_views": record.normalized_views.keys().collect::<Vec<_>>()
-                    }),
-                    None,
-                )
-            })?;
+        let Some(canonical_value) = record.normalized_views.get(&execution.canonical_view) else {
+            let refusal = EntityRefusalKind::Profile.to_refusal(
+                "Entity profile package execution did not emit its canonical view",
+                json!({
+                    "profile": execution.profile,
+                    "canonical_view": execution.canonical_view,
+                    "ordinal": record.ordinal,
+                    "available_views": record.normalized_views.keys().collect::<Vec<_>>()
+                }),
+                None,
+            );
+            if collect_rejections {
+                rejected_rows.push(prepare_row_rejection(
+                    observation.row_number,
+                    observation.provenance.get("source_row_id").cloned(),
+                    refusal,
+                ));
+                continue;
+            }
+            return Err(refusal);
+        };
+        if canonical_value.trim().is_empty() {
+            let refusal = EntityRefusalKind::ArtifactContract.to_refusal(
+                "Prepared surface canonical normalized view must be non-empty",
+                json!({
+                    "profile_id": observation.profile_id,
+                    "canonical_view": execution.canonical_view,
+                    "ordinal": record.ordinal
+                }),
+                None,
+            );
+            if collect_rejections {
+                rejected_rows.push(prepare_row_rejection(
+                    observation.row_number,
+                    observation.provenance.get("source_row_id").cloned(),
+                    refusal,
+                ));
+                continue;
+            }
+            return Err(refusal);
+        }
         let normalized_views = record
             .normalized_views
             .iter()
@@ -1103,7 +1348,10 @@ fn prepare_surface_records_from_profile_execution(
             .cmp(&right.surface_id)
             .then_with(|| left.surface_key.cmp(&right.surface_key))
     });
-    Ok(surfaces)
+    Ok(PrepareSurfaceOutput {
+        surfaces,
+        rejected_rows,
+    })
 }
 
 fn profile_package_refusal(error: profile_package::ProfileError) -> Refusal {
@@ -2207,7 +2455,11 @@ fn prepare_stream_provenance_samples(
         .take(MAX_PREPARE_PROVENANCE_SAMPLES)
         .enumerate()
         .map(|(index, observation)| {
-            let row_ordinal = u64::try_from(index).expect("sample index fits u64");
+            let row_ordinal = observation
+                .row_number
+                .saturating_sub(1)
+                .try_into()
+                .unwrap_or_else(|_| u64::try_from(index).expect("sample index fits u64"));
             let chunk = chunks
                 .iter()
                 .find(|chunk| {
@@ -2311,8 +2563,10 @@ fn hash_registry_json_files(registry_dir: &Path) -> Result<String, Refusal> {
 }
 
 fn prepare_summary(
+    input_row_count: u64,
     observations: &[PreparedInputObservation],
     surfaces: &[PreparedSurfaceRecord],
+    rejected_rows: &[PrepareRowRejection],
 ) -> BTreeMap<String, u64> {
     let observation_count = u64::try_from(observations.len()).expect("observation count fits u64");
     let surface_count = u64::try_from(surfaces.len()).expect("surface count fits u64");
@@ -2321,8 +2575,8 @@ fn prepare_summary(
         .map(|observation| observation.primary_surface.value.as_str())
         .collect::<BTreeSet<_>>()
         .len();
-    BTreeMap::from([
-        ("row_count".to_string(), observation_count),
+    let mut summary = BTreeMap::from([
+        ("row_count".to_string(), input_row_count),
         ("prepared_observations".to_string(), observation_count),
         (
             "raw_unique_surfaces".to_string(),
@@ -2383,7 +2637,24 @@ fn prepare_summary(
                 })
                 .sum(),
         ),
-    ])
+    ]);
+    if !rejected_rows.is_empty() {
+        summary.insert(
+            "rejected_row_count".to_string(),
+            u64::try_from(rejected_rows.len()).expect("rejected row count fits u64"),
+        );
+    }
+    summary
+}
+
+fn sort_rejections(rejections: &mut [PrepareRowRejection]) {
+    rejections.sort_by(|left, right| {
+        left.row_number
+            .cmp(&right.row_number)
+            .then_with(|| left.code.cmp(&right.code))
+            .then_with(|| left.message.cmp(&right.message))
+            .then_with(|| left.source_row_id.cmp(&right.source_row_id))
+    });
 }
 
 fn write_surfaces_jsonl(path: &Path, surfaces: &[PreparedSurfaceRecord]) -> Result<(), Refusal> {
@@ -2466,4 +2737,129 @@ fn input_contract_refusal(
         detail["error"] = Value::String(error);
     }
     EntityRefusalKind::InputContract.to_refusal(message, detail, None)
+}
+
+fn source_row_id_from_raw(row: &PrepareRawRow) -> Option<String> {
+    row.get("source_row_id")
+        .and_then(|value| scalar_string(value, row.row_number, "source_row_id").ok())
+        .flatten()
+}
+
+fn prepare_row_rejection(
+    row_number: usize,
+    source_row_id: Option<String>,
+    refusal: Refusal,
+) -> PrepareRowRejection {
+    let code = serde_json::to_value(&refusal.code)
+        .ok()
+        .and_then(|value| value.as_str().map(ToOwned::to_owned))
+        .unwrap_or_else(|| "E_ENTITY_INPUT_CONTRACT".to_string());
+    PrepareRowRejection {
+        row_number,
+        source_row_id,
+        code,
+        message: refusal.message,
+        detail: Some(refusal.detail),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    fn cmbs_profile_and_contract() -> (EntityProfileDocument, PrepareInputContract) {
+        let profile = EntityProfileDocument::from_yaml_str(
+            crate::entity::profiles::builtin_source("cmbs_tenant_label")
+                .expect("built-in CMBS profile"),
+        )
+        .expect("built-in CMBS profile parses");
+        let contract = PrepareInputContract::for_builtin_profile(&profile)
+            .expect("built-in CMBS prepare contract");
+        (profile, contract)
+    }
+
+    fn csv_with_one_bad_surface(include_bad_row: bool) -> Vec<u8> {
+        let mut csv = String::from(
+            "source_row_id,deal_id,loan_id,property_id,raw_tenant_name,alias_surfaces_json,mention_surfaces_json\n",
+        );
+        csv.push_str("row-1,deal-1,loan-1,property-1,Sears,[],[]\n");
+        if include_bad_row {
+            csv.push_str("bad,deal-bad,loan-bad,property-bad,`,[],[]\n");
+        }
+        csv.push_str("row-3,deal-3,loan-3,property-3,Macy,[],[]\n");
+        csv.into_bytes()
+    }
+
+    #[test]
+    fn projection_collects_bad_rows_without_dropping_their_identity() {
+        let (_profile, contract) = cmbs_profile_and_contract();
+        let output = project_prepare_csv_reader_with_rejections(
+            Cursor::new(csv_with_one_bad_surface(true)),
+            b',',
+            &contract,
+            true,
+        )
+        .expect("row-level collection succeeds");
+
+        assert_eq!(output.observations.len(), 2);
+        assert_eq!(output.rejected_rows.len(), 1);
+        assert_eq!(output.rejected_rows[0].row_number, 2);
+        assert_eq!(
+            output.rejected_rows[0].source_row_id.as_deref(),
+            Some("bad")
+        );
+        assert_eq!(output.rejected_rows[0].code, "E_ENTITY_ARTIFACT_CONTRACT");
+        assert!(
+            output.rejected_rows[0]
+                .message
+                .contains("canonical normalized view")
+        );
+    }
+
+    #[test]
+    fn surface_ids_are_stable_when_a_row_is_rejected() {
+        let (profile, contract) = cmbs_profile_and_contract();
+        let clean = project_prepare_csv_reader_with_rejections(
+            Cursor::new(csv_with_one_bad_surface(false)),
+            b',',
+            &contract,
+            true,
+        )
+        .expect("clean projection");
+        let with_rejection = project_prepare_csv_reader_with_rejections(
+            Cursor::new(csv_with_one_bad_surface(true)),
+            b',',
+            &contract,
+            true,
+        )
+        .expect("projection with one rejection");
+
+        let clean_surfaces = prepare_surface_records_with_profile_and_rejections(
+            Some(&profile),
+            &contract.mapping,
+            &clean.observations,
+            true,
+        )
+        .expect("clean surfaces")
+        .surfaces;
+        let rejected_surfaces = prepare_surface_records_with_profile_and_rejections(
+            Some(&profile),
+            &contract.mapping,
+            &with_rejection.observations,
+            true,
+        )
+        .expect("surfaces after row rejection")
+        .surfaces;
+
+        let clean_ids = clean_surfaces
+            .iter()
+            .map(|surface| surface.surface_id.as_str())
+            .collect::<Vec<_>>();
+        let rejected_ids = rejected_surfaces
+            .iter()
+            .map(|surface| surface.surface_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(rejected_ids, clean_ids);
+    }
 }

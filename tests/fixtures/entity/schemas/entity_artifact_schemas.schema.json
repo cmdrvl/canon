@@ -199,6 +199,34 @@
       ],
       "type": "object"
     },
+    "prepare_row_rejection": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "object"
+        },
+        "message": {
+          "type": "string"
+        },
+        "row_number": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "source_row_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "detail",
+        "message",
+        "row_number"
+      ],
+      "type": "object"
+    },
     "metadata": {
       "additionalProperties": false,
       "properties": {
@@ -744,6 +772,12 @@
         },
         "metadata": {
           "$ref": "#/$defs/metadata"
+        },
+        "rejected_rows": {
+          "items": {
+            "$ref": "#/$defs/prepare_row_rejection"
+          },
+          "type": "array"
         },
         "summary": {
           "$ref": "#/$defs/summary"

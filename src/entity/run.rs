@@ -703,8 +703,12 @@ pub fn run_entity_solve_stage_with_batching(
 pub fn render_run_summary(artifact: &EntityRunArtifact) -> String {
     let counts = &artifact.summary.counts;
     let labels = &artifact.summary.labels;
+    let rejected_rows = counts
+        .get("rejected_row_count")
+        .map(|count| format!(" rejected_rows={count}"))
+        .unwrap_or_default();
     format!(
-        "{} profile={} registry={}@{} rows={} surfaces={} exact_resolved={} candidate_pairs={} evidence_records={} entities={} review_groups={} run_artifact={}",
+        "{} profile={} registry={}@{} rows={} surfaces={} exact_resolved={} candidate_pairs={} evidence_records={} entities={} review_groups={}{} run_artifact={}",
         artifact.version,
         labels.get("profile_id").map_or("", String::as_str),
         labels.get("registry_id").map_or("", String::as_str),
@@ -716,6 +720,7 @@ pub fn render_run_summary(artifact: &EntityRunArtifact) -> String {
         count(counts, "evidence_records"),
         count(counts, "solved_entities"),
         count(counts, "review_group_count"),
+        rejected_rows,
         artifact.work_dir.run_artifact_path
     )
 }
@@ -3581,54 +3586,58 @@ fn run_summary(
         .iter()
         .filter(|surface| surface.exact_lookup.status == PreparedExactLookupStatus::Resolved)
         .count() as u64;
+    let mut counts = BTreeMap::from([
+        ("row_count".to_string(), prepare.input.row_count),
+        (
+            "prepared_surfaces".to_string(),
+            surfaces.len().try_into().expect("surface count fits u64"),
+        ),
+        (
+            "physical_batch_count".to_string(),
+            prepare.streaming.telemetry.chunk_count,
+        ),
+        (
+            "max_physical_batch_rows".to_string(),
+            prepare.streaming.telemetry.max_chunk_rows,
+        ),
+        (
+            "exact_resolved_surfaces".to_string(),
+            exact_resolved_surfaces,
+        ),
+        (
+            "index_surfaces".to_string(),
+            count(&index.artifact.summary.counts, "surface_count"),
+        ),
+        (
+            "exact_bucket_count".to_string(),
+            count(&block.summary.counts, "exact_bucket_count"),
+        ),
+        (
+            "candidate_pairs".to_string(),
+            count(&block.summary.counts, "candidate_pairs"),
+        ),
+        (
+            "evidence_records".to_string(),
+            count(&edge.summary.counts, "evidence_records"),
+        ),
+        (
+            "relation_hint_evidence".to_string(),
+            count(&edge.summary.counts, "relation_hint_count"),
+        ),
+        (
+            "solved_entities".to_string(),
+            count(&solve.summary.counts, "entity_count"),
+        ),
+        (
+            "review_group_count".to_string(),
+            count(&solve.summary.counts, "review_group_count"),
+        ),
+    ]);
+    if let Some(rejected_row_count) = prepare.summary.get("rejected_row_count") {
+        counts.insert("rejected_row_count".to_string(), *rejected_row_count);
+    }
     EntityDeterministicSummary {
-        counts: BTreeMap::from([
-            ("row_count".to_string(), prepare.input.row_count),
-            (
-                "prepared_surfaces".to_string(),
-                surfaces.len().try_into().expect("surface count fits u64"),
-            ),
-            (
-                "physical_batch_count".to_string(),
-                prepare.streaming.telemetry.chunk_count,
-            ),
-            (
-                "max_physical_batch_rows".to_string(),
-                prepare.streaming.telemetry.max_chunk_rows,
-            ),
-            (
-                "exact_resolved_surfaces".to_string(),
-                exact_resolved_surfaces,
-            ),
-            (
-                "index_surfaces".to_string(),
-                count(&index.artifact.summary.counts, "surface_count"),
-            ),
-            (
-                "exact_bucket_count".to_string(),
-                count(&block.summary.counts, "exact_bucket_count"),
-            ),
-            (
-                "candidate_pairs".to_string(),
-                count(&block.summary.counts, "candidate_pairs"),
-            ),
-            (
-                "evidence_records".to_string(),
-                count(&edge.summary.counts, "evidence_records"),
-            ),
-            (
-                "relation_hint_evidence".to_string(),
-                count(&edge.summary.counts, "relation_hint_count"),
-            ),
-            (
-                "solved_entities".to_string(),
-                count(&solve.summary.counts, "entity_count"),
-            ),
-            (
-                "review_group_count".to_string(),
-                count(&solve.summary.counts, "review_group_count"),
-            ),
-        ]),
+        counts,
         labels: BTreeMap::from([
             ("profile_id".to_string(), prepare.profile.id.clone()),
             (
