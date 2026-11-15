@@ -881,7 +881,7 @@ fn write_profile(path: &Path) {
       { "op": "exact_view", "view": "core" }
     ],
     "cannot_link": [
-      { "op": "role_conflict", "view": "core" }
+      { "op": "protected_token_conflict", "view": "core" }
     ],
     "relation_hints": [
       { "op": "cross_profile_alignment", "view": "core" }

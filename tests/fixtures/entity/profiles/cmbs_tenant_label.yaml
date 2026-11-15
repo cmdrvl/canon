@@ -59,14 +59,9 @@ evidence:
       view: tenant_tokens
       params:
         min_score_units: "0"
-    - op: alias_patch_match
-      view: tenant_core
   cannot_link:
     - op: protected_token_conflict
       view: tenant_tokens
-    - op: related_distinct_phrase
-      view: tenant_core
-    - op: same_property_distinct_rank
   relation_hints:
     - op: related_brand_family
       view: tenant_brand

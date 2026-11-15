@@ -27,15 +27,25 @@ fn regab_firm_profile_keeps_tenant_label_semantics_out() {
             .evidence
             .support
             .iter()
-            .any(|operator| operator.op == "reviewed_alias")
+            .any(|operator| operator.op == "exact_view")
     );
+    assert!(profile.evidence.cannot_link.iter().any(|operator| {
+        operator.op == "protected_token_conflict"
+            && operator.params.get("score_units").map(String::as_str) == Some("0")
+    }));
     assert!(
         profile
             .evidence
-            .cannot_link
+            .support
             .iter()
-            .any(|operator| operator.op == "role_conflict")
+            .all(|operator| operator.op != "reviewed_alias")
     );
+    assert!(profile.evidence.cannot_link.iter().all(|operator| {
+        !matches!(
+            operator.op.as_str(),
+            "role_conflict" | "platform_label_guard" | "division_boundary"
+        )
+    }));
     assert!(
         profile
             .evidence

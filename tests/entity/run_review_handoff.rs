@@ -549,21 +549,19 @@ fn protect_param_is_honored_and_validated() {
 }
 
 #[test]
-fn run_warns_about_declared_but_inert_operators_without_changing_the_outcome() {
-    let inert = Fixture::new(&format!(
-        "{GUARD}\n    - op: related_distinct_phrase\n      view: tenant_core"
-    ));
-    let output = inert.run("wd");
+fn run_warns_about_generic_relation_hints_without_changing_the_outcome() {
+    let relation_hint_only = Fixture::new(GUARD);
+    let output = relation_hint_only.run("wd");
     assert!(output.status.success());
     let warning = stderr(&output);
     assert!(warning.contains("declared but inert"), "stderr: {warning}");
-    assert!(warning.contains("cannot_link:related_distinct_phrase"));
-    assert!(!warning.contains("cannot_link:protected_token_conflict"));
-    // Declared-only ops never block a run: same artifact shape and exit code.
+    assert!(warning.contains("relation_hints:related_brand_family"));
+    assert!(!warning.contains("cannot_link:"));
+    // Generic relation hints never block a run: same artifact shape and exit code.
     assert!(String::from_utf8_lossy(&output.stdout).contains("canon_entity_run.v1"));
 
     // JSON mode is the machine channel: stderr stays empty.
-    let json = inert.canon(&[
+    let json = relation_hint_only.canon(&[
         "entity",
         "run",
         "rows.csv",

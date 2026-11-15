@@ -49,8 +49,21 @@ fn entity_profile_schema_validates_regab_firm_identity_profile() {
             .evidence
             .cannot_link
             .iter()
-            .any(|operator| operator.op == "division_boundary")
+            .any(|operator| operator.op == "protected_token_conflict")
     );
+    assert!(
+        profile
+            .evidence
+            .support
+            .iter()
+            .all(|operator| operator.op != "reviewed_alias")
+    );
+    assert!(profile.evidence.cannot_link.iter().all(|operator| {
+        !matches!(
+            operator.op.as_str(),
+            "role_conflict" | "platform_label_guard" | "division_boundary"
+        )
+    }));
 }
 
 #[test]
@@ -149,7 +162,7 @@ normalized_views:
     operators: [unicode_fold, lowercase, normalize_whitespace]
 evidence:
   support:
-    - op: neural_embedding_similarity
+    - op: reviewed_alias
       view: tenant_core
   cannot_link:
     - op: protected_token_conflict
@@ -165,8 +178,43 @@ patch_namespaces:
     .expect_err("unsupported support operator refuses");
 
     assert_entity_error_code(&error, RefusalCode::EEntityStrategy);
-    assert_eq!(error.detail["operator"], "neural_embedding_similarity");
+    assert_eq!(error.detail["operator"], "reviewed_alias");
     assert_eq!(error.detail["lane"], "support");
+}
+
+#[test]
+fn entity_strategy_validation_retires_inert_cannot_link_operator() {
+    let error = EntityProfileDocument::from_yaml_str(
+        r#"
+profile: cmbs_tenant_label
+version: 0.1.0
+entity_type: tenant_label
+identity_semantics: canonical_display_label
+canonical_type: tenant_label
+required_fields: [source_row_id, raw_tenant_name]
+normalized_views:
+  tenant_core:
+    operators: [unicode_fold, lowercase, normalize_whitespace]
+evidence:
+  support:
+    - op: exact_view
+      view: tenant_core
+  cannot_link:
+    - op: related_distinct_phrase
+      view: tenant_core
+  relation_hints:
+    - op: related_brand_family
+patch_namespaces:
+  aliases: cmbs_tenant_label.aliases
+  distinct: cmbs_tenant_label.distinct
+  relations: cmbs_tenant_label.relations
+"#,
+    )
+    .expect_err("retired cannot-link operator refuses");
+
+    assert_entity_error_code(&error, RefusalCode::EEntityStrategy);
+    assert_eq!(error.detail["operator"], "related_distinct_phrase");
+    assert_eq!(error.detail["lane"], "cannot_link");
 }
 
 #[test]

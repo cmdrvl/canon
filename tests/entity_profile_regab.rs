@@ -42,20 +42,16 @@ fn regab_firm_profile_validates_sec10d_profile_and_strategy_fixture() {
         profile.required_fields,
         ["source_row_id", "field_name", "org_name", "dataset"]
     );
-    assert!(
-        profile
-            .evidence
-            .cannot_link
-            .iter()
-            .any(|operator| operator.op == "role_conflict")
-    );
-    assert!(
-        profile
-            .evidence
-            .cannot_link
-            .iter()
-            .any(|operator| operator.op == "division_boundary")
-    );
+    assert!(profile.evidence.cannot_link.iter().any(|operator| {
+        operator.op == "protected_token_conflict"
+            && operator.params.get("score_units").map(String::as_str) == Some("0")
+    }));
+    assert!(profile.evidence.cannot_link.iter().all(|operator| {
+        !matches!(
+            operator.op.as_str(),
+            "role_conflict" | "platform_label_guard" | "division_boundary"
+        )
+    }));
     assert!(
         profile
             .evidence

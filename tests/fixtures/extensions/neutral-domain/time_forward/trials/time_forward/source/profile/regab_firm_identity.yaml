@@ -35,12 +35,11 @@ evidence:
       params:
         metric: jaro_winkler
         min_score: "0.9000"
-    - op: reviewed_alias
-      view: firm_core
   cannot_link:
-    - op: role_conflict
-    - op: platform_label_guard
-    - op: division_boundary
+    - op: protected_token_conflict
+      view: firm_tokens
+      params:
+        score_units: "0"
   relation_hints:
     - op: division_of
     - op: parent_subsidiary_context

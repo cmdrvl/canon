@@ -43,7 +43,7 @@ fn cmbs_tenant_profile_keeps_relation_hints_out_of_same_as_support() {
             .evidence
             .cannot_link
             .iter()
-            .any(|operator| operator.op == "same_property_distinct_rank")
+            .any(|operator| operator.op == "protected_token_conflict")
     );
 
     for operator in &profile.evidence.relation_hints {

@@ -1251,14 +1251,14 @@ fn write_registry(registry: &Path, version: &str, entry_count: u64) {
 
 fn enable_neutral_similarity_support(profile: &Path) {
     let yaml = fs::read_to_string(profile).unwrap();
-    let needle = "    - op: reviewed_alias\n      view: firm_core";
+    let needle = "    - op: exact_view\n      view: firm_core";
     assert!(
         yaml.contains(needle),
-        "profile template must expose reviewed_alias support hook"
+        "profile template must expose exact_view support hook"
     );
     let patched = yaml.replace(
         needle,
-        "    - op: string_similarity\n      view: firm_core\n      params:\n        metric: jaro_winkler\n        min_score: \"0.9000\"\n    - op: reviewed_alias\n      view: firm_core",
+        "    - op: exact_view\n      view: firm_core\n    - op: string_similarity\n      view: firm_core\n      params:\n        metric: jaro_winkler\n        min_score: \"0.9000\"",
     );
     fs::write(profile, patched).unwrap();
 }

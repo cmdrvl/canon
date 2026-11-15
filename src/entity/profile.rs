@@ -962,29 +962,16 @@ const SUPPORTED_SUPPORT_OPS: &[&str] = &[
     "exact_view",
     "anchor_match",
     "isin_cusip_arithmetic",
-    "token_overlap",
     "string_similarity",
     "tfidf_cosine",
     "date_transposed_digits",
     "two_token_reversal",
-    "alias_patch_match",
-    "reviewed_alias",
 ];
 
 const SUPPORTED_CANNOT_LINK_OPS: &[&str] = &[
-    "alias_patch_distinct",
     "anchor_conflict",
     "attribute_conflict",
     "protected_token_conflict",
-    "related_distinct_phrase",
-    "conflicting_anchor",
-    "same_property_distinct_rank",
-    "role_conflict",
-    "protected_anchor_conflict",
-    "segment_conflict",
-    "context_conflict",
-    "platform_label_guard",
-    "division_boundary",
 ];
 
 const SUPPORTED_RELATION_HINT_OPS: &[&str] = &[
