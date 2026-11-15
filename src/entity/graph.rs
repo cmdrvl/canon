@@ -450,6 +450,54 @@ pub struct SurfacePair {
     pub right_surface_id: String,
 }
 
+/// One representative surface and its non-empty values for an authoritative
+/// anchor field inside an exact-name bucket.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExactBucketAnchorSurface {
+    pub surface_id: String,
+    pub anchor_values: Vec<String>,
+}
+
+/// Return a bounded set of cross-anchor-group pairs for an exact bucket.
+///
+/// Surfaces with the same non-empty anchor set share one group. Empty anchor
+/// sets are deliberately omitted: a missing key does not contradict a
+/// supplied key. One deterministic representative from the first group is
+/// compared with one representative from every other group, producing a
+/// linear number of pairs instead of expanding the bucket quadratically.
+pub fn exact_bucket_anchor_conflict_pairs(
+    surfaces: &[ExactBucketAnchorSurface],
+) -> Vec<SurfacePair> {
+    let mut representatives = BTreeMap::<Vec<String>, String>::new();
+    for surface in surfaces {
+        let mut values = surface.anchor_values.clone();
+        values.sort();
+        values.dedup();
+        if values.is_empty() {
+            continue;
+        }
+        representatives
+            .entry(values)
+            .and_modify(|representative| {
+                if surface.surface_id < *representative {
+                    *representative = surface.surface_id.clone();
+                }
+            })
+            .or_insert_with(|| surface.surface_id.clone());
+    }
+
+    let Some(first) = representatives.values().next().cloned() else {
+        return Vec::new();
+    };
+    let mut pairs = representatives
+        .values()
+        .skip(1)
+        .filter_map(|representative| SurfacePair::new(&first, representative))
+        .collect::<Vec<_>>();
+    pairs.sort();
+    pairs
+}
+
 impl SurfacePair {
     pub fn new(
         left_surface_id: impl Into<String>,

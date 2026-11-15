@@ -7,6 +7,7 @@ use canon::entity::{
     },
     edge::build_edge_evidence_record,
     evidence::{ExactViewSupportRequest, exact_view_support_hit},
+    graph::{ExactBucketAnchorSurface, exact_bucket_anchor_conflict_pairs},
     score::{
         CandidateScoreDecisionReason, ScoreLane, ScoreThreshold, ScoreUnits, ScoredCandidate,
         evaluate_candidate_score,
@@ -119,6 +120,56 @@ fn protected_token_conflict_ignores_matching_or_empty_protected_sets() {
         })
         .is_none()
     );
+}
+
+#[test]
+fn exact_bucket_anchor_grouping_emits_bounded_cross_group_pairs() {
+    let pairs = exact_bucket_anchor_conflict_pairs(&[
+        ExactBucketAnchorSurface {
+            surface_id: "surface:a".to_string(),
+            anchor_values: vec!["333".to_string()],
+        },
+        ExactBucketAnchorSurface {
+            surface_id: "surface:b".to_string(),
+            anchor_values: vec!["333".to_string()],
+        },
+        ExactBucketAnchorSurface {
+            surface_id: "surface:c".to_string(),
+            anchor_values: vec!["444".to_string()],
+        },
+        ExactBucketAnchorSurface {
+            surface_id: "surface:d".to_string(),
+            anchor_values: vec!["444".to_string()],
+        },
+        ExactBucketAnchorSurface {
+            surface_id: "surface:missing".to_string(),
+            anchor_values: Vec::new(),
+        },
+    ]);
+
+    assert_eq!(pairs.len(), 1);
+    assert_eq!(pairs[0].left_surface_id, "surface:a");
+    assert_eq!(pairs[0].right_surface_id, "surface:c");
+}
+
+#[test]
+fn exact_bucket_anchor_grouping_does_not_split_matching_or_missing_keys() {
+    let pairs = exact_bucket_anchor_conflict_pairs(&[
+        ExactBucketAnchorSurface {
+            surface_id: "surface:a".to_string(),
+            anchor_values: vec!["333".to_string()],
+        },
+        ExactBucketAnchorSurface {
+            surface_id: "surface:b".to_string(),
+            anchor_values: vec!["333".to_string()],
+        },
+        ExactBucketAnchorSurface {
+            surface_id: "surface:missing".to_string(),
+            anchor_values: Vec::new(),
+        },
+    ]);
+
+    assert!(pairs.is_empty());
 }
 
 fn score(units: u32) -> ScoreUnits {

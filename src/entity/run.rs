@@ -58,7 +58,10 @@ use crate::{
             two_token_reversal_support_hit,
         },
         evidence_ir::{CANON_EVIDENCE_VERSION, canonical_bundle_bytes},
-        graph::{SignedEvidenceGraphInput, SurfaceIncumbentId, build_signed_evidence_graph},
+        graph::{
+            ExactBucketAnchorSurface, SignedEvidenceGraphInput, SurfaceIncumbentId,
+            build_signed_evidence_graph, exact_bucket_anchor_conflict_pairs,
+        },
         index::ngram_index::{EntityNgramBuildConfig, EntityNgramIndex, EntityNgramSurface},
         index::{
             EntityIndexArtifact, EntityIndexBuildRequest, EntityIndexCacheMode,
@@ -2291,6 +2294,30 @@ fn build_and_write_block(
             .cmp(&right.bucket_id)
             .then_with(|| left.operator_id.cmp(&right.operator_id))
     });
+    let anchor_conflict_candidates = exact_bucket_anchor_conflict_candidates(
+        &loaded_profile.document,
+        &exact_bucket_assertions,
+        surfaces,
+    )?;
+    if !anchor_conflict_candidates.is_empty() {
+        merge_block_candidates(&mut result.candidates, anchor_conflict_candidates);
+        result.diagnostics.candidate_record_count = result.candidates.len() as u64;
+        result.diagnostics.candidate_pairs_emitted = result.candidates.len() as u64;
+        result.diagnostics.candidate_artifact_bytes = serde_json::to_vec(&result.candidates)
+            .map_err(|error| {
+                EntityRefusalKind::ArtifactContract.to_refusal(
+                    "Failed to measure exact-bucket anchor conflict candidates",
+                    json!({
+                        "stage": "block",
+                        "reason": "candidate_artifact_serialization_failed",
+                        "error": error.to_string(),
+                        "writes_performed": false
+                    }),
+                    Some(next_run_command(request)),
+                )
+            })?
+            .len() as u64;
+    }
     let artifact = build_block_candidate_artifact_contract(BlockCandidateArtifactRequest {
         index: EntityArtifactHeader {
             version: index.artifact.version.clone(),
@@ -2379,6 +2406,84 @@ fn build_and_write_block(
         publication_context,
         publication_files,
     })
+}
+
+fn exact_bucket_anchor_conflict_candidates(
+    profile: &EntityProfileDocument,
+    buckets: &[ExactBucketAssertion],
+    surfaces: &[PreparedSurfaceRecord],
+) -> Result<Vec<BlockCandidateRecord>, Refusal> {
+    let mut candidates = Vec::new();
+    for bucket in buckets {
+        let bucket_surfaces = surfaces
+            .iter()
+            .filter(|surface| {
+                bucket
+                    .membership
+                    .surface_ids
+                    .iter()
+                    .any(|surface_id| surface_id == &surface.surface_id)
+                    || bucket.membership.surface_ranges.iter().any(|range| {
+                        range.start_surface_id.as_str() <= surface.surface_id.as_str()
+                            && surface.surface_id.as_str() <= range.end_surface_id.as_str()
+                    })
+            })
+            .collect::<Vec<_>>();
+        for spec in &profile.evidence.cannot_link {
+            if spec.op != "anchor_conflict"
+                || optional_score_units_param(spec, "score_units", "score")?
+                    == Some(ScoreUnits::ZERO)
+            {
+                continue;
+            }
+            let field = required_field_param(spec, "anchor_conflict")?;
+            let grouped_surfaces = bucket_surfaces
+                .iter()
+                .map(|surface| ExactBucketAnchorSurface {
+                    surface_id: surface.surface_id.clone(),
+                    anchor_values: anchor_values(surface, field)
+                        .into_iter()
+                        .map(str::to_string)
+                        .collect(),
+                })
+                .collect::<Vec<_>>();
+            let shared_anchor = optional_non_empty_param(spec, "unless_shared_anchor")?;
+            let pair_candidates = exact_bucket_anchor_conflict_pairs(&grouped_surfaces);
+            for pair in pair_candidates {
+                if shared_anchor.is_some_and(|shared| {
+                    let left = surfaces
+                        .iter()
+                        .find(|surface| surface.surface_id == pair.left_surface_id);
+                    let right = surfaces
+                        .iter()
+                        .find(|surface| surface.surface_id == pair.right_surface_id);
+                    left.zip(right).is_some_and(|(left, right)| {
+                        let left_values = anchor_values(left, shared);
+                        let right_values = anchor_values(right, shared);
+                        !left_values.is_empty() && left_values == right_values
+                    })
+                }) {
+                    continue;
+                }
+                let operator_id = format!(
+                    "exact_bucket_anchor_conflict:{}:{}",
+                    bucket.bucket_id, field
+                );
+                candidates.push(BlockCandidateRecord {
+                    version: CANON_ENTITY_BLOCK_VERSION_V1.to_string(),
+                    left_surface_id: pair.left_surface_id,
+                    right_surface_id: pair.right_surface_id,
+                    block_hits: vec![BlockCandidateHit {
+                        operator_id,
+                        rank: None,
+                        score_units: 0,
+                    }],
+                    candidate_score_hint: 0,
+                });
+            }
+        }
+    }
+    Ok(candidates)
 }
 
 fn build_record_link_block_run(
