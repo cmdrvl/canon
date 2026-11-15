@@ -3166,9 +3166,11 @@ fn run_artifact(
             surfaces,
             index,
             block,
-            edge,
-            solve,
-            candidate_support_warning,
+            RunSummaryContext {
+                edge,
+                solve,
+                candidate_support_warning,
+            },
         ),
         orchestration,
         stage_artifacts,
@@ -3737,15 +3739,19 @@ fn candidate_support_warning(
         })
 }
 
+struct RunSummaryContext<'a> {
+    edge: &'a EdgeEvidenceArtifact,
+    solve: &'a SolveArtifact,
+    candidate_support_warning: bool,
+}
+
 fn run_summary(
     request: EntityRunRequest<'_>,
     prepare: &PrepareRunArtifact,
     surfaces: &[PreparedSurfaceRecord],
     index: &EntityIndexRun,
     block: &BlockCandidateArtifact,
-    edge: &EdgeEvidenceArtifact,
-    solve: &SolveArtifact,
-    candidate_support_warning: bool,
+    context: RunSummaryContext<'_>,
 ) -> EntityDeterministicSummary {
     let exact_resolved_surfaces = surfaces
         .iter()
@@ -3783,19 +3789,19 @@ fn run_summary(
         ),
         (
             "evidence_records".to_string(),
-            count(&edge.summary.counts, "evidence_records"),
+            count(&context.edge.summary.counts, "evidence_records"),
         ),
         (
             "relation_hint_evidence".to_string(),
-            count(&edge.summary.counts, "relation_hint_count"),
+            count(&context.edge.summary.counts, "relation_hint_count"),
         ),
         (
             "solved_entities".to_string(),
-            count(&solve.summary.counts, "entity_count"),
+            count(&context.solve.summary.counts, "entity_count"),
         ),
         (
             "review_group_count".to_string(),
-            count(&solve.summary.counts, "review_group_count"),
+            count(&context.solve.summary.counts, "review_group_count"),
         ),
     ]);
     if let Some(rejected_row_count) = prepare.summary.get("rejected_row_count") {
@@ -3858,7 +3864,7 @@ fn run_summary(
         ),
         ("status".to_string(), "completed".to_string()),
     ]);
-    if candidate_support_warning {
+    if context.candidate_support_warning {
         labels.insert(
             "candidate_support_warning".to_string(),
             "candidates cannot be supported by any executed operator".to_string(),
