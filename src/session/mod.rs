@@ -94,7 +94,7 @@ pub fn init(request: SessionInitRequest) -> Result<SessionInitOutput, Refusal> {
     )?;
 
     let registry_json = registry.join("registry.json");
-    let registry_missing = !path_exists(&registry_json)?;
+    let registry_missing = !path_exists(&registry_json);
     let mut registry_initialized = false;
     let registry_id = if registry_missing {
         let registry_id = request.registry_id.clone().ok_or_else(|| {
@@ -159,7 +159,7 @@ pub fn init(request: SessionInitRequest) -> Result<SessionInitOutput, Refusal> {
                 &current.session_id,
             ));
         }
-        if current == manifest {
+        if current == &manifest {
             return Ok(output(
                 "already_initialised",
                 manifest,
