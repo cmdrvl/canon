@@ -284,12 +284,21 @@ pub fn run_block_preflight(
             DEFAULT_TOP_BLOCKS,
         )?
     };
-    let totals = totals_from_diagnostics(&block_result.diagnostics, request.sample_pct);
-    let budget_verdict = budget_verdict(&runtime_config, &totals, &operator_reports, &top_blocks);
     let input_row_count = prepared.observations.len() as u64;
     let sampled_row_count = prepared.sampled_observations.len() as u64;
     let surface_count = full_surface_count(request.rows, &prepared)?;
     let sampled_surface_count = prepared.sampled_surfaces.len() as u64;
+    let mut effective_runtime_config = runtime_config.clone();
+    effective_runtime_config.candidate_budget = effective_runtime_config
+        .candidate_budget
+        .for_surface_count(usize::try_from(surface_count).unwrap_or(usize::MAX));
+    let totals = totals_from_diagnostics(&block_result.diagnostics, request.sample_pct);
+    let budget_verdict = budget_verdict(
+        &effective_runtime_config,
+        &totals,
+        &operator_reports,
+        &top_blocks,
+    );
     let mut report = EntityBlockPreflightReport {
         version: CANON_ENTITY_BLOCK_PREFLIGHT_VERSION.to_string(),
         advisory: request.sample_pct != 100,
@@ -310,7 +319,7 @@ pub fn run_block_preflight(
             surface_count,
             sampled_surface_count,
         },
-        configured_budgets: BlockPreflightBudgetConfigReport::from(&runtime_config),
+        configured_budgets: BlockPreflightBudgetConfigReport::from(&effective_runtime_config),
         budget_verdict,
         totals,
         operators: operator_reports,

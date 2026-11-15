@@ -28,7 +28,7 @@ use crate::{
             ExactBucketBlockRequest, ExactBucketSurface, RareTokenOverlapBlockOperator,
             emit_exact_bucket_hyperedges, generate_block_candidates, generate_profile_candidates,
             load_block_runtime_config, native_block_budget_refusal_proof,
-            native_block_scale_report,
+            native_block_scale_report, validate_profile_budget_placement,
         },
         block_artifact::{
             BlockCandidateArtifact, BlockCandidateArtifactRequest, ExactBucketAssertion,
@@ -707,8 +707,12 @@ pub fn render_run_summary(artifact: &EntityRunArtifact) -> String {
         .get("rejected_row_count")
         .map(|count| format!(" rejected_rows={count}"))
         .unwrap_or_default();
+    let candidate_support_warning = labels
+        .get("candidate_support_warning")
+        .map(|warning| format!(" warning={warning}"))
+        .unwrap_or_default();
     format!(
-        "{} profile={} registry={}@{} rows={} surfaces={} exact_resolved={} candidate_pairs={} evidence_records={} entities={} review_groups={}{} run_artifact={}",
+        "{} profile={} registry={}@{} rows={} surfaces={} exact_resolved={} candidate_pairs={} evidence_records={} entities={} review_groups={}{}{} run_artifact={}",
         artifact.version,
         labels.get("profile_id").map_or("", String::as_str),
         labels.get("registry_id").map_or("", String::as_str),
@@ -721,6 +725,7 @@ pub fn render_run_summary(artifact: &EntityRunArtifact) -> String {
         count(counts, "solved_entities"),
         count(counts, "review_group_count"),
         rejected_rows,
+        candidate_support_warning,
         artifact.work_dir.run_artifact_path
     )
 }
@@ -2135,6 +2140,7 @@ fn build_and_write_block(
 ) -> Result<EntityBlockRun, Refusal> {
     let strategy = stage_strategy(base_strategy, "block");
     let block_config = load_block_runtime_config(request.strategy)?;
+    validate_profile_budget_placement(Path::new(request.profile))?;
     let loaded_profile = load_prepare_profile_with_hash(request.profile)?;
     validate_edge_profile_binding(&loaded_profile, &index.artifact.metadata.profile)?;
     let blocking_profile = block_config.tuned_profile(&loaded_profile.document)?;
@@ -3043,12 +3049,22 @@ fn run_artifact(
         .collect();
     metadata.artifact_content_hash.clear();
     let orchestration = run_orchestration(request, &stage_artifacts, prepare, solve);
+    let candidate_support_warning = candidate_support_warning(request, block);
 
     let artifact = EntityRunArtifact {
         version: CANON_ENTITY_RUN_VERSION_V1.to_string(),
         artifact_content_hash: String::new(),
         metadata,
-        summary: run_summary(request, prepare, surfaces, index, block, edge, solve),
+        summary: run_summary(
+            request,
+            prepare,
+            surfaces,
+            index,
+            block,
+            edge,
+            solve,
+            candidate_support_warning,
+        ),
         orchestration,
         stage_artifacts,
         work_dir: EntityRunWorkDirLayout {
@@ -3573,6 +3589,49 @@ fn run_orchestration(
     }
 }
 
+fn candidate_support_warning(
+    request: EntityRunRequest<'_>,
+    block: &BlockCandidateArtifact,
+) -> bool {
+    let Ok(loaded_profile) = load_prepare_profile_with_hash(request.profile) else {
+        return false;
+    };
+    let executed_support = loaded_profile
+        .document
+        .evidence
+        .support
+        .iter()
+        .filter(|spec| RUN_SUPPORT_OPS.contains(&spec.op.as_str()))
+        .collect::<Vec<_>>();
+    if executed_support.is_empty()
+        || executed_support
+            .iter()
+            .any(|spec| spec.op.as_str() != "exact_view")
+    {
+        return false;
+    }
+    let diagnostics_path = request.work_dir.join(&block.candidate_diagnostics_path);
+    let Ok(diagnostics) = read_json_file::<Value>(&diagnostics_path, "block diagnostics") else {
+        return false;
+    };
+    diagnostics
+        .get("operator_yield")
+        .and_then(Value::as_array)
+        .is_some_and(|operators| {
+            operators.iter().any(|operator| {
+                let emitted = operator
+                    .get("emitted_candidate_count")
+                    .and_then(Value::as_u64)
+                    .unwrap_or_default();
+                let operator_id = operator
+                    .get("operator_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                emitted > 0 && !operator_id.starts_with("exact_view")
+            })
+        })
+}
+
 fn run_summary(
     request: EntityRunRequest<'_>,
     prepare: &PrepareRunArtifact,
@@ -3581,6 +3640,7 @@ fn run_summary(
     block: &BlockCandidateArtifact,
     edge: &EdgeEvidenceArtifact,
     solve: &SolveArtifact,
+    candidate_support_warning: bool,
 ) -> EntityDeterministicSummary {
     let exact_resolved_surfaces = surfaces
         .iter()
@@ -3636,66 +3696,70 @@ fn run_summary(
     if let Some(rejected_row_count) = prepare.summary.get("rejected_row_count") {
         counts.insert("rejected_row_count".to_string(), *rejected_row_count);
     }
-    EntityDeterministicSummary {
-        counts,
-        labels: BTreeMap::from([
-            ("profile_id".to_string(), prepare.profile.id.clone()),
-            (
-                "profile_version".to_string(),
-                prepare.profile.version.clone(),
-            ),
-            (
-                "registry_id".to_string(),
-                prepare.registry_snapshot.id.clone(),
-            ),
-            (
-                "registry_version".to_string(),
-                prepare.registry_snapshot.version.clone(),
-            ),
-            (
-                "registry_source".to_string(),
-                request.registry.display().to_string(),
-            ),
-            (
-                "strategy_source".to_string(),
-                request.strategy.display().to_string(),
-            ),
-            (
-                "cache_mode".to_string(),
-                index.cache_mode.as_str().to_string(),
-            ),
-            (
-                "cache_status".to_string(),
-                index.cache_status.as_str().to_string(),
-            ),
-            (
-                "cache_receipt_path".to_string(),
-                index.cache_execution_receipt_path.clone(),
-            ),
-            (
-                "cache_receipt_hash".to_string(),
-                index.cache_execution_receipt_content_hash.clone(),
-            ),
-            (
-                "cache_bundle_receipt_path".to_string(),
-                index.cache_bundle_receipt_path.clone(),
-            ),
-            (
-                "cache_bundle_receipt_hash".to_string(),
-                index.cache_bundle_receipt_content_hash.clone(),
-            ),
-            (
-                "batching_mode".to_string(),
-                if prepare.streaming.telemetry.chunk_count > 1 {
-                    "physical_batches"
-                } else {
-                    "single_batch"
-                }
-                .to_string(),
-            ),
-            ("status".to_string(), "completed".to_string()),
-        ]),
+    let mut labels = BTreeMap::from([
+        ("profile_id".to_string(), prepare.profile.id.clone()),
+        (
+            "profile_version".to_string(),
+            prepare.profile.version.clone(),
+        ),
+        (
+            "registry_id".to_string(),
+            prepare.registry_snapshot.id.clone(),
+        ),
+        (
+            "registry_version".to_string(),
+            prepare.registry_snapshot.version.clone(),
+        ),
+        (
+            "registry_source".to_string(),
+            request.registry.display().to_string(),
+        ),
+        (
+            "strategy_source".to_string(),
+            request.strategy.display().to_string(),
+        ),
+        (
+            "cache_mode".to_string(),
+            index.cache_mode.as_str().to_string(),
+        ),
+        (
+            "cache_status".to_string(),
+            index.cache_status.as_str().to_string(),
+        ),
+        (
+            "cache_receipt_path".to_string(),
+            index.cache_execution_receipt_path.clone(),
+        ),
+        (
+            "cache_receipt_hash".to_string(),
+            index.cache_execution_receipt_content_hash.clone(),
+        ),
+        (
+            "cache_bundle_receipt_path".to_string(),
+            index.cache_bundle_receipt_path.clone(),
+        ),
+        (
+            "cache_bundle_receipt_hash".to_string(),
+            index.cache_bundle_receipt_content_hash.clone(),
+        ),
+        (
+            "batching_mode".to_string(),
+            if prepare.streaming.telemetry.chunk_count > 1 {
+                "physical_batches"
+            } else {
+                "single_batch"
+            }
+            .to_string(),
+        ),
+        ("status".to_string(), "completed".to_string()),
+    ]);
+    if candidate_support_warning {
+        labels.insert(
+            "candidate_support_warning".to_string(),
+            "candidates cannot be supported by any executed operator".to_string(),
+        );
     }
+    EntityDeterministicSummary { counts, labels }
 }
 
 struct EdgeSupportScoringContext<'a> {

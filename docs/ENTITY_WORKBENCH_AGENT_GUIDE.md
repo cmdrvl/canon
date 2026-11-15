@@ -269,6 +269,27 @@ missing field is refused with `E_ENTITY_PROFILE` listing `missing` plus the
 `evidence:` block in a separate strategy file has no effect. (The shipped
 fixtures pass the profile file as the strategy, which is why that works there.)
 
+### Candidate retrieval budgets
+
+Candidate budgets belong to the strategy file under `block:`, not to the
+profile's `blocking:` retrieval section:
+
+```yaml
+block:
+  max_candidates_per_surface: 100
+  max_candidates_per_operator: 25000
+  max_candidates_per_run: 25000
+  max_exact_bucket_size: 10000
+```
+
+The default per-operator and per-run limits scale from the per-surface limit
+and the prepared surface count. An explicit value remains authoritative, but
+the absolute safety ceiling still applies. If a run crosses a limit before
+writing candidates, the refusal names the exact key (for example,
+`block.max_candidates_per_run`), says that it belongs in the strategy file,
+and includes a ready-to-paste `block:` fragment. A budget under `blocking:` or
+in the profile file is reported as misplaced rather than ignored.
+
 ### Operator catalog
 
 Every operator the profile validator accepts, and whether `canon entity run`

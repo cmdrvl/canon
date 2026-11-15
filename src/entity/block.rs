@@ -45,6 +45,8 @@ pub const DEFAULT_BLOCK_MAX_CANDIDATES_PER_SURFACE: u64 = 100;
 pub const DEFAULT_BLOCK_MAX_CANDIDATES_PER_OPERATOR: u64 = 25_000;
 pub const DEFAULT_BLOCK_MAX_CANDIDATES_PER_RUN: u64 = 25_000;
 pub const DEFAULT_BLOCK_MAX_EXACT_BUCKET_SIZE: u64 = 10_000;
+pub const ABSOLUTE_BLOCK_MAX_CANDIDATES_PER_OPERATOR: u64 = 5_000_000;
+pub const ABSOLUTE_BLOCK_MAX_CANDIDATES_PER_RUN: u64 = 5_000_000;
 pub const DEFAULT_BLOCK_NGRAM_TOPK_K: usize = 25;
 pub const DEFAULT_BLOCK_NGRAM_TOPK_CANDIDATE_CAP: usize = 25;
 pub const DEFAULT_BLOCK_RARE_TOKEN_TOPK_K: usize = 25;
@@ -200,11 +202,7 @@ pub const fn default_block_runtime_config() -> BlockRuntimeConfig {
     BlockRuntimeConfig {
         preflight: true,
         operator_overrides: BTreeMap::new(),
-        candidate_budget: BlockCandidateBudgetConfig::new(
-            DEFAULT_BLOCK_MAX_CANDIDATES_PER_SURFACE,
-            DEFAULT_BLOCK_MAX_CANDIDATES_PER_OPERATOR,
-            DEFAULT_BLOCK_MAX_CANDIDATES_PER_RUN,
-        ),
+        candidate_budget: BlockCandidateBudgetConfig::default_runtime(),
         max_exact_bucket_size: DEFAULT_BLOCK_MAX_EXACT_BUCKET_SIZE,
     }
 }
@@ -234,6 +232,7 @@ pub fn generate_profile_candidates(
     surfaces: &[crate::entity::prepare::PreparedSurfaceRecord],
     budget_config: BlockCandidateBudgetConfig,
 ) -> Result<BlockCandidateGenerationResult, Refusal> {
+    let budget_config = budget_config.for_surface_count(surfaces.len());
     if profile.blocking.is_some() {
         declared::generate(profile, surfaces, budget_config)
     } else {
@@ -260,8 +259,21 @@ pub fn load_block_runtime_config(strategy: &Path) -> Result<BlockRuntimeConfig, 
             Some("Provide a readable strategy YAML file".to_string()),
         )
     })?;
+    let value = serde_yaml::from_slice::<serde_yaml::Value>(&bytes).map_err(|error| {
+        EntityRefusalKind::Strategy.to_refusal(
+            "Failed to parse entity block strategy",
+            json!({
+                "stage": BLOCK_STAGE,
+                "path": strategy.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some("Fix the strategy YAML before rerunning canon entity block".to_string()),
+        )
+    })?;
+    validate_block_strategy_budget_placement(&value, strategy)?;
     let document =
-        serde_yaml::from_slice::<BlockRuntimeStrategyDocument>(&bytes).map_err(|error| {
+        serde_yaml::from_value::<BlockRuntimeStrategyDocument>(value).map_err(|error| {
             EntityRefusalKind::Strategy.to_refusal(
                 "Failed to parse entity block strategy",
                 json!({
@@ -321,6 +333,7 @@ impl BlockRuntimeStrategyDocument {
             .or(block.max_candidates_per_surface)
         {
             config.candidate_budget.max_candidates_per_surface = value;
+            config.candidate_budget.max_candidates_per_surface_explicit = true;
         }
         if let Some(value) = block
             .candidate_budget
@@ -328,6 +341,7 @@ impl BlockRuntimeStrategyDocument {
             .or(block.max_candidates_per_operator)
         {
             config.candidate_budget.max_candidates_per_operator = value;
+            config.candidate_budget.max_candidates_per_operator_explicit = true;
         }
         if let Some(value) = block
             .candidate_budget
@@ -335,6 +349,7 @@ impl BlockRuntimeStrategyDocument {
             .or(block.max_candidates_per_run)
         {
             config.candidate_budget.max_candidates_per_run = value;
+            config.candidate_budget.max_candidates_per_run_explicit = true;
         }
         if let Some(value) = block
             .index_budget
@@ -345,6 +360,123 @@ impl BlockRuntimeStrategyDocument {
         }
         config
     }
+}
+
+const BLOCK_BUDGET_KEYS: &[&str] = &[
+    "candidate_budget",
+    "max_candidates_per_surface",
+    "max_candidates_per_operator",
+    "max_candidates_per_run",
+    "max_exact_bucket_size",
+];
+
+fn validate_block_strategy_budget_placement(
+    value: &serde_yaml::Value,
+    strategy: &Path,
+) -> Result<(), Refusal> {
+    let Some(mapping) = value.as_mapping() else {
+        return Ok(());
+    };
+    let Some(misplaced) = mapping
+        .get(serde_yaml::Value::String("blocking".to_string()))
+        .and_then(serde_yaml::Value::as_mapping)
+        .and_then(|blocking| {
+            BLOCK_BUDGET_KEYS.iter().find_map(|key| {
+                blocking
+                    .contains_key(serde_yaml::Value::String((*key).to_string()))
+                    .then_some(*key)
+            })
+        })
+    else {
+        return Ok(());
+    };
+
+    Err(misplaced_budget_refusal(
+        strategy,
+        format!("blocking.{misplaced}"),
+        format!("block.{misplaced}"),
+        "strategy file",
+        "strategy `blocking:` section",
+    ))
+}
+
+fn misplaced_budget_refusal(
+    path: &Path,
+    actual_key_path: String,
+    expected_key_path: String,
+    expected_file_role: &str,
+    actual_file_role: &str,
+) -> Refusal {
+    EntityRefusalKind::Strategy.to_refusal(
+        "Candidate budget is in the wrong configuration section",
+        json!({
+            "stage": BLOCK_STAGE,
+            "reason": "misplaced_candidate_budget",
+            "path": path.display().to_string(),
+            "actual_key_path": actual_key_path,
+            "expected_key_path": expected_key_path,
+            "actual_file_role": actual_file_role,
+            "expected_file_role": expected_file_role,
+            "writes_performed": false
+        }),
+        Some(format!(
+            "Move the candidate budget to {expected_key_path} in the {expected_file_role}"
+        )),
+    )
+}
+
+pub fn validate_profile_budget_placement(profile: &Path) -> Result<(), Refusal> {
+    if !profile.is_file() {
+        return Ok(());
+    }
+    let bytes = fs::read(profile).map_err(|error| {
+        EntityRefusalKind::Profile.to_refusal(
+            "Failed to inspect entity profile budget placement",
+            json!({
+                "stage": BLOCK_STAGE,
+                "path": profile.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some("Provide a readable entity profile YAML file".to_string()),
+        )
+    })?;
+    let value = match serde_yaml::from_slice::<serde_yaml::Value>(&bytes) {
+        Ok(value) => value,
+        Err(_) => return Ok(()),
+    };
+    let Some(mapping) = value.as_mapping() else {
+        return Ok(());
+    };
+    if mapping.contains_key(serde_yaml::Value::String("block".to_string())) {
+        return Err(misplaced_budget_refusal(
+            profile,
+            "block".to_string(),
+            "block.max_candidates_per_run".to_string(),
+            "strategy file",
+            "profile file",
+        ));
+    }
+    let Some(misplaced) = mapping
+        .get(serde_yaml::Value::String("blocking".to_string()))
+        .and_then(serde_yaml::Value::as_mapping)
+        .and_then(|blocking| {
+            BLOCK_BUDGET_KEYS.iter().find_map(|key| {
+                blocking
+                    .contains_key(serde_yaml::Value::String((*key).to_string()))
+                    .then_some(*key)
+            })
+        })
+    else {
+        return Ok(());
+    };
+    Err(misplaced_budget_refusal(
+        profile,
+        format!("blocking.{misplaced}"),
+        format!("block.{misplaced}"),
+        "strategy file",
+        "profile `blocking:` section",
+    ))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1686,9 +1818,26 @@ pub struct BlockCandidateBudgetConfig {
     pub max_candidates_per_surface: u64,
     pub max_candidates_per_operator: u64,
     pub max_candidates_per_run: u64,
+    #[serde(skip)]
+    max_candidates_per_surface_explicit: bool,
+    #[serde(skip)]
+    max_candidates_per_operator_explicit: bool,
+    #[serde(skip)]
+    max_candidates_per_run_explicit: bool,
 }
 
 impl BlockCandidateBudgetConfig {
+    const fn default_runtime() -> Self {
+        Self {
+            max_candidates_per_surface: DEFAULT_BLOCK_MAX_CANDIDATES_PER_SURFACE,
+            max_candidates_per_operator: DEFAULT_BLOCK_MAX_CANDIDATES_PER_OPERATOR,
+            max_candidates_per_run: DEFAULT_BLOCK_MAX_CANDIDATES_PER_RUN,
+            max_candidates_per_surface_explicit: false,
+            max_candidates_per_operator_explicit: false,
+            max_candidates_per_run_explicit: false,
+        }
+    }
+
     pub const fn new(
         max_candidates_per_surface: u64,
         max_candidates_per_operator: u64,
@@ -1698,7 +1847,27 @@ impl BlockCandidateBudgetConfig {
             max_candidates_per_surface,
             max_candidates_per_operator,
             max_candidates_per_run,
+            max_candidates_per_surface_explicit: true,
+            max_candidates_per_operator_explicit: true,
+            max_candidates_per_run_explicit: true,
         }
+    }
+
+    pub fn for_surface_count(&self, surface_count: usize) -> Self {
+        let mut scaled = self.clone();
+        let surface_count = u64::try_from(surface_count.max(1)).unwrap_or(u64::MAX);
+        let default_scaled = self
+            .max_candidates_per_surface
+            .saturating_mul(surface_count);
+        if !self.max_candidates_per_operator_explicit {
+            scaled.max_candidates_per_operator =
+                default_scaled.min(ABSOLUTE_BLOCK_MAX_CANDIDATES_PER_OPERATOR);
+        }
+        if !self.max_candidates_per_run_explicit {
+            scaled.max_candidates_per_run =
+                default_scaled.min(ABSOLUTE_BLOCK_MAX_CANDIDATES_PER_RUN);
+        }
+        scaled
     }
 }
 
@@ -1828,23 +1997,34 @@ fn first_candidate_budget_breach(
         ));
     }
 
-    if let Some((operator_id, observed)) =
-        largest_over_limit(operator_totals, config.max_candidates_per_operator)
-    {
+    if let Some((operator_id, observed)) = largest_over_limit(
+        operator_totals,
+        config
+            .max_candidates_per_operator
+            .min(ABSOLUTE_BLOCK_MAX_CANDIDATES_PER_OPERATOR),
+    ) {
         return Some(BlockCandidateBudgetBreach::new(
             BudgetLimit::MaxCandidatesPerOperator,
             observed,
-            config.max_candidates_per_operator,
+            config
+                .max_candidates_per_operator
+                .min(ABSOLUTE_BLOCK_MAX_CANDIDATES_PER_OPERATOR),
             "operator",
             Some(operator_id),
         ));
     }
 
-    (candidate_pairs_emitted > config.max_candidates_per_run).then(|| {
+    (candidate_pairs_emitted
+        > config
+            .max_candidates_per_run
+            .min(ABSOLUTE_BLOCK_MAX_CANDIDATES_PER_RUN))
+    .then(|| {
         BlockCandidateBudgetBreach::new(
             BudgetLimit::MaxCandidatesPerRun,
             candidate_pairs_emitted,
-            config.max_candidates_per_run,
+            config
+                .max_candidates_per_run
+                .min(ABSOLUTE_BLOCK_MAX_CANDIDATES_PER_RUN),
             "run",
             None,
         )
@@ -1885,17 +2065,31 @@ fn block_candidate_budget_refusal(
     breach: &BlockCandidateBudgetBreach,
     diagnostics: &BlockCandidateBudgetDiagnostics,
 ) -> Refusal {
+    let key_path = breach.budget.policy_id;
+    let key_name = key_path.rsplit('.').next().unwrap_or(key_path);
+    let suggested_value = breach
+        .budget
+        .observed
+        .max(breach.budget.configured.saturating_add(1));
+    let suggested_fragment = format!("block:\n  {key_name}: {suggested_value}");
     EntityRefusalKind::CandidateBudget.to_refusal(
-        "Block candidate budget exceeded before candidate artifact emission",
+        format!(
+            "Block candidate budget exceeded before candidate artifact emission; adjust {key_path} in the strategy file"
+        ),
         json!({
             "stage": BLOCK_STAGE,
             "artifact": BLOCK_CANDIDATE_ARTIFACT,
             "refusal_code": breach.budget.refusal_code.as_str(),
             "reason": "candidate_budget_exceeded",
             "policy_id": breach.budget.policy_id,
+            "configuration_key_path": key_path,
+            "configuration_file_role": "strategy file",
+            "configuration_section": "block",
+            "suggested_fragment": suggested_fragment,
             "subject_kind": breach.subject_kind,
             "subject_id": breach.subject_id,
             "observed": breach.budget.observed,
+            "limit": breach.budget.configured,
             "configured": breach.budget.configured,
             "configured_limits": {
                 "max_candidates_per_surface": config.max_candidates_per_surface,
@@ -1963,8 +2157,16 @@ impl CandidateBudgetTracker {
             .total
             .saturating_add(observation.emitted_candidate_count);
         let exceeded = *surface > self.config.max_candidates_per_surface
-            || *operator > self.config.max_candidates_per_operator
-            || self.total > self.config.max_candidates_per_run;
+            || *operator
+                > self
+                    .config
+                    .max_candidates_per_operator
+                    .min(ABSOLUTE_BLOCK_MAX_CANDIDATES_PER_OPERATOR)
+            || self.total
+                > self
+                    .config
+                    .max_candidates_per_run
+                    .min(ABSOLUTE_BLOCK_MAX_CANDIDATES_PER_RUN);
         let operator_id = observation.operator_id.clone();
         self.observations.push(observation);
         if exceeded {
