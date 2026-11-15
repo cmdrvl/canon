@@ -3543,6 +3543,7 @@ fn run_registry_mint(mint: &RegistryMintCli) -> Result<u8, Box<dyn Error>> {
         bump: mint.bump.map(registry_version_bump),
         next_version: mint.next_version.clone(),
         no_lint: mint.no_lint,
+        create_alias_file: mint.create_alias_file,
     };
 
     match registry::mint_with_scope(request, scope) {

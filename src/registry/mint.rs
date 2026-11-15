@@ -31,6 +31,9 @@ pub struct RegistryMintRequest {
     pub bump: Option<RegistryVersionBump>,
     pub next_version: Option<String>,
     pub no_lint: bool,
+    /// Create any `--with-alias` root alias file that does not exist yet
+    /// (starting from `[]`) inside the same transactional write.
+    pub create_alias_file: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -67,6 +70,7 @@ struct RegistryMintPlan {
     registry_bytes: Vec<u8>,
     alias_writes: Vec<(PathBuf, Vec<u8>)>,
     lint_enabled: bool,
+    create_alias_file: bool,
     output: RegistryMintOutput,
 }
 
@@ -165,6 +169,7 @@ fn plan_mint_with_scope(
         &request.with_alias,
         scope.as_ref(),
         &mapping_files,
+        request.create_alias_file,
     )?;
     let version_after = add_entry::resolve_next_version(
         &request.registry,
@@ -204,8 +209,12 @@ fn plan_mint_with_scope(
     let mut alias_writes = Vec::new();
     let mut aliases = Vec::new();
     for (alias_file, file_aliases) in &aliases_by_file {
-        let alias_path = add_entry::validate_alias_file(&request.registry, alias_file)?;
-        let alias_bytes = add_entry::build_alias_bytes_with_entries(
+        let alias_path = add_entry::validate_alias_file_allowing_missing(
+            &request.registry,
+            alias_file,
+            request.create_alias_file,
+        )?;
+        let alias_bytes = add_entry::build_alias_bytes_creating_if_missing(
             &request.registry,
             &alias_path,
             file_aliases,
@@ -252,6 +261,7 @@ fn plan_mint_with_scope(
         registry_bytes,
         alias_writes,
         lint_enabled: !request.no_lint,
+        create_alias_file: request.create_alias_file,
         output,
     })
 }
@@ -263,6 +273,7 @@ fn parse_aliases(
     raw_aliases: &[String],
     scope: Option<&IdentityScope>,
     mapping_files: &[MappingFile],
+    allow_missing_alias_file: bool,
 ) -> Result<Vec<RegistryAliasWriteEntry>, Refusal> {
     let mut seen_inputs = BTreeSet::<String>::new();
     let mut aliases = Vec::new();
@@ -283,7 +294,11 @@ fn parse_aliases(
                 "Use --with-alias aliases.json='Input:RULE_ID'",
             )
         })?;
-        let alias_path = add_entry::validate_alias_file(registry, alias_file)?;
+        let alias_path = add_entry::validate_alias_file_allowing_missing(
+            registry,
+            alias_file,
+            allow_missing_alias_file,
+        )?;
         let alias_file = alias_path
             .file_name()
             .and_then(|name| name.to_str())
@@ -331,6 +346,7 @@ fn commit_mint_plan(mut plan: RegistryMintPlan) -> Result<RegistryMintOutput, Re
         &plan.registry_bytes,
         &plan.alias_writes,
         plan.lint_enabled,
+        plan.create_alias_file,
     )? {
         CommitOutcome::AlreadyApplied => {}
         CommitOutcome::Committed(Some((lint, warnings))) => {
@@ -349,7 +365,58 @@ enum CommitOutcome {
 
 /// Shared by `mint` and `mint-batch`: one atomic, rollback-on-failure write of
 /// the alias files plus `registry.json`, then the optional lint gate.
+///
+/// With `create_missing`, alias files that do not exist yet are first created
+/// as `[]` under the mutation guard; any failure afterwards restores the
+/// originals and removes exactly the files this call created, so a refused or
+/// failed mint leaves no partial registry behind.
 fn commit_planned_writes(
+    registry_dir: &Path,
+    registry_path: &Path,
+    registry_bytes: &[u8],
+    alias_writes: &[(PathBuf, Vec<u8>)],
+    lint_enabled: bool,
+    create_missing: bool,
+) -> Result<CommitOutcome, Refusal> {
+    let _guard = acquire_registry_mutation_guard(registry_dir)
+        .map_err(|error| add_entry::io_refusal(registry_dir, error))?;
+    let mut created = Vec::<PathBuf>::new();
+    if create_missing {
+        for (path, _) in alias_writes {
+            let missing = matches!(
+                fs::symlink_metadata(path),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound
+            );
+            if !missing {
+                continue;
+            }
+            if let Err(error) = add_entry::write_atomic(path, b"[]") {
+                remove_created(&created);
+                return Err(add_entry::io_refusal(path, error));
+            }
+            created.push(path.clone());
+        }
+    }
+    let result = commit_planned_writes_locked(
+        registry_dir,
+        registry_path,
+        registry_bytes,
+        alias_writes,
+        lint_enabled,
+    );
+    if result.is_err() {
+        remove_created(&created);
+    }
+    result
+}
+
+fn remove_created(created: &[PathBuf]) {
+    for path in created {
+        let _ = fs::remove_file(path);
+    }
+}
+
+fn commit_planned_writes_locked(
     registry_dir: &Path,
     registry_path: &Path,
     registry_bytes: &[u8],
@@ -381,8 +448,6 @@ fn commit_planned_writes(
             bytes,
         ));
     }
-    let _guard = acquire_registry_mutation_guard(registry_dir)
-        .map_err(|error| add_entry::io_refusal(registry_dir, error))?;
     match validate_planned_mutations(&planned_mutations)
         .map_err(|error| add_entry::io_refusal(registry_dir, error))?
     {
@@ -630,6 +695,7 @@ pub fn mint_batch(request: RegistryMintBatchRequest) -> Result<RegistryMintBatch
             &item.with_alias,
             None,
             &mapping_files,
+            false,
         )?;
         for alias in &parsed {
             if !seen_inputs.insert(alias.input.clone()) {
@@ -728,6 +794,7 @@ pub fn mint_batch(request: RegistryMintBatchRequest) -> Result<RegistryMintBatch
         &registry_bytes,
         &alias_writes,
         !request.no_lint,
+        false,
     )? {
         CommitOutcome::Committed(Some((lint, warnings))) => {
             output.lint = lint;

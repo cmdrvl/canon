@@ -369,6 +369,7 @@ fn scoped_mint_and_add_entry_allow_same_alias_only_across_distinct_scopes()
             bump: None,
             next_version: None,
             no_lint: true,
+            create_alias_file: false,
         },
         Some(first_scope.clone()),
     )

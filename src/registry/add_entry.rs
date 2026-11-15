@@ -316,6 +316,18 @@ fn registry_output(
 }
 
 pub(super) fn validate_alias_file(registry: &Path, alias_file: &str) -> Result<PathBuf, Refusal> {
+    validate_alias_file_allowing_missing(registry, alias_file, false)
+}
+
+/// Same name and path rules as [`validate_alias_file`]. With `allow_missing`,
+/// an alias file that does not exist yet is accepted so the caller can create
+/// it transactionally; anything else at that path (directory, symlink,
+/// dangling symlink) is still refused.
+pub(super) fn validate_alias_file_allowing_missing(
+    registry: &Path,
+    alias_file: &str,
+    allow_missing: bool,
+) -> Result<PathBuf, Refusal> {
     let alias_path = Path::new(alias_file);
     let has_single_component = alias_path
         .parent()
@@ -338,6 +350,13 @@ pub(super) fn validate_alias_file(registry: &Path, alias_file: &str) -> Result<P
     }
 
     let full_path = registry.join(alias_file);
+    let missing = matches!(
+        fs::symlink_metadata(&full_path),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound
+    );
+    if missing && allow_missing {
+        return Ok(full_path);
+    }
     if !full_path.is_file() {
         return Err(parse_refusal(
             registry,
@@ -346,7 +365,7 @@ pub(super) fn validate_alias_file(registry: &Path, alias_file: &str) -> Result<P
                 "alias_file": alias_file,
                 "path": full_path.display().to_string(),
             }),
-            "Create an empty root alias file such as [] before rerunning",
+            "Create an empty root alias file such as [] before rerunning, or pass --create-alias-file to registry mint",
         ));
     }
 
@@ -677,6 +696,21 @@ pub(super) fn build_alias_bytes_with_entries(
 ) -> Result<Vec<u8>, Refusal> {
     let bytes = fs::read(alias_path).map_err(|error| io_refusal(alias_path, error))?;
     build_alias_bytes_with_entries_from_source(registry, alias_path, &bytes, new_entries)
+}
+
+/// Like [`build_alias_bytes_with_entries`], but an alias file that does not
+/// exist yet starts from an empty `[]` list (the file `mint` then creates).
+pub(super) fn build_alias_bytes_creating_if_missing(
+    registry: &Path,
+    alias_path: &Path,
+    new_entries: &[RegistryAliasWriteEntry],
+) -> Result<Vec<u8>, Refusal> {
+    match fs::symlink_metadata(alias_path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            build_alias_bytes_with_entries_from_source(registry, alias_path, b"[]", new_entries)
+        }
+        _ => build_alias_bytes_with_entries(registry, alias_path, new_entries),
+    }
 }
 
 fn build_alias_bytes_with_entries_from_source(

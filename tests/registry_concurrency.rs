@@ -611,6 +611,7 @@ fn registry_mint_still_round_trips_after_atomicity_changes() -> Result<(), Box<d
         bump: None,
         next_version: None,
         no_lint: true,
+        create_alias_file: false,
     })
     .expect("mint succeeds");
 

@@ -1458,6 +1458,10 @@ pub struct RegistryMintCli {
     #[arg(long = "no-lint")]
     pub no_lint: bool,
 
+    /// Create any --with-alias root alias file that does not exist yet (starts as []); rolled back on failure
+    #[arg(long = "create-alias-file")]
+    pub create_alias_file: bool,
+
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: RegistryPlainJsonEmitMode,

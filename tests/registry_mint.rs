@@ -303,3 +303,207 @@ fn mint_refuses_existing_duplicate_and_bad_alias_spec_without_writes() {
         registry_before
     );
 }
+
+// ---- bd-jdn8: --create-alias-file bootstraps a registry.json-only directory ----
+
+fn make_registry_json_only(id: &str) -> TempDir {
+    let temp = TempDir::new().unwrap();
+    let value = json!({
+        "id": id,
+        "version": "0.0.0",
+        "description": "registry.json-only bootstrap fixture",
+        "updated": "2026-11-15",
+        "entry_count": 0,
+        "default_id_scheme": {"prefix": "OPO", "zero_pad": 3}
+    });
+    fs::write(
+        temp.path().join("registry.json"),
+        serde_json::to_vec_pretty(&value).unwrap(),
+    )
+    .unwrap();
+    temp
+}
+
+fn mint_args<'a>(registry: &'a Path, with_alias: &'a str, extra: &[&'a str]) -> Vec<&'a str> {
+    let mut args = vec![
+        "registry",
+        "mint",
+        "--registry",
+        registry.to_str().unwrap(),
+        "--canonical-type",
+        "operated_outcome",
+        "--with-alias",
+        with_alias,
+    ];
+    args.extend_from_slice(extra);
+    args
+}
+
+#[test]
+fn mint_create_alias_file_bootstraps_registry_json_only_directory() {
+    let registry = make_registry_json_only("operated-outcomes");
+
+    let output = canon_command()
+        .args(mint_args(
+            registry.path(),
+            "aliases.json=Synthetic review:OPERATED_OUTCOME_ALIAS",
+            &["--create-alias-file"],
+        ))
+        .assert()
+        .success();
+    let payload: Value = serde_json::from_slice(output.get_output().stdout.as_slice()).unwrap();
+    assert_eq!(payload["canonical_id"], "OPO-001");
+    assert_eq!(payload["registry"]["entry_count_before"], 0);
+    assert_eq!(payload["registry"]["entry_count_after"], 1);
+    assert_eq!(payload["registry"]["version_after"], "0.0.1");
+
+    let aliases = read_json(&registry.path().join("aliases.json"));
+    assert_eq!(aliases.as_array().unwrap().len(), 1);
+    assert_eq!(aliases[0]["input"], "Synthetic review");
+    assert_eq!(aliases[0]["canonical_type"], "operated_outcome");
+    let registry_json = read_json(&registry.path().join("registry.json"));
+    assert_eq!(registry_json["entry_count"], 1);
+
+    canon_command()
+        .args([
+            "registry",
+            "lint",
+            "--registry",
+            registry.path().to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let input_path = registry.path().join("input.csv");
+    fs::write(&input_path, "name\nSynthetic review\n").unwrap();
+    let resolve = canon_command()
+        .args([
+            input_path.to_str().unwrap(),
+            "--registry",
+            registry.path().to_str().unwrap(),
+            "--column",
+            "name",
+            "--no-witness",
+            "--explicit",
+        ])
+        .assert()
+        .success();
+    let payload: Value = serde_json::from_slice(resolve.get_output().stdout.as_slice()).unwrap();
+    assert_eq!(payload["outcome"], "RESOLVED");
+    assert_eq!(payload["mappings"][0]["canonical_id"], "u8:OPO-001");
+
+    let next = canon_command()
+        .args([
+            "registry",
+            "next-id",
+            "--registry",
+            registry.path().to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    assert!(
+        String::from_utf8_lossy(&next.get_output().stdout).contains("OPO-002"),
+        "next-id must advance past the minted id"
+    );
+}
+
+#[test]
+fn mint_without_create_alias_file_still_refuses_missing_alias_file() {
+    let registry = make_registry_json_only("operated-outcomes");
+    let before = file_bytes(&registry.path().join("registry.json"));
+
+    let output = canon_command()
+        .args(mint_args(
+            registry.path(),
+            "aliases.json=Synthetic review:OPERATED_OUTCOME_ALIAS",
+            &[],
+        ))
+        .assert()
+        .code(2);
+    let payload: Value = serde_json::from_slice(output.get_output().stdout.as_slice()).unwrap();
+    assert_eq!(payload["refusal"]["code"], "E_PARSE");
+    assert!(
+        payload["refusal"]["next_command"]
+            .as_str()
+            .unwrap()
+            .contains("--create-alias-file")
+    );
+    assert!(!registry.path().join("aliases.json").exists());
+    assert_eq!(file_bytes(&registry.path().join("registry.json")), before);
+}
+
+#[test]
+fn mint_create_alias_file_refuses_invalid_path_and_duplicate_without_partial_registry() {
+    let registry = make_registry_json_only("operated-outcomes");
+    let before = file_bytes(&registry.path().join("registry.json"));
+
+    // Invalid alias file names are refused even with the flag, and create nothing.
+    for bad in [
+        "sub/aliases.json=A:R",
+        "registry.json=A:R",
+        "aliases.txt=A:R",
+    ] {
+        let output = canon_command()
+            .args(mint_args(registry.path(), bad, &["--create-alias-file"]))
+            .assert()
+            .code(2);
+        let payload: Value = serde_json::from_slice(output.get_output().stdout.as_slice()).unwrap();
+        assert_eq!(payload["refusal"]["code"], "E_PARSE", "{bad}");
+    }
+    assert!(!registry.path().join("sub").exists());
+    assert!(!registry.path().join("aliases.txt").exists());
+    assert_eq!(file_bytes(&registry.path().join("registry.json")), before);
+
+    // A duplicate input inside the request is refused and no new file survives.
+    let output = canon_command()
+        .args([
+            "registry",
+            "mint",
+            "--registry",
+            registry.path().to_str().unwrap(),
+            "--canonical-type",
+            "operated_outcome",
+            "--create-alias-file",
+            "--with-alias",
+            "fresh.json=Same:R",
+            "--with-alias",
+            "other.json=Same:R",
+        ])
+        .assert()
+        .code(2);
+    let payload: Value = serde_json::from_slice(output.get_output().stdout.as_slice()).unwrap();
+    assert_eq!(payload["refusal"]["code"], "E_PARSE");
+    assert!(!registry.path().join("fresh.json").exists());
+    assert!(!registry.path().join("other.json").exists());
+    assert_eq!(file_bytes(&registry.path().join("registry.json")), before);
+}
+
+#[test]
+fn mint_create_alias_file_removes_created_file_when_lint_fails_after_write() {
+    // An empty registry id passes planning but fails the post-write lint, so
+    // the transactional rollback must also remove the alias file it created.
+    let registry = make_registry_json_only("");
+    let before = file_bytes(&registry.path().join("registry.json"));
+
+    let output = canon_command()
+        .args(mint_args(
+            registry.path(),
+            "aliases.json=Synthetic review:OPERATED_OUTCOME_ALIAS",
+            &["--create-alias-file"],
+        ))
+        .assert()
+        .code(2);
+    let payload: Value = serde_json::from_slice(output.get_output().stdout.as_slice()).unwrap();
+    assert!(
+        payload["refusal"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("lint failed"),
+        "expected the post-write lint refusal, got {payload}"
+    );
+    assert!(
+        !registry.path().join("aliases.json").exists(),
+        "created alias file must be removed on rollback"
+    );
+    assert_eq!(file_bytes(&registry.path().join("registry.json")), before);
+}
