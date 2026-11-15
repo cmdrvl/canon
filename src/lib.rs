@@ -19,6 +19,7 @@ pub mod geo;
 pub mod identity_scope;
 pub mod inbox;
 pub mod input;
+pub mod keys;
 pub mod lookup;
 pub mod namekit;
 pub mod operator;

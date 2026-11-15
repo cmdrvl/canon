@@ -647,22 +647,12 @@ fn valid_us_ca_isin_embedded_cusip_set(values: &[&str]) -> BTreeSet<String> {
 
 fn valid_cusip(value: &str) -> Option<&str> {
     let value = value.trim();
-    let bytes = value.as_bytes();
-    if bytes.len() != 9 {
-        return None;
-    }
-    let body = bytes.get(..8)?;
-    let check_digit = *bytes.get(8)?;
-    if !check_digit.is_ascii_digit() {
-        return None;
-    }
-    let expected = cusip_check_digit(body)?;
-    (check_digit - b'0' == expected).then_some(value)
+    crate::keys::cusip_is_valid(value).then_some(value)
 }
 
 fn us_ca_isin_embedded_cusip(value: &str) -> Option<&str> {
     let value = value.trim();
-    if value.len() != 12 || !value.is_ascii() || !valid_isin(value) {
+    if value.len() != 12 || !value.is_ascii() || !crate::keys::isin_is_valid(value) {
         return None;
     }
     let body = value
@@ -674,68 +664,6 @@ fn us_ca_isin_embedded_cusip(value: &str) -> Option<&str> {
         return None;
     }
     valid_cusip(cusip)
-}
-
-fn cusip_check_digit(body: &[u8]) -> Option<u8> {
-    if body.len() != 8 {
-        return None;
-    }
-    let mut sum = 0u32;
-    for (index, byte) in body.iter().enumerate() {
-        let mut value = cusip_char_value(*byte)?;
-        if index % 2 == 1 {
-            value *= 2;
-        }
-        sum += value / 10 + value % 10;
-    }
-    u8::try_from((10 - (sum % 10)) % 10).ok()
-}
-
-fn cusip_char_value(byte: u8) -> Option<u32> {
-    match byte {
-        b'0'..=b'9' => Some(u32::from(byte - b'0')),
-        b'A'..=b'Z' => Some(u32::from(byte - b'A') + 10),
-        b'*' => Some(36),
-        b'@' => Some(37),
-        b'#' => Some(38),
-        _ => None,
-    }
-}
-
-fn valid_isin(value: &str) -> bool {
-    let mut digits = Vec::new();
-    for byte in value.bytes() {
-        match byte {
-            b'0'..=b'9' => digits.push(byte - b'0'),
-            b'A'..=b'Z' => {
-                let expanded = u32::from(byte - b'A') + 10;
-                let tens = match u8::try_from(expanded / 10) {
-                    Ok(digit) => digit,
-                    Err(_) => return false,
-                };
-                let ones = match u8::try_from(expanded % 10) {
-                    Ok(digit) => digit,
-                    Err(_) => return false,
-                };
-                digits.push(tens);
-                digits.push(ones);
-            }
-            _ => return false,
-        }
-    }
-    luhn_digits_valid(&digits)
-}
-
-fn luhn_digits_valid(digits: &[u8]) -> bool {
-    let mut sum = 0u32;
-    for (index, digit) in digits.iter().rev().enumerate() {
-        let mut value = u32::from(*digit);
-        if index % 2 == 1 {
-            value *= 2;
-        }
-        sum += value / 10 + value % 10;
-    }
-    sum.is_multiple_of(10)
 }
 
 fn exactly_two_tokens(value: &str) -> Option<[&str; 2]> {
