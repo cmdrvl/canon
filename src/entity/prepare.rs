@@ -431,10 +431,7 @@ fn project_prepare_csv_reader_with_rejections<R: Read>(
             continue;
         }
         let row = csv_row_to_raw(row_number, &headers, &record);
-        match project_prepare_row(&row, contract) {
-            Ok(observation) => observations.push(observation),
-            Err(refusal) => return Err(refusal),
-        }
+        observations.push(project_prepare_row(&row, contract)?);
     }
 
     Ok(PrepareProjectionOutput {
@@ -506,10 +503,7 @@ fn project_prepare_jsonl_reader_with_rejections<R: BufRead>(
             return Err(refusal);
         };
         let row = json_object_to_raw(row_number, object);
-        match project_prepare_row(&row, contract) {
-            Ok(observation) => observations.push(observation),
-            Err(refusal) => return Err(refusal),
-        }
+        observations.push(project_prepare_row(&row, contract)?);
     }
 
     Ok(PrepareProjectionOutput {
@@ -2736,12 +2730,6 @@ fn input_contract_refusal(
         detail["error"] = Value::String(error);
     }
     EntityRefusalKind::InputContract.to_refusal(message, detail, None)
-}
-
-fn source_row_id_from_raw(row: &PrepareRawRow) -> Option<String> {
-    row.get("source_row_id")
-        .and_then(|value| scalar_string(value, row.row_number, "source_row_id").ok())
-        .flatten()
 }
 
 fn prepare_row_rejection(
