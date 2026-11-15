@@ -365,12 +365,7 @@ fn mint_create_alias_file_bootstraps_registry_json_only_directory() {
     assert_eq!(registry_json["entry_count"], 1);
 
     canon_command()
-        .args([
-            "registry",
-            "lint",
-            "--registry",
-            registry.path().to_str().unwrap(),
-        ])
+        .args(["registry", "lint", registry.path().to_str().unwrap()])
         .assert()
         .success();
 

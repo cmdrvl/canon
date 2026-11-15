@@ -684,7 +684,8 @@ fn optional_array<'a>(value: &'a Value, field: &str) -> InboxResult<&'a [Value]>
 
 fn exact_reason_code(reason: &str) -> InboxResult<InboxReasonCode> {
     match reason {
-        "no_matching_rule" => Ok(InboxReasonCode::NoMatchingRule),
+        // The lookup engine emits the spaced spelling on its wire output.
+        "no_matching_rule" | "no matching rule" => Ok(InboxReasonCode::NoMatchingRule),
         "empty_value" => Ok(InboxReasonCode::EmptyValue),
         "missing_field" => Ok(InboxReasonCode::MissingField),
         "null_value" => Ok(InboxReasonCode::NullValue),
@@ -1052,5 +1053,18 @@ mod lookup_merge_tests {
             .expect_err("corrupt inbox must not be overwritten");
         assert_eq!(error.code, InboxErrorCode::ArtifactContract);
         assert_eq!(fs::read(&path).unwrap(), b"not json");
+    }
+
+    #[test]
+    fn exact_reason_accepts_the_lookup_engines_spaced_spelling() {
+        assert_eq!(
+            exact_reason_code("no matching rule").unwrap(),
+            InboxReasonCode::NoMatchingRule
+        );
+        assert_eq!(
+            exact_reason_code("no_matching_rule").unwrap(),
+            InboxReasonCode::NoMatchingRule
+        );
+        assert!(exact_reason_code("something else").is_err());
     }
 }
