@@ -393,6 +393,7 @@ fn project_prepare_csv_reader_with_rejections<R: Read>(
     let mut reader = ReaderBuilder::new()
         .delimiter(delimiter)
         .has_headers(true)
+        .flexible(true)
         .from_reader(reader);
     let headers = reader
         .headers()
@@ -429,6 +430,27 @@ fn project_prepare_csv_reader_with_rejections<R: Read>(
         };
         if blank_record(&record) {
             continue;
+        }
+        if record.len() != headers.len() {
+            let refusal = EntityRefusalKind::InputContract.to_refusal(
+                "Failed to parse prepare CSV row",
+                json!({
+                    "row_number": row_number,
+                    "expected_fields": headers.len(),
+                    "actual_fields": record.len()
+                }),
+                None,
+            );
+            let source_row_id = record
+                .get(0)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned);
+            if collect_rejections {
+                rejected_rows.push(prepare_row_rejection(row_number, source_row_id, refusal));
+                continue;
+            }
+            return Err(refusal);
         }
         let row = csv_row_to_raw(row_number, &headers, &record);
         observations.push(project_prepare_row(&row, contract)?);
@@ -599,7 +621,11 @@ pub fn project_prepare_path(
     rows: &Path,
     contract: &PrepareInputContract,
 ) -> Result<Vec<PreparedInputObservation>, Refusal> {
-    project_prepare_path_with_rejections(rows, contract, false).map(|output| output.observations)
+    // The streaming prepare pass records row-local parse failures in the prepare
+    // artifact. Downstream run stages re-project only the retained observations;
+    // a previously reported bad row must not turn that completed prepare into a
+    // whole-run refusal when it is encountered again.
+    project_prepare_path_with_rejections(rows, contract, true).map(|output| output.observations)
 }
 
 fn project_prepare_path_with_rejections(
