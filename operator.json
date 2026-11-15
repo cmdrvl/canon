@@ -133,6 +133,36 @@
       "description": "Write JSON mapping artifact to file (sidecar). CSV mode only."
     },
     {
+      "name": "inbox_out",
+      "flag": "--inbox-out",
+      "type": "file_path",
+      "description": "Record unresolved lookup values as canon.unresolved.inbox.v1 items in this file, merged into it when it exists (one item per event key, occurrences added). Requires --inbox-project, --inbox-run and --inbox-seen-at. Never stores the missed string; lookup results and exit codes are unchanged. JSON mode adds an inbox{path,items_added,items_total,artifact_content_hash} block to stdout; CSV mode prints it to stderr."
+    },
+    {
+      "name": "inbox_project",
+      "flag": "--inbox-project",
+      "type": "string",
+      "description": "Project reference stored on inbox occurrences (required with --inbox-out)"
+    },
+    {
+      "name": "inbox_run",
+      "flag": "--inbox-run",
+      "type": "string",
+      "description": "Run reference stored on inbox occurrences (required with --inbox-out)"
+    },
+    {
+      "name": "inbox_seen_at",
+      "flag": "--inbox-seen-at",
+      "type": "string",
+      "description": "RFC 3339 timestamp stored on inbox occurrences; canon reads no clock (required with --inbox-out)"
+    },
+    {
+      "name": "inbox_raw_ref",
+      "flag": "--inbox-raw-ref",
+      "type": "flag",
+      "description": "Attach an external reference (input file and column, plus input hash) to each inbox item; the value itself is never stored. Needs a file input"
+    },
+    {
       "name": "max_rows",
       "flag": "--max-rows",
       "type": "integer",

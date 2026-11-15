@@ -7604,13 +7604,18 @@ fn parse_provider_config(options: &[String]) -> Result<BTreeMap<String, String>,
 
 /// Long flags an agent commonly types on the core lookup command. Used to
 /// turn clap's generic "unexpected argument" into a did-you-mean suggestion.
-const KNOWN_CORE_FLAGS: [&str; 15] = [
+const KNOWN_CORE_FLAGS: [&str; 20] = [
     "registry",
     "column",
     "scope",
     "emit",
     "canon-column",
     "map-out",
+    "inbox-out",
+    "inbox-project",
+    "inbox-run",
+    "inbox-seen-at",
+    "inbox-raw-ref",
     "max-rows",
     "max-bytes",
     "no-witness",
@@ -7844,6 +7849,148 @@ pub fn run_display_mode(mode: DisplayMode) -> Result<u8, Box<dyn Error>> {
     Ok(0)
 }
 
+/// Record the unresolved values of a plain exact lookup as inbox items
+/// (`--inbox-out`). Returns the `inbox{...}` summary block, or `None` when the
+/// flag is absent. Canon records; it never schedules, fetches or reads a clock.
+#[allow(clippy::result_large_err)]
+fn record_lookup_misses(
+    cli: &Cli,
+    input_path: &Path,
+    column: &str,
+    input_hash: &str,
+    registry_meta: &RegistryMeta,
+    resolve_result: &ResolveResult,
+) -> Result<Option<serde_json::Value>, CanonOutput> {
+    use inbox::capture::{
+        CaptureContext, CaptureRequest, attach_raw_reference, capture_exact_mapping_artifact,
+        merge_into_capture_file,
+    };
+    use inbox::{
+        ExternalRawValueReference, InboxExportMode, InboxFieldRole, InboxPrivacyPolicy,
+        RawValueRetention,
+    };
+
+    let Some(out_path) = &cli.inbox_out else {
+        return Ok(None);
+    };
+    let inbox_refusal = |message: String, flag: &str| {
+        refusal::create_refusal(
+            RefusalCode::EParse,
+            message,
+            serde_json::json!({
+                "flag": flag,
+                "inbox_out": out_path.display().to_string(),
+                "writes_performed": false
+            }),
+            Some(
+                "canon <INPUT> --registry <DIR> --column <COL> --inbox-out <FILE> --inbox-project <P> --inbox-run <R> --inbox-seen-at <RFC3339>"
+                    .to_string(),
+            ),
+        )
+    };
+    let required = |value: &Option<String>, flag: &str| -> Result<String, CanonOutput> {
+        value
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| inbox_refusal(format!("--inbox-out requires {flag}"), flag))
+    };
+    let project = required(&cli.inbox_project, "--inbox-project")?;
+    let run = required(&cli.inbox_run, "--inbox-run")?;
+    let seen_at = required(&cli.inbox_seen_at, "--inbox-seen-at")?;
+    if cli.inbox_raw_ref && input_path == Path::new("-") {
+        return Err(inbox_refusal(
+            "--inbox-raw-ref needs a file input to reference, not stdin".to_string(),
+            "--inbox-raw-ref",
+        ));
+    }
+
+    // The source hash is of the redacted canonical mapping artifact, so it does
+    // not depend on --explicit.
+    let mapping_json = output::json::emit_json_explicit_with_plain_values(
+        registry_meta,
+        resolve_result,
+        false,
+        false,
+    )
+    .map_err(create_output_refusal)?;
+    let mapping_hash = witness::hash_bytes(mapping_json.as_bytes());
+
+    // Same ordering as the JSON mapping artifact, so the capture does not
+    // depend on input row order.
+    let mut unresolved: Vec<&UnresolvedEntry> = resolve_result.unresolved.iter().collect();
+    unresolved.sort_by(|left, right| match (&left.input, &right.input) {
+        (Some(left_input), Some(right_input)) => left_input
+            .cmp(right_input)
+            .then_with(|| left.reason.cmp(&right.reason)),
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, None) => left.reason.cmp(&right.reason),
+    });
+    let outcome = match determine_outcome(&resolve_result.summary) {
+        Outcome::Resolved => "RESOLVED",
+        Outcome::Partial => "PARTIAL",
+        Outcome::Unresolved => "UNRESOLVED",
+        Outcome::Refusal => "REFUSAL",
+    };
+    let capture_input = serde_json::json!({
+        "version": "canon.v0",
+        "outcome": outcome,
+        "unresolved": unresolved
+            .iter()
+            .map(|entry| serde_json::json!({"input": entry.input, "reason": entry.reason}))
+            .collect::<Vec<_>>(),
+    });
+
+    let (retention, view) = if cli.inbox_raw_ref {
+        (
+            RawValueRetention::ExternalReference,
+            InboxExportMode::Retained,
+        )
+    } else {
+        (RawValueRetention::Omit, InboxExportMode::Redacted)
+    };
+    let policy = InboxPrivacyPolicy {
+        policy_id: "canon.lookup.inbox.v1".to_string(),
+        raw_value_retention: retention,
+        default_export_mode: view,
+        merge_mode: Default::default(),
+    };
+    let context = CaptureContext::new(
+        project,
+        run,
+        input_path.to_string_lossy().into_owned(),
+        mapping_hash,
+        seen_at,
+        column,
+        InboxFieldRole::LookupInput,
+    );
+    let request = CaptureRequest::new(policy, view, context);
+    let to_refusal = |error: inbox::InboxError| inbox_refusal(error.to_string(), "--inbox-out");
+
+    let mut captured =
+        capture_exact_mapping_artifact(&capture_input, &request).map_err(to_refusal)?;
+    if cli.inbox_raw_ref {
+        captured = attach_raw_reference(
+            captured,
+            ExternalRawValueReference {
+                store: "input_file".to_string(),
+                locator: format!("{}#column={}", input_path.display(), column),
+                content_hash: input_hash.to_string(),
+            },
+        )
+        .map_err(to_refusal)?;
+    }
+    let outcome = merge_into_capture_file(out_path, captured).map_err(to_refusal)?;
+    Ok(Some(serde_json::json!({
+        "path": out_path.display().to_string(),
+        "items_added": outcome.items_added,
+        "items_total": outcome.artifact.items.len(),
+        "artifact_content_hash": outcome.artifact.artifact_content_hash,
+    })))
+}
+
 // Internal pipeline that can return refusals
 #[allow(clippy::result_large_err)]
 fn run_pipeline(
@@ -7919,17 +8066,36 @@ fn run_pipeline(
         "Empty input should have been caught by input module"
     );
 
+    // Step 9b: Optionally record unresolved values as inbox items. Done before
+    // anything is printed so a failure here is a clean refusal.
+    let inbox_block = record_lookup_misses(
+        cli,
+        input_path,
+        column,
+        &input_hash,
+        &registry.meta,
+        &resolve_result,
+    )?;
+
     // Step 10: Emit output
     let output_hash = match cli.emit {
         crate::cli::EmitMode::Json => {
             // JSON mode: emit to stdout with hash
-            let json_output = output::json::emit_json_explicit_with_plain_values(
+            let mut json_output = output::json::emit_json_explicit_with_plain_values(
                 &registry.meta,
                 &resolve_result,
                 cli.explicit,
                 cli.plain_json_values,
             )
             .map_err(create_output_refusal)?;
+            if let Some(block) = &inbox_block {
+                // Splice instead of re-serializing so every other byte of the
+                // mapping artifact is identical with and without --inbox-out.
+                json_output.pop();
+                json_output.push_str(",\"inbox\":");
+                json_output.push_str(&block.to_string());
+                json_output.push('}');
+            }
 
             print!("{}", json_output);
 
@@ -7959,6 +8125,10 @@ fn run_pipeline(
             .map_err(create_csv_output_refusal)?;
 
             tee_writer.flush().map_err(create_io_refusal)?;
+            if let Some(block) = &inbox_block {
+                // CSV stdout is the data stream; the inbox summary goes to stderr.
+                eprintln!("{}", serde_json::json!({ "inbox": block }));
+            }
 
             // Write --map-out sidecar if specified
             if let Some(map_out_path) = &cli.map_out {

@@ -235,6 +235,27 @@ atomic: any refusal (a duplicate input inside the batch or already in the
 registry, a bad alias file, a lint error) leaves the registry byte-identical.
 `--emit plain` prints one new ID per line.
 
+## Recording lookup misses for the next cut
+
+Plain exact lookup can record what it did not find, so a driver can turn misses
+into its next bounded batch. Canon records; it does not schedule or fetch.
+
+```bash
+canon rows.csv --registry REG --column name \
+  --inbox-out misses.inbox.json --inbox-project P --inbox-run R1 \
+  --inbox-seen-at 2026-11-16T00:00:00Z [--inbox-raw-ref]
+```
+
+Each unresolved value becomes one `canon.unresolved.inbox.v1` item (one item per
+event key; a value missed again in a later run, with another `--inbox-run`,
+gains an occurrence). The file is created or merged and replaced atomically;
+stdout gains an `inbox{path,items_added,items_total,artifact_content_hash}`
+block and nothing else changes (stderr in `--emit csv` mode). Canon reads no
+clock, so `--inbox-seen-at` is required. The missed string is never stored:
+`--inbox-raw-ref` adds an external reference to the input file, column and input
+hash, and the driver reads the string from there. List what was recorded with
+`canon inbox list --inbox misses.inbox.json`.
+
 ## Authoring a profile
 
 Start from `canon entity profile init <built-in> --output p.yaml`. A profile

@@ -2713,6 +2713,26 @@ pub struct Cli {
     #[arg(long)]
     pub map_out: Option<PathBuf>,
 
+    /// Record unresolved lookup values as canon.unresolved.inbox.v1 items in this file (merged if it exists)
+    #[arg(long = "inbox-out")]
+    pub inbox_out: Option<PathBuf>,
+
+    /// Project reference stored on inbox occurrences (required with --inbox-out)
+    #[arg(long = "inbox-project", requires = "inbox_out")]
+    pub inbox_project: Option<String>,
+
+    /// Run reference stored on inbox occurrences (required with --inbox-out)
+    #[arg(long = "inbox-run", requires = "inbox_out")]
+    pub inbox_run: Option<String>,
+
+    /// RFC 3339 timestamp stored on inbox occurrences; canon reads no clock (required with --inbox-out)
+    #[arg(long = "inbox-seen-at", requires = "inbox_out")]
+    pub inbox_seen_at: Option<String>,
+
+    /// Attach an external reference to the input file and column to each inbox item (never the value itself)
+    #[arg(long = "inbox-raw-ref", requires = "inbox_out")]
+    pub inbox_raw_ref: bool,
+
     /// Refuse if input exceeds N data rows
     #[arg(long)]
     pub max_rows: Option<usize>,

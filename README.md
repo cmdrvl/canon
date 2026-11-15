@@ -417,7 +417,7 @@ cargo build --release
 ## CLI Reference
 
 ```bash
-canon <INPUT> --registry <REGISTRY> --column <COLUMN> [--scope DIMENSION=VALUE]... [--emit json|csv] [--canon-column <NAME>] [--map-out <PATH>] [--max-rows <N>] [--max-bytes <N>]
+canon <INPUT> --registry <REGISTRY> --column <COLUMN> [--scope DIMENSION=VALUE]... [--emit json|csv] [--canon-column <NAME>] [--map-out <PATH>] [--inbox-out <FILE> --inbox-project <P> --inbox-run <R> --inbox-seen-at <RFC3339> [--inbox-raw-ref]] [--max-rows <N>] [--max-bytes <N>]
 canon doctor health [--json]
 canon doctor capabilities [--json]
 canon doctor robot-docs
@@ -525,7 +525,13 @@ canon entity profile init <PROFILE> --output <PATH>
 Entity profiles may declare their candidate retrieval in `blocking.operators`:
 exact views, anchors, composite keys, and similarity restricted by shared
 attributes. Retrieval does not authorize a merge. Strategies control budgets;
-generation refuses at the first actual crossing. Sampled run preflight is advisory.
+generation refuses at the first actual crossing. The strategy owns candidate
+budgets under `block:` (for example, `block.max_candidates_per_run`); the
+profile's `blocking:` section owns retrieval operators, not budgets. Implicit
+per-operator and per-run defaults scale with the prepared surface count, while
+explicit strategy values remain authoritative and bounded by the absolute cap.
+Budget refusals name the exact strategy key, file role, and a pasteable YAML
+fragment. Sampled run preflight is advisory.
 See the [profile blocking reference](docs/PLAN_ENTITY_WORKBENCH.md#strategy-extensions)
 for parameters, equality authority, and artifact-version changes.
 

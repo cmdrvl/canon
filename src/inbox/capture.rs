@@ -1,9 +1,9 @@
 use super::{
-    CANON_UNRESOLVED_INBOX_VERSION, CandidateStatus, CandidateSummary, InboxError, InboxErrorCode,
-    InboxEventKind, InboxExportMode, InboxFieldRole, InboxOccurrenceRef, InboxPrivacyPolicy,
-    InboxReasonCode, InboxResult, NamespaceHint, NormalizedSurfaceFingerprint, PrivacyClass,
-    ProfileFieldRef, UnresolvedInboxArtifact, UnresolvedInboxItem, canonical_json_bytes,
-    finalize_artifact, merge_artifacts,
+    CANON_UNRESOLVED_INBOX_VERSION, CandidateStatus, CandidateSummary, ExternalRawValueReference,
+    InboxError, InboxErrorCode, InboxEventKind, InboxExportMode, InboxFieldRole,
+    InboxOccurrenceRef, InboxPrivacyPolicy, InboxReasonCode, InboxResult, NamespaceHint,
+    NormalizedSurfaceFingerprint, PrivacyClass, ProfileFieldRef, UnresolvedInboxArtifact,
+    UnresolvedInboxItem, canonical_json_bytes, finalize_artifact, merge_artifacts,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -384,19 +384,93 @@ pub fn write_capture_artifact(path: &Path, artifact: &UnresolvedInboxArtifact) -
         )));
     }
     let bytes = canonical_capture_bytes(artifact)?;
-    let tmp_path = temp_path(path, &bytes)?;
+    write_bytes_atomic(path, &bytes)
+}
+
+/// Result of recording lookup misses into an inbox file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MergedCaptureOutcome {
+    pub artifact: UnresolvedInboxArtifact,
+    pub items_added: u64,
+}
+
+/// Merge `incoming` into the inbox at `path` and atomically replace the file.
+///
+/// A missing file is created from `incoming` alone. An existing file must be a
+/// valid inbox with the same privacy policy and view (the existing merge
+/// refuses otherwise); on any error the existing file is left byte-identical.
+/// Items are keyed by event key, so a repeated miss gains an occurrence
+/// instead of a second item.
+pub fn merge_into_capture_file(
+    path: &Path,
+    incoming: UnresolvedInboxArtifact,
+) -> InboxResult<MergedCaptureOutcome> {
+    let (existing_total, merged) = if path.exists() {
+        let bytes = fs::read(path)
+            .map_err(|error| io_artifact_error("read existing inbox output", path, error))?;
+        let existing: UnresolvedInboxArtifact =
+            serde_json::from_slice(&bytes).map_err(|error| {
+                artifact_contract_error(format!(
+                    "existing inbox output is not a valid inbox artifact: {}: {error}",
+                    path.display()
+                ))
+            })?;
+        let existing = finalize_artifact(existing)?;
+        let existing_total = existing.items.len() as u64;
+        (existing_total, merge_artifacts([existing, incoming])?)
+    } else {
+        (0, finalize_artifact(incoming)?)
+    };
+    let bytes = canonical_capture_bytes(&merged)?;
+    write_bytes_atomic(path, &bytes)?;
+    let items_added = (merged.items.len() as u64).saturating_sub(existing_total);
+    Ok(MergedCaptureOutcome {
+        artifact: merged,
+        items_added,
+    })
+}
+
+/// Attach one external raw-value reference to every item. The inbox still never
+/// stores the missed string: the reference names where a driver reads it.
+pub fn attach_raw_reference(
+    artifact: UnresolvedInboxArtifact,
+    reference: ExternalRawValueReference,
+) -> InboxResult<UnresolvedInboxArtifact> {
+    let mut artifact = artifact;
+    for item in &mut artifact.items {
+        item.raw_values.push(reference.clone());
+    }
+    finalize_artifact(artifact)
+}
+
+fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> InboxResult<()> {
+    let tmp_path = temp_path(path, bytes)?;
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(&tmp_path)
         .map_err(|error| io_artifact_error("create temporary inbox output", &tmp_path, error))?;
-    file.write_all(&bytes)
-        .map_err(|error| io_artifact_error("write temporary inbox output", &tmp_path, error))?;
-    file.sync_all()
-        .map_err(|error| io_artifact_error("sync temporary inbox output", &tmp_path, error))?;
+    if let Err(error) = file.write_all(bytes) {
+        let _ = fs::remove_file(&tmp_path);
+        return Err(io_artifact_error(
+            "write temporary inbox output",
+            &tmp_path,
+            error,
+        ));
+    }
+    if let Err(error) = file.sync_all() {
+        let _ = fs::remove_file(&tmp_path);
+        return Err(io_artifact_error(
+            "sync temporary inbox output",
+            &tmp_path,
+            error,
+        ));
+    }
     drop(file);
-    fs::rename(&tmp_path, path)
-        .map_err(|error| io_artifact_error("rename inbox output", path, error))?;
+    if let Err(error) = fs::rename(&tmp_path, path) {
+        let _ = fs::remove_file(&tmp_path);
+        return Err(io_artifact_error("rename inbox output", path, error));
+    }
     Ok(())
 }
 
@@ -901,4 +975,82 @@ fn artifact_contract_error(message: impl Into<String>) -> InboxError {
 
 fn io_artifact_error(action: &str, path: &Path, error: impl std::fmt::Display) -> InboxError {
     artifact_contract_error(format!("{action} at {} failed: {error}", path.display()))
+}
+
+#[cfg(test)]
+mod lookup_merge_tests {
+    use super::*;
+    use crate::inbox::{InboxPrivacyPolicy, RawValueRetention};
+
+    fn digest(byte: char) -> String {
+        format!("blake3:{}", byte.to_string().repeat(64))
+    }
+
+    fn captured(run: &str, inputs: &[&str]) -> UnresolvedInboxArtifact {
+        let policy = InboxPrivacyPolicy {
+            policy_id: "canon.lookup.inbox.v1".to_string(),
+            raw_value_retention: RawValueRetention::Omit,
+            default_export_mode: InboxExportMode::Redacted,
+            merge_mode: Default::default(),
+        };
+        let context = CaptureContext::new(
+            "proj",
+            run,
+            "rows.csv",
+            digest('a'),
+            "2026-11-16T00:00:00Z",
+            "name",
+            InboxFieldRole::LookupInput,
+        );
+        let upstream = json!({
+            "version": "canon.v0",
+            "outcome": "UNRESOLVED",
+            "unresolved": inputs
+                .iter()
+                .map(|input| json!({"input": input, "reason": "no_matching_rule"}))
+                .collect::<Vec<_>>(),
+        });
+        capture_exact_mapping_artifact(
+            &upstream,
+            &CaptureRequest::new(policy, InboxExportMode::Redacted, context),
+        )
+        .expect("capture")
+    }
+
+    #[test]
+    fn merge_then_replace_adds_items_and_occurrences_deterministically() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("misses.inbox.json");
+
+        let first = merge_into_capture_file(&path, captured("run-1", &["X", "Y"])).unwrap();
+        assert_eq!(first.items_added, 2);
+        let second = merge_into_capture_file(&path, captured("run-2", &["Y", "Z"])).unwrap();
+        assert_eq!(second.items_added, 1);
+        assert_eq!(second.artifact.items.len(), 3);
+        let mut counts: Vec<usize> = second
+            .artifact
+            .items
+            .iter()
+            .map(|item| item.occurrences.len())
+            .collect();
+        counts.sort();
+        assert_eq!(counts, vec![1, 1, 2]);
+
+        // Re-recording an identical capture is idempotent on disk.
+        let before = fs::read(&path).unwrap();
+        let again = merge_into_capture_file(&path, captured("run-2", &["Y", "Z"])).unwrap();
+        assert_eq!(again.items_added, 0);
+        assert_eq!(fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn merge_refuses_a_corrupt_existing_file_and_leaves_it_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("misses.inbox.json");
+        fs::write(&path, b"not json").unwrap();
+        let error = merge_into_capture_file(&path, captured("run-1", &["X"]))
+            .expect_err("corrupt inbox must not be overwritten");
+        assert_eq!(error.code, InboxErrorCode::ArtifactContract);
+        assert_eq!(fs::read(&path).unwrap(), b"not json");
+    }
 }
