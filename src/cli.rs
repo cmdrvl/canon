@@ -1534,7 +1534,7 @@ pub struct RegistryDefaultIdSchemeCli {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum EntitySubcommand {
-    /// Initialize an evidence session and its registry when absent
+    /// Create a session workspace and bind it to one registry
     Session(EntitySessionCommand),
     /// Run the full entity orchestration flow
     Run(EntityRunCli),

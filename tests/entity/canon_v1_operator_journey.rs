@@ -118,6 +118,42 @@ fn run_operator_journey(label: &str) -> JourneyRun {
     let fixture = JourneyFixture::new(label);
     let mut command_log = Vec::new();
 
+    let session_registry = fixture.root.join("session-registry");
+    let session_work = fixture.root.join("session-work");
+    let session_init = canon_json(
+        &[
+            "entity",
+            "session",
+            "init",
+            "--goal",
+            "canon v1 operator journey",
+            "--registry",
+            path_str(&session_registry),
+            "--work-dir",
+            path_str(&session_work),
+            "--registry-id",
+            "journey",
+            "--prefix",
+            "JNY",
+            "--zero-pad",
+            "4",
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(session_init.record);
+    assert_eq!(
+        session_init.value["version"],
+        "canon.entity.session.init.v1"
+    );
+    assert_eq!(session_init.value["status"], "initialised");
+    assert!(
+        session_init.value["registry_initialized"]
+            .as_bool()
+            .unwrap()
+    );
+
     let profile_list = canon_json(&["entity", "profile", "list", "--emit", "json"], 0);
     command_log.push(profile_list.record);
     assert!(
@@ -1426,6 +1462,7 @@ fn executed_entity_leaves(records: &[CommandRecord]) -> BTreeSet<String> {
 
 fn classify_entity_leaf(args: &[&str]) -> Option<String> {
     match args {
+        ["entity", "session", "init", ..] => Some("entity session init".to_string()),
         ["entity", "index", "build", ..] => Some("entity index build".to_string()),
         ["entity", "profile", "list", ..] => Some("entity profile list".to_string()),
         ["entity", "profile", "init", ..] => Some("entity profile init".to_string()),
