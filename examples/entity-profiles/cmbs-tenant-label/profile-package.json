@@ -37,8 +37,11 @@
     ],
     "cannot_link": [
       {
-        "op": "context_conflict",
-        "view": "property_context_key"
+        "op": "attribute_conflict",
+        "view": "property_context_key",
+        "params": {
+          "field": "property_context_key"
+        }
       }
     ],
     "relation_hints": [

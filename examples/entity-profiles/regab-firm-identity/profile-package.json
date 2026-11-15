@@ -37,8 +37,11 @@
     ],
     "cannot_link": [
       {
-        "op": "context_conflict",
-        "view": "dataset_example_key"
+        "op": "attribute_conflict",
+        "view": "dataset_example_key",
+        "params": {
+          "field": "dataset_example_key"
+        }
       }
     ],
     "relation_hints": [
