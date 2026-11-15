@@ -519,6 +519,7 @@ pub fn run_entity_workbench_with_batching_and_cache_mode(
         &surfaces,
         &index,
         &block.artifact,
+        &block.diagnostics,
         &block.artifact_value,
         &edge,
         &edge_value,
@@ -1595,6 +1596,7 @@ fn read_block_stage_from_artifact(
     Ok(EntityBlockRun {
         artifact,
         artifact_value,
+        diagnostics,
         candidates,
         exact_buckets,
         record_link_candidate_set: read_record_link_candidate_set(request, base_strategy)?,
@@ -3133,6 +3135,7 @@ fn run_artifact(
     surfaces: &[PreparedSurfaceRecord],
     index: &EntityIndexRun,
     block: &BlockCandidateArtifact,
+    block_diagnostics: &crate::entity::block::BlockCandidateGenerationDiagnostics,
     block_value: &Value,
     edge: &EdgeEvidenceArtifact,
     edge_value: &Value,
@@ -3155,7 +3158,7 @@ fn run_artifact(
         .collect();
     metadata.artifact_content_hash.clear();
     let orchestration = run_orchestration(request, &stage_artifacts, prepare, solve);
-    let candidate_support_warning = candidate_support_warning(request, &block.diagnostics);
+    let candidate_support_warning = candidate_support_warning(request, block_diagnostics);
 
     let artifact = EntityRunArtifact {
         version: CANON_ENTITY_RUN_VERSION_V1.to_string(),
