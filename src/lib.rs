@@ -35,6 +35,7 @@ pub mod registry_lint;
 #[doc(hidden)]
 pub mod resolve;
 pub mod sdk;
+pub mod session;
 pub mod temporal;
 pub mod strategy {
     pub mod explain;
@@ -59,16 +60,17 @@ use crate::cli::{
     EntityPrepareCli, EntityProfileCommand, EntityProfileInitCli, EntityProfileListCli,
     EntityProfileSubcommand, EntityPromoteCli, EntityReviewCommand, EntityReviewExportArtifact,
     EntityReviewExportCli, EntityReviewExportEmitMode, EntityReviewGroupBy, EntityReviewImportCli,
-    EntityReviewInclude, EntityReviewSubcommand, EntityRunCli, EntitySolveCli,
-    EntityStreamEmitMode, EntitySubcommand, PackageCli, PackagePackCli, PackageSubcommand,
-    RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli, RegistryDefaultIdSchemeCli,
-    RegistryDiffCli, RegistryEmitMode, RegistryExportCli, RegistryExportFormatCli, RegistryLintCli,
-    RegistryLintProfile, RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli,
-    RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand,
-    RegistryVersionBumpMode, StrategyAuditCli, StrategyCommand, StrategyDeprecateCli,
-    StrategyDiffCli, StrategyExplainCli, StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli,
-    StrategyProfileCli, StrategyPromoteCli, StrategyRegisterCli, StrategyResolveCli,
-    StrategyStatusArg, StrategySubcommand, StrategyUpdateCli,
+    EntityReviewInclude, EntityReviewSubcommand, EntityRunCli, EntitySessionInitCli,
+    EntitySessionSubcommand, EntitySolveCli, EntityStreamEmitMode, EntitySubcommand, PackageCli,
+    PackagePackCli, PackageSubcommand, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
+    RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode, RegistryExportCli,
+    RegistryExportFormatCli, RegistryInitCli, RegistryLintCli, RegistryLintProfile,
+    RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli, RegistryPlainJsonEmitMode,
+    RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand, RegistryVersionBumpMode,
+    StrategyAuditCli, StrategyCommand, StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli,
+    StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli, StrategyProfileCli, StrategyPromoteCli,
+    StrategyRegisterCli, StrategyResolveCli, StrategyStatusArg, StrategySubcommand,
+    StrategyUpdateCli,
 };
 use crate::entity::runtime as entity_runtime;
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
@@ -189,6 +191,7 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
         CanonCommand::Inbox(inbox) => inbox::cli::run(inbox),
         CanonCommand::Temporal(temporal) => temporal::cli::run(temporal),
         CanonCommand::Registry(command) => match &command.command {
+            RegistrySubcommand::Init(init) => run_registry_init(init),
             RegistrySubcommand::Export(export) => run_registry_export(export),
             RegistrySubcommand::NextId(next_id) => run_registry_next_id(next_id),
             RegistrySubcommand::AddEntry(add_entry) => run_registry_add_entry(add_entry),
@@ -925,6 +928,9 @@ fn append_strategy_mutation_witness(output_json: &str, no_witness: bool) {
 
 fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
     match &command.command {
+        EntitySubcommand::Session(session) => match &session.command {
+            EntitySessionSubcommand::Init(init) => run_entity_session_init_command(init),
+        },
         EntitySubcommand::Run(run) => run_entity_run_command(run),
         EntitySubcommand::Prepare(prepare) => run_entity_prepare_command(prepare),
         EntitySubcommand::Index(index) => run_entity_index_command(index),
@@ -946,6 +952,35 @@ fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
         EntitySubcommand::Explain(explain) => run_entity_explain_command(explain),
         EntitySubcommand::Profile(profile) => run_entity_profile_command(profile),
         EntitySubcommand::Review(review) => run_entity_review_command(review),
+    }
+}
+
+fn run_entity_session_init_command(init: &EntitySessionInitCli) -> Result<u8, Box<dyn Error>> {
+    let result = session::init(session::SessionInitRequest {
+        goal: init.goal.clone(),
+        registry: init.registry.clone(),
+        work_dir: init.work_dir.clone(),
+        entity_kind: init.entity_kind.clone(),
+        registry_id: init.registry_id.clone(),
+        prefix: init.prefix.clone(),
+        zero_pad: init.zero_pad,
+    });
+    match result {
+        Ok(output) => {
+            let summary_mode = matches!(init.emit, EntityEmitMode::Summary);
+            let rendered = if summary_mode {
+                output.render_summary()
+            } else {
+                serde_json::to_string(&output)?
+            };
+            emit_entity_output(&rendered, summary_mode);
+            Ok(0)
+        }
+        Err(refusal) => emit_entity_refusal(
+            refusal.to_canon_output(),
+            true,
+            matches!(init.emit, EntityEmitMode::Summary),
+        ),
     }
 }
 
@@ -3452,6 +3487,41 @@ fn run_entity_explain_command(explain: &EntityExplainCli) -> Result<u8, Box<dyn 
             Ok(0)
         }
         Err(refusal_output) => emit_entity_refusal(refusal_output, true, summary_mode),
+    }
+}
+
+fn run_registry_init(init: &RegistryInitCli) -> Result<u8, Box<dyn Error>> {
+    let result = registry::init(registry::RegistryInitRequest {
+        registry: init.registry.clone(),
+        registry_id: init.registry_id.clone(),
+        prefix: init.prefix.clone(),
+        zero_pad: init.zero_pad,
+        description: init.description.clone(),
+    });
+    match result {
+        Ok(output) => {
+            match init.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => println!(
+                    "{}@{} initialized at {} | entries={} | scheme={}-{}",
+                    output.registry.id,
+                    output.registry.version,
+                    output.registry.source,
+                    output.entry_count,
+                    output.default_id_scheme.prefix,
+                    output.default_id_scheme.zero_pad,
+                ),
+            }
+            Ok(0)
+        }
+        Err(refusal) => {
+            let output = refusal.to_canon_output();
+            match init.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => eprintln!("{}", serde_json::to_string(&output)?),
+            }
+            Ok(2)
+        }
     }
 }
 

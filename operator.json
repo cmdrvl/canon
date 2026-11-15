@@ -33,6 +33,7 @@
       "canon geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]",
       "canon geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVENTORY.json> --question <QUESTION.json> --capabilities <CAPABILITIES.json> --profile <PROFILE.json> --budget <BUDGET.json> --satisfy <REQUEST_ID=RECEIPT.json> --local-artifact <LOCAL_ARTIFACT_ID=PATH>... [--result <DIGEST_ID=PATH>...] --advancement-out <ADVANCEMENT.json>",
       "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
+      "canon registry init --registry <DIR> --registry-id <ID> --prefix <PREFIX> [--zero-pad <N>] [--description <TEXT>] [--emit json|summary]",
       "canon registry export --format dbt-seed|search-index --registry <DIR> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--emit json|summary]",
       "canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]",
       "canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
@@ -48,6 +49,7 @@
       "canon strategy register --registry <DIR> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --grade operator-attested|proof-attested --next-version <VERSION> [--operator <ID> --reason <TEXT>] [--verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json>] [--emit json|summary] [--no-witness]",
       "canon strategy diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
       "canon entity run <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--cache-mode enabled|disabled] [--suite <SUITE_DIR>] [--emit json|summary] [--no-witness]",
+      "canon entity session init --goal <GOAL> --registry <REGISTRY_DIR> --work-dir <DIR> [--entity-kind <KIND>] [--registry-id <ID>] [--prefix <PREFIX>] [--zero-pad <N>] [--emit json|summary]",
       "canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY_DIR> --work-dir <DIR>",
       "canon entity index build <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit json|summary]",
       "canon entity block <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit jsonl|summary]",
@@ -4885,6 +4887,82 @@
       }
     },
     {
+      "name": "registry init",
+      "usage": "canon registry init --registry <DIR> --registry-id <ID> --prefix <PREFIX> [--zero-pad <N>] [--description <TEXT>] [--emit json|summary]",
+      "description": "Create an empty self-authored registry with registry.json, aliases.json, and a default canonical ID scheme",
+      "output_mode": "mixed",
+      "output_schema": "canon_registry_init.v0",
+      "status": "implemented",
+      "read_only": false,
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": false,
+        "reads_registry_files": false,
+        "writes_registry_files": true,
+        "writes_work_dir": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "empty registry created and linted",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / path, validation, or lint error",
+          "domain": "error"
+        }
+      },
+      "options": [
+        {
+          "name": "registry",
+          "flag": "--registry",
+          "type": "directory_path",
+          "required": true,
+          "description": "Registry directory to create"
+        },
+        {
+          "name": "registry_id",
+          "flag": "--registry-id",
+          "type": "string",
+          "required": true,
+          "description": "Stable registry identifier"
+        },
+        {
+          "name": "prefix",
+          "flag": "--prefix",
+          "type": "string",
+          "required": true,
+          "description": "Default canonical ID prefix"
+        },
+        {
+          "name": "zero_pad",
+          "flag": "--zero-pad",
+          "type": "integer",
+          "default": 3,
+          "description": "Default numeric suffix width"
+        },
+        {
+          "name": "description",
+          "flag": "--description",
+          "type": "string",
+          "description": "Human-readable registry description"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json or summary"
+        }
+      ],
+      "next_command": "canon registry next-id --registry <DIR>",
+      "recovery": {
+        "next_command": "Choose an empty registry directory or repair the initialization inputs",
+        "refusal_exit_code": 2
+      }
+    },
+    {
       "name": "registry export",
       "usage": "canon registry export --format dbt-seed|search-index --registry <DIR> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--emit json|summary]",
       "description": "Export a versioned flat registry into deterministic downstream artifacts without changing lookup semantics: dbt-seed writes a context-scoped CSV seed plus optional dbt scaffolds; search-index writes a self-describing SQLite artifact with entities, aliases, external keys, scoring metadata, normalization metadata, and canonical IRIs",
@@ -6495,6 +6573,96 @@
       "next_command": "canon strategy list --registry <DIR> --emit json",
       "recovery": {
         "next_command": "canon strategy list --registry <DIR> --emit json",
+        "refusal_exit_code": 2
+      }
+    },
+    {
+      "name": "entity session init",
+      "usage": "canon entity session init --goal <GOAL> --registry <REGISTRY_DIR> --work-dir <DIR> [--entity-kind <KIND>] [--registry-id <ID>] [--prefix <PREFIX>] [--zero-pad <N>] [--emit json|summary]",
+      "description": "Create an append-only evidence session manifest and create its empty registry when registry.json is absent",
+      "output_mode": "mixed",
+      "output_schema": "canon_entity_session_init.v0",
+      "status": "implemented",
+      "read_only": false,
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": false,
+        "reads_registry_files": true,
+        "writes_registry_files": true,
+        "writes_work_dir": true,
+        "writes_output_files": false,
+        "uses_network": false,
+        "appends_witness_ledger": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "session initialized, already initialized, or registry path updated",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / invalid session, registry, or publication state",
+          "domain": "error"
+        }
+      },
+      "options": [
+        {
+          "name": "goal",
+          "flag": "--goal",
+          "type": "string",
+          "required": true,
+          "description": "Session goal"
+        },
+        {
+          "name": "registry",
+          "flag": "--registry",
+          "type": "directory_path",
+          "required": true,
+          "description": "Registry directory to use or create"
+        },
+        {
+          "name": "work_dir",
+          "flag": "--work-dir",
+          "type": "directory_path",
+          "required": true,
+          "description": "Session work directory"
+        },
+        {
+          "name": "entity_kind",
+          "flag": "--entity-kind",
+          "type": "string",
+          "default": "organisation",
+          "description": "Entity kind stored in the registry binding"
+        },
+        {
+          "name": "registry_id",
+          "flag": "--registry-id",
+          "type": "string",
+          "description": "Required when registry.json is absent"
+        },
+        {
+          "name": "prefix",
+          "flag": "--prefix",
+          "type": "string",
+          "description": "Required when registry.json is absent"
+        },
+        {
+          "name": "zero_pad",
+          "flag": "--zero-pad",
+          "type": "integer",
+          "default": 3,
+          "description": "Default registry ID suffix width when creating a registry"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json or summary"
+        }
+      ],
+      "next_command": "canon entity session ingest <SESSION> <OBSERVATIONS.jsonl> --emit json",
+      "recovery": {
+        "next_command": "Use the original session arguments or choose a new --work-dir",
         "refusal_exit_code": 2
       }
     },

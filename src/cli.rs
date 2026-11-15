@@ -1195,6 +1195,8 @@ pub struct StrategyCommand {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum RegistrySubcommand {
+    /// Create an empty self-authored registry with its default ID scheme
+    Init(RegistryInitCli),
     /// Export a registry as a downstream serving or transform artifact
     Export(RegistryExportCli),
     /// Suggest the next canonical ID for a self-authored registry namespace
@@ -1277,6 +1279,33 @@ pub struct RegistryExportCli {
     /// Optional dbt singular test SQL path guarding normalized-key collapse
     #[arg(long = "anti-collapse-test-out")]
     pub anti_collapse_test_out: Option<PathBuf>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct RegistryInitCli {
+    /// Registry directory to create
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Stable registry identifier
+    #[arg(long = "registry-id")]
+    pub registry_id: String,
+
+    /// Default canonical ID prefix
+    #[arg(long)]
+    pub prefix: String,
+
+    /// Zero-padding width for the numeric suffix (default: 3)
+    #[arg(long = "zero-pad")]
+    pub zero_pad: Option<usize>,
+
+    /// Human-readable registry description
+    #[arg(long)]
+    pub description: Option<String>,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
@@ -1505,6 +1534,8 @@ pub struct RegistryDefaultIdSchemeCli {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum EntitySubcommand {
+    /// Initialize an evidence session and its registry when absent
+    Session(EntitySessionCommand),
     /// Run the full entity orchestration flow
     Run(EntityRunCli),
     /// Validate and project profile-mapped observations for entity preparation
@@ -1541,6 +1572,53 @@ pub enum EntitySubcommand {
     Profile(EntityProfileCommand),
     /// Export and import human adjudication review queues
     Review(EntityReviewCommand),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntitySessionCommand {
+    #[command(subcommand)]
+    pub command: EntitySessionSubcommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum EntitySessionSubcommand {
+    /// Create a session workspace and bind it to one registry
+    Init(EntitySessionInitCli),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntitySessionInitCli {
+    /// Session goal
+    #[arg(long)]
+    pub goal: String,
+
+    /// Registry directory to use or create
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Session work directory
+    #[arg(long = "work-dir")]
+    pub work_dir: PathBuf,
+
+    /// Entity kind stored in the session registry binding
+    #[arg(long = "entity-kind", default_value = "organisation")]
+    pub entity_kind: String,
+
+    /// Registry identifier, required when --registry/registry.json is absent
+    #[arg(long = "registry-id")]
+    pub registry_id: Option<String>,
+
+    /// Registry default canonical ID prefix, required when the registry is absent
+    #[arg(long)]
+    pub prefix: Option<String>,
+
+    /// Registry default ID zero-padding width (default: 3)
+    #[arg(long = "zero-pad")]
+    pub zero_pad: Option<usize>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
 }
 
 #[derive(Subcommand, Debug, Clone)]

@@ -28,6 +28,7 @@ pub mod domain_compile;
 mod export;
 pub mod export_projection;
 mod id_scheme;
+mod init;
 mod mint;
 mod next_id;
 pub mod package;
@@ -41,6 +42,7 @@ pub use add_entry::{
 pub use id_scheme::{
     RegistryDefaultIdSchemeOutput, RegistryDefaultIdSchemeRequest, set_default_id_scheme,
 };
+pub use init::{RegistryInitOutput, RegistryInitRequest, init};
 pub use mint::{
     RegistryMintBatchEntry, RegistryMintBatchItem, RegistryMintBatchOutput,
     RegistryMintBatchRequest, RegistryMintOutput, RegistryMintRequest, mint, mint_batch,
