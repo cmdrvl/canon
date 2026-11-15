@@ -1478,6 +1478,7 @@
     { "id": "canon.inbox.review_export.v1", "family": "inbox", "action": "preserve" },
     { "id": "canon.inbox.show.v1", "family": "inbox", "action": "preserve" },
     { "id": "canon.inbox.stats.v1", "family": "inbox", "action": "preserve" },
+    { "id": "canon.lookup.inbox.v1", "family": "inbox", "action": "preserve" },
     {
       "id": "canon.inbox.capture.surface.v1",
       "family": "inbox",
