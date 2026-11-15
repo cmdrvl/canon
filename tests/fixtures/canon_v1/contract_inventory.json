@@ -617,6 +617,14 @@
       "action": "preserve"
     },
     {
+      "id": "canon registry init",
+      "family": "registry",
+      "clap_path": "registry init",
+      "operator_name": "registry init",
+      "primary_contracts": ["canon_registry_init.v0"],
+      "action": "preserve"
+    },
+    {
       "id": "canon registry lint",
       "family": "registry",
       "clap_path": "registry lint",
@@ -726,6 +734,14 @@
       "clap_path": "entity run",
       "operator_name": "entity run",
       "primary_contracts": ["canon_entity_run.v1", "canon_entity_index_cache_receipt.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity session init",
+      "family": "entity",
+      "clap_path": "entity session init",
+      "operator_name": "entity session init",
+      "primary_contracts": ["canon.entity.session.init.v1"],
       "action": "preserve"
     },
     {
@@ -1274,8 +1290,12 @@
     { "id": "canon_entity_review_export.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_review_import.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_review_queue.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon.entity.session.manifest.receipt.v1", "family": "entity", "action": "preserve" },
+    { "id": "canon.entity.session.manifest.v1", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_run.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_run.v1", "family": "entity", "action": "preserve" },
+    { "id": "canon.entity.session.v1", "family": "entity", "action": "preserve" },
+    { "id": "canon.entity.session.init.v1", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_run_manifest.v0", "family": "entity", "action": "preserve" },
     {
       "id": "canon_entity_run_publication_request.v1",
@@ -1320,6 +1340,7 @@
     { "id": "canon_registry_add_entry.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_audit.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_build.v0", "family": "registry", "action": "preserve" },
+    { "id": "canon_registry_init.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_default_id_scheme.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_diff.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_export.v0", "family": "registry", "action": "preserve" },

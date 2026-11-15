@@ -78,7 +78,7 @@ fn session_init_creates_registry_manifest_and_empty_lookup_is_unresolved() {
     run_and_log("session init", &output);
 
     let payload = json_stdout(&output);
-    assert_eq!(payload["version"], "canon.entity.session.init.v0");
+    assert_eq!(payload["version"], "canon.entity.session.init.v1");
     assert_eq!(payload["status"], "initialised");
     assert_eq!(payload["registry_initialized"], true);
     assert_eq!(payload["registries"][0]["id"], "organisations");

@@ -6623,7 +6623,7 @@
       "usage": "canon entity session init --goal <GOAL> --registry <REGISTRY_DIR> --work-dir <DIR> [--entity-kind <KIND>] [--registry-id <ID>] [--prefix <PREFIX>] [--zero-pad <N>] [--emit json|summary]",
       "description": "Create an append-only evidence session manifest and create its empty registry when registry.json is absent",
       "output_mode": "mixed",
-      "output_schema": "canon_entity_session_init.v0",
+      "output_schema": "canon.entity.session.init.v1",
       "status": "implemented",
       "read_only": false,
       "safety": {

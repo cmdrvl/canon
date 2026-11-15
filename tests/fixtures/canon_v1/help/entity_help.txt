@@ -3,6 +3,7 @@ Profiled entity workbench commands
 Usage: canon entity <COMMAND>
 
 Commands:
+  session            Create a session workspace and bind it to one registry
   run                Run the full entity orchestration flow
   prepare            Validate and project profile-mapped observations for entity preparation
   index              Build artifact-backed entity indexes
