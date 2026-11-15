@@ -2791,11 +2791,21 @@ mod tests {
         csv.into_bytes()
     }
 
+    fn csv_with_one_bad_projection_row() -> Vec<u8> {
+        let mut csv = String::from(
+            "source_row_id,deal_id,loan_id,property_id,raw_tenant_name,alias_surfaces_json,mention_surfaces_json\n",
+        );
+        csv.push_str("row-1,deal-1,loan-1,property-1,Sears,[],[]\n");
+        csv.push_str("bad,deal-bad,loan-bad,property-bad,Sears,not-json,[]\n");
+        csv.push_str("row-3,deal-3,loan-3,property-3,Macy,[],[]\n");
+        csv.into_bytes()
+    }
+
     #[test]
     fn projection_collects_bad_rows_without_dropping_their_identity() {
         let (_profile, contract) = cmbs_profile_and_contract();
         let output = project_prepare_csv_reader_with_rejections(
-            Cursor::new(csv_with_one_bad_surface(true)),
+            Cursor::new(csv_with_one_bad_projection_row()),
             b',',
             &contract,
             true,
@@ -2809,11 +2819,11 @@ mod tests {
             output.rejected_rows[0].source_row_id.as_deref(),
             Some("bad")
         );
-        assert_eq!(output.rejected_rows[0].code, "E_ENTITY_ARTIFACT_CONTRACT");
+        assert_eq!(output.rejected_rows[0].code, "E_ENTITY_INPUT_CONTRACT");
         assert!(
             output.rejected_rows[0]
                 .message
-                .contains("canonical normalized view")
+                .contains("Side field 'alias_surfaces_json' must be valid JSON")
         );
     }
 
