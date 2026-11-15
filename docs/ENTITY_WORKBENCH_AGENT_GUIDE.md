@@ -9,6 +9,31 @@ Boundary reminder ([`IDENTITY_ARCHITECTURE.md`](IDENTITY_ARCHITECTURE.md)):
 the workbench produces *proposals*. Runtime lookup stays exact-match against a
 reviewed, versioned registry. Nothing below loosens that.
 
+## Start an evidence session
+
+For a new registry, initialize the session and registry together:
+
+```bash
+canon entity session init \
+  --goal "dedupe BDC borrowers" \
+  --registry registries/organisations \
+  --work-dir work/bdc-session \
+  --registry-id organisations \
+  --prefix ORG \
+  --zero-pad 6
+```
+
+This creates `registry.json`, an empty `aliases.json`, and an append-only
+session manifest under `work/bdc-session/.canon/entity/publications/v1`.
+`canon registry lint registries/organisations` and
+`canon registry next-id --registry registries/organisations` are useful
+follow-up checks; an empty registry correctly leaves exact lookup unresolved.
+Repeat the same command to get an idempotent `already_initialised` result.
+Changing the goal or registry id for an existing work directory is refused;
+use a new `--work-dir`. If the registry already exists, `--registry-id`
+and `--prefix` are only needed when you want to check the requested registry id.
+The next session step is `canon entity session ingest`.
+
 ## The loop
 
 ```text
@@ -23,8 +48,9 @@ rows.csv -> [profile] -> entity run -> review export -> human decision
 | Export the queue | `canon entity review export wd/run/run.json --include all --emit json` (or `--emit csv`) | `canon_entity_review.v1` queue |
 | Decide | fill each item's `decision`; items left blank are not imported | decided queue |
 | Import | `canon entity review import queue.json --registry REG --next-version X.Y.Z` | new registry version |
-| Audit | `canon entity audit wd/run/run.json --suite SUITE` | audit artifact |
-| Promote / apply | `canon entity promote …` / `canon entity apply …` | registry knowledge / canonicalized rows |
+| Audit | `canon entity audit wd/run/run.json --suite SUITE --emit json > audit.json` | audit artifact (see "Audit suites and gold labels") |
+| Promote | `canon entity promote wd/run/run.json --audit audit.json --registry REG --next-version X.Y.Z` | registry knowledge for the audited run; refuses an audit that does not certify this exact run |
+| Apply | `canon entity apply wd/run/run.json --rows rows.csv --registry REG --column COL --out out.csv [--allow-partial-output]` | rows with canonical IDs appended; refuses before writing if any row stays unresolved unless `--allow-partial-output` (then exit 1) |
 
 Notes from running this loop:
 
@@ -59,6 +85,102 @@ Notes from running this loop:
   audit, may stand in for that. No policy may accept a component containing a
   hard cannot-link.
 - Nobody: matching at lookup time. It stays exact.
+
+## Audit suites and gold labels
+
+There are two different things called "suite"; know which one you need.
+
+**1. The suite directory given to `entity audit --suite DIR`.** For a
+`canon_entity_run.v1` / `canon_entity_solve.v1` artifact the directory may hold
+a `manifest.json`:
+
+```json
+{"id": "my-suite", "version": "v1",
+ "gates": [{"gate_id": "G01", "label": "artifact continuity", "passed": true,
+            "expected": "v1_self_hash_valid", "actual": "v1_self_hash_valid"}]}
+```
+
+`gate_id` must be one of `G01`..`G15`, unique, with a non-empty label; a gate
+with `"passed": false` makes the audit refuse with `E_ENTITY_AUDIT_GATE`. A
+directory with no `manifest.json` (or an empty `gates` list) gets the two
+default gates `G01` artifact continuity and `G14` promotion preflight. **These
+`passed` flags are asserted by whoever wrote the manifest; canon does not
+compute them.** Treat such an audit as proof that the artifact chain is intact
+(the audit certifies the exact run hash that `promote` then checks), not as
+evidence that the matches are correct. Correctness evidence comes from gold
+labels, below.
+
+**2. The frozen policy suite, which *is* computed.** It exists only when the
+strategy declares `promotion: {new_ids: auto_accept, auto_accept: {...}}`.
+`audit.suite` in that policy names a directory holding `policy_suite.json`,
+and the audit re-runs the same strategy on that corpus and scores what the
+policy would accept against your labels. Nothing in the file can claim a
+precision; every input is pinned by `blake3:` hash and a mismatch refuses
+(`suite_input_hash_mismatch`).
+
+```text
+SUITE/
+  policy_suite.json   rows, rows_hash, profile, profile_hash, registry,
+                      registry_snapshot_hash, gold, gold_hash,
+                      gold_provenance, work_dir   (unknown keys are refused)
+  gold.json           JSON array: [{"surface_id": "...", "entity_id": "..."}, ...]
+```
+
+- `gold.json` labels *surfaces with an entity*, not pairs: surfaces that share
+  an `entity_id` are the same entity, different ids are distinct. It must cover
+  exactly the prepared surface universe of the suite corpus (get the ids from
+  `wd/prepare/surfaces.jsonl` after one run of the same rows and profile), have
+  at least 3 labels and 2 entities, and at least one entity with more than one
+  surface (so both positive and negative pairs exist).
+- `gold_provenance` must be non-empty and states who labeled it. Operator
+  labels are not replaceable by agent or model labels for a real-data claim.
+- Hashes are `canon::witness::hash_bytes`, i.e. `blake3:` + hex of the file
+  bytes (`b3sum` hex with that prefix). Any edit to rows, profile, registry
+  snapshot or gold needs a new manifest.
+- The policy passes only if the computed pair and component precision reach
+  `min_pair_precision` / `min_component_precision`. A fixture-built suite
+  (`tests/entity_profile_instrument.rs`,
+  `declared_policy_runs_a_frozen_audit_then_promotes_exact_aliases`) proves the
+  mechanics, not quality; label real samples before claiming a precision.
+
+### Gold JSONL for `entity calibrate sweep`
+
+`canon entity calibrate sweep RESULT --gold gold.jsonl --strategy strat.yaml`
+reads one JSON object per line (a JSON array, or an object with a `gold`,
+`labels`, `pairs` or `records` array, also works). Pair labels, not entity
+labels:
+
+```jsonl
+{"left_surface_id": "s_aaa", "right_surface_id": "s_bbb", "label": "same_entity"}
+{"left_surface_id": "s_aaa", "right_surface_id": "s_ccc", "label": "distinct_entity", "critical": true}
+```
+
+- Accepted labels: `same`/`same_entity`/`match`/`must_link`/`positive` and
+  `distinct`/`distinct_entity`/`non_match`/`cannot_link`/`negative`.
+  Anything else is refused.
+- `critical: true` marks a false merge that must never happen; any accepted
+  critical false merge fails the tuple.
+- The sweep re-scores the run's own evidence pairs at candidate thresholds and
+  recommends one only if a tuple meets `canon.entity.quality.v1`: precision
+  at least 99.50% **and** recall at least 98.00% with zero critical false
+  merges. Otherwise the status is `blocked` (`no threshold tuple satisfied
+  canon.entity.quality.v1`) and no threshold is suggested.
+- Deriving pair gold from entity gold: for every unordered pair of labeled
+  surfaces, emit `same_entity` if their `entity_id` is equal, else
+  `distinct_entity`. Label the sibling pairs that matter (RR vs RR H, Fund II
+  vs Fund IV) explicitly as `distinct_entity`; they are the cases a score
+  alone cannot separate.
+- What a profile needs to pass: score-only support cannot separate suffix
+  siblings from spelling variants, so a profile that reaches the gate needs
+  anti-merge evidence for them: `protected_token_conflict` for numbered
+  siblings, `attribute_conflict` / `anchor_conflict` where rows carry an
+  attribute or registry-grade anchor. Check the operator catalog: only
+  operators marked "yes" affect the sweep.
+
+Quickest honest loop for a new profile: run once, copy surface ids from
+`wd/prepare/surfaces.jsonl`, write `gold.json` (policy suite) or the pair
+JSONL (sweep), run `calibrate sweep`, add anti-merge operators until it stops
+reporting `blocked`, then pin the suite and run `entity audit`.
 
 ## Solver options (`solve:` in the strategy file)
 
