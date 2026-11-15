@@ -63,7 +63,8 @@ migrates later: the new id becomes primary and the old one a retired id that
 still resolves to it.
 
 - Form: `<prefix>_` plus exactly 12 characters: a 10-character body and two
-  check characters. For example `org_7k3m9q2xh4tw`, `per_4f9k2m7q8xtn`.
+  check characters. For example `org_7k3m9q2xh43z`, `per_4f9k2m7q8xvj` (both
+  carry valid check characters).
 - Prefixes: `org_` organisation, `per_` person, `plc_` place, `deal_` deal,
   `fund_` fund, `ins_` instrument.
 - Alphabet: `0123456789abcdefghjkmnpqrstvwxyz` (no i, l, o or u). Written
@@ -73,7 +74,7 @@ still resolves to it.
   algorithm and test vectors are in bead `bd-vdcw.50`.
 - Derived deterministically from the founding evidence, so replays and two
   agents minting the same new entity get the same id.
-- Optional advisory label, `org_7k3m9q2xh4tw~blackrock-inc`: ignored for
+- Optional advisory label, `org_7k3m9q2xh43z~blackrock-inc`: ignored for
   identity, flagged when it does not match. Catches a real id attached to the
   wrong entity.
 - Pinned citable form, `<id>@<registry version>#<closure hash>`, which one
@@ -153,8 +154,20 @@ be sealed, and be addressable per outcome.
 - Bounded batches, including name-like queries; drop rows that already resolve
   before a later batch; act on Canon's frontier and recorded misses.
 - Stitch Canon, `decoding` and fetch receipts into one closure per answer and
-  seal with `pack`, to a local directory first.
+  seal with `pack`, to a local directory first. `pack seal` needs a fixed
+  creation time for a stable pack id and an outcome anchor starting
+  `cmdrvl://`; Canon's outcome references are in that form (`bd-vdcw.44`).
+- Supply the second source for the first end-to-end test: EDGAR registrant
+  names by CIK for the BDC universe (`bd-vdcw.11`), and the sponsor rows as a
+  receipted artifact (`bd-vdcw.7`).
+- Turn recorded lookup misses (`bd-vdcw.56`) into the next bounded batch.
+- Write corrections files from review decisions (`bd-vdcw.52`, `.53`).
 - Later: persist sealed packs to S3 and write the index.
+
+**Canon beads that produce what the rest consumes**: registries by kind and
+the id scheme `bd-vdcw.50`; commit hand-off and pinned references
+`bd-vdcw.55`; evidence closures and link-evidence `bd-vdcw.44`; entity cards
+`bd-vdcw.57`; frontier `bd-vdcw.23`; units and role scope `bd-vdcw.54`.
 - Decide the bulk-read path for very large pulls (its bead `em-1vp.7`).
 
 **evidence-protocol**
@@ -169,7 +182,9 @@ be sealed, and be addressable per outcome.
 **MCP servers (mcp-server-base and the servers)**
 - Treat retired-id aliases as exact only.
 - Accept a role scope on resolve.
-- Return distinct counterparts, units and parents with a resolution.
+- Treat agent-friendly id aliases as exact only.
+- Return distinct counterparts, units and parents with a resolution, read
+  from the `entity_context` table Canon adds to the search index.
 - Carry the id pattern in tool schemas.
 
 **Data MCP**

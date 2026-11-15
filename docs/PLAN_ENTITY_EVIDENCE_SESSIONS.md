@@ -1,7 +1,27 @@
 # canon entity — Evidence Sessions
 
-> **Status**: Draft for operator review. Nothing here is implemented.
+> **Status**: Signed off by the operator on 2026-11-15 and **superseded by the
+> bead graph under `bd-vdcw`**, which is the specification. Nothing here is
+> implemented. Read this for the diagnosis and the reasoning; where it
+> disagrees with the beads, the beads win.
 > **Created**: 2026-11-15. Revised the same day after a reuse study.
+> **Changed since this was written** (see `bd-vdcw` and
+> [`PLAN_IDS_AND_EVIDENCE_AROUND_CANON.md`](PLAN_IDS_AND_EVIDENCE_AROUND_CANON.md)):
+> the Evidence Machine drives and does acquisition and S3 sync, so Canon has
+> no MCP executor, no planner and no session replay; registries are one per
+> entity kind; roles are relations; units inside firms are their own
+> entities; registry entries are candidates in every session; corrections
+> (merge, detach, split) exist; every outcome carries an evidence closure;
+> the first proof is the BDC universe keyed by CIK, not a `cmbs-sponsors`
+> registry.
+> **Claims below that the code contradicts**: Geo's corroboration counts
+> contract ids, not source lineage; `related` fits an existing evidence kind,
+> so no new kind is needed; `decoding` is a separate tool, not a Canon
+> module; `resolve::score_candidates` has one non-test caller, though its
+> entry point is reached only from tests. The diagnosis should not be read as
+> saying no entity registry exists: `firms` (45 entities) is built and served
+> and `controlling-class-holders` is maintained; what has not happened is
+> evidence-driven resolution at volume.
 > **Context**: `canon entity` was meant to let agents gather evidence about
 > entities, build a graph from it, and turn what the graph proves into registry
 > mappings, with a human queue for the long tail. A diagnosis on 2026-11-15
