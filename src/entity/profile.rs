@@ -962,6 +962,7 @@ const SUPPORTED_SUPPORT_OPS: &[&str] = &[
     "exact_view",
     "anchor_match",
     "isin_cusip_arithmetic",
+    "token_overlap",
     "string_similarity",
     "tfidf_cosine",
     "date_transposed_digits",

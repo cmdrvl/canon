@@ -304,6 +304,7 @@ hint per retained candidate.
 | support | exact_view | yes |
 | support | anchor_match | yes |
 | support | isin_cusip_arithmetic | yes |
+| support | token_overlap | yes |
 | support | string_similarity | yes |
 | support | tfidf_cosine | yes |
 | support | date_transposed_digits | yes |

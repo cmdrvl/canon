@@ -76,10 +76,7 @@ fn exact_name_bucket_with_conflicting_anchor_emits_hard_cannot_link() {
                 .any(|hit| hit["lane"] == "anti_merge" && hit["reason_code"] == "anchor_conflict")
         })
     }));
-    assert_eq!(
-        artifacts.solve["summary"]["counts"]["diagnostics_hard_cannot_link_count"],
-        1
-    );
+    assert_eq!(solve_hard_cannot_link_count(&artifacts.solve), 1);
     let entity = artifacts.solve["entities"]
         .as_array()
         .expect("solve entities")
@@ -109,10 +106,7 @@ fn exact_name_bucket_with_matching_anchor_has_no_cannot_link() {
                 .all(|hit| hit["reason_code"] != "anchor_conflict")
         })
     }));
-    assert_eq!(
-        artifacts.solve["summary"]["counts"]["diagnostics_hard_cannot_link_count"],
-        0
-    );
+    assert_eq!(solve_hard_cannot_link_count(&artifacts.solve), 0);
     let entity = artifacts.solve["entities"]
         .as_array()
         .expect("solve entities")
@@ -136,10 +130,7 @@ fn exact_name_bucket_with_one_missing_anchor_is_not_split() {
                 .all(|hit| hit["reason_code"] != "anchor_conflict")
         })
     }));
-    assert_eq!(
-        artifacts.solve["summary"]["counts"]["diagnostics_hard_cannot_link_count"],
-        0
-    );
+    assert_eq!(solve_hard_cannot_link_count(&artifacts.solve), 0);
     let entity = artifacts.solve["entities"]
         .as_array()
         .expect("solve entities")
@@ -169,10 +160,7 @@ fn large_exact_name_bucket_uses_bounded_anchor_conflict_candidates() {
         1
     );
     assert_eq!(artifacts.block["summary"]["counts"]["candidate_pairs"], 1);
-    assert_eq!(
-        artifacts.solve["summary"]["counts"]["diagnostics_hard_cannot_link_count"],
-        1
-    );
+    assert_eq!(solve_hard_cannot_link_count(&artifacts.solve), 1);
 }
 
 fn run_rows(rows: &str) -> RunArtifacts {
@@ -212,6 +200,19 @@ fn run_rows(rows: &str) -> RunArtifacts {
 
 fn read_json(path: &Path) -> Value {
     serde_json::from_slice(&fs::read(path).expect("JSON artifact")).expect("valid JSON")
+}
+
+fn solve_hard_cannot_link_count(solve: &Value) -> u64 {
+    solve["entities"]
+        .as_array()
+        .expect("solve entities")
+        .iter()
+        .map(|entity| {
+            entity["hard_cannot_link_count"]
+                .as_u64()
+                .expect("solve entity hard cannot-link count")
+        })
+        .sum()
 }
 
 fn read_jsonl(path: &Path) -> Vec<Value> {

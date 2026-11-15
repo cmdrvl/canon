@@ -40,8 +40,11 @@
     ],
     "cannot_link": [
       {
-        "op": "segment_conflict",
-        "view": "segment_key"
+        "op": "attribute_conflict",
+        "view": "segment_key",
+        "params": {
+          "field": "segment_key"
+        }
       }
     ],
     "relation_hints": [

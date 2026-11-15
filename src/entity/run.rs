@@ -52,10 +52,10 @@ use crate::{
         evidence::{
             AnchorMatchSupportRequest, DateTransposedDigitSupportRequest, ExactViewSupportRequest,
             IsinCusipArithmeticSupportRequest, StringSimilaritySupportRequest,
-            StructuredSupportError, TwoTokenReversalSupportRequest, anchor_match_support_hit,
-            date_transposed_digit_support_hit, exact_view_support_hit,
+            StructuredSupportError, TokenOverlapSupportRequest, TwoTokenReversalSupportRequest,
+            anchor_match_support_hit, date_transposed_digit_support_hit, exact_view_support_hit,
             isin_cusip_arithmetic_support_hit, string_similarity_support_hit,
-            two_token_reversal_support_hit,
+            token_overlap_support_hit, two_token_reversal_support_hit,
         },
         evidence_ir::{CANON_EVIDENCE_VERSION, canonical_bundle_bytes},
         graph::{
@@ -3956,6 +3956,7 @@ fn support_hits_for_candidate(
             "isin_cusip_arithmetic" => {
                 isin_cusip_arithmetic_support_for_spec(spec, left, right, context)?
             }
+            "token_overlap" => token_overlap_support_for_spec(spec, left, right, context)?,
             "string_similarity" => string_similarity_support_for_spec(spec, left, right, context)?,
             "tfidf_cosine" => tfidf_support_for_spec(spec, candidate, context)?,
             "date_transposed_digits" => {
@@ -4155,6 +4156,7 @@ pub const RUN_SUPPORT_OPS: &[&str] = &[
     "exact_view",
     "anchor_match",
     "isin_cusip_arithmetic",
+    "token_overlap",
     "string_similarity",
     "tfidf_cosine",
     "date_transposed_digits",
@@ -4357,6 +4359,29 @@ fn attribute_conflict_for_spec(
     Ok(soft_hit)
 }
 
+fn token_overlap_support_for_spec(
+    spec: &EntityOperatorSpec,
+    left: &PreparedSurfaceRecord,
+    right: &PreparedSurfaceRecord,
+    context: &EdgeSupportScoringContext<'_>,
+) -> Result<Option<EdgeEvidenceHit>, Refusal> {
+    let view_name = required_support_view_name(spec, "token_overlap")?;
+    let min_shared_tokens = positive_usize_param(spec, "min_shared_tokens", 1)?;
+    let left_value = support_view_value(left, view_name, "token_overlap")?;
+    let right_value = support_view_value(right, view_name, "token_overlap")?;
+    let left_tokens = left_value.split_whitespace().collect::<Vec<_>>();
+    let right_tokens = right_value.split_whitespace().collect::<Vec<_>>();
+    let operator_id = support_operator_id(spec);
+    Ok(token_overlap_support_hit(TokenOverlapSupportRequest {
+        namespace: context.support_namespace,
+        operator_id: &operator_id,
+        reason_code: "token_overlap_support",
+        left_tokens: &left_tokens,
+        right_tokens: &right_tokens,
+        min_shared_tokens,
+    }))
+}
+
 fn string_similarity_support_for_spec(
     spec: &EntityOperatorSpec,
     left: &PreparedSurfaceRecord,
@@ -4496,6 +4521,10 @@ fn validate_edge_operator_params(profile: &EntityProfileDocument) -> Result<(), 
             }
             "exact_view" => {
                 optional_score_units_param(spec, "score_units", "score")?;
+            }
+            "token_overlap" => {
+                required_support_view_name(spec, "token_overlap")?;
+                positive_usize_param(spec, "min_shared_tokens", 1)?;
             }
             "date_transposed_digits" => {
                 if optional_score_units_param(spec, "score_units", "score")?
