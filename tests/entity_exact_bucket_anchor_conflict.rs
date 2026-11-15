@@ -49,11 +49,15 @@ patch_namespaces:
   aliases: exact_bucket_anchor_conflict.aliases
   distinct: exact_bucket_anchor_conflict.distinct
   relations: exact_bucket_anchor_conflict.relations
-block:
-  preflight: false
 solve:
   hard_cannot_link: contradiction
   standalone_surfaces: include
+"#;
+
+const STRATEGY: &str = r#"
+block:
+  preflight: false
+  max_candidates_per_run: 5000000
 "#;
 
 struct RunArtifacts {
@@ -174,12 +178,14 @@ fn large_exact_name_bucket_uses_bounded_anchor_conflict_candidates() {
 fn run_rows(rows: &str) -> RunArtifacts {
     let temp = tempfile::tempdir().expect("temporary run directory");
     let profile = temp.path().join("profile.yaml");
+    let strategy = temp.path().join("strategy.yaml");
     let rows_path = temp.path().join("rows.csv");
     let registry = temp.path().join("registry");
     let work_dir = temp.path().join("work");
 
     fs::create_dir_all(&registry).expect("registry directory");
     fs::write(&profile, PROFILE).expect("profile");
+    fs::write(&strategy, STRATEGY).expect("strategy");
     fs::write(&rows_path, rows).expect("rows");
     fs::write(
         registry.join("registry.json"),
@@ -191,7 +197,7 @@ fn run_rows(rows: &str) -> RunArtifacts {
     run_entity_workbench(EntityRunRequest {
         rows: &rows_path,
         profile: profile.to_str().expect("profile path"),
-        strategy: Path::new(&profile),
+        strategy: &strategy,
         registry: &registry,
         work_dir: &work_dir,
     })

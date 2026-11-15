@@ -423,7 +423,7 @@ fn sample_package() -> EntityProfilePackage {
                 params: BTreeMap::new(),
             }],
             cannot_link: vec![EntityOperatorSpec {
-                op: "protected_anchor_conflict".to_string(),
+                op: "protected_token_conflict".to_string(),
                 view: Some("anchor_key".to_string()),
                 params: BTreeMap::new(),
             }],

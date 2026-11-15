@@ -30,7 +30,7 @@
     ],
     "cannot_link": [
       {
-        "op": "protected_anchor_conflict",
+        "op": "protected_token_conflict",
         "view": "alpha_label_core"
       }
     ],

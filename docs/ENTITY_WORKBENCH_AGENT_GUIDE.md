@@ -304,26 +304,13 @@ hint per retained candidate.
 | support | exact_view | yes |
 | support | anchor_match | yes |
 | support | isin_cusip_arithmetic | yes |
-| support | token_overlap | declared only |
 | support | string_similarity | yes |
 | support | tfidf_cosine | yes |
 | support | date_transposed_digits | yes |
 | support | two_token_reversal | yes |
-| support | alias_patch_match | declared only |
-| support | reviewed_alias | declared only |
-| cannot_link | alias_patch_distinct | declared only |
 | cannot_link | anchor_conflict | yes |
 | cannot_link | attribute_conflict | yes |
 | cannot_link | protected_token_conflict | yes |
-| cannot_link | related_distinct_phrase | declared only |
-| cannot_link | conflicting_anchor | declared only |
-| cannot_link | same_property_distinct_rank | declared only |
-| cannot_link | role_conflict | declared only |
-| cannot_link | protected_anchor_conflict | declared only |
-| cannot_link | segment_conflict | declared only |
-| cannot_link | context_conflict | declared only |
-| cannot_link | platform_label_guard | declared only |
-| cannot_link | division_boundary | declared only |
 | relation_hints | related_brand_family | declared only |
 | relation_hints | possible_successor_predecessor | declared only |
 | relation_hints | same_parent_or_sponsor | declared only |
@@ -338,8 +325,9 @@ hint per retained candidate.
 
 `tests/entity/run_review_handoff.rs` fails if this table and the code disagree.
 Generic operators have a `view:` and `params:`; the Reg-AB-flavored ones
-(`role_conflict`, `platform_label_guard`, `division_boundary`, `division_of`,
-`parent_subsidiary_context`) are also declared only today.
+(`division_of` and `parent_subsidiary_context`) remain relation-hint
+declarations; `entity run` emits one generic review hint for retained
+candidates rather than executing each relation operator separately.
 
 A support operator with no threshold (`string_similarity`/`tfidf_cosine`
 without `min_score_units`) is disabled by design and produces no evidence.
