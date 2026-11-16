@@ -117,14 +117,14 @@ fn fixture_observations(include_conflict_rows: bool) -> Vec<String> {
             "fundA",
             "Acme Holdings Inc",
             None,
-            Some("LEI0000000000000001"),
+            Some("CANONFIXT0000000AA49"),
         ),
         observation(
             "r4",
             "fundB",
             "Acme Hldgs",
             None,
-            Some("LEI0000000000000001"),
+            Some("CANONFIXT0000000AA49"),
         ),
         observation("r5", "fundA", "Zeta Corp", Some("222"), None),
         observation(
@@ -132,14 +132,14 @@ fn fixture_observations(include_conflict_rows: bool) -> Vec<String> {
             "fundB",
             "Zeta Corporation",
             None,
-            Some("LEI0000000000000002"),
+            Some("CANONFIXT0000000BB37"),
         ),
         observation(
             "r7",
             "fundC",
             "ZC Inc",
             Some("222"),
-            Some("LEI0000000000000002"),
+            Some("CANONFIXT0000000BB37"),
         ),
         observation("r8", "fundA", "Project Falcon Buyer, Inc.", None, None),
         observation(
