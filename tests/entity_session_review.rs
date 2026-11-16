@@ -265,11 +265,24 @@ fn tier_c_review_export_group_import_returns_human_evidence_and_rejects_stale() 
         ])
         .assert()
         .success();
-    let solve_again: Value =
-        serde_json::from_slice(&fs::read(session.join("solve/solve.json")).expect("updated solve"))
-            .expect("updated solve JSON");
-    assert_eq!(solve_again["summary"]["accepted_tier_a"], 2);
-    assert_eq!(solve_again["summary"]["contradiction"], 1);
+    // Session solve publishes solve/solve.json in the current publication
+    // generation; status reads that publication instead of assuming a stable
+    // filesystem copy exists under the session directory.
+    let status_output = canon()
+        .args([
+            "entity",
+            "session",
+            "status",
+            path(&session),
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .success();
+    let status: Value = serde_json::from_slice(&status_output.get_output().stdout)
+        .expect("updated solve status JSON");
+    assert_eq!(status["solve"]["counts"]["accepted_tier_a"], 2);
+    assert_eq!(status["solve"]["counts"]["contradictions"], 1);
 
     let stale_path = temp.path().join("stale.json");
     let mut stale = queue;
