@@ -55,26 +55,26 @@ fn init(temp: &TempDir) -> (PathBuf, PathBuf) {
 fn session_commit_writes_authority_and_sampling_is_seeded_and_scored() {
     let temp = TempDir::new().expect("tempdir");
     let (registry, session) = init(&temp);
+    let observation_text = (0..7)
+        .map(|index| {
+            json!({
+                "obs_id": format!("obs-{index}"),
+                "entity_type": "organisation",
+                "surface": format!("Alpha Holdings {index}"),
+                "keys": {"cik": "111"},
+                "source": {
+                    "channel": "warehouse",
+                    "id": format!("row-{index}"),
+                    "lineage": format!("filing-{index}")
+                }
+            })
+            .to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
     let observations = write(
         &temp.path().join("observations.jsonl"),
-        &(0..7)
-            .map(|index| {
-                json!({
-                    "obs_id": format!("obs-{index}"),
-                    "entity_type": "organisation",
-                    "surface": format!("Alpha Holdings {index}"),
-                    "keys": {"cik": "111"},
-                    "source": {
-                        "channel": "warehouse",
-                        "id": format!("row-{index}"),
-                        "lineage": format!("filing-{index}")
-                    }
-                })
-                .to_string()
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-            + "\n",
+        &format!("{observation_text}\n"),
     );
     canon()
         .args([
@@ -224,7 +224,7 @@ fn session_commit_writes_authority_and_sampling_is_seeded_and_scored() {
     }));
     let labels = write(
         &temp.path().join("labels.jsonl"),
-        &(label_lines.join("\n") + "\n"),
+        &format!("{}\n", label_lines.join("\n")),
     );
     let score = canon()
         .args([
