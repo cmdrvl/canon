@@ -329,6 +329,7 @@ mod tests {
             (RefusalCode::ETooManyCandidates, "\"E_TOO_MANY_CANDIDATES\""),
             (RefusalCode::EEmptyTape, "\"E_EMPTY_TAPE\""),
             (RefusalCode::EIncompatibleTapes, "\"E_INCOMPATIBLE_TAPES\""),
+            (RefusalCode::EBadId, "\"E_BAD_ID\""),
         ];
 
         for (code, expected) in cases {

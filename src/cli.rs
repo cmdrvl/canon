@@ -1214,6 +1214,9 @@ pub enum RegistrySubcommand {
     /// Suggest the next canonical ID for a self-authored registry namespace
     #[command(name = "next-id")]
     NextId(RegistryNextIdCli),
+    /// Verify an agent-friendly id (check symbols, kind prefix) and resolve it
+    #[command(name = "check-id")]
+    CheckId(RegistryCheckIdCli),
     /// Append one exact alias entry to a self-authored registry
     #[command(name = "add-entry")]
     AddEntry(RegistryAddEntryCli),
@@ -1338,6 +1341,24 @@ pub struct RegistryProvidersCli {
 pub struct RegistryProviderSchemaCli {
     /// Provider id to describe, such as openfigi or mock
     pub provider: String,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct RegistryCheckIdCli {
+    /// Agent id, optionally followed by ~label (for example org_7k3m9q2xh43z~ares-capital)
+    pub id: String,
+
+    /// Registry directory to resolve the id against
+    #[arg(long, conflicts_with = "registries")]
+    pub registry: Option<PathBuf>,
+
+    /// Registries map YAML: the kinds' agent prefixes are the known kinds
+    #[arg(long)]
+    pub registries: Option<PathBuf>,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]

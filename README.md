@@ -483,6 +483,7 @@ canon registry export --format dbt-seed|search-index --registry <REGISTRY> --out
 canon registry providers [--emit json|summary]
 canon registry provider-schema <PROVIDER> [--emit json|summary]
 canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]
+canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary]
 canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
 canon registry add-entries --registry <DIR> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
 canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--create-alias-file] [--no-lint] [--emit json|plain]
@@ -886,6 +887,7 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `registry export --format dbt-seed\|search-index --registry <DIR> --out <PATH>` | Export a versioned registry as a deterministic dbt seed CSV or a self-describing SQLite search index, with optional source-file, canonical-type, and rule-id-prefix filters. |
 | `registry providers [--emit json\|summary]` | List the registry build providers available for materialization, with their seed-column support and a pointer to each provider's schema command. |
 | `registry provider-schema <PROVIDER> [--emit json\|summary]` | Emit one provider's machine-readable `--provider-config` option contract — keys, types, enum values, secret flags, env fallbacks, defaults, mutual exclusions, interval encoding, and examples. Deterministic and offline; never contacts the provider. |
+| `registry check-id <ID> [--registry <DIR> \| --registries <MAP_YAML>] [--emit json\|summary]` | Verify an agent-friendly id (`org_7k3m9q2xh43z`, optional `~label`): length, alphabet, kind prefix and the two check symbols. A bad id is refused with `E_BAD_ID` and `detail.reason` of `bad_length`, `bad_symbol`, `unknown_kind` or `bad_check`; a good id returns `{kind, id, resolves_to, label}` where `label` is `match`, `mismatch` or `absent` and a mismatch is not a refusal. |
 | `registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain\|json]` | Read the existing canonical IDs for a self-authored namespace and suggest the next deterministic ID. Uses `registry.json.default_id_scheme` when `PREFIX` is omitted. |
 | `registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]...` | Append one exact alias entry to an existing root mapping file, bump the registry version, update `entry_count`, and run standard lint unless `--no-lint` is set. Scoped duplicate inputs are allowed only across distinct scopes. |
 | `registry add-entries --registry <DIR> --from <FILE.jsonl> [--bump patch\|minor\|major \| --next-version <VER>] [--no-lint] [--emit json\|plain]` | Attach a JSONL batch of exact aliases to existing canonical IDs in one versioned transaction; unknown IDs, malformed lines, duplicate inputs, and cross-incumbent collisions refuse atomically. |
@@ -934,7 +936,7 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `1` | Domain outcome needs inspection: PARTIAL, UNRESOLVED, unhealthy contract health, or another command-specific failed gate |
 | `2` | REFUSAL or CLI error |
 
-`canon registry diff`, `canon registry audit`, `canon registry export`, and `canon registry lint` exit `0` when the report succeeds and `2` on refusal. Lint findings are represented inside `canon_registry_lint.v0` rather than via exit status. `canon registry build`, `registry next-id`, `registry add-entry`, `registry add-entries`, `registry mint`, and `registry default-id-scheme` exit `0` when their report or write succeeds and `2` on refusal. Provider failures from `registry build` are preserved in the JSON report and warned on stderr. `add-entry`, `add-entries`, and `mint` restore the original files if their post-write lint gate finds errors.
+`canon registry diff`, `canon registry audit`, `canon registry export`, and `canon registry lint` exit `0` when the report succeeds and `2` on refusal. Lint findings are represented inside `canon_registry_lint.v0` rather than via exit status. `canon registry build`, `registry next-id`, `registry check-id`, `registry add-entry`, `registry add-entries`, `registry mint`, and `registry default-id-scheme` exit `0` when their report or write succeeds and `2` on refusal. Provider failures from `registry build` are preserved in the JSON report and warned on stderr. `add-entry`, `add-entries`, and `mint` restore the original files if their post-write lint gate finds errors.
 
 `canon strategy profile`, `canon strategy register`, `canon strategy update`, `canon strategy deprecate`, `canon strategy promote`, `canon strategy list`, `canon strategy explain`, and `canon strategy diff` exit `0` when their reports or writes succeed and `2` on refusal. `canon strategy audit` exits `0` when all fixtures pass, `1` when deterministic fixture checks fail, and `2` on refusal. `canon strategy resolve` exits `0` for a schema EXACT/COMPATIBLE or task EXACT match, `1` for schema PARTIAL/UNRESOLVED or task UNRESOLVED, and `2` on refusal.
 
@@ -1346,6 +1348,7 @@ Every refusal includes the error code, a concrete message, and a recovery path.
 | `E_TOO_MANY_CANDIDATES` | Resolve candidate filters left too many candidates | Tighten filters or raise `--max-candidates` |
 | `E_EMPTY_TAPE` | Resolve reference or target tape has no processable records | Provide non-empty tapes |
 | `E_INCOMPATIBLE_TAPES` | Resolve strategy leaves no comparable fields | Fix strategy field mappings |
+| `E_BAD_ID` | `registry check-id` id is malformed or fails its check symbols (`detail.reason`: `bad_length`, `bad_symbol`, `unknown_kind`, `bad_check`) | Copy the id again from the registry or session receipt |
 
 ---
 

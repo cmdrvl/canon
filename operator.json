@@ -36,6 +36,7 @@
       "canon registry init --registry <DIR> --registry-id <ID> --prefix <PREFIX> [--zero-pad <N>] [--description <TEXT>] [--emit json|summary]",
       "canon registry export --format dbt-seed|search-index --registry <DIR> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--emit json|summary]",
       "canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]",
+      "canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary]",
       "canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
       "canon registry add-entries --registry <DIR> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
       "canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--create-alias-file] [--no-lint] [--emit json|plain]",
@@ -4234,6 +4235,88 @@
       "next_command": "canon package verify <ARCHIVE> --emit json",
       "recovery": {
         "next_command": "canon package verify <ARCHIVE> --emit json",
+        "refusal_exit_code": 2
+      }
+    },
+    {
+      "name": "registry check-id",
+      "usage": "canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary]",
+      "description": "Verify an agent-friendly id (length, alphabet, kind prefix, check symbols) before any lookup, then resolve it exactly against the named registry and compare an optional ~label with the entity's aliases",
+      "output_mode": "mixed",
+      "output_schema": "canon_registry_check_id.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "offline read-only command; emits stdout only",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "registry read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": false,
+        "reads_registry_files": true,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "id is well formed; resolves_to is null when no entry carries it, label is match, mismatch or absent",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL (E_BAD_ID with detail.reason bad_length, bad_symbol, unknown_kind or bad_check) / CLI error",
+          "domain": "error"
+        }
+      },
+      "options": [
+        {
+          "name": "id",
+          "type": "string",
+          "position": 0,
+          "required": true,
+          "description": "Agent id, optionally followed by ~label"
+        },
+        {
+          "name": "registry",
+          "flag": "--registry",
+          "type": "directory_path",
+          "required": false,
+          "description": "Registry directory to resolve the id against"
+        },
+        {
+          "name": "registries",
+          "flag": "--registries",
+          "type": "file_path",
+          "required": false,
+          "description": "Registries map YAML; the kinds' agent prefixes are the known kinds"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json (canon_registry_check_id.v0) or summary"
+        }
+      ],
+      "next_command": "canon registry lint <DIR>",
+      "recovery": {
+        "next_command": "Copy the id again from the registry or session receipt, then rerun canon registry check-id",
         "refusal_exit_code": 2
       }
     },
@@ -9608,6 +9691,11 @@
     {
       "code": "E_INCOMPATIBLE_TAPES",
       "message": "Entity link strategy leaves no comparable structural fields across input row sets",
+      "action": "fix_input"
+    },
+    {
+      "code": "E_BAD_ID",
+      "message": "Agent id has the wrong length, a symbol outside the alphabet, an unknown kind prefix or a wrong check pair",
       "action": "fix_input"
     }
   ],

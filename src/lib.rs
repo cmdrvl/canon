@@ -68,14 +68,14 @@ use crate::cli::{
     EntitySessionSolveCli, EntitySessionStatusCli, EntitySessionSubcommand, EntitySolveCli,
     EntityStreamEmitMode, EntitySubcommand, PackageCli, PackagePackCli, PackageSubcommand,
     RegistryAddEntriesCli, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
-    RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode, RegistryExportCli,
-    RegistryExportFormatCli, RegistryInitCli, RegistryLintCli, RegistryLintProfile,
-    RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli, RegistryPlainJsonEmitMode,
-    RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand, RegistryVersionBumpMode,
-    StrategyAuditCli, StrategyCommand, StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli,
-    StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli, StrategyProfileCli, StrategyPromoteCli,
-    StrategyRegisterCli, StrategyResolveCli, StrategyStatusArg, StrategySubcommand,
-    StrategyUpdateCli,
+    RegistryCheckIdCli, RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode,
+    RegistryExportCli, RegistryExportFormatCli, RegistryInitCli, RegistryLintCli,
+    RegistryLintProfile, RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli,
+    RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand,
+    RegistryVersionBumpMode, StrategyAuditCli, StrategyCommand, StrategyDeprecateCli,
+    StrategyDiffCli, StrategyExplainCli, StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli,
+    StrategyProfileCli, StrategyPromoteCli, StrategyRegisterCli, StrategyResolveCli,
+    StrategyStatusArg, StrategySubcommand, StrategyUpdateCli,
 };
 use crate::entity::runtime as entity_runtime;
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
@@ -200,6 +200,7 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
         CanonCommand::Registry(command) => match &command.command {
             RegistrySubcommand::Init(init) => run_registry_init(init),
             RegistrySubcommand::Export(export) => run_registry_export(export),
+            RegistrySubcommand::CheckId(check_id) => run_registry_check_id(check_id),
             RegistrySubcommand::NextId(next_id) => run_registry_next_id(next_id),
             RegistrySubcommand::AddEntry(add_entry) => run_registry_add_entry(add_entry),
             RegistrySubcommand::AddEntries(add_entries) => run_registry_add_entries(add_entries),
@@ -4466,6 +4467,31 @@ fn run_registry_init(init: &RegistryInitCli) -> Result<u8, Box<dyn Error>> {
         Err(refusal) => {
             let output = refusal.to_canon_output();
             match init.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => eprintln!("{}", serde_json::to_string(&output)?),
+            }
+            Ok(2)
+        }
+    }
+}
+
+fn run_registry_check_id(check_id: &RegistryCheckIdCli) -> Result<u8, Box<dyn Error>> {
+    let result = registry::check_id(registry::RegistryCheckIdRequest {
+        id: check_id.id.clone(),
+        registry: check_id.registry.clone(),
+        registries: check_id.registries.clone(),
+    });
+    match result {
+        Ok(output) => {
+            match check_id.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => println!("{}", output.render_summary()),
+            }
+            Ok(0)
+        }
+        Err(refusal) => {
+            let output = refusal.to_canon_output();
+            match check_id.emit {
                 RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
                 RegistryEmitMode::Summary => eprintln!("{}", serde_json::to_string(&output)?),
             }
@@ -10113,6 +10139,7 @@ pub enum RefusalCode {
     ETooManyCandidates,
     EEmptyTape,
     EIncompatibleTapes,
+    EBadId,
 }
 
 impl Serialize for RefusalCode {
@@ -10157,6 +10184,7 @@ impl Serialize for RefusalCode {
             RefusalCode::ETooManyCandidates => "E_TOO_MANY_CANDIDATES",
             RefusalCode::EEmptyTape => "E_EMPTY_TAPE",
             RefusalCode::EIncompatibleTapes => "E_INCOMPATIBLE_TAPES",
+            RefusalCode::EBadId => "E_BAD_ID",
         };
         serializer.serialize_str(code_str)
     }
@@ -10275,6 +10303,9 @@ impl RefusalCode {
             }
             RefusalCode::EIncompatibleTapes => {
                 "Fix strategy field mappings so the linked row sets share comparable fields, then rerun canon entity link"
+            }
+            RefusalCode::EBadId => {
+                "Copy the id again from the registry or session receipt, then rerun canon registry check-id"
             }
         }
     }

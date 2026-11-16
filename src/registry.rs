@@ -25,6 +25,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 mod add_entry;
 pub mod agent_id;
 mod build;
+mod check_id;
 pub mod domain_compile;
 mod export;
 pub mod export_projection;
@@ -42,6 +43,7 @@ pub use add_entry::{
     RegistryAddEntryRequest, RegistryVersionBump, add_entries, add_entry, add_entry_with_scope,
     plan_add_entry, plan_add_entry_with_scope, read_add_entries,
 };
+pub use check_id::{RegistryCheckIdOutput, RegistryCheckIdRequest, check_id};
 pub use id_scheme::{
     RegistryDefaultIdSchemeOutput, RegistryDefaultIdSchemeRequest, set_default_id_scheme,
 };

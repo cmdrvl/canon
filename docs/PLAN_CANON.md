@@ -138,6 +138,7 @@ canon registry export --format dbt-seed|search-index --registry <REGISTRY> --out
 canon registry providers [--emit json|summary]
 canon registry provider-schema <PROVIDER> [--emit json|summary]
 canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]
+canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary]
 canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
 canon registry add-entries --registry <DIR> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
 canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--create-alias-file] [--no-lint] [--emit json|plain]
@@ -289,6 +290,12 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - secret options (e.g. OpenFIGI `api_key`) are flagged `"secret": true` so agents do not echo their values; this matches `_build.json` redaction
 - the OpenFIGI schema is derived from the same constants the resolver validates against, so the published contract cannot drift from runtime behavior; tests assert this and never contact `api.openfigi.com`
 - an unknown provider refuses with `E_PARSE`, the available provider ids in `detail`, and `next_command: canon registry providers --emit json`; deterministic and offline
+
+`canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary]`
+- verifies an agent-friendly id (`<kind>_` plus a 10-symbol body and 2 check symbols) before any lookup; every single-symbol substitution and adjacent swap is refused
+- refuses a bad id with `E_BAD_ID` and `detail.reason` of `bad_length`, `bad_symbol`, `unknown_kind` or `bad_check`; upper-case input is checked as its lower-case form
+- a good id returns `canon_registry_check_id.v0` `{kind, id, resolves_to, label}`; an optional `~label` is compared with the entity's aliases and a difference is `label: mismatch`, never a refusal
+- is read-only
 
 `canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]`
 - inspects existing `canonical_id` values in all root mapping files and suggests the next `<PREFIX>-<number>` ID

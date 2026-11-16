@@ -563,6 +563,13 @@ pub fn init_registries(
         if !path_exists(&alias_path) {
             fs::write(&alias_path, b"[]\n").map_err(|error| io_refusal(&alias_path, error))?;
         }
+        if let Some(id_alias_file) = &config.id_alias_file {
+            let id_alias_path = registry_path.join(id_alias_file);
+            if !path_exists(&id_alias_path) {
+                fs::write(&id_alias_path, b"[]\n")
+                    .map_err(|error| io_refusal(&id_alias_path, error))?;
+            }
+        }
         if initialized {
             validate_existing_registry(&registry_path)?;
         }
