@@ -45,6 +45,26 @@ canon entity session ingest work/bdc-session observations.jsonl --emit json
 cat observations.jsonl | canon entity session ingest work/bdc-session - --emit json
 ```
 
+When an Evidence Machine hands Canon a payload, verify the raw bytes before
+projection. The artifact and receipt are local JSON documents; Canon does not
+call the Evidence Machine or any other network service:
+
+```bash
+canon entity session ingest work/bdc-session sponsors.payload.json \
+  --rows-field rows --column-map sponsors.map.yaml \
+  --artifact sponsors.artifact.json --receipt sponsors.receipt.json --emit json
+canon entity session ingest work/bdc-session observations.jsonl \
+  --expect-digest blake3:<64-hex-digits> --emit json
+```
+
+The observation map names `obs_id`, `entity_type`, `surface`, optional `keys`,
+`attrs`, and `context` columns, plus a `source` map. It may declare
+`origin_template: "deal:{deal_cik}"` and `primary_key: [obs_id]`; a row's own
+`row_hash` is retained, otherwise the declared primary-key values are retained
+as `source.row_key`. The verified artifact adds `artifact_id`, `result_digest`,
+`sensitivity`, and (when supplied) `receipt_digest`; payload `catalog_key` and
+the source-column map are retained verbatim.
+
 Each row requires `obs_id`, `entity_type`, `surface`, and
 `source.channel`. `keys`, `attrs`, and `context` are optional objects whose
 values must be scalar or null. Accepted rows are stored in deterministic,
@@ -64,6 +84,13 @@ stdin:
 canon entity session assert work/bdc-session evidence.jsonl --emit json
 cat evidence.jsonl | canon entity session assert work/bdc-session - --emit json
 ```
+
+Evidence Machine query results can use the same verified artifact/receipt path.
+For a rows payload, the assertion map names `type`, `left`, `right`,
+`asserted_by`, `basis`, and `source` columns. `--expect-digest` alone is also
+valid and binds the verified payload digest into evidence provenance. A missing
+map column, a byte mismatch, an unknown artifact schema, or a non-complete
+receipt refuses before the session stream is changed.
 
 Short assertion rows compile into the existing `canon.evidence.v1` record:
 

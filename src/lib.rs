@@ -1086,10 +1086,21 @@ fn run_entity_session_init_command(init: &EntitySessionInitCli) -> Result<u8, Bo
 fn run_entity_session_ingest_command(
     ingest: &EntitySessionIngestCli,
 ) -> Result<u8, Box<dyn Error>> {
-    let result = session::ingest(session::SessionIngestRequest {
-        session: ingest.session.clone(),
-        observations: ingest.observations.clone(),
-    });
+    let options = session::intake::IntakeOptions {
+        expect_digest: ingest.expect_digest.clone(),
+        artifact: ingest.artifact.clone(),
+        receipt: ingest.receipt.clone(),
+        rows_field: ingest.rows_field.clone(),
+        column_map: ingest.column_map.clone(),
+    };
+    let result = if options.is_active() {
+        session::intake::ingest_with_options(&ingest.session, &ingest.observations, &options)
+    } else {
+        session::ingest(session::SessionIngestRequest {
+            session: ingest.session.clone(),
+            observations: ingest.observations.clone(),
+        })
+    };
     match result {
         Ok(output) => {
             let summary_mode = matches!(ingest.emit, EntityEmitMode::Summary);
@@ -1113,10 +1124,21 @@ fn run_entity_session_ingest_command(
 fn run_entity_session_assert_command(
     assert: &EntitySessionAssertCli,
 ) -> Result<u8, Box<dyn Error>> {
-    let result = session::assert_evidence(session::SessionAssertRequest {
-        session: assert.session.clone(),
-        evidence: assert.evidence.clone(),
-    });
+    let options = session::intake::IntakeOptions {
+        expect_digest: assert.expect_digest.clone(),
+        artifact: assert.artifact.clone(),
+        receipt: assert.receipt.clone(),
+        rows_field: assert.rows_field.clone(),
+        column_map: assert.column_map.clone(),
+    };
+    let result = if options.is_active() {
+        session::intake::assert_with_options(&assert.session, &assert.evidence, &options)
+    } else {
+        session::assert_evidence(session::SessionAssertRequest {
+            session: assert.session.clone(),
+            evidence: assert.evidence.clone(),
+        })
+    };
     match result {
         Ok(output) => {
             let summary_mode = matches!(assert.emit, EntityEmitMode::Summary);

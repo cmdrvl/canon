@@ -1776,6 +1776,26 @@ pub struct EntitySessionIngestCli {
     /// Observation JSONL file, or '-' for stdin
     pub observations: PathBuf,
 
+    /// Require the input bytes to have this BLAKE3 digest
+    #[arg(long = "expect-digest")]
+    pub expect_digest: Option<String>,
+
+    /// Evidence Machine artifact.v0 JSON whose byte_hash names the input
+    #[arg(long)]
+    pub artifact: Option<PathBuf>,
+
+    /// Evidence Machine receipt.v0 JSON that must list the artifact
+    #[arg(long, requires = "artifact")]
+    pub receipt: Option<PathBuf>,
+
+    /// Array field in a warehouse_read payload
+    #[arg(long = "rows-field", requires = "column_map")]
+    pub rows_field: Option<String>,
+
+    /// YAML column map for projecting warehouse rows to observations
+    #[arg(long = "column-map", requires = "rows_field")]
+    pub column_map: Option<PathBuf>,
+
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: EntityEmitMode,
@@ -1788,6 +1808,26 @@ pub struct EntitySessionAssertCli {
 
     /// Evidence JSONL file, or '-' for stdin
     pub evidence: PathBuf,
+
+    /// Require the input bytes to have this BLAKE3 digest
+    #[arg(long = "expect-digest")]
+    pub expect_digest: Option<String>,
+
+    /// Evidence Machine artifact.v0 JSON whose byte_hash names the input
+    #[arg(long)]
+    pub artifact: Option<PathBuf>,
+
+    /// Evidence Machine receipt.v0 JSON that must list the artifact
+    #[arg(long, requires = "artifact")]
+    pub receipt: Option<PathBuf>,
+
+    /// Array field in a warehouse_read payload
+    #[arg(long = "rows-field", requires = "column_map")]
+    pub rows_field: Option<String>,
+
+    /// YAML column map for projecting warehouse rows to evidence assertions
+    #[arg(long = "column-map", requires = "rows_field")]
+    pub column_map: Option<PathBuf>,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]

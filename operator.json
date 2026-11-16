@@ -53,8 +53,8 @@
       "canon strategy diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
       "canon entity run <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--cache-mode enabled|disabled] [--suite <SUITE_DIR>] [--emit json|summary] [--no-witness]",
       "canon entity session init --goal <GOAL> (--registry <REGISTRY_DIR> | --registries <MAP_YAML>) --work-dir <DIR> [--entity-kind <KIND>] [--registry-id <ID>] [--prefix <PREFIX>] [--zero-pad <N>] [--emit json|summary]",
-      "canon entity session ingest <SESSION> <OBSERVATIONS.jsonl|-> [--emit json|summary]",
-      "canon entity session assert <SESSION> <EVIDENCE.jsonl|-> [--emit json|summary]",
+      "canon entity session ingest <SESSION> <OBSERVATIONS.jsonl|-> [--expect-digest blake3:<HEX>] [--artifact <ARTIFACT.json> --receipt <RECEIPT.json>] [--rows-field <FIELD> --column-map <MAP.yaml>] [--emit json|summary]",
+      "canon entity session assert <SESSION> <EVIDENCE.jsonl|-> [--expect-digest blake3:<HEX>] [--artifact <ARTIFACT.json> --receipt <RECEIPT.json>] [--rows-field <FIELD> --column-map <MAP.yaml>] [--emit json|summary]",
       "canon entity session solve <SESSION> --rules <RULES.yaml> [--what-if <EXTRA.jsonl>] [--emit json|summary]",
       "canon entity session rules init [--out <RULES.yaml>] [--emit json|summary]",
       "canon entity session rules validate <RULES.yaml> [--emit json|summary]",
@@ -7049,6 +7049,36 @@
           "description": "Observation JSONL file, or '-' for stdin"
         },
         {
+          "name": "expect_digest",
+          "flag": "--expect-digest",
+          "type": "string",
+          "description": "Require the input bytes to have this BLAKE3 digest"
+        },
+        {
+          "name": "artifact",
+          "flag": "--artifact",
+          "type": "file_path",
+          "description": "Evidence Machine artifact.v0 JSON whose byte_hash names the input"
+        },
+        {
+          "name": "receipt",
+          "flag": "--receipt",
+          "type": "file_path",
+          "description": "Evidence Machine receipt.v0 JSON that must list the artifact; requires --artifact"
+        },
+        {
+          "name": "rows_field",
+          "flag": "--rows-field",
+          "type": "string",
+          "description": "Array field in a warehouse_read payload; requires --column-map"
+        },
+        {
+          "name": "column_map",
+          "flag": "--column-map",
+          "type": "file_path",
+          "description": "YAML column map for projecting warehouse rows to observations; requires --rows-field"
+        },
+        {
           "name": "emit",
           "flag": "--emit",
           "type": "string",
@@ -7120,6 +7150,36 @@
           "required": true,
           "position": 1,
           "description": "Evidence JSONL file, or '-' for stdin"
+        },
+        {
+          "name": "expect_digest",
+          "flag": "--expect-digest",
+          "type": "string",
+          "description": "Require the input bytes to have this BLAKE3 digest"
+        },
+        {
+          "name": "artifact",
+          "flag": "--artifact",
+          "type": "file_path",
+          "description": "Evidence Machine artifact.v0 JSON whose byte_hash names the input"
+        },
+        {
+          "name": "receipt",
+          "flag": "--receipt",
+          "type": "file_path",
+          "description": "Evidence Machine receipt.v0 JSON that must list the artifact; requires --artifact"
+        },
+        {
+          "name": "rows_field",
+          "flag": "--rows-field",
+          "type": "string",
+          "description": "Array field in a warehouse_read payload; requires --column-map"
+        },
+        {
+          "name": "column_map",
+          "flag": "--column-map",
+          "type": "file_path",
+          "description": "YAML column map for projecting warehouse rows to evidence assertions; requires --rows-field"
         },
         {
           "name": "emit",

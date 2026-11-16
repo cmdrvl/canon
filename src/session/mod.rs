@@ -28,9 +28,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub mod intake;
 pub mod registries;
 pub mod status;
-pub mod intake;
 
 pub const SESSION_MANIFEST_VERSION: &str = "canon.entity.session.v1";
 pub const SESSION_MANIFEST_STREAM_ID: &str = "entity-session-manifest";
