@@ -5,21 +5,10 @@ set -euo pipefail
 # the source gold_sets directory and served registries are never modified.
 
 gold_dir="/Users/zac/Source/cmdrvl/cmdrvl-soi/gold_sets"
-work_dir="$(mktemp -d "${TMPDIR:-/tmp}/canon-bdc-proof.XXXXXX")"
+work_dir=""
 canon_bin="${CANON_BIN:-}"
 seed="bd-vdcw.11-day-one-v1"
 second_source=""
-keep_work=0
-owns_work=1
-
-cleanup() {
-  if [[ "$owns_work" -eq 1 && "$keep_work" -eq 0 ]]; then
-    rm -rf "$work_dir"
-  else
-    printf 'work_dir=%s\n' "$work_dir" >&2
-  fi
-}
-trap cleanup EXIT
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -29,8 +18,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --work-dir)
       work_dir="${2:?missing work directory}"
-      mkdir -p "$work_dir"
-      owns_work=0
       shift 2
       ;;
     --canon-bin)
@@ -46,7 +33,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --keep-work)
-      keep_work=1
+      # Retained for compatibility; proof artifacts are always kept.
       shift
       ;;
     *)
@@ -73,10 +60,15 @@ if [[ ! -d "$gold_dir" ]]; then
   printf 'missing gold-set directory: %s\n' "$gold_dir" >&2
   exit 2
 fi
+if [[ -z "$work_dir" ]]; then
+  work_dir="$(mktemp -d "${TMPDIR:-/tmp}/canon-bdc-proof.XXXXXX")"
+else
+  mkdir -p "$work_dir"
+fi
+printf 'work_dir=%s\n' "$work_dir" >&2
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 converter="$script_dir/entity_sessions/bdc_goldsets_to_session.py"
-mkdir -p "$work_dir"
 
 run_json() {
   local label="$1"
@@ -197,7 +189,6 @@ run_expected_json "day-one ingest" "$canon_bin" entity session ingest "$day_one_
 day_one_ingest="$RUN_JSON"
 python3 -c 'import json,sys; v=json.loads(sys.argv[1]); assert not v["rejected"], v["rejected"]' "$day_one_ingest"
 run_expected_json "day-one solve" "$canon_bin" entity session solve "$day_one_session" --rules "$rules" --emit json
-day_one_solve="$RUN_JSON"
 run_expected_json "day-one commit" "$canon_bin" entity session commit "$day_one_session" --next-version 0.1.0 --emit json
 day_one_commit="$RUN_JSON"
 python3 -c 'import json,sys; v=json.loads(sys.argv[1]); assert v["outcome"] == "committed"; assert len(v["minted"]) == 6' "$day_one_commit"
@@ -321,6 +312,27 @@ summary = {
     "wrong_name_for_cik": wrong_name_for_cik,
 }
 print(json.dumps(summary, sort_keys=True))
+
+lookalike_pairs = [
+    ("Golub Capital", "Golub Capital BDC 3, Inc."),
+    ("BlackRock Capital Investment Corporation", "BlackRock TCP Capital Corp."),
+    ("PennantPark Investment Corporation", "PennantPark Floating Rate Capital Ltd."),
+]
+for left_name, right_name in lookalike_pairs:
+    left_id = name_to_id.get(left_name)
+    right_id = name_to_id.get(right_name)
+    if left_id is None or right_id is None:
+        raise SystemExit(
+            f"look-alike source row missing: {left_name!r}, {right_name!r}"
+        )
+    pair = {
+        "left": {"name": left_name, "canonical_id": left_id},
+        "right": {"name": right_name, "canonical_id": right_id},
+    }
+    print(json.dumps({"lookalike_pair": pair}, sort_keys=True))
+    if left_id == right_id:
+        raise SystemExit(f"look-alike pair merged unexpectedly: {json.dumps(pair, sort_keys=True)}")
+
 for row in rows:
     print(f'{row["canonical_id"]}\t{row["cik"]}\t{row["name"]}')
 if summary["id_count"] != 54 or summary["wrong_name_for_cik"] != 0:
