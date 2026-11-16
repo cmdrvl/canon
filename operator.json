@@ -74,7 +74,7 @@
       "canon entity profile list [--emit json|summary]",
       "canon entity profile init <PROFILE> --output <PROFILE.yaml>",
       "canon entity review export <RESULT.json> [--artifact queue|native-review] [--group-by signature] [--emit json|csv|html] [--include resolved|escrow|contradictions|all]",
-      "canon entity review import <REVIEW.json|csv> --registry <REGISTRY_DIR> --next-version <VERSION> [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]",
+      "canon entity review import <REVIEW.json|csv> --registry <REGISTRY_DIR> --next-version <VERSION> [--session <SESSION_DIR>] [--reviewer <REVIEWER>] [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]",
       "canon entity explain <RESULT.json> --row <SOURCE_ROW_ID>|--surface-id <SURFACE_ID>|--canon-id <CANON_ID>|--escrow-id <ESCROW_ID> [--emit json|summary]",
       "canon inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json|summary]",
       "canon inbox show --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json|summary]",
@@ -8944,8 +8944,8 @@
     },
     {
       "name": "entity review import",
-      "usage": "canon entity review import <REVIEW.json|csv> --registry <REGISTRY_DIR> --next-version <VERSION> [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]",
-      "description": "Import default review queue decisions into registry sidecars, or with --source-review validate native JSON/CSV decisions against canon_entity_native_review.v0 and emit a typed canon_entity_native_review_import.v0 patch receipt without reading or mutating the registry",
+      "usage": "canon entity review import <REVIEW.json|csv> --registry <REGISTRY_DIR> --next-version <VERSION> [--session <SESSION_DIR>] [--reviewer <REVIEWER>] [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]",
+      "description": "Import default review queue decisions into registry sidecars, validate native decisions with --source-review, or return session decisions as evidence with --session and --reviewer",
       "output_mode": "mixed",
       "output_schema": "canon_entity_review_import.v0",
       "alternate_output_schemas": [
@@ -8982,6 +8982,18 @@
           "type": "string",
           "required": true,
           "description": "Explicit next registry.json version for default queue import; retained as a Clap-required compatibility argument and not consumed by native --source-review import"
+        },
+        {
+          "name": "session",
+          "flag": "--session",
+          "type": "directory_path",
+          "description": "Session work directory for returning review decisions as evidence"
+        },
+        {
+          "name": "reviewer",
+          "flag": "--reviewer",
+          "type": "string",
+          "description": "Human reviewer name used as the evidence asserter in session mode"
         },
         {
           "name": "audit",

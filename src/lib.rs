@@ -7841,6 +7841,61 @@ fn read_entity_lifecycle_json_artifact(
         validate_entity_lifecycle_committed_value(&committed_value, &selector.logical_path)?;
         return Ok((committed_value, committed_bytes));
     }
+    if let Some(selector) = entity_lifecycle_stable_path_selector(path)
+        && selector.logical_path == "solve/solve.json"
+    {
+        match entity::publication::open_current_stream_generation(
+            &selector.work_dir,
+            entity::session::SESSION_SOLVE_STREAM_ID,
+        ) {
+            Ok(snapshot) => {
+                let session_bytes = snapshot
+                    .read_logical_file("solve/solve.json")
+                    .ok_or_else(|| {
+                        refusal::create_refusal(
+                            RefusalCode::EEntityArtifactContract,
+                            "Committed session solve publication is missing solve/solve.json"
+                                .to_string(),
+                            serde_json::json!({
+                                "stream": entity::session::SESSION_SOLVE_STREAM_ID,
+                                "logical_path": "solve/solve.json",
+                                "writes_performed": false
+                            }),
+                            Some(
+                                "Run canon entity session solve, then rerun review export"
+                                    .to_string(),
+                            ),
+                        )
+                    })?
+                    .to_vec();
+                let session_value = parse_entity_lifecycle_json_bytes(
+                    &session_bytes,
+                    path,
+                    label,
+                    &selector.logical_path,
+                )?;
+                return Ok((session_value, session_bytes));
+            }
+            Err(error)
+                if error.kind
+                    == entity::publication::EntityPublicationErrorKind::UncommittedGeneration =>
+            {
+                // A direct file may still be available when no session publication exists.
+            }
+            Err(error) => {
+                return Err(refusal::create_refusal(
+                    RefusalCode::EEntityArtifactContract,
+                    "Unable to read the committed session solve publication".to_string(),
+                    serde_json::json!({
+                        "stream": entity::session::SESSION_SOLVE_STREAM_ID,
+                        "error": error.to_string(),
+                        "writes_performed": false
+                    }),
+                    Some("Run canon entity session solve, then rerun review export".to_string()),
+                ));
+            }
+        }
+    }
     let (probe, direct_bytes) = read_json_artifact::<serde_json::Value>(path, label)?;
     let Some(selector) = entity_lifecycle_publication_selector(path, &probe)? else {
         return Ok((probe, direct_bytes));

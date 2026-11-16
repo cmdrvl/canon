@@ -524,7 +524,7 @@ canon entity audit <RESULT.json> --suite <DIR> [--emit json|summary]
 canon entity promote <RESULT.json> --audit <AUDIT.json> --registry <DIR> --next-version <VER> [--emit json|summary]
 canon entity apply <RESULT.json> --rows <ROWS> --registry <DIR> [--column <COL>] [--output <PATH>] [--work-dir <DIR>] [--require-full-resolution|--allow-partial-output] [--emit json|summary]
 canon entity review export <RESULT.json> [--artifact queue|native-review] [--group-by signature] [--emit json|csv|html] [--include resolved|escrow|contradictions|all]
-canon entity review import <REVIEW.json|csv> --registry <DIR> --next-version <VER> [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]
+canon entity review import <REVIEW.json|csv> --registry <DIR> --next-version <VER> [--session <SESSION_DIR>] [--reviewer <REVIEWER>] [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]
 canon entity explain <RESULT.json> --row <ROW_ID>|--surface-id <SURFACE_ID>|--canon-id <CANON_ID>|--escrow-id <ESCROW_ID> [--emit json|summary]
 canon entity profile list [--emit json|summary]
 canon entity profile init <PROFILE> --output <PATH>
