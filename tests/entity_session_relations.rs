@@ -476,7 +476,20 @@ fn relations_persist_suppress_without_merging_and_reject_uncommitted_endpoints()
     let uncommitted_solve = solve(&same_session, &rules);
     assert_eq!(uncommitted_solve["summary"]["relations"], 1);
     let unchanged = fs::read_to_string(registry.join("relations.jsonl")).expect("sidecar");
-    let _ = commit(&same_session, None);
+    // Nothing in this session is writable (the one relation touches an
+    // uncommitted surface), so commit reports nothing_to_commit with exit 1.
+    let nothing = canon()
+        .args([
+            "entity",
+            "session",
+            "commit",
+            same_session.to_str().unwrap(),
+            "--bump",
+            "patch",
+        ])
+        .assert()
+        .code(1);
+    assert_eq!(json_stdout(&nothing)["outcome"], "nothing_to_commit");
     assert_eq!(
         fs::read_to_string(registry.join("relations.jsonl")).expect("sidecar"),
         unchanged,
