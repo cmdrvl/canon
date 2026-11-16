@@ -933,12 +933,7 @@ fn extension_value(
                 }
             }
             if converted.is_empty() {
-                Err(AssertionRowError::new(
-                    line_number,
-                    "empty_extension_value",
-                    format!("extension field {field} cannot be an empty object"),
-                    field,
-                ))
+                Ok(None)
             } else {
                 Ok(Some(EvidenceExtensionValue::Object(converted)))
             }
