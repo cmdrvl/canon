@@ -504,6 +504,7 @@ canon entity run <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR>
 canon entity session init --goal <GOAL> --registry <REGISTRY_DIR> --work-dir <DIR> [--entity-kind <KIND>] [--registry-id <ID>] [--prefix <PREFIX>] [--zero-pad <N>] [--emit json|summary]
 canon entity session ingest <SESSION> <OBSERVATIONS.jsonl|-> [--emit json|summary]
 canon entity session assert <SESSION> <EVIDENCE.jsonl|-> [--emit json|summary]
+canon entity session solve <SESSION> --rules <RULES.yaml> [--emit json|summary]
 canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
 canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]
 canon entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json|summary]

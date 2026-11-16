@@ -51,6 +51,7 @@ pub mod runtime;
 pub mod schema;
 pub mod score;
 pub(crate) mod score_pair;
+pub mod session;
 pub mod sidecar;
 pub mod solve;
 #[path = "../extensions/source_mapping.rs"]

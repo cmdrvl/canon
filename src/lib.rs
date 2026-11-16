@@ -62,16 +62,17 @@ use crate::cli::{
     EntityProfileSubcommand, EntityPromoteCli, EntityReviewCommand, EntityReviewExportArtifact,
     EntityReviewExportCli, EntityReviewExportEmitMode, EntityReviewGroupBy, EntityReviewImportCli,
     EntityReviewInclude, EntityReviewSubcommand, EntityRunCli, EntitySessionAssertCli,
-    EntitySessionIngestCli, EntitySessionInitCli, EntitySessionSubcommand, EntitySolveCli,
-    EntityStreamEmitMode, EntitySubcommand, PackageCli, PackagePackCli, PackageSubcommand,
-    RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli, RegistryDefaultIdSchemeCli,
-    RegistryDiffCli, RegistryEmitMode, RegistryExportCli, RegistryExportFormatCli, RegistryInitCli,
-    RegistryLintCli, RegistryLintProfile, RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli,
-    RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand,
-    RegistryVersionBumpMode, StrategyAuditCli, StrategyCommand, StrategyDeprecateCli,
-    StrategyDiffCli, StrategyExplainCli, StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli,
-    StrategyProfileCli, StrategyPromoteCli, StrategyRegisterCli, StrategyResolveCli,
-    StrategyStatusArg, StrategySubcommand, StrategyUpdateCli,
+    EntitySessionIngestCli, EntitySessionInitCli, EntitySessionSolveCli, EntitySessionSubcommand,
+    EntitySolveCli, EntityStreamEmitMode, EntitySubcommand, PackageCli, PackagePackCli,
+    PackageSubcommand, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
+    RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode, RegistryExportCli,
+    RegistryExportFormatCli, RegistryInitCli, RegistryLintCli, RegistryLintProfile,
+    RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli, RegistryPlainJsonEmitMode,
+    RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand, RegistryVersionBumpMode,
+    StrategyAuditCli, StrategyCommand, StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli,
+    StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli, StrategyProfileCli, StrategyPromoteCli,
+    StrategyRegisterCli, StrategyResolveCli, StrategyStatusArg, StrategySubcommand,
+    StrategyUpdateCli,
 };
 use crate::entity::runtime as entity_runtime;
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
@@ -933,6 +934,7 @@ fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
             EntitySessionSubcommand::Init(init) => run_entity_session_init_command(init),
             EntitySessionSubcommand::Ingest(ingest) => run_entity_session_ingest_command(ingest),
             EntitySessionSubcommand::Assert(assert) => run_entity_session_assert_command(assert),
+            EntitySessionSubcommand::Solve(solve) => run_entity_session_solve_command(solve),
         },
         EntitySubcommand::Run(run) => run_entity_run_command(run),
         EntitySubcommand::Prepare(prepare) => run_entity_prepare_command(prepare),
@@ -1037,6 +1039,30 @@ fn run_entity_session_assert_command(
             refusal.to_canon_output(),
             true,
             matches!(assert.emit, EntityEmitMode::Summary),
+        ),
+    }
+}
+
+fn run_entity_session_solve_command(solve: &EntitySessionSolveCli) -> Result<u8, Box<dyn Error>> {
+    let result = entity::session::solve(entity::session::SessionSolveRequest {
+        session: solve.session.clone(),
+        rules: solve.rules.clone(),
+    });
+    match result {
+        Ok(output) => {
+            let summary_mode = matches!(solve.emit, EntityEmitMode::Summary);
+            let rendered = if summary_mode {
+                output.render_summary()
+            } else {
+                serde_json::to_string(&output)?
+            };
+            emit_entity_output(&rendered, summary_mode);
+            Ok(0)
+        }
+        Err(refusal) => emit_entity_refusal(
+            refusal.to_canon_output(),
+            true,
+            matches!(solve.emit, EntityEmitMode::Summary),
         ),
     }
 }

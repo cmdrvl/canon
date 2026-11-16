@@ -52,6 +52,7 @@
       "canon entity session init --goal <GOAL> --registry <REGISTRY_DIR> --work-dir <DIR> [--entity-kind <KIND>] [--registry-id <ID>] [--prefix <PREFIX>] [--zero-pad <N>] [--emit json|summary]",
       "canon entity session ingest <SESSION> <OBSERVATIONS.jsonl|-> [--emit json|summary]",
       "canon entity session assert <SESSION> <EVIDENCE.jsonl|-> [--emit json|summary]",
+      "canon entity session solve <SESSION> --rules <RULES.yaml> [--emit json|summary]",
       "canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY_DIR> --work-dir <DIR>",
       "canon entity index build <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit json|summary]",
       "canon entity block <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit jsonl|summary]",
@@ -6865,6 +6866,75 @@
       "next_command": "canon entity session assert <SESSION> <EVIDENCE.jsonl|-> --emit json",
       "recovery": {
         "next_command": "Run canon entity session init for the session, then rerun this assert",
+        "refusal_exit_code": 2
+      }
+    },
+    {
+      "name": "entity session solve",
+      "usage": "canon entity session solve <SESSION> --rules <RULES.yaml> [--emit json|summary]",
+      "description": "Solve an evidence session with exact registry lookup and a declared tier rule table",
+      "output_mode": "mixed",
+      "output_schema": "canon.entity.session.solve.v1",
+      "status": "implemented",
+      "read_only": false,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "publishes a deterministic solve artifact from committed session streams without network access",
+        "mutation_class": "OwnedOutput",
+        "network_class": "Offline",
+        "concurrency_class": "CacheRaceSafe",
+        "platform_classes": [
+          "PortablePathUtf8",
+          "SameFilesystemAtomicReplace"
+        ],
+        "declaration_command": "entity workbench"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": true,
+        "writes_registry_files": false,
+        "writes_work_dir": true,
+        "writes_output_files": false,
+        "uses_network": false,
+        "appends_witness_ledger": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "session solve completed and emitted a deterministic artifact, including review or contradiction outcomes",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / invalid rules, missing streams, registry, or publication state",
+          "domain": "error"
+        }
+      },
+      "options": [
+        {
+          "name": "session",
+          "type": "directory_path",
+          "required": true,
+          "position": 0,
+          "description": "Session work directory"
+        },
+        {
+          "name": "rules",
+          "flag": "--rules",
+          "type": "file_path",
+          "required": true,
+          "description": "YAML rule table declaring authoritative keys and evidence tiers"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json or summary"
+        }
+      ],
+      "next_command": "canon entity session solve <SESSION> --rules <RULES.yaml> --emit json",
+      "recovery": {
+        "next_command": "Run session init and ingest first, then rerun canon entity session solve",
         "refusal_exit_code": 2
       }
     },

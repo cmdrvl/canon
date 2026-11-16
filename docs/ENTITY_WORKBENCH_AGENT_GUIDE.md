@@ -84,6 +84,41 @@ stored in the `entity-session-evidence` publication stream; malformed rows are
 reported individually with line, code, message, and fix while valid rows are
 still appended. Exit 1 means at least one row was rejected.
 
+## Solve a session
+
+Use a declared rule table to classify exact observation nodes as tier A, tier B,
+review, standalone, or contradiction:
+
+```bash
+canon entity session solve work/bdc-session --rules session-rules.yaml --emit json
+```
+
+The solve reads the committed observation and evidence generations, performs
+exact registry lookup for incumbents, and publishes `solve/solve.json` in the
+`entity-session-solve` stream. A shared authoritative key or asserted alias is
+tier A. Tier B needs the declared number of distinct eligible evidence types
+and independent source lineages; missing corroboration stays review. `distinct`
+is a contradiction, `related` is reported as context and never joins a
+cluster, and a node with no positive evidence remains standalone. Solve exit 0
+means the deterministic artifact completed even when it reports review or
+contradiction outcomes.
+
+The minimum rule table shape is:
+
+```yaml
+version: canon.entity.session.rules.v1
+keys:
+  authoritative: [cik, lei]
+tier_a:
+  evidence_types: [same_key, asserted_alias]
+tier_b:
+  eligible_evidence_types: [same_slot, attribute_agreement, name_equivalent]
+  min_distinct_evidence_types: 2
+  min_distinct_lineages: 2
+standalone:
+  mint_when_authoritative_key: true
+```
+
 ## The loop
 
 ```text
