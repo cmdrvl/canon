@@ -15,6 +15,7 @@ use crate::{
         StrategyAttestationGrade, StrategyEntryKey, StrategyEntryStatus, StrategyRegistryEntry,
         StrategySchemaShape,
     },
+    temporal::relation::{DirectedRelationFact, RelationEntityTypeRef, finalize_relation},
 };
 use rusqlite::{Connection, Error as SqliteError};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -431,6 +432,93 @@ fn lint_standard(context: &mut LintContext) {
     check_entry_count(context, records.len(), "standard_entries");
     check_duplicate_inputs(context, &records);
     check_index_status(context, &mapping_files);
+    lint_relation_sidecar(context, &records);
+}
+
+fn lint_relation_sidecar(context: &mut LintContext, records: &[MappingRecord]) {
+    let path = context.registry_dir.join("relations.jsonl");
+    let bytes = match fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+        Err(error) => {
+            context.finding(
+                RegistryLintSeverity::Error,
+                "relations",
+                "relations_file_unreadable",
+                format!(
+                    "Failed to read registry relations '{}': {error}",
+                    path.display()
+                ),
+                FindingLocation::path(&path),
+                json!({"error": error.to_string()}),
+                "Repair relations.jsonl, then rerun canon registry lint",
+            );
+            return;
+        }
+    };
+    let text = match std::str::from_utf8(&bytes) {
+        Ok(text) => text,
+        Err(error) => {
+            context.finding(
+                RegistryLintSeverity::Error,
+                "relations",
+                "relations_file_not_utf8",
+                format!(
+                    "Registry relations '{}' are not UTF-8: {error}",
+                    path.display()
+                ),
+                FindingLocation::path(&path),
+                json!({"error": error.to_string()}),
+                "Repair relations.jsonl, then rerun canon registry lint",
+            );
+            return;
+        }
+    };
+    let local_ids = records
+        .iter()
+        .map(|record| record.canonical_id.as_str())
+        .collect::<BTreeSet<_>>();
+    for (line, value) in text.lines().enumerate() {
+        if value.trim().is_empty() {
+            continue;
+        }
+        let fact = match serde_json::from_str::<DirectedRelationFact>(value)
+            .ok()
+            .and_then(|fact| finalize_relation(fact).ok())
+        {
+            Some(fact) => fact,
+            None => {
+                context.finding(
+                    RegistryLintSeverity::Error,
+                    "relations",
+                    "relation_malformed",
+                    "Registry relations line is not a valid canonical DirectedRelationFact",
+                    FindingLocation::line(&path, line + 1),
+                    json!({"line": line + 1}),
+                    "Repair the relation line, then rerun canon registry lint",
+                );
+                continue;
+            }
+        };
+        for (endpoint_name, endpoint) in [("subject", &fact.subject), ("object", &fact.object)] {
+            let local_endpoint =
+                matches!(&endpoint.entity_type, RelationEntityTypeRef::Core { .. });
+            if local_endpoint && !local_ids.contains(endpoint.identity_id.as_str()) {
+                context.finding(
+                    RegistryLintSeverity::Error,
+                    "relations",
+                    "relation_endpoint_unknown",
+                    format!(
+                        "Registry relation {endpoint_name} references unknown local ID '{}'",
+                        endpoint.identity_id
+                    ),
+                    FindingLocation::line(&path, line + 1),
+                    json!({"endpoint": endpoint_name, "identity_id": endpoint.identity_id}),
+                    "Commit the endpoint first, or use an extension entity type for external objects",
+                );
+            }
+        }
+    }
 }
 
 fn lint_package(context: &mut LintContext) {

@@ -12,6 +12,14 @@ use crate::{
     },
     keys::KeyNamespace,
     registry, registry_lint,
+    temporal::relation::{
+        CoreEntityTypeClass, DirectedRelationFact, IntervalBoundary,
+        RelationCardinalityConstraints, RelationCyclePolicy, RelationEndpoint,
+        RelationEntityTypeRef, RelationIdentityImplication, RelationKindRef, RelationOverlapPolicy,
+        RelationProvenance, RelationReview, ReviewDisposition, TimeInterval, finalize_relation,
+        finalize_relations,
+    },
+    witness::hash_bytes,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -160,6 +168,15 @@ pub struct SessionCommitAlias {
     pub canonical_type: String,
     pub rule_id: String,
     pub skip_if_existing: bool,
+    pub session_authority: Option<Value>,
+    pub closure: Option<SessionCommitClosure>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionCommitClosure {
+    pub outcome_ref: String,
+    pub closure_hash: String,
+    pub manifest: Value,
 }
 
 #[derive(Debug, Clone)]
@@ -170,6 +187,8 @@ pub struct SessionCommitEntry {
     pub closure_hash: String,
     pub canonical_id: Option<String>,
     pub aliases: Vec<SessionCommitAlias>,
+    pub session_authority: Option<Value>,
+    pub closure: Option<SessionCommitClosure>,
 }
 
 #[derive(Debug, Clone)]
@@ -177,6 +196,23 @@ pub struct SessionCommitRegistryExpectation {
     pub id: String,
     pub version: String,
     pub snapshot_hash: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionCommitRelationEndpoint {
+    pub canonical_id: Option<String>,
+    pub cluster_id: Option<String>,
+    pub external_id: Option<String>,
+    pub entity_type: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionCommitRelation {
+    pub subject: SessionCommitRelationEndpoint,
+    pub relation: String,
+    pub object: SessionCommitRelationEndpoint,
+    pub valid_time: TimeInterval,
+    pub evidence_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -188,6 +224,7 @@ pub struct SessionCommitRequest {
     pub registry: SessionCommitRegistryExpectation,
     pub entries: Vec<SessionCommitEntry>,
     pub skipped: Vec<SessionCommitSkipped>,
+    pub relations: Vec<SessionCommitRelation>,
     pub next_version: Option<String>,
     pub bump: Option<registry::RegistryVersionBump>,
 }
@@ -236,6 +273,12 @@ struct SessionCommitReceipt {
     #[serde(default)]
     attached: Vec<SessionCommitAttached>,
     skipped: Vec<SessionCommitSkipped>,
+    #[serde(default)]
+    relations_written: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    closure_set_hash: Option<String>,
+    #[serde(default)]
+    closures: Vec<SessionCommitClosure>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -248,6 +291,10 @@ pub struct SessionCommitOutput {
     pub minted: Vec<SessionCommitMinted>,
     pub attached: Vec<SessionCommitAttached>,
     pub skipped: Vec<SessionCommitSkipped>,
+    #[serde(default)]
+    pub relations_written: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub closure_set_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub generation_id: Option<String>,
 }
@@ -255,11 +302,12 @@ pub struct SessionCommitOutput {
 impl SessionCommitOutput {
     pub fn render_summary(&self) -> String {
         format!(
-            "outcome={} minted={} attached={} skipped={} registry_version={} generation={}",
+            "outcome={} minted={} attached={} skipped={} relations_written={} registry_version={} generation={}",
             self.outcome,
             self.minted.len(),
             self.attached.len(),
             self.skipped.len(),
+            self.relations_written,
             self.registry
                 .as_ref()
                 .map(|registry| registry.version_after.as_str())
@@ -708,7 +756,7 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         ));
     }
 
-    if request.entries.is_empty() {
+    if request.entries.is_empty() && request.relations.is_empty() {
         return Ok(SessionCommitOutput {
             version: SESSION_COMMIT_VERSION.to_string(),
             outcome: "nothing_to_commit".to_string(),
@@ -717,6 +765,8 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             minted: Vec::new(),
             attached: Vec::new(),
             skipped: request.skipped,
+            relations_written: 0,
+            closure_set_hash: None,
             generation_id: None,
         });
     }
@@ -751,19 +801,45 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
                     canonical_type: alias.canonical_type.clone(),
                     rule_id: alias.rule_id.clone(),
                     skip_if_existing: alias.skip_if_existing,
+                    session_authority: alias.session_authority.clone(),
                 })
         })
         .collect::<Vec<_>>();
-    let typed = registry::commit_typed_entries(registry::RegistryTypedWriteRequest {
-        registry: registry_path.to_path_buf(),
-        prefix: None,
-        entries: typed_entries,
-        bump: request.bump,
-        next_version: request.next_version,
-        no_lint: false,
-        expected_version: Some(request.registry.version.clone()),
-    })?;
-    let typed_skipped = typed.skipped.clone();
+    let mut closures = request
+        .entries
+        .iter()
+        .flat_map(|entry| {
+            entry
+                .aliases
+                .iter()
+                .filter_map(|alias| alias.closure.clone())
+                .chain(entry.closure.clone())
+        })
+        .collect::<Vec<_>>();
+    closures.sort_by(|left, right| left.closure_hash.cmp(&right.closure_hash));
+    closures.dedup_by(|left, right| left.closure_hash == right.closure_hash);
+    for closure in &closures {
+        validate_commit_closure(closure)?;
+    }
+    let typed = if request.entries.is_empty() {
+        None
+    } else {
+        Some(registry::commit_typed_entries(
+            registry::RegistryTypedWriteRequest {
+                registry: registry_path.to_path_buf(),
+                prefix: None,
+                entries: typed_entries,
+                bump: request.bump,
+                next_version: request.next_version,
+                no_lint: false,
+                expected_version: Some(request.registry.version.clone()),
+            },
+        )?)
+    };
+    let typed_skipped = typed
+        .as_ref()
+        .map(|typed| typed.skipped.clone())
+        .unwrap_or_default();
     let mut receipt_skipped = requested_skipped;
     for skipped_alias in typed_skipped {
         let group_key = skipped_alias.group_key;
@@ -780,7 +856,11 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             .cmp(&right.cluster_id)
             .then_with(|| left.reason.cmp(&right.reason))
     });
-    if typed.minted.iter().all(|entry| entry.aliases.is_empty()) {
+    let typed_minted = typed
+        .as_ref()
+        .map(|typed| typed.minted.clone())
+        .unwrap_or_default();
+    if typed_minted.iter().all(|entry| entry.aliases.is_empty()) && request.relations.is_empty() {
         return Ok(SessionCommitOutput {
             version: SESSION_COMMIT_VERSION.to_string(),
             outcome: "nothing_to_commit".to_string(),
@@ -789,12 +869,18 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             minted: Vec::new(),
             attached: Vec::new(),
             skipped: receipt_skipped,
+            relations_written: 0,
+            closure_set_hash: None,
             generation_id: None,
         });
     }
     let mut minted = Vec::new();
     let mut attached = Vec::new();
-    for entry in typed.minted {
+    let mut minted_by_cluster = BTreeMap::new();
+    for entry in typed_minted {
+        if let Some(cluster_id) = entry.group_key.strip_prefix("new:") {
+            minted_by_cluster.insert(cluster_id.to_string(), entry.canonical_id.clone());
+        }
         let Some(source) = entry_by_group.get(&entry.group_key) else {
             continue;
         };
@@ -818,13 +904,39 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             });
         }
     }
-    let registry = Some(SessionCommitRegistry {
-        id: typed.registry.id,
-        version_before: typed.registry.version_before,
-        version_after: typed.registry.version_after,
-        entry_count_before: typed.registry.entry_count_before,
-        entry_count_after: typed.registry.entry_count_after,
+    let (closure_set, closure_set_hash) = if closures.is_empty() {
+        (None, None)
+    } else {
+        let value = build_commit_closure_set(&manifest.session_id, &request.solve_hash, &closures)?;
+        let bytes = serde_json::to_vec(&value).map_err(|error| Refusal {
+            code: RefusalCode::EEntityArtifactContract,
+            message: format!("Unable to serialize session closure set: {error}"),
+            detail: json!({"writes_performed": false}),
+            next_command: Some("Rerun canon entity session commit".to_string()),
+        })?;
+        (Some(value), Some(hash_bytes(&bytes)))
+    };
+    let registry = Some(match typed.as_ref() {
+        Some(typed) => SessionCommitRegistry {
+            id: typed.registry.id.clone(),
+            version_before: typed.registry.version_before.clone(),
+            version_after: typed.registry.version_after.clone(),
+            entry_count_before: typed.registry.entry_count_before,
+            entry_count_after: typed.registry.entry_count_after,
+        },
+        None => current_registry_summary(
+            registry_path,
+            &loaded_registry.meta.id,
+            &loaded_registry.meta.version,
+        )?,
     });
+    let relations_written = write_relation_sidecar(
+        registry_path,
+        &manifest.session_id,
+        &request.solve_hash,
+        &request.relations,
+        &minted_by_cluster,
+    )?;
     let receipt = SessionCommitReceipt {
         version: SESSION_COMMIT_VERSION.to_string(),
         solve_hash: request.solve_hash.clone(),
@@ -837,6 +949,9 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         minted: minted.clone(),
         attached: attached.clone(),
         skipped: receipt_skipped,
+        relations_written,
+        closure_set_hash: closure_set_hash.clone(),
+        closures: closures.clone(),
     };
     let bytes = serde_json::to_vec(&receipt).map_err(|error| Refusal {
         code: RefusalCode::EEntityArtifactContract,
@@ -858,6 +973,40 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         version: "entity-session-solve".to_string(),
         content_hash: request.solve_hash,
     });
+    let mut publication_files = vec![EntityPublicationFileInput::new(
+        "commit/commit.json",
+        SESSION_PUBLICATION_STAGE,
+        SESSION_COMMIT_VERSION,
+        bytes,
+    )];
+    if let Some(closure_set) = closure_set {
+        let closure_set_bytes = serde_json::to_vec(&closure_set).map_err(|error| Refusal {
+            code: RefusalCode::EEntityArtifactContract,
+            message: format!("Unable to serialize session closure set: {error}"),
+            detail: json!({"writes_performed": false}),
+            next_command: Some("Rerun canon entity session commit".to_string()),
+        })?;
+        publication_files.push(EntityPublicationFileInput::new(
+            "commit/closure-set.json",
+            SESSION_PUBLICATION_STAGE,
+            SESSION_COMMIT_VERSION,
+            closure_set_bytes,
+        ));
+    }
+    for closure in &closures {
+        let closure_bytes = serde_json::to_vec(&closure.manifest).map_err(|error| Refusal {
+            code: RefusalCode::EEntityArtifactContract,
+            message: format!("Unable to serialize evidence closure: {error}"),
+            detail: json!({"outcome_ref": closure.outcome_ref, "writes_performed": false}),
+            next_command: Some("Rerun canon entity session commit".to_string()),
+        })?;
+        publication_files.push(EntityPublicationFileInput::new(
+            format!("commit/closures/{}.json", closure.closure_hash),
+            SESSION_PUBLICATION_STAGE,
+            SESSION_COMMIT_VERSION,
+            closure_bytes,
+        ));
+    }
     let publication = publish_stream_patch(
         &work_dir,
         EntityPublicationRequest {
@@ -872,12 +1021,7 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             cache_receipt_hash: hash_bytes(b"canon.entity.session.commit.receipt.v1"),
             stage_order: vec![SESSION_PUBLICATION_STAGE.to_string()],
             upstream_artifacts,
-            files: vec![EntityPublicationFileInput::new(
-                "commit/commit.json",
-                SESSION_PUBLICATION_STAGE,
-                SESSION_COMMIT_VERSION,
-                bytes,
-            )],
+            files: publication_files,
             omit_logical_paths: Vec::new(),
         },
     )
@@ -895,8 +1039,388 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         minted,
         attached,
         skipped: receipt.skipped,
+        relations_written,
+        closure_set_hash,
         generation_id: Some(publication.generation_id),
     })
+}
+
+fn validate_commit_closure(closure: &SessionCommitClosure) -> Result<(), Refusal> {
+    let bytes = serde_json::to_vec(&closure.manifest).map_err(|error| Refusal {
+        code: RefusalCode::EEntityArtifactContract,
+        message: format!("Unable to serialize evidence closure: {error}"),
+        detail: json!({"outcome_ref": closure.outcome_ref, "writes_performed": false}),
+        next_command: Some("Rerun canon entity session solve, then rerun commit".to_string()),
+    })?;
+    let actual_hash = hash_bytes(&bytes);
+    if actual_hash != closure.closure_hash {
+        return Err(Refusal {
+            code: RefusalCode::EEntityArtifactContract,
+            message: "Evidence closure hash does not match its manifest".to_string(),
+            detail: json!({
+                "outcome_ref": closure.outcome_ref,
+                "expected": closure.closure_hash,
+                "actual": actual_hash,
+                "writes_performed": false,
+            }),
+            next_command: Some("Rerun canon entity session solve, then rerun commit".to_string()),
+        });
+    }
+    if closure.manifest.get("outcome_ref").and_then(Value::as_str)
+        != Some(closure.outcome_ref.as_str())
+    {
+        return Err(Refusal {
+            code: RefusalCode::EEntityArtifactContract,
+            message: "Evidence closure outcome_ref does not match its manifest".to_string(),
+            detail: json!({"outcome_ref": closure.outcome_ref, "writes_performed": false}),
+            next_command: Some("Rerun canon entity session solve, then rerun commit".to_string()),
+        });
+    }
+    Ok(())
+}
+
+fn build_commit_closure_set(
+    session_id: &str,
+    solve_hash: &str,
+    closures: &[SessionCommitClosure],
+) -> Result<Value, Refusal> {
+    let mut refs = closures
+        .iter()
+        .map(|closure| {
+            json!({
+                "outcome_ref": closure.outcome_ref,
+                "closure_hash": closure.closure_hash,
+            })
+        })
+        .collect::<Vec<_>>();
+    refs.sort_by(|left, right| {
+        left["outcome_ref"]
+            .as_str()
+            .cmp(&right["outcome_ref"].as_str())
+    });
+    Ok(json!({
+        "version": crate::entity::session_provenance::SESSION_CLOSURE_SET_VERSION,
+        "session_id": session_id,
+        "solve_hash": solve_hash,
+        "closures": refs,
+    }))
+}
+
+fn current_registry_summary(
+    registry_path: &Path,
+    registry_id: &str,
+    registry_version: &str,
+) -> Result<SessionCommitRegistry, Refusal> {
+    let bytes = fs::read(registry_path.join("registry.json")).map_err(|error| {
+        Refusal::bad_registry(&registry_path.display().to_string(), &error.to_string())
+    })?;
+    let value = serde_json::from_slice::<Value>(&bytes).map_err(|error| {
+        Refusal::bad_registry(&registry_path.display().to_string(), &error.to_string())
+    })?;
+    let entry_count = value
+        .get("entry_count")
+        .and_then(Value::as_u64)
+        .and_then(|count| usize::try_from(count).ok())
+        .ok_or_else(|| {
+            Refusal::bad_registry(
+                &registry_path.display().to_string(),
+                "registry.json entry_count is missing or invalid",
+            )
+        })?;
+    Ok(SessionCommitRegistry {
+        id: registry_id.to_string(),
+        version_before: registry_version.to_string(),
+        version_after: registry_version.to_string(),
+        entry_count_before: entry_count,
+        entry_count_after: entry_count,
+    })
+}
+
+fn write_relation_sidecar(
+    registry_path: &Path,
+    session_id: &str,
+    solve_hash: &str,
+    relations: &[SessionCommitRelation],
+    minted_by_cluster: &BTreeMap<String, String>,
+) -> Result<usize, Refusal> {
+    if relations.is_empty() {
+        return Ok(0);
+    }
+    let path = registry_path.join("relations.jsonl");
+    let existing = if path.exists() {
+        let bytes = fs::read(&path).map_err(|error| {
+            relation_refusal(
+                format!(
+                    "Unable to read registry relations '{}': {error}",
+                    path.display()
+                ),
+                false,
+            )
+        })?;
+        parse_relation_lines(&bytes, &path)?
+    } else {
+        Vec::new()
+    };
+    let existing_ids = existing
+        .iter()
+        .map(|fact| fact.relation_id.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut new_facts = Vec::new();
+    for relation in relations {
+        let Some(fact) = build_relation_fact(relation, session_id, solve_hash, minted_by_cluster)?
+        else {
+            continue;
+        };
+        new_facts.push(fact);
+    }
+    let facts = finalize_relations(existing.into_iter().chain(new_facts).collect::<Vec<_>>())
+        .map_err(|error| {
+            relation_refusal(format!("Invalid registry relation set: {error}"), true)
+        })?;
+    let written = facts
+        .iter()
+        .filter(|fact| !existing_ids.contains(&fact.relation_id))
+        .count();
+    if written == 0 {
+        return Ok(0);
+    }
+    let mut bytes = Vec::new();
+    for fact in facts {
+        let line = serde_json::to_vec(&fact).map_err(|error| {
+            relation_refusal(
+                format!("Unable to serialize registry relation: {error}"),
+                true,
+            )
+        })?;
+        bytes.extend_from_slice(&line);
+        bytes.push(b'\n');
+    }
+    let temporary = registry_path.join(format!(".relations.jsonl.{}.tmp", std::process::id()));
+    fs::write(&temporary, bytes).map_err(|error| {
+        relation_refusal(
+            format!(
+                "Unable to stage registry relations '{}': {error}",
+                temporary.display()
+            ),
+            true,
+        )
+    })?;
+    fs::rename(&temporary, &path).map_err(|error| {
+        relation_refusal(
+            format!(
+                "Unable to publish registry relations '{}': {error}",
+                path.display()
+            ),
+            true,
+        )
+    })?;
+    Ok(written)
+}
+
+fn parse_relation_lines(bytes: &[u8], path: &Path) -> Result<Vec<DirectedRelationFact>, Refusal> {
+    let text = std::str::from_utf8(bytes).map_err(|error| {
+        relation_refusal(
+            format!(
+                "Registry relations '{}' are not UTF-8: {error}",
+                path.display()
+            ),
+            false,
+        )
+    })?;
+    let mut facts = Vec::new();
+    for (line, value) in text.lines().enumerate() {
+        if value.trim().is_empty() {
+            continue;
+        }
+        let fact = serde_json::from_str::<DirectedRelationFact>(value).map_err(|error| {
+            relation_refusal(
+                format!(
+                    "Registry relation {} line {} is invalid: {error}",
+                    path.display(),
+                    line + 1
+                ),
+                false,
+            )
+        })?;
+        facts.push(finalize_relation(fact).map_err(|error| {
+            relation_refusal(
+                format!(
+                    "Registry relation {} line {} is not canonical: {error}",
+                    path.display(),
+                    line + 1
+                ),
+                false,
+            )
+        })?);
+    }
+    Ok(facts)
+}
+
+fn build_relation_fact(
+    relation: &SessionCommitRelation,
+    session_id: &str,
+    solve_hash: &str,
+    minted_by_cluster: &BTreeMap<String, String>,
+) -> Result<Option<DirectedRelationFact>, Refusal> {
+    let Some(subject_id) = relation_endpoint_id(&relation.subject, minted_by_cluster) else {
+        return Ok(None);
+    };
+    let Some(object_id) = relation_endpoint_id(&relation.object, minted_by_cluster) else {
+        return Ok(None);
+    };
+    if relation.relation.trim().is_empty() {
+        return Err(relation_refusal(
+            "A committed relation must have a non-empty relation name".to_string(),
+            false,
+        ));
+    }
+    if ![
+        "part_of",
+        "owned_by",
+        "managed_by",
+        "parent_of",
+        "sponsor_of",
+        "guarantor_of",
+        "borrower_of",
+        "servicer_of",
+        "trustee_of",
+        "successor_of",
+        "affiliate_of",
+        "co_borrower_of",
+        "trust_of",
+    ]
+    .contains(&relation.relation.as_str())
+    {
+        return Err(relation_refusal(
+            format!("Unsupported session relation '{}'", relation.relation),
+            false,
+        ));
+    }
+    let relation_package_digest = relation_package_digest()?;
+    let relation_kind = RelationKindRef::Extension {
+        package_digest: relation_package_digest,
+        vocabulary: "canon.entity.session.relations".to_string(),
+        value: relation.relation.clone(),
+    };
+    let cycle_policy = if matches!(
+        relation.relation.as_str(),
+        "part_of" | "owned_by" | "managed_by" | "parent_of" | "successor_of"
+    ) {
+        RelationCyclePolicy::Disallow
+    } else {
+        RelationCyclePolicy::Allow
+    };
+    let fragment = if relation.evidence_ids.is_empty() {
+        None
+    } else {
+        let mut evidence_ids = relation.evidence_ids.clone();
+        evidence_ids.sort();
+        evidence_ids.dedup();
+        Some(evidence_ids.join(","))
+    };
+    let observed_at = relation.valid_time.start_at.clone();
+    Ok(Some(DirectedRelationFact {
+        version: crate::temporal::relation::relation_schema_version().to_string(),
+        relation_id: String::new(),
+        edge_key: String::new(),
+        subject: RelationEndpoint {
+            identity_id: subject_id,
+            entity_type: relation_entity_type(&relation.subject.entity_type),
+        },
+        relation: relation_kind,
+        object: RelationEndpoint {
+            identity_id: object_id,
+            entity_type: relation_entity_type(&relation.object.entity_type),
+        },
+        valid_time: relation.valid_time.clone(),
+        provenance: RelationProvenance {
+            source_system: "canon.entity.session".to_string(),
+            locator: format!("session:{session_id}:solve:{solve_hash}"),
+            fragment,
+            observed_at,
+        },
+        policy_ref: "canon.entity.session.relations.v1".to_string(),
+        constraints: RelationCardinalityConstraints {
+            max_objects_per_subject: None,
+            max_subjects_per_object: None,
+            overlap_policy: RelationOverlapPolicy::Allow,
+            cycle_policy,
+        },
+        identity_implication: RelationIdentityImplication::default(),
+        review: RelationReview {
+            disposition: ReviewDisposition::Related,
+            reason_code: "related_evidence".to_string(),
+        },
+    }))
+}
+
+fn relation_endpoint_id(
+    endpoint: &SessionCommitRelationEndpoint,
+    minted_by_cluster: &BTreeMap<String, String>,
+) -> Option<String> {
+    endpoint
+        .canonical_id
+        .clone()
+        .or_else(|| {
+            endpoint
+                .cluster_id
+                .as_ref()
+                .and_then(|id| minted_by_cluster.get(id).cloned())
+        })
+        .or_else(|| endpoint.external_id.clone())
+        .filter(|id| !id.trim().is_empty())
+}
+
+fn relation_entity_type(value: &str) -> RelationEntityTypeRef {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "org" | "organisation" | "organization" => RelationEntityTypeRef::Core {
+            class: CoreEntityTypeClass::Organization,
+        },
+        "person" => RelationEntityTypeRef::Core {
+            class: CoreEntityTypeClass::Person,
+        },
+        _ => RelationEntityTypeRef::Extension {
+            package_digest: hash_bytes(b"canon.entity.session.entity-types.v1"),
+            vocabulary: "canon.entity.session.entity-types".to_string(),
+            value: value.trim().to_string(),
+        },
+    }
+}
+
+fn relation_package_digest() -> Result<String, Refusal> {
+    let classes = BTreeMap::from([
+        ("affiliate_of", "association"),
+        ("borrower_of", "role"),
+        ("co_borrower_of", "association"),
+        ("guarantor_of", "role"),
+        ("managed_by", "hierarchy"),
+        ("owned_by", "hierarchy"),
+        ("parent_of", "hierarchy"),
+        ("part_of", "hierarchy"),
+        ("servicer_of", "role"),
+        ("sponsor_of", "role"),
+        ("successor_of", "succession"),
+        ("trust_of", "association"),
+        ("trustee_of", "role"),
+    ]);
+    let bytes = serde_json::to_vec(&classes).map_err(|error| {
+        relation_refusal(
+            format!("Unable to serialize relation vocabulary: {error}"),
+            false,
+        )
+    })?;
+    Ok(hash_bytes(&bytes))
+}
+
+fn relation_refusal(message: String, writes_performed: bool) -> Refusal {
+    Refusal {
+        code: RefusalCode::EEntityArtifactContract,
+        message,
+        detail: json!({"stream": "registry/relations.jsonl", "writes_performed": writes_performed}),
+        next_command: Some(
+            "Repair registry relations.jsonl, then rerun canon entity session commit".to_string(),
+        ),
+    }
 }
 
 fn read_commit_receipt(work_dir: &Path) -> Result<Option<SessionCommitReceipt>, Refusal> {
@@ -941,6 +1465,8 @@ pub(crate) fn already_committed(
         minted: existing.minted,
         attached: existing.attached,
         skipped: existing.skipped,
+        relations_written: existing.relations_written,
+        closure_set_hash: existing.closure_set_hash,
         generation_id,
     }))
 }
@@ -2445,10 +2971,15 @@ fn publication_refusal(error: EntityPublicationError) -> Refusal {
 #[cfg(test)]
 mod tests {
     use super::{
-        SESSION_ASSERT_VERSION, SESSION_INGEST_VERSION, canonical_shard_bytes,
+        SESSION_ASSERT_VERSION, SESSION_INGEST_VERSION, SessionCommitRelation,
+        SessionCommitRelationEndpoint, build_relation_fact, canonical_shard_bytes,
         canonicalize_assertion_line, canonicalize_observation_line, hash_bytes,
     };
     use crate::entity::evidence_ir::EvidenceKind;
+    use crate::temporal::relation::{
+        IntervalBoundary, RelationIdentityImplicationMode, RelationKindRef, ReviewDisposition,
+        TimeInterval, relation_schema_version,
+    };
     use serde_json::Value;
     use std::collections::BTreeMap;
 
@@ -2579,5 +3110,73 @@ mod tests {
         .expect_err("distinct without authority must be rejected");
         assert_eq!(error.line, 4);
         assert_eq!(error.code, "missing_field:authority");
+    }
+
+    #[test]
+    fn session_relation_fact_is_typed_non_identity_and_canonical() {
+        let relation = SessionCommitRelation {
+            subject: SessionCommitRelationEndpoint {
+                canonical_id: Some("ORG-001".to_string()),
+                cluster_id: None,
+                external_id: None,
+                entity_type: "organisation".to_string(),
+            },
+            relation: "part_of".to_string(),
+            object: SessionCommitRelationEndpoint {
+                canonical_id: None,
+                cluster_id: None,
+                external_id: Some("deal-7".to_string()),
+                entity_type: "deal".to_string(),
+            },
+            valid_time: TimeInterval {
+                start_at: Some("2024-01-01T00:00:00Z".to_string()),
+                start_bound: IntervalBoundary::Inclusive,
+                end_at: Some("2024-12-31T00:00:00Z".to_string()),
+                end_bound: IntervalBoundary::Inclusive,
+            },
+            evidence_ids: vec!["evidence-1".to_string()],
+        };
+        let fact = build_relation_fact(&relation, "session-1", "solve-1", &BTreeMap::new())
+            .expect("valid relation")
+            .expect("committed endpoints");
+
+        assert_eq!(fact.version, relation_schema_version());
+        assert_eq!(fact.subject.identity_id, "ORG-001");
+        assert_eq!(fact.object.identity_id, "deal-7");
+        assert!(matches!(
+            fact.relation,
+            RelationKindRef::Extension { value, .. } if value == "part_of"
+        ));
+        assert_eq!(fact.provenance.source_system, "canon.entity.session");
+        assert_eq!(fact.provenance.locator, "session:session-1:solve:solve-1");
+        assert_eq!(fact.provenance.fragment.as_deref(), Some("evidence-1"));
+        assert!(matches!(
+            fact.identity_implication.mode,
+            RelationIdentityImplicationMode::None
+        ));
+        assert_eq!(fact.review.disposition, ReviewDisposition::Related);
+    }
+
+    #[test]
+    fn session_relation_fact_rejects_unknown_relation_names() {
+        let relation = SessionCommitRelation {
+            subject: SessionCommitRelationEndpoint {
+                canonical_id: Some("ORG-001".to_string()),
+                cluster_id: None,
+                external_id: None,
+                entity_type: "organisation".to_string(),
+            },
+            relation: "same_as".to_string(),
+            object: SessionCommitRelationEndpoint {
+                canonical_id: Some("ORG-002".to_string()),
+                cluster_id: None,
+                external_id: None,
+                entity_type: "organisation".to_string(),
+            },
+            valid_time: TimeInterval::default(),
+            evidence_ids: Vec::new(),
+        };
+
+        assert!(build_relation_fact(&relation, "session-1", "solve-1", &BTreeMap::new()).is_err());
     }
 }

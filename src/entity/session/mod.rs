@@ -25,8 +25,12 @@ use crate::{
     lookup, registry,
     session::{
         self, SESSION_EVIDENCE_STREAM_ID, SESSION_MANIFEST_STREAM_ID,
-        SESSION_OBSERVATIONS_STREAM_ID, SessionCommitAlias, SessionCommitEntry,
-        SessionCommitRegistryExpectation, SessionCommitSkipped, SessionManifest,
+        SESSION_OBSERVATIONS_STREAM_ID, SessionCommitAlias, SessionCommitClosure,
+        SessionCommitEntry, SessionCommitRegistryExpectation, SessionCommitRelation,
+        SessionCommitRelationEndpoint, SessionCommitSkipped, SessionManifest,
+    },
+    temporal::relation::{
+        DirectedRelationFact, IntervalBoundary, RelationKindRef, TimeInterval, finalize_relation,
     },
     witness::hash_bytes,
 };
@@ -54,6 +58,13 @@ const TIER_A_TYPES: &[&str] = &["same_key", "asserted_alias"];
 const TIER_B_TYPES: &[&str] = &["same_slot", "attribute_agreement", "name_equivalent"];
 const RELATION_TYPES: &[&str] = &["related"];
 const DISTINCT_TYPES: &[&str] = &["distinct"];
+const ROLE_RELATIONS: &[&str] = &[
+    "sponsor_of",
+    "guarantor_of",
+    "borrower_of",
+    "servicer_of",
+    "trustee_of",
+];
 const CROSS_ENTITY_TYPE_EVIDENCE_REASON: &str = "cross_entity_type_evidence";
 
 #[derive(Debug, Clone)]
@@ -95,6 +106,8 @@ pub struct SessionSolveSummary {
     pub standalone: usize,
     pub resolved_existing: usize,
     pub relations: usize,
+    #[serde(default)]
+    pub suppressed_by_relation: usize,
     pub dangling_evidence: usize,
     pub oversized_cluster: usize,
 }
@@ -129,8 +142,20 @@ pub struct SessionSolveReview {
 pub struct SessionSolveRelation {
     pub left_surface: String,
     pub right_surface: String,
+    #[serde(default)]
+    pub subject_surface: String,
+    #[serde(default)]
+    pub object_surface: String,
     pub relation: String,
     pub evidence_ids: Vec<String>,
+    #[serde(default)]
+    pub subject_entity_type: String,
+    #[serde(default)]
+    pub object_entity_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_external_id: Option<String>,
+    #[serde(default)]
+    pub valid_time: TimeInterval,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -168,7 +193,7 @@ impl SessionSolveOutput {
     pub fn render_summary(&self) -> String {
         let summary = &self.artifact.summary;
         format!(
-            "clusters={} tier_a={} tier_b={} review={} contradiction={} standalone={} resolved_existing={} relations={} dangling_evidence={} oversized_cluster={} generation={}",
+            "clusters={} tier_a={} tier_b={} review={} contradiction={} standalone={} resolved_existing={} relations={} suppressed_by_relation={} dangling_evidence={} oversized_cluster={} generation={}",
             summary.cluster_count,
             summary.accepted_tier_a,
             summary.accepted_tier_b,
@@ -177,6 +202,7 @@ impl SessionSolveOutput {
             summary.standalone,
             summary.resolved_existing,
             summary.relations,
+            summary.suppressed_by_relation,
             summary.dangling_evidence,
             summary.oversized_cluster,
             self.generation_id,
@@ -236,6 +262,7 @@ struct EdgeFacts {
     obs_ids: BTreeSet<String>,
     hits: Vec<EdgeEvidenceHit>,
     relation: BTreeSet<String>,
+    relation_subject: BTreeMap<String, String>,
     positive: bool,
     variant_of_incumbent: bool,
     authoritative_same_key: bool,
@@ -255,6 +282,10 @@ struct RawObservation {
     surface: String,
     #[serde(default)]
     keys: BTreeMap<String, Value>,
+    #[serde(default)]
+    attrs: BTreeMap<String, Value>,
+    #[serde(default)]
+    context: BTreeMap<String, Value>,
     #[serde(default)]
     source: RawObservationSource,
 }
@@ -281,6 +312,7 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
     let observations_snapshot =
         open_required_stream(&session, SESSION_OBSERVATIONS_STREAM_ID, "observations")?;
     let evidence_snapshot = open_optional_stream(&session, SESSION_EVIDENCE_STREAM_ID)?;
+    let role_relations = read_role_relations(&observations_snapshot)?;
     let observations = read_observations(&observations_snapshot)?;
     let evidence = match evidence_snapshot.as_ref() {
         Some(snapshot) => read_evidence(snapshot)?,
@@ -305,6 +337,7 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         incumbent_keys,
         endpoints,
     } = registry_info;
+    let related_pairs = read_related_registry_pairs(Path::new(&registry_binding.path))?;
     let (nodes, observations_by_id) =
         build_nodes(observations, incumbents, incumbent_keys, endpoints.clone());
     let mut derived_evidence = Vec::new();
@@ -403,7 +436,17 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             &rules.incumbent_attach_steps,
         );
         if RELATION_TYPES.contains(&evidence_type.as_str()) {
-            facts.relation.insert(relation_value(&record));
+            let relation = relation_value(&record);
+            facts.relation.insert(relation.clone());
+            facts.relation_subject.entry(relation).or_insert_with(|| {
+                relation_subject_node(
+                    &record,
+                    left_target_id,
+                    right_target_id,
+                    &left_node,
+                    &right_node,
+                )
+            });
         }
         facts.hits.push(hit_for_type(&evidence_type, &record));
     }
@@ -423,18 +466,21 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         // the signed graph so the anti-merge fact is evaluated inside its
         // existing evidence component instead of against two singleton nodes.
         let distinct_positive_edge = has_positive_distinct(facts);
-        let touches_incumbent = [pair.0.as_str(), pair.1.as_str()].iter().any(|surface_id| {
-            nodes
-                .get(*surface_id)
-                .is_some_and(|node| node.incumbent_canonical_id.is_some())
-        });
+        let incumbent_count = [pair.0.as_str(), pair.1.as_str()]
+            .iter()
+            .filter(|surface_id| {
+                nodes
+                    .get(**surface_id)
+                    .is_some_and(|node| node.incumbent_canonical_id.is_some())
+            })
+            .count();
         let hits = facts
             .hits
             .iter()
             .filter(|hit| {
                 joining
                     || distinct_positive_edge
-                    || (touches_incumbent && facts.positive)
+                    || (incumbent_count == 1 && facts.positive)
                     || DISTINCT_TYPES.contains(&hit.operator_id.as_str())
                     || RELATION_TYPES.contains(&hit.operator_id.as_str())
             })
@@ -523,6 +569,12 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             .iter()
             .any(|key| member_keys.contains(key))
             || !component.hard_cannot_link_violations.is_empty();
+        let related_not_same = joining.iter().any(|((left, right), _)| {
+            nodes_are_related(nodes.get(left), nodes.get(right), &related_pairs)
+        });
+        if related_not_same {
+            conflict_reasons.push("related_not_same".to_string());
+        }
         let (outcome, tier, reason) = if oversized {
             (
                 "oversized_cluster",
@@ -533,6 +585,8 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
                     joining.len()
                 ),
             )
+        } else if related_not_same {
+            ("contradiction", None, "related_not_same".to_string())
         } else if distinct_conflict {
             ("contradiction", None, "distinct".to_string())
         } else if incumbent_ids.len() > 1 {
@@ -636,48 +690,58 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         });
     }
 
-    let mut review = edge_facts
+    let mut review = Vec::new();
+    let mut suppressed_by_relation = 0;
+    for facts in edge_facts
         .values()
         .filter(|facts| facts.positive && tier_for(facts, &rules) == Some(EdgeTier::C))
-        .map(|facts| {
-            let evidence_types = facts
-                .evidence_types
-                .iter()
-                .filter(|kind| is_positive_type(kind))
-                .cloned()
-                .collect::<Vec<_>>();
-            let missing = if rules
-                .required_evidence_types
-                .iter()
-                .any(|kind| !evidence_types.contains(kind))
-            {
-                "required_evidence_type"
-            } else if evidence_types.len() < rules.min_distinct_evidence_types {
-                "second_evidence_type"
-            } else {
-                "second_lineage"
-            };
-            SessionSolveReview {
-                left_surface: nodes
-                    .get(&facts.left)
-                    .map(|node| node.surface.clone())
-                    .unwrap_or_default(),
-                right_surface: nodes
-                    .get(&facts.right)
-                    .map(|node| node.surface.clone())
-                    .unwrap_or_default(),
-                evidence_types,
-                lineage_count: independent_origin_count(facts),
-                missing: missing.to_string(),
-            }
-        })
-        .collect::<Vec<_>>();
+    {
+        if nodes_are_related(
+            nodes.get(&facts.left),
+            nodes.get(&facts.right),
+            &related_pairs,
+        ) {
+            suppressed_by_relation += 1;
+            continue;
+        }
+        let evidence_types = facts
+            .evidence_types
+            .iter()
+            .filter(|kind| is_positive_type(kind))
+            .cloned()
+            .collect::<Vec<_>>();
+        let missing = if rules
+            .required_evidence_types
+            .iter()
+            .any(|kind| !evidence_types.contains(kind))
+        {
+            "required_evidence_type"
+        } else if evidence_types.len() < rules.min_distinct_evidence_types {
+            "second_evidence_type"
+        } else {
+            "second_lineage"
+        };
+        review.push(SessionSolveReview {
+            left_surface: nodes
+                .get(&facts.left)
+                .map(|node| node.surface.clone())
+                .unwrap_or_default(),
+            right_surface: nodes
+                .get(&facts.right)
+                .map(|node| node.surface.clone())
+                .unwrap_or_default(),
+            evidence_types,
+            lineage_count: independent_origin_count(facts),
+            missing: missing.to_string(),
+        });
+    }
     review.sort_by(|left, right| {
         left.left_surface
             .cmp(&right.left_surface)
             .then_with(|| left.right_surface.cmp(&right.right_surface))
     });
     summary.review = review.len();
+    summary.suppressed_by_relation = suppressed_by_relation;
 
     let mut relations = edge_facts
         .values()
@@ -692,17 +756,54 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
                     .get(&facts.right)
                     .map(|node| node.surface.clone())
                     .unwrap_or_default(),
+                subject_surface: nodes
+                    .get(facts.relation_subject.get(relation).unwrap_or(&facts.left))
+                    .map(|node| node.surface.clone())
+                    .unwrap_or_default(),
+                object_surface: nodes
+                    .get(
+                        if facts
+                            .relation_subject
+                            .get(relation)
+                            .is_some_and(|subject| subject == &facts.right)
+                        {
+                            &facts.left
+                        } else {
+                            &facts.right
+                        },
+                    )
+                    .map(|node| node.surface.clone())
+                    .unwrap_or_default(),
                 relation: relation.clone(),
                 evidence_ids: facts.evidence_ids.iter().cloned().collect(),
+                subject_entity_type: node_entity_type(
+                    facts.relation_subject.get(relation).unwrap_or(&facts.left),
+                ),
+                object_entity_type: node_entity_type(
+                    if facts
+                        .relation_subject
+                        .get(relation)
+                        .is_some_and(|subject| subject == &facts.right)
+                    {
+                        &facts.left
+                    } else {
+                        &facts.right
+                    },
+                ),
+                object_external_id: None,
+                valid_time: TimeInterval::default(),
             })
         })
         .collect::<Vec<_>>();
+    relations.extend(role_relations);
     relations.sort_by(|left, right| {
-        left.left_surface
-            .cmp(&right.left_surface)
-            .then_with(|| left.right_surface.cmp(&right.right_surface))
+        left.subject_surface
+            .cmp(&right.subject_surface)
+            .then_with(|| left.object_surface.cmp(&right.object_surface))
             .then_with(|| left.relation.cmp(&right.relation))
+            .then_with(|| left.evidence_ids.cmp(&right.evidence_ids))
     });
+    relations.dedup();
     summary.relations = relations.len();
     summary.dangling_evidence = dangling_evidence_count;
     summary.cluster_count = clusters.len();
@@ -869,7 +970,14 @@ pub fn commit(
             ),
         ));
     }
-    let (entries, skipped) = build_commit_plan(&artifact, &binding.kind)?;
+    let (entries, skipped, relations) = build_commit_plan(
+        &artifact,
+        &binding.kind,
+        &manifest.session_id,
+        &solve_hash,
+        &expected_registry.version,
+        &read_observation_values(&observations_snapshot)?,
+    )?;
     session::commit(session::SessionCommitRequest {
         session,
         solve_hash,
@@ -882,6 +990,7 @@ pub fn commit(
         },
         entries,
         skipped,
+        relations,
         next_version: request.next_version,
         bump: request.bump,
     })
@@ -890,7 +999,18 @@ pub fn commit(
 fn build_commit_plan(
     artifact: &SessionSolveArtifact,
     entity_kind: &str,
-) -> Result<(Vec<SessionCommitEntry>, Vec<SessionCommitSkipped>), Refusal> {
+    session_id: &str,
+    solve_hash: &str,
+    registry_version: &str,
+    observation_values: &BTreeMap<String, Vec<Value>>,
+) -> Result<
+    (
+        Vec<SessionCommitEntry>,
+        Vec<SessionCommitSkipped>,
+        Vec<SessionCommitRelation>,
+    ),
+    Refusal,
+> {
     let mut clusters = artifact.clusters.clone();
     clusters.sort_by(|left, right| left.cluster_id.cmp(&right.cluster_id));
     let mut entries = Vec::new();
@@ -924,6 +1044,8 @@ fn build_commit_plan(
                     canonical_type: entity_kind.to_string(),
                     rule_id: format!("SESSION_TIER_{tier}"),
                     skip_if_existing: cluster.incumbent_canonical_id.is_some(),
+                    session_authority: None,
+                    closure: None,
                 });
             }
         }
@@ -958,30 +1080,177 @@ fn build_commit_plan(
                         canonical_type: entity_kind.to_string(),
                         rule_id: format!("SESSION_KEY_{}", namespace.to_ascii_uppercase()),
                         skip_if_existing: true,
+                        session_authority: None,
+                        closure: None,
                     });
                 }
             }
         }
-        let closure_bytes = serde_json::to_vec(&cluster).map_err(|error| {
+        let cluster_observations = cluster
+            .surfaces
+            .iter()
+            .flat_map(|surface| observation_values.get(surface).into_iter().flatten())
+            .cloned()
+            .collect::<Vec<_>>();
+        let cluster_authority = crate::entity::session_provenance::build_authority_material_for_subject_with_observations(
+            session_id,
+            solve_hash,
+            &artifact.inputs.rules_hash,
+            &artifact.inputs.registry.id,
+            registry_version,
+            &cluster,
+            cluster.incumbent_canonical_id.as_deref(),
+            if cluster.incumbent_canonical_id.is_some() {
+                "attached_alias"
+            } else {
+                "minted_id"
+            },
+            &crate::entity::session_provenance::outcome_subject(&cluster),
+            &cluster_observations,
+            None,
+        )
+        .map_err(|error| {
             solve_refusal(
                 format!(
-                    "Unable to hash accepted cluster {}: {error}",
+                    "Unable to build evidence closure for accepted cluster {}: {error}",
                     cluster.cluster_id
                 ),
                 json!({"cluster_id": cluster.cluster_id, "writes_performed": false}),
                 "Rerun canon entity session solve, then rerun commit",
             )
         })?;
+        let mut entry_authority = None;
+        for alias in &mut aliases {
+            let (kind, subject) = if cluster.incumbent_canonical_id.is_some() {
+                if let Some(namespace) = alias.rule_id.strip_prefix("SESSION_KEY_") {
+                    (
+                        "key_alias",
+                        format!("{}:{}", namespace.to_ascii_lowercase(), alias.input),
+                    )
+                } else {
+                    ("attached_alias", alias.input.clone())
+                }
+            } else {
+                (
+                    "minted_id",
+                    crate::entity::session_provenance::outcome_subject(&cluster),
+                )
+            };
+            let material = if kind == "minted_id" {
+                cluster_authority.clone()
+            } else {
+                crate::entity::session_provenance::build_authority_material_for_subject(
+                    session_id,
+                    solve_hash,
+                    &artifact.inputs.rules_hash,
+                    &artifact.inputs.registry.id,
+                    registry_version,
+                    &cluster,
+                    cluster.incumbent_canonical_id.as_deref(),
+                    kind,
+                    &subject,
+                    &cluster_observations,
+                    None,
+                )
+                .map_err(|error| {
+                    solve_refusal(
+                        format!(
+                            "Unable to build evidence closure for alias {} in cluster {}: {error}",
+                            alias.input, cluster.cluster_id
+                        ),
+                        json!({"cluster_id": cluster.cluster_id, "input": alias.input, "writes_performed": false}),
+                        "Rerun canon entity session solve, then rerun commit",
+                    )
+                })?
+            };
+            if entry_authority.is_none() {
+                entry_authority = Some(material.clone());
+            }
+            alias.session_authority = Some(material.authority);
+            alias.closure = Some(SessionCommitClosure {
+                outcome_ref: material.closure.outcome_ref,
+                closure_hash: material.closure.closure_hash,
+                manifest: material.closure.manifest,
+            });
+        }
+        let authority = entry_authority.unwrap_or(cluster_authority);
         entries.push(SessionCommitEntry {
             cluster_id: cluster.cluster_id.clone(),
             tier,
-            outcome_ref: format!("entity-session:{}", cluster.cluster_id),
-            closure_hash: hash_bytes(&closure_bytes),
+            outcome_ref: authority.closure.outcome_ref.clone(),
+            closure_hash: authority.closure.closure_hash.clone(),
             canonical_id: cluster.incumbent_canonical_id.clone(),
             aliases,
+            session_authority: Some(authority.authority),
+            closure: Some(SessionCommitClosure {
+                outcome_ref: authority.closure.outcome_ref,
+                closure_hash: authority.closure.closure_hash,
+                manifest: authority.closure.manifest,
+            }),
         });
     }
-    Ok((entries, skipped))
+    let relations = artifact
+        .relations
+        .iter()
+        .filter_map(|relation| {
+            let subject = commit_relation_endpoint(&artifact.clusters, relation, true)?;
+            let object = if let Some(external_id) = &relation.object_external_id {
+                SessionCommitRelationEndpoint {
+                    canonical_id: None,
+                    cluster_id: None,
+                    external_id: Some(external_id.clone()),
+                    entity_type: relation.object_entity_type.clone(),
+                }
+            } else {
+                commit_relation_endpoint(&artifact.clusters, relation, false)?
+            };
+            Some(SessionCommitRelation {
+                subject,
+                relation: relation.relation.clone(),
+                object,
+                valid_time: relation.valid_time.clone(),
+                evidence_ids: relation.evidence_ids.clone(),
+            })
+        })
+        .collect();
+    Ok((entries, skipped, relations))
+}
+
+fn commit_relation_endpoint(
+    clusters: &[SessionSolveCluster],
+    relation: &SessionSolveRelation,
+    subject: bool,
+) -> Option<SessionCommitRelationEndpoint> {
+    let surface = if subject {
+        &relation.subject_surface
+    } else {
+        &relation.object_surface
+    };
+    clusters
+        .iter()
+        .find(|cluster| {
+            cluster
+                .surfaces
+                .iter()
+                .any(|candidate| candidate == surface)
+                && ((cluster.outcome == "accepted"
+                    && matches!(cluster.tier.as_deref(), Some("A" | "B")))
+                    || (cluster.outcome == "resolved_existing"
+                        && cluster.incumbent_canonical_id.is_some()))
+        })
+        .map(|cluster| SessionCommitRelationEndpoint {
+            canonical_id: cluster.incumbent_canonical_id.clone(),
+            cluster_id: cluster
+                .incumbent_canonical_id
+                .is_none()
+                .then(|| cluster.cluster_id.clone()),
+            external_id: None,
+            entity_type: if subject {
+                relation.subject_entity_type.clone()
+            } else {
+                relation.object_entity_type.clone()
+            },
+        })
 }
 
 fn commit_skip_reasons(cluster: &SessionSolveCluster) -> Vec<String> {
@@ -2062,6 +2331,246 @@ fn relation_value(record: &crate::entity::evidence_ir::EvidenceRecord) -> String
         .unwrap_or_else(|| record.reason_code.clone())
 }
 
+fn relation_subject_node(
+    record: &crate::entity::evidence_ir::EvidenceRecord,
+    left_target_id: &str,
+    right_target_id: &str,
+    left_node: &str,
+    right_node: &str,
+) -> String {
+    let subject = record.extensions.iter().find_map(|extension| {
+        extension
+            .payload
+            .get("subject")
+            .and_then(|value| match value {
+                crate::entity::evidence_ir::EvidenceExtensionValue::String(value) => {
+                    Some(value.as_str())
+                }
+                _ => None,
+            })
+    });
+    match subject {
+        Some(subject) if subject == right_target_id => right_node.to_string(),
+        Some(subject) if subject == left_target_id => left_node.to_string(),
+        _ => left_node.to_string(),
+    }
+}
+
+fn read_related_registry_pairs(
+    registry_path: &Path,
+) -> Result<BTreeSet<(String, String)>, Refusal> {
+    let path = registry_path.join("relations.jsonl");
+    let bytes = match fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(BTreeSet::new()),
+        Err(error) => {
+            return Err(solve_refusal(
+                format!(
+                    "Unable to read registry relations '{}': {error}",
+                    path.display()
+                ),
+                json!({"registry": registry_path.display().to_string(), "writes_performed": false}),
+                "Repair relations.jsonl, then rerun canon entity session solve",
+            ));
+        }
+    };
+    let text = std::str::from_utf8(&bytes).map_err(|error| {
+        solve_refusal(
+            format!(
+                "Registry relations '{}' are not UTF-8: {error}",
+                path.display()
+            ),
+            json!({"registry": registry_path.display().to_string(), "writes_performed": false}),
+            "Repair relations.jsonl, then rerun canon entity session solve",
+        )
+    })?;
+    let mut pairs = BTreeSet::new();
+    for (line, value) in text.lines().enumerate() {
+        if value.trim().is_empty() {
+            continue;
+        }
+        let fact = serde_json::from_str::<DirectedRelationFact>(value).map_err(|error| {
+            solve_refusal(
+                format!("Registry relation line {} is invalid: {error}", line + 1),
+                json!({"registry": registry_path.display().to_string(), "line": line + 1, "writes_performed": false}),
+                "Repair relations.jsonl, then rerun canon entity session solve",
+            )
+        })?;
+        let fact = finalize_relation(fact).map_err(|error| {
+            solve_refusal(
+                format!("Registry relation line {} is not canonical: {error}", line + 1),
+                json!({"registry": registry_path.display().to_string(), "line": line + 1, "writes_performed": false}),
+                "Repair relations.jsonl, then rerun canon entity session solve",
+            )
+        })?;
+        let relation_name = match &fact.relation {
+            RelationKindRef::Extension { value, .. } => value.as_str(),
+            RelationKindRef::Core { .. } => continue,
+        };
+        if ROLE_RELATIONS.contains(&relation_name) {
+            continue;
+        }
+        pairs.insert(ordered_pair(
+            &fact.subject.identity_id,
+            &fact.object.identity_id,
+        ));
+    }
+    Ok(pairs)
+}
+
+fn nodes_are_related(
+    left: Option<&Node>,
+    right: Option<&Node>,
+    related_pairs: &BTreeSet<(String, String)>,
+) -> bool {
+    let (Some(left), Some(right)) = (left, right) else {
+        return false;
+    };
+    let (Some(left_id), Some(right_id)) = (
+        left.incumbent_canonical_id.as_deref(),
+        right.incumbent_canonical_id.as_deref(),
+    ) else {
+        return false;
+    };
+    related_pairs.contains(&ordered_pair(left_id, right_id))
+}
+
+fn node_entity_type(node_key: &str) -> String {
+    node_key
+        .split_once('\0')
+        .map(|(entity_type, _)| entity_type.to_string())
+        .unwrap_or_else(|| "organisation".to_string())
+}
+
+fn read_role_relations(
+    snapshot: &EntityPublicationSnapshot,
+) -> Result<Vec<SessionSolveRelation>, Refusal> {
+    let mut relations = BTreeMap::<(String, String, String), SessionSolveRelation>::new();
+    for logical_path in snapshot
+        .logical_paths()
+        .filter(|path| path.starts_with("observations/") && path.ends_with(".jsonl"))
+    {
+        let bytes = snapshot.read_logical_file(logical_path).ok_or_else(|| {
+            solve_refusal(
+                format!("Observation shard {logical_path} is missing"),
+                json!({"stream": SESSION_OBSERVATIONS_STREAM_ID, "writes_performed": false}),
+                "Repair the observation stream, then rerun canon entity session solve",
+            )
+        })?;
+        let text = std::str::from_utf8(bytes).map_err(|error| {
+            solve_refusal(
+                format!("Observation shard {logical_path} is not UTF-8: {error}"),
+                json!({"stream": SESSION_OBSERVATIONS_STREAM_ID, "writes_performed": false}),
+                "Repair the observation stream, then rerun canon entity session solve",
+            )
+        })?;
+        for (line, value) in text.lines().enumerate() {
+            if value.trim().is_empty() {
+                continue;
+            }
+            let raw = serde_json::from_str::<RawObservation>(value).map_err(|error| {
+                solve_refusal(
+                    format!(
+                        "Observation shard {logical_path} line {} is invalid: {error}",
+                        line + 1
+                    ),
+                    json!({"stream": SESSION_OBSERVATIONS_STREAM_ID, "line": line + 1, "writes_performed": false}),
+                    "Repair the observation stream, then rerun canon entity session solve",
+                )
+            })?;
+            let Some(role) = map_role(raw.context.get("role").or_else(|| raw.attrs.get("role")))
+            else {
+                continue;
+            };
+            let Some((object, object_type)) = role_object(&raw.context) else {
+                continue;
+            };
+            let subject = ascii_trim(&raw.surface).to_string();
+            let key = (subject.clone(), role.clone(), object.clone());
+            let timestamp = role_timestamp(&raw.context, &raw.attrs);
+            let relation = relations
+                .entry(key)
+                .or_insert_with(|| SessionSolveRelation {
+                    left_surface: subject.clone(),
+                    right_surface: object.clone(),
+                    subject_surface: subject.clone(),
+                    object_surface: object.clone(),
+                    relation: role.clone(),
+                    evidence_ids: Vec::new(),
+                    subject_entity_type: ascii_trim(&raw.entity_type).to_string(),
+                    object_entity_type: object_type.to_string(),
+                    object_external_id: Some(object.clone()),
+                    valid_time: TimeInterval::default(),
+                });
+            if let Some(timestamp) = timestamp {
+                relation.valid_time.start_at = match relation.valid_time.start_at.take() {
+                    Some(existing) => Some(existing.min(timestamp.clone())),
+                    None => Some(timestamp.clone()),
+                };
+                relation.valid_time.end_at = match relation.valid_time.end_at.take() {
+                    Some(existing) => Some(existing.max(timestamp)),
+                    None => relation.valid_time.start_at.clone(),
+                };
+                relation.valid_time.start_bound = IntervalBoundary::Inclusive;
+                relation.valid_time.end_bound = IntervalBoundary::Inclusive;
+            }
+        }
+    }
+    Ok(relations.into_values().collect())
+}
+
+fn map_role(value: Option<&Value>) -> Option<String> {
+    let role = value?.as_str()?.trim().to_ascii_lowercase();
+    let relation = match role.as_str() {
+        "sponsor" => "sponsor_of",
+        "guarantor" => "guarantor_of",
+        "borrower" => "borrower_of",
+        "servicer" => "servicer_of",
+        "trustee" => "trustee_of",
+        _ => return None,
+    };
+    Some(relation.to_string())
+}
+
+fn role_object(context: &BTreeMap<String, Value>) -> Option<(String, &'static str)> {
+    [
+        ("deal_id", "deal"),
+        ("deal_cik", "deal"),
+        ("deal", "deal"),
+        ("loan_id", "loan"),
+        ("loan", "loan"),
+    ]
+    .into_iter()
+    .find_map(|(key, entity_type)| {
+        context
+            .get(key)
+            .and_then(Value::as_str)
+            .map(|value| (value.trim().to_string(), entity_type))
+            .filter(|(value, _)| !value.is_empty())
+    })
+}
+
+fn role_timestamp(
+    context: &BTreeMap<String, Value>,
+    attrs: &BTreeMap<String, Value>,
+) -> Option<String> {
+    context
+        .get("as_of_date")
+        .or_else(|| context.get("as_of"))
+        .or_else(|| attrs.get("as_of_date"))
+        .or_else(|| attrs.get("as_of"))
+        .and_then(Value::as_str)
+        .map(|value| {
+            let value = value.trim();
+            if value.len() == 10 && value.as_bytes().get(4) == Some(&b'-') {
+                format!("{value}T00:00:00Z")
+            } else {
+                value.to_string()
+            }
+        })
+        .filter(|value| !value.is_empty())
+}
+
 fn record_lineage(record: &crate::entity::evidence_ir::EvidenceRecord) -> Option<String> {
     record.extensions.iter().find_map(|extension| {
         extension
@@ -2343,7 +2852,8 @@ mod tests {
         EdgeFacts, EdgeTier, RegistryRow, SessionRules, SessionSolveArtifact, SessionSolveCluster,
         SessionSolveInputs, SessionSolveRegistry, SessionSolveSummary, TIER_A_TYPES, TIER_B_TYPES,
         build_commit_plan, canonical_key_value, commit_skip_reasons, component_has_key_conflict,
-        exactly_one_authoritative_value, has_positive_distinct, key_values, tier_for,
+        exactly_one_authoritative_value, has_positive_distinct, key_values, nodes_are_related,
+        tier_for,
     };
     use std::collections::{BTreeMap, BTreeSet};
 
@@ -2438,6 +2948,35 @@ mod tests {
             &["same_slot"],
             &["lineage-a"]
         )));
+    }
+
+    #[test]
+    fn registry_relation_pair_suppresses_only_matching_incumbents() {
+        let left = super::Node {
+            surface: "Alpha".to_string(),
+            observation_ids: BTreeSet::new(),
+            keys: BTreeMap::new(),
+            observed_keys: BTreeMap::new(),
+            incumbent_key_conflicts: BTreeSet::new(),
+            incumbent_canonical_id: Some("ORG-001".to_string()),
+        };
+        let right = super::Node {
+            surface: "Beta".to_string(),
+            observation_ids: BTreeSet::new(),
+            keys: BTreeMap::new(),
+            observed_keys: BTreeMap::new(),
+            incumbent_key_conflicts: BTreeSet::new(),
+            incumbent_canonical_id: Some("ORG-002".to_string()),
+        };
+        let related = BTreeSet::from([(String::from("ORG-001"), String::from("ORG-002"))]);
+
+        assert!(nodes_are_related(Some(&left), Some(&right), &related));
+        assert!(!nodes_are_related(
+            Some(&left),
+            Some(&right),
+            &BTreeSet::new()
+        ));
+        assert!(!nodes_are_related(None, Some(&right), &related));
     }
 
     #[test]
@@ -2565,7 +3104,14 @@ mod tests {
             derived_evidence: Vec::new(),
         };
 
-        let (entries, skipped) = build_commit_plan(&artifact, "organisation").expect("commit plan");
+        let (entries, skipped, relations) = build_commit_plan(
+            &artifact,
+            "organisation",
+            "session-id",
+            "solve-hash",
+            "0.0.0",
+        )
+        .expect("commit plan");
         assert_eq!(
             entries
                 .iter()
@@ -2581,6 +3127,9 @@ mod tests {
         assert_eq!(skipped.len(), 1);
         assert_eq!(skipped[0].cluster_id, "cluster-r");
         assert_eq!(skipped[0].reason, "review");
+        assert!(relations.is_empty());
+        assert!(entries[0].session_authority.is_some());
+        assert!(entries[0].closure.is_some());
     }
 
     #[test]

@@ -75,6 +75,7 @@ pub struct StatusCounts {
     pub standalone: usize,
     pub contradictions: usize,
     pub contradictions_by_reason: BTreeMap<String, usize>,
+    pub suppressed_by_relation: usize,
     pub dangling_evidence: usize,
 }
 
@@ -152,7 +153,7 @@ impl SessionStatusOutput {
         ];
         match &self.solve.counts {
             Some(counts) => lines.push(format!(
-                "solve: stale={}{} tier_a={} tier_b={} resolved_existing={} review={} standalone={} contradictions={}{} dangling_evidence={}",
+                "solve: stale={}{} tier_a={} tier_b={} resolved_existing={} review={} standalone={} contradictions={}{} suppressed_by_relation={} dangling_evidence={}",
                 self.solve.stale,
                 render_reasons(&self.solve.stale_reasons),
                 counts.accepted_tier_a,
@@ -162,6 +163,7 @@ impl SessionStatusOutput {
                 counts.standalone,
                 counts.contradictions,
                 render_by_type(&counts.contradictions_by_reason),
+                counts.suppressed_by_relation,
                 counts.dangling_evidence,
             )),
             None => lines.push("solve: none".to_string()),
@@ -443,6 +445,7 @@ fn counts_from(artifact: &SessionSolveArtifact) -> StatusCounts {
         standalone: artifact.summary.standalone,
         contradictions: artifact.summary.contradiction,
         contradictions_by_reason: by_reason,
+        suppressed_by_relation: artifact.summary.suppressed_by_relation,
         dangling_evidence: artifact.summary.dangling_evidence,
     }
 }
