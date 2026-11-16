@@ -22,6 +22,7 @@ const NORMALIZATION_SPEC_ID: &str = "canon_registry_search_key.v0";
 pub enum RegistryExportFormat {
     DbtSeed,
     SearchIndex,
+    KeyCrosswalk,
 }
 
 impl RegistryExportFormat {
@@ -29,6 +30,7 @@ impl RegistryExportFormat {
         match self {
             Self::DbtSeed => "dbt-seed",
             Self::SearchIndex => "search-index",
+            Self::KeyCrosswalk => "key-crosswalk",
         }
     }
 }
@@ -274,6 +276,11 @@ impl RegistryExportFormat {
                 plan_files: plan_search_index_files,
                 execute: execute_search_index_backend,
             },
+            Self::KeyCrosswalk => RegistryExportBackendContract {
+                id: self.as_str(),
+                plan_files: plan_search_index_files,
+                execute: execute_key_crosswalk_backend,
+            },
         }
     }
 }
@@ -340,7 +347,7 @@ fn validate_request(request: &RegistryExportRequest) -> Result<(), Refusal> {
         ));
     }
 
-    if matches!(request.format, RegistryExportFormat::SearchIndex)
+    if !matches!(request.format, RegistryExportFormat::DbtSeed)
         && (request.schema_out.is_some() || request.anti_collapse_test_out.is_some())
     {
         return Err(parse_refusal(
@@ -616,6 +623,106 @@ fn execute_dbt_seed_backend(plan: &RegistryExportExecutionPlan) -> Result<(), Re
         }
     }
     Ok(())
+}
+
+/// The rule-id prefix of aliases that carry an authoritative key value.
+const KEY_ALIAS_RULE_PREFIX: &str = "SESSION_KEY_";
+/// Separator for several values of one namespace in one crosswalk cell.
+const CROSSWALK_VALUE_SEPARATOR: &str = ";";
+
+/// The key namespace a rule id names (`SESSION_KEY_CIK` is `cik`), if any.
+fn key_namespace_of(rule_id: &str) -> Option<String> {
+    rule_id
+        .strip_prefix(KEY_ALIAS_RULE_PREFIX)
+        .filter(|namespace| !namespace.is_empty())
+        .map(|namespace| namespace.to_ascii_lowercase())
+}
+
+/// One header and the rows of the key-to-key crosswalk: one row per canonical
+/// ID that holds at least one key alias, one column per namespace present,
+/// several values of one namespace joined in sorted order. Deterministic.
+fn render_key_crosswalk(rows: &[ExportRow]) -> (Vec<String>, Vec<Vec<String>>) {
+    let mut namespaces = BTreeSet::new();
+    let mut keys = BTreeMap::<(String, String), BTreeMap<String, BTreeSet<String>>>::new();
+    let mut name_rows = Vec::new();
+    for row in rows {
+        match key_namespace_of(&row.rule_id) {
+            Some(namespace) => {
+                namespaces.insert(namespace.clone());
+                keys.entry((row.canonical_type.clone(), row.canonical_id.clone()))
+                    .or_default()
+                    .entry(namespace)
+                    .or_default()
+                    .insert(row.input.clone());
+            }
+            None => name_rows.push(row.clone()),
+        }
+    }
+    let names = collect_entities(&name_rows)
+        .into_iter()
+        .map(|entity| {
+            (
+                (entity.canonical_type, entity.canonical_id),
+                entity.display_name,
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    let mut header = vec![
+        "canonical_id".to_string(),
+        "canonical_type".to_string(),
+        "primary_name".to_string(),
+    ];
+    header.extend(namespaces.iter().cloned());
+    let mut table = Vec::new();
+    for ((canonical_type, canonical_id), by_namespace) in &keys {
+        let mut record = vec![
+            canonical_id.clone(),
+            canonical_type.clone(),
+            names
+                .get(&(canonical_type.clone(), canonical_id.clone()))
+                .cloned()
+                .unwrap_or_default(),
+        ];
+        for namespace in &namespaces {
+            record.push(
+                by_namespace
+                    .get(namespace)
+                    .map(|values| {
+                        values
+                            .iter()
+                            .map(String::as_str)
+                            .collect::<Vec<_>>()
+                            .join(CROSSWALK_VALUE_SEPARATOR)
+                    })
+                    .unwrap_or_default(),
+            );
+        }
+        table.push(record);
+    }
+    table.sort_by(|left, right| left[0].cmp(&right[0]).then_with(|| left[1].cmp(&right[1])));
+    (header, table)
+}
+
+fn write_key_crosswalk(path: &Path, plan: &RegistryExportExecutionPlan) -> Result<(), Refusal> {
+    ensure_parent_dir(path)?;
+    let (header, table) = render_key_crosswalk(&plan.snapshot.rows);
+    let file = File::create(path).map_err(|error| io_refusal(path, error))?;
+    let mut writer = csv::Writer::from_writer(file);
+    writer
+        .write_record(&header)
+        .map_err(|error| io_refusal(path, error))?;
+    for record in &table {
+        writer
+            .write_record(record)
+            .map_err(|error| io_refusal(path, error))?;
+    }
+    writer.flush().map_err(|error| io_refusal(path, error))?;
+    Ok(())
+}
+
+fn execute_key_crosswalk_backend(plan: &RegistryExportExecutionPlan) -> Result<(), Refusal> {
+    write_key_crosswalk(&plan.request.out, plan)
 }
 
 fn execute_search_index_backend(plan: &RegistryExportExecutionPlan) -> Result<(), Refusal> {
@@ -1353,5 +1460,102 @@ mod tests {
         );
         assert_eq!(normalize_search_key("wfcm-2020_c58"), "WFCM2020C58");
         assert_eq!(normalize_search_key(" café "), "CAF");
+    }
+}
+
+#[cfg(test)]
+mod key_crosswalk_tests {
+    use super::*;
+
+    fn row(input: &str, canonical_id: &str, rule_id: &str) -> ExportRow {
+        ExportRow {
+            namespace: None,
+            input: input.to_string(),
+            normalized_key: normalize_search_key(input),
+            canonical_id: canonical_id.to_string(),
+            canonical_iri: format!("cmdrvl:{canonical_id}"),
+            canonical_type: "firm".to_string(),
+            alias_kind: "alias".to_string(),
+            rule_id: rule_id.to_string(),
+            match_source: "registry".to_string(),
+            registry_id: "r".to_string(),
+            registry_version: "1".to_string(),
+            source_file: "f.json".to_string(),
+            entry_order: 0,
+        }
+    }
+
+    #[test]
+    fn key_namespace_comes_from_the_rule_id_only() {
+        assert_eq!(key_namespace_of("SESSION_KEY_CIK").as_deref(), Some("cik"));
+        assert_eq!(key_namespace_of("SESSION_KEY_").as_deref(), None);
+        assert_eq!(key_namespace_of("SESSION_TIER_A"), None);
+        assert_eq!(key_namespace_of("MANUAL"), None);
+    }
+
+    #[test]
+    fn crosswalk_has_one_row_per_id_and_one_column_per_namespace() {
+        let rows = vec![
+            row("Zeta Corp", "ORG-002", "SESSION_TIER_A"),
+            row("222", "ORG-002", "SESSION_KEY_CIK"),
+            row("CANONFIXT0000000BB37", "ORG-002", "SESSION_KEY_LEI"),
+            row("Alpha Corp", "ORG-001", "MANUAL"),
+            row("111", "ORG-001", "SESSION_KEY_CIK"),
+            row("Beta Corp", "ORG-003", "MANUAL"),
+        ];
+        let (header, table) = render_key_crosswalk(&rows);
+        assert_eq!(
+            header,
+            [
+                "canonical_id",
+                "canonical_type",
+                "primary_name",
+                "cik",
+                "lei"
+            ]
+        );
+        assert_eq!(
+            table,
+            vec![
+                vec!["ORG-001", "firm", "Alpha Corp", "111", ""],
+                vec![
+                    "ORG-002",
+                    "firm",
+                    "Zeta Corp",
+                    "222",
+                    "CANONFIXT0000000BB37"
+                ],
+            ],
+            "ORG-003 holds no key, so it has no crosswalk row"
+        );
+    }
+
+    #[test]
+    fn many_values_of_one_namespace_join_in_sorted_order_and_input_order_is_irrelevant() {
+        let forward = vec![
+            row("Alpha", "ORG-001", "MANUAL"),
+            row("900", "ORG-001", "SESSION_KEY_CIK"),
+            row("100", "ORG-001", "SESSION_KEY_CIK"),
+        ];
+        let mut reversed = forward.clone();
+        reversed.reverse();
+        let (_, first) = render_key_crosswalk(&forward);
+        let (_, second) = render_key_crosswalk(&reversed);
+        assert_eq!(first, second);
+        assert_eq!(first[0][3], "100;900");
+    }
+
+    #[test]
+    fn a_key_value_never_becomes_the_primary_name() {
+        let rows = vec![row("111", "ORG-001", "SESSION_KEY_CIK")];
+        let (_, table) = render_key_crosswalk(&rows);
+        assert_eq!(table[0][2], "", "an ID with only key aliases has no name");
+    }
+
+    #[test]
+    fn rows_without_key_aliases_yield_a_header_and_no_rows() {
+        let (header, table) = render_key_crosswalk(&[row("Alpha", "ORG-001", "MANUAL")]);
+        assert_eq!(header, ["canonical_id", "canonical_type", "primary_name"]);
+        assert!(table.is_empty());
     }
 }

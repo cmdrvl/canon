@@ -665,6 +665,7 @@ mod tests {
                 },
             },
             authoritative_keys: Vec::new(),
+            commit_key_namespaces: Vec::new(),
             summary: SessionSolveSummary::default(),
             clusters,
             review,

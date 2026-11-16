@@ -334,6 +334,7 @@ fn parse_aliases(
             canonical_type: canonical_type.to_string(),
             rule_id,
             scope: scope.cloned(),
+            namespace: None,
             session_authority: None,
         });
     }
@@ -629,6 +630,8 @@ pub(crate) struct RegistryTypedSkippedAlias {
     pub group_key: String,
     pub input: String,
     pub reason: String,
+    /// For `key_alias_collision`: the two entries that would both claim the string.
+    pub detail: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -896,7 +899,11 @@ pub(crate) fn commit_typed_entries(
                     "Use one entity kind per accepted cluster",
                 ));
             }
-            let alias_file = add_entry::validate_alias_file(&request.registry, &entry.alias_file)?;
+            let alias_file = add_entry::validate_alias_file_allowing_missing(
+                &request.registry,
+                &entry.alias_file,
+                is_session_generated_alias(&entry.rule_id),
+            )?;
             let alias_file = alias_file
                 .file_name()
                 .and_then(|name| name.to_str())
@@ -929,14 +936,41 @@ pub(crate) fn commit_typed_entries(
                         &mapping_files,
                     )?;
                 }
+                let collides = existing.canonical_id != canonical_id;
+                let detail = collides.then(|| {
+                    let held_in = mapping_files
+                        .iter()
+                        .find(|file| file.entries.iter().any(|entry| std::ptr::eq(entry, existing)))
+                        .and_then(|file| file.path.file_name())
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("<mapping file>");
+                    format!(
+                        "'{input}' is already mapped to {} in {held_in}; the new entry would map it to {canonical_id} in {alias_file}",
+                        existing.canonical_id
+                    )
+                });
                 skipped.push(RegistryTypedSkippedAlias {
                     group_key: group_key.clone(),
                     input,
-                    reason: if existing.canonical_id == canonical_id {
-                        "already_present".to_string()
-                    } else {
+                    reason: if collides {
                         "key_alias_collision".to_string()
+                    } else {
+                        "already_present".to_string()
                     },
+                    detail,
+                });
+                continue;
+            }
+            if entry.skip_if_existing && seen_inputs.contains(&input) {
+                // The string is claimed by another entry of this same commit:
+                // keep that one, report this one, write the rest.
+                skipped.push(RegistryTypedSkippedAlias {
+                    group_key: group_key.clone(),
+                    detail: Some(format!(
+                        "'{input}' is already claimed by another entry of this commit; the new entry would map it to {canonical_id} in {alias_file}"
+                    )),
+                    input,
+                    reason: "key_alias_collision".to_string(),
                 });
                 continue;
             }
@@ -948,6 +982,11 @@ pub(crate) fn commit_typed_entries(
                     "Remove duplicate aliases, then rerun",
                 ));
             }
+            let namespace = rule_id.starts_with("SESSION_KEY_").then_some(
+                crate::identity_scope::IdentifierNamespaceRef::Core {
+                    class: crate::identity_scope::CoreIdentifierNamespaceClass::ExternalGlobalId,
+                },
+            );
             aliases.push(RegistryAliasWriteEntry {
                 alias_file,
                 input,
@@ -955,6 +994,7 @@ pub(crate) fn commit_typed_entries(
                 canonical_type: canonical_type.clone(),
                 rule_id,
                 scope: None,
+                namespace,
                 session_authority: entry.session_authority.clone(),
             });
         }
@@ -1019,6 +1059,7 @@ pub(crate) fn commit_typed_entries(
                         canonical_type: canonical_type.clone(),
                         rule_id: "SESSION_AGENT_ID".to_string(),
                         scope: None,
+                        namespace: None,
                         session_authority: None,
                     });
                 }
@@ -1067,8 +1108,15 @@ pub(crate) fn commit_typed_entries(
         })?;
     let mut alias_writes = Vec::new();
     for (alias_file, file_aliases) in &aliases_by_file {
-        let alias_path = add_entry::validate_alias_file(&request.registry, alias_file)?;
-        let alias_bytes = add_entry::build_alias_bytes_with_entries(
+        let generated_only = file_aliases
+            .iter()
+            .all(|alias| is_session_generated_alias(&alias.rule_id));
+        let alias_path = add_entry::validate_alias_file_allowing_missing(
+            &request.registry,
+            alias_file,
+            generated_only,
+        )?;
+        let alias_bytes = add_entry::build_alias_bytes_creating_if_missing(
             &request.registry,
             &alias_path,
             file_aliases,
@@ -1127,7 +1175,7 @@ pub(crate) fn commit_typed_entries(
         &registry_bytes,
         &alias_writes,
         !request.no_lint,
-        false,
+        true,
     )? {
         CommitOutcome::Committed(Some((lint, warnings))) => {
             output.lint = lint;
@@ -1136,6 +1184,12 @@ pub(crate) fn commit_typed_entries(
         CommitOutcome::Committed(None) | CommitOutcome::AlreadyApplied => {}
     }
     Ok(output)
+}
+
+/// Key and agent-id aliases may start their own mapping file; name aliases
+/// always go to a file that already exists.
+fn is_session_generated_alias(rule_id: &str) -> bool {
+    rule_id.starts_with("SESSION_KEY_") || rule_id == "SESSION_AGENT_ID"
 }
 
 /// Read a batch file: one JSON object per line (blank lines ignored).

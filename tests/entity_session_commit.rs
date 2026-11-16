@@ -188,10 +188,26 @@ fn session_commit_mints_exact_clusters_and_plain_lookup_resolves_variants() {
             || rows.iter().any(|row| row["reason"] == "contradiction")
     }));
 
-    let aliases: Value = serde_json::from_slice(
+    // Spellings land in the alias file; key values land in `keys.<namespace>.json`.
+    let mut all_aliases = serde_json::from_slice::<Vec<Value>>(
         &fs::read(registry.join("aliases.json")).expect("aliases registry file"),
     )
     .expect("aliases JSON");
+    for namespace in ["cik", "lei"] {
+        let key_file = registry.join(format!("keys.{namespace}.json"));
+        let keys = serde_json::from_slice::<Vec<Value>>(&fs::read(&key_file).expect("key file"))
+            .expect("key file JSON");
+        assert!(!keys.is_empty(), "{namespace} key aliases were committed");
+        for key in &keys {
+            assert_eq!(
+                key["rule_id"],
+                format!("SESSION_KEY_{}", namespace.to_uppercase())
+            );
+            assert_eq!(key["namespace"]["class"], "external_global_id");
+        }
+        all_aliases.extend(keys);
+    }
+    let aliases = Value::Array(all_aliases);
     for input in [
         "Medline Borrower, LP",
         "Mozart Borrower LP (dba Medline)",

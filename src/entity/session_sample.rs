@@ -704,6 +704,7 @@ mod tests {
                 },
             },
             authoritative_keys: Vec::new(),
+            commit_key_namespaces: Vec::new(),
             summary: Default::default(),
             clusters: vec![SessionSolveCluster {
                 cluster_id: "a".to_string(),

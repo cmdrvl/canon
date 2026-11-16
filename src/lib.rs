@@ -4722,6 +4722,7 @@ fn run_registry_export(export: &RegistryExportCli) -> Result<u8, Box<dyn Error>>
     let format = match export.format {
         RegistryExportFormatCli::DbtSeed => registry::RegistryExportFormat::DbtSeed,
         RegistryExportFormatCli::SearchIndex => registry::RegistryExportFormat::SearchIndex,
+        RegistryExportFormatCli::KeyCrosswalk => registry::RegistryExportFormat::KeyCrosswalk,
     };
     let request = registry::RegistryExportRequest {
         registry: export.registry.clone(),

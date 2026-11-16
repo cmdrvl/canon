@@ -40,6 +40,10 @@ pub struct SessionRules {
     pub version: String,
     pub key_rules: BTreeMap<String, KeyRule>,
     pub authoritative_keys: Vec<String>,
+    /// `commit.key_namespaces`: extra namespaces whose values commit writes as
+    /// key aliases although they are not authoritative.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub commit_key_namespaces: Vec<String>,
     pub tier_a_types: Vec<String>,
     pub tier_b_types: Vec<String>,
     pub tier_b_alternatives: Vec<TierBAlternative>,
@@ -181,6 +185,7 @@ fn parse_value(path: &Path, value: &Value) -> Result<(SessionRules, String), Ref
             "standalone",
             "guards",
             "incumbent_attach",
+            "commit",
         ],
         path,
         "",
@@ -272,10 +277,12 @@ fn parse_value(path: &Path, value: &Value) -> Result<(SessionRules, String), Ref
     let mint_when_authoritative_key = parse_standalone(root, path)?;
     let max_cluster_surfaces = parse_guards(root, path)?;
     let incumbent_attach_steps = parse_incumbent_attach(root, path)?;
+    let commit_key_namespaces = parse_commit(root, path, &key_rules)?;
     let rules = SessionRules {
         version,
         key_rules,
         authoritative_keys,
+        commit_key_namespaces,
         tier_a_types,
         tier_b_types,
         tier_b_alternatives,
@@ -597,6 +604,38 @@ fn parse_incumbent_attach(root: &Map<String, Value>, path: &Path) -> Result<Vec<
         "incumbent_attach.name_equivalent_steps",
         INCUMBENT_ATTACH_STEPS,
     )
+}
+
+fn parse_commit(
+    root: &Map<String, Value>,
+    path: &Path,
+    key_rules: &BTreeMap<String, KeyRule>,
+) -> Result<Vec<String>, Refusal> {
+    let Some(value) = root.get("commit") else {
+        return Ok(Vec::new());
+    };
+    let object = value.as_object().ok_or_else(|| {
+        rules_refusal(
+            path,
+            "commit",
+            "value must be a YAML mapping",
+            Some(value.clone()),
+            &["mapping"],
+        )
+    })?;
+    reject_unknown_keys(object, &["key_namespaces"], path, "commit")?;
+    let declared = key_rules.keys().map(String::as_str).collect::<Vec<_>>();
+    let mut namespaces = optional_string_list(
+        object,
+        "key_namespaces",
+        path,
+        "commit.key_namespaces",
+        &declared,
+    )?
+    .unwrap_or_default();
+    namespaces.sort();
+    namespaces.dedup();
+    Ok(namespaces)
 }
 
 fn reject_unknown_keys(

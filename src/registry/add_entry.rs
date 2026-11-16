@@ -70,6 +70,8 @@ pub(super) struct RegistryAliasWriteEntry {
     pub canonical_type: String,
     pub rule_id: String,
     pub scope: Option<IdentityScope>,
+    /// Identifier namespace recorded on the entry (key aliases only).
+    pub namespace: Option<crate::identity_scope::IdentifierNamespaceRef>,
     pub session_authority: Option<Value>,
 }
 
@@ -280,6 +282,7 @@ pub fn plan_add_entry_with_scope(
         canonical_type: canonical_type.clone(),
         rule_id: rule_id.clone(),
         scope: scope.clone(),
+        namespace: None,
         session_authority: None,
     };
     let alias_bytes = build_alias_bytes_with_entries_from_source(
@@ -785,6 +788,14 @@ fn build_alias_bytes_with_entries_from_source(
         });
         if let Some(session_authority) = &entry.session_authority {
             alias["session_authority"] = session_authority.clone();
+        }
+        if let Some(namespace) = &entry.namespace {
+            alias["namespace"] = serde_json::to_value(namespace).map_err(|error| {
+                Refusal::bad_registry(
+                    &registry.display().to_string(),
+                    &format!("Failed to serialize proposed alias namespace: {error}"),
+                )
+            })?;
         }
         if let Some(scope) = &entry.scope {
             alias["scope"] = serde_json::to_value(scope).map_err(|error| {

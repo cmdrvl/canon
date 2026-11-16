@@ -273,6 +273,9 @@ pub struct SessionCommitAttached {
 pub struct SessionCommitSkipped {
     pub cluster_id: String,
     pub reason: String,
+    /// For `key_alias_collision`: the two entries that both claim the string.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1172,6 +1175,7 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
                 .map(|entry| entry.cluster_id.clone())
                 .unwrap_or(group_key),
             reason: skipped_alias.reason,
+            detail: skipped_alias.detail,
         });
     }
     receipt_skipped.sort_by(|left, right| {

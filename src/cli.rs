@@ -1254,6 +1254,9 @@ pub enum RegistryExportFormatCli {
     /// Self-describing SQLite search artifact for serving endpoints
     #[value(name = "search-index")]
     SearchIndex,
+    /// Deterministic key-to-key CSV: one row per canonical ID, one column per key namespace
+    #[value(name = "key-crosswalk")]
+    KeyCrosswalk,
 }
 
 #[derive(Args, Debug, Clone)]

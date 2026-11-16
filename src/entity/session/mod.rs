@@ -171,6 +171,10 @@ pub struct SessionSolveArtifact {
     pub version: String,
     pub inputs: SessionSolveInputs,
     pub authoritative_keys: Vec<String>,
+    /// Non-authoritative namespaces the rule table lists under
+    /// `commit.key_namespaces`: their values are written as key aliases too.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commit_key_namespaces: Vec<String>,
     pub summary: SessionSolveSummary,
     pub clusters: Vec<SessionSolveCluster>,
     pub review: Vec<SessionSolveReview>,
@@ -639,6 +643,22 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
                 Some("A".to_string()),
                 "single_keyed".to_string(),
             )
+        } else if incumbent_ids.len() == 1
+            && member_nodes.iter().any(|node| {
+                rules.authoritative_keys.iter().any(|namespace| {
+                    node.observed_keys
+                        .get(namespace)
+                        .is_some_and(|values| !values.is_empty())
+                })
+            })
+        {
+            // The row states the existing ID's name and an authoritative key
+            // together: the ID gains the key with no new spelling needed.
+            (
+                "accepted",
+                Some("A".to_string()),
+                "incumbent_keyed".to_string(),
+            )
         } else if incumbent_ids.len() == 1 {
             (
                 "resolved_existing",
@@ -864,6 +884,7 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             registry: registry_metadata,
         },
         authoritative_keys: rules.authoritative_keys.clone(),
+        commit_key_namespaces: rules.commit_key_namespaces.clone(),
         summary,
         clusters,
         review,
@@ -1075,6 +1096,7 @@ pub fn commit(
             CommitPlanContext {
                 entity_kind: &binding.kind,
                 alias_file: binding.alias_file.as_deref().unwrap_or("aliases.json"),
+                key_file: binding.key_file.as_deref(),
                 canonical_type: binding.canonical_type.as_deref().unwrap_or(&binding.kind),
                 session_id: &manifest.session_id,
                 solve_hash: &solve_hash,
@@ -1208,6 +1230,7 @@ fn build_commit_plan(
                 skipped.push(SessionCommitSkipped {
                     cluster_id: cluster_id.clone(),
                     reason,
+                    detail: None,
                 });
             }
             continue;
@@ -1233,8 +1256,13 @@ fn build_commit_plan(
                 });
             }
         }
-        for namespace in &artifact.authoritative_keys {
-            let namespace = canonical_key_namespace(namespace);
+        let key_namespaces = artifact
+            .authoritative_keys
+            .iter()
+            .chain(artifact.commit_key_namespaces.iter())
+            .map(|namespace| canonical_key_namespace(namespace))
+            .collect::<BTreeSet<_>>();
+        for namespace in key_namespaces {
             let Some(values) = cluster.keys.get(&namespace) else {
                 continue;
             };
@@ -1259,7 +1287,10 @@ fn build_commit_plan(
                 })?;
                 if seen_inputs.insert(value.clone()) {
                     aliases.push(SessionCommitAlias {
-                        alias_file: context.alias_file.to_string(),
+                        alias_file: context
+                            .key_file
+                            .map(str::to_string)
+                            .unwrap_or_else(|| format!("keys.{namespace}.json")),
                         input: value,
                         canonical_type: context.canonical_type.to_string(),
                         rule_id: format!("SESSION_KEY_{}", namespace.to_ascii_uppercase()),
@@ -1808,6 +1839,7 @@ struct RegistryInfo {
 struct CommitPlanContext<'a> {
     entity_kind: &'a str,
     alias_file: &'a str,
+    key_file: Option<&'a str>,
     canonical_type: &'a str,
     session_id: &'a str,
     solve_hash: &'a str,
@@ -3204,6 +3236,7 @@ mod tests {
                 ),
             ]),
             authoritative_keys: vec!["cik".to_string(), "lei".to_string()],
+            commit_key_namespaces: Vec::new(),
             tier_a_types: TIER_A_TYPES
                 .iter()
                 .map(|value| (*value).to_string())
@@ -3384,6 +3417,7 @@ mod tests {
                 },
             },
             authoritative_keys: vec!["cik".to_string()],
+            commit_key_namespaces: Vec::new(),
             summary: SessionSolveSummary::default(),
             clusters: vec![
                 SessionSolveCluster {
@@ -3436,6 +3470,7 @@ mod tests {
             CommitPlanContext {
                 entity_kind: "organisation",
                 alias_file: "aliases.json",
+                key_file: None,
                 canonical_type: "organisation",
                 session_id: "session-id",
                 solve_hash: "solve-hash",
@@ -3461,6 +3496,7 @@ mod tests {
         assert_eq!(entries[0].aliases[0].rule_id, "SESSION_TIER_A");
         assert_eq!(entries[0].aliases[1].input, "111");
         assert_eq!(entries[0].aliases[1].rule_id, "SESSION_KEY_CIK");
+        assert_eq!(entries[0].aliases[1].alias_file, "keys.cik.json");
         assert_eq!(skipped.len(), 1);
         assert_eq!(skipped[0].cluster_id, "cluster-r");
         assert_eq!(skipped[0].reason, "review");
