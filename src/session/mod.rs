@@ -263,10 +263,12 @@ pub fn ingest(request: SessionIngestRequest) -> Result<SessionIngestOutput, Refu
         Err(error) if error.kind == EntityPublicationErrorKind::UncommittedGeneration => None,
         Err(error) => return Err(observation_artifact_refusal(&error.message)),
     };
-    let (mut known_rows, existing_shard) = match current.as_ref() {
+    let existing = match current.as_ref() {
         Some(snapshot) => existing_observations(snapshot)?,
-        None => (BTreeMap::new(), None),
+        None => ExistingObservations::default(),
     };
+    let known_rows = existing.rows;
+    let existing_shard = existing.shard;
 
     let input = read_observation_input(&request.observations)?;
     let mut accepted_rows = BTreeMap::new();
@@ -286,7 +288,10 @@ pub fn ingest(request: SessionIngestRequest) -> Result<SessionIngestOutput, Refu
             }
         };
 
-        if let Some(existing) = known_rows.get(&row.obs_id) {
+        if let Some(existing) = known_rows
+            .get(&row.obs_id)
+            .or(accepted_rows.get(&row.obs_id))
+        {
             if existing == &row.bytes {
                 already_present += 1;
             } else {
@@ -301,7 +306,6 @@ pub fn ingest(request: SessionIngestRequest) -> Result<SessionIngestOutput, Refu
             continue;
         }
 
-        known_rows.insert(row.obs_id.clone(), row.bytes.clone());
         accepted_rows.insert(row.obs_id, row.bytes);
     }
 
@@ -356,6 +360,12 @@ pub fn ingest(request: SessionIngestRequest) -> Result<SessionIngestOutput, Refu
 struct CanonicalObservation {
     obs_id: String,
     bytes: Vec<u8>,
+}
+
+#[derive(Debug, Default)]
+struct ExistingObservations {
+    rows: BTreeMap<String, Vec<u8>>,
+    shard: Option<String>,
 }
 
 #[derive(Debug)]
@@ -445,7 +455,6 @@ fn canonicalize_observation_line(
         )
     })?;
     let surface = ascii_trim(surface_text).to_string();
-    *surface_value = serde_json::Value::String(surface.clone());
     if surface.is_empty() {
         return Err(ObservationRowError::new(
             line_number,
@@ -467,6 +476,7 @@ fn canonicalize_observation_line(
             "surface",
         ));
     }
+    *surface_value = serde_json::Value::String(surface);
 
     for field in ["keys", "attrs", "context"] {
         validate_scalar_object(&object, field, line_number, Some(obs_id.clone()))?;
@@ -618,14 +628,16 @@ fn validate_scalar_object(
 
 fn existing_observations(
     snapshot: &crate::entity::publication::EntityPublicationSnapshot,
-) -> Result<(BTreeMap<String, Vec<u8>>, Option<String>), Refusal> {
+) -> Result<ExistingObservations, Refusal> {
     let mut rows = BTreeMap::new();
-    let mut shards = Vec::new();
+    let mut shard = None;
     for logical_path in snapshot
         .logical_paths()
         .filter(|path| path.starts_with("observations/") && path.ends_with(".jsonl"))
     {
-        shards.push(logical_path.to_string());
+        if shard.is_none() {
+            shard = Some(logical_path.to_string());
+        }
         let bytes = snapshot
             .read_logical_file(logical_path)
             .ok_or_else(|| observation_artifact_refusal("observation shard is missing"))?;
@@ -658,7 +670,7 @@ fn existing_observations(
             }
         }
     }
-    Ok((rows, shards.into_iter().next()))
+    Ok(ExistingObservations { rows, shard })
 }
 
 fn canonical_shard_bytes(rows: &BTreeMap<String, Vec<u8>>) -> Vec<u8> {
