@@ -8944,10 +8944,13 @@ fn record_lookup_misses(
     }
 
     // The source hash is of the redacted canonical mapping artifact, so it does
-    // not depend on --explicit.
+    // not depend on --explicit. Mappings and misses are put in a canonical
+    // order first: the plain artifact lists them in input order, and the inbox
+    // must not change when the same rows arrive in a different order.
+    let canonical_result = canonical_order_resolve_result(resolve_result);
     let mapping_json = output::json::emit_json_explicit_with_plain_values(
         registry_meta,
-        resolve_result,
+        &canonical_result,
         false,
         false,
     )
@@ -9026,6 +9029,31 @@ fn record_lookup_misses(
         "items_total": outcome.artifact.items.len(),
         "artifact_content_hash": outcome.artifact.artifact_content_hash,
     })))
+}
+
+/// A copy of the lookup result with mappings and misses sorted, so a digest of
+/// it does not depend on input row order.
+fn canonical_order_resolve_result(result: &ResolveResult) -> ResolveResult {
+    let mut canonical = result.clone();
+    canonical.mappings.sort_by(|left, right| {
+        left.input
+            .cmp(&right.input)
+            .then_with(|| left.canonical_id.cmp(&right.canonical_id))
+            .then_with(|| left.canonical_type.cmp(&right.canonical_type))
+            .then_with(|| left.rule_id.cmp(&right.rule_id))
+            .then_with(|| left.confidence.cmp(&right.confidence))
+    });
+    canonical
+        .unresolved
+        .sort_by(|left, right| match (&left.input, &right.input) {
+            (Some(left_input), Some(right_input)) => left_input
+                .cmp(right_input)
+                .then_with(|| left.reason.cmp(&right.reason)),
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, None) => left.reason.cmp(&right.reason),
+        });
+    canonical
 }
 
 // Internal pipeline that can return refusals

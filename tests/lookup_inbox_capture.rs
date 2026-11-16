@@ -330,3 +330,56 @@ fn shuffled_row_order_gives_a_byte_identical_inbox() {
     );
     assert_eq!(fs::read(&first).unwrap(), fs::read(&second).unwrap());
 }
+
+#[test]
+fn mixed_resolved_and_unresolved_rows_in_another_order_give_a_byte_identical_inbox() {
+    let temp = TempDir::new().unwrap();
+    let registry = temp.path().join("reg");
+    fs::create_dir(&registry).unwrap();
+    make_registry(&registry);
+    let rows = temp.path().join("rows.csv");
+
+    write_rows(
+        &rows,
+        &[
+            "Gamma Holdings",
+            "Alpha Corp",
+            "Delta Partners",
+            "Beta LLC",
+            "Epsilon Trust",
+        ],
+    );
+    let first = temp.path().join("a.inbox.json");
+    let first_run = lookup(
+        &rows,
+        &registry,
+        &inbox_flags(first.to_str().unwrap(), "run-1"),
+    );
+    assert_eq!(first_run.code, 1, "partial lookup exits 1");
+
+    write_rows(
+        &rows,
+        &[
+            "Beta LLC",
+            "Epsilon Trust",
+            "Alpha Corp",
+            "Gamma Holdings",
+            "Delta Partners",
+        ],
+    );
+    let second = temp.path().join("b.inbox.json");
+    let second_run = lookup(
+        &rows,
+        &registry,
+        &inbox_flags(second.to_str().unwrap(), "run-1"),
+    );
+    assert_eq!(second_run.code, 1, "partial lookup exits 1");
+
+    let first_bytes = fs::read(&first).unwrap();
+    let second_bytes = fs::read(&second).unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&first_bytes),
+        String::from_utf8_lossy(&second_bytes),
+        "the inbox must not depend on where resolved rows sit among the misses"
+    );
+}
