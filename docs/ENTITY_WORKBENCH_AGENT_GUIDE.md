@@ -160,6 +160,37 @@ canon entity session commit work/day-two --bump patch --emit json
 
 An accepted cluster with one incumbent ID attaches only new exact surfaces to
 that ID and reports them under `attached[]`; it does not mint a duplicate.
+
+### Keys in the registry
+
+Commit writes each accepted cluster's authoritative key values as exact aliases
+of its ID, one mapping file per namespace: the registries map's `key_file`, or
+`keys.<namespace>.json` when the map names none (created when absent). Each
+entry has rule id `SESSION_KEY_<NAMESPACE>` and an `external_global_id`
+namespace, so plain lookup of a CIK or LEI returns the canonical ID. Namespaces
+the rule table does not mark authoritative are written only when listed:
+
+```yaml
+commit:
+  key_namespaces: [ticker]
+```
+
+A row whose surface is already an ID's name and which carries an authoritative
+key is accepted as `incumbent_keyed`: the existing ID gains the key and no
+spelling or ID is added. A key value that already means a different ID (another
+namespace's value, or a name) is skipped as `key_alias_collision`; the skip's
+`detail` names both entries, the rest of the cluster is still written, and
+nothing is shadowed. A name that belongs to one ID and a key that belongs to
+another is an `incumbent_conflict` and writes nothing.
+
+```bash
+canon registry export --registry registries/organisations/ \
+  --format key-crosswalk --out crosswalk.csv
+```
+
+The crosswalk has one row per canonical ID that holds a key and one column per
+key namespace present; several values of one namespace are joined with `;` in
+sorted order. It lists only keys committed through a session.
 Registry aliases can also be attached in a separate atomic JSONL batch:
 
 ```bash
