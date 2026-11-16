@@ -61,17 +61,17 @@ use crate::cli::{
     EntityPrepareCli, EntityProfileCommand, EntityProfileInitCli, EntityProfileListCli,
     EntityProfileSubcommand, EntityPromoteCli, EntityReviewCommand, EntityReviewExportArtifact,
     EntityReviewExportCli, EntityReviewExportEmitMode, EntityReviewGroupBy, EntityReviewImportCli,
-    EntityReviewInclude, EntityReviewSubcommand, EntityRunCli, EntitySessionInitCli,
-    EntitySessionSubcommand, EntitySolveCli, EntityStreamEmitMode, EntitySubcommand, PackageCli,
-    PackagePackCli, PackageSubcommand, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
-    RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode, RegistryExportCli,
-    RegistryExportFormatCli, RegistryInitCli, RegistryLintCli, RegistryLintProfile,
-    RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli, RegistryPlainJsonEmitMode,
-    RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand, RegistryVersionBumpMode,
-    StrategyAuditCli, StrategyCommand, StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli,
-    StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli, StrategyProfileCli, StrategyPromoteCli,
-    StrategyRegisterCli, StrategyResolveCli, StrategyStatusArg, StrategySubcommand,
-    StrategyUpdateCli,
+    EntityReviewInclude, EntityReviewSubcommand, EntityRunCli, EntitySessionIngestCli,
+    EntitySessionInitCli, EntitySessionSubcommand, EntitySolveCli, EntityStreamEmitMode,
+    EntitySubcommand, PackageCli, PackagePackCli, PackageSubcommand, RegistryAddEntryCli,
+    RegistryAuditCli, RegistryBuildCli, RegistryDefaultIdSchemeCli, RegistryDiffCli,
+    RegistryEmitMode, RegistryExportCli, RegistryExportFormatCli, RegistryInitCli, RegistryLintCli,
+    RegistryLintProfile, RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli,
+    RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand,
+    RegistryVersionBumpMode, StrategyAuditCli, StrategyCommand, StrategyDeprecateCli,
+    StrategyDiffCli, StrategyExplainCli, StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli,
+    StrategyProfileCli, StrategyPromoteCli, StrategyRegisterCli, StrategyResolveCli,
+    StrategyStatusArg, StrategySubcommand, StrategyUpdateCli,
 };
 use crate::entity::runtime as entity_runtime;
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
@@ -931,6 +931,7 @@ fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
     match &command.command {
         EntitySubcommand::Session(session) => match &session.command {
             EntitySessionSubcommand::Init(init) => run_entity_session_init_command(init),
+            EntitySessionSubcommand::Ingest(ingest) => run_entity_session_ingest_command(ingest),
         },
         EntitySubcommand::Run(run) => run_entity_run_command(run),
         EntitySubcommand::Prepare(prepare) => run_entity_prepare_command(prepare),
@@ -981,6 +982,33 @@ fn run_entity_session_init_command(init: &EntitySessionInitCli) -> Result<u8, Bo
             refusal.to_canon_output(),
             true,
             matches!(init.emit, EntityEmitMode::Summary),
+        ),
+    }
+}
+
+fn run_entity_session_ingest_command(
+    ingest: &EntitySessionIngestCli,
+) -> Result<u8, Box<dyn Error>> {
+    let result = session::ingest(session::SessionIngestRequest {
+        session: ingest.session.clone(),
+        observations: ingest.observations.clone(),
+    });
+    match result {
+        Ok(output) => {
+            let summary_mode = matches!(ingest.emit, EntityEmitMode::Summary);
+            let rejected = !output.rejected.is_empty();
+            let rendered = if summary_mode {
+                output.render_summary()
+            } else {
+                serde_json::to_string(&output)?
+            };
+            emit_entity_output(&rendered, summary_mode);
+            Ok(u8::from(rejected))
+        }
+        Err(refusal) => emit_entity_refusal(
+            refusal.to_canon_output(),
+            true,
+            matches!(ingest.emit, EntityEmitMode::Summary),
         ),
     }
 }

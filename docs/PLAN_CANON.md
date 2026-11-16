@@ -157,6 +157,7 @@ canon strategy explain --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TAS
 canon strategy diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 canon entity run <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--cache-mode enabled|disabled] [--suite <DIR>] [--emit json|summary] [--no-witness]
 canon entity session init --goal <GOAL> --registry <REGISTRY_DIR> --work-dir <DIR> [--entity-kind <KIND>] [--registry-id <ID>] [--prefix <PREFIX>] [--zero-pad <N>] [--emit json|summary]
+canon entity session ingest <SESSION> <OBSERVATIONS.jsonl|-> [--emit json|summary]
 canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--suite <DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
 canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]
 canon entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json|summary]

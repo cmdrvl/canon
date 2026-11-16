@@ -1584,6 +1584,8 @@ pub struct EntitySessionCommand {
 pub enum EntitySessionSubcommand {
     /// Create a session workspace and bind it to one registry
     Init(EntitySessionInitCli),
+    /// Append observation JSONL to an evidence session, rejecting bad rows individually
+    Ingest(EntitySessionIngestCli),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1615,6 +1617,19 @@ pub struct EntitySessionInitCli {
     /// Registry default ID zero-padding width (default: 3)
     #[arg(long = "zero-pad")]
     pub zero_pad: Option<usize>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntitySessionIngestCli {
+    /// Session work directory
+    pub session: PathBuf,
+
+    /// Observation JSONL file, or '-' for stdin
+    pub observations: PathBuf,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]

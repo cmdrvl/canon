@@ -34,6 +34,26 @@ use a new `--work-dir`. If the registry already exists, `--registry-id`
 and `--prefix` are only needed when you want to check the requested registry id.
 The next session step is `canon entity session ingest`.
 
+## Ingest observations
+
+Append one observation JSON object per line to the session. The file may be
+replaced with `-` to read JSONL from stdin:
+
+```bash
+canon entity session ingest work/bdc-session observations.jsonl --emit json
+cat observations.jsonl | canon entity session ingest work/bdc-session - --emit json
+```
+
+Each row requires `obs_id`, `entity_type`, `surface`, and
+`source.channel`. `keys`, `attrs`, and `context` are optional objects whose
+values must be scalar or null. Accepted rows are stored in deterministic,
+content-addressed observation shards. A malformed row is reported with its
+line, rejection code, and `fix`, while other rows are still appended; exit 1
+means at least one row was rejected. Repeat an exact ingest to receive
+`accepted=0` and an `already_present` count without creating a new generation.
+Ingest trims only ASCII whitespace around required text fields; a surface such
+as `` `tick` `` is retained as-is.
+
 ## The loop
 
 ```text
