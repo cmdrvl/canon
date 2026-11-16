@@ -7488,7 +7488,7 @@
     {
       "name": "entity session status",
       "usage": "canon entity session status <SESSION> [--rules <RULES.yaml>] [--emit json|summary]",
-      "description": "Report where an evidence session stands in one call: counts by tier from the recorded solve, whether that solve is stale and why, top unresolved surfaces by observation frequency, commit state and the single next command; computed on demand and never stored",
+      "description": "Report where an evidence session stands in one call: counts by tier from the recorded solve, unreceipted observations, whether that solve is stale and why, top unresolved surfaces by observation frequency, commit state and the single next command; computed on demand and never stored",
       "output_mode": "mixed",
       "output_schema": "canon.entity.session.status.v1",
       "exit_codes": {

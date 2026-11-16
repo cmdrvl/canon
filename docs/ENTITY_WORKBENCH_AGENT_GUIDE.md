@@ -267,7 +267,7 @@ canon entity session status work/bdc-session --emit json
 ```
 
 `canon.entity.session.status.v1` reports the session and its registry, the log
-(observations, observation shards, evidence by type), the recorded solve
+(observations, observation shards, unreceipted observations, evidence by type), the recorded solve
 (`present`, `stale` with `stale_reasons` of `new_observations`, `new_evidence`,
 `rules_changed` or `registry_changed`, and the tier counts exactly as the solve
 recorded them), the commit state (last version, minted IDs, aliases attached,

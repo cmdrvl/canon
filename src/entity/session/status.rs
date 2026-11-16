@@ -12,6 +12,7 @@ use super::{
 };
 use crate::{
     Refusal,
+    entity::publication::EntityPublicationSnapshot,
     session::{
         SESSION_COMMIT_STREAM_ID, SESSION_EVIDENCE_STREAM_ID, SESSION_OBSERVATIONS_STREAM_ID,
         status::{
@@ -63,6 +64,7 @@ pub struct StatusEvidence {
 pub struct StatusLog {
     pub observations: usize,
     pub observation_shards: usize,
+    pub unreceipted: usize,
     pub evidence: StatusEvidence,
 }
 
@@ -147,9 +149,10 @@ impl SessionStatusOutput {
             ),
             format!("goal: {}", self.session.goal),
             format!(
-                "log: observations={} shards={} evidence={}{}",
+                "log: observations={} shards={} unreceipted={} evidence={}{}",
                 self.log.observations,
                 self.log.observation_shards,
+                self.log.unreceipted,
                 self.log.evidence.total,
                 render_by_type(&self.log.evidence.by_type),
             ),
@@ -263,6 +266,7 @@ pub fn session_status(request: SessionStatusRequest) -> Result<SessionStatusOutp
             .filter(|path| path.starts_with("observations/") && path.ends_with(".jsonl"))
             .count()
     });
+    let unreceipted = count_unreceipted_observations(observations_head.as_ref())?;
     let evidence_records = match evidence_head.as_ref() {
         Some(snapshot) => read_evidence(snapshot)?,
         None => Vec::new(),
@@ -395,6 +399,7 @@ pub fn session_status(request: SessionStatusRequest) -> Result<SessionStatusOutp
         log: StatusLog {
             observations: observations.len(),
             observation_shards,
+            unreceipted,
             evidence: StatusEvidence {
                 total: evidence_records.len(),
                 by_type: evidence_by_type,
@@ -405,6 +410,70 @@ pub fn session_status(request: SessionStatusRequest) -> Result<SessionStatusOutp
         top_unresolved,
         next_command,
     })
+}
+
+/// Count observations that do not carry both provenance anchors written by a
+/// verified artifact/receipt intake. This reads the published observation
+/// shards directly because the solver's entity-only `Observation` type drops
+/// source metadata; status itself remains read-only.
+fn count_unreceipted_observations(
+    snapshot: Option<&EntityPublicationSnapshot>,
+) -> Result<usize, Refusal> {
+    let Some(snapshot) = snapshot else {
+        return Ok(0);
+    };
+    let mut count = 0;
+    for logical_path in snapshot
+        .logical_paths()
+        .filter(|path| path.starts_with("observations/") && path.ends_with(".jsonl"))
+    {
+        let bytes = snapshot.read_logical_file(logical_path).ok_or_else(|| {
+            solve_refusal(
+                format!("Observation shard {logical_path} is missing"),
+                json!({"stream": SESSION_OBSERVATIONS_STREAM_ID, "writes_performed": false}),
+                "Repair the observation stream, then rerun canon entity session status",
+            )
+        })?;
+        let text = std::str::from_utf8(bytes).map_err(|error| {
+            solve_refusal(
+                format!("Observation shard {logical_path} is not UTF-8: {error}"),
+                json!({"stream": SESSION_OBSERVATIONS_STREAM_ID, "writes_performed": false}),
+                "Repair the observation stream, then rerun canon entity session status",
+            )
+        })?;
+        for (line_index, line) in text.lines().enumerate() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let value = serde_json::from_str::<serde_json::Value>(line).map_err(|error| {
+                solve_refusal(
+                    format!(
+                        "Observation shard {logical_path} line {} is invalid: {error}",
+                        line_index + 1
+                    ),
+                    json!({
+                        "stream": SESSION_OBSERVATIONS_STREAM_ID,
+                        "line": line_index + 1,
+                        "writes_performed": false
+                    }),
+                    "Repair the observation stream, then rerun canon entity session status",
+                )
+            })?;
+            let source = value.get("source").and_then(serde_json::Value::as_object);
+            let receipted = source
+                .and_then(|source| source.get("artifact_id"))
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|value| !value.is_empty())
+                && source
+                    .and_then(|source| source.get("receipt_digest"))
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|value| !value.is_empty());
+            if !receipted {
+                count += 1;
+            }
+        }
+    }
+    Ok(count)
 }
 
 fn registry_key(id: &str, version: &str, snapshot_hash: &str) -> String {
