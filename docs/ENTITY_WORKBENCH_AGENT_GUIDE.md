@@ -246,6 +246,17 @@ Each `aliases.jsonl` line has `canonical_id`, `alias_file`, `input`, and
 `rule_id`. Unknown IDs and aliases owned by another ID refuse the whole batch;
 aliases already owned by the requested ID are no-op skips.
 
+## Handing a commit to the publisher
+
+`session commit` writes the registry directory; canon never uploads it. The receipt tells the driver exactly what to publish. Read it per registry, under `registries[]`:
+
+- `base` and `new`: `{version, content_hash, package_digest}` before and after the commit. Keep `new.content_hash`; pass the previous one back as `--expect-base` on the next commit, and a directory that moved underneath you refuses with `base_moved` before anything is written.
+- `changed_files`: the files whose bytes differ, each with `change` (`added`, `modified`, `removed`) and both hashes. Sidecar-only changes (`_escrow/`, `_anchors/`, `relations.jsonl`) appear here too; upload these, not the whole tree.
+- `closures`: one `{outcome_ref, closure_hash, ref}` per entry the commit wrote. Store `ref` (`firms:ORG-002@1.0.1#blake3:...`) next to the downstream record; `canon registry identity --ref <ref>` later says whether it is `current` or `superseded`.
+- `export_command`: the argv that builds the served `<version>/search.sqlite` for the new version.
+
+A repeat of the same commit, or one with `nothing_to_commit`, shows `base` equal to `new` and empty `changed_files` and `closures`: there is nothing to publish.
+
 ## Where does the session stand
 
 One call answers it, without opening any artifact file:

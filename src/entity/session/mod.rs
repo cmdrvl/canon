@@ -1329,6 +1329,24 @@ fn merge_commit_outputs(
         {
             previous
         }
+        Some(mut previous)
+            if next.outcome == "nothing_to_commit" && previous.outcome == "nothing_to_commit" =>
+        {
+            for registry in next.registries {
+                if !previous
+                    .registries
+                    .iter()
+                    .any(|item| item.id == registry.id)
+                {
+                    previous.registries.push(registry);
+                }
+            }
+            previous
+                .registries
+                .sort_by(|left, right| left.id.cmp(&right.id));
+            previous.skipped = next.skipped;
+            previous
+        }
         _ => next,
     }
 }

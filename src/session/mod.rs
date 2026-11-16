@@ -316,13 +316,155 @@ pub struct SessionCommitSkipped {
     pub detail: Option<String>,
 }
 
+/// One closure a commit wrote, with the pinned reference a downstream system
+/// stores: `<registry id>:<canonical id>@<registry version>#<closure hash>`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionCommitClosureRef {
+    pub outcome_ref: String,
+    pub closure_hash: String,
+    #[serde(rename = "ref")]
+    pub reference: String,
+}
+
+/// Per registry: the counts a commit moved, plus what a driver needs to publish
+/// the directory (`base`/`new` identity, `changed_files`, `export_command`) and
+/// the closures the commit wrote.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionCommitRegistry {
     pub id: String,
     pub version_before: String,
     pub version_after: String,
     pub entry_count_before: usize,
     pub entry_count_after: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<registry::RegistryHandoffSide>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new: Option<registry::RegistryHandoffSide>,
+    #[serde(default)]
+    pub changed_files: Vec<registry::RegistryChangedFile>,
+    #[serde(default)]
+    pub export_command: Vec<String>,
+    #[serde(default)]
+    pub closures: Vec<SessionCommitClosureRef>,
+    /// Hash over this registry's `closures[]` (`outcome_ref\tclosure_hash\n`
+    /// lines in order); absent when the commit wrote none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit_closure_hash: Option<String>,
+}
+
+fn closure_ref_hash(closures: &[SessionCommitClosureRef]) -> Option<String> {
+    if closures.is_empty() {
+        return None;
+    }
+    let mut manifest = String::new();
+    for closure in closures {
+        manifest.push_str(&closure.outcome_ref);
+        manifest.push('\t');
+        manifest.push_str(&closure.closure_hash);
+        manifest.push('\n');
+    }
+    Some(hash_bytes(manifest.as_bytes()))
+}
+
+fn handoff_registry(
+    mut summary: SessionCommitRegistry,
+    registry_path: &Path,
+    base: &registry::RegistryIdentity,
+    new: &registry::RegistryIdentity,
+    mut closures: Vec<SessionCommitClosureRef>,
+) -> SessionCommitRegistry {
+    closures.sort_by(|left, right| {
+        left.outcome_ref
+            .cmp(&right.outcome_ref)
+            .then_with(|| left.closure_hash.cmp(&right.closure_hash))
+    });
+    closures.dedup();
+    summary.base = Some(base.side());
+    summary.new = Some(new.side());
+    summary.changed_files = registry::changed_files(&base.files, &new.files);
+    summary.export_command =
+        registry::search_index_export_command(registry_path, &new.registry_version);
+    summary.commit_closure_hash = closure_ref_hash(&closures);
+    summary.closures = closures;
+    summary
+}
+
+/// A registry the commit did not touch: base equals new, nothing changed.
+fn unchanged_registry(
+    registry_path: &Path,
+    identity: &registry::RegistryIdentity,
+) -> Result<SessionCommitRegistry, Refusal> {
+    let summary = current_registry_summary(
+        registry_path,
+        &identity.registry_id,
+        &identity.registry_version,
+    )?;
+    Ok(handoff_registry(
+        summary,
+        registry_path,
+        identity,
+        identity,
+        Vec::new(),
+    ))
+}
+
+/// A repeat writes nothing: base is where the registry already is.
+fn at_rest(mut registry: SessionCommitRegistry) -> SessionCommitRegistry {
+    if registry.new.is_some() {
+        registry.base = registry.new.clone();
+    }
+    registry.changed_files = Vec::new();
+    registry.closures = Vec::new();
+    registry.commit_closure_hash = None;
+    registry
+}
+
+/// A second commit step on the same registry keeps the first step's base and
+/// joins the changed files and closures.
+fn join_handoff(
+    prior: &SessionCommitRegistry,
+    mut current: SessionCommitRegistry,
+) -> SessionCommitRegistry {
+    let Some(prior_base) = &prior.base else {
+        return current;
+    };
+    current.base = Some(prior_base.clone());
+    let mut by_path = BTreeMap::<String, registry::RegistryChangedFile>::new();
+    for file in prior
+        .changed_files
+        .iter()
+        .chain(current.changed_files.iter())
+    {
+        match by_path.get_mut(&file.path) {
+            Some(existing) => {
+                existing.blake3_after = file.blake3_after.clone();
+                existing.change = match (&existing.blake3_before, &existing.blake3_after) {
+                    (None, Some(_)) => "added",
+                    (Some(_), None) => "removed",
+                    _ => "modified",
+                }
+                .to_string();
+            }
+            None => {
+                by_path.insert(file.path.clone(), file.clone());
+            }
+        }
+    }
+    current.changed_files = by_path
+        .into_values()
+        .filter(|file| file.blake3_before != file.blake3_after)
+        .collect();
+    let mut closures = prior.closures.clone();
+    closures.extend(current.closures.iter().cloned());
+    closures.sort_by(|left, right| {
+        left.outcome_ref
+            .cmp(&right.outcome_ref)
+            .then_with(|| left.closure_hash.cmp(&right.closure_hash))
+    });
+    closures.dedup();
+    current.commit_closure_hash = closure_ref_hash(&closures);
+    current.closures = closures;
+    current
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1104,6 +1246,7 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         ));
     }
 
+    let base_identity = registry::registry_identity(registry_path)?;
     let memory_change = request.memory.as_ref().is_some_and(|memory| {
         !memory.cannot_link.is_empty()
             || !memory.pending.is_empty()
@@ -1132,7 +1275,7 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             outcome: "nothing_to_commit".to_string(),
             solve_hash: request.solve_hash,
             registry: None,
-            registries: Vec::new(),
+            registries: vec![unchanged_registry(registry_path, &base_identity)?],
             minted: Vec::new(),
             attached: Vec::new(),
             skipped: request.skipped,
@@ -1270,12 +1413,21 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         request.relations.len(),
         memory_substantive,
     ) {
+        let after = registry::registry_identity(registry_path)?;
+        let summary =
+            current_registry_summary(registry_path, &after.registry_id, &after.registry_version)?;
         return Ok(SessionCommitOutput {
             version: SESSION_COMMIT_VERSION.to_string(),
             outcome: "nothing_to_commit".to_string(),
             solve_hash: request.solve_hash,
             registry: None,
-            registries: Vec::new(),
+            registries: vec![handoff_registry(
+                summary,
+                registry_path,
+                &base_identity,
+                &after,
+                Vec::new(),
+            )],
             minted: Vec::new(),
             attached: Vec::new(),
             skipped: receipt_skipped,
@@ -1290,6 +1442,11 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
     let mut minted = Vec::new();
     let mut attached = Vec::new();
     let mut minted_by_cluster = BTreeMap::new();
+    let written_groups = typed_minted
+        .iter()
+        .filter(|entry| !entry.aliases.is_empty())
+        .map(|entry| entry.group_key.clone())
+        .collect::<std::collections::BTreeSet<_>>();
     for entry in typed_minted {
         if let Some(cluster_id) = entry.group_key.strip_prefix("new:") {
             minted_by_cluster.insert(cluster_id.to_string(), entry.canonical_id.clone());
@@ -1343,6 +1500,7 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             version_after: typed.registry.version_after.clone(),
             entry_count_before: typed.registry.entry_count_before,
             entry_count_after: typed.registry.entry_count_after,
+            ..Default::default()
         },
         None => current_registry_summary(
             registry_path,
@@ -1366,9 +1524,11 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             }
         })
         .unwrap_or_default();
+    let prior_registry_entry = registries
+        .iter()
+        .find(|item| item.id == current_registry.id)
+        .cloned();
     registries.retain(|item| item.id != current_registry.id);
-    registries.push(current_registry.clone());
-    registries.sort_by(|left, right| left.id.cmp(&right.id));
     let prior_minted = prior_receipt
         .as_ref()
         .map(|receipt| receipt.minted.clone())
@@ -1405,6 +1565,54 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         &request.relations,
         &minted_by_cluster,
     )?;
+    let new_identity = registry::registry_identity(registry_path)?;
+    let mut closure_refs = Vec::new();
+    for entry in &request.entries {
+        let group_key = match entry.canonical_id.as_deref() {
+            Some(canonical_id) => format!("existing:{canonical_id}"),
+            None => format!("new:{}", entry.cluster_id),
+        };
+        if !written_groups.contains(&group_key) {
+            continue;
+        }
+        let Some(canonical_id) = entry
+            .canonical_id
+            .clone()
+            .or_else(|| minted_by_cluster.get(&entry.cluster_id).cloned())
+        else {
+            continue;
+        };
+        for closure in entry
+            .aliases
+            .iter()
+            .filter_map(|alias| alias.closure.as_ref())
+            .chain(entry.closure.as_ref())
+        {
+            closure_refs.push(SessionCommitClosureRef {
+                outcome_ref: closure.outcome_ref.clone(),
+                closure_hash: closure.closure_hash.clone(),
+                reference: registry::pinned_ref(
+                    &new_identity.registry_id,
+                    &canonical_id,
+                    &new_identity.registry_version,
+                    &closure.closure_hash,
+                ),
+            });
+        }
+    }
+    let mut current_registry = handoff_registry(
+        current_registry,
+        registry_path,
+        &base_identity,
+        &new_identity,
+        closure_refs,
+    );
+    if let Some(prior_entry) = &prior_registry_entry {
+        current_registry = join_handoff(prior_entry, current_registry);
+    }
+    let registry = Some(current_registry.clone());
+    registries.push(current_registry.clone());
+    registries.sort_by(|left, right| left.id.cmp(&right.id));
     let receipt = SessionCommitReceipt {
         version: SESSION_COMMIT_VERSION.to_string(),
         solve_hash: request.solve_hash.clone(),
@@ -1844,6 +2052,7 @@ fn current_registry_summary(
         version_after: registry_version.to_string(),
         entry_count_before: entry_count,
         entry_count_after: entry_count,
+        ..Default::default()
     })
 }
 
@@ -2176,16 +2385,21 @@ pub(crate) fn already_committed(
         return Ok(None);
     }
     let registries = if existing.registries.is_empty() {
-        vec![existing.registry.clone()]
+        vec![at_rest(existing.registry.clone())]
     } else {
-        existing.registries.clone()
+        existing
+            .registries
+            .iter()
+            .cloned()
+            .map(at_rest)
+            .collect::<Vec<_>>()
     };
     let generation_id = current_generation_id_for_stream(work_dir, SESSION_COMMIT_STREAM_ID)?;
     Ok(Some(SessionCommitOutput {
         version: SESSION_COMMIT_VERSION.to_string(),
         outcome: "already_committed".to_string(),
         solve_hash: existing.solve_hash,
-        registry: Some(existing.registry),
+        registry: Some(at_rest(existing.registry)),
         registries,
         minted: existing.minted,
         attached: existing.attached,
