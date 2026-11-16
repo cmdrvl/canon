@@ -31,7 +31,7 @@ use std::{
 
 pub const SESSION_EXPLAIN_VERSION: &str = "canon.entity.session.explain.v1";
 
-const TIER_B_TYPES: &[&str] = &["same_slot", "attribute_agreement", "name_equivalent"];
+pub(crate) const TIER_B_TYPES: &[&str] = &["same_slot", "attribute_agreement", "name_equivalent"];
 
 #[derive(Debug, Clone)]
 pub struct SessionExplainRequest {
@@ -170,11 +170,15 @@ pub struct SessionWhatIfRejected {
 }
 
 #[derive(Debug, Clone, Default)]
-struct ObservationView {
-    obs_id: String,
-    surface: String,
-    lineages: BTreeSet<String>,
-    keys: BTreeMap<String, BTreeSet<String>>,
+pub(crate) struct ObservationView {
+    pub(crate) obs_id: String,
+    pub(crate) surface: String,
+    pub(crate) lineages: BTreeSet<String>,
+    pub(crate) keys: BTreeMap<String, BTreeSet<String>>,
+    /// Scalar `context` values, trimmed.
+    pub(crate) context: BTreeMap<String, String>,
+    /// `as_of_date` / `as_of` from context or attrs, as written.
+    pub(crate) as_of: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -185,6 +189,10 @@ struct RawObservation {
     surface: String,
     #[serde(default)]
     keys: BTreeMap<String, Value>,
+    #[serde(default)]
+    attrs: BTreeMap<String, Value>,
+    #[serde(default)]
+    context: BTreeMap<String, Value>,
     #[serde(default)]
     source: RawSource,
 }
@@ -642,6 +650,11 @@ impl From<&SessionSolveRelation> for SessionExplainRelation {
 }
 
 fn read_solve(session: &Path) -> Result<SessionSolveArtifact, Refusal> {
+    read_solve_hashed(session).map(|(solve, _)| solve)
+}
+
+/// The recorded solve and the hash of its `solve/solve.json` bytes.
+pub(crate) fn read_solve_hashed(session: &Path) -> Result<(SessionSolveArtifact, String), Refusal> {
     let snapshot = open_stream(session, SESSION_SOLVE_STREAM_ID)?;
     let bytes = snapshot
         .read_logical_file("solve/solve.json")
@@ -652,13 +665,16 @@ fn read_solve(session: &Path) -> Result<SessionSolveArtifact, Refusal> {
                 "Run canon entity session solve, then rerun explain",
             )
         })?;
-    serde_json::from_slice(bytes).map_err(|error| {
-        explain_refusal(
-            format!("Session solve artifact is invalid: {error}"),
-            json!({"stream": SESSION_SOLVE_STREAM_ID, "writes_performed": false}),
-            "Run canon entity session solve, then rerun explain",
-        )
-    })
+    let solve_hash = crate::witness::hash_bytes(bytes);
+    serde_json::from_slice(bytes)
+        .map(|solve| (solve, solve_hash))
+        .map_err(|error| {
+            explain_refusal(
+                format!("Session solve artifact is invalid: {error}"),
+                json!({"stream": SESSION_SOLVE_STREAM_ID, "writes_performed": false}),
+                "Run canon entity session solve, then rerun explain",
+            )
+        })
 }
 
 fn read_manifest(session: &Path) -> Result<SessionManifest, Refusal> {
@@ -681,7 +697,7 @@ fn read_manifest(session: &Path) -> Result<SessionManifest, Refusal> {
     })
 }
 
-fn read_observations(
+pub(crate) fn read_observations(
     snapshot: &EntityPublicationSnapshot,
 ) -> Result<Vec<ObservationView>, Refusal> {
     let mut observations = BTreeMap::new();
@@ -712,6 +728,23 @@ fn read_observations(
                 )
             })?;
             let lineages = raw_lineages(&raw.source);
+            let context = raw
+                .context
+                .iter()
+                .filter_map(|(name, value)| {
+                    scalar_text(value)
+                        .filter(|value| !value.is_empty())
+                        .map(|value| (name.clone(), value))
+                })
+                .collect::<BTreeMap<_, _>>();
+            let as_of = raw
+                .context
+                .get("as_of_date")
+                .or_else(|| raw.context.get("as_of"))
+                .or_else(|| raw.attrs.get("as_of_date"))
+                .or_else(|| raw.attrs.get("as_of"))
+                .and_then(scalar_text)
+                .filter(|value| !value.is_empty());
             let keys = raw
                 .keys
                 .into_iter()
@@ -727,6 +760,8 @@ fn read_observations(
                     surface: raw.surface,
                     lineages,
                     keys,
+                    context,
+                    as_of,
                 },
             );
         }
@@ -771,7 +806,10 @@ fn read_evidence(session: &Path) -> Result<Vec<EvidenceRecord>, Refusal> {
     Ok(records.into_values().collect())
 }
 
-fn stale_reasons(session: &Path, solve: &SessionSolveArtifact) -> Result<Vec<String>, Refusal> {
+pub(crate) fn stale_reasons(
+    session: &Path,
+    solve: &SessionSolveArtifact,
+) -> Result<Vec<String>, Refusal> {
     let observations = open_stream(session, SESSION_OBSERVATIONS_STREAM_ID)?.generation_id;
     let evidence = optional_stream(session, SESSION_EVIDENCE_STREAM_ID)?.map(|s| s.generation_id);
     let mut reasons = Vec::new();
@@ -1051,7 +1089,10 @@ fn record_lineages(record: &EvidenceRecord) -> Vec<String> {
     lineages.into_iter().collect()
 }
 
-fn open_stream(session: &Path, stream: &str) -> Result<EntityPublicationSnapshot, Refusal> {
+pub(crate) fn open_stream(
+    session: &Path,
+    stream: &str,
+) -> Result<EntityPublicationSnapshot, Refusal> {
     open_current_stream_generation(session, stream).map_err(|error| {
         explain_refusal(
             format!("No committed {stream} generation is available: {error}"),
@@ -1183,7 +1224,7 @@ fn copy_tree(source: &Path, destination: &Path) -> Result<(), Refusal> {
     Ok(())
 }
 
-fn explain_refusal(
+pub(crate) fn explain_refusal(
     message: impl Into<String>,
     detail: Value,
     next_command: impl Into<String>,

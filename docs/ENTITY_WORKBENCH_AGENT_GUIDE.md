@@ -305,6 +305,47 @@ to evaluate additional observation/assertion rows in an isolated copy; it
 returns only changed edge states and rejected rows and never changes the source
 session.
 
+## What is still unresolved: the frontier
+
+`session frontier` states what the recorded solve still leaves open, as data. It
+does not choose the next action; a driver does that.
+
+```bash
+canon entity session frontier work/bdc-session --emit json
+canon entity session frontier work/bdc-session --seed-entity 'Beacon Sponsor LLC'
+canon entity session next work/bdc-session        # the same data, one line per fact
+```
+
+`canon.entity.session.frontier.v1` is bound to `solve_hash` and refuses
+(`stale_solve`, exit 2) when observations or evidence changed after the solve.
+It lists:
+
+- `coverage`: per key family (`name` or a key namespace) and source, how many
+  distinct surfaces were `attempted`, `supported` (in an accepted or
+  resolved-existing cluster), `conflicted` (in a contradiction) or `unresolved`.
+- `unresolved_keys`: authoritative key values on one surface with no partner,
+  and key values inside a contradiction.
+- `components`: review items grouped by what is missing. `needs_independent_origin`
+  (a second origin; two observations whose origins overlap count as one),
+  `needs_second_evidence_type`, `needs_authoritative_key` (a required type is
+  absent; `settles_with` names the authoritative namespaces) and `needs_human`
+  (contradictions and oversized clusters). Each group reports `items`,
+  `surfaces`, `observation_count` and `settles_with`, the evidence types that
+  would move its items up. `settles_with` is conditional on that evidence
+  existing; an empty frontier does not say the residue is irreducible.
+- `terminal`: standalone surfaces with no positive evidence and dangling evidence.
+- `history_requests`: for a review pair `same_slot` could settle, the prior
+  observations it would need: the shared context (for example deal, loan, role)
+  and the earliest as-of date as `before`. Fetch them however you like and ingest
+  them as ordinary rows.
+
+`--seed-entity` restricts all of this to one entity's neighbourhood (its cluster,
+the surfaces linked by `part_of`, and role-marked surfaces that name it) and adds
+a `seed` block: authoritative namespaces still missing per entity, spellings
+still in review, units with no `part_of` evidence, and the history needed.
+Nothing here names a command; rejected ingest rows are not persisted, so they
+are not part of the frontier.
+
 ## The loop
 
 ```text

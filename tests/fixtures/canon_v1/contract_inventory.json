@@ -833,6 +833,22 @@
       "action": "preserve"
     },
     {
+      "id": "canon entity session frontier",
+      "family": "entity",
+      "clap_path": "entity session frontier",
+      "operator_name": "entity session frontier",
+      "primary_contracts": ["canon.entity.session.frontier.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity session next",
+      "family": "entity",
+      "clap_path": "entity session next",
+      "operator_name": "entity session next",
+      "primary_contracts": ["canon.entity.session.frontier.v1"],
+      "action": "preserve"
+    },
+    {
       "id": "canon entity session sample",
       "family": "entity",
       "clap_path": "entity session sample",
@@ -1404,6 +1420,7 @@
     { "id": "canon.entity.session.commit.v1", "family": "entity", "action": "preserve" },
     { "id": "canon.entity.session.status.v1", "family": "entity", "action": "preserve" },
     { "id": "canon.entity.session.explain.v1", "family": "entity", "action": "preserve" },
+    { "id": "canon.entity.session.frontier.v1", "family": "entity", "action": "preserve" },
     { "id": "canon.entity.session.sample.v1", "family": "entity", "action": "preserve" },
     { "id": "canon.entity.session.entity-types.v1", "family": "entity", "action": "preserve" },
     { "id": "canon.entity.session.relations.v1", "family": "entity", "action": "preserve" },

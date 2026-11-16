@@ -61,6 +61,8 @@
       "canon entity session commit <SESSION> (--next-version <VER>|--bump patch|minor|major) [--expect-base <HASH>] [--emit json|summary]",
       "canon entity session status <SESSION> [--rules <RULES.yaml>] [--emit json|summary]",
       "canon entity session explain <SESSION> <OBS_ID|SURFACE|cluster:CLUSTER_ID> [--emit json|summary]",
+      "canon entity session frontier <SESSION> [--seed-entity <SURFACE_OR_ID>] [--emit json|summary]",
+      "canon entity session next <SESSION> [--seed-entity <SURFACE_OR_ID>]",
       "canon entity session sample <SESSION> [--stratum tier_a|tier_b|tier_c|standalone|neighbourhood] [--count <N>] [--seed <SEED>] [--entity-type <TYPE>] [--blind] [--seed-entity <SURFACE_OR_ID>] [--score <LABELS.jsonl>] [--emit jsonl|json|summary]",
       "canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY_DIR> --work-dir <DIR>",
       "canon entity index build <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit json|summary]",
@@ -7622,6 +7624,133 @@
       "next_command": "canon entity session explain <SESSION> <OBS_ID|SURFACE|cluster:CLUSTER_ID> --emit json",
       "recovery": {
         "next_command": "Run canon entity session status <SESSION> --emit json",
+        "refusal_exit_code": 2
+      }
+    },
+    {
+      "name": "entity session frontier",
+      "usage": "canon entity session frontier <SESSION> [--seed-entity <SURFACE_OR_ID>] [--emit json|summary]",
+      "description": "State what the recorded solve still leaves unresolved as data: coverage per key family and source, unresolved keys, review items grouped by missing condition with the evidence types that would settle each, terminal rows, and the prior observations a same_slot would need; bound to a current solve",
+      "output_mode": "mixed",
+      "output_schema": "canon.entity.session.frontier.v1",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads the committed session observations and solve without changing them",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "entity read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": true,
+        "writes_registry_files": false,
+        "writes_work_dir": false,
+        "writes_output_files": false,
+        "uses_network": false,
+        "appends_witness_ledger": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "frontier emitted; the JSON is bound to solve_hash",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / the solve is stale, the seed entity is absent, or session artifacts are unreadable",
+          "domain": "error"
+        }
+      },
+      "options": [
+        {
+          "name": "session",
+          "type": "directory_path",
+          "required": true,
+          "position": 0,
+          "description": "Session work directory"
+        },
+        {
+          "name": "seed_entity",
+          "flag": "--seed-entity",
+          "type": "string",
+          "description": "Restrict the frontier to one entity's neighbourhood: a surface or canonical id"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json or summary"
+        }
+      ],
+      "next_command": "canon entity session frontier <SESSION> --emit json",
+      "recovery": {
+        "next_command": "Run canon entity session solve <SESSION> --rules <RULES.yaml>, then rerun",
+        "refusal_exit_code": 2
+      }
+    },
+    {
+      "name": "entity session next",
+      "usage": "canon entity session next <SESSION> [--seed-entity <SURFACE_OR_ID>]",
+      "description": "Plain rendering of the session frontier, one line per group, coverage row, unresolved key, terminal row and history request; the same data as frontier --emit summary",
+      "output_mode": "mixed",
+      "output_schema": "canon.entity.session.frontier.v1",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads the committed session observations and solve without changing them",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "entity read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": true,
+        "writes_registry_files": false,
+        "writes_work_dir": false,
+        "writes_output_files": false,
+        "uses_network": false,
+        "appends_witness_ledger": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "frontier rendered as text",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / the solve is stale, the seed entity is absent, or session artifacts are unreadable",
+          "domain": "error"
+        }
+      },
+      "options": [
+        {
+          "name": "session",
+          "type": "directory_path",
+          "required": true,
+          "position": 0,
+          "description": "Session work directory"
+        },
+        {
+          "name": "seed_entity",
+          "flag": "--seed-entity",
+          "type": "string",
+          "description": "Restrict the frontier to one entity's neighbourhood: a surface or canonical id"
+        }
+      ],
+      "next_command": "canon entity session next <SESSION>",
+      "recovery": {
+        "next_command": "Run canon entity session solve <SESSION> --rules <RULES.yaml>, then rerun",
         "refusal_exit_code": 2
       }
     },

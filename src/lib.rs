@@ -948,6 +948,14 @@ fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
             EntitySessionSubcommand::Explain(explain) => {
                 run_entity_session_explain_command(explain)
             }
+            EntitySessionSubcommand::Frontier(frontier) => run_entity_session_frontier_command(
+                &frontier.session,
+                frontier.seed_entity.clone(),
+                matches!(frontier.emit, EntityEmitMode::Summary),
+            ),
+            EntitySessionSubcommand::Next(next) => {
+                run_entity_session_frontier_command(&next.session, next.seed_entity.clone(), true)
+            }
             EntitySessionSubcommand::Sample(sample) => run_entity_session_sample_command(sample),
             EntitySessionSubcommand::Rules(rules) => run_entity_session_rules_command(rules),
         },
@@ -1204,6 +1212,30 @@ fn run_entity_session_solve_command(solve: &EntitySessionSolveCli) -> Result<u8,
             true,
             matches!(solve.emit, EntityEmitMode::Summary),
         ),
+    }
+}
+
+fn run_entity_session_frontier_command(
+    session: &Path,
+    seed_entity: Option<String>,
+    summary_mode: bool,
+) -> Result<u8, Box<dyn Error>> {
+    let result =
+        entity::session_frontier::frontier(entity::session_frontier::SessionFrontierRequest {
+            session: session.to_path_buf(),
+            seed_entity,
+        });
+    match result {
+        Ok(output) => {
+            let rendered = if summary_mode {
+                output.render_summary()
+            } else {
+                serde_json::to_string(&output)?
+            };
+            emit_entity_output(&rendered, summary_mode);
+            Ok(0)
+        }
+        Err(refusal) => emit_entity_refusal(refusal.to_canon_output(), true, summary_mode),
     }
 }
 

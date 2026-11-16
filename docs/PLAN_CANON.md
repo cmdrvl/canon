@@ -168,6 +168,8 @@ canon entity session rules validate <RULES.yaml> [--emit json|summary]
 canon entity session commit <SESSION> (--next-version <VER>|--bump patch|minor|major) [--expect-base <HASH>] [--emit json|summary]
 canon entity session status <SESSION> [--rules <RULES.yaml>] [--emit json|summary]
 canon entity session explain <SESSION> <OBS_ID|SURFACE|cluster:CLUSTER_ID> [--emit json|summary]
+canon entity session frontier <SESSION> [--seed-entity <SURFACE_OR_ID>] [--emit json|summary]
+canon entity session next <SESSION> [--seed-entity <SURFACE_OR_ID>]
 canon entity session sample <SESSION> [--stratum tier_a|tier_b|tier_c|standalone|neighbourhood] [--count <N>] [--seed <SEED>] [--entity-type <TYPE>] [--blind] [--seed-entity <SURFACE_OR_ID>] [--score <LABELS.jsonl>] [--emit jsonl|json|summary]
 canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--suite <DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
 canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]
@@ -300,6 +302,12 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - `canon entity session commit ... --expect-base <content_hash>` (`kind=hash,kind=hash` per registry) refuses with `base_moved`, naming expected and actual, before any write when the directory's current `content_hash` differs; a solve already committed is an exact repeat and is not refused
 - the `canon.entity.session.commit.v1` receipt hands the driver what to publish, in each `registries[]` entry (a commit spans several registries, so the blocks are per registry): `base` and `new` (`{version, content_hash, package_digest}` before and after), `changed_files` (`{path, change, blake3_before, blake3_after}` for exactly the files whose bytes differ, sidecar-only changes included), `closures` (`{outcome_ref, closure_hash, ref}` for the entries this commit wrote, `ref` being the pinned reference above), `commit_closure_hash` over them, and `export_command`, the argv that builds `<version>/search.sqlite`; the stored receipt and the CLI output carry the same blocks; `nothing_to_commit` and `already_committed` report `base` equal to `new`, `changed_files: []` and `closures: []`
 - reads only; canon uploads, syncs and publishes nothing
+
+`canon entity session frontier <SESSION> [--seed-entity <SURFACE_OR_ID>] [--emit json|summary]` and `canon entity session next <SESSION> [--seed-entity <SURFACE_OR_ID>]`
+- `canon.entity.session.frontier.v1`, bound to `solve_hash`, refuses (`stale_solve`) when the solve is stale; reads only, offline
+- `coverage[{key_family, source, attempted, supported, conflicted, unresolved}]`, `unresolved_keys[{namespace, value, surfaces, sources}]`, `components[{group_id, missing, settles_with, items, surfaces, observation_count}]` grouped by `needs_authoritative_key`, `needs_second_evidence_type`, `needs_independent_origin` and `needs_human` (the first three are the solve's `missing` values), `terminal[{reason, count}]`, and `history_requests[{group_id, need: prior_observations, scope, before, settles_with}]`; order is by group id, no score or rank; no field names a command
+- `--seed-entity` restricts the frontier to the seed's neighbourhood and adds `seed{unresolved_keys, unresolved_spellings, unresolved_units, history_requests}`
+- `next` is the same data rendered as plain lines (equal to `frontier --emit summary`)
 
 `canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary]`
 - verifies an agent-friendly id (`<kind>_` plus a 10-symbol body and 2 check symbols) before any lookup; every single-symbol substitution and adjacent swap is refused

@@ -1684,6 +1684,10 @@ pub enum EntitySessionSubcommand {
     Status(EntitySessionStatusCli),
     /// Explain a session observation, surface, or cluster from the recorded solve
     Explain(EntitySessionExplainCli),
+    /// State what the session still leaves unresolved, and the evidence kinds that would settle each part
+    Frontier(EntitySessionFrontierCli),
+    /// Plain rendering of the session frontier (same as frontier --emit summary)
+    Next(EntitySessionNextCli),
     /// Draw a deterministic tier sample or score operator labels
     Sample(EntitySessionSampleCli),
     /// Initialize or validate the deterministic session rule table
@@ -1863,6 +1867,30 @@ pub struct EntitySessionExplainCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: EntityEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntitySessionFrontierCli {
+    /// Session work directory
+    pub session: PathBuf,
+
+    /// Restrict the frontier to one entity's neighbourhood: a surface or canonical id
+    #[arg(long = "seed-entity")]
+    pub seed_entity: Option<String>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntitySessionNextCli {
+    /// Session work directory
+    pub session: PathBuf,
+
+    /// Restrict the frontier to one entity's neighbourhood: a surface or canonical id
+    #[arg(long = "seed-entity")]
+    pub seed_entity: Option<String>,
 }
 
 #[derive(Args, Debug, Clone)]
