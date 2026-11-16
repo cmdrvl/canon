@@ -94,6 +94,8 @@ struct EntityRunExecution {
     candidate_pairs: u64,
 }
 
+type SessionReviewObservationIndex = BTreeMap<String, Vec<(String, String)>>;
+
 fn entity_index_cache_mode(mode: EntityCacheModeArg) -> entity::index::EntityIndexCacheMode {
     match mode {
         EntityCacheModeArg::Enabled => entity::index::EntityIndexCacheMode::Enabled,
@@ -3976,7 +3978,7 @@ fn read_session_solve_artifact(
 
 fn session_review_observation_index(
     session: &Path,
-) -> Result<BTreeMap<String, Vec<(String, String)>>, Box<CanonOutput>> {
+) -> Result<SessionReviewObservationIndex, Box<CanonOutput>> {
     let snapshot = entity::publication::open_current_stream_generation(
         session,
         crate::session::SESSION_OBSERVATIONS_STREAM_ID,
