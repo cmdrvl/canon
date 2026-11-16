@@ -10,6 +10,7 @@ use crate::{
         EntityPublicationRequest, EntityPublicationSnapshot, EntityPublicationUpstreamRef,
         open_current_stream_generation, publish_stream_patch,
     },
+    keys::KeyNamespace,
     registry, registry_lint,
 };
 use serde::{Deserialize, Serialize};
@@ -90,12 +91,25 @@ pub struct SessionIngestRejection {
     pub fix: String,
 }
 
+/// A key value that failed its namespace check at ingest. The key is dropped
+/// from the stored observation; the observation itself is still ingested.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SessionKeyWarning {
+    pub line: usize,
+    pub obs_id: String,
+    pub namespace: String,
+    pub value: String,
+    pub reason: String,
+    pub fix: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SessionIngestOutput {
     pub version: String,
     pub accepted: usize,
     pub already_present: usize,
     pub rejected: Vec<SessionIngestRejection>,
+    pub key_warnings: Vec<SessionKeyWarning>,
     pub shard: Option<String>,
     pub generation_id: Option<String>,
 }
@@ -241,10 +255,11 @@ impl SessionCommitOutput {
 impl SessionIngestOutput {
     pub fn render_summary(&self) -> String {
         format!(
-            "accepted={} already_present={} rejected={} shard={} generation={}",
+            "accepted={} already_present={} rejected={} key_warnings={} shard={} generation={}",
             self.accepted,
             self.already_present,
             self.rejected.len(),
+            self.key_warnings.len(),
             self.shard.as_deref().unwrap_or("<none>"),
             self.generation_id.as_deref().unwrap_or("<none>"),
         )
@@ -422,19 +437,22 @@ pub fn ingest(request: SessionIngestRequest) -> Result<SessionIngestOutput, Refu
     let mut accepted_rows = BTreeMap::new();
     let mut already_present = 0;
     let mut rejected = Vec::new();
+    let mut key_warnings = Vec::new();
 
     for (line_index, line) in input.lines().enumerate() {
         let line_number = line_index + 1;
         if line.trim().is_empty() {
             continue;
         }
-        let row = match canonicalize_observation_line(line, line_number) {
+        let mut row = match canonicalize_observation_line(line, line_number) {
             Ok(row) => row,
             Err(error) => {
                 rejected.push(error.into_rejection());
                 continue;
             }
         };
+
+        key_warnings.append(&mut row.key_warnings);
 
         if let Some(existing) = known_rows
             .get(&row.obs_id)
@@ -463,6 +481,7 @@ pub fn ingest(request: SessionIngestRequest) -> Result<SessionIngestOutput, Refu
             accepted: 0,
             already_present,
             rejected,
+            key_warnings,
             shard: existing_shard,
             generation_id: current.map(|snapshot| snapshot.generation_id),
         });
@@ -499,6 +518,7 @@ pub fn ingest(request: SessionIngestRequest) -> Result<SessionIngestOutput, Refu
         accepted: accepted_rows.len(),
         already_present,
         rejected,
+        key_warnings,
         shard: Some(logical_path),
         generation_id: Some(receipt.generation_id),
     })
@@ -913,6 +933,7 @@ fn stale_solve_refusal(field: &str, expected: &str, actual: Option<&str>) -> Ref
 struct CanonicalObservation {
     obs_id: String,
     bytes: Vec<u8>,
+    key_warnings: Vec<SessionKeyWarning>,
 }
 
 #[derive(Debug, Default)]
@@ -1504,6 +1525,7 @@ fn canonicalize_observation_line(
     for field in ["keys", "attrs", "context"] {
         validate_scalar_object(&object, field, line_number, Some(obs_id.clone()))?;
     }
+    let key_warnings = canonicalize_observation_keys(&mut object, line_number, &obs_id);
 
     let source = object.get_mut("source").ok_or_else(|| {
         ObservationRowError::new(
@@ -1574,7 +1596,53 @@ fn canonicalize_observation_line(
             "valid JSON object per line",
         )
     })?;
-    Ok(CanonicalObservation { obs_id, bytes })
+    Ok(CanonicalObservation {
+        obs_id,
+        bytes,
+        key_warnings,
+    })
+}
+
+/// Validate each `keys` value against its namespace (`crate::keys`). A valid
+/// key is stored in canonical form (so padded and unpadded CIKs agree); a key
+/// that fails is removed from the observation and reported. Null and boolean
+/// values are left untouched.
+fn canonicalize_observation_keys(
+    object: &mut Map<String, Value>,
+    line_number: usize,
+    obs_id: &str,
+) -> Vec<SessionKeyWarning> {
+    let mut warnings = Vec::new();
+    let Some(Value::Object(keys)) = object.get_mut("keys") else {
+        return warnings;
+    };
+    let mut dropped = Vec::new();
+    for (namespace, value) in keys.iter_mut() {
+        let text = match value {
+            Value::String(text) => text.clone(),
+            Value::Number(number) => number.to_string(),
+            _ => continue,
+        };
+        let key_namespace = KeyNamespace::from_name(namespace);
+        match key_namespace.canonicalise(&text) {
+            Ok(canonical) => *value = Value::String(canonical),
+            Err(rejection) => {
+                warnings.push(SessionKeyWarning {
+                    line: line_number,
+                    obs_id: obs_id.to_string(),
+                    namespace: namespace.clone(),
+                    value: text,
+                    reason: rejection.reason().to_string(),
+                    fix: format!("keys.{namespace}: {}", key_namespace.expected_form()),
+                });
+                dropped.push(namespace.clone());
+            }
+        }
+    }
+    for namespace in dropped {
+        keys.remove(&namespace);
+    }
+    warnings
 }
 
 fn required_trimmed_string(
