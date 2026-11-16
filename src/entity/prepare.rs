@@ -1079,7 +1079,7 @@ fn composite_surface_key(
     Ok(format!("{}:{encoded}", observation.profile_id))
 }
 
-pub(crate) fn prepare_surface_records_for_loaded_profile(
+pub(crate) fn prepare_surface_records_for_loaded_profile_tolerant(
     rows: &Path,
     loaded_profile: &LoadedPrepareProfile,
     observations: &[PreparedInputObservation],
@@ -1088,7 +1088,7 @@ pub(crate) fn prepare_surface_records_for_loaded_profile(
         rows,
         loaded_profile,
         observations,
-        false,
+        true,
     )
     .map(|output| output.surfaces)
 }
@@ -1173,17 +1173,35 @@ fn execute_prepare_profile_package(
         .map_err(profile_package_refusal)
 }
 
-pub(crate) fn prepare_sampled_surface_records_for_loaded_profile(
+pub(crate) fn prepare_sampled_surface_records_for_loaded_profile_tolerant(
     rows: &Path,
     loaded_profile: &LoadedPrepareProfile,
     observations: &[PreparedInputObservation],
     sampled_observations: &[PreparedInputObservation],
 ) -> Result<Vec<PreparedSurfaceRecord>, Refusal> {
+    prepare_sampled_surface_records_for_loaded_profile_with_rejections(
+        rows,
+        loaded_profile,
+        observations,
+        sampled_observations,
+        true,
+    )
+    .map(|output| output.surfaces)
+}
+
+fn prepare_sampled_surface_records_for_loaded_profile_with_rejections(
+    rows: &Path,
+    loaded_profile: &LoadedPrepareProfile,
+    observations: &[PreparedInputObservation],
+    sampled_observations: &[PreparedInputObservation],
+    collect_rejections: bool,
+) -> Result<PrepareSurfaceOutput, Refusal> {
     let Some(package) = loaded_profile.package.as_ref() else {
-        return prepare_surface_records_for_loaded_profile(
+        return prepare_surface_records_for_loaded_profile_with_rejections(
             rows,
             loaded_profile,
             sampled_observations,
+            collect_rejections,
         );
     };
     let mut execution =
@@ -1202,7 +1220,11 @@ pub(crate) fn prepare_sampled_surface_records_for_loaded_profile(
         .filter(|(_, observation)| selected_rows.contains(&observation.row_number))
         .map(|(record, _)| record)
         .collect();
-    prepare_surface_records_from_profile_execution(sampled_observations, &execution)
+    prepare_surface_records_from_profile_execution_with_rejections(
+        sampled_observations,
+        &execution,
+        collect_rejections,
+    )
 }
 
 fn profile_record_format_for_path(path: &Path) -> Result<EntityProfileRecordInputFormat, Refusal> {

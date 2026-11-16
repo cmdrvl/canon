@@ -20,8 +20,9 @@ use crate::{
         prepare::{
             LoadedPrepareProfile, PrepareInputContract, PreparedAnchor, PreparedInputObservation,
             PreparedSurface, PreparedSurfaceRecord, load_prepare_profile_with_hash,
-            prepare_contract_for_loaded_profile, prepare_surface_records_for_loaded_profile,
-            project_prepare_path,
+            prepare_contract_for_loaded_profile,
+            prepare_sampled_surface_records_for_loaded_profile_tolerant,
+            prepare_surface_records_for_loaded_profile_tolerant, project_prepare_path,
         },
     },
     namekit::ngram::NgramConfig,
@@ -370,13 +371,12 @@ fn prepare_preflight_inputs(
     let contract = prepare_contract_for_loaded_profile(&loaded_profile)?;
     let observations = project_prepare_path(request.rows, &contract)?;
     let sampled_observations = sample_observations(&observations, request.sample_pct)?;
-    let sampled_surfaces =
-        crate::entity::prepare::prepare_sampled_surface_records_for_loaded_profile(
-            request.rows,
-            &loaded_profile,
-            &observations,
-            &sampled_observations,
-        )?;
+    let sampled_surfaces = prepare_sampled_surface_records_for_loaded_profile_tolerant(
+        request.rows,
+        &loaded_profile,
+        &observations,
+        &sampled_observations,
+    )?;
     Ok(PreparedPreflightInputs {
         loaded_profile,
         contract,
@@ -390,7 +390,7 @@ fn full_surface_count(rows: &Path, prepared: &PreparedPreflightInputs) -> Result
     if prepared.observations.len() == prepared.sampled_observations.len() {
         return Ok(prepared.sampled_surfaces.len() as u64);
     }
-    Ok(prepare_surface_records_for_loaded_profile(
+    Ok(prepare_surface_records_for_loaded_profile_tolerant(
         rows,
         &prepared.loaded_profile,
         &prepared.observations,

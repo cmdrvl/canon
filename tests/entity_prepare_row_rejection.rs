@@ -142,13 +142,7 @@ fn prepare_missing_mapped_column_remains_a_whole_run_refusal() {
 fn entity_run_carries_rejected_row_count_and_summary_guidance() {
     let temp = tempfile::tempdir().expect("tempdir");
     let rows = temp.path().join("run.csv");
-    let fixture = Path::new("tests/fixtures/entity/cmbs/small_book/observations.csv");
-    let mut contents = fs::read_to_string(fixture).expect("CMBS fixture");
-    if !contents.ends_with('\n') {
-        contents.push('\n');
-    }
-    contents.push_str("bad,deal-bad,loan-bad,property-bad,`,[],[]\n");
-    fs::write(&rows, contents).expect("run rows");
+    write_cmbs_csv(&rows, true);
 
     let work_dir = temp.path().join("run-work");
     let result = run_entity_workbench(EntityRunRequest {
