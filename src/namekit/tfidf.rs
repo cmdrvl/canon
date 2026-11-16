@@ -9,7 +9,10 @@ use crate::namekit::{
     NAMEKIT_SCORE_SCALE, NamekitReason, ReasonCode, ReasonStage, SourceTechnique,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+};
 
 pub const NAMEKIT_TFIDF_VERSION: &str = "canon_namekit_tfidf.v0";
 pub const TF_UNITS_PER_OCCURRENCE: u32 = 1_000;
@@ -148,6 +151,8 @@ pub struct SparseTfidfModel {
     pub rows: Vec<TfidfSparseRow>,
     pub postings: Vec<TfidfPosting>,
     pub posting_slices: Vec<TfidfPostingSlice>,
+    #[serde(skip)]
+    query_workspace: RefCell<TfidfQueryWorkspace>,
 }
 
 impl SparseTfidfModel {
@@ -193,6 +198,7 @@ impl SparseTfidfModel {
             rows,
             postings,
             posting_slices,
+            query_workspace: RefCell::new(TfidfQueryWorkspace::default()),
         }
     }
 
@@ -221,16 +227,28 @@ impl SparseTfidfModel {
     }
 
     pub fn top_k_for_ordinal(&self, query_ordinal: usize, config: TopKConfig) -> TfidfTopKResult {
+        let mut workspace = self.query_workspace.borrow_mut();
+        self.top_k_for_ordinal_with_workspace(query_ordinal, config, &mut workspace)
+    }
+
+    #[doc(hidden)]
+    pub fn top_k_for_ordinal_with_workspace(
+        &self,
+        query_ordinal: usize,
+        config: TopKConfig,
+        workspace: &mut TfidfQueryWorkspace,
+    ) -> TfidfTopKResult {
         let query = &self.rows[query_ordinal];
-        let mut accumulators: BTreeMap<usize, CandidateAccumulator> = BTreeMap::new();
+        workspace.reset(self.rows.len());
 
         for query_term in &query.terms {
             for posting in self.postings_for_term(query_term.term_id) {
+                workspace.stats.postings_visited += 1;
                 let candidate_ordinal = posting.surface_ordinal as usize;
                 if candidate_ordinal == query_ordinal {
                     continue;
                 }
-                let accumulator = accumulators.entry(candidate_ordinal).or_default();
+                let accumulator = workspace.accumulator_for(candidate_ordinal);
                 accumulator.dot_units +=
                     u128::from(query_term.weight_units) * u128::from(posting.weight_units);
                 accumulator.shared_term_count += 1;
@@ -244,32 +262,48 @@ impl SparseTfidfModel {
             }
         }
 
-        let uncapped_candidate_count = accumulators.len();
-        let mut candidates = accumulators
-            .into_iter()
-            .map(|(candidate_ordinal, accumulator)| {
+        let uncapped_candidate_count = workspace.touched.len();
+        for &candidate_ordinal in &workspace.touched {
+            let accumulator = &mut workspace.accumulators[candidate_ordinal];
+            accumulator.score_units =
+                cosine_score_units(query, &self.rows[candidate_ordinal], accumulator.dot_units);
+        }
+        let cap = config.candidate_cap.unwrap_or(usize::MAX);
+        let capped_candidate_count = uncapped_candidate_count.saturating_sub(cap);
+        let limit = cap.min(config.k);
+        workspace.ranked_ordinals.clear();
+        workspace.ranked_ordinals.extend(&workspace.touched);
+        if workspace.ranked_ordinals.len() > limit {
+            if limit > 0 {
+                workspace
+                    .ranked_ordinals
+                    .select_nth_unstable_by(limit, |left, right| {
+                        model_candidate_cmp(*left, *right, &self.rows, &workspace.accumulators)
+                    });
+            }
+            workspace.ranked_ordinals.truncate(limit);
+        }
+        workspace.ranked_ordinals.sort_unstable_by(|left, right| {
+            model_candidate_cmp(*left, *right, &self.rows, &workspace.accumulators)
+        });
+        workspace.stats.candidates_materialized = workspace.ranked_ordinals.len();
+
+        let candidates = workspace
+            .ranked_ordinals
+            .iter()
+            .map(|&candidate_ordinal| {
                 let candidate = &self.rows[candidate_ordinal];
-                let score_units = cosine_score_units(query, candidate, accumulator.dot_units);
+                let accumulator = &workspace.accumulators[candidate_ordinal];
                 TfidfTopKCandidate {
                     surface_id: candidate.surface_id.clone(),
                     normalized_key: candidate.normalized_key.clone(),
-                    score_units,
+                    score_units: accumulator.score_units,
                     evidence_class: accumulator.evidence_class(),
                     shared_term_count: accumulator.shared_term_count,
                     max_shared_idf_units: accumulator.max_shared_idf_units,
                 }
             })
-            .collect::<Vec<_>>();
-        sort_topk_candidates(&mut candidates);
-
-        let cap = config.candidate_cap.unwrap_or(usize::MAX);
-        let capped_candidate_count = uncapped_candidate_count.saturating_sub(cap);
-        if candidates.len() > cap {
-            candidates.truncate(cap);
-        }
-        if candidates.len() > config.k {
-            candidates.truncate(config.k);
-        }
+            .collect();
 
         TfidfTopKResult {
             query_surface_id: query.surface_id.clone(),
@@ -371,6 +405,20 @@ pub struct TfidfTopKResult {
     pub diagnostics: TfidfTopKDiagnostics,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TfidfQueryStats {
+    pub postings_visited: usize,
+    pub candidates_materialized: usize,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TfidfQueryWorkspace {
+    accumulators: Vec<CandidateAccumulator>,
+    touched: Vec<usize>,
+    ranked_ordinals: Vec<usize>,
+    stats: TfidfQueryStats,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TfidfConfig {
     pub tf_cap: u32,
@@ -442,6 +490,8 @@ pub struct SparseTfidfIndex {
     pub rows: Vec<SparseTfidfIndexRow>,
     pub postings: Vec<SparseTfidfPosting>,
     pub term_offsets: Vec<usize>,
+    #[serde(skip)]
+    query_workspace: RefCell<TfidfQueryWorkspace>,
 }
 
 pub fn build_sparse_tfidf(docs: &[(&str, &[&str])]) -> SparseTfidfIndex {
@@ -503,6 +553,7 @@ pub fn build_sparse_tfidf_with_config(
         rows,
         postings,
         term_offsets,
+        query_workspace: RefCell::new(TfidfQueryWorkspace::default()),
     }
 }
 
@@ -519,17 +570,19 @@ pub fn top_k_for_surface(
         return Vec::new();
     };
     let query = &index.rows[query_ordinal];
-    let mut accumulators = BTreeMap::<usize, CandidateAccumulator>::new();
+    let mut workspace = index.query_workspace.borrow_mut();
+    workspace.reset(index.rows.len());
 
     for query_term in &query.terms {
         let start = index.term_offsets[query_term.term_id as usize];
         let end = index.term_offsets[query_term.term_id as usize + 1];
         for posting in &index.postings[start..end] {
+            workspace.stats.postings_visited += 1;
             let candidate_ordinal = posting.surface_ordinal as usize;
             if candidate_ordinal == query_ordinal {
                 continue;
             }
-            let accumulator = accumulators.entry(candidate_ordinal).or_default();
+            let accumulator = workspace.accumulator_for(candidate_ordinal);
             accumulator.dot_units +=
                 u128::from(query_term.weight_units) * u128::from(posting.weight_units);
             accumulator.shared_term_count += 1;
@@ -543,36 +596,57 @@ pub fn top_k_for_surface(
         }
     }
 
-    let mut candidates = accumulators
-        .into_iter()
-        .map(|(candidate_ordinal, accumulator)| {
+    for &candidate_ordinal in &workspace.touched {
+        let accumulator = &mut workspace.accumulators[candidate_ordinal];
+        accumulator.score_units = compat_cosine_score_units(
+            query,
+            &index.rows[candidate_ordinal],
+            accumulator.dot_units,
+            index.config.score_cap,
+        );
+    }
+    workspace.ranked_ordinals.clear();
+    workspace.ranked_ordinals.extend(&workspace.touched);
+    if workspace.ranked_ordinals.len() > k {
+        if k > 0 {
+            workspace
+                .ranked_ordinals
+                .select_nth_unstable_by(k, |left, right| {
+                    compat_candidate_cmp(*left, *right, &index.rows, &workspace.accumulators)
+                });
+        }
+        workspace.ranked_ordinals.truncate(k);
+    }
+    workspace.ranked_ordinals.sort_unstable_by(|left, right| {
+        compat_candidate_cmp(*left, *right, &index.rows, &workspace.accumulators)
+    });
+    workspace.stats.candidates_materialized = workspace.ranked_ordinals.len();
+
+    workspace
+        .ranked_ordinals
+        .iter()
+        .map(|&candidate_ordinal| {
             let candidate = &index.rows[candidate_ordinal];
+            let accumulator = &workspace.accumulators[candidate_ordinal];
             TfidfTopKCandidate {
                 surface_id: candidate.surface_id.clone(),
                 normalized_key: candidate.surface_id.clone(),
-                score_units: compat_cosine_score_units(
-                    query,
-                    candidate,
-                    accumulator.dot_units,
-                    index.config.score_cap,
-                ),
+                score_units: accumulator.score_units,
                 evidence_class: accumulator.evidence_class(),
                 shared_term_count: accumulator.shared_term_count,
                 max_shared_idf_units: accumulator.max_shared_idf_units,
             }
         })
-        .collect::<Vec<_>>();
-    sort_topk_candidates(&mut candidates);
-    candidates.truncate(k);
-    candidates
+        .collect()
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct CandidateAccumulator {
     dot_units: u128,
     shared_term_count: u32,
     max_shared_idf_units: u32,
     min_shared_idf_units: Option<u32>,
+    score_units: u16,
 }
 
 impl CandidateAccumulator {
@@ -585,6 +659,82 @@ impl CandidateAccumulator {
             TfidfEvidenceClass::Diagnostic
         }
     }
+}
+
+impl TfidfQueryWorkspace {
+    pub fn stats(&self) -> TfidfQueryStats {
+        self.stats
+    }
+
+    fn reset(&mut self, surface_count: usize) {
+        let touched = std::mem::take(&mut self.touched);
+        for candidate_ordinal in touched {
+            self.accumulators[candidate_ordinal] = CandidateAccumulator::default();
+        }
+        if self.accumulators.len() < surface_count {
+            self.accumulators
+                .resize_with(surface_count, CandidateAccumulator::default);
+        }
+        self.ranked_ordinals.clear();
+        self.stats = TfidfQueryStats::default();
+    }
+
+    fn accumulator_for(&mut self, candidate_ordinal: usize) -> &mut CandidateAccumulator {
+        if self.accumulators[candidate_ordinal].shared_term_count == 0 {
+            self.touched.push(candidate_ordinal);
+        }
+        &mut self.accumulators[candidate_ordinal]
+    }
+}
+
+fn model_candidate_cmp(
+    left_ordinal: usize,
+    right_ordinal: usize,
+    rows: &[TfidfSparseRow],
+    accumulators: &[CandidateAccumulator],
+) -> std::cmp::Ordering {
+    accumulators[right_ordinal]
+        .score_units
+        .cmp(&accumulators[left_ordinal].score_units)
+        .then_with(|| {
+            accumulators[left_ordinal]
+                .evidence_class()
+                .cmp(&accumulators[right_ordinal].evidence_class())
+        })
+        .then_with(|| {
+            rows[left_ordinal]
+                .normalized_key
+                .as_bytes()
+                .cmp(rows[right_ordinal].normalized_key.as_bytes())
+        })
+        .then_with(|| {
+            rows[left_ordinal]
+                .surface_id
+                .cmp(&rows[right_ordinal].surface_id)
+        })
+        .then_with(|| left_ordinal.cmp(&right_ordinal))
+}
+
+fn compat_candidate_cmp(
+    left_ordinal: usize,
+    right_ordinal: usize,
+    rows: &[SparseTfidfIndexRow],
+    accumulators: &[CandidateAccumulator],
+) -> std::cmp::Ordering {
+    accumulators[right_ordinal]
+        .score_units
+        .cmp(&accumulators[left_ordinal].score_units)
+        .then_with(|| {
+            accumulators[left_ordinal]
+                .evidence_class()
+                .cmp(&accumulators[right_ordinal].evidence_class())
+        })
+        .then_with(|| {
+            rows[left_ordinal]
+                .surface_id
+                .cmp(&rows[right_ordinal].surface_id)
+        })
+        .then_with(|| left_ordinal.cmp(&right_ordinal))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -953,21 +1103,6 @@ fn integer_sqrt(value: u128) -> u128 {
         }
     }
     answer
-}
-
-fn sort_topk_candidates(candidates: &mut [TfidfTopKCandidate]) {
-    candidates.sort_by(|left, right| {
-        right
-            .score_units
-            .cmp(&left.score_units)
-            .then_with(|| left.evidence_class.cmp(&right.evidence_class))
-            .then_with(|| {
-                left.normalized_key
-                    .as_bytes()
-                    .cmp(right.normalized_key.as_bytes())
-            })
-            .then_with(|| left.surface_id.cmp(&right.surface_id))
-    });
 }
 
 fn same_first_token_rank(pair: &SortedNeighborhoodPair) -> u8 {
