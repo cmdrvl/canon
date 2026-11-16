@@ -314,8 +314,17 @@ fn valid_computed_lei_links_and_transposed_lei_is_dropped_and_reported() {
     assert!(warnings[0]["fix"].as_str().unwrap().contains("ISO 17442"));
 
     let payload = solve(&bad_session, &rules);
-    assert_eq!(payload["summary"]["accepted_tier_a"], 0);
+    // Row a still carries the valid LEI, so it mints alone (single_keyed counts
+    // in accepted_tier_a); row b lost its key and stands alone. They are not
+    // joined and there is no contradiction.
+    assert_eq!(payload["summary"]["accepted_tier_a"], 1);
     assert_eq!(payload["summary"]["contradiction"], 0);
+    let keyed = cluster_with_surface(&payload, "Orion Capital LP");
+    assert_eq!(keyed["reason"], "single_keyed");
+    assert_eq!(keyed["surfaces"].as_array().unwrap().len(), 1);
+    let stripped = cluster_with_surface(&payload, "Orion Cap Partners");
+    assert_eq!(stripped["outcome"], "standalone");
+    assert_eq!(stripped["surfaces"].as_array().unwrap().len(), 1);
 
     // Re-ingesting the same file is idempotent: the stored row has no bad key.
     let again = ingest(&bad_session, &bad_rows);
