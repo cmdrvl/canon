@@ -222,9 +222,11 @@ fn rules_parse_namespace_policies_and_alternatives() {
     assert!(!rules.key_rules["ticker"].authoritative);
     assert!(!rules.key_rules["ticker"].single_valued);
     assert_eq!(rules.tier_b_alternatives.len(), 1);
+    // Evidence-kind lists are BTreeSet-canonicalized so the rules hash does not
+    // depend on the order in which equivalent YAML declarations are written.
     assert_eq!(
         rules.tier_b_alternatives[0].required_evidence_types,
-        vec!["same_slot", "name_equivalent"]
+        vec!["name_equivalent", "same_slot"]
     );
     assert_eq!(rules.tier_b_alternatives[0].min_independent_origins, 1);
 }

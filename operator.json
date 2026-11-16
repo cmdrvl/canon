@@ -6975,6 +6975,38 @@
       "output_schema": "canon.entity.session.rules.init.v1",
       "status": "implemented",
       "read_only": false,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "writes only the caller-selected deterministic rules template; no network access",
+        "mutation_class": "OwnedOutput",
+        "network_class": "Offline",
+        "concurrency_class": "CacheRaceSafe",
+        "platform_classes": [
+          "PortablePathUtf8",
+          "SameFilesystemAtomicReplace"
+        ],
+        "declaration_command": "entity workbench"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": false,
+        "reads_registry_files": false,
+        "writes_registry_files": false,
+        "writes_work_dir": false,
+        "writes_output_files": true,
+        "uses_network": false,
+        "appends_witness_ledger": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "the versioned rules template was written or printed",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / the requested output path cannot be written",
+          "domain": "error"
+        }
+      },
       "options": [
         {
           "name": "out",
@@ -7004,6 +7036,44 @@
       "output_schema": "canon.entity.session.rules.validate.v1",
       "status": "implemented",
       "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads the caller-selected rules YAML without writing files or using the network",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "entity read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "the rules YAML is valid and its deterministic hash was emitted",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / the rules YAML is unreadable or violates the declared schema",
+          "domain": "error"
+        }
+      },
       "options": [
         {
           "name": "rules",
