@@ -626,6 +626,7 @@ mod tests {
             incumbent_canonical_id: None,
             accepting_evidence_ids: Vec::new(),
             reason: "no_positive_evidence".to_string(),
+            conflict_reasons: Vec::new(),
         }
     }
 
@@ -640,6 +641,7 @@ mod tests {
             incumbent_canonical_id: incumbent.map(str::to_string),
             accepting_evidence_ids: Vec::new(),
             reason: "tier_a".to_string(),
+            conflict_reasons: Vec::new(),
         }
     }
 

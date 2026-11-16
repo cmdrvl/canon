@@ -112,6 +112,8 @@ pub struct SessionSolveCluster {
     pub incumbent_canonical_id: Option<String>,
     pub accepting_evidence_ids: Vec<String>,
     pub reason: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conflict_reasons: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -198,6 +200,8 @@ struct Node {
     surface: String,
     observation_ids: BTreeSet<String>,
     keys: BTreeMap<String, BTreeSet<String>>,
+    observed_keys: BTreeMap<String, BTreeSet<String>>,
+    incumbent_key_conflicts: BTreeSet<String>,
     incumbent_canonical_id: Option<String>,
 }
 
@@ -491,18 +495,7 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             .collect::<Vec<_>>();
         let has_positive = !joining.is_empty();
         let all_tier_a = has_positive && joining.iter().all(|(_, tier)| **tier == EdgeTier::A);
-        let key_conflict = rules.key_rules.iter().any(|(namespace, rule)| {
-            if !rule.single_valued {
-                return false;
-            }
-            member_nodes
-                .iter()
-                .filter_map(|node| node.keys.get(namespace))
-                .flat_map(|values| values.iter())
-                .collect::<BTreeSet<_>>()
-                .len()
-                > 1
-        });
+        let key_conflict = component_has_key_conflict(&member_nodes, &rules);
         let budget_decision = evaluate_solve_component_budget(
             SolveComponentBudgetInput::new(cluster_id.clone(), member_keys.clone()),
             SolveBudgetConfig::bounded_abstention(max_cluster_surfaces),
@@ -512,6 +505,13 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             .iter()
             .filter_map(|node| node.incumbent_canonical_id.clone())
             .collect::<BTreeSet<_>>();
+        let mut conflict_reasons = Vec::new();
+        if incumbent_ids.len() > 1 {
+            conflict_reasons.push("incumbent_conflict".to_string());
+        }
+        if key_conflict {
+            conflict_reasons.push("key_conflict".to_string());
+        }
         let distinct_conflict = same_node_distinct
             .iter()
             .any(|key| member_keys.contains(key))
@@ -625,6 +625,7 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             incumbent_canonical_id,
             accepting_evidence_ids,
             reason,
+            conflict_reasons,
         });
     }
 
@@ -892,7 +893,7 @@ fn build_commit_plan(
             cluster.outcome == "accepted" && matches!(cluster.tier.as_deref(), Some("A" | "B"));
         if !accepted {
             let cluster_id = cluster.cluster_id.clone();
-            for reason in commit_skip_reasons(&cluster, &artifact.authoritative_keys) {
+            for reason in commit_skip_reasons(&cluster) {
                 skipped.push(SessionCommitSkipped {
                     cluster_id: cluster_id.clone(),
                     reason,
@@ -976,24 +977,21 @@ fn build_commit_plan(
     Ok((entries, skipped))
 }
 
-fn commit_skip_reasons(
-    cluster: &SessionSolveCluster,
-    authoritative_keys: &[String],
-) -> Vec<String> {
+fn commit_skip_reasons(cluster: &SessionSolveCluster) -> Vec<String> {
     let mut reasons = Vec::new();
     if cluster.reason == "key_conflict" {
         reasons.push("key_conflict".to_string());
-    } else if cluster.reason == "incumbent_conflict"
-        && authoritative_keys.iter().any(|namespace| {
-            let namespace = canonical_key_namespace(namespace);
-            cluster
-                .keys
-                .get(&namespace)
-                .is_some_and(|values| values.len() > 1)
-        })
-    {
-        reasons.push("incumbent_conflict".to_string());
-        reasons.push("key_conflict".to_string());
+    } else if cluster.reason == "incumbent_conflict" {
+        if cluster
+            .conflict_reasons
+            .iter()
+            .any(|reason| reason == "key_conflict")
+        {
+            reasons.push("incumbent_conflict".to_string());
+            reasons.push("key_conflict".to_string());
+        } else {
+            reasons.push("contradiction".to_string());
+        }
     }
     if reasons.is_empty() {
         let reason = if cluster.incumbent_canonical_id.is_some() {
@@ -1705,6 +1703,8 @@ fn build_nodes(
                 surface: observation.surface.clone(),
                 observation_ids: BTreeSet::new(),
                 keys: BTreeMap::new(),
+                observed_keys: BTreeMap::new(),
+                incumbent_key_conflicts: BTreeSet::new(),
                 incumbent_canonical_id: incumbent_canonical_id.clone(),
             });
         if node.incumbent_canonical_id.is_none() {
@@ -1716,10 +1716,22 @@ fn build_nodes(
                 .entry(key.clone())
                 .or_default()
                 .insert(value.clone());
+            node.observed_keys
+                .entry(key.clone())
+                .or_default()
+                .insert(value.clone());
         }
         if let Some(canonical_id) = incumbent_canonical_id
             && let Some(existing_keys) = incumbent_keys.get(&canonical_id)
         {
+            for (namespace, value) in &observation.keys {
+                if existing_keys
+                    .get(namespace)
+                    .is_some_and(|values| !values.is_empty() && !values.contains(value))
+                {
+                    node.incumbent_key_conflicts.insert(namespace.clone());
+                }
+            }
             merge_node_keys(&mut node.keys, existing_keys);
         }
         by_id.insert(observation.obs_id.clone(), observation);
@@ -1731,6 +1743,8 @@ fn build_nodes(
                 surface: endpoint.surface.clone(),
                 observation_ids: BTreeSet::new(),
                 keys: BTreeMap::new(),
+                observed_keys: BTreeMap::new(),
+                incumbent_key_conflicts: BTreeSet::new(),
                 incumbent_canonical_id: Some(endpoint.canonical_id.clone()),
             });
         if node.incumbent_canonical_id.is_none() {
@@ -2193,6 +2207,22 @@ fn tier_for(facts: &EdgeFacts, rules: &SessionRules) -> Option<EdgeTier> {
     }
 }
 
+fn component_has_key_conflict(nodes: &[&Node], rules: &SessionRules) -> bool {
+    rules.key_rules.iter().any(|(namespace, rule)| {
+        rule.single_valued
+            && (nodes
+                .iter()
+                .any(|node| node.incumbent_key_conflicts.contains(namespace))
+                || nodes
+                    .iter()
+                    .filter_map(|node| node.observed_keys.get(namespace))
+                    .flat_map(|values| values.iter())
+                    .collect::<BTreeSet<_>>()
+                    .len()
+                    > 1)
+    })
+}
+
 fn exactly_one_authoritative_value(node: &Node, rules: &SessionRules) -> bool {
     rules
         .key_rules
@@ -2294,7 +2324,7 @@ mod tests {
     use super::{
         EdgeFacts, EdgeTier, RegistryRow, SessionRules, SessionSolveArtifact, SessionSolveCluster,
         SessionSolveInputs, SessionSolveRegistry, SessionSolveSummary, TIER_A_TYPES, TIER_B_TYPES,
-        build_commit_plan, canonical_key_value, commit_skip_reasons,
+        build_commit_plan, canonical_key_value, commit_skip_reasons, component_has_key_conflict,
         exactly_one_authoritative_value, key_values, tier_for,
     };
     use std::collections::{BTreeMap, BTreeSet};
@@ -2385,12 +2415,42 @@ mod tests {
                 "cik".to_string(),
                 BTreeSet::from(["555".to_string()]),
             )]),
+            observed_keys: std::collections::BTreeMap::from([(
+                "cik".to_string(),
+                BTreeSet::from(["555".to_string()]),
+            )]),
+            incumbent_key_conflicts: BTreeSet::new(),
             incumbent_canonical_id: None,
         };
         assert!(exactly_one_authoritative_value(&node, &rules()));
         node.keys
             .insert("lei".to_string(), BTreeSet::from(["LEI".to_string()]));
         assert!(!exactly_one_authoritative_value(&node, &rules()));
+    }
+
+    #[test]
+    fn incumbent_endpoint_keys_do_not_create_a_key_conflict() {
+        let endpoint_a = super::Node {
+            surface: "Medline Borrower, LP".to_string(),
+            observation_ids: BTreeSet::new(),
+            keys: BTreeMap::from([("cik".to_string(), BTreeSet::from(["111".to_string()]))]),
+            observed_keys: BTreeMap::new(),
+            incumbent_key_conflicts: BTreeSet::new(),
+            incumbent_canonical_id: Some("ORG-001".to_string()),
+        };
+        let endpoint_b = super::Node {
+            surface: "Other Holdings, Inc".to_string(),
+            observation_ids: BTreeSet::new(),
+            keys: BTreeMap::from([("cik".to_string(), BTreeSet::from(["222".to_string()]))]),
+            observed_keys: BTreeMap::new(),
+            incumbent_key_conflicts: BTreeSet::new(),
+            incumbent_canonical_id: Some("ORG-002".to_string()),
+        };
+
+        assert!(!component_has_key_conflict(
+            &[&endpoint_a, &endpoint_b],
+            &rules()
+        ));
     }
 
     #[test]
@@ -2436,6 +2496,7 @@ mod tests {
                     incumbent_canonical_id: None,
                     accepting_evidence_ids: vec!["evidence-z".to_string()],
                     reason: "tier B".to_string(),
+                    conflict_reasons: Vec::new(),
                 },
                 SessionSolveCluster {
                     cluster_id: "cluster-a".to_string(),
@@ -2447,6 +2508,7 @@ mod tests {
                     incumbent_canonical_id: None,
                     accepting_evidence_ids: vec!["evidence-a".to_string()],
                     reason: "tier A".to_string(),
+                    conflict_reasons: Vec::new(),
                 },
                 SessionSolveCluster {
                     cluster_id: "cluster-r".to_string(),
@@ -2458,6 +2520,7 @@ mod tests {
                     incumbent_canonical_id: None,
                     accepting_evidence_ids: Vec::new(),
                     reason: "insufficient evidence".to_string(),
+                    conflict_reasons: Vec::new(),
                 },
             ],
             review: Vec::new(),
@@ -2504,11 +2567,37 @@ mod tests {
             incumbent_canonical_id: None,
             accepting_evidence_ids: Vec::new(),
             reason: "incumbent_conflict".to_string(),
+            conflict_reasons: vec!["incumbent_conflict".to_string(), "key_conflict".to_string()],
         };
 
         assert_eq!(
-            commit_skip_reasons(&cluster, &[String::from("cik")]),
+            commit_skip_reasons(&cluster),
             vec!["incumbent_conflict", "key_conflict"]
+        );
+    }
+
+    #[test]
+    fn incumbent_bridge_remains_a_generic_contradiction() {
+        let cluster = SessionSolveCluster {
+            cluster_id: "cluster-bridge".to_string(),
+            outcome: "contradiction".to_string(),
+            tier: None,
+            surfaces: vec!["Shared Alias".to_string()],
+            observation_count: 1,
+            keys: BTreeMap::from([(
+                String::from("cik"),
+                vec![String::from("111"), String::from("222")],
+            )]),
+            incumbent_canonical_id: None,
+            accepting_evidence_ids: Vec::new(),
+            reason: "incumbent_conflict".to_string(),
+            conflict_reasons: vec!["incumbent_conflict".to_string()],
+        };
+
+        assert_eq!(
+            commit_skip_reasons(&cluster),
+            vec!["contradiction"],
+            "stored keys from two incumbent endpoints must not become a key conflict"
         );
     }
 }
