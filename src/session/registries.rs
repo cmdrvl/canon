@@ -6,6 +6,7 @@
 //! the map.
 
 use crate::registry::agent_id::kind_prefix_is_valid;
+use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -41,7 +42,7 @@ impl fmt::Display for RegistriesMapError {
 impl std::error::Error for RegistriesMapError {}
 
 /// How new canonical ids are produced for a kind.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KindIdMode {
     /// A published registry keeps numbered ids from `prefix` and `zero_pad`.
     /// `agent_kind_prefix`, when set, gives every id one agent id as an alias.

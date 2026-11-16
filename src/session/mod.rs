@@ -28,6 +28,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub mod registries;
 pub mod status;
 
 pub const SESSION_MANIFEST_VERSION: &str = "canon.entity.session.v1";
@@ -54,11 +55,31 @@ pub struct SessionInitRequest {
     pub zero_pad: Option<usize>,
 }
 
+/// Inputs for the multi-registry session initializer. The legacy
+/// [`SessionInitRequest`] remains the one-kind shorthand; this request is the
+/// public API used by `--registries`.
+#[derive(Debug, Clone)]
+pub struct SessionInitRegistriesRequest {
+    pub goal: String,
+    pub registries: PathBuf,
+    pub work_dir: PathBuf,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionRegistryBinding {
     pub kind: String,
     pub path: String,
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alias_file: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_file: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id_alias_file: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id_mode: Option<registries::KindIdMode>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -216,6 +237,7 @@ pub struct SessionCommitRelation {
 #[derive(Debug, Clone)]
 pub struct SessionCommitRequest {
     pub session: PathBuf,
+    pub registry_kind: Option<String>,
     pub solve_hash: String,
     pub observations_generation: String,
     pub evidence_generation: Option<String>,
@@ -267,6 +289,8 @@ struct SessionCommitReceipt {
     version: String,
     solve_hash: String,
     registry: SessionCommitRegistry,
+    #[serde(default)]
+    registries: Vec<SessionCommitRegistry>,
     minted: Vec<SessionCommitMinted>,
     #[serde(default)]
     attached: Vec<SessionCommitAttached>,
@@ -286,6 +310,8 @@ pub struct SessionCommitOutput {
     pub solve_hash: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub registry: Option<SessionCommitRegistry>,
+    #[serde(default)]
+    pub registries: Vec<SessionCommitRegistry>,
     pub minted: Vec<SessionCommitMinted>,
     pub attached: Vec<SessionCommitAttached>,
     pub skipped: Vec<SessionCommitSkipped>,
@@ -408,6 +434,11 @@ pub fn init(request: SessionInitRequest) -> Result<SessionInitOutput, Refusal> {
         kind: entity_kind.clone(),
         path: registry.to_string_lossy().into_owned(),
         id: registry_id.clone(),
+        canonical_type: None,
+        alias_file: None,
+        key_file: None,
+        id_alias_file: None,
+        id_mode: None,
     };
     let session_id = session_id(&goal, &entity_kind, &registry_id)?;
     let manifest = SessionManifest {
@@ -478,11 +509,222 @@ pub fn init(request: SessionInitRequest) -> Result<SessionInitOutput, Refusal> {
     ))
 }
 
+/// Initialize a session from a per-kind registry map. Existing registry
+/// files are validated in place; only an absent registry and its configured
+/// alias file are created.
+pub fn init_registries(
+    request: SessionInitRegistriesRequest,
+) -> Result<SessionInitOutput, Refusal> {
+    let goal = validate_non_empty(&request.work_dir, "--goal", &request.goal)?;
+    let map_path = absolute_path(&request.registries)?;
+    let work_dir = absolute_path(&request.work_dir)?;
+    ensure_work_dir(&work_dir)?;
+    let map_text = fs::read_to_string(&map_path).map_err(|error| io_refusal(&map_path, error))?;
+    let map = registries::parse_registries_map(&map_text).map_err(|error| Refusal {
+        code: RefusalCode::EParse,
+        message: format!(
+            "Cannot parse registries map '{}': {error}",
+            map_path.display()
+        ),
+        detail: json!({
+            "path": map_path.display().to_string(),
+            "yaml_path": error.path,
+            "reason": error.message,
+            "writes_performed": false,
+        }),
+        next_command: Some(
+            "Fix the registries YAML path named in the refusal, then rerun session init"
+                .to_string(),
+        ),
+    })?;
+
+    let mut bindings = Vec::with_capacity(map.kinds.len());
+    let mut registry_initialized = false;
+    for (kind, config) in &map.kinds {
+        let registry_path = absolute_path(&config.registry)?;
+        let registry_json = registry_path.join("registry.json");
+        let initialized = if path_exists(&registry_json) {
+            let actual_id = read_registry_id(&registry_path)?;
+            if actual_id != config.registry_id {
+                return Err(session_conflict_refusal(
+                    &work_dir,
+                    &format!("kinds.{kind}.registry_id"),
+                    &config.registry_id,
+                    &actual_id,
+                ));
+            }
+            validate_existing_registry(&registry_path)?;
+            false
+        } else {
+            initialize_mapped_registry(&registry_path, config)?;
+            true
+        };
+        let alias_path = registry_path.join(&config.alias_file);
+        if !path_exists(&alias_path) {
+            fs::write(&alias_path, b"[]\n").map_err(|error| io_refusal(&alias_path, error))?;
+        }
+        if initialized {
+            validate_existing_registry(&registry_path)?;
+        }
+        registry_initialized |= initialized;
+        bindings.push(SessionRegistryBinding {
+            kind: kind.clone(),
+            path: registry_path.to_string_lossy().into_owned(),
+            id: config.registry_id.clone(),
+            canonical_type: Some(config.canonical_type.clone()),
+            alias_file: Some(config.alias_file.clone()),
+            key_file: config.key_file.clone(),
+            id_alias_file: config.id_alias_file.clone(),
+            id_mode: Some(config.id_mode.clone()),
+        });
+    }
+
+    let registry_token = bindings
+        .iter()
+        .map(|binding| format!("{}={}", binding.kind, binding.id))
+        .collect::<Vec<_>>()
+        .join("|");
+    let session_id = session_id(&goal, "registry-set", &registry_token)?;
+    let manifest = SessionManifest {
+        version: SESSION_MANIFEST_VERSION.to_string(),
+        session_id: session_id.clone(),
+        goal: goal.clone(),
+        registries: bindings,
+        evidence_vocabulary_hash: evidence_vocabulary_hash(),
+    };
+    let current = read_current_manifest(&work_dir)?;
+    if let Some(current) = current.as_ref() {
+        if current.goal != goal {
+            return Err(session_conflict_refusal(
+                &work_dir,
+                "goal",
+                &goal,
+                &current.goal,
+            ));
+        }
+        if current.session_id != manifest.session_id {
+            return Err(session_conflict_refusal(
+                &work_dir,
+                "session_id",
+                &manifest.session_id,
+                &current.session_id,
+            ));
+        }
+        if current == &manifest {
+            return Ok(output(
+                "already_initialised",
+                manifest,
+                &work_dir,
+                current_generation_id(&work_dir)?,
+                false,
+                false,
+            ));
+        }
+    }
+    let registry_path_updated = current
+        .as_ref()
+        .map(|current| current.registries != manifest.registries)
+        .unwrap_or(false);
+    let supersedes_generation_id = current_generation_id_optional(&work_dir)?;
+    let manifest_bytes = pretty_manifest_bytes(&manifest)?;
+    let receipt = publish_stream_patch(
+        &work_dir,
+        EntityPublicationRequest {
+            stream_id: SESSION_MANIFEST_STREAM_ID.to_string(),
+            supersedes_generation_id,
+            request_fingerprint: hash_bytes(b"canon.entity.session.manifest.v1"),
+            cache_mode: "disabled".to_string(),
+            cache_status: "cold_start".to_string(),
+            cache_receipt_hash: hash_bytes(b"canon.entity.session.manifest.receipt.v1"),
+            stage_order: vec![SESSION_PUBLICATION_STAGE.to_string()],
+            upstream_artifacts: Vec::<EntityPublicationUpstreamRef>::new(),
+            files: vec![EntityPublicationFileInput::new(
+                "session/session.json",
+                SESSION_PUBLICATION_STAGE,
+                SESSION_PUBLICATION_VERSION,
+                manifest_bytes,
+            )],
+            omit_logical_paths: Vec::new(),
+        },
+    )
+    .map_err(publication_refusal)?;
+    let status = if registry_path_updated {
+        "registry_path_updated"
+    } else {
+        "initialised"
+    };
+    Ok(output(
+        status,
+        manifest,
+        &work_dir,
+        receipt.generation_id,
+        registry_initialized,
+        registry_path_updated,
+    ))
+}
+
+fn initialize_mapped_registry(
+    registry_path: &Path,
+    config: &registries::KindRegistry,
+) -> Result<(), Refusal> {
+    match fs::symlink_metadata(registry_path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return Err(path_refusal(
+                registry_path,
+                "Session registry init refuses a symlinked registry directory",
+                "Replace the symlink with a regular directory, then rerun session init",
+            ));
+        }
+        Ok(metadata) if !metadata.is_dir() => {
+            return Err(path_refusal(
+                registry_path,
+                "Session registry init requires a directory path",
+                "Choose a directory for the registry map entry, then rerun session init",
+            ));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            fs::create_dir_all(registry_path).map_err(|error| io_refusal(registry_path, error))?;
+        }
+        Err(error) => return Err(io_refusal(registry_path, error)),
+    }
+    let mut registry_json = json!({
+        "description": format!("Session {} registry", config.kind),
+        "entry_count": 0,
+        "id": config.registry_id,
+        "updated": chrono::Utc::now().format("%Y-%m-%d").to_string(),
+        "version": "0.0.0",
+    });
+    if let registries::KindIdMode::Numbered {
+        prefix, zero_pad, ..
+    } = &config.id_mode
+    {
+        if let Value::Object(object) = &mut registry_json {
+            object.insert(
+                "default_id_scheme".to_string(),
+                json!({
+                    "prefix": prefix,
+                    "zero_pad": zero_pad.unwrap_or(3),
+                }),
+            );
+        }
+    }
+    let bytes = serde_json::to_vec_pretty(&registry_json).map_err(|error| Refusal {
+        code: RefusalCode::EEntityArtifactContract,
+        message: format!("Unable to serialize mapped registry metadata: {error}"),
+        detail: json!({"registry": registry_path.display().to_string(), "writes_performed": false}),
+        next_command: Some("Repair the registries map, then rerun session init".to_string()),
+    })?;
+    fs::write(registry_path.join("registry.json"), bytes)
+        .map_err(|error| io_refusal(&registry_path.join("registry.json"), error))?;
+    Ok(())
+}
+
 pub fn ingest(request: SessionIngestRequest) -> Result<SessionIngestOutput, Refusal> {
     let work_dir = absolute_path(&request.session)?;
-    if read_current_manifest(&work_dir)?.is_none() {
+    let Some(manifest) = read_current_manifest(&work_dir)? else {
         return Err(session_not_initialized_refusal(&work_dir));
-    }
+    };
 
     let current = match open_current_stream_generation(&work_dir, SESSION_OBSERVATIONS_STREAM_ID) {
         Ok(snapshot) => Some(snapshot),
@@ -516,6 +758,34 @@ pub fn ingest(request: SessionIngestRequest) -> Result<SessionIngestOutput, Refu
         };
 
         key_warnings.append(&mut row.key_warnings);
+
+        let entity_type = serde_json::from_slice::<Value>(&row.bytes)
+            .ok()
+            .and_then(|value| {
+                value
+                    .get("entity_type")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            });
+        if entity_type.as_deref().is_none_or(|kind| {
+            !manifest
+                .registries
+                .iter()
+                .any(|binding| binding.kind == kind)
+        }) {
+            let kind = entity_type.as_deref().unwrap_or("<missing>");
+            rejected.push(SessionIngestRejection {
+                line: line_number,
+                obs_id: Some(row.obs_id),
+                code: "unmapped_entity_kind".to_string(),
+                message: format!(
+                    "Observation entity_type '{kind}' has no session registry mapping"
+                ),
+                fix: "Add the entity_type under kinds in the registries YAML, then rerun ingest"
+                    .to_string(),
+            });
+            continue;
+        }
 
         if let Some(existing) = known_rows
             .get(&row.obs_id)
@@ -698,12 +968,29 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
     let Some(manifest) = read_current_manifest(&work_dir)? else {
         return Err(session_not_initialized_refusal(&work_dir));
     };
-    let binding = manifest.registries.first().ok_or_else(|| Refusal {
-        code: RefusalCode::EEntityArtifactContract,
-        message: "Session manifest has no registry binding".to_string(),
-        detail: json!({"writes_performed": false}),
-        next_command: Some("Initialize a session with one registry, then rerun commit".to_string()),
-    })?;
+    let binding = match request.registry_kind.as_deref() {
+        Some(kind) => manifest
+            .registries
+            .iter()
+            .find(|binding| binding.kind == kind)
+            .ok_or_else(|| Refusal {
+                code: RefusalCode::EEntityArtifactContract,
+                message: format!("Session manifest has no registry binding for kind '{kind}'"),
+                detail: json!({"kind": kind, "writes_performed": false}),
+                next_command: Some(
+                    "Add the kind to the registries map, then rerun session init and commit"
+                        .to_string(),
+                ),
+            })?,
+        None => manifest.registries.first().ok_or_else(|| Refusal {
+            code: RefusalCode::EEntityArtifactContract,
+            message: "Session manifest has no registry binding".to_string(),
+            detail: json!({"writes_performed": false}),
+            next_command: Some(
+                "Initialize a session with one registry, then rerun commit".to_string(),
+            ),
+        })?,
+    };
     let observations_generation =
         current_generation_id_for_stream(&work_dir, SESSION_OBSERVATIONS_STREAM_ID)?.ok_or_else(
             || {
@@ -737,6 +1024,7 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
     if let Some(output) = already_committed(
         &work_dir,
         &request.solve_hash,
+        &loaded_registry.meta.id,
         &loaded_registry.meta.version,
     )? {
         return Ok(output);
@@ -760,6 +1048,7 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             outcome: "nothing_to_commit".to_string(),
             solve_hash: request.solve_hash,
             registry: None,
+            registries: Vec::new(),
             minted: Vec::new(),
             attached: Vec::new(),
             skipped: request.skipped,
@@ -864,6 +1153,7 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             outcome: "nothing_to_commit".to_string(),
             solve_hash: request.solve_hash,
             registry: None,
+            registries: Vec::new(),
             minted: Vec::new(),
             attached: Vec::new(),
             skipped: receipt_skipped,
@@ -902,6 +1192,13 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             });
         }
     }
+    let prior_receipt =
+        read_commit_receipt(&work_dir)?.filter(|receipt| receipt.solve_hash == request.solve_hash);
+    if let Some(prior) = &prior_receipt {
+        closures.extend(prior.closures.iter().cloned());
+        closures.sort_by(|left, right| left.closure_hash.cmp(&right.closure_hash));
+        closures.dedup_by(|left, right| left.closure_hash == right.closure_hash);
+    }
     let (closure_set, closure_set_hash) = if closures.is_empty() {
         (None, None)
     } else {
@@ -928,6 +1225,48 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             &loaded_registry.meta.version,
         )?,
     });
+    let current_registry = registry.clone().ok_or_else(|| Refusal {
+        code: RefusalCode::EEntityArtifactContract,
+        message: "Typed registry commit returned no registry metadata".to_string(),
+        detail: json!({"writes_performed": true}),
+        next_command: Some("Reread the registry and session commit receipt".to_string()),
+    })?;
+    let mut registries = prior_receipt
+        .as_ref()
+        .map(|receipt| {
+            if receipt.registries.is_empty() {
+                vec![receipt.registry.clone()]
+            } else {
+                receipt.registries.clone()
+            }
+        })
+        .unwrap_or_default();
+    registries.retain(|item| item.id != current_registry.id);
+    registries.push(current_registry.clone());
+    registries.sort_by(|left, right| left.id.cmp(&right.id));
+    let prior_minted = prior_receipt
+        .as_ref()
+        .map(|receipt| receipt.minted.clone())
+        .unwrap_or_default();
+    let prior_attached = prior_receipt
+        .as_ref()
+        .map(|receipt| receipt.attached.clone())
+        .unwrap_or_default();
+    let prior_skipped = prior_receipt
+        .as_ref()
+        .map(|receipt| receipt.skipped.clone())
+        .unwrap_or_default();
+    let mut all_minted = prior_minted;
+    all_minted.extend(minted.clone());
+    let mut all_attached = prior_attached;
+    all_attached.extend(attached.clone());
+    let mut all_skipped = prior_skipped;
+    all_skipped.extend(receipt_skipped.clone());
+    all_skipped.sort_by(|left, right| {
+        left.cluster_id
+            .cmp(&right.cluster_id)
+            .then_with(|| left.reason.cmp(&right.reason))
+    });
     let relations_written = write_relation_sidecar(
         registry_path,
         &manifest.session_id,
@@ -938,16 +1277,16 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
     let receipt = SessionCommitReceipt {
         version: SESSION_COMMIT_VERSION.to_string(),
         solve_hash: request.solve_hash.clone(),
-        registry: registry.clone().ok_or_else(|| Refusal {
-            code: RefusalCode::EEntityArtifactContract,
-            message: "Typed registry commit returned no registry metadata".to_string(),
-            detail: json!({"writes_performed": true}),
-            next_command: Some("Reread the registry and session commit receipt".to_string()),
-        })?,
-        minted: minted.clone(),
-        attached: attached.clone(),
-        skipped: receipt_skipped,
-        relations_written,
+        registry: current_registry,
+        registries,
+        minted: all_minted,
+        attached: all_attached,
+        skipped: all_skipped,
+        relations_written: prior_receipt
+            .as_ref()
+            .map(|receipt| receipt.relations_written)
+            .unwrap_or_default()
+            + relations_written,
         closure_set_hash: closure_set_hash.clone(),
         closures: closures.clone(),
     };
@@ -1034,10 +1373,11 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         outcome: "committed".to_string(),
         solve_hash: receipt.solve_hash,
         registry,
-        minted,
-        attached,
+        registries: receipt.registries,
+        minted: receipt.minted,
+        attached: receipt.attached,
         skipped: receipt.skipped,
-        relations_written,
+        relations_written: receipt.relations_written,
         closure_set_hash,
         generation_id: Some(publication.generation_id),
     })
@@ -1447,20 +1787,34 @@ fn read_commit_receipt(work_dir: &Path) -> Result<Option<SessionCommitReceipt>, 
 pub(crate) fn already_committed(
     work_dir: &Path,
     solve_hash: &str,
+    registry_id: &str,
     registry_version: &str,
 ) -> Result<Option<SessionCommitOutput>, Refusal> {
     let Some(existing) = read_commit_receipt(work_dir)? else {
         return Ok(None);
     };
-    if existing.solve_hash != solve_hash || existing.registry.version_after != registry_version {
+    let registry_matches = existing
+        .registries
+        .iter()
+        .find(|registry| registry.id == registry_id)
+        .or_else(|| (existing.registry.id == registry_id).then_some(&existing.registry));
+    if existing.solve_hash != solve_hash
+        || registry_matches.is_none_or(|registry| registry.version_after != registry_version)
+    {
         return Ok(None);
     }
+    let registries = if existing.registries.is_empty() {
+        vec![existing.registry.clone()]
+    } else {
+        existing.registries.clone()
+    };
     let generation_id = current_generation_id_for_stream(work_dir, SESSION_COMMIT_STREAM_ID)?;
     Ok(Some(SessionCommitOutput {
         version: SESSION_COMMIT_VERSION.to_string(),
         outcome: "already_committed".to_string(),
         solve_hash: existing.solve_hash,
         registry: Some(existing.registry),
+        registries,
         minted: existing.minted,
         attached: existing.attached,
         skipped: existing.skipped,

@@ -27,7 +27,7 @@ use crate::{
         self, SESSION_EVIDENCE_STREAM_ID, SESSION_MANIFEST_STREAM_ID,
         SESSION_OBSERVATIONS_STREAM_ID, SessionCommitAlias, SessionCommitClosure,
         SessionCommitEntry, SessionCommitRegistryExpectation, SessionCommitRelation,
-        SessionCommitRelationEndpoint, SessionCommitSkipped, SessionManifest,
+        SessionCommitRelationEndpoint, SessionCommitSkipped, SessionManifest, registries,
     },
     temporal::relation::{
         DirectedRelationFact, IntervalBoundary, RelationKindRef, TimeInterval, finalize_relation,
@@ -318,26 +318,39 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         Some(snapshot) => read_evidence(snapshot)?,
         None => Vec::new(),
     };
-    let registry_binding = manifest.registries.first().ok_or_else(|| {
-        solve_refusal(
+    if manifest.registries.is_empty() {
+        return Err(solve_refusal(
             "The session manifest has no registry binding",
             json!({"field": "registries", "writes_performed": false}),
             "Reinitialize the session with --registry, then rerun canon entity session solve",
-        )
-    })?;
-    let registry_info = load_registry_info(
-        Path::new(&registry_binding.path),
-        &observations,
-        &evidence,
-        &registry_binding.kind,
-    )?;
-    let RegistryInfo {
-        metadata: registry_metadata,
-        incumbents,
-        incumbent_keys,
-        endpoints,
-    } = registry_info;
-    let related_pairs = read_related_registry_pairs(Path::new(&registry_binding.path))?;
+        ));
+    };
+    let mut registry_metadata_parts = Vec::new();
+    let mut incumbents = BTreeMap::new();
+    let mut incumbent_keys = BTreeMap::new();
+    let mut endpoints = BTreeMap::new();
+    let mut related_pairs = BTreeSet::new();
+    for registry_binding in &manifest.registries {
+        let scoped_observations = observations
+            .iter()
+            .filter(|observation| observation.entity_type == registry_binding.kind)
+            .cloned()
+            .collect::<Vec<_>>();
+        let registry_info = load_registry_info(
+            Path::new(&registry_binding.path),
+            &scoped_observations,
+            &evidence,
+            &registry_binding.kind,
+        )?;
+        registry_metadata_parts.push((registry_binding.kind.clone(), registry_info.metadata));
+        incumbents.extend(registry_info.incumbents);
+        incumbent_keys.extend(registry_info.incumbent_keys);
+        endpoints.extend(registry_info.endpoints);
+        related_pairs.extend(read_related_registry_pairs(Path::new(
+            &registry_binding.path,
+        ))?);
+    }
+    let registry_metadata = aggregate_registry_metadata(&registry_metadata_parts);
     let (nodes, observations_by_id) =
         build_nodes(observations, incumbents, incumbent_keys, endpoints.clone());
     let mut derived_evidence = Vec::new();
@@ -890,13 +903,13 @@ pub fn commit(
 ) -> Result<session::SessionCommitOutput, Refusal> {
     let session = absolute_session_path(&request.session)?;
     let manifest = read_manifest(&session)?;
-    let binding = manifest.registries.first().ok_or_else(|| {
-        solve_refusal(
+    if manifest.registries.is_empty() {
+        return Err(solve_refusal(
             "The session manifest has no registry binding",
             json!({"field": "registries", "writes_performed": false}),
             "Reinitialize the session with --registry, then rerun canon entity session commit",
-        )
-    })?;
+        ));
+    }
     let solve_snapshot = open_required_stream(&session, SESSION_SOLVE_STREAM_ID, "solve")?;
     let solve_bytes = solve_snapshot
         .read_logical_file("solve/solve.json")
@@ -940,66 +953,196 @@ pub fn commit(
             evidence_generation.as_deref().unwrap_or("<none>"),
         ));
     }
-    let registry_path = Path::new(&binding.path);
-    let loaded_registry = registry::load_registry(registry_path)
-        .map_err(|error| Refusal::bad_registry(&binding.path, &error.to_string()))?;
-    let registry_snapshot = registry_snapshot_hash(
-        registry_path,
-        &loaded_registry.meta.id,
-        &loaded_registry.meta.version,
-    )?;
-    let expected_registry = artifact.inputs.registry.clone();
-    if expected_registry.id != loaded_registry.meta.id
-        || expected_registry.version != loaded_registry.meta.version
-        || expected_registry.snapshot_hash != registry_snapshot
-    {
-        if let Some(output) =
-            session::already_committed(&session, &solve_hash, &loaded_registry.meta.version)?
+    let observation_values = read_observation_values(&observations_snapshot)?;
+    let mut current_metadata_parts = Vec::new();
+    let mut current_registries = BTreeMap::new();
+    for binding in &manifest.registries {
+        let registry_path = Path::new(&binding.path);
+        let loaded_registry = registry::load_registry(registry_path)
+            .map_err(|error| Refusal::bad_registry(&binding.path, &error.to_string()))?;
+        let registry_snapshot = registry_snapshot_hash(
+            registry_path,
+            &loaded_registry.meta.id,
+            &loaded_registry.meta.version,
+        )?;
+        current_metadata_parts.push((
+            binding.kind.clone(),
+            SessionSolveRegistry {
+                id: loaded_registry.meta.id.clone(),
+                version: loaded_registry.meta.version.clone(),
+                snapshot_hash: registry_snapshot.clone(),
+            },
+        ));
+        current_registries.insert(binding.kind.clone(), (loaded_registry, registry_snapshot));
+    }
+    let current_metadata = aggregate_registry_metadata(&current_metadata_parts);
+    let mut partial_commit = false;
+    for binding in &manifest.registries {
+        let (loaded, _) = current_registries.get(&binding.kind).ok_or_else(|| {
+            solve_refusal(
+                format!("Registry state for kind '{}' is missing", binding.kind),
+                json!({"kind": binding.kind, "writes_performed": false}),
+                "Repair the session registry map, then rerun commit",
+            )
+        })?;
+        if session::already_committed(&session, &solve_hash, &loaded.meta.id, &loaded.meta.version)?
+            .is_some()
         {
-            return Ok(output);
+            partial_commit = true;
+            break;
         }
+    }
+    if current_metadata != artifact.inputs.registry && !partial_commit {
         return Err(stale_solve_refusal(
             "registry",
             &format!(
                 "{}@{}:{}",
-                expected_registry.id, expected_registry.version, expected_registry.snapshot_hash
+                artifact.inputs.registry.id,
+                artifact.inputs.registry.version,
+                artifact.inputs.registry.snapshot_hash
             ),
             &format!(
                 "{}@{}:{}",
-                loaded_registry.meta.id, loaded_registry.meta.version, registry_snapshot
+                current_metadata.id, current_metadata.version, current_metadata.snapshot_hash
             ),
         ));
     }
-    let observation_values = read_observation_values(&observations_snapshot)?;
-    let (entries, skipped, relations) = build_commit_plan(
-        &artifact,
-        &binding.kind,
-        &manifest.session_id,
-        &solve_hash,
-        &expected_registry.version,
-        &observation_values,
-    )?;
-    session::commit(session::SessionCommitRequest {
-        session,
-        solve_hash,
-        observations_generation: artifact.inputs.observations_generation,
-        evidence_generation: artifact.inputs.evidence_generation,
-        registry: SessionCommitRegistryExpectation {
-            id: expected_registry.id,
-            version: expected_registry.version,
-            snapshot_hash: expected_registry.snapshot_hash,
-        },
-        entries,
-        skipped,
-        relations,
-        next_version: request.next_version,
-        bump: request.bump,
+    let known_kinds = manifest
+        .registries
+        .iter()
+        .map(|binding| binding.kind.as_str())
+        .collect::<Vec<_>>();
+    let mut final_output = None;
+    for binding in &manifest.registries {
+        let (loaded_registry, registry_snapshot) =
+            current_registries.get(&binding.kind).ok_or_else(|| {
+                solve_refusal(
+                    format!("Registry state for kind '{}' is missing", binding.kind),
+                    json!({"kind": binding.kind, "writes_performed": false}),
+                    "Repair the session registry map, then rerun commit",
+                )
+            })?;
+        let expected_version =
+            expected_registry_version(&artifact.inputs.registry.version, &binding.kind);
+        let already = session::already_committed(
+            &session,
+            &solve_hash,
+            &loaded_registry.meta.id,
+            &loaded_registry.meta.version,
+        )?;
+        if already.is_some() {
+            final_output = already;
+            continue;
+        }
+        if !partial_commit
+            && expected_version.as_deref() != Some(loaded_registry.meta.version.as_str())
+        {
+            return Err(stale_solve_refusal(
+                "registry",
+                &format!("{}@{}", binding.id, expected_version.unwrap_or_default()),
+                &format!(
+                    "{}@{}",
+                    loaded_registry.meta.id, loaded_registry.meta.version
+                ),
+            ));
+        }
+        let (entries, skipped, relations) = build_commit_plan(
+            &artifact,
+            &binding.kind,
+            binding.alias_file.as_deref().unwrap_or("aliases.json"),
+            binding.canonical_type.as_deref().unwrap_or(&binding.kind),
+            &manifest.session_id,
+            &solve_hash,
+            &loaded_registry.meta.version,
+            &observation_values,
+        )?;
+        let next_version = match request.next_version.as_deref() {
+            Some(raw) => {
+                registries::flag_value_for_kind("--next-version", raw, &binding.kind, &known_kinds)
+                    .map_err(|error| {
+                        solve_refusal(
+                            format!("Invalid --next-version: {error}"),
+                            json!({"field": "next-version", "writes_performed": false}),
+                            "Use --next-version kind=version for each mapped entity kind",
+                        )
+                    })?
+            }
+            None => None,
+        };
+        let output = session::commit(session::SessionCommitRequest {
+            session: session.clone(),
+            registry_kind: Some(binding.kind.clone()),
+            solve_hash: solve_hash.clone(),
+            observations_generation: artifact.inputs.observations_generation.clone(),
+            evidence_generation: artifact.inputs.evidence_generation.clone(),
+            registry: SessionCommitRegistryExpectation {
+                id: loaded_registry.meta.id.clone(),
+                version: loaded_registry.meta.version.clone(),
+                snapshot_hash: registry_snapshot.clone(),
+            },
+            entries,
+            skipped,
+            relations,
+            next_version,
+            bump: request.bump,
+        })?;
+        final_output = Some(output);
+    }
+    final_output.ok_or_else(|| {
+        solve_refusal(
+            "Session commit produced no registry result",
+            json!({"writes_performed": false}),
+            "Rerun canon entity session commit",
+        )
     })
+}
+
+fn expected_registry_version(version: &str, kind: &str) -> Option<String> {
+    if !version.contains('=') {
+        return Some(version.to_string());
+    }
+    version.split(',').find_map(|part| {
+        let (candidate, value) = part.split_once('=')?;
+        (candidate == kind).then(|| value.to_string())
+    })
+}
+
+fn cluster_entity_kind(
+    cluster: &SessionSolveCluster,
+    observation_values: &BTreeMap<String, Vec<Value>>,
+) -> Option<String> {
+    let kinds = cluster
+        .surfaces
+        .iter()
+        .flat_map(|surface| observation_values.get(surface).into_iter().flatten())
+        .filter_map(|value| value.get("entity_type").and_then(Value::as_str))
+        .collect::<BTreeSet<_>>();
+    let mut matching = kinds
+        .iter()
+        .filter_map(|kind| {
+            let mut member_keys = cluster
+                .surfaces
+                .iter()
+                .map(|surface| format!("{kind}\u{0}{surface}"))
+                .collect::<Vec<_>>();
+            member_keys.sort();
+            (cluster_id(&member_keys) == cluster.cluster_id).then(|| (*kind).to_string())
+        })
+        .collect::<Vec<_>>();
+    if matching.len() == 1 {
+        matching.pop()
+    } else if kinds.len() == 1 {
+        kinds.iter().next().map(|kind| (*kind).to_string())
+    } else {
+        None
+    }
 }
 
 fn build_commit_plan(
     artifact: &SessionSolveArtifact,
     entity_kind: &str,
+    alias_file: &str,
+    canonical_type: &str,
     session_id: &str,
     solve_hash: &str,
     registry_version: &str,
@@ -1017,6 +1160,10 @@ fn build_commit_plan(
     let mut entries = Vec::new();
     let mut skipped = Vec::new();
     for cluster in clusters {
+        if cluster_entity_kind(&cluster, observation_values).is_some_and(|kind| kind != entity_kind)
+        {
+            continue;
+        }
         let accepted =
             cluster.outcome == "accepted" && matches!(cluster.tier.as_deref(), Some("A" | "B"));
         if !accepted {
@@ -1040,9 +1187,9 @@ fn build_commit_plan(
             }
             if seen_inputs.insert(surface.clone()) {
                 aliases.push(SessionCommitAlias {
-                    alias_file: "aliases.json".to_string(),
+                    alias_file: alias_file.to_string(),
                     input: surface,
-                    canonical_type: entity_kind.to_string(),
+                    canonical_type: canonical_type.to_string(),
                     rule_id: format!("SESSION_TIER_{tier}"),
                     skip_if_existing: cluster.incumbent_canonical_id.is_some(),
                     session_authority: None,
@@ -1076,9 +1223,9 @@ fn build_commit_plan(
                 })?;
                 if seen_inputs.insert(value.clone()) {
                     aliases.push(SessionCommitAlias {
-                        alias_file: "aliases.json".to_string(),
+                        alias_file: alias_file.to_string(),
                         input: value,
-                        canonical_type: entity_kind.to_string(),
+                        canonical_type: canonical_type.to_string(),
                         rule_id: format!("SESSION_KEY_{}", namespace.to_ascii_uppercase()),
                         skip_if_existing: true,
                         session_authority: None,
@@ -1198,6 +1345,7 @@ fn build_commit_plan(
     let relations = artifact
         .relations
         .iter()
+        .filter(|relation| relation.subject_entity_type == entity_kind)
         .filter_map(|relation| {
             let subject = commit_relation_endpoint(&artifact.clusters, relation, true)?;
             let object = if let Some(external_id) = &relation.object_external_id {
@@ -1609,6 +1757,36 @@ struct RegistryInfo {
     endpoints: BTreeMap<String, RegistryEndpoint>,
 }
 
+fn aggregate_registry_metadata(parts: &[(String, SessionSolveRegistry)]) -> SessionSolveRegistry {
+    if let Some((_, only)) = parts.first().filter(|_| parts.len() == 1) {
+        return only.clone();
+    }
+    let mut bytes = Vec::new();
+    for (kind, metadata) in parts {
+        bytes.extend_from_slice(kind.as_bytes());
+        bytes.push(0);
+        bytes.extend_from_slice(metadata.id.as_bytes());
+        bytes.push(0);
+        bytes.extend_from_slice(metadata.version.as_bytes());
+        bytes.push(0);
+        bytes.extend_from_slice(metadata.snapshot_hash.as_bytes());
+        bytes.push(0xff);
+    }
+    SessionSolveRegistry {
+        id: parts
+            .iter()
+            .map(|(kind, metadata)| format!("{kind}={}", metadata.id))
+            .collect::<Vec<_>>()
+            .join(","),
+        version: parts
+            .iter()
+            .map(|(kind, metadata)| format!("{kind}={}", metadata.version))
+            .collect::<Vec<_>>()
+            .join(","),
+        snapshot_hash: hash_bytes(&bytes),
+    }
+}
+
 fn load_registry_info(
     registry_path: &Path,
     observations: &[Observation],
@@ -1626,13 +1804,34 @@ fn load_registry_info(
             "Repair the registry, then rerun canon entity session solve".to_string(),
         ),
     })?;
-    let endpoint_targets = evidence
+    let observation_kinds = observations
         .iter()
-        .filter_map(pair_target)
-        .flat_map(|(left, right)| [left, right])
-        .filter_map(registry_endpoint_spec)
+        .map(|observation| {
+            (
+                observation.obs_id.as_str(),
+                observation.entity_type.as_str(),
+            )
+        })
         .collect::<BTreeMap<_, _>>();
-    let mut endpoint_targets = endpoint_targets;
+    let mut endpoint_targets = BTreeMap::new();
+    for record in evidence {
+        let Some((left, right)) = pair_target(record) else {
+            continue;
+        };
+        let left_kind = observation_kinds.get(left).copied();
+        let right_kind = observation_kinds.get(right).copied();
+        if left_kind
+            .or(right_kind)
+            .is_some_and(|kind| kind != entity_type)
+        {
+            continue;
+        }
+        for target in [left, right] {
+            if let Some((target, spec)) = registry_endpoint_spec(target) {
+                endpoint_targets.insert(target, spec);
+            }
+        }
+    }
     for observation in observations {
         for (namespace, value) in &observation.keys {
             let target = format!("registry:key:{namespace}:{value}");
@@ -1704,7 +1903,7 @@ fn load_registry_info(
         .filter_map(|observation| {
             mappings
                 .get(&observation.surface)
-                .map(|mapping| (observation.surface.clone(), mapping.canonical_id.clone()))
+                .map(|mapping| (observation.node_key.clone(), mapping.canonical_id.clone()))
         })
         .collect::<BTreeMap<_, _>>();
     let mut canonical_ids = incumbents.values().cloned().collect::<BTreeSet<_>>();
@@ -1733,7 +1932,12 @@ fn load_registry_info(
     }
     let incumbent_keys = rows_by_id
         .iter()
-        .map(|(canonical_id, rows)| (canonical_id.clone(), key_values(rows)))
+        .map(|(canonical_id, rows)| {
+            (
+                format!("{}\u{0}{canonical_id}", entity_type),
+                key_values(rows),
+            )
+        })
         .collect::<BTreeMap<_, _>>();
     let mut endpoints = BTreeMap::new();
     for (target, spec) in endpoint_targets {
@@ -1745,7 +1949,7 @@ fn load_registry_info(
                     surface,
                     canonical_id: mapping.canonical_id.clone(),
                     keys: incumbent_keys
-                        .get(&mapping.canonical_id)
+                        .get(&format!("{}\u{0}{}", entity_type, mapping.canonical_id))
                         .cloned()
                         .unwrap_or_default(),
                     alias_endpoint: true,
@@ -1766,7 +1970,7 @@ fn load_registry_info(
                     })
                     .map(|mapping| {
                         let mut keys = incumbent_keys
-                            .get(&mapping.canonical_id)
+                            .get(&format!("{}\u{0}{}", entity_type, mapping.canonical_id))
                             .cloned()
                             .unwrap_or_default();
                         keys.entry(namespace.clone())
@@ -2030,7 +2234,7 @@ fn build_nodes(
     let mut nodes = BTreeMap::new();
     let mut by_id = BTreeMap::new();
     for observation in observations {
-        let incumbent_canonical_id = incumbents.get(&observation.surface).cloned();
+        let incumbent_canonical_id = incumbents.get(&observation.node_key).cloned();
         let node = nodes
             .entry(observation.node_key.clone())
             .or_insert_with(|| Node {
@@ -2056,7 +2260,8 @@ fn build_nodes(
                 .insert(value.clone());
         }
         if let Some(canonical_id) = incumbent_canonical_id
-            && let Some(existing_keys) = incumbent_keys.get(&canonical_id)
+            && let Some(existing_keys) =
+                incumbent_keys.get(&format!("{}\u{0}{canonical_id}", observation.entity_type))
         {
             for (namespace, value) in &observation.keys {
                 if existing_keys
@@ -3164,6 +3369,8 @@ mod tests {
 
         let (entries, skipped, relations) = build_commit_plan(
             &artifact,
+            "organisation",
+            "aliases.json",
             "organisation",
             "session-id",
             "solve-hash",
