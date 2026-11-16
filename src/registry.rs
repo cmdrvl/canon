@@ -49,10 +49,7 @@ pub use mint::{
     RegistryMintBatchRequest, RegistryMintOutput, RegistryMintRequest, mint, mint_batch,
     mint_with_scope, read_batch_items,
 };
-pub(crate) use mint::{
-    RegistryTypedAlias, RegistryTypedMinted, RegistryTypedSkippedAlias, RegistryTypedWriteOutput,
-    RegistryTypedWriteRequest, commit_typed_entries,
-};
+pub(crate) use mint::{RegistryTypedAlias, RegistryTypedWriteRequest, commit_typed_entries};
 pub use next_id::{RegistryNextIdOutput, RegistryNextIdRequest, next_id};
 pub use package::{
     REGISTRY_MERGE_PLAN_SCHEMA_VERSION, REGISTRY_PACKAGE_SCHEMA_VERSION, RegistryMergeBlastRadius,
