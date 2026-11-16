@@ -80,6 +80,9 @@ pub struct EntitySessionCommitRequest {
     pub session: PathBuf,
     pub next_version: Option<String>,
     pub bump: Option<registry::RegistryVersionBump>,
+    /// `--expect-base`: the registry content_hash the driver synced, or
+    /// `kind=hash,kind=hash` for several registries.
+    pub expect_base: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1160,6 +1163,58 @@ pub fn commit(
         .iter()
         .map(|binding| binding.kind.as_str())
         .collect::<Vec<_>>();
+    // --expect-base is checked for every kind before any kind writes. A kind
+    // whose solve is already committed is an exact repeat, not a moved base.
+    if let Some(raw) = request.expect_base.as_deref() {
+        for binding in &manifest.registries {
+            let expected =
+                registries::flag_value_for_kind("--expect-base", raw, &binding.kind, &known_kinds)
+                    .map_err(|error| {
+                        solve_refusal(
+                            format!("Invalid --expect-base: {error}"),
+                            json!({"field": "expect-base", "writes_performed": false}),
+                            "Use --expect-base kind=content_hash for each mapped entity kind",
+                        )
+                    })?;
+            let Some(expected) = expected else {
+                continue;
+            };
+            let Some((loaded_registry, _)) = current_registries.get(&binding.kind) else {
+                continue;
+            };
+            if session::already_committed(
+                &session,
+                &solve_hash,
+                &loaded_registry.meta.id,
+                &loaded_registry.meta.version,
+            )?
+            .is_some()
+            {
+                continue;
+            }
+            let actual = registry::registry_identity(Path::new(&binding.path))?;
+            if actual.content_hash != expected {
+                return Err(Refusal {
+                    code: RefusalCode::EEntityRegistrySnapshot,
+                    message: format!(
+                        "Registry directory for kind '{}' is not the base the driver synced",
+                        binding.kind
+                    ),
+                    detail: json!({
+                        "reason": "base_moved",
+                        "kind": binding.kind,
+                        "expected": expected,
+                        "actual": actual.content_hash,
+                        "writes_performed": false,
+                    }),
+                    next_command: Some(format!(
+                        "Sync the registry directory again, or rerun with --expect-base {}",
+                        actual.content_hash
+                    )),
+                });
+            }
+        }
+    }
     let mut final_output = None;
     for binding in &manifest.registries {
         let (loaded_registry, registry_snapshot) =

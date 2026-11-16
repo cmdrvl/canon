@@ -37,6 +37,7 @@
       "canon registry export --format dbt-seed|search-index|key-crosswalk--registry <DIR> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--emit json|summary]",
       "canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]",
       "canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary]",
+      "canon registry identity --registry <DIR> [--ref <REF>] [--emit json|summary]",
       "canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
       "canon registry add-entries --registry <DIR> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
       "canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--create-alias-file] [--no-lint] [--emit json|plain]",
@@ -57,7 +58,7 @@
       "canon entity session solve <SESSION> --rules <RULES.yaml> [--what-if <EXTRA.jsonl>] [--emit json|summary]",
       "canon entity session rules init [--out <RULES.yaml>] [--emit json|summary]",
       "canon entity session rules validate <RULES.yaml> [--emit json|summary]",
-      "canon entity session commit <SESSION> (--next-version <VER>|--bump patch|minor|major) [--emit json|summary]",
+      "canon entity session commit <SESSION> (--next-version <VER>|--bump patch|minor|major) [--expect-base <HASH>] [--emit json|summary]",
       "canon entity session status <SESSION> [--rules <RULES.yaml>] [--emit json|summary]",
       "canon entity session explain <SESSION> <OBS_ID|SURFACE|cluster:CLUSTER_ID> [--emit json|summary]",
       "canon entity session sample <SESSION> [--stratum tier_a|tier_b|tier_c|standalone|neighbourhood] [--count <N>] [--seed <SEED>] [--entity-type <TYPE>] [--blind] [--seed-entity <SURFACE_OR_ID>] [--score <LABELS.jsonl>] [--emit jsonl|json|summary]",
@@ -4322,6 +4323,81 @@
       }
     },
     {
+      "name": "registry identity",
+      "usage": "canon registry identity --registry <DIR> [--ref <REF>] [--emit json|summary]",
+      "description": "Print a registry directory's hand-off identity (registry id and version, package digest, content hash over every published file, per-file hashes), or with --ref check a pinned reference [<registry id>:]<canonical id>@<registry version>#<closure hash> against the directory; reads only, uploads nothing",
+      "output_mode": "mixed",
+      "output_schema": "canon_registry_identity.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "offline read-only command; emits stdout only",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "registry read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": false,
+        "reads_registry_files": true,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "identity printed, or the reference checked (id_status current, superseded or unknown)",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL (bad registry, malformed reference) / CLI error",
+          "domain": "error"
+        }
+      },
+      "options": [
+        {
+          "name": "registry",
+          "flag": "--registry",
+          "type": "directory_path",
+          "required": true,
+          "description": "Registry directory to describe"
+        },
+        {
+          "name": "reference",
+          "flag": "--ref",
+          "type": "string",
+          "required": false,
+          "description": "Pinned reference [<registry id>:]<canonical id>@<registry version>#<closure hash> to check"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json (canon_registry_identity.v0 or canon_registry_ref_check.v0) or summary"
+        }
+      ],
+      "next_command": "canon entity session commit <SESSION> --next-version <VER> --expect-base <HASH>",
+      "recovery": {
+        "next_command": "Use [<registry id>:]<canonical id>@<registry version>#<closure hash>",
+        "refusal_exit_code": 2
+      }
+    },
+    {
       "name": "registry next-id",
       "usage": "canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]",
       "description": "Suggest the next canonical ID for a self-authored registry namespace without mutating registry files or the derived SQLite index",
@@ -7265,7 +7341,7 @@
     },
     {
       "name": "entity session commit",
-      "usage": "canon entity session commit <SESSION> (--next-version <VER>|--bump patch|minor|major) [--emit json|summary]",
+      "usage": "canon entity session commit <SESSION> (--next-version <VER>|--bump patch|minor|major) [--expect-base <HASH>] [--emit json|summary]",
       "description": "Commit accepted tier A/B session clusters into the bound local registry and publish a deterministic receipt",
       "output_mode": "mixed",
       "output_schema": "canon.entity.session.commit.v1",
@@ -7387,6 +7463,12 @@
         "mutation_class": "ReadOnly",
         "network_class": "Offline",
         "concurrency_class": "StatelessRead",
+        {
+          "name": "expect_base",
+          "flag": "--expect-base",
+          "type": "string",
+          "description": "Refuse with base_moved unless the registry directory's content_hash (canon registry identity) equals this value; kind=hash,kind=hash for several registries"
+        },
         "platform_classes": [
           "PortablePathUtf8"
         ],

@@ -553,6 +553,14 @@
       "action": "preserve"
     },
     {
+      "id": "canon registry identity",
+      "family": "registry",
+      "clap_path": "registry identity",
+      "operator_name": "registry identity",
+      "primary_contracts": ["canon_registry_identity.v0", "canon_registry_ref_check.v0"],
+      "action": "preserve"
+    },
+    {
       "id": "canon registry check-id",
       "family": "registry",
       "clap_path": "registry check-id",
@@ -1462,6 +1470,8 @@
     { "id": "canon_registry_mint.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_mint_batch.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_check_id.v0", "family": "registry", "action": "preserve" },
+    { "id": "canon_registry_identity.v0", "family": "registry", "action": "preserve" },
+    { "id": "canon_registry_ref_check.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_next_id.v0", "family": "registry", "action": "preserve" },
     { "id": "canon.registry_index.v2", "family": "registry", "action": "preserve" },
     { "id": "canon.registry.package.v1", "family": "registry", "action": "preserve" },

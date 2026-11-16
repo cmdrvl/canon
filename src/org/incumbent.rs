@@ -105,6 +105,28 @@ pub fn lookup_snapshot_hash(registry_dir: &Path) -> EntityResult<String> {
     )
 }
 
+/// Every file that is part of a registry's published state: the lookup
+/// snapshot files (registry.json, mapping files, `_anchors`), the escrow
+/// sidecars, `_build.json`, `relations.jsonl` and `corrections.jsonl`. Sorted
+/// by path; lock and temporary files are never listed.
+pub fn registry_identity_files(registry_dir: &Path) -> EntityResult<Vec<PathBuf>> {
+    let alias_files = discover_alias_files(registry_dir)?;
+    let anchor_files = discover_anchor_sidecars(registry_dir)?;
+    let mut files = build_lookup_manifest_paths(registry_dir, &alias_files, &anchor_files);
+    files.extend(build_escrow_manifest_paths(&discover_escrow_sidecars(
+        registry_dir,
+    )));
+    for name in ["_build.json", "relations.jsonl", "corrections.jsonl"] {
+        let path = registry_dir.join(name);
+        if path.is_file() {
+            files.push(path);
+        }
+    }
+    files.sort();
+    files.dedup();
+    Ok(files)
+}
+
 pub fn escrow_snapshot_hash(registry_dir: &Path) -> EntityResult<String> {
     let escrow_files = discover_escrow_sidecars(registry_dir);
     compute_manifest_hash(

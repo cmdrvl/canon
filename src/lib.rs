@@ -69,8 +69,8 @@ use crate::cli::{
     EntityStreamEmitMode, EntitySubcommand, PackageCli, PackagePackCli, PackageSubcommand,
     RegistryAddEntriesCli, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
     RegistryCheckIdCli, RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode,
-    RegistryExportCli, RegistryExportFormatCli, RegistryInitCli, RegistryLintCli,
-    RegistryLintProfile, RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli,
+    RegistryExportCli, RegistryExportFormatCli, RegistryIdentityCli, RegistryInitCli,
+    RegistryLintCli, RegistryLintProfile, RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli,
     RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand,
     RegistryVersionBumpMode, StrategyAuditCli, StrategyCommand, StrategyDeprecateCli,
     StrategyDiffCli, StrategyExplainCli, StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli,
@@ -201,6 +201,7 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
             RegistrySubcommand::Init(init) => run_registry_init(init),
             RegistrySubcommand::Export(export) => run_registry_export(export),
             RegistrySubcommand::CheckId(check_id) => run_registry_check_id(check_id),
+            RegistrySubcommand::Identity(identity) => run_registry_identity(identity),
             RegistrySubcommand::NextId(next_id) => run_registry_next_id(next_id),
             RegistrySubcommand::AddEntry(add_entry) => run_registry_add_entry(add_entry),
             RegistrySubcommand::AddEntries(add_entries) => run_registry_add_entries(add_entries),
@@ -1251,6 +1252,7 @@ fn run_entity_session_commit_command(
 }
 
 fn run_entity_session_status_command(
+        expect_base: commit.expect_base.clone(),
     status: &EntitySessionStatusCli,
 ) -> Result<u8, Box<dyn Error>> {
     let result = entity::session::session_status(entity::session::SessionStatusRequest {
@@ -4562,6 +4564,38 @@ fn run_registry_check_id(check_id: &RegistryCheckIdCli) -> Result<u8, Box<dyn Er
             }
             Ok(2)
         }
+fn run_registry_identity(identity: &RegistryIdentityCli) -> Result<u8, Box<dyn Error>> {
+    let rendered = match &identity.reference {
+        Some(reference) => registry::check_pinned_ref(&identity.registry, reference).map(|check| {
+            (
+                serde_json::to_string(&check),
+                format!(
+                    "id_status={} resolves_to={} version_match={} closure_found={}",
+                    check.id_status,
+                    check.resolves_to.as_deref().unwrap_or("<none>"),
+                    check.version_match,
+                    check.closure_found
+                ),
+            )
+        }),
+        None => registry::registry_identity(&identity.registry)
+            .map(|found| (serde_json::to_string(&found), found.render_summary())),
+    };
+    match rendered {
+        Ok((json, summary)) => {
+            match identity.emit {
+                RegistryEmitMode::Json => println!("{}", json?),
+                RegistryEmitMode::Summary => println!("{summary}"),
+            }
+            Ok(0)
+        }
+        Err(refusal) => {
+            println!("{}", serde_json::to_string(&refusal.to_canon_output())?);
+            Ok(2)
+        }
+    }
+}
+
     }
 }
 

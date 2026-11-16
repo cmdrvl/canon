@@ -139,6 +139,7 @@ canon registry providers [--emit json|summary]
 canon registry provider-schema <PROVIDER> [--emit json|summary]
 canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]
 canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary]
+canon registry identity --registry <DIR> [--ref <REF>] [--emit json|summary]
 canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
 canon registry add-entries --registry <DIR> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
 canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--create-alias-file] [--no-lint] [--emit json|plain]
@@ -164,7 +165,7 @@ canon entity session assert <SESSION> <EVIDENCE.jsonl|-> [--emit json|summary]
 canon entity session solve <SESSION> --rules <RULES.yaml> [--what-if <EXTRA.jsonl>] [--emit json|summary]
 canon entity session rules init [--out <RULES.yaml>] [--emit json|summary]
 canon entity session rules validate <RULES.yaml> [--emit json|summary]
-canon entity session commit <SESSION> (--next-version <VER>|--bump patch|minor|major) [--emit json|summary]
+canon entity session commit <SESSION> (--next-version <VER>|--bump patch|minor|major) [--expect-base <HASH>] [--emit json|summary]
 canon entity session status <SESSION> [--rules <RULES.yaml>] [--emit json|summary]
 canon entity session explain <SESSION> <OBS_ID|SURFACE|cluster:CLUSTER_ID> [--emit json|summary]
 canon entity session sample <SESSION> [--stratum tier_a|tier_b|tier_c|standalone|neighbourhood] [--count <N>] [--seed <SEED>] [--entity-type <TYPE>] [--blind] [--seed-entity <SURFACE_OR_ID>] [--score <LABELS.jsonl>] [--emit jsonl|json|summary]
@@ -292,6 +293,12 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - secret options (e.g. OpenFIGI `api_key`) are flagged `"secret": true` so agents do not echo their values; this matches `_build.json` redaction
 - the OpenFIGI schema is derived from the same constants the resolver validates against, so the published contract cannot drift from runtime behavior; tests assert this and never contact `api.openfigi.com`
 - an unknown provider refuses with `E_PARSE`, the available provider ids in `detail`, and `next_command: canon registry providers --emit json`; deterministic and offline
+
+`canon registry identity --registry <DIR> [--ref <REF>] [--emit json|summary]`
+- prints `canon_registry_identity.v0`: registry id and version, `package_digest`, and `content_hash`, the hash of the sorted `path / bytes / blake3` list over registry.json, every mapping file, `_anchors/*`, `_escrow/*`, `_build.json`, `relations.jsonl` and `corrections.jsonl`; the hash does not depend on the directory path or file order
+- `--ref '[<registry id>:]<canonical id>@<registry version>#<closure hash>'` (split at the first `@` and the last `#`) prints `canon_registry_ref_check.v0`: `id_status` `current`, `superseded` (only a `SUPERSEDED_ID_ALIAS` entry resolves it; `resolves_to` names the survivor) or `unknown`, `version_match`, and `closure_found` (an entry of that id carries the closure hash in its `session_authority`, or a `corrections.jsonl` line does); a malformed reference is refused with the expected form
+- `canon entity session commit ... --expect-base <content_hash>` (`kind=hash,kind=hash` per registry) refuses with `base_moved`, naming expected and actual, before any write when the directory's current `content_hash` differs; a solve already committed is an exact repeat and is not refused
+- reads only; canon uploads, syncs and publishes nothing
 
 `canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary]`
 - verifies an agent-friendly id (`<kind>_` plus a 10-symbol body and 2 check symbols) before any lookup; every single-symbol substitution and adjacent swap is refused

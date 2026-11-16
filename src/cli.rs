@@ -1217,6 +1217,8 @@ pub enum RegistrySubcommand {
     /// Verify an agent-friendly id (check symbols, kind prefix) and resolve it
     #[command(name = "check-id")]
     CheckId(RegistryCheckIdCli),
+    /// Print a registry directory's hand-off identity, or check a pinned reference against it
+    Identity(RegistryIdentityCli),
     /// Append one exact alias entry to a self-authored registry
     #[command(name = "add-entry")]
     AddEntry(RegistryAddEntryCli),
@@ -1362,6 +1364,21 @@ pub struct RegistryCheckIdCli {
     /// Registries map YAML: the kinds' agent prefixes are the known kinds
     #[arg(long)]
     pub registries: Option<PathBuf>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct RegistryIdentityCli {
+    /// Registry directory to describe
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Pinned reference [<registry id>:]<canonical id>@<registry version>#<closure hash> to check
+    #[arg(long = "ref")]
+    pub reference: Option<String>,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
@@ -1865,6 +1882,11 @@ pub struct EntitySessionSampleCli {
     /// Restrict the sample to one entity type
     #[arg(long = "entity-type")]
     pub entity_type: Option<String>,
+
+    /// Refuse with base_moved unless the registry directory's content_hash is this value
+    /// (kind=hash,kind=hash for a session with several registries)
+    #[arg(long = "expect-base")]
+    pub expect_base: Option<String>,
 
     /// Omit tier and evidence fields so a labeller cannot see the stratum
     #[arg(long)]

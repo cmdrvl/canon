@@ -484,6 +484,7 @@ canon registry providers [--emit json|summary]
 canon registry provider-schema <PROVIDER> [--emit json|summary]
 canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]
 canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary]
+canon registry identity --registry <DIR> [--ref <REF>] [--emit json|summary]
 canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
 canon registry add-entries --registry <DIR> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
 canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--create-alias-file] [--no-lint] [--emit json|plain]
@@ -509,7 +510,7 @@ canon entity session assert <SESSION> <EVIDENCE.jsonl|-> [--emit json|summary]
 canon entity session solve <SESSION> --rules <RULES.yaml> [--what-if <EXTRA.jsonl>] [--emit json|summary]
 canon entity session rules init [--out <RULES.yaml>] [--emit json|summary]
 canon entity session rules validate <RULES.yaml> [--emit json|summary]
-canon entity session commit <SESSION> (--next-version <VER>|--bump patch|minor|major) [--emit json|summary]
+canon entity session commit <SESSION> (--next-version <VER>|--bump patch|minor|major) [--expect-base <HASH>] [--emit json|summary]
 canon entity session status <SESSION> [--rules <RULES.yaml>] [--emit json|summary]
 canon entity session explain <SESSION> <OBS_ID|SURFACE|cluster:CLUSTER_ID> [--emit json|summary]
 canon entity session sample <SESSION> [--stratum tier_a|tier_b|tier_c|standalone|neighbourhood] [--count <N>] [--seed <SEED>] [--entity-type <TYPE>] [--blind] [--seed-entity <SURFACE_OR_ID>] [--score <LABELS.jsonl>] [--emit jsonl|json|summary]
@@ -888,6 +889,7 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `registry export --format dbt-seed\|search-index --registry <DIR> --out <PATH>` | Export a versioned registry as a deterministic dbt seed CSV or a self-describing SQLite search index, with optional source-file, canonical-type, and rule-id-prefix filters. |
 | `registry providers [--emit json\|summary]` | List the registry build providers available for materialization, with their seed-column support and a pointer to each provider's schema command. |
 | `registry provider-schema <PROVIDER> [--emit json\|summary]` | Emit one provider's machine-readable `--provider-config` option contract — keys, types, enum values, secret flags, env fallbacks, defaults, mutual exclusions, interval encoding, and examples. Deterministic and offline; never contacts the provider. |
+| `registry identity --registry <DIR> [--ref <REF>] [--emit json\|summary]` | Print the hand-off identity of a registry directory (id, version, package digest, `content_hash` over registry.json, mapping files, `_anchors`, `_escrow`, `_build.json`, `relations.jsonl`, `corrections.jsonl`, per-file hashes) so a driver can read the base after a sync; with `--ref '[<registry id>:]<canonical id>@<registry version>#<closure hash>'` report `id_status` (`current`, `superseded`, `unknown`), `resolves_to`, `version_match` and `closure_found`. Reads only; canon uploads nothing. `entity session commit --expect-base <content_hash>` refuses `base_moved` before any write when the directory differs. |
 | `registry check-id <ID> [--registry <DIR> \| --registries <MAP_YAML>] [--emit json\|summary]` | Verify an agent-friendly id (`org_7k3m9q2xh43z`, optional `~label`): length, alphabet, kind prefix and the two check symbols. A bad id is refused with `E_BAD_ID` and `detail.reason` of `bad_length`, `bad_symbol`, `unknown_kind` or `bad_check`; a good id returns `{kind, id, resolves_to, label}` where `label` is `match`, `mismatch` or `absent` and a mismatch is not a refusal. |
 | `registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain\|json]` | Read the existing canonical IDs for a self-authored namespace and suggest the next deterministic ID. Uses `registry.json.default_id_scheme` when `PREFIX` is omitted. |
 | `registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]...` | Append one exact alias entry to an existing root mapping file, bump the registry version, update `entry_count`, and run standard lint unless `--no-lint` is set. Scoped duplicate inputs are allowed only across distinct scopes. |

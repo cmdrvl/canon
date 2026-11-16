@@ -30,6 +30,7 @@ pub mod domain_compile;
 mod export;
 pub mod export_projection;
 mod id_scheme;
+mod identity;
 mod init;
 mod mint;
 mod next_id;
@@ -46,6 +47,12 @@ pub use add_entry::{
 pub use check_id::{RegistryCheckIdOutput, RegistryCheckIdRequest, check_id};
 pub use id_scheme::{
     RegistryDefaultIdSchemeOutput, RegistryDefaultIdSchemeRequest, set_default_id_scheme,
+};
+pub use identity::{
+    PinnedRef, REGISTRY_IDENTITY_VERSION, REGISTRY_REF_CHECK_VERSION, RegistryChangedFile,
+    RegistryFileIdentity, RegistryHandoffSide, RegistryIdentity, RegistryRefCheck, changed_files,
+    check_pinned_ref, content_hash_of, parse_pinned_ref, pinned_ref, registry_identity,
+    search_index_export_command,
 };
 pub use init::{RegistryInitOutput, RegistryInitRequest, init};
 pub use mint::{
