@@ -452,6 +452,7 @@ fn parse_alternatives(
         ));
     }
     let mut parsed = Vec::with_capacity(alternatives.len());
+    let eligible_refs = eligible.iter().map(String::as_str).collect::<Vec<_>>();
     for (index, alternative) in alternatives.iter().enumerate() {
         let item_path = format!("tier_b.any_of[{index}]");
         let object = alternative.as_object().ok_or_else(|| {
@@ -480,7 +481,7 @@ fn parse_alternatives(
             "required_evidence_types",
             path,
             &format!("{item_path}.required_evidence_types"),
-            eligible,
+            &eligible_refs,
         )?
         .unwrap_or_default();
         for (required_index, kind) in required.iter().enumerate() {
