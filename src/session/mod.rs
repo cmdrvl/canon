@@ -1232,10 +1232,10 @@ fn compile_short_assertion(
             EvidenceExtensionValue::String(lineage),
         );
     }
-    if let Some(ancestry) = ancestry {
-        if let Some(value) = extension_value(&ancestry) {
-            extension_payload.insert("ancestry".to_string(), value);
-        }
+    if let Some(ancestry) = ancestry
+        && let Some(value) = extension_value(&ancestry)
+    {
+        extension_payload.insert("ancestry".to_string(), value);
     }
     if let Some(relation) = relation {
         extension_payload.insert(

@@ -1511,8 +1511,8 @@ fn load_registry_info(
     let mut endpoints = BTreeMap::new();
     for (target, spec) in endpoint_targets {
         let endpoint = match spec {
-            RegistryEndpointSpec::Alias(surface) => mappings.get(&surface).and_then(|mapping| {
-                Some(RegistryEndpoint {
+            RegistryEndpointSpec::Alias(surface) => {
+                mappings.get(&surface).map(|mapping| RegistryEndpoint {
                     entity_type: entity_type.to_string(),
                     node_key: format!("{entity_type}\u{0}{surface}"),
                     surface,
@@ -1523,7 +1523,7 @@ fn load_registry_info(
                         .unwrap_or_default(),
                     alias_endpoint: true,
                 })
-            }),
+            }
             RegistryEndpointSpec::Key { namespace, value } => {
                 let expected_rule = format!("SESSION_KEY_{}", namespace.to_ascii_uppercase());
                 mappings.get(&value).and_then(|mapping| {
