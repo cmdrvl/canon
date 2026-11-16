@@ -13,7 +13,7 @@ use crate::{
     },
     namekit::tfidf::{
         RARE_TOKEN_MIN_IDF_UNITS, SparseTfidfModel, TfidfEvidenceClass, TfidfRowTerm,
-        TfidfSparseRow, TfidfTermId, TfidfTopKDiagnostics, TopKConfig,
+        TfidfSparseRow, TfidfTermId, TfidfTopKCandidate, TfidfTopKDiagnostics, TopKConfig,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -88,32 +88,29 @@ pub fn tfidf_cosine_support_evidence(
         request.left_surface_id,
         request.right_surface_id,
     )?;
-    let reason_code = evidence_reason_code(candidate.evidence_class);
-    let explanation = format!(
-        "tfidf cosine score_units={} evidence_class={} shared_terms={} max_shared_idf_units={} top_contributors={}",
-        score_units.as_u32(),
-        evidence_class_id(candidate.evidence_class),
-        candidate.shared_term_count,
-        candidate.max_shared_idf_units,
-        contributor_keys(&top_contributors),
-    );
+    let hit = tfidf_hit_from_candidate(&request, candidate, &top_contributors)?;
 
     Some(TfidfCosineSupportEvidence {
-        hit: EdgeEvidenceHit::new(
-            ScoreLane::Support,
-            request.namespace,
-            request.operator_id,
-            reason_code,
-            score_units,
-            false,
-            explanation,
-        ),
+        hit,
         evidence_class: candidate.evidence_class,
         shared_term_count: candidate.shared_term_count,
         max_shared_idf_units: candidate.max_shared_idf_units,
         top_contributors,
         top_k_diagnostics: top_k.diagnostics,
     })
+}
+
+pub fn tfidf_cosine_support_hit_from_candidate(
+    request: TfidfCosineSupportRequest<'_>,
+    candidate: &TfidfTopKCandidate,
+    left_row: &TfidfSparseRow,
+    right_row: &TfidfSparseRow,
+) -> Option<EdgeEvidenceHit> {
+    if candidate.surface_id != request.right_surface_id {
+        return None;
+    }
+    let top_contributors = shared_contributors_from_rows(request.model, left_row, right_row)?;
+    tfidf_hit_from_candidate(&request, candidate, &top_contributors)
 }
 
 pub fn sparse_architecture_proof(model: &SparseTfidfModel) -> TfidfSparseArchitectureProof {
@@ -147,6 +144,14 @@ fn shared_contributors(
 ) -> Option<Vec<TfidfSupportContributor>> {
     let left = model.row(left_surface_id)?;
     let right = model.row(right_surface_id)?;
+    shared_contributors_from_rows(model, left, right)
+}
+
+fn shared_contributors_from_rows(
+    model: &SparseTfidfModel,
+    left: &TfidfSparseRow,
+    right: &TfidfSparseRow,
+) -> Option<Vec<TfidfSupportContributor>> {
     let right_terms = terms_by_id(right);
     let mut contributors = left
         .terms
@@ -169,6 +174,35 @@ fn shared_contributors(
         .collect::<Vec<_>>();
     contributors.sort_by(contributor_cmp);
     Some(contributors)
+}
+
+fn tfidf_hit_from_candidate(
+    request: &TfidfCosineSupportRequest<'_>,
+    candidate: &TfidfTopKCandidate,
+    top_contributors: &[TfidfSupportContributor],
+) -> Option<EdgeEvidenceHit> {
+    let score_units = ScoreUnits::from_scaled(u32::from(candidate.score_units))?;
+    if score_units == ScoreUnits::ZERO || score_units < request.min_score_units {
+        return None;
+    }
+    let reason_code = evidence_reason_code(candidate.evidence_class);
+    let explanation = format!(
+        "tfidf cosine score_units={} evidence_class={} shared_terms={} max_shared_idf_units={} top_contributors={}",
+        score_units.as_u32(),
+        evidence_class_id(candidate.evidence_class),
+        candidate.shared_term_count,
+        candidate.max_shared_idf_units,
+        contributor_keys(top_contributors),
+    );
+    Some(EdgeEvidenceHit::new(
+        ScoreLane::Support,
+        request.namespace,
+        request.operator_id,
+        reason_code,
+        score_units,
+        false,
+        explanation,
+    ))
 }
 
 fn terms_by_id(row: &TfidfSparseRow) -> BTreeMap<TfidfTermId, &TfidfRowTerm> {

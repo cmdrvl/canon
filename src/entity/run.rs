@@ -113,12 +113,12 @@ use crate::{
             build_solve_artifact_contract_with_alias_proposals, build_solve_diagnostics,
             validate_solve_artifact_contract,
         },
-        tfidf_evidence::{TfidfCosineSupportRequest, tfidf_cosine_support_hit},
+        tfidf_evidence::{TfidfCosineSupportRequest, tfidf_cosine_support_hit_from_candidate},
     },
     namekit::{
         ngram::NgramConfig,
         similarity::SimilarityMetric,
-        tfidf::{SparseTfidfModel, TfidfInputSurface},
+        tfidf::{SparseTfidfModel, TfidfInputSurface, TfidfSparseRow, TfidfTopKResult, TopKConfig},
     },
     witness,
 };
@@ -3860,12 +3860,22 @@ fn run_summary(
     EntityDeterministicSummary { counts, labels }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct TfidfTopKCacheKey {
+    view_name: String,
+    surface_id: String,
+    top_k: usize,
+    candidate_cap: Option<usize>,
+}
+
 struct EdgeSupportScoringContext<'a> {
     profile: &'a EntityProfileDocument,
     support_namespace: &'a str,
     relation_namespace: &'a str,
     surface_lookup: BTreeMap<&'a str, &'a PreparedSurfaceRecord>,
     tfidf_models: BTreeMap<String, SparseTfidfModel>,
+    tfidf_row_ordinals: BTreeMap<String, BTreeMap<String, usize>>,
+    tfidf_top_k: BTreeMap<TfidfTopKCacheKey, TfidfTopKResult>,
 }
 
 impl<'a> EdgeSupportScoringContext<'a> {
@@ -3881,13 +3891,73 @@ impl<'a> EdgeSupportScoringContext<'a> {
             .map(|surface| (surface.surface_id.as_str(), surface))
             .collect::<BTreeMap<_, _>>();
         let tfidf_models = tfidf_models_for_profile(profile, surfaces)?;
+        let tfidf_row_ordinals = tfidf_models
+            .iter()
+            .map(|(view_name, model)| {
+                (
+                    view_name.clone(),
+                    model
+                        .rows
+                        .iter()
+                        .enumerate()
+                        .map(|(ordinal, row)| (row.surface_id.clone(), ordinal))
+                        .collect::<BTreeMap<_, _>>(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let tfidf_top_k = tfidf_top_k_for_profile(profile, surfaces, &tfidf_models)?;
         Ok(Self {
             profile,
             support_namespace,
             relation_namespace,
             surface_lookup,
             tfidf_models,
+            tfidf_row_ordinals,
+            tfidf_top_k,
         })
+    }
+
+    fn tfidf_rows(
+        &self,
+        view_name: &str,
+        left_surface_id: &str,
+        right_surface_id: &str,
+    ) -> Result<(&TfidfSparseRow, &TfidfSparseRow), Refusal> {
+        let model = self.tfidf_models.get(view_name).ok_or_else(|| {
+            edge_support_config_refusal(
+                "TF-IDF support model is missing for profile-declared evidence view",
+                "tfidf_cosine",
+                "view",
+                json!({ "view": view_name }),
+            )
+        })?;
+        let row_ordinals = self.tfidf_row_ordinals.get(view_name).ok_or_else(|| {
+            edge_support_config_refusal(
+                "TF-IDF row index is missing for profile-declared evidence view",
+                "tfidf_cosine",
+                "view",
+                json!({ "view": view_name }),
+            )
+        })?;
+        let row_for = |surface_id: &str| {
+            let ordinal = row_ordinals.get(surface_id).ok_or_else(|| {
+                edge_support_config_refusal(
+                    "TF-IDF row is missing for prepared surface",
+                    "tfidf_cosine",
+                    "surface_id",
+                    json!({ "view": view_name, "surface_id": surface_id }),
+                )
+            })?;
+            model.rows.get(*ordinal).ok_or_else(|| {
+                edge_support_config_refusal(
+                    "TF-IDF row ordinal is outside the model",
+                    "tfidf_cosine",
+                    "surface_id",
+                    json!({ "view": view_name, "surface_id": surface_id, "ordinal": ordinal }),
+                )
+            })
+        };
+        Ok((row_for(left_surface_id)?, row_for(right_surface_id)?))
     }
 }
 
@@ -4418,6 +4488,8 @@ fn tfidf_support_for_spec(
         return Ok(None);
     };
     let view_name = required_support_view_name(spec, "tfidf_cosine")?;
+    let top_k = positive_usize_param(spec, "top_k", 25)?;
+    let candidate_cap = Some(positive_usize_param(spec, "candidate_cap", 25)?);
     let model = context.tfidf_models.get(view_name).ok_or_else(|| {
         edge_support_config_refusal(
             "TF-IDF support model is missing for profile-declared evidence view",
@@ -4426,17 +4498,48 @@ fn tfidf_support_for_spec(
             json!({ "view": view_name }),
         )
     })?;
+    let cache_key = TfidfTopKCacheKey {
+        view_name: view_name.to_string(),
+        surface_id: candidate.left_surface_id.clone(),
+        top_k,
+        candidate_cap,
+    };
+    let top_k_result = context.tfidf_top_k.get(&cache_key).ok_or_else(|| {
+        edge_support_config_refusal(
+            "TF-IDF top-k cache is missing for profile-declared evidence view",
+            "tfidf_cosine",
+            "view",
+            json!({ "view": view_name, "surface_id": candidate.left_surface_id }),
+        )
+    })?;
+    let Some(top_k_candidate) = top_k_result
+        .candidates
+        .iter()
+        .find(|top_k_candidate| top_k_candidate.surface_id == candidate.right_surface_id)
+    else {
+        return Ok(None);
+    };
+    let (left_row, right_row) = context.tfidf_rows(
+        view_name,
+        &candidate.left_surface_id,
+        &candidate.right_surface_id,
+    )?;
     let operator_id = support_operator_id(spec);
-    Ok(tfidf_cosine_support_hit(TfidfCosineSupportRequest {
-        namespace: context.support_namespace,
-        operator_id: &operator_id,
-        model,
-        left_surface_id: &candidate.left_surface_id,
-        right_surface_id: &candidate.right_surface_id,
-        min_score_units,
-        top_k: positive_usize_param(spec, "top_k", 25)?,
-        candidate_cap: Some(positive_usize_param(spec, "candidate_cap", 25)?),
-    }))
+    Ok(tfidf_cosine_support_hit_from_candidate(
+        TfidfCosineSupportRequest {
+            namespace: context.support_namespace,
+            operator_id: &operator_id,
+            model,
+            left_surface_id: &candidate.left_surface_id,
+            right_surface_id: &candidate.right_surface_id,
+            min_score_units,
+            top_k,
+            candidate_cap,
+        },
+        top_k_candidate,
+        left_row,
+        right_row,
+    ))
 }
 
 fn date_transposed_digits_support_for_spec(
@@ -4602,6 +4705,60 @@ fn tfidf_models_for_profile(
         );
     }
     Ok(models)
+}
+
+fn tfidf_top_k_for_profile(
+    profile: &EntityProfileDocument,
+    surfaces: &[PreparedSurfaceRecord],
+    models: &BTreeMap<String, SparseTfidfModel>,
+) -> Result<BTreeMap<TfidfTopKCacheKey, TfidfTopKResult>, Refusal> {
+    let mut configs = BTreeSet::new();
+    for spec in &profile.evidence.support {
+        if spec.op == "tfidf_cosine" && positive_support_threshold(spec)?.is_some() {
+            let view_name = required_support_view_name(spec, "tfidf_cosine")?;
+            let top_k = positive_usize_param(spec, "top_k", 25)?;
+            let candidate_cap = Some(positive_usize_param(spec, "candidate_cap", 25)?);
+            configs.insert((view_name.to_string(), top_k, candidate_cap));
+        }
+    }
+
+    let mut cache = BTreeMap::new();
+    for (view_name, top_k, candidate_cap) in configs {
+        let model = models.get(&view_name).ok_or_else(|| {
+            edge_support_config_refusal(
+                "TF-IDF support model is missing for profile-declared evidence view",
+                "tfidf_cosine",
+                "view",
+                json!({ "view": view_name }),
+            )
+        })?;
+        let config = match candidate_cap {
+            Some(cap) => TopKConfig::new(top_k).with_candidate_cap(cap),
+            None => TopKConfig::new(top_k),
+        };
+        for surface in surfaces {
+            let top_k_result = model
+                .top_k_for_surface(&surface.surface_id, config)
+                .ok_or_else(|| {
+                    edge_support_config_refusal(
+                        "TF-IDF support model is missing a prepared surface",
+                        "tfidf_cosine",
+                        "surface_id",
+                        json!({ "view": view_name, "surface_id": surface.surface_id }),
+                    )
+                })?;
+            cache.insert(
+                TfidfTopKCacheKey {
+                    view_name: view_name.clone(),
+                    surface_id: surface.surface_id.clone(),
+                    top_k,
+                    candidate_cap,
+                },
+                top_k_result,
+            );
+        }
+    }
+    Ok(cache)
 }
 
 fn tfidf_model_for_view(

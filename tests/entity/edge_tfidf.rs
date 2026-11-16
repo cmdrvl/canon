@@ -5,11 +5,11 @@ use canon::entity::{
     score::{ScoreLane, ScoreUnits},
     tfidf_evidence::{
         TfidfCosineSupportRequest, sparse_architecture_proof, tfidf_cosine_support_evidence,
-        tfidf_cosine_support_hit,
+        tfidf_cosine_support_hit, tfidf_cosine_support_hit_from_candidate,
     },
 };
 use canon::namekit::tfidf::{
-    SparseTfidfModel, TfidfEvidenceClass, TfidfInputSurface, TfidfTermKey,
+    SparseTfidfModel, TfidfEvidenceClass, TfidfInputSurface, TfidfTermKey, TopKConfig,
 };
 use serde_json::json;
 
@@ -176,6 +176,40 @@ fn tfidf_rare_token_evidence() {
     assert_eq!(proof.posting_count, 128);
     assert_eq!(proof.dense_cell_count_if_materialized, 4_160);
     assert!(!proof.uses_dense_vectors);
+}
+
+#[test]
+fn cached_top_k_candidate_preserves_direct_hit_bytes() {
+    let model = sears_model();
+    let request = TfidfCosineSupportRequest {
+        namespace: "token",
+        operator_id: "tfidf_cosine:tenant_tokens",
+        model: &model,
+        left_surface_id: "surf:roebuck_holdings",
+        right_surface_id: "surf:sears_roebuck",
+        min_score_units: score(1),
+        top_k: 4,
+        candidate_cap: Some(4),
+    };
+    let top_k = model
+        .top_k_for_surface(
+            request.left_surface_id,
+            TopKConfig::new(request.top_k).with_candidate_cap(4),
+        )
+        .expect("left surface has a cached top-k result");
+    let candidate = top_k
+        .candidates
+        .iter()
+        .find(|candidate| candidate.surface_id == request.right_surface_id)
+        .expect("right surface is in the top-k result");
+    let left_row = model.row(request.left_surface_id).expect("left row");
+    let right_row = model.row(request.right_surface_id).expect("right row");
+
+    assert_eq!(
+        tfidf_cosine_support_hit_from_candidate(request, candidate, left_row, right_row),
+        tfidf_cosine_support_hit(request),
+        "the cached top-k path must preserve the direct evidence hit"
+    );
 }
 
 fn sears_model() -> SparseTfidfModel {
