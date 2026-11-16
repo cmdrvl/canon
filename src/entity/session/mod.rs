@@ -41,6 +41,7 @@ const TIER_A_TYPES: &[&str] = &["same_key", "asserted_alias"];
 const TIER_B_TYPES: &[&str] = &["same_slot", "attribute_agreement", "name_equivalent"];
 const RELATION_TYPES: &[&str] = &["related"];
 const DISTINCT_TYPES: &[&str] = &["distinct"];
+const CROSS_ENTITY_TYPE_EVIDENCE_REASON: &str = "cross_entity_type_evidence";
 
 #[derive(Debug, Clone)]
 pub struct SessionSolveRequest {
@@ -270,6 +271,24 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             dangling_evidence_count += 1;
             continue;
         };
+        if left_observation.entity_type != right_observation.entity_type {
+            return Err(solve_refusal(
+                format!(
+                    "Evidence {} crosses entity types {} and {}",
+                    record.evidence_id, left_observation.entity_type, right_observation.entity_type
+                ),
+                json!({
+                    "reason": CROSS_ENTITY_TYPE_EVIDENCE_REASON,
+                    "evidence_id": record.evidence_id,
+                    "left_obs_id": left_obs,
+                    "left_entity_type": left_observation.entity_type,
+                    "right_obs_id": right_obs,
+                    "right_entity_type": right_observation.entity_type,
+                    "writes_performed": false
+                }),
+                "Split observations by entity_type into separate sessions, then rerun canon entity session solve",
+            ));
+        }
         let left_node = left_observation.node_key.clone();
         let right_node = right_observation.node_key.clone();
         let evidence_type = evidence_type(&record);
@@ -498,33 +517,32 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
 
     let mut review = edge_facts
         .values()
-        .filter_map(|facts| {
-            (facts.positive && tier_for(facts, &rules) == Some(EdgeTier::C)).then(|| {
-                let evidence_types = facts
-                    .evidence_types
-                    .iter()
-                    .filter(|kind| is_positive_type(kind))
-                    .cloned()
-                    .collect::<Vec<_>>();
-                let missing = if evidence_types.len() < rules.min_distinct_evidence_types {
-                    "second_evidence_type"
-                } else {
-                    "second_lineage"
-                };
-                SessionSolveReview {
-                    left_surface: nodes
-                        .get(&facts.left)
-                        .map(|node| node.surface.clone())
-                        .unwrap_or_default(),
-                    right_surface: nodes
-                        .get(&facts.right)
-                        .map(|node| node.surface.clone())
-                        .unwrap_or_default(),
-                    evidence_types,
-                    lineage_count: facts.lineages.len(),
-                    missing: missing.to_string(),
-                }
-            })
+        .filter(|facts| facts.positive && tier_for(facts, &rules) == Some(EdgeTier::C))
+        .map(|facts| {
+            let evidence_types = facts
+                .evidence_types
+                .iter()
+                .filter(|kind| is_positive_type(kind))
+                .cloned()
+                .collect::<Vec<_>>();
+            let missing = if evidence_types.len() < rules.min_distinct_evidence_types {
+                "second_evidence_type"
+            } else {
+                "second_lineage"
+            };
+            SessionSolveReview {
+                left_surface: nodes
+                    .get(&facts.left)
+                    .map(|node| node.surface.clone())
+                    .unwrap_or_default(),
+                right_surface: nodes
+                    .get(&facts.right)
+                    .map(|node| node.surface.clone())
+                    .unwrap_or_default(),
+                evidence_types,
+                lineage_count: facts.lineages.len(),
+                missing: missing.to_string(),
+            }
         })
         .collect::<Vec<_>>();
     review.sort_by(|left, right| {
@@ -1250,13 +1268,16 @@ fn derive_same_key_edges(
     derived_evidence: &mut Vec<crate::entity::evidence_ir::EvidenceRecord>,
 ) -> Result<(), Refusal> {
     for namespace in &rules.authoritative_keys {
-        let mut values = BTreeMap::<String, Vec<&Observation>>::new();
+        let mut values = BTreeMap::<(String, String), Vec<&Observation>>::new();
         for observation in observations.values() {
             if let Some(value) = observation.keys.get(namespace) {
-                values.entry(value.clone()).or_default().push(observation);
+                values
+                    .entry((observation.entity_type.clone(), value.clone()))
+                    .or_default()
+                    .push(observation);
             }
         }
-        for (value, mut members) in values {
+        for ((_, value), mut members) in values {
             members.sort_by(|left, right| left.obs_id.cmp(&right.obs_id));
             let Some(anchor) = members.first() else {
                 continue;

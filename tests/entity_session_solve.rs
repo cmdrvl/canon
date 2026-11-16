@@ -74,9 +74,20 @@ fn observation(
     cik: Option<&str>,
     lei: Option<&str>,
 ) -> String {
+    observation_with_type("organisation", obs_id, lineage, surface, cik, lei)
+}
+
+fn observation_with_type(
+    entity_type: &str,
+    obs_id: &str,
+    lineage: &str,
+    surface: &str,
+    cik: Option<&str>,
+    lei: Option<&str>,
+) -> String {
     serde_json::to_string(&json!({
         "obs_id": obs_id,
-        "entity_type": "organisation",
+        "entity_type": entity_type,
         "surface": surface,
         "keys": {
             "cik": cik,
@@ -459,6 +470,54 @@ fn session_solve_classifies_fixture_and_planted_negatives() {
     let relation_payload = solve(&relation_session, &rules);
     assert_eq!(relation_payload["summary"]["relations"], 1);
     assert_eq!(relation_payload["summary"]["standalone"], 2);
+
+    let mixed_key_session = init_session(&temp, "mixed-key-kinds");
+    let mixed_key_observations = write_observations(
+        &temp,
+        "mixed-key-kinds",
+        &[
+            observation("r1", "fundA", "Organisation Key", Some("999"), None),
+            observation_with_type("person", "r2", "fundB", "Person Key", Some("999"), None),
+        ],
+    );
+    ingest(&mixed_key_session, &mixed_key_observations);
+    let mixed_key_payload = solve(&mixed_key_session, &rules);
+    assert_eq!(mixed_key_payload["summary"]["cluster_count"], 2);
+    assert_eq!(mixed_key_payload["summary"]["accepted_tier_a"], 2);
+
+    let cross_kind_session = init_session(&temp, "cross-kind-evidence");
+    let cross_kind_observations = write_observations(
+        &temp,
+        "cross-kind-evidence",
+        &[
+            observation("r1", "fundA", "Organisation Surface", None, None),
+            observation_with_type("person", "r2", "fundB", "Person Surface", None, None),
+        ],
+    );
+    ingest(&cross_kind_session, &cross_kind_observations);
+    let cross_kind_evidence =
+        write_evidence(&temp, "cross-kind-evidence", &[same_slot("r1", "r2", None)]);
+    assert_evidence(&cross_kind_session, &cross_kind_evidence);
+    let output = canon_command()
+        .args([
+            "entity",
+            "session",
+            "solve",
+            cross_kind_session.to_str().unwrap(),
+            "--rules",
+            rules.to_str().unwrap(),
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .code(2);
+    run_and_log("cross-kind evidence", &output);
+    let refusal = json_stdout(&output);
+    assert_eq!(
+        refusal["refusal"]["detail"]["reason"],
+        "cross_entity_type_evidence"
+    );
+    assert!(open_current_stream_generation(&cross_kind_session, SESSION_SOLVE_STREAM_ID).is_err());
 }
 
 #[test]
