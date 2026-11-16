@@ -1684,7 +1684,7 @@ pub struct EntitySessionCommitCli {
     pub next_version: Option<String>,
 
     /// Registry version component to bump
-    #[arg(long, value_enum, conflicts_with = "next-version")]
+    #[arg(long, value_enum, conflicts_with = "next_version")]
     pub bump: Option<RegistryVersionBumpMode>,
 
     /// Output mode
