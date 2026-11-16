@@ -16,7 +16,10 @@ use crate::{
             EntityPublicationUpstreamRef, open_current_stream_generation, publish_stream_patch,
         },
         score::{ScoreLane, ScoreUnits},
-        solve::evaluate_signed_graph_components,
+        solve::{
+            SolveBudgetAction, SolveBudgetConfig, SolveComponentBudgetInput,
+            evaluate_signed_graph_components, evaluate_solve_component_budget,
+        },
     },
     keys::KeyNamespace,
     lookup, registry,
@@ -29,14 +32,16 @@ use crate::{
 };
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     fs,
     path::{Path, PathBuf},
 };
 
+pub mod rules;
 mod status;
+use rules::{SessionRules, parse_rules};
 pub use status::{
     SESSION_STATUS_VERSION, SessionStatusOutput, SessionStatusRequest, session_status,
 };
@@ -50,7 +55,6 @@ const TIER_B_TYPES: &[&str] = &["same_slot", "attribute_agreement", "name_equiva
 const RELATION_TYPES: &[&str] = &["related"];
 const DISTINCT_TYPES: &[&str] = &["distinct"];
 const CROSS_ENTITY_TYPE_EVIDENCE_REASON: &str = "cross_entity_type_evidence";
-const INCUMBENT_ATTACH_STEPS: &[&str] = &["casefold", "strip_punctuation", "collapse_whitespace"];
 
 #[derive(Debug, Clone)]
 pub struct SessionSolveRequest {
@@ -92,6 +96,7 @@ pub struct SessionSolveSummary {
     pub resolved_existing: usize,
     pub relations: usize,
     pub dangling_evidence: usize,
+    pub oversized_cluster: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -161,7 +166,7 @@ impl SessionSolveOutput {
     pub fn render_summary(&self) -> String {
         let summary = &self.artifact.summary;
         format!(
-            "clusters={} tier_a={} tier_b={} review={} contradiction={} standalone={} resolved_existing={} relations={} dangling_evidence={} generation={}",
+            "clusters={} tier_a={} tier_b={} review={} contradiction={} standalone={} resolved_existing={} relations={} dangling_evidence={} oversized_cluster={} generation={}",
             summary.cluster_count,
             summary.accepted_tier_a,
             summary.accepted_tier_b,
@@ -171,21 +176,10 @@ impl SessionSolveOutput {
             summary.resolved_existing,
             summary.relations,
             summary.dangling_evidence,
+            summary.oversized_cluster,
             self.generation_id,
         )
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-struct SessionRules {
-    version: String,
-    authoritative_keys: Vec<String>,
-    tier_a_types: Vec<String>,
-    tier_b_types: Vec<String>,
-    min_distinct_evidence_types: usize,
-    min_distinct_lineages: usize,
-    mint_when_authoritative_key: bool,
-    incumbent_attach_steps: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -196,6 +190,7 @@ struct Observation {
     node_key: String,
     keys: BTreeMap<String, String>,
     lineages: BTreeSet<String>,
+    origin_components: BTreeSet<BTreeSet<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -222,6 +217,7 @@ struct TargetInfo {
     entity_type: String,
     surface: String,
     lineages: BTreeSet<String>,
+    origin_components: BTreeSet<BTreeSet<String>>,
     alias_endpoint: bool,
 }
 
@@ -231,12 +227,14 @@ struct EdgeFacts {
     right: String,
     evidence_types: BTreeSet<String>,
     lineages: BTreeSet<String>,
+    origin_components: BTreeSet<BTreeSet<String>>,
     evidence_ids: BTreeSet<String>,
     obs_ids: BTreeSet<String>,
     hits: Vec<EdgeEvidenceHit>,
     relation: BTreeSet<String>,
     positive: bool,
     variant_of_incumbent: bool,
+    authoritative_same_key: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -261,6 +259,15 @@ struct RawObservation {
 struct RawObservationSource {
     #[serde(default)]
     lineage: Option<String>,
+    #[serde(default)]
+    ancestry: Option<RawAncestry>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct RawAncestry {
+    status: String,
+    #[serde(default)]
+    origin_source_ids: Vec<String>,
 }
 
 pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal> {
@@ -360,6 +367,10 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         if let Some(lineage) = record_lineage(&record) {
             lineage_ids.insert(lineage);
         }
+        let mut origin_components = BTreeSet::new();
+        origin_components.extend(left_target.origin_components.iter().cloned());
+        origin_components.extend(right_target.origin_components.iter().cloned());
+        origin_components.extend(record_origin_components(&record));
         if left_node == right_node {
             if DISTINCT_TYPES.contains(&evidence_type.as_str()) {
                 same_node_distinct.insert(left_node.clone());
@@ -376,6 +387,7 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             });
         facts.evidence_types.insert(evidence_type.clone());
         facts.lineages.extend(lineage_ids);
+        merge_origin_components(&mut facts.origin_components, origin_components);
         facts.evidence_ids.insert(record.evidence_id.clone());
         facts.obs_ids.insert(left_target_id.to_string());
         facts.obs_ids.insert(right_target_id.to_string());
@@ -441,6 +453,16 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
 
     let mut clusters = Vec::new();
     let mut contradictions = Vec::new();
+    let max_cluster_surfaces = u64::try_from(rules.max_cluster_surfaces).map_err(|_| {
+        solve_refusal(
+            "The configured cluster size guard is too large for the solve budget",
+            json!({
+                "max_cluster_surfaces": rules.max_cluster_surfaces,
+                "writes_performed": false
+            }),
+            "Lower guards.max_cluster_surfaces, then rerun canon entity session solve",
+        )
+    })?;
     let mut summary = SessionSolveSummary {
         node_count: nodes.len(),
         ..SessionSolveSummary::default()
@@ -463,7 +485,10 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             .collect::<Vec<_>>();
         let has_positive = !joining.is_empty();
         let all_tier_a = has_positive && joining.iter().all(|(_, tier)| **tier == EdgeTier::A);
-        let key_conflict = rules.authoritative_keys.iter().any(|namespace| {
+        let key_conflict = rules.key_rules.iter().any(|(namespace, rule)| {
+            if !rule.single_valued {
+                return false;
+            }
             member_nodes
                 .iter()
                 .filter_map(|node| node.keys.get(namespace))
@@ -472,6 +497,11 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
                 .len()
                 > 1
         });
+        let budget_decision = evaluate_solve_component_budget(
+            SolveComponentBudgetInput::new(cluster_id.clone(), member_keys.clone()),
+            SolveBudgetConfig::bounded_abstention(max_cluster_surfaces),
+        )?;
+        let oversized = budget_decision.action == SolveBudgetAction::Abstain;
         let incumbent_ids = member_nodes
             .iter()
             .filter_map(|node| node.incumbent_canonical_id.clone())
@@ -480,7 +510,17 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             .iter()
             .any(|key| member_keys.contains(key))
             || !component.hard_cannot_link_violations.is_empty();
-        let (outcome, tier, reason) = if distinct_conflict {
+        let (outcome, tier, reason) = if oversized {
+            (
+                "oversized_cluster",
+                None,
+                format!(
+                    "oversized_cluster:surfaces={} bridging_edges={}",
+                    member_keys.len(),
+                    joining.len()
+                ),
+            )
+        } else if distinct_conflict {
             ("contradiction", None, "distinct".to_string())
         } else if incumbent_ids.len() > 1 {
             ("contradiction", None, "incumbent_conflict".to_string())
@@ -564,6 +604,8 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             }
         } else if outcome == "resolved_existing" {
             summary.resolved_existing += 1;
+        } else if outcome == "oversized_cluster" {
+            summary.oversized_cluster += 1;
         } else {
             summary.standalone += 1;
         }
@@ -590,7 +632,13 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
                 .filter(|kind| is_positive_type(kind))
                 .cloned()
                 .collect::<Vec<_>>();
-            let missing = if evidence_types.len() < rules.min_distinct_evidence_types {
+            let missing = if rules
+                .required_evidence_types
+                .iter()
+                .any(|kind| !evidence_types.contains(kind))
+            {
+                "required_evidence_type"
+            } else if evidence_types.len() < rules.min_distinct_evidence_types {
                 "second_evidence_type"
             } else {
                 "second_lineage"
@@ -605,7 +653,7 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
                     .map(|node| node.surface.clone())
                     .unwrap_or_default(),
                 evidence_types,
-                lineage_count: facts.lineages.len(),
+                lineage_count: independent_origin_count(facts),
                 missing: missing.to_string(),
             }
         })
@@ -944,259 +992,6 @@ fn stale_solve_refusal(field: &str, expected: &str, actual: &str) -> Refusal {
     )
 }
 
-fn parse_rules(path: &Path) -> Result<(SessionRules, String), Refusal> {
-    let text = fs::read_to_string(path).map_err(|error| {
-        solve_refusal(
-            format!("Unable to read rules file '{}': {error}", path.display()),
-            json!({"path": path.display().to_string(), "writes_performed": false}),
-            "Provide a readable canon.entity.session.rules.v1 YAML file",
-        )
-    })?;
-    let value = serde_yaml::from_str::<Value>(&text).map_err(|error| {
-        rules_path_refusal(path, "<document>", format!("invalid YAML: {error}"))
-    })?;
-    let root = value
-        .as_object()
-        .ok_or_else(|| rules_path_refusal(path, "<document>", "rules must be a YAML mapping"))?;
-    reject_unknown_keys(
-        root,
-        &[
-            "version",
-            "keys",
-            "tier_a",
-            "tier_b",
-            "standalone",
-            "incumbent_attach",
-        ],
-        path,
-        "",
-    )?;
-    let version = required_string(root, "version", path, "version")?;
-    if version != SESSION_RULES_VERSION {
-        return Err(rules_path_refusal(
-            path,
-            "version",
-            format!("expected {SESSION_RULES_VERSION}, got {version}"),
-        ));
-    }
-    let keys = required_mapping(root, "keys", path, "keys")?;
-    reject_unknown_keys(keys, &["authoritative"], path, "keys")?;
-    let authoritative_keys = string_list(
-        keys,
-        "authoritative",
-        path,
-        "keys.authoritative",
-        &["cik", "lei"],
-    )?;
-    let tier_a = required_mapping(root, "tier_a", path, "tier_a")?;
-    reject_unknown_keys(tier_a, &["evidence_types"], path, "tier_a")?;
-    let tier_a_types = string_list(
-        tier_a,
-        "evidence_types",
-        path,
-        "tier_a.evidence_types",
-        TIER_A_TYPES,
-    )?;
-    let tier_b = required_mapping(root, "tier_b", path, "tier_b")?;
-    reject_unknown_keys(
-        tier_b,
-        &[
-            "eligible_evidence_types",
-            "min_distinct_evidence_types",
-            "min_distinct_lineages",
-        ],
-        path,
-        "tier_b",
-    )?;
-    let tier_b_types = string_list(
-        tier_b,
-        "eligible_evidence_types",
-        path,
-        "tier_b.eligible_evidence_types",
-        TIER_B_TYPES,
-    )?;
-    let min_distinct_evidence_types = positive_usize(
-        tier_b,
-        "min_distinct_evidence_types",
-        path,
-        "tier_b.min_distinct_evidence_types",
-    )?;
-    let min_distinct_lineages = positive_usize(
-        tier_b,
-        "min_distinct_lineages",
-        path,
-        "tier_b.min_distinct_lineages",
-    )?;
-    let mint_when_authoritative_key = match root.get("standalone") {
-        None => false,
-        Some(value) => {
-            let standalone = value.as_object().ok_or_else(|| {
-                rules_path_refusal(path, "standalone", "standalone must be a YAML mapping")
-            })?;
-            reject_unknown_keys(
-                standalone,
-                &["mint_when_authoritative_key"],
-                path,
-                "standalone",
-            )?;
-            match standalone.get("mint_when_authoritative_key") {
-                None => false,
-                Some(value) => value.as_bool().ok_or_else(|| {
-                    rules_path_refusal(
-                        path,
-                        "standalone.mint_when_authoritative_key",
-                        "value must be true or false",
-                    )
-                })?,
-            }
-        }
-    };
-    let incumbent_attach_steps = match root.get("incumbent_attach") {
-        None => Vec::new(),
-        Some(value) => {
-            let incumbent_attach = value.as_object().ok_or_else(|| {
-                rules_path_refusal(path, "incumbent_attach", "value must be a YAML mapping")
-            })?;
-            reject_unknown_keys(
-                incumbent_attach,
-                &["name_equivalent_steps"],
-                path,
-                "incumbent_attach",
-            )?;
-            string_list(
-                incumbent_attach,
-                "name_equivalent_steps",
-                path,
-                "incumbent_attach.name_equivalent_steps",
-                INCUMBENT_ATTACH_STEPS,
-            )?
-        }
-    };
-    let rules = SessionRules {
-        version,
-        authoritative_keys,
-        tier_a_types,
-        tier_b_types,
-        min_distinct_evidence_types,
-        min_distinct_lineages,
-        mint_when_authoritative_key,
-        incumbent_attach_steps,
-    };
-    let canonical = serde_json::to_vec(&rules).map_err(|error| {
-        rules_path_refusal(path, "<document>", format!("cannot hash rules: {error}"))
-    })?;
-    Ok((rules, hash_bytes(&canonical)))
-}
-
-const SESSION_RULES_VERSION: &str = "canon.entity.session.rules.v1";
-
-fn reject_unknown_keys(
-    object: &Map<String, Value>,
-    allowed: &[&str],
-    path: &Path,
-    prefix: &str,
-) -> Result<(), Refusal> {
-    for key in object.keys() {
-        if !allowed.contains(&key.as_str()) {
-            let yaml_path = if prefix.is_empty() {
-                key.clone()
-            } else {
-                format!("{prefix}.{key}")
-            };
-            return Err(rules_path_refusal(path, &yaml_path, "unknown key"));
-        }
-    }
-    Ok(())
-}
-
-fn required_mapping<'a>(
-    object: &'a Map<String, Value>,
-    key: &str,
-    path: &Path,
-    yaml_path: &str,
-) -> Result<&'a Map<String, Value>, Refusal> {
-    object
-        .get(key)
-        .and_then(Value::as_object)
-        .ok_or_else(|| rules_path_refusal(path, yaml_path, "value must be a YAML mapping"))
-}
-
-fn required_string(
-    object: &Map<String, Value>,
-    key: &str,
-    path: &Path,
-    yaml_path: &str,
-) -> Result<String, Refusal> {
-    object
-        .get(key)
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .map(ToOwned::to_owned)
-        .ok_or_else(|| rules_path_refusal(path, yaml_path, "value must be a non-empty string"))
-}
-
-fn string_list(
-    object: &Map<String, Value>,
-    key: &str,
-    path: &Path,
-    yaml_path: &str,
-    allowed: &[&str],
-) -> Result<Vec<String>, Refusal> {
-    let values = object
-        .get(key)
-        .and_then(Value::as_array)
-        .ok_or_else(|| rules_path_refusal(path, yaml_path, "value must be a YAML sequence"))?;
-    if values.is_empty() {
-        return Err(rules_path_refusal(
-            path,
-            yaml_path,
-            "sequence must not be empty",
-        ));
-    }
-    let mut parsed = BTreeSet::new();
-    for (index, value) in values.iter().enumerate() {
-        let item_path = format!("{yaml_path}[{index}]");
-        let item = value
-            .as_str()
-            .ok_or_else(|| rules_path_refusal(path, &item_path, "value must be a string"))?;
-        if !allowed.contains(&item) {
-            return Err(rules_path_refusal(
-                path,
-                &item_path,
-                "unknown evidence or key value",
-            ));
-        }
-        parsed.insert(item.to_string());
-    }
-    Ok(parsed.into_iter().collect())
-}
-
-fn positive_usize(
-    object: &Map<String, Value>,
-    key: &str,
-    path: &Path,
-    yaml_path: &str,
-) -> Result<usize, Refusal> {
-    object
-        .get(key)
-        .and_then(Value::as_u64)
-        .and_then(|value| usize::try_from(value).ok())
-        .filter(|value| *value > 0)
-        .ok_or_else(|| rules_path_refusal(path, yaml_path, "value must be a positive integer"))
-}
-
-fn rules_path_refusal(path: &Path, yaml_path: &str, message: impl Into<String>) -> Refusal {
-    solve_refusal(
-        format!("Rules YAML path {yaml_path}: {}", message.into()),
-        json!({
-            "path": path.display().to_string(),
-            "yaml_path": yaml_path,
-            "writes_performed": false
-        }),
-        "Fix the named rules YAML path, then rerun canon entity session solve",
-    )
-}
-
 fn read_manifest(work_dir: &Path) -> Result<SessionManifest, Refusal> {
     let snapshot = open_required_stream(work_dir, SESSION_MANIFEST_STREAM_ID, "session manifest")?;
     let bytes = snapshot
@@ -1307,14 +1102,7 @@ fn read_observations(snapshot: &EntityPublicationSnapshot) -> Result<Vec<Observa
                         .map(|value| (canonical_key_namespace(&namespace), value))
                 })
                 .collect::<BTreeMap<_, _>>();
-            let lineages = raw
-                .source
-                .lineage
-                .as_deref()
-                .map(ascii_trim)
-                .filter(|value| !value.is_empty())
-                .map(|value| BTreeSet::from([value.to_string()]))
-                .unwrap_or_default();
+            let (lineages, origin_components) = observation_origins(&raw.source);
             let node_key = format!("{entity_type}\u{0}{surface}");
             let observation = Observation {
                 obs_id: obs_id.clone(),
@@ -1323,6 +1111,7 @@ fn read_observations(snapshot: &EntityPublicationSnapshot) -> Result<Vec<Observa
                 node_key,
                 keys,
                 lineages,
+                origin_components,
             };
             if observations.insert(obs_id.clone(), observation).is_some() {
                 return Err(solve_refusal(
@@ -1334,6 +1123,38 @@ fn read_observations(snapshot: &EntityPublicationSnapshot) -> Result<Vec<Observa
         }
     }
     Ok(observations.into_values().collect())
+}
+
+fn observation_origins(
+    source: &RawObservationSource,
+) -> (BTreeSet<String>, BTreeSet<BTreeSet<String>>) {
+    if let Some(ancestry) = &source.ancestry {
+        if ancestry.status == "known" {
+            let origins = ancestry
+                .origin_source_ids
+                .iter()
+                .map(|origin| ascii_trim(origin).to_string())
+                .filter(|origin| !origin.is_empty())
+                .collect::<BTreeSet<_>>();
+            if !origins.is_empty() {
+                return (origins.clone(), BTreeSet::from([origins]));
+            }
+        }
+        return (BTreeSet::new(), BTreeSet::new());
+    }
+    source
+        .lineage
+        .as_deref()
+        .map(ascii_trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            let lineage = value.to_string();
+            (
+                BTreeSet::from([lineage.clone()]),
+                BTreeSet::from([BTreeSet::from([lineage])]),
+            )
+        })
+        .unwrap_or_default()
 }
 
 fn read_evidence(
@@ -1904,7 +1725,7 @@ fn derive_same_key_edges(
     edge_facts: &mut BTreeMap<(String, String), EdgeFacts>,
     derived_evidence: &mut Vec<crate::entity::evidence_ir::EvidenceRecord>,
 ) -> Result<(), Refusal> {
-    for namespace in &rules.authoritative_keys {
+    for (namespace, key_rule) in &rules.key_rules {
         let mut values = BTreeMap::<(String, String), Vec<&Observation>>::new();
         for observation in observations.values() {
             if let Some(value) = observation.keys.get(namespace) {
@@ -1937,6 +1758,16 @@ fn derive_same_key_edges(
                 facts.evidence_types.insert("same_key".to_string());
                 facts.lineages.extend(anchor.lineages.iter().cloned());
                 facts.lineages.extend(member.lineages.iter().cloned());
+                merge_origin_components(
+                    &mut facts.origin_components,
+                    anchor
+                        .origin_components
+                        .iter()
+                        .chain(member.origin_components.iter())
+                        .cloned()
+                        .collect(),
+                );
+                facts.authoritative_same_key |= key_rule.authoritative;
                 facts.evidence_ids.insert(evidence_id);
                 facts.obs_ids.insert(anchor.obs_id.clone());
                 facts.obs_ids.insert(member.obs_id.clone());
@@ -1967,7 +1798,7 @@ fn derive_registry_key_edges(
         let Some(value) = canonical_key_value(&namespace, value) else {
             continue;
         };
-        if !rules.authoritative_keys.iter().any(|key| key == &namespace) {
+        if !rules.is_authoritative_key(&namespace) {
             continue;
         }
         for observation in observations.values().filter(|observation| {
@@ -1991,6 +1822,11 @@ fn derive_registry_key_edges(
                 });
             facts.evidence_types.insert("same_key".to_string());
             facts.lineages.extend(observation.lineages.iter().cloned());
+            merge_origin_components(
+                &mut facts.origin_components,
+                observation.origin_components.clone(),
+            );
+            facts.authoritative_same_key = true;
             facts.evidence_ids.insert(evidence_id);
             facts.obs_ids.insert(observation.obs_id.clone());
             facts.obs_ids.insert(target.clone());
@@ -2075,6 +1911,7 @@ fn resolve_target(
             entity_type: observation.entity_type.clone(),
             surface: observation.surface.clone(),
             lineages: observation.lineages.clone(),
+            origin_components: observation.origin_components.clone(),
             alias_endpoint: false,
         });
     }
@@ -2083,6 +1920,7 @@ fn resolve_target(
         entity_type: endpoint.entity_type.clone(),
         surface: endpoint.surface.clone(),
         lineages: BTreeSet::new(),
+        origin_components: BTreeSet::new(),
         alias_endpoint: endpoint.alias_endpoint,
     })
 }
@@ -2184,6 +2022,72 @@ fn record_lineage(record: &crate::entity::evidence_ir::EvidenceRecord) -> Option
     })
 }
 
+fn record_origin_components(
+    record: &crate::entity::evidence_ir::EvidenceRecord,
+) -> BTreeSet<BTreeSet<String>> {
+    for extension in &record.extensions {
+        let Some(crate::entity::evidence_ir::EvidenceExtensionValue::Object(ancestry)) =
+            extension.payload.get("ancestry")
+        else {
+            continue;
+        };
+        if !matches!(
+            ancestry.get("status"),
+            Some(crate::entity::evidence_ir::EvidenceExtensionValue::String(status))
+                if status == "known"
+        ) {
+            return BTreeSet::new();
+        }
+        let Some(crate::entity::evidence_ir::EvidenceExtensionValue::List(ids)) =
+            ancestry.get("origin_source_ids")
+        else {
+            return BTreeSet::new();
+        };
+        let origins = ids
+            .iter()
+            .filter_map(|id| match id {
+                crate::entity::evidence_ir::EvidenceExtensionValue::String(id) => Some(id.clone()),
+                _ => None,
+            })
+            .collect::<BTreeSet<_>>();
+        return if origins.is_empty() {
+            BTreeSet::new()
+        } else {
+            BTreeSet::from([origins])
+        };
+    }
+    record_lineage(record)
+        .map(|lineage| BTreeSet::from([BTreeSet::from([lineage])]))
+        .unwrap_or_default()
+}
+
+fn merge_origin_components(
+    destination: &mut BTreeSet<BTreeSet<String>>,
+    incoming: BTreeSet<BTreeSet<String>>,
+) {
+    for incoming_component in incoming {
+        let mut merged = incoming_component;
+        let overlapping = destination
+            .iter()
+            .filter(|existing| existing.iter().any(|origin| merged.contains(origin)))
+            .cloned()
+            .collect::<Vec<_>>();
+        for existing in overlapping {
+            destination.remove(&existing);
+            merged.extend(existing);
+        }
+        destination.insert(merged);
+    }
+}
+
+fn independent_origin_count(facts: &EdgeFacts) -> usize {
+    if facts.origin_components.is_empty() {
+        facts.lineages.len()
+    } else {
+        facts.origin_components.len()
+    }
+}
+
 fn hit_for_type(
     evidence_type: &str,
     record: &crate::entity::evidence_ir::EvidenceRecord,
@@ -2225,38 +2129,50 @@ fn tier_for(facts: &EdgeFacts, rules: &SessionRules) -> Option<EdgeTier> {
     if facts.variant_of_incumbent {
         return Some(EdgeTier::A);
     }
-    if facts
-        .evidence_types
-        .iter()
-        .any(|kind| rules.tier_a_types.contains(kind))
+    if (facts.authoritative_same_key && facts.evidence_types.contains("same_key"))
+        || facts
+            .evidence_types
+            .iter()
+            .any(|kind| kind != "same_key" && rules.tier_a_types.contains(kind))
     {
         Some(EdgeTier::A)
-    } else if facts
-        .evidence_types
-        .iter()
-        .filter(|kind| rules.tier_b_types.contains(kind))
-        .count()
-        >= rules.min_distinct_evidence_types
-        && facts.lineages.len() >= rules.min_distinct_lineages
-    {
-        Some(EdgeTier::B)
     } else {
-        Some(EdgeTier::C)
+        let evidence_types = facts
+            .evidence_types
+            .iter()
+            .filter(|kind| rules.tier_b_types.contains(kind))
+            .collect::<BTreeSet<_>>();
+        let independent_origins = independent_origin_count(facts);
+        let tier_b = rules.tier_b_alternatives.iter().any(|alternative| {
+            alternative
+                .required_evidence_types
+                .iter()
+                .all(|kind| evidence_types.contains(kind))
+                && evidence_types.len() >= alternative.min_evidence_types
+                && independent_origins >= alternative.min_independent_origins
+        });
+        if tier_b {
+            Some(EdgeTier::B)
+        } else {
+            Some(EdgeTier::C)
+        }
     }
 }
 
 fn exactly_one_authoritative_value(node: &Node, rules: &SessionRules) -> bool {
     rules
-        .authoritative_keys
+        .key_rules
         .iter()
-        .filter_map(|key| node.keys.get(key))
+        .filter(|(_, rule)| rule.authoritative && rule.single_valued)
+        .filter_map(|(key, _)| node.keys.get(key))
         .filter(|values| values.len() == 1)
         .count()
         == 1
         && rules
-            .authoritative_keys
+            .key_rules
             .iter()
-            .all(|key| node.keys.get(key).is_none_or(|values| values.len() <= 1))
+            .filter(|(_, rule)| rule.authoritative && rule.single_valued)
+            .all(|(key, _)| node.keys.get(key).is_none_or(|values| values.len() <= 1))
 }
 
 fn collect_cluster_keys(nodes: &[&Node]) -> BTreeMap<String, Vec<String>> {
@@ -2352,6 +2268,22 @@ mod tests {
     fn rules() -> SessionRules {
         SessionRules {
             version: "canon.entity.session.rules.v1".to_string(),
+            key_rules: BTreeMap::from([
+                (
+                    "cik".to_string(),
+                    super::rules::KeyRule {
+                        authoritative: true,
+                        single_valued: true,
+                    },
+                ),
+                (
+                    "lei".to_string(),
+                    super::rules::KeyRule {
+                        authoritative: true,
+                        single_valued: true,
+                    },
+                ),
+            ]),
             authoritative_keys: vec!["cik".to_string(), "lei".to_string()],
             tier_a_types: TIER_A_TYPES
                 .iter()
@@ -2363,7 +2295,14 @@ mod tests {
                 .collect(),
             min_distinct_evidence_types: 2,
             min_distinct_lineages: 2,
+            tier_b_alternatives: vec![super::rules::TierBAlternative {
+                required_evidence_types: Vec::new(),
+                min_evidence_types: 2,
+                min_independent_origins: 2,
+            }],
+            required_evidence_types: Vec::new(),
             mint_when_authoritative_key: true,
+            max_cluster_surfaces: 50,
             incumbent_attach_steps: Vec::new(),
         }
     }
@@ -2373,6 +2312,7 @@ mod tests {
             positive: true,
             evidence_types: types.iter().map(|value| (*value).to_string()).collect(),
             lineages: lineages.iter().map(|value| (*value).to_string()).collect(),
+            authoritative_same_key: types.contains(&"same_key"),
             ..EdgeFacts::default()
         }
     }

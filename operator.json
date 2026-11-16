@@ -54,6 +54,8 @@
       "canon entity session ingest <SESSION> <OBSERVATIONS.jsonl|-> [--emit json|summary]",
       "canon entity session assert <SESSION> <EVIDENCE.jsonl|-> [--emit json|summary]",
       "canon entity session solve <SESSION> --rules <RULES.yaml> [--emit json|summary]",
+      "canon entity session rules init [--out <RULES.yaml>] [--emit json|summary]",
+      "canon entity session rules validate <RULES.yaml> [--emit json|summary]",
       "canon entity session commit <SESSION> (--next-version <VER>|--bump patch|minor|major) [--emit json|summary]",
       "canon entity session status <SESSION> [--rules <RULES.yaml>] [--emit json|summary]",
       "canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY_DIR> --work-dir <DIR>",
@@ -6962,6 +6964,65 @@
       "next_command": "canon entity session assert <SESSION> <EVIDENCE.jsonl|-> --emit json",
       "recovery": {
         "next_command": "Run canon entity session init for the session, then rerun this assert",
+        "refusal_exit_code": 2
+      }
+    },
+    {
+      "name": "entity session rules init",
+      "usage": "canon entity session rules init [--out <RULES.yaml>] [--emit json|summary]",
+      "description": "Write the deterministic canon.entity.session.rules.v1 template, or print it when --out is omitted",
+      "output_mode": "mixed",
+      "output_schema": "canon.entity.session.rules.init.v1",
+      "status": "implemented",
+      "read_only": false,
+      "options": [
+        {
+          "name": "out",
+          "flag": "--out",
+          "type": "file_path",
+          "description": "Optional YAML path to write; without it the template is printed"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json or summary when --out is supplied"
+        }
+      ],
+      "next_command": "canon entity session rules validate <RULES.yaml> --emit json",
+      "recovery": {
+        "next_command": "Fix the output path, then rerun canon entity session rules init",
+        "refusal_exit_code": 2
+      }
+    },
+    {
+      "name": "entity session rules validate",
+      "usage": "canon entity session rules validate <RULES.yaml> [--emit json|summary]",
+      "description": "Validate a canon.entity.session.rules.v1 YAML file and report its deterministic hash",
+      "output_mode": "mixed",
+      "output_schema": "canon.entity.session.rules.validate.v1",
+      "status": "implemented",
+      "read_only": true,
+      "options": [
+        {
+          "name": "rules",
+          "type": "file_path",
+          "required": true,
+          "position": 0,
+          "description": "YAML rule table to validate"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json or summary"
+        }
+      ],
+      "next_command": "canon entity session solve <SESSION> --rules <RULES.yaml> --emit json",
+      "recovery": {
+        "next_command": "Fix the named YAML path, then rerun canon entity session rules validate",
         "refusal_exit_code": 2
       }
     },

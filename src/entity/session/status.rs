@@ -611,6 +611,7 @@ mod tests {
             node_key: format!("organisation\u{0}{surface}"),
             keys: BTreeMap::new(),
             lineages: BTreeSet::from([lineage.to_string()]),
+            origin_components: BTreeSet::from([BTreeSet::from([lineage.to_string()])]),
         }
     }
 

@@ -90,6 +90,8 @@ Use a declared rule table to classify exact observation nodes as tier A, tier B,
 review, standalone, or contradiction:
 
 ```bash
+canon entity session rules init --out session-rules.yaml --emit json
+canon entity session rules validate session-rules.yaml --emit json
 canon entity session solve work/bdc-session --rules session-rules.yaml --emit json
 ```
 
@@ -108,15 +110,20 @@ The minimum rule table shape is:
 ```yaml
 version: canon.entity.session.rules.v1
 keys:
-  authoritative: [cik, lei]
+  cik: {authoritative: true, single_valued: true}
+  lei: {authoritative: true, single_valued: true}
+  ticker: {authoritative: false, single_valued: false}
 tier_a:
   evidence_types: [same_key, asserted_alias]
 tier_b:
   eligible_evidence_types: [same_slot, attribute_agreement, name_equivalent]
   min_distinct_evidence_types: 2
   min_distinct_lineages: 2
+  required_evidence_types: []
 standalone:
   mint_when_authoritative_key: true
+guards:
+  max_cluster_surfaces: 50
 incumbent_attach:
   name_equivalent_steps: [casefold, strip_punctuation, collapse_whitespace]
 ```

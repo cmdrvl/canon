@@ -62,12 +62,14 @@ use crate::cli::{
     EntityProfileSubcommand, EntityPromoteCli, EntityReviewCommand, EntityReviewExportArtifact,
     EntityReviewExportCli, EntityReviewExportEmitMode, EntityReviewGroupBy, EntityReviewImportCli,
     EntityReviewInclude, EntityReviewSubcommand, EntityRunCli, EntitySessionAssertCli,
-    EntitySessionCommitCli, EntitySessionIngestCli, EntitySessionInitCli, EntitySessionSolveCli,
-    EntitySessionStatusCli, EntitySessionSubcommand, EntitySolveCli, EntityStreamEmitMode,
-    EntitySubcommand, PackageCli, PackagePackCli, PackageSubcommand, RegistryAddEntriesCli,
-    RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli, RegistryDefaultIdSchemeCli,
-    RegistryDiffCli, RegistryEmitMode, RegistryExportCli, RegistryExportFormatCli, RegistryInitCli,
-    RegistryLintCli, RegistryLintProfile, RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli,
+    EntitySessionCommitCli, EntitySessionIngestCli, EntitySessionInitCli,
+    EntitySessionRulesCommand, EntitySessionRulesInitCli, EntitySessionRulesSubcommand,
+    EntitySessionRulesValidateCli, EntitySessionSolveCli, EntitySessionStatusCli,
+    EntitySessionSubcommand, EntitySolveCli, EntityStreamEmitMode, EntitySubcommand, PackageCli,
+    PackagePackCli, PackageSubcommand, RegistryAddEntriesCli, RegistryAddEntryCli,
+    RegistryAuditCli, RegistryBuildCli, RegistryDefaultIdSchemeCli, RegistryDiffCli,
+    RegistryEmitMode, RegistryExportCli, RegistryExportFormatCli, RegistryInitCli, RegistryLintCli,
+    RegistryLintProfile, RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli,
     RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand,
     RegistryVersionBumpMode, StrategyAuditCli, StrategyCommand, StrategyDeprecateCli,
     StrategyDiffCli, StrategyExplainCli, StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli,
@@ -940,6 +942,7 @@ fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
             EntitySessionSubcommand::Solve(solve) => run_entity_session_solve_command(solve),
             EntitySessionSubcommand::Commit(commit) => run_entity_session_commit_command(commit),
             EntitySessionSubcommand::Status(status) => run_entity_session_status_command(status),
+            EntitySessionSubcommand::Rules(rules) => run_entity_session_rules_command(rules),
         },
         EntitySubcommand::Run(run) => run_entity_run_command(run),
         EntitySubcommand::Prepare(prepare) => run_entity_prepare_command(prepare),
@@ -962,6 +965,77 @@ fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
         EntitySubcommand::Explain(explain) => run_entity_explain_command(explain),
         EntitySubcommand::Profile(profile) => run_entity_profile_command(profile),
         EntitySubcommand::Review(review) => run_entity_review_command(review),
+    }
+}
+
+fn run_entity_session_rules_command(
+    rules: &EntitySessionRulesCommand,
+) -> Result<u8, Box<dyn Error>> {
+    match &rules.command {
+        EntitySessionRulesSubcommand::Init(init) => run_entity_session_rules_init_command(init),
+        EntitySessionRulesSubcommand::Validate(validate) => {
+            run_entity_session_rules_validate_command(validate)
+        }
+    }
+}
+
+fn run_entity_session_rules_init_command(
+    init: &EntitySessionRulesInitCli,
+) -> Result<u8, Box<dyn Error>> {
+    let output = entity::session::rules::init_rules(init.out.as_deref());
+    match output {
+        Ok(output) if init.out.is_none() => {
+            print!("{}", output.template);
+            Ok(0)
+        }
+        Ok(output) => {
+            let summary_mode = matches!(init.emit, EntityEmitMode::Summary);
+            let rendered = if summary_mode {
+                format!(
+                    "version={} path={}",
+                    output.version,
+                    output.path.as_deref().unwrap_or("<stdout>")
+                )
+            } else {
+                serde_json::to_string(&output)?
+            };
+            emit_entity_output(&rendered, summary_mode);
+            Ok(0)
+        }
+        Err(refusal) => emit_entity_refusal(
+            refusal.to_canon_output(),
+            true,
+            matches!(init.emit, EntityEmitMode::Summary),
+        ),
+    }
+}
+
+fn run_entity_session_rules_validate_command(
+    validate: &EntitySessionRulesValidateCli,
+) -> Result<u8, Box<dyn Error>> {
+    let output = entity::session::rules::validate_rules(&validate.rules);
+    match output {
+        Ok(output) => {
+            let summary_mode = matches!(validate.emit, EntityEmitMode::Summary);
+            let rendered = if summary_mode {
+                format!(
+                    "version={} path={} keys={} max_cluster_surfaces={}",
+                    output.version,
+                    output.path,
+                    output.key_namespaces.join(","),
+                    output.max_cluster_surfaces
+                )
+            } else {
+                serde_json::to_string(&output)?
+            };
+            emit_entity_output(&rendered, summary_mode);
+            Ok(0)
+        }
+        Err(refusal) => emit_entity_refusal(
+            refusal.to_canon_output(),
+            true,
+            matches!(validate.emit, EntityEmitMode::Summary),
+        ),
     }
 }
 

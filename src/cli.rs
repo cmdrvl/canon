@@ -1629,6 +1629,43 @@ pub enum EntitySessionSubcommand {
     Commit(EntitySessionCommitCli),
     /// Report where an evidence session stands without opening its artifacts
     Status(EntitySessionStatusCli),
+    /// Initialize or validate the deterministic session rule table
+    Rules(EntitySessionRulesCommand),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntitySessionRulesCommand {
+    #[command(subcommand)]
+    pub command: EntitySessionRulesSubcommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum EntitySessionRulesSubcommand {
+    /// Write the versioned session rule-table template
+    Init(EntitySessionRulesInitCli),
+    /// Validate a versioned session rule-table YAML file
+    Validate(EntitySessionRulesValidateCli),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntitySessionRulesInitCli {
+    /// Optional output path; without it, print the YAML template
+    #[arg(long)]
+    pub out: Option<PathBuf>,
+
+    /// Output mode for the result envelope when --out is used
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntitySessionRulesValidateCli {
+    /// YAML rule table to validate
+    pub rules: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
 }
 
 #[derive(Args, Debug, Clone)]
