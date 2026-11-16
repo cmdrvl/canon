@@ -355,7 +355,7 @@ pub fn session_review_queue(
     solve_bytes: &[u8],
 ) -> ReviewQueueArtifact {
     let solve_hash = blake3_string(solve_bytes);
-    let review_items = solve
+    let mut review_items = solve
         .review
         .iter()
         .map(|review| {
@@ -579,19 +579,21 @@ pub fn parse_session_review_decisions(
     let mut explicit = BTreeMap::<String, SessionReviewDecisionInput>::new();
     let mut grouped = BTreeMap::<String, SessionReviewDecisionInput>::new();
     for decision in decisions {
+        let decision_review_id = decision.review_id.clone();
+        let decision_signature_id = decision.signature_id.clone();
         validate_session_decision(
             &decision.decision,
-            decision.review_id.as_deref().unwrap_or("<group>"),
+            decision_review_id.as_deref().unwrap_or("<group>"),
         )?;
-        if let Some(review_id) = decision.review_id.as_deref() {
-            if explicit.insert(review_id.to_string(), decision).is_some() {
+        if let Some(review_id) = decision_review_id {
+            if explicit.insert(review_id.clone(), decision).is_some() {
                 return Err(review_error(
                     "Session review decisions contain a duplicate review_id",
                     json!({"review_id": review_id}),
                 ));
             }
-        } else if let Some(signature_id) = decision.signature_id.as_deref() {
-            if grouped.insert(signature_id.to_string(), decision).is_some() {
+        } else if let Some(signature_id) = decision_signature_id {
+            if grouped.insert(signature_id.clone(), decision).is_some() {
                 return Err(review_error(
                     "Session review decisions contain a duplicate signature_id",
                     json!({"signature_id": signature_id}),
@@ -755,7 +757,7 @@ fn session_review_result_reference(
         content_hash: solve_hash.clone(),
         strategy_content_hash: solve.inputs.rules_hash.clone(),
         lookup_snapshot_hash: solve.inputs.registry.snapshot_hash.clone(),
-        escrow_snapshot_hash: solve.inputs.registry.snapshot_hash,
+        escrow_snapshot_hash: solve.inputs.registry.snapshot_hash.clone(),
     }
 }
 

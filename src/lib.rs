@@ -3857,12 +3857,20 @@ fn run_entity_session_review_import_command(
     let asserted = if assertion_lines.is_empty() {
         None
     } else {
-        let mut file = tempfile::NamedTempFile::new()?;
-        file.write_all(assertion_lines.join("\n").as_bytes())?;
-        match session::assert_evidence(session::SessionAssertRequest {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_nanos();
+        let temp_path = std::env::temp_dir().join(format!(
+            "canon-session-review-{}-{nonce}.jsonl",
+            std::process::id()
+        ));
+        fs::write(&temp_path, assertion_lines.join("\n"))?;
+        let assertion_result = session::assert_evidence(session::SessionAssertRequest {
             session: session.clone(),
-            evidence: file.path().to_path_buf(),
-        }) {
+            evidence: temp_path.clone(),
+        });
+        let _ = fs::remove_file(&temp_path);
+        match assertion_result {
             Ok(asserted) => Some(asserted),
             Err(refusal) => {
                 return emit_entity_refusal(refusal.to_canon_output(), true, summary_mode);
@@ -3945,12 +3953,14 @@ fn read_session_solve_artifact(
             ))
         })?
         .to_vec();
-    let solve = serde_json::from_slice(&bytes).map_err(|error| {
-        Box::new(session_review_import_refusal(
-            "Session solve artifact is malformed",
-            serde_json::json!({"error": error.to_string(), "writes_performed": false}),
-        ))
-    })?;
+    let solve = serde_json::from_slice::<entity::session::SessionSolveArtifact>(&bytes).map_err(
+        |error| {
+            Box::new(session_review_import_refusal(
+                "Session solve artifact is malformed",
+                serde_json::json!({"error": error.to_string(), "writes_performed": false}),
+            ))
+        },
+    )?;
     if solve.version != entity::session::SESSION_SOLVE_VERSION {
         return Err(Box::new(session_review_import_refusal(
             "Session solve artifact has the wrong version",
@@ -3969,7 +3979,7 @@ fn session_review_observation_index(
 ) -> Result<BTreeMap<String, Vec<(String, String)>>, Box<CanonOutput>> {
     let snapshot = entity::publication::open_current_stream_generation(
         session,
-        entity::session::SESSION_OBSERVATIONS_STREAM_ID,
+        crate::session::SESSION_OBSERVATIONS_STREAM_ID,
     )
     .map_err(|error| {
         Box::new(session_review_import_refusal(
