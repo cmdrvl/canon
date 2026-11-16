@@ -765,7 +765,7 @@ fn compile_short_assertion(
         kind,
         target: EvidenceTarget::Pair { left_id, right_id },
         operator: EvidenceOperatorRef {
-            namespace: "entity-session".to_string(),
+            namespace: "session".to_string(),
             operator_id: assertion_type,
             operator_version: "v1".to_string(),
             adapter_id: None,
@@ -1888,6 +1888,7 @@ mod tests {
             assert_eq!(value["version"], "canon.evidence.v1");
             assert_eq!(value["kind"], serde_json::to_value(expected_kind).unwrap());
             assert_eq!(value["reason_code"], expected_reason);
+            assert_eq!(value["operator"]["namespace"], "session");
             assert_eq!(value["target"]["left_id"], "left");
             assert_eq!(value["target"]["right_id"], "right");
         }
