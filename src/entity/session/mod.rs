@@ -417,6 +417,12 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
     let mut graph_records = Vec::new();
     for (pair, facts) in &edge_facts {
         let joining = matches!(tiered_edges.get(pair), Some(EdgeTier::A | EdgeTier::B));
+        // A human `different` decision can veto a pair that was still below
+        // the acceptance threshold (for example, one `same_slot` observation
+        // plus the imported `distinct` evidence). Keep that positive edge in
+        // the signed graph so the anti-merge fact is evaluated inside its
+        // existing evidence component instead of against two singleton nodes.
+        let distinct_positive_edge = has_positive_distinct(facts);
         let touches_incumbent = [pair.0.as_str(), pair.1.as_str()].iter().any(|surface_id| {
             nodes
                 .get(*surface_id)
@@ -427,6 +433,7 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             .iter()
             .filter(|hit| {
                 joining
+                    || distinct_positive_edge
                     || (touches_incumbent && facts.positive)
                     || DISTINCT_TYPES.contains(&hit.operator_id.as_str())
                     || RELATION_TYPES.contains(&hit.operator_id.as_str())
@@ -2207,6 +2214,14 @@ fn tier_for(facts: &EdgeFacts, rules: &SessionRules) -> Option<EdgeTier> {
     }
 }
 
+fn has_positive_distinct(facts: &EdgeFacts) -> bool {
+    facts.positive
+        && facts
+            .evidence_types
+            .iter()
+            .any(|evidence_type| DISTINCT_TYPES.contains(&evidence_type.as_str()))
+}
+
 fn component_has_key_conflict(nodes: &[&Node], rules: &SessionRules) -> bool {
     rules.key_rules.iter().any(|(namespace, rule)| {
         rule.single_valued
@@ -2325,7 +2340,7 @@ mod tests {
         EdgeFacts, EdgeTier, RegistryRow, SessionRules, SessionSolveArtifact, SessionSolveCluster,
         SessionSolveInputs, SessionSolveRegistry, SessionSolveSummary, TIER_A_TYPES, TIER_B_TYPES,
         build_commit_plan, canonical_key_value, commit_skip_reasons, component_has_key_conflict,
-        exactly_one_authoritative_value, key_values, tier_for,
+        exactly_one_authoritative_value, has_positive_distinct, key_values, tier_for,
     };
     use std::collections::{BTreeMap, BTreeSet};
 
@@ -2404,6 +2419,22 @@ mod tests {
             Some(EdgeTier::C)
         );
         assert_eq!(tier_for(&facts(&[], &[]), &rules), None);
+    }
+
+    #[test]
+    fn positive_distinct_edges_are_retained_for_contradiction_evaluation() {
+        assert!(has_positive_distinct(&facts(
+            &["same_slot", "distinct"],
+            &["lineage-a"]
+        )));
+        assert!(!has_positive_distinct(&facts(
+            &["distinct"],
+            &["lineage-a"]
+        )));
+        assert!(!has_positive_distinct(&facts(
+            &["same_slot"],
+            &["lineage-a"]
+        )));
     }
 
     #[test]
