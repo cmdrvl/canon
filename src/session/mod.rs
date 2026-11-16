@@ -1176,7 +1176,14 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         .as_ref()
         .map(|typed| typed.minted.clone())
         .unwrap_or_default();
-    if typed_minted.iter().all(|entry| entry.aliases.is_empty()) && request.relations.is_empty() {
+    let has_existing_entries = request
+        .entries
+        .iter()
+        .any(|entry| entry.canonical_id.is_some());
+    if typed_minted.iter().all(|entry| entry.aliases.is_empty())
+        && request.relations.is_empty()
+        && !has_existing_entries
+    {
         return Ok(SessionCommitOutput {
             version: SESSION_COMMIT_VERSION.to_string(),
             outcome: "nothing_to_commit".to_string(),

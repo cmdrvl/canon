@@ -709,7 +709,12 @@ mod tests {
                 cluster_id: "a".to_string(),
                 outcome: "accepted".to_string(),
                 tier: Some("B".to_string()),
-                surfaces: vec!["Alpha".to_string(), "Beta".to_string(), "Gamma".to_string()],
+                surfaces: vec![
+                    "Alpha".to_string(),
+                    "Beta".to_string(),
+                    "Gamma".to_string(),
+                    "Delta".to_string(),
+                ],
                 observation_count: 3,
                 keys: BTreeMap::new(),
                 incumbent_canonical_id: None,
@@ -736,7 +741,7 @@ mod tests {
     fn seeded_sample_is_deterministic_and_without_replacement() {
         let artifact = artifact();
         let candidates = candidates_for(&artifact, SampleStratum::TierB, None);
-        assert_eq!(candidates.len(), 3);
+        assert_eq!(candidates.len(), 6);
         let mut ranked_once = candidates.clone();
         ranked_once.sort_by_key(|candidate| sample_rank("7", candidate));
         let mut ranked_twice = candidates.clone();

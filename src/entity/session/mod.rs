@@ -624,16 +624,6 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             ("contradiction", None, "incumbent_conflict".to_string())
         } else if key_conflict {
             ("contradiction", None, "key_conflict".to_string())
-        } else if relation_suppressed
-            && has_registry_endpoint
-            && !member_nodes.is_empty()
-            && incumbent_ids.len() == 1
-        {
-            (
-                "resolved_existing",
-                None,
-                "related_existing_attachment".to_string(),
-            )
         } else if has_positive {
             if all_tier_a {
                 ("accepted", Some("A".to_string()), "tier_a".to_string())
@@ -705,13 +695,16 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             });
             summary.contradiction += 1;
         } else if outcome == "accepted" {
-            if tier.as_deref() == Some("A") {
-                summary.accepted_tier_a += 1;
-            } else {
-                summary.accepted_tier_b += 1;
-            }
-            if has_registry_endpoint && incumbent_ids.len() == 1 {
+            let existing_attachment = has_registry_endpoint && incumbent_ids.len() == 1;
+            if existing_attachment {
                 summary.resolved_existing += 1;
+            }
+            if !(relation_suppressed && existing_attachment) {
+                if tier.as_deref() == Some("A") {
+                    summary.accepted_tier_a += 1;
+                } else {
+                    summary.accepted_tier_b += 1;
+                }
             }
         } else if outcome == "resolved_existing" {
             summary.resolved_existing += 1;
