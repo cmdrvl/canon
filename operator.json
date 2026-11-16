@@ -7464,6 +7464,12 @@
           "description": "Registry version component to bump: patch, minor, or major; mutually exclusive with --next-version"
         },
         {
+          "name": "expect_base",
+          "flag": "--expect-base",
+          "type": "string",
+          "description": "Refuse with base_moved unless the registry directory's content_hash (canon registry identity) equals this value; kind=hash,kind=hash for several registries"
+        },
+        {
           "name": "emit",
           "flag": "--emit",
           "type": "string",
@@ -7523,12 +7529,6 @@
         "mutation_class": "ReadOnly",
         "network_class": "Offline",
         "concurrency_class": "StatelessRead",
-        {
-          "name": "expect_base",
-          "flag": "--expect-base",
-          "type": "string",
-          "description": "Refuse with base_moved unless the registry directory's content_hash (canon registry identity) equals this value; kind=hash,kind=hash for several registries"
-        },
         "platform_classes": [
           "PortablePathUtf8"
         ],

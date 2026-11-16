@@ -1883,6 +1883,11 @@ pub struct EntitySessionCommitCli {
     #[arg(long, value_enum, conflicts_with = "next_version")]
     pub bump: Option<RegistryVersionBumpMode>,
 
+    /// Refuse with base_moved unless the registry directory's content_hash is this value
+    /// (kind=hash,kind=hash for a session with several registries)
+    #[arg(long = "expect-base")]
+    pub expect_base: Option<String>,
+
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: EntityEmitMode,
@@ -1922,11 +1927,6 @@ pub struct EntitySessionSampleCli {
     /// Restrict the sample to one entity type
     #[arg(long = "entity-type")]
     pub entity_type: Option<String>,
-
-    /// Refuse with base_moved unless the registry directory's content_hash is this value
-    /// (kind=hash,kind=hash for a session with several registries)
-    #[arg(long = "expect-base")]
-    pub expect_base: Option<String>,
 
     /// Omit tier and evidence fields so a labeller cannot see the stratum
     #[arg(long)]

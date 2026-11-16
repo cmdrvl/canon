@@ -1252,6 +1252,7 @@ fn run_entity_session_commit_command(
         session: commit.session.clone(),
         next_version: commit.next_version.clone(),
         bump: commit.bump.map(registry_version_bump),
+        expect_base: commit.expect_base.clone(),
     });
     match result {
         Ok(output) => {
@@ -1274,7 +1275,6 @@ fn run_entity_session_commit_command(
 }
 
 fn run_entity_session_status_command(
-        expect_base: commit.expect_base.clone(),
     status: &EntitySessionStatusCli,
 ) -> Result<u8, Box<dyn Error>> {
     let result = entity::session::session_status(entity::session::SessionStatusRequest {
@@ -4564,28 +4564,6 @@ fn run_registry_init(init: &RegistryInitCli) -> Result<u8, Box<dyn Error>> {
     }
 }
 
-fn run_registry_check_id(check_id: &RegistryCheckIdCli) -> Result<u8, Box<dyn Error>> {
-    let result = registry::check_id(registry::RegistryCheckIdRequest {
-        id: check_id.id.clone(),
-        registry: check_id.registry.clone(),
-        registries: check_id.registries.clone(),
-    });
-    match result {
-        Ok(output) => {
-            match check_id.emit {
-                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
-                RegistryEmitMode::Summary => println!("{}", output.render_summary()),
-            }
-            Ok(0)
-        }
-        Err(refusal) => {
-            let output = refusal.to_canon_output();
-            match check_id.emit {
-                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
-                RegistryEmitMode::Summary => eprintln!("{}", serde_json::to_string(&output)?),
-            }
-            Ok(2)
-        }
 fn run_registry_identity(identity: &RegistryIdentityCli) -> Result<u8, Box<dyn Error>> {
     let rendered = match &identity.reference {
         Some(reference) => registry::check_pinned_ref(&identity.registry, reference).map(|check| {
@@ -4618,6 +4596,28 @@ fn run_registry_identity(identity: &RegistryIdentityCli) -> Result<u8, Box<dyn E
     }
 }
 
+fn run_registry_check_id(check_id: &RegistryCheckIdCli) -> Result<u8, Box<dyn Error>> {
+    let result = registry::check_id(registry::RegistryCheckIdRequest {
+        id: check_id.id.clone(),
+        registry: check_id.registry.clone(),
+        registries: check_id.registries.clone(),
+    });
+    match result {
+        Ok(output) => {
+            match check_id.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => println!("{}", output.render_summary()),
+            }
+            Ok(0)
+        }
+        Err(refusal) => {
+            let output = refusal.to_canon_output();
+            match check_id.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => eprintln!("{}", serde_json::to_string(&output)?),
+            }
+            Ok(2)
+        }
     }
 }
 
