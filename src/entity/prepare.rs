@@ -1270,14 +1270,6 @@ fn validate_profile_execution_row_count(
     Ok(())
 }
 
-fn prepare_surface_records_from_profile_execution(
-    observations: &[PreparedInputObservation],
-    execution: &EntityProfilePackageExecution,
-) -> Result<Vec<PreparedSurfaceRecord>, Refusal> {
-    prepare_surface_records_from_profile_execution_with_rejections(observations, execution, false)
-        .map(|output| output.surfaces)
-}
-
 fn prepare_surface_records_from_profile_execution_with_rejections(
     observations: &[PreparedInputObservation],
     execution: &EntityProfilePackageExecution,
