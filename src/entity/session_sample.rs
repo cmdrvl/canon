@@ -7,8 +7,9 @@ use crate::{
     Refusal, RefusalCode,
     entity::{
         publication::open_current_stream_generation,
-        session::{SESSION_OBSERVATIONS_STREAM_ID, SESSION_SOLVE_STREAM_ID, SessionSolveArtifact},
+        session::{SESSION_SOLVE_STREAM_ID, SessionSolveArtifact},
     },
+    session::SESSION_OBSERVATIONS_STREAM_ID,
     witness::hash_bytes,
 };
 use serde::Serialize;
