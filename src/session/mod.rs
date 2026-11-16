@@ -739,7 +739,7 @@ fn compile_short_assertion(
     let mut basis_payload = basis.clone();
     basis_payload.remove("authority");
     let mut extension_payload = BTreeMap::new();
-    if let Some(value) = extension_value(&Value::Object(basis_payload), line_number, "basis")? {
+    if let Some(value) = extension_value(&Value::Object(basis_payload)) {
         extension_payload.insert("basis".to_string(), value);
     }
     extension_payload.insert(
@@ -898,44 +898,40 @@ fn optional_assertion_string(
     Ok(Some(value.to_string()))
 }
 
-fn extension_value(
-    value: &Value,
-    line_number: usize,
-    field: &str,
-) -> Result<Option<EvidenceExtensionValue>, AssertionRowError> {
+fn extension_value(value: &Value) -> Option<EvidenceExtensionValue> {
     match value {
-        Value::Null => Ok(None),
-        Value::Bool(value) => Ok(Some(EvidenceExtensionValue::Bool(*value))),
+        Value::Null => None,
+        Value::Bool(value) => Some(EvidenceExtensionValue::Bool(*value)),
         Value::Number(value) => {
             if let Some(value) = value.as_i64() {
-                Ok(Some(EvidenceExtensionValue::Int(value)))
+                Some(EvidenceExtensionValue::Int(value))
             } else if let Some(value) = value.as_u64() {
-                Ok(Some(EvidenceExtensionValue::UInt(value)))
+                Some(EvidenceExtensionValue::UInt(value))
             } else {
-                Ok(Some(EvidenceExtensionValue::String(value.to_string())))
+                Some(EvidenceExtensionValue::String(value.to_string()))
             }
         }
-        Value::String(value) => Ok(Some(EvidenceExtensionValue::String(value.clone()))),
+        Value::String(value) => Some(EvidenceExtensionValue::String(value.clone())),
         Value::Array(values) => {
             let mut converted = Vec::new();
             for value in values {
-                if let Some(value) = extension_value(value, line_number, field)? {
+                if let Some(value) = extension_value(value) {
                     converted.push(value);
                 }
             }
-            Ok(Some(EvidenceExtensionValue::List(converted)))
+            Some(EvidenceExtensionValue::List(converted))
         }
         Value::Object(values) => {
             let mut converted = BTreeMap::new();
             for (key, value) in values {
-                if let Some(value) = extension_value(value, line_number, field)? {
+                if let Some(value) = extension_value(value) {
                     converted.insert(key.clone(), value);
                 }
             }
             if converted.is_empty() {
-                Ok(None)
+                None
             } else {
-                Ok(Some(EvidenceExtensionValue::Object(converted)))
+                Some(EvidenceExtensionValue::Object(converted))
             }
         }
     }
