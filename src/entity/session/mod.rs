@@ -378,7 +378,7 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             })
             .collect::<Vec<_>>();
         let has_positive = !joining.is_empty();
-        let all_tier_a = has_positive && joining.iter().all(|&&(_, tier)| *tier == EdgeTier::A);
+        let all_tier_a = has_positive && joining.iter().all(|(_, tier)| **tier == EdgeTier::A);
         let key_conflict = rules.authoritative_keys.iter().any(|namespace| {
             member_nodes
                 .iter()
