@@ -378,7 +378,7 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             })
             .collect::<Vec<_>>();
         let has_positive = !joining.is_empty();
-        let all_tier_a = has_positive && joining.iter().all(|(_, tier)| *tier == EdgeTier::A);
+        let all_tier_a = has_positive && joining.iter().all(|&&(_, tier)| *tier == EdgeTier::A);
         let key_conflict = rules.authoritative_keys.iter().any(|namespace| {
             member_nodes
                 .iter()
@@ -441,9 +441,9 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         let accepting_evidence_ids = if outcome == "accepted" && has_positive {
             joining
                 .iter()
-                .flat_map(|((left, right), _)| {
+                .flat_map(|entry| {
                     edge_facts
-                        .get(&(left.clone(), right.clone()))
+                        .get(entry.0)
                         .into_iter()
                         .flat_map(|facts| facts.evidence_ids.iter().cloned())
                 })
@@ -485,7 +485,7 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         }
         clusters.push(SessionSolveCluster {
             cluster_id,
-            outcome,
+            outcome: outcome.to_string(),
             tier,
             surfaces,
             observation_count,
