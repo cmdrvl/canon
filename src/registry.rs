@@ -23,6 +23,7 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 mod add_entry;
+pub mod agent_id;
 mod build;
 pub mod domain_compile;
 mod export;
