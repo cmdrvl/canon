@@ -234,6 +234,16 @@ pub struct SessionCommitRelation {
     pub evidence_ids: Vec<String>,
 }
 
+/// Registry sidecars that a session commit should merge with the current
+/// incumbent memory.  The sidecars are deliberately not part of the lookup
+/// alias files: they record durable review decisions and pending questions.
+#[derive(Debug, Clone, Default)]
+pub struct SessionRegistryMemoryWrite {
+    pub cannot_link: Vec<crate::entity::runtime::CannotLinkFact>,
+    pub pending: Vec<crate::entity::runtime::PendingClusterRecord>,
+    pub pending_clear: Vec<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct SessionCommitRequest {
     pub session: PathBuf,
@@ -245,6 +255,7 @@ pub struct SessionCommitRequest {
     pub entries: Vec<SessionCommitEntry>,
     pub skipped: Vec<SessionCommitSkipped>,
     pub relations: Vec<SessionCommitRelation>,
+    pub memory: Option<SessionRegistryMemoryWrite>,
     pub next_version: Option<String>,
     pub bump: Option<registry::RegistryVersionBump>,
 }
@@ -300,6 +311,12 @@ struct SessionCommitReceipt {
     skipped: Vec<SessionCommitSkipped>,
     #[serde(default)]
     relations_written: usize,
+    #[serde(default)]
+    cannot_link_written: usize,
+    #[serde(default)]
+    pending_written: usize,
+    #[serde(default)]
+    pending_cleared: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     closure_set_hash: Option<String>,
     #[serde(default)]
@@ -320,6 +337,12 @@ pub struct SessionCommitOutput {
     pub skipped: Vec<SessionCommitSkipped>,
     #[serde(default)]
     pub relations_written: usize,
+    #[serde(default)]
+    pub cannot_link_written: usize,
+    #[serde(default)]
+    pub pending_written: usize,
+    #[serde(default)]
+    pub pending_cleared: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub closure_set_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -329,12 +352,15 @@ pub struct SessionCommitOutput {
 impl SessionCommitOutput {
     pub fn render_summary(&self) -> String {
         format!(
-            "outcome={} minted={} attached={} skipped={} relations_written={} registry_version={} generation={}",
+            "outcome={} minted={} attached={} skipped={} relations_written={} cannot_link_written={} pending_written={} pending_cleared={} registry_version={} generation={}",
             self.outcome,
             self.minted.len(),
             self.attached.len(),
             self.skipped.len(),
             self.relations_written,
+            self.cannot_link_written,
+            self.pending_written,
+            self.pending_cleared,
             self.registry
                 .as_ref()
                 .map(|registry| registry.version_after.as_str())
@@ -1051,7 +1077,24 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         ));
     }
 
-    if request.entries.is_empty() && request.relations.is_empty() {
+    let memory_change = request.memory.as_ref().is_some_and(|memory| {
+        !memory.cannot_link.is_empty()
+            || !memory.pending.is_empty()
+            || !memory.pending_clear.is_empty()
+    });
+    if memory_change {
+        let lint = registry_lint::lint(registry_path, registry_lint::RegistryLintProfile::Auto)?;
+        if lint.summary.errors > 0 {
+            return Err(memory_refusal(
+                format!(
+                    "Registry memory lint found {} error(s); no session commit was written",
+                    lint.summary.errors
+                ),
+                false,
+            ));
+        }
+    }
+    if request.entries.is_empty() && request.relations.is_empty() && !memory_change {
         return Ok(SessionCommitOutput {
             version: SESSION_COMMIT_VERSION.to_string(),
             outcome: "nothing_to_commit".to_string(),
@@ -1062,6 +1105,9 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             attached: Vec::new(),
             skipped: request.skipped,
             relations_written: 0,
+            cannot_link_written: 0,
+            pending_written: 0,
+            pending_cleared: 0,
             closure_set_hash: None,
             generation_id: None,
         });
@@ -1187,7 +1233,10 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         .as_ref()
         .map(|typed| typed.minted.clone())
         .unwrap_or_default();
-    if typed_minted.iter().all(|entry| entry.aliases.is_empty()) && request.relations.is_empty() {
+    if typed_minted.iter().all(|entry| entry.aliases.is_empty())
+        && request.relations.is_empty()
+        && !memory_change
+    {
         return Ok(SessionCommitOutput {
             version: SESSION_COMMIT_VERSION.to_string(),
             outcome: "nothing_to_commit".to_string(),
@@ -1198,6 +1247,9 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             attached: Vec::new(),
             skipped: receipt_skipped,
             relations_written: 0,
+            cannot_link_written: 0,
+            pending_written: 0,
+            pending_cleared: 0,
             closure_set_hash: None,
             generation_id: None,
         });
@@ -1307,6 +1359,12 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             .cmp(&right.cluster_id)
             .then_with(|| left.reason.cmp(&right.reason))
     });
+    let memory_counts = request
+        .memory
+        .as_ref()
+        .map(|memory| write_registry_memory(registry_path, memory))
+        .transpose()?
+        .unwrap_or_default();
     let relations_written = write_relation_sidecar(
         registry_path,
         &manifest.session_id,
@@ -1327,6 +1385,21 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             .map(|receipt| receipt.relations_written)
             .unwrap_or_default()
             + relations_written,
+        cannot_link_written: prior_receipt
+            .as_ref()
+            .map(|receipt| receipt.cannot_link_written)
+            .unwrap_or_default()
+            + memory_counts.cannot_link_written,
+        pending_written: prior_receipt
+            .as_ref()
+            .map(|receipt| receipt.pending_written)
+            .unwrap_or_default()
+            + memory_counts.pending_written,
+        pending_cleared: prior_receipt
+            .as_ref()
+            .map(|receipt| receipt.pending_cleared)
+            .unwrap_or_default()
+            + memory_counts.pending_cleared,
         closure_set_hash: closure_set_hash.clone(),
         closures: closures.clone(),
     };
@@ -1418,6 +1491,9 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         attached: receipt.attached,
         skipped: receipt.skipped,
         relations_written: receipt.relations_written,
+        cannot_link_written: receipt.cannot_link_written,
+        pending_written: receipt.pending_written,
+        pending_cleared: receipt.pending_cleared,
         closure_set_hash,
         generation_id: Some(publication.generation_id),
     })
@@ -1455,6 +1531,224 @@ fn validate_commit_closure(closure: &SessionCommitClosure) -> Result<(), Refusal
         });
     }
     Ok(())
+}
+
+#[derive(Debug, Default)]
+struct RegistryMemoryWriteCounts {
+    cannot_link_written: usize,
+    pending_written: usize,
+    pending_cleared: usize,
+}
+
+fn write_registry_memory(
+    registry_path: &Path,
+    requested: &SessionRegistryMemoryWrite,
+) -> Result<RegistryMemoryWriteCounts, Refusal> {
+    let escrow_dir = registry_path.join("_escrow");
+    let cannot_path = escrow_dir.join("cannot_link.jsonl");
+    let pending_path = escrow_dir.join("pending.jsonl");
+    let existing_cannot =
+        read_memory_jsonl::<crate::entity::runtime::CannotLinkFact>(&cannot_path)?;
+    let existing_pending =
+        read_memory_jsonl::<crate::entity::runtime::PendingClusterRecord>(&pending_path)?;
+
+    let mut cannot_by_pair = BTreeMap::new();
+    for mut fact in existing_cannot {
+        validate_memory_cannot_link(&fact)?;
+        let (left_key, right_key) = ordered_memory_pair(&fact.left_key, &fact.right_key);
+        fact.left_key = left_key.clone();
+        fact.right_key = right_key.clone();
+        cannot_by_pair.insert((left_key, right_key), fact);
+    }
+    let before_cannot = cannot_by_pair.len();
+    for fact in &requested.cannot_link {
+        validate_memory_cannot_link(fact)?;
+        let pair = ordered_memory_pair(&fact.left_key, &fact.right_key);
+        cannot_by_pair.entry(pair).or_insert_with(|| fact.clone());
+    }
+
+    let mut pending_by_id = existing_pending
+        .into_iter()
+        .map(|record| (record.escrow_id.clone(), record))
+        .collect::<BTreeMap<_, _>>();
+    let mut pending_cleared = 0;
+    for escrow_id in &requested.pending_clear {
+        if pending_by_id.remove(escrow_id).is_some() {
+            pending_cleared += 1;
+        }
+    }
+    let before_pending = pending_by_id.clone();
+    for record in &requested.pending {
+        validate_memory_pending(record)?;
+        pending_by_id.insert(record.escrow_id.clone(), record.clone());
+    }
+
+    let cannot_changed = cannot_by_pair.len() != before_cannot;
+    let pending_changed = pending_by_id != before_pending;
+    if !cannot_changed && !pending_changed {
+        return Ok(RegistryMemoryWriteCounts::default());
+    }
+    fs::create_dir_all(&escrow_dir).map_err(|error| {
+        memory_refusal(
+            format!(
+                "Unable to create registry escrow directory '{}': {error}",
+                escrow_dir.display()
+            ),
+            false,
+        )
+    })?;
+    if cannot_changed {
+        let bytes = memory_jsonl_bytes(cannot_by_pair.values())?;
+        publish_memory_sidecar(&cannot_path, bytes)?;
+    }
+    if pending_changed {
+        let bytes = memory_jsonl_bytes(pending_by_id.values())?;
+        publish_memory_sidecar(&pending_path, bytes)?;
+    }
+    let pending_written = requested
+        .pending
+        .iter()
+        .filter(|record| {
+            before_pending
+                .get(&record.escrow_id)
+                .is_none_or(|previous| previous != *record)
+        })
+        .count();
+    Ok(RegistryMemoryWriteCounts {
+        cannot_link_written: cannot_by_pair.len().saturating_sub(before_cannot),
+        pending_written,
+        pending_cleared,
+    })
+}
+
+fn read_memory_jsonl<T>(path: &Path) -> Result<Vec<T>, Refusal>
+where
+    T: serde::de::DeserializeOwned,
+{
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let bytes = fs::read(path).map_err(|error| {
+        memory_refusal(
+            format!(
+                "Unable to read registry memory '{}': {error}",
+                path.display()
+            ),
+            false,
+        )
+    })?;
+    let text = std::str::from_utf8(&bytes).map_err(|error| {
+        memory_refusal(
+            format!("Registry memory '{}' is not UTF-8: {error}", path.display()),
+            false,
+        )
+    })?;
+    text.lines()
+        .enumerate()
+        .filter(|(_, line)| !line.trim().is_empty())
+        .map(|(line, value)| {
+            serde_json::from_str(value).map_err(|error| {
+                memory_refusal(
+                    format!(
+                        "Registry memory '{}' line {} is invalid: {error}",
+                        path.display(),
+                        line + 1
+                    ),
+                    false,
+                )
+            })
+        })
+        .collect()
+}
+
+fn memory_jsonl_bytes<'a, T>(records: impl IntoIterator<Item = &'a T>) -> Result<Vec<u8>, Refusal>
+where
+    T: Serialize + 'a,
+{
+    let mut bytes = Vec::new();
+    for record in records {
+        let line = serde_json::to_vec(record).map_err(|error| {
+            memory_refusal(
+                format!("Unable to serialize registry memory: {error}"),
+                false,
+            )
+        })?;
+        bytes.extend_from_slice(&line);
+        bytes.push(b'\n');
+    }
+    Ok(bytes)
+}
+
+fn publish_memory_sidecar(path: &Path, bytes: Vec<u8>) -> Result<(), Refusal> {
+    let temporary = path.with_extension(format!("jsonl.{}.tmp", std::process::id()));
+    fs::write(&temporary, bytes).map_err(|error| {
+        memory_refusal(
+            format!(
+                "Unable to stage registry memory '{}': {error}",
+                temporary.display()
+            ),
+            false,
+        )
+    })?;
+    fs::rename(&temporary, path).map_err(|error| {
+        memory_refusal(
+            format!(
+                "Unable to publish registry memory '{}': {error}",
+                path.display()
+            ),
+            true,
+        )
+    })
+}
+
+fn ordered_memory_pair(left: &str, right: &str) -> (String, String) {
+    if left <= right {
+        (left.to_string(), right.to_string())
+    } else {
+        (right.to_string(), left.to_string())
+    }
+}
+
+fn validate_memory_cannot_link(
+    fact: &crate::entity::runtime::CannotLinkFact,
+) -> Result<(), Refusal> {
+    if fact.left_key.trim().is_empty()
+        || fact.right_key.trim().is_empty()
+        || fact.reason.trim().is_empty()
+        || fact.left_key == fact.right_key
+    {
+        return Err(memory_refusal(
+            "Registry cannot-link fact has invalid keys or reason".to_string(),
+            false,
+        ));
+    }
+    Ok(())
+}
+
+fn validate_memory_pending(
+    record: &crate::entity::runtime::PendingClusterRecord,
+) -> Result<(), Refusal> {
+    if record.escrow_id.trim().is_empty()
+        || record.profile.trim().is_empty()
+        || record.state.trim().is_empty()
+    {
+        return Err(memory_refusal(
+            "Registry pending record has an empty required field".to_string(),
+            false,
+        ));
+    }
+    Ok(())
+}
+
+fn memory_refusal(message: String, writes_performed: bool) -> Refusal {
+    Refusal {
+        code: RefusalCode::EEntityArtifactContract,
+        message,
+        detail: json!({"stream": "registry/_escrow", "writes_performed": writes_performed}),
+        next_command: Some(
+            "Repair registry memory sidecars, then rerun canon entity session commit".to_string(),
+        ),
+    }
 }
 
 fn build_commit_closure_set(
@@ -1864,6 +2158,9 @@ pub(crate) fn already_committed(
         attached: existing.attached,
         skipped: existing.skipped,
         relations_written: existing.relations_written,
+        cannot_link_written: existing.cannot_link_written,
+        pending_written: existing.pending_written,
+        pending_cleared: existing.pending_cleared,
         closure_set_hash: existing.closure_set_hash,
         generation_id,
     }))

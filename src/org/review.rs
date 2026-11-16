@@ -2179,6 +2179,8 @@ mod tests {
             evidence_types: vec!["name_equivalent".to_string(), "same_slot".to_string()],
             lineage_count: 3,
             missing: "second_lineage".to_string(),
+            known_pending: false,
+            escrow_id: None,
         };
         let two = SessionSolveReview {
             evidence_types: vec!["same_slot".to_string(), "name_equivalent".to_string()],

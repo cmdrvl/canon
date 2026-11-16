@@ -76,6 +76,9 @@ pub struct StatusCounts {
     pub contradictions: usize,
     pub contradictions_by_reason: BTreeMap<String, usize>,
     pub suppressed_by_relation: usize,
+    pub suppressed_by_cannot_link: usize,
+    pub review_new: usize,
+    pub review_known: usize,
     pub dangling_evidence: usize,
 }
 
@@ -153,17 +156,20 @@ impl SessionStatusOutput {
         ];
         match &self.solve.counts {
             Some(counts) => lines.push(format!(
-                "solve: stale={}{} tier_a={} tier_b={} resolved_existing={} review={} standalone={} contradictions={}{} suppressed_by_relation={} dangling_evidence={}",
+                "solve: stale={}{} tier_a={} tier_b={} resolved_existing={} review={} review_new={} review_known={} standalone={} contradictions={}{} suppressed_by_relation={} suppressed_by_cannot_link={} dangling_evidence={}",
                 self.solve.stale,
                 render_reasons(&self.solve.stale_reasons),
                 counts.accepted_tier_a,
                 counts.accepted_tier_b,
                 counts.resolved_existing,
                 counts.review,
+                counts.review_new,
+                counts.review_known,
                 counts.standalone,
                 counts.contradictions,
                 render_by_type(&counts.contradictions_by_reason),
                 counts.suppressed_by_relation,
+                counts.suppressed_by_cannot_link,
                 counts.dangling_evidence,
             )),
             None => lines.push("solve: none".to_string()),
@@ -446,6 +452,9 @@ fn counts_from(artifact: &SessionSolveArtifact) -> StatusCounts {
         contradictions: artifact.summary.contradiction,
         contradictions_by_reason: by_reason,
         suppressed_by_relation: artifact.summary.suppressed_by_relation,
+        suppressed_by_cannot_link: artifact.summary.suppressed_by_cannot_link,
+        review_new: artifact.summary.review_new,
+        review_known: artifact.summary.review_known,
         dangling_evidence: artifact.summary.dangling_evidence,
     }
 }
@@ -662,6 +671,7 @@ mod tests {
                     id: "orgs".to_string(),
                     version: "0.0.0".to_string(),
                     snapshot_hash: "blake3:s".to_string(),
+                    escrow_snapshot_hash: String::new(),
                 },
             },
             authoritative_keys: Vec::new(),
@@ -738,6 +748,8 @@ mod tests {
                 evidence_types: vec!["same_slot".to_string()],
                 lineage_count: 2,
                 missing: "second_evidence_type".to_string(),
+                known_pending: false,
+                escrow_id: None,
             }],
         );
         let ranked = rank_top_unresolved(&artifact, &observations);

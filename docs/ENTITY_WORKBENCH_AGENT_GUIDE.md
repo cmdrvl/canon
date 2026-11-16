@@ -161,6 +161,23 @@ canon entity session commit work/day-two --bump patch --emit json
 An accepted cluster with one incumbent ID attaches only new exact surfaces to
 that ID and reports them under `attached[]`; it does not mint a duplicate.
 
+### Registry memory: known review and vetoes
+
+Session commits keep review memory beside the exact lookup aliases in the
+registry. The `_escrow/pending.jsonl` sidecar records tier-C reviews and open
+contradictions; a later solve reports a matching item as `known_pending` with
+its stable `escrow_id` and increments `review_known` instead of presenting it
+as a new question. A later accepted A/B cluster or a decided relation clears
+the matching pending item in the same commit.
+
+Reviewed `distinct` assertions write canonical `CannotLinkFact` rows to
+`_escrow/cannot_link.jsonl`. Future solves load those rows as hard anti-merge
+constraints: a positive edge that crosses a veto is reported as
+`contradiction` with reason `registry_cannot_link`, and commit skips it without
+minting or attaching either side. Both sidecars are deterministic JSONL and
+are checked by the normal registry lint command; they are memory, not runtime
+fuzzy matching, and do not change exact lookup.
+
 ### Keys in the registry
 
 Commit writes each accepted cluster's authoritative key values as exact aliases

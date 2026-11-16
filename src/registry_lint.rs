@@ -640,6 +640,7 @@ fn lint_org(context: &mut LintContext) {
 
     let cannot_link = load_cannot_link_records(context);
     check_cannot_link_conflicts(context, &cannot_link);
+    check_cannot_link_references(context, &cannot_link, &aliases);
 
     set_org_snapshot_hashes(context, &alias_files, &anchor_files);
 }
@@ -1516,6 +1517,36 @@ fn check_cannot_link_conflicts(context: &mut LintContext, facts: &[CannotLinkFac
             }
         } else {
             seen.insert(key, &fact.reason);
+        }
+    }
+}
+
+fn check_cannot_link_references(
+    context: &mut LintContext,
+    facts: &[CannotLinkFact],
+    aliases: &[MappingRecord],
+) {
+    let known_ids = aliases
+        .iter()
+        .map(|record| record.canonical_id.as_str())
+        .collect::<BTreeSet<_>>();
+    for fact in facts {
+        for (side, key) in [
+            ("left_key", fact.left_key.as_str()),
+            ("right_key", fact.right_key.as_str()),
+        ] {
+            if key.contains(':') || key.starts_with("surface:") || known_ids.contains(key) {
+                continue;
+            }
+            context.finding(
+                RegistryLintSeverity::Error,
+                "org_escrow",
+                "cannot_link_unknown_id",
+                format!("Cannot-link {side} '{key}' does not name a registry canonical ID"),
+                FindingLocation::default(),
+                json!({"side": side, "key": key}),
+                "Commit the referenced canonical ID first, then rerun canon registry lint",
+            );
         }
     }
 }

@@ -701,6 +701,7 @@ mod tests {
                     id: "registry".to_string(),
                     version: "0.1.0".to_string(),
                     snapshot_hash: "s".to_string(),
+                    escrow_snapshot_hash: String::new(),
                 },
             },
             authoritative_keys: Vec::new(),
@@ -729,6 +730,8 @@ mod tests {
                 evidence_types: vec!["name_equivalent".to_string()],
                 lineage_count: 1,
                 missing: "second_lineage".to_string(),
+                known_pending: false,
+                escrow_id: None,
             }],
             relations: Vec::new(),
             contradictions: Vec::new(),
@@ -795,6 +798,8 @@ mod tests {
                 evidence_types: vec!["same_slot".to_string()],
                 lineage_count: 1,
                 missing: "second_lineage".to_string(),
+                known_pending: false,
+                escrow_id: None,
             },
             SessionSolveReview {
                 left_surface: "Alpha".to_string(),
@@ -802,6 +807,8 @@ mod tests {
                 evidence_types: vec!["name_equivalent".to_string()],
                 lineage_count: 1,
                 missing: "second_lineage".to_string(),
+                known_pending: false,
+                escrow_id: None,
             },
             SessionSolveReview {
                 left_surface: "Unrelated".to_string(),
@@ -809,6 +816,8 @@ mod tests {
                 evidence_types: vec!["name_equivalent".to_string()],
                 lineage_count: 1,
                 missing: "second_lineage".to_string(),
+                known_pending: false,
+                escrow_id: None,
             },
         ]);
         let candidates = candidates_for(&artifact, SampleStratum::Neighbourhood, Some("Alpha"));

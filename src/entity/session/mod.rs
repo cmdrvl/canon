@@ -8,6 +8,7 @@
 
 use crate::{
     InputFormat, InputValues, Refusal, RefusalCode, SpecialReason,
+    entity::runtime::{AnchorValue, CannotLinkFact, PendingClusterRecord},
     entity::{
         edge::{EdgeEvidenceHit, build_edge_evidence_record},
         graph::{SignedEvidenceGraphInput, SurfaceIncumbentId, build_signed_evidence_graph},
@@ -27,7 +28,8 @@ use crate::{
         self, SESSION_EVIDENCE_STREAM_ID, SESSION_MANIFEST_STREAM_ID,
         SESSION_OBSERVATIONS_STREAM_ID, SessionCommitAlias, SessionCommitClosure,
         SessionCommitEntry, SessionCommitRegistryExpectation, SessionCommitRelation,
-        SessionCommitRelationEndpoint, SessionCommitSkipped, SessionManifest, registries,
+        SessionCommitRelationEndpoint, SessionCommitSkipped, SessionManifest,
+        SessionRegistryMemoryWrite, registries,
     },
     temporal::relation::{
         DirectedRelationFact, IntervalBoundary, RelationKindRef, TimeInterval, finalize_relation,
@@ -93,6 +95,8 @@ pub struct SessionSolveRegistry {
     pub id: String,
     pub version: String,
     pub snapshot_hash: String,
+    #[serde(default)]
+    pub escrow_snapshot_hash: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -108,6 +112,12 @@ pub struct SessionSolveSummary {
     pub relations: usize,
     #[serde(default)]
     pub suppressed_by_relation: usize,
+    #[serde(default)]
+    pub suppressed_by_cannot_link: usize,
+    #[serde(default)]
+    pub review_new: usize,
+    #[serde(default)]
+    pub review_known: usize,
     pub dangling_evidence: usize,
     pub oversized_cluster: usize,
 }
@@ -136,6 +146,10 @@ pub struct SessionSolveReview {
     pub evidence_types: Vec<String>,
     pub lineage_count: usize,
     pub missing: String,
+    #[serde(default)]
+    pub known_pending: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub escrow_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -197,16 +211,19 @@ impl SessionSolveOutput {
     pub fn render_summary(&self) -> String {
         let summary = &self.artifact.summary;
         format!(
-            "clusters={} tier_a={} tier_b={} review={} contradiction={} standalone={} resolved_existing={} relations={} suppressed_by_relation={} dangling_evidence={} oversized_cluster={} generation={}",
+            "clusters={} tier_a={} tier_b={} review={} review_new={} review_known={} contradiction={} standalone={} resolved_existing={} relations={} suppressed_by_relation={} suppressed_by_cannot_link={} dangling_evidence={} oversized_cluster={} generation={}",
             summary.cluster_count,
             summary.accepted_tier_a,
             summary.accepted_tier_b,
             summary.review,
+            summary.review_new,
+            summary.review_known,
             summary.contradiction,
             summary.standalone,
             summary.resolved_existing,
             summary.relations,
             summary.suppressed_by_relation,
+            summary.suppressed_by_cannot_link,
             summary.dangling_evidence,
             summary.oversized_cluster,
             self.generation_id,
@@ -334,6 +351,8 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
     let mut incumbent_keys = BTreeMap::new();
     let mut endpoints = BTreeMap::new();
     let mut related_pairs = BTreeSet::new();
+    let mut registry_cannot_link_facts = Vec::new();
+    let mut registry_pending_clusters = Vec::new();
     for registry_binding in &manifest.registries {
         let scoped_observations = observations
             .iter()
@@ -350,6 +369,8 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         incumbents.extend(registry_info.incumbents);
         incumbent_keys.extend(registry_info.incumbent_keys);
         endpoints.extend(registry_info.endpoints);
+        registry_cannot_link_facts.extend(registry_info.cannot_link_facts);
+        registry_pending_clusters.extend(registry_info.pending_clusters);
         related_pairs.extend(read_related_registry_pairs(Path::new(
             &registry_binding.path,
         ))?);
@@ -374,6 +395,38 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         &mut edge_facts,
         &mut derived_evidence,
     )?;
+
+    let mut registry_cannot_link_pairs = BTreeSet::new();
+    for fact in &registry_cannot_link_facts {
+        let left_nodes = memory_key_node_keys(&fact.left_key, &nodes, &endpoints);
+        let right_nodes = memory_key_node_keys(&fact.right_key, &nodes, &endpoints);
+        for left in &left_nodes {
+            for right in &right_nodes {
+                if left != right {
+                    let pair = ordered_pair(left, right);
+                    registry_cannot_link_pairs.insert(pair.clone());
+                    let facts = edge_facts.entry(pair.clone()).or_insert_with(|| EdgeFacts {
+                        left: pair.0.clone(),
+                        right: pair.1.clone(),
+                        ..EdgeFacts::default()
+                    });
+                    facts.evidence_types.insert("distinct".to_string());
+                    facts.hits.push(EdgeEvidenceHit::new(
+                        ScoreLane::AntiMerge,
+                        "registry",
+                        "distinct",
+                        "registry_cannot_link",
+                        ScoreUnits::ZERO,
+                        true,
+                        format!(
+                            "registry cannot-link {} vs {} ({})",
+                            fact.left_key, fact.right_key, fact.reason
+                        ),
+                    ));
+                }
+            }
+        }
+    }
 
     let mut dangling_evidence_count = 0;
     for record in evidence {
@@ -600,6 +653,12 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         if key_conflict {
             conflict_reasons.push("key_conflict".to_string());
         }
+        let registry_cannot_link = registry_cannot_link_pairs.iter().any(|pair| {
+            member_keys.binary_search(&pair.0).is_ok() && member_keys.binary_search(&pair.1).is_ok()
+        });
+        if registry_cannot_link {
+            conflict_reasons.push("registry_cannot_link".to_string());
+        }
         let distinct_conflict = same_node_distinct
             .iter()
             .any(|key| member_keys.contains(key))
@@ -622,6 +681,8 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             )
         } else if related_not_same {
             ("contradiction", None, "related_not_same".to_string())
+        } else if registry_cannot_link {
+            ("contradiction", None, "registry_cannot_link".to_string())
         } else if distinct_conflict {
             ("contradiction", None, "distinct".to_string())
         } else if incumbent_ids.len() > 1 {
@@ -749,6 +810,9 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
 
     let mut review = Vec::new();
     let mut suppressed_by_relation = 0;
+    let mut suppressed_by_cannot_link = 0;
+    let mut review_new = 0;
+    let mut review_known = 0;
     for facts in edge_facts
         .values()
         .filter(|facts| facts.positive && tier_for(facts, &rules) == Some(EdgeTier::C))
@@ -759,6 +823,17 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             &related_pairs,
         ) {
             suppressed_by_relation += 1;
+            continue;
+        }
+        let pending_match = pending_for_pair(
+            &facts.left,
+            &facts.right,
+            nodes.get(&facts.left),
+            nodes.get(&facts.right),
+            &registry_pending_clusters,
+        );
+        if registry_cannot_link_pairs.contains(&(facts.left.clone(), facts.right.clone())) {
+            suppressed_by_cannot_link += 1;
             continue;
         }
         let evidence_types = facts
@@ -778,6 +853,23 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         } else {
             "second_lineage"
         };
+        if pending_match.is_some() {
+            review_known += 1;
+        } else {
+            review_new += 1;
+        }
+        let escrow_id = Some(pending_match.clone().unwrap_or_else(|| {
+            generated_pending_id(
+                nodes
+                    .get(&facts.left)
+                    .map(|node| node.surface.as_str())
+                    .unwrap_or(&facts.left),
+                nodes
+                    .get(&facts.right)
+                    .map(|node| node.surface.as_str())
+                    .unwrap_or(&facts.right),
+            )
+        }));
         review.push(SessionSolveReview {
             left_surface: nodes
                 .get(&facts.left)
@@ -790,6 +882,8 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             evidence_types,
             lineage_count: independent_origin_count(facts),
             missing: missing.to_string(),
+            known_pending: pending_match.is_some(),
+            escrow_id,
         });
     }
     review.sort_by(|left, right| {
@@ -799,6 +893,9 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
     });
     summary.review = review.len();
     summary.suppressed_by_relation = suppressed_by_relation;
+    summary.suppressed_by_cannot_link = suppressed_by_cannot_link;
+    summary.review_new = review_new;
+    summary.review_known = review_known;
 
     let mut relations = edge_facts
         .values()
@@ -998,6 +1095,11 @@ pub fn commit(
             evidence_generation.as_deref().unwrap_or("<none>"),
         ));
     }
+    let evidence_records = evidence_snapshot
+        .as_ref()
+        .map(read_evidence)
+        .transpose()?
+        .unwrap_or_default();
     let observation_values = read_observation_values(&observations_snapshot)?;
     let mut current_metadata_parts = Vec::new();
     let mut current_registries = BTreeMap::new();
@@ -1016,6 +1118,7 @@ pub fn commit(
                 id: loaded_registry.meta.id.clone(),
                 version: loaded_registry.meta.version.clone(),
                 snapshot_hash: registry_snapshot.clone(),
+                escrow_snapshot_hash: registry_escrow_snapshot_hash(registry_path)?,
             },
         ));
         current_registries.insert(binding.kind.clone(), (loaded_registry, registry_snapshot));
@@ -1109,6 +1212,13 @@ pub fn commit(
             skipped,
             relations,
         } = plan;
+        let memory = build_registry_memory_write(
+            &artifact,
+            &evidence_records,
+            &observation_values,
+            &binding.kind,
+            Path::new(&binding.path),
+        )?;
         let next_version = match request.next_version.as_deref() {
             Some(raw) => {
                 registries::flag_value_for_kind("--next-version", raw, &binding.kind, &known_kinds)
@@ -1136,6 +1246,7 @@ pub fn commit(
             entries,
             skipped,
             relations,
+            memory: Some(memory),
             next_version,
             bump: request.bump,
         })?;
@@ -1206,6 +1317,335 @@ fn cluster_entity_kind(
     } else {
         None
     }
+}
+
+fn build_registry_memory_write(
+    artifact: &SessionSolveArtifact,
+    evidence: &[crate::entity::evidence_ir::EvidenceRecord],
+    observation_values: &BTreeMap<String, Vec<Value>>,
+    entity_kind: &str,
+    registry_path: &Path,
+) -> Result<SessionRegistryMemoryWrite, Refusal> {
+    let mut cannot_link = BTreeMap::<(String, String), CannotLinkFact>::new();
+    let mut pending = BTreeMap::<String, PendingClusterRecord>::new();
+    let mut pending_clear = BTreeSet::new();
+
+    for record in evidence {
+        if record.operator.operator_id != "distinct" || record.authority_basis.is_none() {
+            continue;
+        }
+        let crate::entity::evidence_ir::EvidenceTarget::Pair { left_id, right_id } = &record.target
+        else {
+            continue;
+        };
+        if !targets_match_kind(left_id, right_id, observation_values, entity_kind) {
+            continue;
+        }
+        let left_key = memory_key_for_target(left_id, observation_values);
+        let right_key = memory_key_for_target(right_id, observation_values);
+        if left_key == right_key {
+            continue;
+        }
+        let (left_key, right_key) = ordered_pair(&left_key, &right_key);
+        cannot_link
+            .entry((left_key.clone(), right_key.clone()))
+            .or_insert(CannotLinkFact {
+                left_key,
+                right_key,
+                reason: record.reason_code.clone(),
+            });
+        clear_pending_for_surfaces(
+            &mut pending_clear,
+            registry_path,
+            target_surfaces(left_id, right_id, observation_values),
+        )?;
+    }
+
+    for review in &artifact.review {
+        if !surfaces_match_kind(
+            [&review.left_surface, &review.right_surface],
+            observation_values,
+            entity_kind,
+        ) {
+            continue;
+        }
+        let escrow_id = review
+            .escrow_id
+            .clone()
+            .unwrap_or_else(|| generated_pending_id(&review.left_surface, &review.right_surface));
+        let surfaces =
+            ordered_unique_strings([review.left_surface.clone(), review.right_surface.clone()]);
+        let record = PendingClusterRecord {
+            escrow_id: escrow_id.clone(),
+            profile: "canon.entity.session".to_string(),
+            doc_ids: observation_ids_for_surfaces(&surfaces, observation_values),
+            surfaces: surfaces.clone(),
+            anchors: anchors_for_surfaces(&surfaces, observation_values),
+            witness_pairs: Vec::new(),
+            state: "pending".to_string(),
+        };
+        pending.insert(escrow_id, record);
+    }
+
+    for contradiction in &artifact.contradictions {
+        if contradiction.reason == "registry_cannot_link" || contradiction.reason == "distinct" {
+            clear_pending_for_surfaces(
+                &mut pending_clear,
+                registry_path,
+                contradiction.surfaces.clone(),
+            )?;
+            continue;
+        }
+        if !surfaces_match_kind(
+            contradiction.surfaces.iter().collect::<Vec<_>>(),
+            observation_values,
+            entity_kind,
+        ) {
+            continue;
+        }
+        let surfaces = ordered_unique_strings(contradiction.surfaces.clone());
+        let escrow_id = generated_pending_id_for_many(&surfaces);
+        pending.insert(
+            escrow_id.clone(),
+            PendingClusterRecord {
+                escrow_id,
+                profile: "canon.entity.session".to_string(),
+                doc_ids: contradiction.obs_ids.clone(),
+                surfaces: surfaces.clone(),
+                anchors: anchors_for_surfaces(&surfaces, observation_values),
+                witness_pairs: Vec::new(),
+                state: "pending".to_string(),
+            },
+        );
+    }
+
+    for cluster in &artifact.clusters {
+        let accepted =
+            cluster.outcome == "accepted" && matches!(cluster.tier.as_deref(), Some("A" | "B"));
+        if accepted || cluster.outcome == "resolved_existing" {
+            clear_pending_for_surfaces(
+                &mut pending_clear,
+                registry_path,
+                cluster.surfaces.clone(),
+            )?;
+        }
+    }
+    for relation in &artifact.relations {
+        clear_pending_for_surfaces(
+            &mut pending_clear,
+            registry_path,
+            vec![
+                relation.left_surface.clone(),
+                relation.right_surface.clone(),
+            ],
+        )?;
+    }
+
+    Ok(SessionRegistryMemoryWrite {
+        cannot_link: cannot_link.into_values().collect(),
+        pending: pending.into_values().collect(),
+        pending_clear: pending_clear.into_iter().collect(),
+    })
+}
+
+fn targets_match_kind(
+    left: &str,
+    right: &str,
+    observation_values: &BTreeMap<String, Vec<Value>>,
+    entity_kind: &str,
+) -> bool {
+    [left, right].iter().all(|target| {
+        observation_values
+            .values()
+            .flatten()
+            .find_map(|value| {
+                (value.get("obs_id").and_then(Value::as_str) == Some(*target))
+                    .then(|| value.get("entity_type").and_then(Value::as_str))
+                    .flatten()
+            })
+            .is_none_or(|kind| kind == entity_kind)
+    })
+}
+
+fn surfaces_match_kind<'a>(
+    surfaces: impl IntoIterator<Item = &'a String>,
+    observation_values: &BTreeMap<String, Vec<Value>>,
+    entity_kind: &str,
+) -> bool {
+    surfaces.into_iter().all(|surface| {
+        observation_values
+            .get(surface.as_str())
+            .into_iter()
+            .flatten()
+            .all(|value| value.get("entity_type").and_then(Value::as_str) == Some(entity_kind))
+    })
+}
+
+fn memory_key_for_target(
+    target: &str,
+    observation_values: &BTreeMap<String, Vec<Value>>,
+) -> String {
+    if target.starts_with("registry:") {
+        return target.to_string();
+    }
+    let Some(value) = observation_values
+        .values()
+        .flatten()
+        .find(|value| value.get("obs_id").and_then(Value::as_str) == Some(target))
+    else {
+        return target.to_string();
+    };
+    let mut keys = value
+        .get("keys")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flat_map(|object| object.iter())
+        .filter_map(|(namespace, value)| {
+            value
+                .as_str()
+                .and_then(|value| canonical_key_value(namespace, value))
+                .map(|value| format!("{}:{value}", canonical_key_namespace(namespace)))
+        })
+        .collect::<Vec<_>>();
+    keys.sort();
+    keys.into_iter().next().unwrap_or_else(|| {
+        format!(
+            "surface:{}",
+            value
+                .get("surface")
+                .and_then(Value::as_str)
+                .unwrap_or(target)
+        )
+    })
+}
+
+fn target_surfaces(
+    left: &str,
+    right: &str,
+    observation_values: &BTreeMap<String, Vec<Value>>,
+) -> Vec<String> {
+    [left, right]
+        .iter()
+        .filter_map(|target| {
+            observation_values.values().flatten().find_map(|value| {
+                (value.get("obs_id").and_then(Value::as_str) == Some(*target))
+                    .then(|| value.get("surface").and_then(Value::as_str))
+                    .flatten()
+                    .map(str::to_string)
+            })
+        })
+        .collect()
+}
+
+fn observation_ids_for_surfaces(
+    surfaces: &[String],
+    observation_values: &BTreeMap<String, Vec<Value>>,
+) -> Vec<String> {
+    let mut ids = observation_values
+        .values()
+        .flatten()
+        .filter(|value| {
+            value
+                .get("surface")
+                .and_then(Value::as_str)
+                .is_some_and(|surface| surfaces.iter().any(|candidate| candidate == surface))
+        })
+        .filter_map(|value| {
+            value
+                .get("obs_id")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .collect::<Vec<_>>();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+fn anchors_for_surfaces(
+    surfaces: &[String],
+    observation_values: &BTreeMap<String, Vec<Value>>,
+) -> Vec<AnchorValue> {
+    let mut anchors = observation_values
+        .values()
+        .flatten()
+        .filter(|value| {
+            value
+                .get("surface")
+                .and_then(Value::as_str)
+                .is_some_and(|surface| surfaces.iter().any(|candidate| candidate == surface))
+        })
+        .flat_map(|value| {
+            value
+                .get("keys")
+                .and_then(Value::as_object)
+                .into_iter()
+                .flat_map(|object| object.iter())
+                .filter_map(|(namespace, value)| {
+                    value.as_str().map(|value| AnchorValue {
+                        namespace: canonical_key_namespace(namespace),
+                        value: canonical_key_value(namespace, value)
+                            .unwrap_or_else(|| value.to_string()),
+                    })
+                })
+        })
+        .collect::<Vec<_>>();
+    anchors.sort_by(|left, right| {
+        left.namespace
+            .cmp(&right.namespace)
+            .then(left.value.cmp(&right.value))
+    });
+    anchors.dedup();
+    anchors
+}
+
+fn ordered_unique_strings(values: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut values = values.into_iter().collect::<Vec<_>>();
+    values.sort();
+    values.dedup();
+    values
+}
+
+fn generated_pending_id_for_many(surfaces: &[String]) -> String {
+    let surfaces = ordered_unique_strings(surfaces.iter().cloned());
+    let digest = blake3::hash(surfaces.join("\n").as_bytes())
+        .to_hex()
+        .to_string();
+    format!("OE-{}", &digest[..12])
+}
+
+fn clear_pending_for_surfaces(
+    pending_clear: &mut BTreeSet<String>,
+    registry_path: &Path,
+    surfaces: Vec<String>,
+) -> Result<(), Refusal> {
+    if surfaces.is_empty() {
+        return Ok(());
+    }
+    let memory = crate::entity::runtime::incumbent::load_incumbent_memory(registry_path).map_err(
+        |error| {
+            solve_refusal(
+                format!(
+                    "Unable to load registry memory '{}': {error}",
+                    registry_path.display()
+                ),
+                json!({"registry": registry_path.display().to_string(), "writes_performed": false}),
+                "Repair registry memory sidecars, then rerun canon entity session commit",
+            )
+        },
+    )?;
+    let surfaces = surfaces.into_iter().collect::<BTreeSet<_>>();
+    for record in memory.pending_clusters {
+        let overlap = record
+            .surfaces
+            .iter()
+            .filter(|surface| surfaces.contains(*surface))
+            .count();
+        if overlap >= 2 || (overlap == 1 && record.surfaces.len() == 1) {
+            pending_clear.insert(record.escrow_id);
+        }
+    }
+    Ok(())
 }
 
 fn build_commit_plan(
@@ -1834,6 +2274,8 @@ struct RegistryInfo {
     incumbents: BTreeMap<String, String>,
     incumbent_keys: BTreeMap<String, BTreeMap<String, BTreeSet<String>>>,
     endpoints: BTreeMap<String, RegistryEndpoint>,
+    cannot_link_facts: Vec<CannotLinkFact>,
+    pending_clusters: Vec<PendingClusterRecord>,
 }
 
 struct CommitPlanContext<'a> {
@@ -1868,6 +2310,13 @@ fn aggregate_registry_metadata(parts: &[(String, SessionSolveRegistry)]) -> Sess
         bytes.extend_from_slice(metadata.snapshot_hash.as_bytes());
         bytes.push(0xff);
     }
+    let mut escrow_bytes = Vec::new();
+    for (kind, metadata) in parts {
+        escrow_bytes.extend_from_slice(kind.as_bytes());
+        escrow_bytes.push(0);
+        escrow_bytes.extend_from_slice(metadata.escrow_snapshot_hash.as_bytes());
+        escrow_bytes.push(0xff);
+    }
     SessionSolveRegistry {
         id: parts
             .iter()
@@ -1880,6 +2329,7 @@ fn aggregate_registry_metadata(parts: &[(String, SessionSolveRegistry)]) -> Sess
             .collect::<Vec<_>>()
             .join(","),
         snapshot_hash: hash_bytes(&bytes),
+        escrow_snapshot_hash: hash_bytes(&escrow_bytes),
     }
 }
 
@@ -1900,6 +2350,18 @@ fn load_registry_info(
             "Repair the registry, then rerun canon entity session solve".to_string(),
         ),
     })?;
+    let memory = crate::entity::runtime::incumbent::load_incumbent_memory(registry_path).map_err(
+        |error| {
+            solve_refusal(
+                format!(
+                    "Unable to load registry memory '{}': {error}",
+                    registry_path.display()
+                ),
+                json!({"registry": registry_path.display().to_string(), "writes_performed": false}),
+                "Repair registry memory sidecars, then rerun canon entity session solve",
+            )
+        },
+    )?;
     let observation_kinds = observations
         .iter()
         .map(|observation| {
@@ -1937,6 +2399,17 @@ fn load_registry_info(
                     namespace: namespace.clone(),
                     value: value.clone(),
                 });
+        }
+    }
+    for fact in &memory.cannot_link_facts {
+        for key in [&fact.left_key, &fact.right_key] {
+            if let Some((target, spec)) = registry_endpoint_spec(key) {
+                endpoint_targets.entry(target).or_insert(spec);
+            } else if !key.contains(':') && !key.starts_with("surface:") {
+                endpoint_targets
+                    .entry((*key).clone())
+                    .or_insert_with(|| RegistryEndpointSpec::CanonicalId((*key).clone()));
+            }
         }
     }
     let mut values = observations
@@ -2106,10 +2579,123 @@ fn load_registry_info(
             id: loaded.meta.id,
             version: loaded.meta.version,
             snapshot_hash,
+            escrow_snapshot_hash: memory.registry.escrow_snapshot_hash,
         },
         incumbents,
         incumbent_keys,
         endpoints,
+        cannot_link_facts: memory.cannot_link_facts,
+        pending_clusters: memory.pending_clusters,
+    })
+}
+
+fn memory_key_node_keys(
+    key: &str,
+    nodes: &BTreeMap<String, Node>,
+    endpoints: &BTreeMap<String, RegistryEndpoint>,
+) -> BTreeSet<String> {
+    let mut matches = BTreeSet::new();
+    if let Some(endpoint) = endpoints.get(key) {
+        matches.insert(endpoint.node_key.clone());
+    }
+    if let Some(surface) = key.strip_prefix("surface:") {
+        matches.extend(
+            nodes
+                .iter()
+                .filter(|(_, node)| node.surface == surface)
+                .map(|(node_key, _)| node_key.clone()),
+        );
+    }
+    matches.extend(
+        nodes
+            .iter()
+            .filter(|(_, node)| node.surface == key)
+            .map(|(node_key, _)| node_key.clone()),
+    );
+    matches.extend(
+        nodes
+            .iter()
+            .filter(|(_, node)| node.incumbent_canonical_id.as_deref() == Some(key))
+            .map(|(node_key, _)| node_key.clone()),
+    );
+    let key_spec = key
+        .strip_prefix("registry:key:")
+        .unwrap_or(key)
+        .split_once(':');
+    if let Some((namespace, value)) = key_spec {
+        let namespace = canonical_key_namespace(namespace);
+        let value = canonical_key_value(&namespace, value).unwrap_or_else(|| value.to_string());
+        matches.extend(
+            nodes
+                .iter()
+                .filter(|(_, node)| {
+                    node.keys
+                        .get(&namespace)
+                        .is_some_and(|values| values.contains(&value))
+                        || node
+                            .observed_keys
+                            .get(&namespace)
+                            .is_some_and(|values| values.contains(&value))
+                })
+                .map(|(node_key, _)| node_key.clone()),
+        );
+        matches.extend(
+            endpoints
+                .values()
+                .filter(|endpoint| {
+                    endpoint
+                        .keys
+                        .get(&namespace)
+                        .is_some_and(|values| values.contains(&value))
+                })
+                .map(|endpoint| endpoint.node_key.clone()),
+        );
+    }
+    matches
+}
+
+fn pending_for_pair(
+    left_key: &str,
+    right_key: &str,
+    left: Option<&Node>,
+    right: Option<&Node>,
+    pending: &[PendingClusterRecord],
+) -> Option<String> {
+    let surfaces = [
+        left.map(|node| node.surface.as_str()),
+        right.map(|node| node.surface.as_str()),
+    ];
+    pending
+        .iter()
+        .filter(|record| {
+            surfaces.iter().all(|surface| {
+                surface
+                    .is_some_and(|value| record.surfaces.iter().any(|candidate| candidate == value))
+            }) || record.surfaces.iter().any(|surface| surface == left_key)
+                && record.surfaces.iter().any(|surface| surface == right_key)
+        })
+        .map(|record| record.escrow_id.clone())
+        .min()
+}
+
+fn generated_pending_id(left_surface: &str, right_surface: &str) -> String {
+    let (left, right) = ordered_pair(left_surface, right_surface);
+    let digest = blake3::hash(format!("{left}\n{right}").as_bytes())
+        .to_hex()
+        .to_string();
+    format!("OE-{}", &digest[..12])
+}
+
+fn registry_escrow_snapshot_hash(path: &Path) -> Result<String, Refusal> {
+    crate::entity::runtime::incumbent::escrow_snapshot_hash(path).map_err(|error| {
+        solve_refusal(
+            format!(
+                "Unable to hash registry memory '{}': {error}",
+                path.display()
+            ),
+            json!({"registry": path.display().to_string(), "writes_performed": false}),
+            "Repair registry memory sidecars, then rerun canon entity session solve",
+        )
     })
 }
 
@@ -3212,8 +3798,10 @@ mod tests {
         SessionSolveArtifact, SessionSolveCluster, SessionSolveInputs, SessionSolveRegistry,
         SessionSolveSummary, TIER_A_TYPES, TIER_B_TYPES, build_commit_plan, canonical_key_value,
         commit_skip_reasons, component_has_key_conflict, exactly_one_authoritative_value,
-        has_positive_distinct, key_values, nodes_are_related, tier_for,
+        generated_pending_id_for_many, has_positive_distinct, key_values, memory_key_for_target,
+        nodes_are_related, ordered_pair, tier_for,
     };
+    use serde_json::json;
     use std::collections::{BTreeMap, BTreeSet};
 
     fn rules() -> SessionRules {
@@ -3403,6 +3991,50 @@ mod tests {
     }
 
     #[test]
+    fn registry_memory_key_forms_are_canonical_and_distinct() {
+        let observations = BTreeMap::from([
+            (
+                "Alpha Holdings".to_string(),
+                vec![json!({
+                    "obs_id": "alpha-1",
+                    "surface": "Alpha Holdings",
+                    "keys": {"cik": "0000000222"}
+                })],
+            ),
+            (
+                "Beta Holdings".to_string(),
+                vec![json!({
+                    "obs_id": "beta-1",
+                    "surface": "Beta Holdings",
+                    "keys": {}
+                })],
+            ),
+        ]);
+
+        assert_eq!(memory_key_for_target("alpha-1", &observations), "cik:222");
+        assert_eq!(
+            memory_key_for_target("beta-1", &observations),
+            "surface:Beta Holdings"
+        );
+        assert_eq!(
+            memory_key_for_target("registry:ORG-001", &observations),
+            "registry:ORG-001"
+        );
+    }
+
+    #[test]
+    fn registry_memory_pair_and_pending_ids_are_order_independent() {
+        assert_eq!(
+            ordered_pair("surface:Beta", "surface:Alpha"),
+            ("surface:Alpha".to_string(), "surface:Beta".to_string())
+        );
+        assert_eq!(
+            generated_pending_id_for_many(&["Beta".to_string(), "Alpha".to_string()]),
+            generated_pending_id_for_many(&["Alpha".to_string(), "Beta".to_string()])
+        );
+    }
+
+    #[test]
     fn commit_plan_sorts_clusters_and_skips_non_accepted_outcomes() {
         let artifact = SessionSolveArtifact {
             version: "canon.entity.session.solve.v1".to_string(),
@@ -3414,6 +4046,7 @@ mod tests {
                     id: "organisations".to_string(),
                     version: "0.0.0".to_string(),
                     snapshot_hash: "registry-hash".to_string(),
+                    escrow_snapshot_hash: String::new(),
                 },
             },
             authoritative_keys: vec!["cik".to_string()],
