@@ -1383,6 +1383,7 @@ fn build_registry_memory_write(
             anchors: anchors_for_surfaces(&surfaces, observation_values),
             witness_pairs: Vec::new(),
             state: "pending".to_string(),
+    let mut review_pending = BTreeSet::<String>::new();
         };
         pending.insert(escrow_id, record);
     }
@@ -1416,6 +1417,11 @@ fn build_registry_memory_write(
                 witness_pairs: Vec::new(),
                 state: "pending".to_string(),
             },
+    let contradicted_surfaces = artifact
+        .contradictions
+        .iter()
+        .flat_map(|contradiction| contradiction.surfaces.iter().cloned())
+        .collect::<BTreeSet<_>>();
         );
     }
 
@@ -1439,6 +1445,18 @@ fn build_registry_memory_write(
                 relation.right_surface.clone(),
             ],
         )?;
+        // A pair inside a contradicted cluster is parked, but it is not a
+        // review question of its own: the contradiction already says why.
+        // Nor is a pair with a registry endpoint: the registry already holds
+        // that side, so there is no unresolved question between two sessions'
+        // worth of rows to remember.
+        if !contradicted_surfaces.contains(&review.left_surface)
+            && !contradicted_surfaces.contains(&review.right_surface)
+            && observation_values.contains_key(&review.left_surface)
+            && observation_values.contains_key(&review.right_surface)
+        {
+            review_pending.insert(escrow_id.clone());
+        }
     }
 
     Ok(SessionRegistryMemoryWrite {
@@ -1500,6 +1518,7 @@ fn memory_key_for_target(
         .and_then(Value::as_object)
         .into_iter()
         .flat_map(|object| object.iter())
+        review_pending: review_pending.into_iter().collect(),
         .filter_map(|(namespace, value)| {
             value
                 .as_str()

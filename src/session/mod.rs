@@ -30,6 +30,7 @@ use std::{
 
 pub mod registries;
 pub mod status;
+pub mod intake;
 
 pub const SESSION_MANIFEST_VERSION: &str = "canon.entity.session.v1";
 pub const SESSION_MANIFEST_STREAM_ID: &str = "entity-session-manifest";
@@ -242,6 +243,32 @@ pub struct SessionRegistryMemoryWrite {
     pub cannot_link: Vec<crate::entity::runtime::CannotLinkFact>,
     pub pending: Vec<crate::entity::runtime::PendingClusterRecord>,
     pub pending_clear: Vec<String>,
+    /// Escrow ids of `pending` records that come from a review pair. Records
+    /// parked only for a contradiction are not listed here.
+    pub review_pending: Vec<String>,
+}
+
+/// Memory a commit must record on its own: a reviewed negative constraint, a
+/// cleared pending question, or a pending question that comes from a review
+/// pair. A record parked only for a contradiction is already reported by solve
+/// and in `skipped[]`; on its own it never makes a commit.
+pub(crate) fn memory_is_substantive(memory: &SessionRegistryMemoryWrite) -> bool {
+    !memory.cannot_link.is_empty()
+        || !memory.pending_clear.is_empty()
+        || memory
+            .pending
+            .iter()
+            .any(|record| memory.review_pending.contains(&record.escrow_id))
+}
+
+/// A commit has an effect only when it wrote aliases or relations, or memory
+/// that stands on its own. Nothing else may be reported as `committed`.
+pub(crate) fn commit_has_effect(
+    aliases_written: bool,
+    relations: usize,
+    memory_substantive: bool,
+) -> bool {
+    aliases_written || relations > 0 || memory_substantive
 }
 
 #[derive(Debug, Clone)]
@@ -1094,7 +1121,12 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             ));
         }
     }
-    if request.entries.is_empty() && request.relations.is_empty() && !memory_change {
+    let memory_substantive = request.memory.as_ref().is_some_and(memory_is_substantive);
+    if !commit_has_effect(
+        !request.entries.is_empty(),
+        request.relations.len(),
+        memory_substantive,
+    ) {
         return Ok(SessionCommitOutput {
             version: SESSION_COMMIT_VERSION.to_string(),
             outcome: "nothing_to_commit".to_string(),
@@ -1233,10 +1265,11 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         .as_ref()
         .map(|typed| typed.minted.clone())
         .unwrap_or_default();
-    if typed_minted.iter().all(|entry| entry.aliases.is_empty())
-        && request.relations.is_empty()
-        && !memory_change
-    {
+    if !commit_has_effect(
+        typed_minted.iter().any(|entry| !entry.aliases.is_empty()),
+        request.relations.len(),
+        memory_substantive,
+    ) {
         return Ok(SessionCommitOutput {
             version: SESSION_COMMIT_VERSION.to_string(),
             outcome: "nothing_to_commit".to_string(),
@@ -3873,5 +3906,71 @@ mod tests {
         };
 
         assert!(build_relation_fact(&relation, "session-1", "solve-1", &BTreeMap::new()).is_err());
+    }
+}
+
+#[cfg(test)]
+mod commit_effect_tests {
+    use super::*;
+    use crate::entity::runtime::{CannotLinkFact, PendingClusterRecord};
+
+    fn pending(id: &str) -> PendingClusterRecord {
+        PendingClusterRecord {
+            escrow_id: id.to_string(),
+            profile: "p".to_string(),
+            doc_ids: Vec::new(),
+            surfaces: vec!["A".to_string(), "B".to_string()],
+            anchors: Vec::new(),
+            witness_pairs: Vec::new(),
+            state: "pending".to_string(),
+        }
+    }
+
+    #[test]
+    fn nothing_written_is_not_a_commit() {
+        assert!(!commit_has_effect(false, 0, false));
+    }
+
+    #[test]
+    fn aliases_relations_or_substantive_memory_each_make_a_commit() {
+        assert!(commit_has_effect(true, 0, false));
+        assert!(commit_has_effect(false, 1, false));
+        assert!(commit_has_effect(false, 0, true));
+    }
+
+    #[test]
+    fn a_pending_record_parked_for_a_contradiction_alone_is_not_substantive() {
+        let memory = SessionRegistryMemoryWrite {
+            pending: vec![pending("contradiction-only")],
+            ..SessionRegistryMemoryWrite::default()
+        };
+        assert!(!memory_is_substantive(&memory));
+    }
+
+    #[test]
+    fn review_pending_cleared_pending_and_cannot_link_are_substantive() {
+        let review = SessionRegistryMemoryWrite {
+            pending: vec![pending("from-review")],
+            review_pending: vec!["from-review".to_string()],
+            ..SessionRegistryMemoryWrite::default()
+        };
+        assert!(memory_is_substantive(&review));
+        let cleared = SessionRegistryMemoryWrite {
+            pending_clear: vec!["old".to_string()],
+            ..SessionRegistryMemoryWrite::default()
+        };
+        assert!(memory_is_substantive(&cleared));
+        let cannot = SessionRegistryMemoryWrite {
+            cannot_link: vec![CannotLinkFact {
+                left_key: "a".to_string(),
+                right_key: "b".to_string(),
+                reason: "distinct".to_string(),
+            }],
+            ..SessionRegistryMemoryWrite::default()
+        };
+        assert!(memory_is_substantive(&cannot));
+        assert!(!memory_is_substantive(
+            &SessionRegistryMemoryWrite::default()
+        ));
     }
 }
