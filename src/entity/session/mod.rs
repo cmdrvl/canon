@@ -2215,11 +2215,14 @@ fn tier_for(facts: &EdgeFacts, rules: &SessionRules) -> Option<EdgeTier> {
 }
 
 fn has_positive_distinct(facts: &EdgeFacts) -> bool {
-    facts.positive
+    facts
+        .evidence_types
+        .iter()
+        .any(|evidence_type| DISTINCT_TYPES.contains(&evidence_type.as_str()))
         && facts
             .evidence_types
             .iter()
-            .any(|evidence_type| DISTINCT_TYPES.contains(&evidence_type.as_str()))
+            .any(|evidence_type| is_positive_type(evidence_type))
 }
 
 fn component_has_key_conflict(nodes: &[&Node], rules: &SessionRules) -> bool {
