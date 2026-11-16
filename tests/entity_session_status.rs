@@ -422,9 +422,10 @@ fn status_tracks_the_loop_from_init_to_commit() {
     assert!(done["commit"]["aliases_attached"].as_u64().unwrap() >= minted as u64);
     assert_eq!(done["session"]["registry"]["version"], "0.1.0");
     assert_eq!(done["solve"]["stale"], false);
-    assert_eq!(
-        done["next_command"],
-        format!("canon entity session next {session_arg}")
+    assert!(
+        done["next_command"].is_null(),
+        "nothing pending means no next command: {}",
+        done["next_command"]
     );
 
     // A registry that moved on its own after the commit does make it stale.
@@ -579,6 +580,6 @@ fn summary_mode_prints_the_same_facts_as_a_table() {
     assert!(text.contains("key_conflict:1"));
     assert!(text.contains(&format!(
         "next: {}",
-        json_status["next_command"].as_str().unwrap()
+        json_status["next_command"].as_str().unwrap_or("none")
     )));
 }

@@ -130,7 +130,8 @@ pub struct SessionStatusOutput {
     pub solve: StatusSolve,
     pub commit: StatusCommit,
     pub top_unresolved: Vec<TopUnresolved>,
-    pub next_command: String,
+    /// `null` when nothing is pending. Only commands that exist are emitted.
+    pub next_command: Option<String>,
 }
 
 impl SessionStatusOutput {
@@ -190,7 +191,10 @@ impl SessionStatusOutput {
                 ));
             }
         }
-        lines.push(format!("next: {}", self.next_command));
+        lines.push(format!(
+            "next: {}",
+            self.next_command.as_deref().unwrap_or("none")
+        ));
         lines.join("\n")
     }
 }
@@ -547,6 +551,57 @@ mod tests {
         Observation, SessionSolveCluster, SessionSolveInputs, SessionSolveRegistry,
         SessionSolveReview, SessionSolveSummary,
     };
+
+    /// Every `next_command` status can emit, over every input combination,
+    /// must parse against the real clap tree (placeholders filled in), so a
+    /// command that does not exist can never be advertised.
+    #[test]
+    fn every_emittable_next_command_parses_against_the_cli() {
+        use clap::Parser;
+        let mut emitted = 0;
+        for observations_present in [false, true] {
+            for solve_present in [false, true] {
+                for stale in [false, true] {
+                    for uncommitted in [0, 3] {
+                        for rules in [None, Some("rules.yaml")] {
+                            let inputs = NextCommandInputs {
+                                session: "work/s",
+                                observations_present,
+                                solve_present,
+                                stale,
+                                uncommitted_accepted_clusters: uncommitted,
+                                rules,
+                            };
+                            let Some(command) = base::next_command(&inputs) else {
+                                continue;
+                            };
+                            emitted += 1;
+                            let args: Vec<String> = command
+                                .split_whitespace()
+                                .map(|word| {
+                                    if word.starts_with('<') && word.ends_with('>') {
+                                        "placeholder.file".to_string()
+                                    } else {
+                                        word.to_string()
+                                    }
+                                })
+                                .collect();
+                            assert_eq!(args.first().map(String::as_str), Some("canon"));
+                            if let Err(error) = crate::cli::Cli::try_parse_from(&args) {
+                                panic!(
+                                    "status advertised a command clap rejects: {command}\n{error}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            emitted >= 3,
+            "ingest, solve and commit must all be reachable"
+        );
+    }
 
     fn observation(id: &str, surface: &str, lineage: &str) -> Observation {
         Observation {

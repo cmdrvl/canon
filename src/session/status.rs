@@ -91,21 +91,26 @@ pub struct NextCommandInputs<'a> {
     pub rules: Option<&'a str>,
 }
 
-pub fn next_command(inputs: &NextCommandInputs<'_>) -> String {
+/// `None` when nothing is pending: only commands that exist are ever emitted.
+pub fn next_command(inputs: &NextCommandInputs<'_>) -> Option<String> {
     let session = inputs.session;
     if !inputs.observations_present {
-        return format!("canon entity session ingest {session} <OBSERVATIONS.jsonl>");
+        return Some(format!(
+            "canon entity session ingest {session} <OBSERVATIONS.jsonl>"
+        ));
     }
     if !inputs.solve_present || inputs.stale {
-        return format!(
+        return Some(format!(
             "canon entity session solve {session} --rules {}",
             inputs.rules.unwrap_or("<RULES.yaml>")
-        );
+        ));
     }
     if inputs.uncommitted_accepted_clusters > 0 {
-        return format!("canon entity session commit {session} --bump patch");
+        return Some(format!(
+            "canon entity session commit {session} --bump patch"
+        ));
     }
-    format!("canon entity session next {session}")
+    None
 }
 
 /// The session manifest, or an `E_PARSE` refusal when `work_dir` is not a
@@ -391,29 +396,41 @@ mod tests {
         let mut state = inputs();
         state.observations_present = false;
         state.solve_present = false;
-        assert!(next_command(&state).starts_with("canon entity session ingest work/s"));
+        assert!(
+            next_command(&state)
+                .unwrap()
+                .starts_with("canon entity session ingest work/s")
+        );
 
         let mut state = inputs();
         state.solve_present = false;
-        assert!(next_command(&state).starts_with("canon entity session solve work/s --rules"));
+        assert!(
+            next_command(&state)
+                .unwrap()
+                .starts_with("canon entity session solve work/s --rules")
+        );
 
         let mut state = inputs();
         state.stale = true;
         state.uncommitted_accepted_clusters = 3;
         state.rules = Some("rules.yaml");
         assert_eq!(
-            next_command(&state),
-            "canon entity session solve work/s --rules rules.yaml",
+            next_command(&state).as_deref(),
+            Some("canon entity session solve work/s --rules rules.yaml"),
             "a stale solve outranks uncommitted clusters"
         );
 
         let mut state = inputs();
         state.uncommitted_accepted_clusters = 2;
         assert_eq!(
-            next_command(&state),
-            "canon entity session commit work/s --bump patch"
+            next_command(&state).as_deref(),
+            Some("canon entity session commit work/s --bump patch")
         );
 
-        assert_eq!(next_command(&inputs()), "canon entity session next work/s");
+        assert_eq!(
+            next_command(&inputs()),
+            None,
+            "nothing pending, no phantom command"
+        );
     }
 }

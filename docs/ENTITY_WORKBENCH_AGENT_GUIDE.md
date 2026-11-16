@@ -181,7 +181,8 @@ recorded them), the commit state (last version, minted IDs, aliases attached,
 accepted clusters still uncommitted), the 20 `top_unresolved` review pairs and
 standalone surfaces ranked by how often they were observed, and one
 `next_command`: the solve when it is stale, the commit when accepted clusters
-are uncommitted, otherwise `session next`.
+are uncommitted, otherwise `null` (nothing pending). It only ever names a
+command that exists.
 
 A session with no solve is a normal answer (`solve.present: false`, exit 0). A
 directory that is not a session is a refusal (exit 2). Status computes and
