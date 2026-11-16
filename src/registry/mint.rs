@@ -334,6 +334,7 @@ fn parse_aliases(
             canonical_type: canonical_type.to_string(),
             rule_id,
             scope: scope.cloned(),
+            session_authority: None,
         });
     }
     Ok(aliases)
@@ -584,6 +585,7 @@ pub(crate) struct RegistryTypedAlias {
     pub canonical_type: String,
     pub rule_id: String,
     pub skip_if_existing: bool,
+    pub session_authority: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -883,6 +885,7 @@ pub(crate) fn commit_typed_entries(
                 canonical_type: canonical_type.clone(),
                 rule_id,
                 scope: None,
+                session_authority: entry.session_authority.clone(),
             });
         }
         parsed_by_group.insert(group_key.clone(), aliases);
@@ -1074,6 +1077,7 @@ pub fn mint_batch(request: RegistryMintBatchRequest) -> Result<RegistryMintBatch
                 canonical_type: canonical_type.clone(),
                 rule_id,
                 skip_if_existing: false,
+                session_authority: None,
             });
         }
     }

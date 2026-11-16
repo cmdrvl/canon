@@ -58,6 +58,8 @@ pub struct RegistryAddEntryAliasEntry {
     pub canonical_id: String,
     pub canonical_type: String,
     pub rule_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_authority: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,6 +70,7 @@ pub(super) struct RegistryAliasWriteEntry {
     pub canonical_type: String,
     pub rule_id: String,
     pub scope: Option<IdentityScope>,
+    pub session_authority: Option<Value>,
 }
 
 impl RegistryAliasWriteEntry {
@@ -78,6 +81,7 @@ impl RegistryAliasWriteEntry {
             canonical_id: self.canonical_id.clone(),
             canonical_type: self.canonical_type.clone(),
             rule_id: self.rule_id.clone(),
+            session_authority: self.session_authority.clone(),
         }
     }
 }
@@ -276,6 +280,7 @@ pub fn plan_add_entry_with_scope(
         canonical_type: canonical_type.clone(),
         rule_id: rule_id.clone(),
         scope: scope.clone(),
+        session_authority: None,
     };
     let alias_bytes = build_alias_bytes_with_entries_from_source(
         &request.registry,
@@ -300,6 +305,7 @@ pub fn plan_add_entry_with_scope(
             canonical_id,
             canonical_type,
             rule_id,
+            session_authority: None,
         },
         touched_files: vec![alias_file, "registry.json".to_string()],
         lint: RegistryAddEntryLintSummary {
@@ -777,6 +783,9 @@ fn build_alias_bytes_with_entries_from_source(
             "canonical_type": entry.canonical_type,
             "rule_id": entry.rule_id,
         });
+        if let Some(session_authority) = &entry.session_authority {
+            alias["session_authority"] = session_authority.clone();
+        }
         if let Some(scope) = &entry.scope {
             alias["scope"] = serde_json::to_value(scope).map_err(|error| {
                 Refusal::bad_registry(
@@ -1186,6 +1195,7 @@ pub fn add_entries(
             canonical_type,
             rule_id,
             skip_if_existing: true,
+            session_authority: None,
         });
     }
 

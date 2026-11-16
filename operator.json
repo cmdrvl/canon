@@ -58,6 +58,7 @@
       "canon entity session rules validate <RULES.yaml> [--emit json|summary]",
       "canon entity session commit <SESSION> (--next-version <VER>|--bump patch|minor|major) [--emit json|summary]",
       "canon entity session status <SESSION> [--rules <RULES.yaml>] [--emit json|summary]",
+      "canon entity session sample <SESSION> [--stratum tier_a|tier_b|tier_c|standalone|neighbourhood] [--count <N>] [--seed <SEED>] [--entity-type <TYPE>] [--blind] [--seed-entity <SURFACE_OR_ID>] [--score <LABELS.jsonl>] [--emit jsonl|json|summary]",
       "canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY_DIR> --work-dir <DIR>",
       "canon entity index build <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit json|summary]",
       "canon entity block <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit jsonl|summary]",
@@ -7314,6 +7315,113 @@
       "next_command": "canon entity session status <SESSION> --emit json",
       "recovery": {
         "next_command": "Point at a directory created by canon entity session init",
+        "refusal_exit_code": 2
+      }
+    },
+    {
+      "name": "entity session sample",
+      "usage": "canon entity session sample <SESSION> [--stratum tier_a|tier_b|tier_c|standalone|neighbourhood] [--count <N>] [--seed <SEED>] [--entity-type <TYPE>] [--blind] [--seed-entity <SURFACE_OR_ID>] [--score <LABELS.jsonl>] [--emit jsonl|json|summary]",
+      "description": "Draw a deterministic tier or neighbourhood sample from a session solve, or score operator labels without changing the solve",
+      "output_mode": "mixed",
+      "output_schema": "canon.entity.session.sample.v1",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads committed session observations and solve artifacts plus an optional local labels file; never changes the session or registry",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "entity read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "writes_registry_files": false,
+        "writes_work_dir": false,
+        "writes_output_files": false,
+        "uses_network": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "sample or score emitted",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / invalid stratum, stale solve, unreadable session, or invalid labels",
+          "domain": "error"
+        }
+      },
+      "options": [
+        {
+          "name": "session",
+          "type": "directory_path",
+          "required": true,
+          "position": 0,
+          "description": "Session work directory"
+        },
+        {
+          "name": "stratum",
+          "flag": "--stratum",
+          "type": "string",
+          "default": "tier_b",
+          "description": "Population stratum: tier_a, tier_b, tier_c, standalone, or neighbourhood"
+        },
+        {
+          "name": "count",
+          "flag": "--count",
+          "type": "integer",
+          "default": 20,
+          "description": "Number of pairs to return; a short population is returned whole"
+        },
+        {
+          "name": "seed",
+          "flag": "--seed",
+          "type": "string",
+          "description": "Stable sampling seed"
+        },
+        {
+          "name": "entity_type",
+          "flag": "--entity-type",
+          "type": "string",
+          "description": "Restrict the sample to one entity type"
+        },
+        {
+          "name": "blind",
+          "flag": "--blind",
+          "type": "boolean",
+          "default": false,
+          "description": "Omit tier and evidence fields from rows and the header"
+        },
+        {
+          "name": "seed_entity",
+          "flag": "--seed-entity",
+          "type": "string",
+          "description": "Seed surface or canonical id for neighbourhood sampling"
+        },
+        {
+          "name": "score",
+          "flag": "--score",
+          "type": "file_path",
+          "description": "JSONL labels to score instead of drawing a sample"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "jsonl",
+          "description": "Output mode: jsonl, json, or summary"
+        }
+      ],
+      "next_command": "canon entity session sample <SESSION> --stratum tier_b --count 20 --seed <SEED> --emit jsonl",
+      "recovery": {
+        "next_command": "Run canon entity session solve, then rerun this sample or score",
         "refusal_exit_code": 2
       }
     },

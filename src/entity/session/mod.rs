@@ -970,13 +970,14 @@ pub fn commit(
             ),
         ));
     }
+    let observation_values = read_observation_values(&observations_snapshot)?;
     let (entries, skipped, relations) = build_commit_plan(
         &artifact,
         &binding.kind,
         &manifest.session_id,
         &solve_hash,
         &expected_registry.version,
-        &read_observation_values(&observations_snapshot)?,
+        &observation_values,
     )?;
     session::commit(session::SessionCommitRequest {
         session,
@@ -1092,6 +1093,12 @@ fn build_commit_plan(
             .flat_map(|surface| observation_values.get(surface).into_iter().flatten())
             .cloned()
             .collect::<Vec<_>>();
+        let mut cluster_observations = cluster_observations;
+        cluster_observations.sort_by(|left, right| {
+            left.get("obs_id")
+                .and_then(Value::as_str)
+                .cmp(&right.get("obs_id").and_then(Value::as_str))
+        });
         let cluster_authority = crate::entity::session_provenance::build_authority_material_for_subject_with_observations(
             session_id,
             solve_hash,
@@ -1149,7 +1156,6 @@ fn build_commit_plan(
                     cluster.incumbent_canonical_id.as_deref(),
                     kind,
                     &subject,
-                    &cluster_observations,
                     None,
                 )
                 .map_err(|error| {
@@ -1352,6 +1358,58 @@ fn open_optional_stream(
             "Repair the session publication, then rerun canon entity session solve",
         )),
     }
+}
+
+fn read_observation_values(
+    snapshot: &EntityPublicationSnapshot,
+) -> Result<BTreeMap<String, Vec<Value>>, Refusal> {
+    let mut values = BTreeMap::<String, Vec<Value>>::new();
+    for logical_path in snapshot
+        .logical_paths()
+        .filter(|path| path.starts_with("observations/") && path.ends_with(".jsonl"))
+    {
+        let bytes = snapshot.read_logical_file(logical_path).ok_or_else(|| {
+            solve_refusal(
+                format!("Observation shard {logical_path} is missing"),
+                json!({"stream": SESSION_OBSERVATIONS_STREAM_ID, "writes_performed": false}),
+                "Repair the observation stream, then rerun canon entity session commit",
+            )
+        })?;
+        let text = std::str::from_utf8(bytes).map_err(|error| {
+            solve_refusal(
+                format!("Observation shard {logical_path} is not UTF-8: {error}"),
+                json!({"stream": SESSION_OBSERVATIONS_STREAM_ID, "writes_performed": false}),
+                "Repair the observation shard, then rerun canon entity session commit",
+            )
+        })?;
+        for (line_number, line) in text.lines().enumerate() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let value = serde_json::from_str::<Value>(line).map_err(|error| {
+                solve_refusal(
+                    format!(
+                        "Observation shard {logical_path} line {} is invalid: {error}",
+                        line_number + 1
+                    ),
+                    json!({"stream": SESSION_OBSERVATIONS_STREAM_ID, "line": line_number + 1, "writes_performed": false}),
+                    "Repair the observation stream, then rerun canon entity session commit",
+                )
+            })?;
+            let Some(surface) = value.get("surface").and_then(Value::as_str) else {
+                continue;
+            };
+            values.entry(surface.to_string()).or_default().push(value);
+        }
+    }
+    for observations in values.values_mut() {
+        observations.sort_by(|left, right| {
+            left.get("obs_id")
+                .and_then(Value::as_str)
+                .cmp(&right.get("obs_id").and_then(Value::as_str))
+        });
+    }
+    Ok(values)
 }
 
 fn read_observations(snapshot: &EntityPublicationSnapshot) -> Result<Vec<Observation>, Refusal> {
@@ -3110,6 +3168,7 @@ mod tests {
             "session-id",
             "solve-hash",
             "0.0.0",
+            &BTreeMap::new(),
         )
         .expect("commit plan");
         assert_eq!(

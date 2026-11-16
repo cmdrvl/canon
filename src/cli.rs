@@ -52,6 +52,18 @@ pub enum EntityEmitMode {
     Summary,
 }
 
+/// Output mode for deterministic session samples and label scores.
+#[derive(Debug, Clone, ValueEnum, Default)]
+pub enum EntitySessionSampleEmitMode {
+    /// One header followed by one sample or label row per line
+    #[default]
+    Jsonl,
+    /// One structured JSON object
+    Json,
+    /// Human-readable summary
+    Summary,
+}
+
 /// Entity index cache mode for artifact-backed entity runs
 #[derive(Debug, Clone, Copy, ValueEnum, Default, PartialEq, Eq)]
 pub enum EntityCacheModeArg {
@@ -1629,6 +1641,8 @@ pub enum EntitySessionSubcommand {
     Commit(EntitySessionCommitCli),
     /// Report where an evidence session stands without opening its artifacts
     Status(EntitySessionStatusCli),
+    /// Draw a deterministic tier sample or score operator labels
+    Sample(EntitySessionSampleCli),
     /// Initialize or validate the deterministic session rule table
     Rules(EntitySessionRulesCommand),
 }
@@ -1778,6 +1792,44 @@ pub struct EntitySessionStatusCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: EntityEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntitySessionSampleCli {
+    /// Session work directory
+    pub session: PathBuf,
+
+    /// Tier or population stratum to sample
+    #[arg(long, default_value = "tier_b")]
+    pub stratum: String,
+
+    /// Number of pairs to return; a short population is returned whole
+    #[arg(long, default_value_t = 20)]
+    pub count: usize,
+
+    /// Stable sampling seed
+    #[arg(long)]
+    pub seed: Option<String>,
+
+    /// Restrict the sample to one entity type
+    #[arg(long = "entity-type")]
+    pub entity_type: Option<String>,
+
+    /// Omit tier and evidence fields so a labeller cannot see the stratum
+    #[arg(long)]
+    pub blind: bool,
+
+    /// Seed surface or canonical id for the neighbourhood stratum
+    #[arg(long = "seed-entity")]
+    pub seed_entity: Option<String>,
+
+    /// JSONL labels to score instead of drawing a sample
+    #[arg(long)]
+    pub score: Option<PathBuf>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "jsonl")]
+    pub emit: EntitySessionSampleEmitMode,
 }
 
 #[derive(Subcommand, Debug, Clone)]

@@ -64,17 +64,18 @@ use crate::cli::{
     EntityReviewInclude, EntityReviewSubcommand, EntityRunCli, EntitySessionAssertCli,
     EntitySessionCommitCli, EntitySessionIngestCli, EntitySessionInitCli,
     EntitySessionRulesCommand, EntitySessionRulesInitCli, EntitySessionRulesSubcommand,
-    EntitySessionRulesValidateCli, EntitySessionSolveCli, EntitySessionStatusCli,
-    EntitySessionSubcommand, EntitySolveCli, EntityStreamEmitMode, EntitySubcommand, PackageCli,
-    PackagePackCli, PackageSubcommand, RegistryAddEntriesCli, RegistryAddEntryCli,
-    RegistryAuditCli, RegistryBuildCli, RegistryDefaultIdSchemeCli, RegistryDiffCli,
-    RegistryEmitMode, RegistryExportCli, RegistryExportFormatCli, RegistryInitCli, RegistryLintCli,
-    RegistryLintProfile, RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli,
-    RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand,
-    RegistryVersionBumpMode, StrategyAuditCli, StrategyCommand, StrategyDeprecateCli,
-    StrategyDiffCli, StrategyExplainCli, StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli,
-    StrategyProfileCli, StrategyPromoteCli, StrategyRegisterCli, StrategyResolveCli,
-    StrategyStatusArg, StrategySubcommand, StrategyUpdateCli,
+    EntitySessionRulesValidateCli, EntitySessionSampleCli, EntitySessionSampleEmitMode,
+    EntitySessionSolveCli, EntitySessionStatusCli, EntitySessionSubcommand, EntitySolveCli,
+    EntityStreamEmitMode, EntitySubcommand, PackageCli, PackagePackCli, PackageSubcommand,
+    RegistryAddEntriesCli, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
+    RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode, RegistryExportCli,
+    RegistryExportFormatCli, RegistryInitCli, RegistryLintCli, RegistryLintProfile,
+    RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli, RegistryPlainJsonEmitMode,
+    RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand, RegistryVersionBumpMode,
+    StrategyAuditCli, StrategyCommand, StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli,
+    StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli, StrategyProfileCli, StrategyPromoteCli,
+    StrategyRegisterCli, StrategyResolveCli, StrategyStatusArg, StrategySubcommand,
+    StrategyUpdateCli,
 };
 use crate::entity::runtime as entity_runtime;
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
@@ -942,6 +943,7 @@ fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
             EntitySessionSubcommand::Solve(solve) => run_entity_session_solve_command(solve),
             EntitySessionSubcommand::Commit(commit) => run_entity_session_commit_command(commit),
             EntitySessionSubcommand::Status(status) => run_entity_session_status_command(status),
+            EntitySessionSubcommand::Sample(sample) => run_entity_session_sample_command(sample),
             EntitySessionSubcommand::Rules(rules) => run_entity_session_rules_command(rules),
         },
         EntitySubcommand::Run(run) => run_entity_run_command(run),
@@ -1196,6 +1198,104 @@ fn run_entity_session_status_command(
             refusal.to_canon_output(),
             true,
             matches!(status.emit, EntityEmitMode::Summary),
+        ),
+    }
+}
+
+fn run_entity_session_sample_command(
+    sample: &EntitySessionSampleCli,
+) -> Result<u8, Box<dyn Error>> {
+    if let Some(labels) = &sample.score {
+        let result = entity::session_sample::score_session(&sample.session, labels);
+        return match result {
+            Ok(output) => {
+                let summary_mode = matches!(sample.emit, EntitySessionSampleEmitMode::Summary);
+                let rendered = if summary_mode {
+                    output
+                        .strata
+                        .iter()
+                        .map(|stratum| {
+                            format!(
+                                "stratum={} n={} same={} different={} related={} unsure={} precision={} share_same={} population={}",
+                                stratum.stratum,
+                                stratum.n,
+                                stratum.same,
+                                stratum.different,
+                                stratum.related,
+                                stratum.unsure,
+                                stratum
+                                    .precision
+                                    .map(|value| format!("{value:.2}"))
+                                    .unwrap_or_else(|| "<none>".to_string()),
+                                stratum
+                                    .share_same
+                                    .map(|value| format!("{value:.2}"))
+                                    .unwrap_or_else(|| "<none>".to_string()),
+                                stratum.population_size,
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                } else {
+                    serde_json::to_string(&output)?
+                };
+                emit_entity_output(&rendered, summary_mode);
+                Ok(0)
+            }
+            Err(refusal) => emit_entity_refusal(
+                refusal.to_canon_output(),
+                true,
+                matches!(sample.emit, EntitySessionSampleEmitMode::Summary),
+            ),
+        };
+    }
+
+    let stratum = entity::session_sample::SampleStratum::parse(&sample.stratum).ok_or_else(|| {
+        format!(
+            "unsupported session sample stratum '{}'; use tier_a, tier_b, tier_c, standalone, or neighbourhood",
+            sample.stratum
+        )
+    })?;
+    let seed = sample
+        .seed
+        .clone()
+        .ok_or_else(|| "session sample requires --seed unless --score is supplied".to_string())?;
+    let result =
+        entity::session_sample::sample_session(entity::session_sample::SessionSampleRequest {
+            session: sample.session.clone(),
+            stratum,
+            count: sample.count,
+            seed,
+            entity_type: sample.entity_type.clone(),
+            blind: sample.blind,
+            seed_entity: sample.seed_entity.clone(),
+        });
+    match result {
+        Ok(output) => {
+            let rendered = match sample.emit {
+                EntitySessionSampleEmitMode::Jsonl => output.render_jsonl()?,
+                EntitySessionSampleEmitMode::Json => serde_json::to_string(&serde_json::json!({
+                    "header": output.header,
+                    "rows": output.rows,
+                }))?,
+                EntitySessionSampleEmitMode::Summary => format!(
+                    "stratum={} population={} returned={} exhausted={}",
+                    output.header["stratum"].as_str().unwrap_or("<blind>"),
+                    output.header["population_size"],
+                    output.header["returned_count"],
+                    output.header["exhausted"],
+                ),
+            };
+            emit_entity_output(
+                &rendered,
+                matches!(sample.emit, EntitySessionSampleEmitMode::Summary),
+            );
+            Ok(0)
+        }
+        Err(refusal) => emit_entity_refusal(
+            refusal.to_canon_output(),
+            true,
+            matches!(sample.emit, EntitySessionSampleEmitMode::Summary),
         ),
     }
 }

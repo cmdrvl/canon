@@ -13,13 +13,11 @@ use crate::{
     keys::KeyNamespace,
     registry, registry_lint,
     temporal::relation::{
-        CoreEntityTypeClass, DirectedRelationFact, IntervalBoundary,
-        RelationCardinalityConstraints, RelationCyclePolicy, RelationEndpoint,
-        RelationEntityTypeRef, RelationIdentityImplication, RelationKindRef, RelationOverlapPolicy,
-        RelationProvenance, RelationReview, ReviewDisposition, TimeInterval, finalize_relation,
-        finalize_relations,
+        CoreEntityTypeClass, DirectedRelationFact, RelationCardinalityConstraints,
+        RelationCyclePolicy, RelationEndpoint, RelationEntityTypeRef, RelationIdentityImplication,
+        RelationKindRef, RelationOverlapPolicy, RelationProvenance, RelationReview,
+        ReviewDisposition, TimeInterval, finalize_relation, finalize_relations,
     },
-    witness::hash_bytes,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -1093,10 +1091,11 @@ fn build_commit_closure_set(
             })
         })
         .collect::<Vec<_>>();
-    refs.sort_by(|left, right| {
-        left["outcome_ref"]
-            .as_str()
-            .cmp(&right["outcome_ref"].as_str())
+    refs.sort_by_key(|value| {
+        value
+            .get("outcome_ref")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
     });
     Ok(json!({
         "version": crate::entity::session_provenance::SESSION_CLOSURE_SET_VERSION,
