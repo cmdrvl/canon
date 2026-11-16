@@ -262,38 +262,41 @@ impl SparseTfidfModel {
             }
         }
 
-        let uncapped_candidate_count = workspace.touched.len();
-        for &candidate_ordinal in &workspace.touched {
-            let accumulator = &mut workspace.accumulators[candidate_ordinal];
+        let TfidfQueryWorkspace {
+            accumulators,
+            touched,
+            ranked_ordinals,
+            stats,
+        } = &mut *workspace;
+        let uncapped_candidate_count = touched.len();
+        for &candidate_ordinal in touched.iter() {
+            let accumulator = &mut accumulators[candidate_ordinal];
             accumulator.score_units =
                 cosine_score_units(query, &self.rows[candidate_ordinal], accumulator.dot_units);
         }
         let cap = config.candidate_cap.unwrap_or(usize::MAX);
         let capped_candidate_count = uncapped_candidate_count.saturating_sub(cap);
         let limit = cap.min(config.k);
-        workspace.ranked_ordinals.clear();
-        workspace.ranked_ordinals.extend(&workspace.touched);
-        if workspace.ranked_ordinals.len() > limit {
+        ranked_ordinals.clear();
+        ranked_ordinals.extend(touched.iter().copied());
+        if ranked_ordinals.len() > limit {
             if limit > 0 {
-                workspace
-                    .ranked_ordinals
-                    .select_nth_unstable_by(limit, |left, right| {
-                        model_candidate_cmp(*left, *right, &self.rows, &workspace.accumulators)
-                    });
+                ranked_ordinals.select_nth_unstable_by(limit, |left, right| {
+                    model_candidate_cmp(*left, *right, &self.rows, accumulators)
+                });
             }
-            workspace.ranked_ordinals.truncate(limit);
+            ranked_ordinals.truncate(limit);
         }
-        workspace.ranked_ordinals.sort_unstable_by(|left, right| {
-            model_candidate_cmp(*left, *right, &self.rows, &workspace.accumulators)
+        ranked_ordinals.sort_unstable_by(|left, right| {
+            model_candidate_cmp(*left, *right, &self.rows, accumulators)
         });
-        workspace.stats.candidates_materialized = workspace.ranked_ordinals.len();
+        stats.candidates_materialized = ranked_ordinals.len();
 
-        let candidates = workspace
-            .ranked_ordinals
+        let candidates = ranked_ordinals
             .iter()
             .map(|&candidate_ordinal| {
                 let candidate = &self.rows[candidate_ordinal];
-                let accumulator = &workspace.accumulators[candidate_ordinal];
+                let accumulator = &accumulators[candidate_ordinal];
                 TfidfTopKCandidate {
                     surface_id: candidate.surface_id.clone(),
                     normalized_key: candidate.normalized_key.clone(),
@@ -596,8 +599,14 @@ pub fn top_k_for_surface(
         }
     }
 
-    for &candidate_ordinal in &workspace.touched {
-        let accumulator = &mut workspace.accumulators[candidate_ordinal];
+    let TfidfQueryWorkspace {
+        accumulators,
+        touched,
+        ranked_ordinals,
+        stats,
+    } = &mut *workspace;
+    for &candidate_ordinal in touched.iter() {
+        let accumulator = &mut accumulators[candidate_ordinal];
         accumulator.score_units = compat_cosine_score_units(
             query,
             &index.rows[candidate_ordinal],
@@ -605,29 +614,26 @@ pub fn top_k_for_surface(
             index.config.score_cap,
         );
     }
-    workspace.ranked_ordinals.clear();
-    workspace.ranked_ordinals.extend(&workspace.touched);
-    if workspace.ranked_ordinals.len() > k {
+    ranked_ordinals.clear();
+    ranked_ordinals.extend(touched.iter().copied());
+    if ranked_ordinals.len() > k {
         if k > 0 {
-            workspace
-                .ranked_ordinals
-                .select_nth_unstable_by(k, |left, right| {
-                    compat_candidate_cmp(*left, *right, &index.rows, &workspace.accumulators)
-                });
+            ranked_ordinals.select_nth_unstable_by(k, |left, right| {
+                compat_candidate_cmp(*left, *right, &index.rows, accumulators)
+            });
         }
-        workspace.ranked_ordinals.truncate(k);
+        ranked_ordinals.truncate(k);
     }
-    workspace.ranked_ordinals.sort_unstable_by(|left, right| {
-        compat_candidate_cmp(*left, *right, &index.rows, &workspace.accumulators)
+    ranked_ordinals.sort_unstable_by(|left, right| {
+        compat_candidate_cmp(*left, *right, &index.rows, accumulators)
     });
-    workspace.stats.candidates_materialized = workspace.ranked_ordinals.len();
+    stats.candidates_materialized = ranked_ordinals.len();
 
-    workspace
-        .ranked_ordinals
+    ranked_ordinals
         .iter()
         .map(|&candidate_ordinal| {
             let candidate = &index.rows[candidate_ordinal];
-            let accumulator = &workspace.accumulators[candidate_ordinal];
+            let accumulator = &accumulators[candidate_ordinal];
             TfidfTopKCandidate {
                 surface_id: candidate.surface_id.clone(),
                 normalized_key: candidate.surface_id.clone(),
