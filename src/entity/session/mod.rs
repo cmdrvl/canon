@@ -1472,12 +1472,20 @@ fn load_registry_info(
     }
     for observation in observations {
         for (namespace, value) in &observation.keys {
-            values.extend(key_lookup_values(namespace, value).map(|value| (value, ())));
+            values.extend(
+                key_lookup_values(namespace, value)
+                    .into_iter()
+                    .map(|value| (value, ())),
+            );
         }
     }
     for spec in endpoint_targets.values() {
         if let RegistryEndpointSpec::Key { namespace, value } = spec {
-            values.extend(key_lookup_values(namespace, value).map(|value| (value, ())));
+            values.extend(
+                key_lookup_values(namespace, value)
+                    .into_iter()
+                    .map(|value| (value, ())),
+            );
         }
     }
     let resolved = lookup::resolve_values(
