@@ -3218,6 +3218,25 @@ fn run_entity_review_command(review: &EntityReviewCommand) -> Result<u8, Box<dyn
 }
 
 fn run_entity_review_export_command(export: &EntityReviewExportCli) -> Result<u8, Box<dyn Error>> {
+    let (result_probe, result_bytes) =
+        match read_entity_lifecycle_json_artifact(&export.result, "entity result artifact") {
+            Ok((value, bytes)) => (value, bytes),
+            Err(refusal_output) => {
+                return emit_entity_refusal(
+                    refusal_output,
+                    matches!(export.emit, EntityReviewExportEmitMode::Json),
+                    false,
+                );
+            }
+        };
+
+    let is_session_solve = result_probe
+        .get("version")
+        .and_then(serde_json::Value::as_str)
+        == Some(entity::session::SESSION_SOLVE_VERSION);
+    if is_session_solve {
+        return run_entity_session_review_export_command(export, &result_bytes);
+    }
     if matches!(export.emit, EntityReviewExportEmitMode::Html)
         && !matches!(export.artifact, EntityReviewExportArtifact::NativeReview)
     {
@@ -3232,18 +3251,6 @@ fn run_entity_review_export_command(export: &EntityReviewExportCli) -> Result<u8
             false,
         );
     }
-
-    let (result_probe, result_bytes) =
-        match read_entity_lifecycle_json_artifact(&export.result, "entity result artifact") {
-            Ok((value, bytes)) => (value, bytes),
-            Err(refusal_output) => {
-                return emit_entity_refusal(
-                    refusal_output,
-                    matches!(export.emit, EntityReviewExportEmitMode::Json),
-                    false,
-                );
-            }
-        };
 
     if matches!(export.artifact, EntityReviewExportArtifact::NativeReview) {
         return run_entity_native_review_artifact_export_command(
@@ -3417,12 +3424,123 @@ fn run_entity_review_export_command(export: &EntityReviewExportCli) -> Result<u8
     }
 }
 
+fn run_entity_session_review_export_command(
+    export: &EntityReviewExportCli,
+    result_bytes: &[u8],
+) -> Result<u8, Box<dyn Error>> {
+    let solve = match serde_json::from_slice::<entity::session::SessionSolveArtifact>(result_bytes)
+    {
+        Ok(solve) => solve,
+        Err(error) => {
+            return emit_entity_refusal(
+                refusal::create_refusal(
+                    RefusalCode::EEntityArtifactContract,
+                    "Session solve artifact is malformed".to_string(),
+                    serde_json::json!({
+                        "stage": "review_export",
+                        "error": error.to_string(),
+                        "writes_performed": false
+                    }),
+                    Some("Run canon entity session solve, then rerun review export".to_string()),
+                ),
+                matches!(export.emit, EntityReviewExportEmitMode::Json),
+                false,
+            );
+        }
+    };
+    let wants_native = matches!(export.artifact, EntityReviewExportArtifact::NativeReview)
+        || matches!(export.group_by, Some(EntityReviewGroupBy::Signature));
+    if matches!(export.emit, EntityReviewExportEmitMode::Html) && !wants_native {
+        return emit_entity_refusal(entity_review_export_html_refusal(), false, false);
+    }
+    if wants_native {
+        let queue = entity_runtime::review::session_review_queue(&solve, result_bytes);
+        let artifact = entity::review_export::build_native_review_artifact(
+            entity::review_export::NativeReviewExportRequest {
+                review_queue: queue,
+                run_content_hash: witness::hash_bytes(result_bytes),
+                policy_content_hash: solve.inputs.rules_hash.clone(),
+            },
+        )
+        .map_err(|refusal| refusal.to_canon_output());
+        let artifact = match artifact {
+            Ok(artifact) => artifact,
+            Err(refusal_output) => {
+                return emit_entity_refusal(
+                    refusal_output,
+                    matches!(export.emit, EntityReviewExportEmitMode::Json),
+                    false,
+                );
+            }
+        };
+        let output = match export.emit {
+            EntityReviewExportEmitMode::Json => {
+                entity::review_export::render_native_review_json(&artifact)
+            }
+            EntityReviewExportEmitMode::Csv => {
+                entity::review_export::render_native_review_csv(&artifact)
+            }
+            EntityReviewExportEmitMode::Html => {
+                entity::review_export::render_native_review_html(&artifact)
+            }
+        };
+        match output {
+            Ok(output) => {
+                emit_entity_output(&output, false);
+                Ok(0)
+            }
+            Err(refusal) => emit_entity_refusal(
+                refusal.to_canon_output(),
+                matches!(export.emit, EntityReviewExportEmitMode::Json),
+                false,
+            ),
+        }
+    } else {
+        let artifact = entity_runtime::review::export_session(
+            &solve,
+            result_bytes,
+            map_entity_review_include(&export.include),
+        )
+        .map_err(create_entity_refusal);
+        match artifact {
+            Ok(artifact) => {
+                let output = match export.emit {
+                    EntityReviewExportEmitMode::Json => Ok(serde_json::to_string(&artifact)?),
+                    EntityReviewExportEmitMode::Csv => {
+                        entity_runtime::review::export_csv(&artifact).map_err(create_entity_refusal)
+                    }
+                    EntityReviewExportEmitMode::Html => Err(entity_review_export_html_refusal()),
+                };
+                match output {
+                    Ok(output) => {
+                        emit_entity_output(&output, false);
+                        Ok(0)
+                    }
+                    Err(refusal_output) => emit_entity_refusal(
+                        refusal_output,
+                        matches!(export.emit, EntityReviewExportEmitMode::Json),
+                        false,
+                    ),
+                }
+            }
+            Err(refusal_output) => emit_entity_refusal(
+                refusal_output,
+                matches!(export.emit, EntityReviewExportEmitMode::Json),
+                false,
+            ),
+        }
+    }
+}
+
 fn run_entity_review_import_command(import: &EntityReviewImportCli) -> Result<u8, Box<dyn Error>> {
     let summary_mode = matches!(import.emit, EntityEmitMode::Summary);
     let review_bytes = match read_artifact_bytes(&import.review, "entity review artifact") {
         Ok(bytes) => bytes,
         Err(refusal_output) => return emit_entity_refusal(refusal_output, true, summary_mode),
     };
+    if import.session.is_some() || import.reviewer.is_some() {
+        return run_entity_session_review_import_command(import, &review_bytes, summary_mode);
+    }
     if let Some(source_review) = import.source_review.as_ref() {
         return run_entity_native_review_import_command(
             import,
@@ -3482,6 +3600,482 @@ fn run_entity_review_import_command(import: &EntityReviewImportCli) -> Result<u8
         }
         Err(refusal_output) => emit_entity_refusal(refusal_output, true, summary_mode),
     }
+}
+
+fn run_entity_session_review_import_command(
+    import: &EntityReviewImportCli,
+    review_bytes: &[u8],
+    summary_mode: bool,
+) -> Result<u8, Box<dyn Error>> {
+    let session = match import.session.as_ref() {
+        Some(session) => session,
+        None => {
+            return emit_entity_refusal(
+                session_review_import_refusal(
+                    "Session review import requires --session",
+                    serde_json::json!({"field": "session", "writes_performed": false}),
+                ),
+                true,
+                summary_mode,
+            );
+        }
+    };
+    let reviewer = match import.reviewer.as_deref().map(str::trim) {
+        Some(reviewer) if !reviewer.is_empty() => reviewer.to_string(),
+        _ => {
+            return emit_entity_refusal(
+                session_review_import_refusal(
+                    "Session review import requires a non-empty --reviewer",
+                    serde_json::json!({"field": "reviewer", "writes_performed": false}),
+                ),
+                true,
+                summary_mode,
+            );
+        }
+    };
+    if !import.registry.as_os_str().is_empty()
+        || !import.next_version.trim().is_empty()
+        || import.audit.is_some()
+        || import.source_review.is_some()
+    {
+        return emit_entity_refusal(
+            session_review_import_refusal(
+                "Session review import does not accept registry, audit, or native source-review options",
+                serde_json::json!({
+                    "fields": ["registry", "next_version", "audit", "source_review"],
+                    "writes_performed": false
+                }),
+            ),
+            true,
+            summary_mode,
+        );
+    }
+
+    let (solve, solve_bytes) = match read_session_solve_artifact(session) {
+        Ok(value) => value,
+        Err(refusal_output) => return emit_entity_refusal(*refusal_output, true, summary_mode),
+    };
+    let solve_hash = witness::hash_bytes(&solve_bytes);
+    let (source_solve_hash, decisions) =
+        match entity_runtime::review::parse_session_review_decisions(
+            &import.review,
+            review_bytes,
+            &solve,
+            &solve_bytes,
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                return emit_entity_refusal(create_entity_refusal(error), true, summary_mode);
+            }
+        };
+    if source_solve_hash != solve_hash {
+        return emit_entity_refusal(
+            session_review_import_refusal(
+                "Session review decisions are stale for the current solve",
+                serde_json::json!({
+                    "reason": "stale_solve",
+                    "field": "source_solve_hash",
+                    "expected": solve_hash,
+                    "actual": source_solve_hash,
+                    "writes_performed": false
+                }),
+            ),
+            true,
+            summary_mode,
+        );
+    }
+
+    let observations = match session_review_observation_index(session) {
+        Ok(observations) => observations,
+        Err(refusal_output) => return emit_entity_refusal(*refusal_output, true, summary_mode),
+    };
+    let asserted_by = if reviewer.starts_with("human:") {
+        reviewer
+    } else {
+        format!("human:{reviewer}")
+    };
+    let mut assertion_lines = Vec::new();
+    let mut asserted_alias = 0_u64;
+    let mut distinct = 0_u64;
+    let mut related = 0_u64;
+    let mut skipped = 0_u64;
+    for decision in &decisions {
+        let left = match observations.get(&decision.left_surface) {
+            Some(values) => values,
+            None => {
+                return emit_entity_refusal(
+                    session_review_import_refusal(
+                        "Session review item references an unknown left surface",
+                        serde_json::json!({
+                            "review_id": decision.review_id,
+                            "surface": decision.left_surface,
+                            "writes_performed": false
+                        }),
+                    ),
+                    true,
+                    summary_mode,
+                );
+            }
+        };
+        let right = match observations.get(&decision.right_surface) {
+            Some(values) => values,
+            None => {
+                return emit_entity_refusal(
+                    session_review_import_refusal(
+                        "Session review item references an unknown right surface",
+                        serde_json::json!({
+                            "review_id": decision.review_id,
+                            "surface": decision.right_surface,
+                            "writes_performed": false
+                        }),
+                    ),
+                    true,
+                    summary_mode,
+                );
+            }
+        };
+        let Some((left_entity_type, left_obs_id)) = left.first() else {
+            return emit_entity_refusal(
+                session_review_import_refusal(
+                    "Session review left surface has no observations",
+                    serde_json::json!({
+                        "review_id": decision.review_id,
+                        "surface": decision.left_surface,
+                        "writes_performed": false
+                    }),
+                ),
+                true,
+                summary_mode,
+            );
+        };
+        let Some((right_entity_type, right_obs_id)) = right.first() else {
+            return emit_entity_refusal(
+                session_review_import_refusal(
+                    "Session review right surface has no observations",
+                    serde_json::json!({
+                        "review_id": decision.review_id,
+                        "surface": decision.right_surface,
+                        "writes_performed": false
+                    }),
+                ),
+                true,
+                summary_mode,
+            );
+        };
+        if left_entity_type != right_entity_type {
+            return emit_entity_refusal(
+                session_review_import_refusal(
+                    "Session review item crosses entity types",
+                    serde_json::json!({
+                        "review_id": decision.review_id,
+                        "left_entity_type": left_entity_type,
+                        "right_entity_type": right_entity_type,
+                        "writes_performed": false
+                    }),
+                ),
+                true,
+                summary_mode,
+            );
+        }
+        if decision.decision == "skip" || decision.decision == "undecided" {
+            skipped += 1;
+            continue;
+        }
+        let (assertion_type, mut basis) = if decision.decision == "same" {
+            asserted_alias += 1;
+            ("asserted_alias", serde_json::Map::new())
+        } else if decision.decision == "different" {
+            distinct += 1;
+            ("distinct", serde_json::Map::new())
+        } else if let Some(relation) = decision.decision.strip_prefix("related:") {
+            related += 1;
+            let mut basis = serde_json::Map::new();
+            basis.insert(
+                "relation".to_string(),
+                serde_json::Value::String(relation.to_string()),
+            );
+            basis.insert(
+                "subject".to_string(),
+                serde_json::Value::String(left_obs_id.clone()),
+            );
+            ("related", basis)
+        } else {
+            return emit_entity_refusal(
+                session_review_import_refusal(
+                    "Session review decision is unsupported",
+                    serde_json::json!({
+                        "review_id": decision.review_id,
+                        "decision": decision.decision,
+                        "writes_performed": false
+                    }),
+                ),
+                true,
+                summary_mode,
+            );
+        };
+        basis.insert(
+            "review_decision".to_string(),
+            serde_json::Value::String(decision.decision.clone()),
+        );
+        basis.insert(
+            "review_item_id".to_string(),
+            serde_json::Value::String(decision.review_id.clone()),
+        );
+        if !decision.evidence_signature_id.is_empty() {
+            basis.insert(
+                "signature_id".to_string(),
+                serde_json::Value::String(decision.evidence_signature_id.clone()),
+            );
+        }
+        basis.insert(
+            "note".to_string(),
+            serde_json::Value::String(decision.note.clone()),
+        );
+        if assertion_type == "distinct" {
+            basis.insert(
+                "authority".to_string(),
+                serde_json::Value::String("reviewed".to_string()),
+            );
+        }
+        let line = serde_json::json!({
+            "type": assertion_type,
+            "left": left_obs_id,
+            "right": right_obs_id,
+            "basis": basis,
+            "source": {
+                "channel": "canon.entity.review",
+                "id": format!("review:{solve_hash}"),
+                "locator": format!("review-item:{}", decision.review_id),
+                "content_hash": solve_hash,
+            },
+            "asserted_by": asserted_by,
+        });
+        assertion_lines.push(serde_json::to_string(&line)?);
+    }
+
+    let asserted = if assertion_lines.is_empty() {
+        None
+    } else {
+        let mut file = tempfile::NamedTempFile::new()?;
+        file.write_all(assertion_lines.join("\n").as_bytes())?;
+        match session::assert_evidence(session::SessionAssertRequest {
+            session: session.clone(),
+            evidence: file.path().to_path_buf(),
+        }) {
+            Ok(asserted) => Some(asserted),
+            Err(refusal) => {
+                return emit_entity_refusal(refusal.to_canon_output(), true, summary_mode);
+            }
+        }
+    };
+    if let Some(asserted) = asserted.as_ref()
+        && !asserted.rejected.is_empty()
+    {
+        return emit_entity_refusal(
+            session_review_import_refusal(
+                "Session review evidence assertion rejected one or more decisions",
+                serde_json::json!({
+                    "rejected": asserted.rejected,
+                    "writes_performed": asserted.accepted > 0
+                }),
+            ),
+            true,
+            summary_mode,
+        );
+    }
+    let accepted_decisions = asserted.as_ref().map_or(0, |value| value.accepted) as u64;
+    let already_present = asserted.as_ref().map_or(0, |value| value.already_present) as u64;
+    let evidence_generation = asserted
+        .as_ref()
+        .and_then(|value| value.generation_id.clone());
+    let receipt = serde_json::json!({
+        "version": "canon_entity_review_import.v0",
+        "source_solve_hash": solve_hash,
+        "reviewer": asserted_by,
+        "accepted_decisions": accepted_decisions,
+        "already_present": already_present,
+        "asserted_alias": asserted_alias,
+        "distinct": distinct,
+        "related": related,
+        "skipped": skipped,
+        "evidence_generation": evidence_generation,
+    });
+    let output = if summary_mode {
+        format!(
+            "canon_entity_review_import.v0 decisions={} accepted={} already_present={} aliases={} distinct={} related={} skipped={}",
+            decisions.len(),
+            accepted_decisions,
+            already_present,
+            asserted_alias,
+            distinct,
+            related,
+            skipped
+        )
+    } else {
+        serde_json::to_string(&receipt)?
+    };
+    emit_entity_output(&output, summary_mode);
+    Ok(0)
+}
+
+fn read_session_solve_artifact(
+    session: &Path,
+) -> Result<(entity::session::SessionSolveArtifact, Vec<u8>), Box<CanonOutput>> {
+    let snapshot = entity::publication::open_current_stream_generation(
+        session,
+        entity::session::SESSION_SOLVE_STREAM_ID,
+    )
+    .map_err(|error| {
+        Box::new(session_review_import_refusal(
+            "Session has no committed solve artifact",
+            serde_json::json!({
+                "stream": entity::session::SESSION_SOLVE_STREAM_ID,
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        ))
+    })?;
+    let bytes = snapshot
+        .read_logical_file("solve/solve.json")
+        .ok_or_else(|| {
+            Box::new(session_review_import_refusal(
+                "Session solve generation is missing solve/solve.json",
+                serde_json::json!({"writes_performed": false}),
+            ))
+        })?
+        .to_vec();
+    let solve = serde_json::from_slice(&bytes).map_err(|error| {
+        Box::new(session_review_import_refusal(
+            "Session solve artifact is malformed",
+            serde_json::json!({"error": error.to_string(), "writes_performed": false}),
+        ))
+    })?;
+    if solve.version != entity::session::SESSION_SOLVE_VERSION {
+        return Err(Box::new(session_review_import_refusal(
+            "Session solve artifact has the wrong version",
+            serde_json::json!({
+                "expected": entity::session::SESSION_SOLVE_VERSION,
+                "actual": solve.version,
+                "writes_performed": false
+            }),
+        )));
+    }
+    Ok((solve, bytes))
+}
+
+fn session_review_observation_index(
+    session: &Path,
+) -> Result<BTreeMap<String, Vec<(String, String)>>, Box<CanonOutput>> {
+    let snapshot = entity::publication::open_current_stream_generation(
+        session,
+        entity::session::SESSION_OBSERVATIONS_STREAM_ID,
+    )
+    .map_err(|error| {
+        Box::new(session_review_import_refusal(
+            "Session has no committed observations",
+            serde_json::json!({"error": error.to_string(), "writes_performed": false}),
+        ))
+    })?;
+    let mut observations = BTreeMap::<String, Vec<(String, String)>>::new();
+    for logical_path in snapshot
+        .logical_paths()
+        .filter(|path| path.starts_with("observations/") && path.ends_with(".jsonl"))
+    {
+        let bytes = snapshot.read_logical_file(logical_path).ok_or_else(|| {
+            Box::new(session_review_import_refusal(
+                "Observation shard is missing",
+                serde_json::json!({"path": logical_path, "writes_performed": false}),
+            ))
+        })?;
+        let text = std::str::from_utf8(bytes).map_err(|error| {
+            Box::new(session_review_import_refusal(
+                "Observation shard is not UTF-8",
+                serde_json::json!({
+                    "path": logical_path,
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+            ))
+        })?;
+        for (line_index, line) in text.lines().enumerate() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let value = serde_json::from_str::<serde_json::Value>(line).map_err(|error| {
+                Box::new(session_review_import_refusal(
+                    "Observation shard contains malformed JSON",
+                    serde_json::json!({
+                        "path": logical_path,
+                        "line": line_index + 1,
+                        "error": error.to_string(),
+                        "writes_performed": false
+                    }),
+                ))
+            })?;
+            let obs_id = value
+                .get("obs_id")
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| {
+                    Box::new(session_review_import_refusal(
+                        "Observation is missing obs_id",
+                        serde_json::json!({
+                            "path": logical_path,
+                            "line": line_index + 1,
+                            "writes_performed": false
+                        }),
+                    ))
+                })?;
+            let entity_type = value
+                .get("entity_type")
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| {
+                    Box::new(session_review_import_refusal(
+                        "Observation is missing entity_type",
+                        serde_json::json!({
+                            "path": logical_path,
+                            "line": line_index + 1,
+                            "writes_performed": false
+                        }),
+                    ))
+                })?;
+            let surface = value
+                .get("surface")
+                .and_then(serde_json::Value::as_str)
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    Box::new(session_review_import_refusal(
+                        "Observation is missing surface",
+                        serde_json::json!({
+                            "path": logical_path,
+                            "line": line_index + 1,
+                            "writes_performed": false
+                        }),
+                    ))
+                })?;
+            observations
+                .entry(surface)
+                .or_default()
+                .push((entity_type.to_string(), obs_id.to_string()));
+        }
+    }
+    for values in observations.values_mut() {
+        values.sort();
+    }
+    Ok(observations)
+}
+
+fn session_review_import_refusal(message: &str, detail: serde_json::Value) -> CanonOutput {
+    refusal::create_refusal(
+        RefusalCode::EEntityReviewImport,
+        message.to_string(),
+        detail,
+        Some(
+            "Re-export a current session review, then rerun canon entity review import".to_string(),
+        ),
+    )
 }
 
 fn run_entity_native_review_import_command(

@@ -9,6 +9,15 @@ use super::{
         TrustedAnchorRecord,
     },
 };
+use crate::entity::{
+    EntityArtifactMetadata, EntityDeterministicSummary, EntityInputReference,
+    EntityPatchNamespaces, EntityProfileReference, EntityRegistrySnapshot, EntityStrategyReference,
+    review::{ReviewProvenanceSample, ReviewQueueArtifact, ReviewQueueItem},
+    review_export::{NativeReviewExportRequest, build_native_review_artifact},
+    score::ScoreUnits,
+    session::{SessionSolveArtifact, SessionSolveReview},
+    solve::{SolveEvidenceCut, SolveReconciliationState},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -92,6 +101,8 @@ pub struct ReviewItem {
     pub proposed_action: String,
     #[serde(default = "default_decision")]
     pub decision: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_signature_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -291,6 +302,583 @@ pub fn export(
     })
 }
 
+/// Project a session solve's tier-C pair queue through the existing review
+/// export contract. Session review is intentionally a projection only: the
+/// solve hash remains the result binding and decisions are imported back into
+/// the session evidence stream by the command layer.
+pub fn export_session(
+    solve: &SessionSolveArtifact,
+    solve_bytes: &[u8],
+    include: ReviewInclude,
+) -> EntityResult<ReviewExportOutput> {
+    if !matches!(include, ReviewInclude::Escrow | ReviewInclude::All) {
+        return Ok(ReviewExportOutput {
+            version: "canon_entity_review_export.v0".to_string(),
+            include: include.as_str().to_string(),
+            result: session_review_result_reference(solve, solve_bytes),
+            strategy_id: "canon.entity.session.rules".to_string(),
+            registry: session_review_registry(solve),
+            summary: ReviewSummary {
+                items: 0,
+                resolved: 0,
+                escrow: 0,
+                contradictions: 0,
+            },
+            items: Vec::new(),
+        });
+    }
+
+    let solve_hash = blake3_string(solve_bytes);
+    let mut items = solve
+        .review
+        .iter()
+        .map(|review| session_review_item(&solve_hash, review))
+        .collect::<Vec<_>>();
+    items.sort_by(|left, right| left.review_id.cmp(&right.review_id));
+
+    Ok(ReviewExportOutput {
+        version: "canon_entity_review_export.v0".to_string(),
+        include: include.as_str().to_string(),
+        result: session_review_result_reference(solve, solve_bytes),
+        strategy_id: "canon.entity.session.rules".to_string(),
+        registry: session_review_registry(solve),
+        summary: summarize_review_items(&items),
+        items,
+    })
+}
+
+/// Build the queue projection consumed by the existing native grouped review
+/// exporter. This keeps signature grouping and its decision bindings in the
+/// one native review implementation instead of creating a session variant.
+pub fn session_review_queue(
+    solve: &SessionSolveArtifact,
+    solve_bytes: &[u8],
+) -> ReviewQueueArtifact {
+    let solve_hash = blake3_string(solve_bytes);
+    let review_items = solve
+        .review
+        .iter()
+        .map(|review| {
+            let review_item = session_review_item(&solve_hash, review);
+            let left_surface_id = review.left_surface.clone();
+            let right_surface_id = review.right_surface.clone();
+            ReviewQueueItem {
+                review_id: review_item.review_id,
+                ambiguity_key: session_review_signature(review),
+                component_id: format!(
+                    "session:{}",
+                    stable_review_id(
+                        &solve_hash,
+                        "component",
+                        &format!("{}\n{}", left_surface_id, right_surface_id),
+                    )
+                ),
+                state: SolveReconciliationState::Escrow,
+                proposed_action: "review_tier_c".to_string(),
+                review_priority_units: 1_000 + review.evidence_types.len() as u32,
+                priority_reasons: vec![review.missing.clone()],
+                affected_rows: 2,
+                affected_deals: 0,
+                surface_ids: vec![left_surface_id.clone(), right_surface_id.clone()],
+                strongest_positive_cut: Some(SolveEvidenceCut {
+                    left_surface_id: left_surface_id.clone(),
+                    right_surface_id: right_surface_id.clone(),
+                    score_units: ScoreUnits::ZERO,
+                    evidence_count: review.evidence_types.len() as u64,
+                    evidence_reason_codes: review.evidence_types.clone(),
+                    evidence_hits: Vec::new(),
+                }),
+                strongest_negative_cut: None,
+                relation_hints: Vec::new(),
+                provenance_samples: vec![
+                    ReviewProvenanceSample {
+                        surface_id: left_surface_id.clone(),
+                        row_id: left_surface_id.clone(),
+                        source: "entity-session".to_string(),
+                        raw_value: left_surface_id,
+                    },
+                    ReviewProvenanceSample {
+                        surface_id: right_surface_id.clone(),
+                        row_id: right_surface_id.clone(),
+                        source: "entity-session".to_string(),
+                        raw_value: right_surface_id,
+                    },
+                ],
+            }
+        })
+        .collect::<Vec<_>>();
+    review_items.sort_by(|left, right| left.review_id.cmp(&right.review_id));
+
+    ReviewQueueArtifact {
+        version: "canon_entity_review_queue.v0".to_string(),
+        artifact_content_hash: solve_hash.clone(),
+        metadata: session_review_metadata(solve, &solve_hash),
+        summary: EntityDeterministicSummary::default(),
+        source_solve_hash: solve_hash,
+        source_link_hash: None,
+        review_items,
+    }
+}
+
+/// Parse the existing review export shape for session import. Keeping this
+/// parser beside the existing export/import implementation means CSV and JSON
+/// round trips use the same artifact contract as native review.
+pub fn parse_session_review(path: &Path, bytes: &[u8]) -> EntityResult<ReviewExportOutput> {
+    let review = parse_review(path, bytes)?;
+    if review.result.version != crate::entity::session::SESSION_SOLVE_VERSION {
+        return Err(review_error(
+            "Session review import requires a session solve review export",
+            json!({
+                "field": "result.version",
+                "expected": crate::entity::session::SESSION_SOLVE_VERSION,
+                "actual": review.result.version,
+            }),
+        ));
+    }
+    for item in &review.items {
+        if item.category != "tier_c" {
+            return Err(review_error(
+                "Session review export contains a non-tier-C item",
+                json!({"review_id": item.review_id, "category": item.category}),
+            ));
+        }
+        if item.left_key.as_deref().is_none_or(str::is_empty)
+            || item.right_key.as_deref().is_none_or(str::is_empty)
+        {
+            return Err(review_error(
+                "Session review item is missing its pair surfaces",
+                json!({"review_id": item.review_id, "field": "left_key/right_key"}),
+            ));
+        }
+        validate_session_decision(&item.decision, &item.review_id)?;
+    }
+    Ok(review)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionReviewDecisionItem {
+    pub review_id: String,
+    pub left_surface: String,
+    pub right_surface: String,
+    pub evidence_signature_id: String,
+    pub decision: String,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SessionReviewDecisionInput {
+    #[serde(alias = "item_id")]
+    review_id: Option<String>,
+    #[serde(alias = "evidence_signature_id")]
+    signature_id: Option<String>,
+    decision: String,
+    #[serde(default)]
+    note: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SessionReviewDecisionEnvelope {
+    #[serde(default)]
+    source_solve_hash: Option<String>,
+    #[serde(default)]
+    decisions: Vec<SessionReviewDecisionInput>,
+}
+
+/// Parse either an edited existing review export or a compact decision file.
+/// Group decisions expand only over the item list in the exported artifact;
+/// they never reach a later item that merely happens to share a signature.
+pub fn parse_session_review_decisions(
+    path: &Path,
+    bytes: &[u8],
+    solve: &SessionSolveArtifact,
+    solve_bytes: &[u8],
+) -> EntityResult<(String, Vec<SessionReviewDecisionItem>)> {
+    let base_review = export_session(solve, solve_bytes, ReviewInclude::All)?;
+    let (source_solve_hash, decisions, exported_items) = if is_review_export_input(path, bytes) {
+        let mut review = parse_session_review(path, bytes)?;
+        for item in &mut review.items {
+            if item.evidence_signature_id.is_none() {
+                item.evidence_signature_id = base_review
+                    .items
+                    .iter()
+                    .find(|base_item| base_item.review_id == item.review_id)
+                    .and_then(|base_item| base_item.evidence_signature_id.clone());
+            }
+        }
+        let source_solve_hash = review.result.content_hash.clone();
+        let decisions = review
+            .items
+            .iter()
+            .filter(|item| {
+                !matches!(
+                    item.decision.trim().to_ascii_lowercase().as_str(),
+                    "" | "undecided"
+                )
+            })
+            .map(|item| SessionReviewDecisionInput {
+                review_id: Some(item.review_id.clone()),
+                signature_id: item.evidence_signature_id.clone(),
+                decision: item.decision.clone(),
+                note: String::new(),
+            })
+            .collect::<Vec<_>>();
+        (source_solve_hash, decisions, review.items)
+    } else {
+        let envelope = parse_session_review_decision_input(path, bytes)?;
+        (
+            envelope
+                .source_solve_hash
+                .unwrap_or_else(|| base_review.result.content_hash.clone()),
+            envelope.decisions,
+            base_review.items.clone(),
+        )
+    };
+
+    let items_by_id = exported_items
+        .iter()
+        .map(|item| (item.review_id.as_str(), item))
+        .collect::<BTreeMap<_, _>>();
+    let mut items_by_signature = BTreeMap::<&str, Vec<&ReviewItem>>::new();
+    for item in &exported_items {
+        if let Some(signature_id) = item.evidence_signature_id.as_deref() {
+            items_by_signature
+                .entry(signature_id)
+                .or_default()
+                .push(item);
+        }
+    }
+    let native_review = build_native_review_artifact(NativeReviewExportRequest {
+        review_queue: session_review_queue(solve, solve_bytes),
+        run_content_hash: blake3_string(solve_bytes),
+        policy_content_hash: solve.inputs.rules_hash.clone(),
+    })
+    .map_err(|refusal| {
+        review_error(
+            "Unable to derive native session review signatures",
+            json!({
+                "code": format!("{:?}", refusal.code),
+                "message": refusal.message,
+                "detail": refusal.detail,
+            }),
+        )
+    })?;
+    for native_item in &native_review.review_items {
+        let Some(item) = items_by_id.get(native_item.review_id.as_str()) else {
+            continue;
+        };
+        let members = items_by_signature
+            .entry(native_item.evidence_signature.signature_id.as_str())
+            .or_default();
+        if !members
+            .iter()
+            .any(|member| member.review_id == item.review_id)
+        {
+            members.push(*item);
+        }
+    }
+    let mut explicit = BTreeMap::<String, SessionReviewDecisionInput>::new();
+    let mut grouped = BTreeMap::<String, SessionReviewDecisionInput>::new();
+    for decision in decisions {
+        validate_session_decision(
+            &decision.decision,
+            decision.review_id.as_deref().unwrap_or("<group>"),
+        )?;
+        if let Some(review_id) = decision.review_id.as_deref() {
+            if explicit.insert(review_id.to_string(), decision).is_some() {
+                return Err(review_error(
+                    "Session review decisions contain a duplicate review_id",
+                    json!({"review_id": review_id}),
+                ));
+            }
+        } else if let Some(signature_id) = decision.signature_id.as_deref() {
+            if grouped.insert(signature_id.to_string(), decision).is_some() {
+                return Err(review_error(
+                    "Session review decisions contain a duplicate signature_id",
+                    json!({"signature_id": signature_id}),
+                ));
+            }
+        } else {
+            return Err(review_error(
+                "Session review decision requires review_id or signature_id",
+                json!({"field": "review_id/signature_id"}),
+            ));
+        }
+    }
+
+    let mut expanded = BTreeMap::<String, SessionReviewDecisionItem>::new();
+    for (signature_id, decision) in grouped {
+        let Some(members) = items_by_signature.get(signature_id.as_str()) else {
+            return Err(review_error(
+                "Session review decision references an unknown evidence signature",
+                json!({"signature_id": signature_id}),
+            ));
+        };
+        for item in members {
+            expanded.insert(
+                item.review_id.clone(),
+                session_review_decision_item(item, &decision, signature_id.clone()),
+            );
+        }
+    }
+    for (review_id, decision) in explicit {
+        let Some(item) = items_by_id.get(review_id.as_str()) else {
+            return Err(review_error(
+                "Session review decision references an unknown review_id",
+                json!({"review_id": review_id}),
+            ));
+        };
+        expanded.insert(
+            review_id,
+            session_review_decision_item(
+                item,
+                &decision,
+                item.evidence_signature_id.clone().unwrap_or_default(),
+            ),
+        );
+    }
+
+    Ok((source_solve_hash, expanded.into_values().collect()))
+}
+
+fn session_review_decision_item(
+    item: &ReviewItem,
+    decision: &SessionReviewDecisionInput,
+    signature_id: String,
+) -> SessionReviewDecisionItem {
+    SessionReviewDecisionItem {
+        review_id: item.review_id.clone(),
+        left_surface: item.left_key.clone().unwrap_or_default(),
+        right_surface: item.right_key.clone().unwrap_or_default(),
+        evidence_signature_id: signature_id,
+        decision: decision.decision.trim().to_ascii_lowercase(),
+        note: decision.note.clone(),
+    }
+}
+
+fn is_review_export_input(path: &Path, bytes: &[u8]) -> bool {
+    if path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("csv"))
+    {
+        return String::from_utf8_lossy(bytes)
+            .lines()
+            .next()
+            .is_some_and(|header| {
+                header
+                    .split(',')
+                    .any(|field| field == "result_content_hash")
+            });
+    }
+    serde_json::from_slice::<Value>(bytes)
+        .ok()
+        .and_then(|value| value.get("items").cloned())
+        .is_some_and(|items| items.is_array())
+}
+
+fn parse_session_review_decision_input(
+    path: &Path,
+    bytes: &[u8],
+) -> EntityResult<SessionReviewDecisionEnvelope> {
+    if path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("csv"))
+    {
+        let mut reader = csv::Reader::from_reader(bytes);
+        let mut decisions = Vec::new();
+        let mut source_solve_hash = None;
+        for record in reader.deserialize::<BTreeMap<String, String>>() {
+            let row = record.map_err(csv_error)?;
+            source_solve_hash = source_solve_hash.or_else(|| {
+                row.get("source_solve_hash")
+                    .or_else(|| row.get("result_content_hash"))
+                    .filter(|value| !value.trim().is_empty())
+                    .cloned()
+            });
+            let decision = row.get("decision").cloned().unwrap_or_default();
+            decisions.push(SessionReviewDecisionInput {
+                review_id: row
+                    .get("review_id")
+                    .or_else(|| row.get("item_id"))
+                    .filter(|value| !value.trim().is_empty())
+                    .cloned(),
+                signature_id: row
+                    .get("signature_id")
+                    .or_else(|| row.get("evidence_signature_id"))
+                    .filter(|value| !value.trim().is_empty())
+                    .cloned(),
+                decision,
+                note: row.get("note").cloned().unwrap_or_default(),
+            });
+        }
+        return Ok(SessionReviewDecisionEnvelope {
+            source_solve_hash,
+            decisions,
+        });
+    }
+
+    let value = serde_json::from_slice::<Value>(bytes).map_err(|error| {
+        review_error(
+            "Session review decisions are not valid JSON",
+            json!({"path": path.display().to_string(), "error": error.to_string()}),
+        )
+    })?;
+    if value.is_array() {
+        let decisions =
+            serde_json::from_value::<Vec<SessionReviewDecisionInput>>(value).map_err(|error| {
+                review_error(
+                    "Session review decisions are malformed",
+                    json!({"error": error.to_string()}),
+                )
+            })?;
+        return Ok(SessionReviewDecisionEnvelope {
+            source_solve_hash: None,
+            decisions,
+        });
+    }
+    serde_json::from_value::<SessionReviewDecisionEnvelope>(value).map_err(|error| {
+        review_error(
+            "Session review decision envelope is malformed",
+            json!({"path": path.display().to_string(), "error": error.to_string()}),
+        )
+    })
+}
+
+fn session_review_result_reference(
+    solve: &SessionSolveArtifact,
+    solve_bytes: &[u8],
+) -> ReviewResultReference {
+    let solve_hash = blake3_string(solve_bytes);
+    ReviewResultReference {
+        version: solve.version.clone(),
+        content_hash: solve_hash.clone(),
+        strategy_content_hash: solve.inputs.rules_hash.clone(),
+        lookup_snapshot_hash: solve.inputs.registry.snapshot_hash.clone(),
+        escrow_snapshot_hash: solve.inputs.registry.snapshot_hash,
+    }
+}
+
+fn session_review_registry(solve: &SessionSolveArtifact) -> RegistrySnapshot {
+    RegistrySnapshot {
+        id: solve.inputs.registry.id.clone(),
+        version: solve.inputs.registry.version.clone(),
+        source: "entity-session".to_string(),
+        lookup_snapshot_hash: solve.inputs.registry.snapshot_hash.clone(),
+        escrow_snapshot_hash: solve.inputs.registry.snapshot_hash.clone(),
+    }
+}
+
+fn session_review_metadata(
+    solve: &SessionSolveArtifact,
+    solve_hash: &str,
+) -> EntityArtifactMetadata {
+    EntityArtifactMetadata {
+        profile: EntityProfileReference {
+            id: "canon.entity.session".to_string(),
+            version: "v1".to_string(),
+            entity_type: "session".to_string(),
+            identity_semantics: "evidence_session".to_string(),
+            canonical_type: "session_entity".to_string(),
+            patch_namespaces: EntityPatchNamespaces {
+                aliases: "canon.entity.session.aliases".to_string(),
+                distinct: "canon.entity.session.distinct".to_string(),
+                relations: "canon.entity.session.relations".to_string(),
+            },
+            content_hash: None,
+        },
+        strategy: EntityStrategyReference {
+            id: "canon.entity.session.rules".to_string(),
+            version: "v1".to_string(),
+            content_hash: solve.inputs.rules_hash.clone(),
+        },
+        registry_snapshot: EntityRegistrySnapshot {
+            id: solve.inputs.registry.id.clone(),
+            version: solve.inputs.registry.version.clone(),
+            source: "entity-session".to_string(),
+            lookup_snapshot_hash: solve.inputs.registry.snapshot_hash.clone(),
+            sidecar_snapshot_hash: None,
+        },
+        patch_namespace: "canon.entity.session.aliases".to_string(),
+        input: Some(EntityInputReference {
+            row_count: solve.summary.node_count as u64,
+            content_hash: solve_hash.to_string(),
+        }),
+        upstream_artifacts: Vec::new(),
+        patch_set: None,
+        namekit: None,
+        artifact_content_hash: solve_hash.to_string(),
+    }
+}
+
+fn session_review_item(solve_hash: &str, review: &SessionSolveReview) -> ReviewItem {
+    let signature_id = session_review_signature(review);
+    let review_id = stable_review_id(
+        solve_hash,
+        "tier_c",
+        &format!("{}\n{}", review.left_surface, review.right_surface),
+    );
+    let evidence_score = ReviewEvidenceScore {
+        left_row_id: review.left_surface.clone(),
+        right_row_id: review.right_surface.clone(),
+        pair_score_total: 0,
+        pair_score_by_namespace: BTreeMap::new(),
+        operator_ids: review.evidence_types.clone(),
+    };
+    ReviewItem {
+        review_id,
+        category: "tier_c".to_string(),
+        state: EntityState::AbstainLowEvidence,
+        canonical_id: None,
+        source_row_ids: vec![review.left_surface.clone(), review.right_surface.clone()],
+        observed_names: vec![review.left_surface.clone(), review.right_surface.clone()],
+        anchors: Vec::new(),
+        incumbent_ids: Vec::new(),
+        evidence_scores: vec![evidence_score],
+        contradiction_reason: Some(review.missing.clone()),
+        left_key: Some(review.left_surface.clone()),
+        right_key: Some(review.right_surface.clone()),
+        proposed_action: "review_tier_c".to_string(),
+        decision: default_decision(),
+        evidence_signature_id: Some(signature_id),
+    }
+}
+
+fn session_review_signature(review: &SessionSolveReview) -> String {
+    let mut evidence_types = review.evidence_types.clone();
+    evidence_types.sort();
+    evidence_types.dedup();
+    let lineage_band = match review.lineage_count {
+        0 | 1 => "1",
+        2 => "2",
+        _ => "3+",
+    };
+    let material = json!({
+        "evidence_types": evidence_types,
+        "lineage_band": lineage_band,
+        "missing": &review.missing,
+        "contradiction_reason": "none",
+    });
+    let bytes = serde_json::to_vec(&material).expect("session signature material serializes");
+    format!("signature:{}", blake3_string(&bytes))
+}
+
+fn validate_session_decision(decision: &str, review_id: &str) -> EntityResult<()> {
+    let normalized = decision.trim().to_ascii_lowercase();
+    let valid = normalized == "undecided"
+        || normalized == "skip"
+        || normalized == "same"
+        || normalized == "different"
+        || normalized.starts_with("related:");
+    if !valid || (normalized.starts_with("related:") && normalized.ends_with(':')) {
+        return Err(review_error(
+            "Session review item has an unsupported decision",
+            json!({"review_id": review_id, "decision": decision}),
+        ));
+    }
+    Ok(())
+}
+
 pub fn export_csv(output: &ReviewExportOutput) -> EntityResult<String> {
     let mut writer = csv::Writer::from_writer(Vec::new());
     for item in &output.items {
@@ -487,6 +1075,7 @@ fn parse_review_csv(path: &Path, bytes: &[u8]) -> EntityResult<ReviewExportOutpu
             right_key: optional_string(row.right_key),
             proposed_action: row.proposed_action,
             decision: row.decision,
+            evidence_signature_id: None,
         });
     }
     let summary = summarize_review_items(&items);
@@ -535,6 +1124,7 @@ fn review_item_for_entity(result_hash: &str, entity: &super::types::SolvedEntity
         right_key: None,
         proposed_action: "accept_aliases".to_string(),
         decision: default_decision(),
+        evidence_signature_id: None,
     }
 }
 
@@ -580,6 +1170,7 @@ fn review_item_for_abstention(
         right_key,
         proposed_action: action.to_string(),
         decision: default_decision(),
+        evidence_signature_id: None,
     }
 }
 
@@ -610,6 +1201,7 @@ fn review_item_for_contradiction(
         right_key: contradiction.right_key.clone(),
         proposed_action: "emit_cannot_link".to_string(),
         decision: default_decision(),
+        evidence_signature_id: None,
     }
 }
 
@@ -1575,6 +2167,89 @@ mod tests {
 
         assert_eq!(output.summary.pending_items, 1);
         assert_eq!(output.writes.pending_cluster_entries, 1);
+    }
+
+    #[test]
+    fn session_review_signature_uses_sorted_types_and_lineage_bands() {
+        let one = SessionSolveReview {
+            left_surface: "left".to_string(),
+            right_surface: "right".to_string(),
+            evidence_types: vec!["name_equivalent".to_string(), "same_slot".to_string()],
+            lineage_count: 3,
+            missing: "second_lineage".to_string(),
+        };
+        let two = SessionSolveReview {
+            evidence_types: vec!["same_slot".to_string(), "name_equivalent".to_string()],
+            lineage_count: 99,
+            ..one.clone()
+        };
+        let different = SessionSolveReview {
+            missing: "second_evidence_type".to_string(),
+            ..two.clone()
+        };
+
+        assert_eq!(
+            session_review_signature(&one),
+            session_review_signature(&two)
+        );
+        assert_ne!(
+            session_review_signature(&two),
+            session_review_signature(&different)
+        );
+        assert_ne!(
+            session_review_signature(&one),
+            session_review_signature(&SessionSolveReview {
+                lineage_count: 2,
+                ..one
+            })
+        );
+    }
+
+    #[test]
+    fn session_review_decision_expansion_preserves_pair_and_override() {
+        let grouped = ReviewItem {
+            review_id: "review:grouped".to_string(),
+            category: "tier_c".to_string(),
+            state: EntityState::AbstainLowEvidence,
+            canonical_id: None,
+            source_row_ids: vec!["left".to_string(), "right".to_string()],
+            observed_names: vec!["left".to_string(), "right".to_string()],
+            anchors: Vec::new(),
+            incumbent_ids: Vec::new(),
+            evidence_scores: Vec::new(),
+            contradiction_reason: None,
+            left_key: Some("left".to_string()),
+            right_key: Some("right".to_string()),
+            proposed_action: "review_tier_c".to_string(),
+            decision: "undecided".to_string(),
+            evidence_signature_id: Some("signature:one".to_string()),
+        };
+        let item = session_review_decision_item(
+            &grouped,
+            &SessionReviewDecisionInput {
+                review_id: None,
+                signature_id: Some("signature:one".to_string()),
+                decision: "same".to_string(),
+                note: "group decision".to_string(),
+            },
+            "signature:one".to_string(),
+        );
+        let override_item = session_review_decision_item(
+            &grouped,
+            &SessionReviewDecisionInput {
+                review_id: Some("review:grouped".to_string()),
+                signature_id: None,
+                decision: "different".to_string(),
+                note: "member override".to_string(),
+            },
+            "signature:one".to_string(),
+        );
+
+        assert_eq!(item.left_surface, "left");
+        assert_eq!(item.right_surface, "right");
+        assert_eq!(item.decision, "same");
+        assert_eq!(override_item.decision, "different");
+        assert_eq!(override_item.note, "member override");
     }
 
     #[allow(dead_code)]

@@ -2744,13 +2744,21 @@ pub struct EntityReviewImportCli {
     /// Review JSON or CSV artifact
     pub review: PathBuf,
 
-    /// Entity registry directory
-    #[arg(long)]
+    /// Entity registry directory for native registry imports
+    #[arg(long, default_value = "")]
     pub registry: PathBuf,
 
     /// Explicit next registry version
-    #[arg(long = "next-version")]
+    #[arg(long = "next-version", default_value = "")]
     pub next_version: String,
+
+    /// Session work directory for returning review decisions as evidence
+    #[arg(long)]
+    pub session: Option<PathBuf>,
+
+    /// Human reviewer name used as the evidence asserter in session mode
+    #[arg(long)]
+    pub reviewer: Option<String>,
 
     /// Audit artifact required for alias/anchor promotion decisions
     #[arg(long)]
