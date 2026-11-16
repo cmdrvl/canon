@@ -413,11 +413,17 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
     let mut graph_records = Vec::new();
     for (pair, facts) in &edge_facts {
         let joining = matches!(tiered_edges.get(pair), Some(EdgeTier::A | EdgeTier::B));
+        let touches_incumbent = [pair.0.as_str(), pair.1.as_str()].iter().any(|surface_id| {
+            nodes
+                .get(*surface_id)
+                .is_some_and(|node| node.incumbent_canonical_id.is_some())
+        });
         let hits = facts
             .hits
             .iter()
             .filter(|hit| {
                 joining
+                    || (touches_incumbent && facts.positive)
                     || DISTINCT_TYPES.contains(&hit.operator_id.as_str())
                     || RELATION_TYPES.contains(&hit.operator_id.as_str())
             })
@@ -885,21 +891,13 @@ fn build_commit_plan(
         let accepted =
             cluster.outcome == "accepted" && matches!(cluster.tier.as_deref(), Some("A" | "B"));
         if !accepted {
-            let reason = if cluster.incumbent_canonical_id.is_some() {
-                "incumbent"
-            } else if cluster.outcome == "contradiction" {
-                "contradiction"
-            } else if cluster.outcome == "standalone" {
-                "standalone"
-            } else if cluster.outcome == "review" || cluster.tier.is_none() {
-                "review"
-            } else {
-                "not_accepted"
-            };
-            skipped.push(SessionCommitSkipped {
-                cluster_id: cluster.cluster_id,
-                reason: reason.to_string(),
-            });
+            let cluster_id = cluster.cluster_id.clone();
+            for reason in commit_skip_reasons(&cluster, &artifact.authoritative_keys) {
+                skipped.push(SessionCommitSkipped {
+                    cluster_id: cluster_id.clone(),
+                    reason,
+                });
+            }
             continue;
         }
         let tier = cluster.tier.clone().unwrap_or_default();
@@ -976,6 +974,42 @@ fn build_commit_plan(
         });
     }
     Ok((entries, skipped))
+}
+
+fn commit_skip_reasons(
+    cluster: &SessionSolveCluster,
+    authoritative_keys: &[String],
+) -> Vec<String> {
+    let mut reasons = Vec::new();
+    if cluster.reason == "key_conflict" {
+        reasons.push("key_conflict".to_string());
+    } else if cluster.reason == "incumbent_conflict"
+        && authoritative_keys.iter().any(|namespace| {
+            let namespace = canonical_key_namespace(namespace);
+            cluster
+                .keys
+                .get(&namespace)
+                .is_some_and(|values| values.len() > 1)
+        })
+    {
+        reasons.push("incumbent_conflict".to_string());
+        reasons.push("key_conflict".to_string());
+    }
+    if reasons.is_empty() {
+        let reason = if cluster.incumbent_canonical_id.is_some() {
+            "incumbent"
+        } else if cluster.outcome == "contradiction" {
+            "contradiction"
+        } else if cluster.outcome == "standalone" {
+            "standalone"
+        } else if cluster.outcome == "review" || cluster.tier.is_none() {
+            "review"
+        } else {
+            "not_accepted"
+        };
+        reasons.push(reason.to_string());
+    }
+    reasons
 }
 
 fn stale_solve_refusal(field: &str, expected: &str, actual: &str) -> Refusal {
@@ -2260,8 +2294,8 @@ mod tests {
     use super::{
         EdgeFacts, EdgeTier, RegistryRow, SessionRules, SessionSolveArtifact, SessionSolveCluster,
         SessionSolveInputs, SessionSolveRegistry, SessionSolveSummary, TIER_A_TYPES, TIER_B_TYPES,
-        build_commit_plan, canonical_key_value, exactly_one_authoritative_value, key_values,
-        tier_for,
+        build_commit_plan, canonical_key_value, commit_skip_reasons,
+        exactly_one_authoritative_value, key_values, tier_for,
     };
     use std::collections::{BTreeMap, BTreeSet};
 
@@ -2450,5 +2484,31 @@ mod tests {
         assert_eq!(skipped.len(), 1);
         assert_eq!(skipped[0].cluster_id, "cluster-r");
         assert_eq!(skipped[0].reason, "review");
+    }
+
+    #[test]
+    fn commit_plan_reports_both_incumbent_and_key_conflicts() {
+        let cluster = SessionSolveCluster {
+            cluster_id: "cluster-conflict".to_string(),
+            outcome: "contradiction".to_string(),
+            tier: None,
+            surfaces: vec![
+                "Medline Borrower, LP".to_string(),
+                "Medline Wrong".to_string(),
+            ],
+            observation_count: 2,
+            keys: BTreeMap::from([(
+                String::from("cik"),
+                vec![String::from("111"), String::from("222")],
+            )]),
+            incumbent_canonical_id: None,
+            accepting_evidence_ids: Vec::new(),
+            reason: "incumbent_conflict".to_string(),
+        };
+
+        assert_eq!(
+            commit_skip_reasons(&cluster, &[String::from("cik")]),
+            vec!["incumbent_conflict", "key_conflict"]
+        );
     }
 }
