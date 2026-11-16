@@ -1205,6 +1205,9 @@ pub enum RegistrySubcommand {
     /// Append one exact alias entry to a self-authored registry
     #[command(name = "add-entry")]
     AddEntry(RegistryAddEntryCli),
+    /// Attach many exact aliases to existing canonical IDs in one versioned write
+    #[command(name = "add-entries")]
+    AddEntries(RegistryAddEntriesCli),
     /// Mint one self-authored canonical ID with one or more starting aliases
     Mint(RegistryMintCli),
     /// Mint many self-authored canonical IDs from a JSONL file in one registry version
@@ -1381,6 +1384,38 @@ pub struct RegistryAddEntryCli {
     /// Exact lookup scope binding, repeatable: DIMENSION=VALUE
     #[arg(long = "scope")]
     pub scope: Vec<String>,
+
+    /// Numeric semver bump to apply; defaults to patch when --next-version is absent
+    #[arg(long, value_enum)]
+    pub bump: Option<RegistryVersionBumpMode>,
+
+    /// Explicit next registry version for non-numeric or calendar versions
+    #[arg(long = "next-version")]
+    pub next_version: Option<String>,
+
+    /// Skip standard registry lint before accepting the write
+    #[arg(long = "no-lint")]
+    pub no_lint: bool,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryPlainJsonEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+#[command(group(
+    ArgGroup::new("version_update")
+        .multiple(false)
+        .args(["bump", "next_version"])
+))]
+pub struct RegistryAddEntriesCli {
+    /// Registry directory to update
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// JSONL file containing canonical_id, alias_file, input, and rule_id objects
+    #[arg(long)]
+    pub from: PathBuf,
 
     /// Numeric semver bump to apply; defaults to patch when --next-version is absent
     #[arg(long, value_enum)]
@@ -1592,6 +1627,8 @@ pub enum EntitySessionSubcommand {
     Solve(EntitySessionSolveCli),
     /// Mint registry entries for accepted session clusters
     Commit(EntitySessionCommitCli),
+    /// Report where an evidence session stands without opening its artifacts
+    Status(EntitySessionStatusCli),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1686,6 +1723,20 @@ pub struct EntitySessionCommitCli {
     /// Registry version component to bump
     #[arg(long, value_enum, conflicts_with = "next_version")]
     pub bump: Option<RegistryVersionBumpMode>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntitySessionStatusCli {
+    /// Session work directory
+    pub session: PathBuf,
+
+    /// Optional rules YAML; when given, status also reports rule drift against the solve
+    #[arg(long)]
+    pub rules: Option<PathBuf>,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]

@@ -54,6 +54,7 @@
       "canon entity session assert <SESSION> <EVIDENCE.jsonl|-> [--emit json|summary]",
       "canon entity session solve <SESSION> --rules <RULES.yaml> [--emit json|summary]",
       "canon entity session commit <SESSION> (--next-version <VER>|--bump patch|minor|major) [--emit json|summary]",
+      "canon entity session status <SESSION> [--rules <RULES.yaml>] [--emit json|summary]",
       "canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY_DIR> --work-dir <DIR>",
       "canon entity index build <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit json|summary]",
       "canon entity block <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit jsonl|summary]",
@@ -7014,6 +7015,80 @@
       "next_command": "canon entity session commit <SESSION> --next-version <VER> --emit json",
       "recovery": {
         "next_command": "Rerun canon entity session solve, then rerun this commit",
+        "refusal_exit_code": 2
+      }
+    },
+    {
+      "name": "entity session status",
+      "usage": "canon entity session status <SESSION> [--rules <RULES.yaml>] [--emit json|summary]",
+      "description": "Report where an evidence session stands in one call: counts by tier from the recorded solve, whether that solve is stale and why, top unresolved surfaces by observation frequency, commit state and the single next command; computed on demand and never stored",
+      "output_mode": "mixed",
+      "output_schema": "canon.entity.session.status.v1",
+      "exit_codes": {
+        "0": {
+          "meaning": "status computed; a session with no solve yet is still exit 0 (solve.present is false)",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / the directory is not an evidence session, or its streams or registry are unreadable",
+          "domain": "error"
+        }
+      },
+      "options": [
+        {
+          "name": "session",
+          "type": "directory_path",
+          "required": true,
+          "position": 0,
+          "description": "Session work directory"
+        },
+        {
+          "name": "rules",
+          "flag": "--rules",
+          "type": "file_path",
+          "description": "Optional rules YAML; only used to detect rule drift against the hash the solve recorded (status never solves)"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json (canon.entity.session.status.v1) or summary"
+        }
+      ],
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads the session publication streams and the bound registry directory only; writes nothing and builds no index",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "entity read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": true,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "next_command": "canon entity session status <SESSION> --emit json",
+      "recovery": {
+        "next_command": "Point at a directory created by canon entity session init",
         "refusal_exit_code": 2
       }
     },

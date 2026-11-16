@@ -256,6 +256,28 @@ fn run_operator_journey(label: &str) -> JourneyRun {
     assert_eq!(session_commit.value["outcome"], "committed");
     assert_eq!(session_commit.value["minted"].as_array().unwrap().len(), 1);
 
+    let session_status = canon_json(
+        &[
+            "entity",
+            "session",
+            "status",
+            path_str(&session_work),
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(session_status.record);
+    assert_eq!(
+        session_status.value["version"],
+        "canon.entity.session.status.v1"
+    );
+    assert_eq!(
+        session_status.value["commit"]["uncommitted_accepted_clusters"],
+        0
+    );
+    assert_eq!(session_status.value["solve"]["stale"], false);
+
     let profile_list = canon_json(&["entity", "profile", "list", "--emit", "json"], 0);
     command_log.push(profile_list.record);
     assert!(
@@ -1569,6 +1591,7 @@ fn classify_entity_leaf(args: &[&str]) -> Option<String> {
         ["entity", "session", "assert", ..] => Some("entity session assert".to_string()),
         ["entity", "session", "solve", ..] => Some("entity session solve".to_string()),
         ["entity", "session", "commit", ..] => Some("entity session commit".to_string()),
+        ["entity", "session", "status", ..] => Some("entity session status".to_string()),
         ["entity", "index", "build", ..] => Some("entity index build".to_string()),
         ["entity", "profile", "list", ..] => Some("entity profile list".to_string()),
         ["entity", "profile", "init", ..] => Some("entity profile init".to_string()),

@@ -777,6 +777,14 @@
       "action": "preserve"
     },
     {
+      "id": "canon entity session status",
+      "family": "entity",
+      "clap_path": "entity session status",
+      "operator_name": "entity session status",
+      "primary_contracts": ["canon.entity.session.status.v1"],
+      "action": "preserve"
+    },
+    {
       "id": "canon entity prepare",
       "family": "entity",
       "clap_path": "entity prepare",
@@ -1336,6 +1344,7 @@
     { "id": "canon.entity.session.solve.receipt.v1", "family": "entity", "action": "preserve" },
     { "id": "canon.entity.session.rules.v1", "family": "entity", "action": "preserve" },
     { "id": "canon.entity.session.commit.v1", "family": "entity", "action": "preserve" },
+    { "id": "canon.entity.session.status.v1", "family": "entity", "action": "preserve" },
     { "id": "canon.entity.session.commit.receipt.v1", "family": "entity", "action": "preserve" },
     { "id": "canon.entity.session.evidence.v1", "family": "entity", "action": "preserve" },
     { "id": "canon.entity.session.evidence.receipt.v1", "family": "entity", "action": "preserve" },

@@ -34,6 +34,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
+mod status;
+pub use status::{
+    SESSION_STATUS_VERSION, SessionStatusOutput, SessionStatusRequest, session_status,
+};
+
 pub const SESSION_SOLVE_VERSION: &str = "canon.entity.session.solve.v1";
 pub const SESSION_SOLVE_STREAM_ID: &str = "entity-session-solve";
 const SESSION_PUBLICATION_STAGE: &str = "session";

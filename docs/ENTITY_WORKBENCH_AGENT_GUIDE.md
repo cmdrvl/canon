@@ -138,6 +138,32 @@ observation, evidence, solve, or registry snapshot is refused as stale before
 any registry write. Repeating the same solve against its committed version is
 an `already_committed` no-op.
 
+## Where does the session stand
+
+One call answers it, without opening any artifact file:
+
+```bash
+canon entity session status work/bdc-session --emit json
+# add --rules rules.yaml to also detect rule drift against the recorded solve
+```
+
+`canon.entity.session.status.v1` reports the session and its registry, the log
+(observations, observation shards, evidence by type), the recorded solve
+(`present`, `stale` with `stale_reasons` of `new_observations`, `new_evidence`,
+`rules_changed` or `registry_changed`, and the tier counts exactly as the solve
+recorded them), the commit state (last version, minted IDs, aliases attached,
+accepted clusters still uncommitted), the 20 `top_unresolved` review pairs and
+standalone surfaces ranked by how often they were observed, and one
+`next_command`: the solve when it is stale, the commit when accepted clusters
+are uncommitted, otherwise `session next`.
+
+A session with no solve is a normal answer (`solve.present: false`, exit 0). A
+directory that is not a session is a refusal (exit 2). Status computes and
+prints; it never writes a file, and the counts restate the solve, not a quality
+measure. Rule drift is only reported when `--rules` names the file, because the
+session does not store the rules path. Rejected rows from a past ingest are not
+persisted, so status does not list them.
+
 ## The loop
 
 ```text
