@@ -1665,6 +1665,8 @@ pub enum EntitySessionSubcommand {
     Commit(EntitySessionCommitCli),
     /// Report where an evidence session stands without opening its artifacts
     Status(EntitySessionStatusCli),
+    /// Explain a session observation, surface, or cluster from the recorded solve
+    Explain(EntitySessionExplainCli),
     /// Draw a deterministic tier sample or score operator labels
     Sample(EntitySessionSampleCli),
     /// Initialize or validate the deterministic session rule table
@@ -1783,6 +1785,23 @@ pub struct EntitySessionSolveCli {
     /// YAML rule table declaring authoritative keys and evidence tiers
     #[arg(long)]
     pub rules: PathBuf,
+
+    /// Extra observation/assertion JSONL to evaluate in an isolated what-if copy
+    #[arg(long = "what-if")]
+    pub what_if: Option<PathBuf>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntitySessionExplainCli {
+    /// Session work directory
+    pub session: PathBuf,
+
+    /// Observation id, exact surface, or cluster:<cluster_id>
+    pub query: String,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]

@@ -246,6 +246,27 @@ measure. Rule drift is only reported when `--rules` names the file, because the
 session does not store the rules path. Rejected rows from a past ingest are not
 persisted, so status does not list them.
 
+## Explain a session result
+
+Use the recorded solve and evidence streams to inspect one observation, exact
+surface, or cluster without opening artifact files:
+
+```bash
+canon entity session explain work/bdc-session r8 --emit json
+canon entity session explain work/bdc-session 'surface:Medline Borrower, LP' --emit summary
+canon entity session explain work/bdc-session 'cluster:<DIGEST>' --emit json
+```
+
+`canon.entity.session.explain.v1` reports the target node, its observations,
+lineages, keys, cluster outcome and tier, every touching evidence edge with its
+asserted-by and basis fields, contradictions, relations, and concrete
+`to_move_up` conditions in rule-table terms. A stale solve is marked
+`stale:true` and does not present its old cluster as current. Use
+`canon entity session solve <SESSION> --rules <RULES.yaml> --what-if <EXTRA.jsonl>`
+to evaluate additional observation/assertion rows in an isolated copy; it
+returns only changed edge states and rejected rows and never changes the source
+session.
+
 ## The loop
 
 ```text

@@ -62,7 +62,7 @@ use crate::cli::{
     EntityProfileSubcommand, EntityPromoteCli, EntityReviewCommand, EntityReviewExportArtifact,
     EntityReviewExportCli, EntityReviewExportEmitMode, EntityReviewGroupBy, EntityReviewImportCli,
     EntityReviewInclude, EntityReviewSubcommand, EntityRunCli, EntitySessionAssertCli,
-    EntitySessionCommitCli, EntitySessionIngestCli, EntitySessionInitCli,
+    EntitySessionCommitCli, EntitySessionExplainCli, EntitySessionIngestCli, EntitySessionInitCli,
     EntitySessionRulesCommand, EntitySessionRulesInitCli, EntitySessionRulesSubcommand,
     EntitySessionRulesValidateCli, EntitySessionSampleCli, EntitySessionSampleEmitMode,
     EntitySessionSolveCli, EntitySessionStatusCli, EntitySessionSubcommand, EntitySolveCli,
@@ -944,6 +944,9 @@ fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
             EntitySessionSubcommand::Solve(solve) => run_entity_session_solve_command(solve),
             EntitySessionSubcommand::Commit(commit) => run_entity_session_commit_command(commit),
             EntitySessionSubcommand::Status(status) => run_entity_session_status_command(status),
+            EntitySessionSubcommand::Explain(explain) => {
+                run_entity_session_explain_command(explain)
+            }
             EntitySessionSubcommand::Sample(sample) => run_entity_session_sample_command(sample),
             EntitySessionSubcommand::Rules(rules) => run_entity_session_rules_command(rules),
         },
@@ -1134,6 +1137,30 @@ fn run_entity_session_assert_command(
 }
 
 fn run_entity_session_solve_command(solve: &EntitySessionSolveCli) -> Result<u8, Box<dyn Error>> {
+    if let Some(extra) = &solve.what_if {
+        let result = entity::session_explain::what_if(&solve.session, &solve.rules, extra);
+        return match result {
+            Ok(output) => {
+                let summary_mode = matches!(solve.emit, EntityEmitMode::Summary);
+                let rendered = if summary_mode {
+                    format!(
+                        "changes={} rejected={}",
+                        output.changes.len(),
+                        output.rejected.len()
+                    )
+                } else {
+                    serde_json::to_string(&output)?
+                };
+                emit_entity_output(&rendered, summary_mode);
+                Ok(u8::from(!output.rejected.is_empty()))
+            }
+            Err(refusal) => emit_entity_refusal(
+                refusal.to_canon_output(),
+                true,
+                matches!(solve.emit, EntityEmitMode::Summary),
+            ),
+        };
+    }
     let result = entity::session::solve(entity::session::SessionSolveRequest {
         session: solve.session.clone(),
         rules: solve.rules.clone(),
@@ -1153,6 +1180,44 @@ fn run_entity_session_solve_command(solve: &EntitySessionSolveCli) -> Result<u8,
             refusal.to_canon_output(),
             true,
             matches!(solve.emit, EntityEmitMode::Summary),
+        ),
+    }
+}
+
+fn run_entity_session_explain_command(
+    explain: &EntitySessionExplainCli,
+) -> Result<u8, Box<dyn Error>> {
+    let result = entity::session_explain::explain(entity::session_explain::SessionExplainRequest {
+        session: explain.session.clone(),
+        query: explain.query.clone(),
+    });
+    match result {
+        Ok(output) => {
+            let summary_mode = matches!(explain.emit, EntityEmitMode::Summary);
+            let rendered = if summary_mode {
+                format!(
+                    "target={} stale={} cluster={} edges={} contradictions={} next={}",
+                    output.target.value,
+                    output.stale,
+                    output
+                        .cluster
+                        .as_ref()
+                        .map(|cluster| cluster.id.as_str())
+                        .unwrap_or("<none>"),
+                    output.edges.len(),
+                    output.contradictions.len(),
+                    output.next_command.as_deref().unwrap_or("none")
+                )
+            } else {
+                serde_json::to_string(&output)?
+            };
+            emit_entity_output(&rendered, summary_mode);
+            Ok(0)
+        }
+        Err(refusal) => emit_entity_refusal(
+            refusal.to_canon_output(),
+            true,
+            matches!(explain.emit, EntityEmitMode::Summary),
         ),
     }
 }
