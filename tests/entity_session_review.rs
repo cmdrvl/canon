@@ -173,7 +173,6 @@ fn tier_c_review_export_group_import_returns_human_evidence_and_rejects_stale() 
         .expect("solve hash")
         .to_string();
 
-    let grouped_path = temp.path().join("grouped-review.json");
     let grouped_output = canon()
         .args([
             "entity",
