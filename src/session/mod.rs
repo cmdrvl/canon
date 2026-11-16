@@ -34,7 +34,7 @@ pub mod status;
 pub const SESSION_MANIFEST_VERSION: &str = "canon.entity.session.v1";
 pub const SESSION_MANIFEST_STREAM_ID: &str = "entity-session-manifest";
 pub const SESSION_INGEST_VERSION: &str = "canon.entity.session.ingest.v1";
-pub(crate) const SESSION_OBSERVATIONS_STREAM_ID: &str = "entity-session-observations";
+pub const SESSION_OBSERVATIONS_STREAM_ID: &str = "entity-session-observations";
 pub const SESSION_ASSERT_VERSION: &str = "canon.entity.session.assert.v1";
 pub const SESSION_EVIDENCE_STREAM_ID: &str = "entity-session-evidence";
 pub const SESSION_COMMIT_VERSION: &str = "canon.entity.session.commit.v1";
