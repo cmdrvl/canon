@@ -1273,7 +1273,12 @@ fn run_entity_session_sample_command(
     match result {
         Ok(output) => {
             let rendered = match sample.emit {
-                EntitySessionSampleEmitMode::Jsonl => output.render_jsonl()?,
+                EntitySessionSampleEmitMode::Jsonl => match output.render_jsonl() {
+                    Ok(rendered) => rendered,
+                    Err(refusal) => {
+                        return emit_entity_refusal(refusal.to_canon_output(), true, false);
+                    }
+                },
                 EntitySessionSampleEmitMode::Json => serde_json::to_string(&serde_json::json!({
                     "header": output.header,
                     "rows": output.rows,

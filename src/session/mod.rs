@@ -34,7 +34,7 @@ pub mod status;
 pub const SESSION_MANIFEST_VERSION: &str = "canon.entity.session.v1";
 pub const SESSION_MANIFEST_STREAM_ID: &str = "entity-session-manifest";
 pub const SESSION_INGEST_VERSION: &str = "canon.entity.session.ingest.v1";
-pub const SESSION_OBSERVATIONS_STREAM_ID: &str = "entity-session-observations";
+pub(crate) const SESSION_OBSERVATIONS_STREAM_ID: &str = "entity-session-observations";
 pub const SESSION_ASSERT_VERSION: &str = "canon.entity.session.assert.v1";
 pub const SESSION_EVIDENCE_STREAM_ID: &str = "entity-session-evidence";
 pub const SESSION_COMMIT_VERSION: &str = "canon.entity.session.commit.v1";
@@ -1431,11 +1431,16 @@ fn build_commit_closure_set(
             })
         })
         .collect::<Vec<_>>();
-    refs.sort_by_key(|value| {
-        value
+    refs.sort_by(|left, right| {
+        let left_key = left
             .get("outcome_ref")
             .and_then(Value::as_str)
-            .unwrap_or_default()
+            .unwrap_or_default();
+        let right_key = right
+            .get("outcome_ref")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        left_key.cmp(right_key)
     });
     Ok(json!({
         "version": crate::entity::session_provenance::SESSION_CLOSURE_SET_VERSION,

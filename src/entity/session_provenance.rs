@@ -234,11 +234,16 @@ pub fn closure_set_value(
             })
         })
         .collect::<Vec<_>>();
-    refs.sort_by_key(|value| {
-        value
+    refs.sort_by(|left, right| {
+        let left_key = left
             .get("outcome_ref")
             .and_then(Value::as_str)
-            .unwrap_or_default()
+            .unwrap_or_default();
+        let right_key = right
+            .get("outcome_ref")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        left_key.cmp(right_key)
     });
     let value = json!({
         "version": SESSION_CLOSURE_SET_VERSION,
