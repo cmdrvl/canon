@@ -6772,8 +6772,15 @@
           "name": "registry",
           "flag": "--registry",
           "type": "directory_path",
-          "required": true,
-          "description": "Registry directory to use or create"
+          "required": false,
+          "description": "Registry directory to use or create (one-kind short form; required unless --registries)"
+        },
+        {
+          "name": "registries",
+          "flag": "--registries",
+          "type": "file_path",
+          "required": false,
+          "description": "Registries map YAML (canon.session.registries.v1): one registry per entity kind"
         },
         {
           "name": "work_dir",
