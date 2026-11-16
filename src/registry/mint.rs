@@ -785,6 +785,20 @@ pub(crate) fn commit_typed_entries(
                 width = scheme_ref.zero_pad
             )
         };
+        if first.canonical_id.is_some()
+            && !mapping_files.iter().any(|file| {
+                file.entries
+                    .iter()
+                    .any(|entry| entry.canonical_id == canonical_id)
+            })
+        {
+            return Err(add_entry::parse_refusal(
+                &request.registry,
+                "Typed registry entry names an unknown existing canonical_id",
+                json!({ "canonical_id": canonical_id, "group_key": group_key }),
+                "Use a canonical_id already present in the registry, then rerun",
+            ));
+        }
         add_entry::validate_default_id_scheme(
             &request.registry,
             &canonical_id,

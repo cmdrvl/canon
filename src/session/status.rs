@@ -196,6 +196,12 @@ struct ReceiptMinted {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+struct ReceiptAttached {
+    #[serde(default)]
+    aliases: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 struct ReceiptSkipped {
     cluster_id: String,
 }
@@ -207,6 +213,8 @@ struct Receipt {
     registry: ReceiptRegistry,
     #[serde(default)]
     minted: Vec<ReceiptMinted>,
+    #[serde(default)]
+    attached: Vec<ReceiptAttached>,
     #[serde(default)]
     skipped: Vec<ReceiptSkipped>,
 }
@@ -240,7 +248,12 @@ pub fn read_commit_head(snapshot: &EntityPublicationSnapshot) -> Result<CommitHe
         solve_hash: receipt.solve_hash,
         registry_version_after: receipt.registry.version_after,
         minted: receipt.minted.len(),
-        aliases_attached: receipt.minted.iter().map(|entry| entry.aliases.len()).sum(),
+        aliases_attached: receipt
+            .minted
+            .iter()
+            .map(|entry| entry.aliases.len())
+            .chain(receipt.attached.iter().map(|entry| entry.aliases.len()))
+            .sum(),
         minted_cluster_ids: receipt
             .minted
             .iter()

@@ -26,6 +26,7 @@ use crate::{
     },
     witness::hash_bytes,
 };
+use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::{
@@ -48,6 +49,7 @@ const TIER_B_TYPES: &[&str] = &["same_slot", "attribute_agreement", "name_equiva
 const RELATION_TYPES: &[&str] = &["related"];
 const DISTINCT_TYPES: &[&str] = &["distinct"];
 const CROSS_ENTITY_TYPE_EVIDENCE_REASON: &str = "cross_entity_type_evidence";
+const INCUMBENT_ATTACH_STEPS: &[&str] = &["casefold", "strip_punctuation", "collapse_whitespace"];
 
 #[derive(Debug, Clone)]
 pub struct SessionSolveRequest {
@@ -182,6 +184,7 @@ struct SessionRules {
     min_distinct_evidence_types: usize,
     min_distinct_lineages: usize,
     mint_when_authoritative_key: bool,
+    incumbent_attach_steps: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -202,6 +205,25 @@ struct Node {
     incumbent_canonical_id: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+struct RegistryEndpoint {
+    entity_type: String,
+    node_key: String,
+    surface: String,
+    canonical_id: String,
+    keys: BTreeMap<String, BTreeSet<String>>,
+    alias_endpoint: bool,
+}
+
+#[derive(Debug, Clone)]
+struct TargetInfo {
+    node_key: String,
+    entity_type: String,
+    surface: String,
+    lineages: BTreeSet<String>,
+    alias_endpoint: bool,
+}
+
 #[derive(Debug, Clone, Default)]
 struct EdgeFacts {
     left: String,
@@ -213,6 +235,7 @@ struct EdgeFacts {
     hits: Vec<EdgeEvidenceHit>,
     relation: BTreeSet<String>,
     positive: bool,
+    variant_of_incumbent: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -258,8 +281,20 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             "Reinitialize the session with --registry, then rerun canon entity session solve",
         )
     })?;
-    let registry_info = load_registry_info(Path::new(&registry_binding.path), &observations)?;
-    let (nodes, observations_by_id) = build_nodes(observations, registry_info.incumbents);
+    let registry_info = load_registry_info(
+        Path::new(&registry_binding.path),
+        &observations,
+        &evidence,
+        &registry_binding.kind,
+    )?;
+    let RegistryInfo {
+        metadata: registry_metadata,
+        incumbents,
+        incumbent_keys,
+        endpoints,
+    } = registry_info;
+    let (nodes, observations_by_id) =
+        build_nodes(observations, incumbents, incumbent_keys, endpoints.clone());
     let mut derived_evidence = Vec::new();
     let mut edge_facts = BTreeMap::new();
     let mut same_node_distinct = BTreeSet::new();
@@ -270,54 +305,63 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         &mut edge_facts,
         &mut derived_evidence,
     )?;
+    derive_registry_key_edges(
+        &observations_by_id,
+        &endpoints,
+        &rules,
+        &mut edge_facts,
+        &mut derived_evidence,
+    )?;
 
     let mut dangling_evidence_count = 0;
     for record in evidence {
-        let Some((left_obs, right_obs)) = pair_target(&record) else {
+        let Some((left_target_id, right_target_id)) = pair_target(&record) else {
             dangling_evidence_count += 1;
             continue;
         };
-        let Some(left_observation) = observations_by_id.get(left_obs) else {
+        let Some(left_target) = resolve_target(left_target_id, &observations_by_id, &endpoints)
+        else {
             dangling_evidence_count += 1;
             continue;
         };
-        let Some(right_observation) = observations_by_id.get(right_obs) else {
+        let Some(right_target) = resolve_target(right_target_id, &observations_by_id, &endpoints)
+        else {
             dangling_evidence_count += 1;
             continue;
         };
-        if left_observation.entity_type != right_observation.entity_type {
+        if left_target.entity_type != right_target.entity_type {
             return Err(solve_refusal(
                 format!(
                     "Evidence {} crosses entity types {} and {}",
-                    record.evidence_id, left_observation.entity_type, right_observation.entity_type
+                    record.evidence_id, left_target.entity_type, right_target.entity_type
                 ),
                 json!({
                     "reason": CROSS_ENTITY_TYPE_EVIDENCE_REASON,
                     "evidence_id": record.evidence_id,
-                    "left_obs_id": left_obs,
-                    "left_entity_type": left_observation.entity_type,
-                    "right_obs_id": right_obs,
-                    "right_entity_type": right_observation.entity_type,
+                    "left_target": left_target_id,
+                    "left_entity_type": left_target.entity_type,
+                    "right_target": right_target_id,
+                    "right_entity_type": right_target.entity_type,
                     "writes_performed": false
                 }),
                 "Split observations by entity_type into separate sessions, then rerun canon entity session solve",
             ));
         }
-        let left_node = left_observation.node_key.clone();
-        let right_node = right_observation.node_key.clone();
+        let left_node = left_target.node_key.clone();
+        let right_node = right_target.node_key.clone();
         let evidence_type = evidence_type(&record);
         if evidence_type.is_empty() {
             continue;
         }
         let mut lineage_ids = BTreeSet::new();
-        lineage_ids.extend(left_observation.lineages.iter().cloned());
-        lineage_ids.extend(right_observation.lineages.iter().cloned());
+        lineage_ids.extend(left_target.lineages.iter().cloned());
+        lineage_ids.extend(right_target.lineages.iter().cloned());
         if let Some(lineage) = record_lineage(&record) {
             lineage_ids.insert(lineage);
         }
         if left_node == right_node {
             if DISTINCT_TYPES.contains(&evidence_type.as_str()) {
-                same_node_distinct.insert(left_node);
+                same_node_distinct.insert(left_node.clone());
             }
             continue;
         }
@@ -332,9 +376,15 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         facts.evidence_types.insert(evidence_type.clone());
         facts.lineages.extend(lineage_ids);
         facts.evidence_ids.insert(record.evidence_id.clone());
-        facts.obs_ids.insert(left_obs.to_string());
-        facts.obs_ids.insert(right_obs.to_string());
+        facts.obs_ids.insert(left_target_id.to_string());
+        facts.obs_ids.insert(right_target_id.to_string());
         facts.positive |= is_positive_type(&evidence_type);
+        facts.variant_of_incumbent |= is_incumbent_variant(
+            &record,
+            &left_target,
+            &right_target,
+            &rules.incumbent_attach_steps,
+        );
         if RELATION_TYPES.contains(&evidence_type.as_str()) {
             facts.relation.insert(relation_value(&record));
         }
@@ -431,10 +481,10 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             || !component.hard_cannot_link_violations.is_empty();
         let (outcome, tier, reason) = if distinct_conflict {
             ("contradiction", None, "distinct".to_string())
-        } else if key_conflict {
-            ("contradiction", None, "key_conflict".to_string())
         } else if incumbent_ids.len() > 1 {
             ("contradiction", None, "incumbent_conflict".to_string())
+        } else if key_conflict {
+            ("contradiction", None, "key_conflict".to_string())
         } else if has_positive {
             if all_tier_a {
                 ("accepted", Some("A".to_string()), "tier_a".to_string())
@@ -610,7 +660,7 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
                 .as_ref()
                 .map(|snapshot| snapshot.generation_id.clone()),
             rules_hash,
-            registry: registry_info.metadata,
+            registry: registry_metadata,
         },
         authoritative_keys: rules.authoritative_keys.clone(),
         summary,
@@ -783,9 +833,8 @@ fn build_commit_plan(
     let mut entries = Vec::new();
     let mut skipped = Vec::new();
     for cluster in clusters {
-        let accepted = cluster.outcome == "accepted"
-            && matches!(cluster.tier.as_deref(), Some("A" | "B"))
-            && cluster.incumbent_canonical_id.is_none();
+        let accepted =
+            cluster.outcome == "accepted" && matches!(cluster.tier.as_deref(), Some("A" | "B"));
         if !accepted {
             let reason = if cluster.incumbent_canonical_id.is_some() {
                 "incumbent"
@@ -810,13 +859,16 @@ fn build_commit_plan(
         let mut aliases = Vec::new();
         let mut seen_inputs = BTreeSet::new();
         for surface in surfaces {
+            if surface.starts_with("registry:") {
+                continue;
+            }
             if seen_inputs.insert(surface.clone()) {
                 aliases.push(SessionCommitAlias {
                     alias_file: "aliases.json".to_string(),
                     input: surface,
                     canonical_type: entity_kind.to_string(),
                     rule_id: format!("SESSION_TIER_{tier}"),
-                    skip_if_existing: false,
+                    skip_if_existing: cluster.incumbent_canonical_id.is_some(),
                 });
             }
         }
@@ -853,6 +905,7 @@ fn build_commit_plan(
             tier,
             outcome_ref: format!("entity-session:{}", cluster.cluster_id),
             closure_hash: hash_bytes(&closure_bytes),
+            canonical_id: cluster.incumbent_canonical_id.clone(),
             aliases,
         });
     }
@@ -889,7 +942,14 @@ fn parse_rules(path: &Path) -> Result<(SessionRules, String), Refusal> {
         .ok_or_else(|| rules_path_refusal(path, "<document>", "rules must be a YAML mapping"))?;
     reject_unknown_keys(
         root,
-        &["version", "keys", "tier_a", "tier_b", "standalone"],
+        &[
+            "version",
+            "keys",
+            "tier_a",
+            "tier_b",
+            "standalone",
+            "incumbent_attach",
+        ],
         path,
         "",
     )?;
@@ -973,6 +1033,27 @@ fn parse_rules(path: &Path) -> Result<(SessionRules, String), Refusal> {
             }
         }
     };
+    let incumbent_attach_steps = match root.get("incumbent_attach") {
+        None => Vec::new(),
+        Some(value) => {
+            let incumbent_attach = value.as_object().ok_or_else(|| {
+                rules_path_refusal(path, "incumbent_attach", "value must be a YAML mapping")
+            })?;
+            reject_unknown_keys(
+                incumbent_attach,
+                &["name_equivalent_steps"],
+                path,
+                "incumbent_attach",
+            )?;
+            string_list(
+                incumbent_attach,
+                "name_equivalent_steps",
+                path,
+                "incumbent_attach.name_equivalent_steps",
+                INCUMBENT_ATTACH_STEPS,
+            )?
+        }
+    };
     let rules = SessionRules {
         version,
         authoritative_keys,
@@ -981,6 +1062,7 @@ fn parse_rules(path: &Path) -> Result<(SessionRules, String), Refusal> {
         min_distinct_evidence_types,
         min_distinct_lineages,
         mint_when_authoritative_key,
+        incumbent_attach_steps,
     };
     let canonical = serde_json::to_vec(&rules).map_err(|error| {
         rules_path_refusal(path, "<document>", format!("cannot hash rules: {error}"))
@@ -1314,11 +1396,15 @@ fn read_evidence(
 struct RegistryInfo {
     metadata: SessionSolveRegistry,
     incumbents: BTreeMap<String, String>,
+    incumbent_keys: BTreeMap<String, BTreeMap<String, BTreeSet<String>>>,
+    endpoints: BTreeMap<String, RegistryEndpoint>,
 }
 
 fn load_registry_info(
     registry_path: &Path,
     observations: &[Observation],
+    evidence: &[crate::entity::evidence_ir::EvidenceRecord],
+    entity_type: &str,
 ) -> Result<RegistryInfo, Refusal> {
     let loaded = registry::load_registry(registry_path).map_err(|error| Refusal {
         code: RefusalCode::EBadRegistry,
@@ -1331,10 +1417,37 @@ fn load_registry_info(
             "Repair the registry, then rerun canon entity session solve".to_string(),
         ),
     })?;
-    let values = observations
+    let endpoint_targets = evidence
+        .iter()
+        .filter_map(pair_target)
+        .flat_map(|(left, right)| [left, right])
+        .filter_map(registry_endpoint_spec)
+        .collect::<BTreeMap<_, _>>();
+    let mut endpoint_targets = endpoint_targets;
+    for observation in observations {
+        for (namespace, value) in &observation.keys {
+            let target = format!("registry:key:{namespace}:{value}");
+            endpoint_targets
+                .entry(target)
+                .or_insert_with(|| RegistryEndpointSpec::Key {
+                    namespace: namespace.clone(),
+                    value: value.clone(),
+                });
+        }
+    }
+    let mut values = observations
         .iter()
         .map(|observation| (observation.surface.clone(), ()))
         .collect::<HashMap<_, _>>();
+    for spec in endpoint_targets.values() {
+        match spec {
+            RegistryEndpointSpec::Alias(surface)
+            | RegistryEndpointSpec::Key { value: surface, .. } => {
+                values.insert(surface.clone(), ());
+            }
+            RegistryEndpointSpec::CanonicalId(_) => {}
+        }
+    }
     let resolved = lookup::resolve_values(
         &loaded,
         &InputValues {
@@ -1354,11 +1467,100 @@ fn load_registry_info(
             "Repair the registry index, then rerun canon entity session solve".to_string(),
         ),
     })?;
-    let incumbents = resolved
+    let mappings = resolved
         .mappings
         .into_iter()
-        .map(|mapping| (mapping.input, mapping.canonical_id))
+        .map(|mapping| (mapping.input.clone(), mapping))
         .collect::<BTreeMap<_, _>>();
+    let incumbents = observations
+        .iter()
+        .filter_map(|observation| {
+            mappings
+                .get(&observation.surface)
+                .map(|mapping| (observation.surface.clone(), mapping.canonical_id.clone()))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut canonical_ids = incumbents.values().cloned().collect::<BTreeSet<_>>();
+    canonical_ids.extend(
+        mappings
+            .values()
+            .map(|mapping| mapping.canonical_id.clone()),
+    );
+    canonical_ids.extend(endpoint_targets.values().filter_map(|spec| match spec {
+        RegistryEndpointSpec::CanonicalId(canonical_id) => Some(canonical_id.clone()),
+        RegistryEndpointSpec::Alias(_) | RegistryEndpointSpec::Key { .. } => None,
+    }));
+    let connection = Connection::open(&loaded.db_path).map_err(|error| {
+        solve_refusal(
+            format!("Unable to open session registry index: {error}"),
+            json!({"registry": registry_path.display().to_string(), "writes_performed": false}),
+            "Repair the registry index, then rerun canon entity session solve",
+        )
+    })?;
+    let mut rows_by_id = BTreeMap::new();
+    for canonical_id in canonical_ids {
+        rows_by_id.insert(
+            canonical_id.clone(),
+            registry_rows_for_id(&connection, registry_path, &canonical_id)?,
+        );
+    }
+    let incumbent_keys = rows_by_id
+        .iter()
+        .map(|(canonical_id, rows)| (canonical_id.clone(), key_values(rows)))
+        .collect::<BTreeMap<_, _>>();
+    let mut endpoints = BTreeMap::new();
+    for (target, spec) in endpoint_targets {
+        let endpoint = match spec {
+            RegistryEndpointSpec::Alias(surface) => mappings.get(&surface).and_then(|mapping| {
+                Some(RegistryEndpoint {
+                    entity_type: entity_type.to_string(),
+                    node_key: format!("{entity_type}\u{0}{surface}"),
+                    surface,
+                    canonical_id: mapping.canonical_id.clone(),
+                    keys: incumbent_keys
+                        .get(&mapping.canonical_id)
+                        .cloned()
+                        .unwrap_or_default(),
+                    alias_endpoint: true,
+                })
+            }),
+            RegistryEndpointSpec::Key { namespace, value } => {
+                let expected_rule = format!("SESSION_KEY_{}", namespace.to_ascii_uppercase());
+                mappings.get(&value).and_then(|mapping| {
+                    (mapping.rule_id == expected_rule).then(|| {
+                        let mut keys = incumbent_keys
+                            .get(&mapping.canonical_id)
+                            .cloned()
+                            .unwrap_or_default();
+                        keys.entry(namespace).or_default().insert(value.clone());
+                        RegistryEndpoint {
+                            entity_type: entity_type.to_string(),
+                            node_key: format!("{entity_type}\u{0}{value}"),
+                            surface: value,
+                            canonical_id: mapping.canonical_id.clone(),
+                            keys,
+                            alias_endpoint: false,
+                        }
+                    })
+                })
+            }
+            RegistryEndpointSpec::CanonicalId(canonical_id) => {
+                rows_by_id.get(&canonical_id).and_then(|rows| {
+                    (!rows.is_empty()).then(|| RegistryEndpoint {
+                        entity_type: entity_type.to_string(),
+                        node_key: format!("registry\u{0}{canonical_id}"),
+                        surface: target.clone(),
+                        canonical_id,
+                        keys: key_values(rows),
+                        alias_endpoint: false,
+                    })
+                })
+            }
+        };
+        if let Some(endpoint) = endpoint {
+            endpoints.insert(target, endpoint);
+        }
+    }
     let snapshot_hash =
         registry_snapshot_hash(registry_path, &loaded.meta.id, &loaded.meta.version)?;
     Ok(RegistryInfo {
@@ -1368,7 +1570,108 @@ fn load_registry_info(
             snapshot_hash,
         },
         incumbents,
+        incumbent_keys,
+        endpoints,
     })
+}
+
+#[derive(Debug, Clone)]
+enum RegistryEndpointSpec {
+    CanonicalId(String),
+    Alias(String),
+    Key { namespace: String, value: String },
+}
+
+fn registry_endpoint_spec(target: &str) -> Option<(String, RegistryEndpointSpec)> {
+    if let Some(alias) = target.strip_prefix("registry:alias:") {
+        return (!alias.is_empty()).then(|| {
+            (
+                target.to_string(),
+                RegistryEndpointSpec::Alias(alias.to_string()),
+            )
+        });
+    }
+    if let Some(key) = target.strip_prefix("registry:key:") {
+        let (namespace, value) = key.split_once(':')?;
+        if namespace.is_empty() || value.is_empty() {
+            return None;
+        }
+        return Some((
+            target.to_string(),
+            RegistryEndpointSpec::Key {
+                namespace: namespace.to_string(),
+                value: value.to_string(),
+            },
+        ));
+    }
+    target
+        .strip_prefix("registry:")
+        .filter(|canonical_id| !canonical_id.is_empty())
+        .map(|canonical_id| {
+            (
+                target.to_string(),
+                RegistryEndpointSpec::CanonicalId(canonical_id.to_string()),
+            )
+        })
+}
+
+#[derive(Debug, Clone)]
+struct RegistryRow {
+    rule_id: String,
+    input: String,
+}
+
+fn registry_rows_for_id(
+    connection: &Connection,
+    registry_path: &Path,
+    canonical_id: &str,
+) -> Result<Vec<RegistryRow>, Refusal> {
+    let mut statement = connection
+        .prepare(
+            "SELECT input, rule_id FROM entries WHERE canonical_id = ?1 ORDER BY source_file, entry_order",
+        )
+        .map_err(|error| {
+            solve_refusal(
+                format!("Unable to query registry entries for {canonical_id}: {error}"),
+                json!({"registry": registry_path.display().to_string(), "canonical_id": canonical_id, "writes_performed": false}),
+                "Repair the registry index, then rerun canon entity session solve",
+            )
+        })?;
+    statement
+        .query_map(params![canonical_id], |row| {
+            Ok(RegistryRow {
+                input: row.get(0)?,
+                rule_id: row.get(1)?,
+            })
+        })
+        .map_err(|error| {
+            solve_refusal(
+                format!("Unable to read registry entries for {canonical_id}: {error}"),
+                json!({"registry": registry_path.display().to_string(), "canonical_id": canonical_id, "writes_performed": false}),
+                "Repair the registry index, then rerun canon entity session solve",
+            )
+        })?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| {
+            solve_refusal(
+                format!("Unable to decode registry entries for {canonical_id}: {error}"),
+                json!({"registry": registry_path.display().to_string(), "canonical_id": canonical_id, "writes_performed": false}),
+                "Repair the registry index, then rerun canon entity session solve",
+            )
+        })
+}
+
+fn key_values(rows: &[RegistryRow]) -> BTreeMap<String, BTreeSet<String>> {
+    let mut keys = BTreeMap::new();
+    for row in rows {
+        let Some(namespace) = row.rule_id.strip_prefix("SESSION_KEY_") else {
+            continue;
+        };
+        keys.entry(namespace.to_ascii_lowercase())
+            .or_insert_with(BTreeSet::new)
+            .insert(row.input.clone());
+    }
+    keys
 }
 
 fn registry_snapshot_hash(path: &Path, id: &str, version: &str) -> Result<String, Refusal> {
@@ -1454,18 +1757,24 @@ fn collect_registry_files(
 fn build_nodes(
     observations: Vec<Observation>,
     incumbents: BTreeMap<String, String>,
+    incumbent_keys: BTreeMap<String, BTreeMap<String, BTreeSet<String>>>,
+    endpoints: BTreeMap<String, RegistryEndpoint>,
 ) -> (BTreeMap<String, Node>, BTreeMap<String, Observation>) {
     let mut nodes = BTreeMap::new();
     let mut by_id = BTreeMap::new();
     for observation in observations {
+        let incumbent_canonical_id = incumbents.get(&observation.surface).cloned();
         let node = nodes
             .entry(observation.node_key.clone())
             .or_insert_with(|| Node {
                 surface: observation.surface.clone(),
                 observation_ids: BTreeSet::new(),
                 keys: BTreeMap::new(),
-                incumbent_canonical_id: incumbents.get(&observation.surface).cloned(),
+                incumbent_canonical_id: incumbent_canonical_id.clone(),
             });
+        if node.incumbent_canonical_id.is_none() {
+            node.incumbent_canonical_id = incumbent_canonical_id.clone();
+        }
         node.observation_ids.insert(observation.obs_id.clone());
         for (key, value) in &observation.keys {
             node.keys
@@ -1473,9 +1782,40 @@ fn build_nodes(
                 .or_default()
                 .insert(value.clone());
         }
+        if let Some(canonical_id) = incumbent_canonical_id
+            && let Some(existing_keys) = incumbent_keys.get(&canonical_id)
+        {
+            merge_node_keys(&mut node.keys, existing_keys);
+        }
         by_id.insert(observation.obs_id.clone(), observation);
     }
+    for endpoint in endpoints.values() {
+        let node = nodes
+            .entry(endpoint.node_key.clone())
+            .or_insert_with(|| Node {
+                surface: endpoint.surface.clone(),
+                observation_ids: BTreeSet::new(),
+                keys: BTreeMap::new(),
+                incumbent_canonical_id: Some(endpoint.canonical_id.clone()),
+            });
+        if node.incumbent_canonical_id.is_none() {
+            node.incumbent_canonical_id = Some(endpoint.canonical_id.clone());
+        }
+        merge_node_keys(&mut node.keys, &endpoint.keys);
+    }
     (nodes, by_id)
+}
+
+fn merge_node_keys(
+    destination: &mut BTreeMap<String, BTreeSet<String>>,
+    source: &BTreeMap<String, BTreeSet<String>>,
+) {
+    for (namespace, values) in source {
+        destination
+            .entry(namespace.clone())
+            .or_default()
+            .extend(values.iter().cloned());
+    }
 }
 
 fn derive_same_key_edges(
@@ -1504,7 +1844,8 @@ fn derive_same_key_edges(
                     continue;
                 }
                 let (left, right) = ordered_pair(&anchor.node_key, &member.node_key);
-                let record = derived_same_key_record(anchor, member, namespace, &value)?;
+                let record =
+                    derived_same_key_record(&anchor.obs_id, &member.obs_id, namespace, &value)?;
                 let evidence_id = record.evidence_id.clone();
                 let facts = edge_facts
                     .entry((left.clone(), right.clone()))
@@ -1528,9 +1869,59 @@ fn derive_same_key_edges(
     Ok(())
 }
 
+fn derive_registry_key_edges(
+    observations: &BTreeMap<String, Observation>,
+    endpoints: &BTreeMap<String, RegistryEndpoint>,
+    rules: &SessionRules,
+    edge_facts: &mut BTreeMap<(String, String), EdgeFacts>,
+    derived_evidence: &mut Vec<crate::entity::evidence_ir::EvidenceRecord>,
+) -> Result<(), Refusal> {
+    for (target, endpoint) in endpoints {
+        let Some(key_spec) = target.strip_prefix("registry:key:") else {
+            continue;
+        };
+        let Some((namespace, value)) = key_spec.split_once(':') else {
+            continue;
+        };
+        if !rules.authoritative_keys.iter().any(|key| key == namespace) {
+            continue;
+        }
+        for observation in observations.values().filter(|observation| {
+            observation.entity_type.as_str() == endpoint.entity_type.as_str()
+                && observation
+                    .keys
+                    .get(namespace)
+                    .is_some_and(|key| key == value)
+        }) {
+            if observation.node_key == endpoint.node_key {
+                continue;
+            }
+            let (left, right) = ordered_pair(&observation.node_key, &endpoint.node_key);
+            let record = derived_same_key_record(&observation.obs_id, target, namespace, value)?;
+            let evidence_id = record.evidence_id.clone();
+            let facts = edge_facts
+                .entry((left.clone(), right.clone()))
+                .or_insert_with(|| EdgeFacts {
+                    left,
+                    right,
+                    ..EdgeFacts::default()
+                });
+            facts.evidence_types.insert("same_key".to_string());
+            facts.lineages.extend(observation.lineages.iter().cloned());
+            facts.evidence_ids.insert(evidence_id);
+            facts.obs_ids.insert(observation.obs_id.clone());
+            facts.obs_ids.insert(target.clone());
+            facts.positive = true;
+            facts.hits.push(hit_for_type("same_key", &record));
+            derived_evidence.push(record);
+        }
+    }
+    Ok(())
+}
+
 fn derived_same_key_record(
-    left: &Observation,
-    right: &Observation,
+    left_id: &str,
+    right_id: &str,
     namespace: &str,
     value: &str,
 ) -> Result<crate::entity::evidence_ir::EvidenceRecord, Refusal> {
@@ -1544,8 +1935,8 @@ fn derived_same_key_record(
         evidence_id: String::new(),
         kind: EvidenceKind::PairSupport,
         target: EvidenceTarget::Pair {
-            left_id: left.obs_id.clone(),
-            right_id: right.obs_id.clone(),
+            left_id: left_id.to_string(),
+            right_id: right_id.to_string(),
         },
         operator: EvidenceOperatorRef {
             namespace: "session".to_string(),
@@ -1588,6 +1979,84 @@ fn pair_target(record: &crate::entity::evidence_ir::EvidenceRecord) -> Option<(&
         }
         _ => None,
     }
+}
+
+fn resolve_target(
+    target: &str,
+    observations: &BTreeMap<String, Observation>,
+    endpoints: &BTreeMap<String, RegistryEndpoint>,
+) -> Option<TargetInfo> {
+    if let Some(observation) = observations.get(target) {
+        return Some(TargetInfo {
+            node_key: observation.node_key.clone(),
+            entity_type: observation.entity_type.clone(),
+            surface: observation.surface.clone(),
+            lineages: observation.lineages.clone(),
+            alias_endpoint: false,
+        });
+    }
+    endpoints.get(target).map(|endpoint| TargetInfo {
+        node_key: endpoint.node_key.clone(),
+        entity_type: endpoint.entity_type.clone(),
+        surface: endpoint.surface.clone(),
+        lineages: BTreeSet::new(),
+        alias_endpoint: endpoint.alias_endpoint,
+    })
+}
+
+fn is_incumbent_variant(
+    record: &crate::entity::evidence_ir::EvidenceRecord,
+    left: &TargetInfo,
+    right: &TargetInfo,
+    steps: &[String],
+) -> bool {
+    if record.operator.operator_id != "name_equivalent"
+        || steps.is_empty()
+        || left.alias_endpoint == right.alias_endpoint
+    {
+        return false;
+    }
+    let Some(left_value) = basis_string(record, "left_value") else {
+        return false;
+    };
+    let Some(right_value) = basis_string(record, "right_value") else {
+        return false;
+    };
+    normalize_name(left_value, steps) == normalize_name(right_value, steps)
+        && normalize_name(&left.surface, steps) == normalize_name(&right.surface, steps)
+}
+
+fn basis_string<'a>(
+    record: &'a crate::entity::evidence_ir::EvidenceRecord,
+    key: &str,
+) -> Option<&'a str> {
+    record.extensions.iter().find_map(|extension| {
+        let crate::entity::evidence_ir::EvidenceExtensionValue::Object(basis) =
+            extension.payload.get("basis")?
+        else {
+            return None;
+        };
+        match basis.get(key)? {
+            crate::entity::evidence_ir::EvidenceExtensionValue::String(value) => {
+                Some(value.as_str())
+            }
+            _ => None,
+        }
+    })
+}
+
+fn normalize_name(value: &str, steps: &[String]) -> String {
+    steps
+        .iter()
+        .fold(value.to_string(), |value, step| match step.as_str() {
+            "casefold" => value.to_lowercase(),
+            "strip_punctuation" => value
+                .chars()
+                .filter(|character| character.is_alphanumeric() || character.is_whitespace())
+                .collect(),
+            "collapse_whitespace" => value.split_whitespace().collect::<Vec<_>>().join(" "),
+            _ => value,
+        })
 }
 
 fn evidence_type(record: &crate::entity::evidence_ir::EvidenceRecord) -> String {
@@ -1669,6 +2138,9 @@ fn tier_for(facts: &EdgeFacts, rules: &SessionRules) -> Option<EdgeTier> {
             .any(|kind| is_positive_type(kind))
     {
         return None;
+    }
+    if facts.variant_of_incumbent {
+        return Some(EdgeTier::A);
     }
     if facts
         .evidence_types
@@ -1808,6 +2280,7 @@ mod tests {
             min_distinct_evidence_types: 2,
             min_distinct_lineages: 2,
             mint_when_authoritative_key: true,
+            incumbent_attach_steps: Vec::new(),
         }
     }
 

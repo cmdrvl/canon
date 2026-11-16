@@ -117,6 +117,8 @@ tier_b:
   min_distinct_lineages: 2
 standalone:
   mint_when_authoritative_key: true
+incumbent_attach:
+  name_equivalent_steps: [casefold, strip_punctuation, collapse_whitespace]
 ```
 
 ## Commit accepted session clusters
@@ -137,6 +139,30 @@ Every minted row carries a stable `outcome_ref` and `closure_hash`. A changed
 observation, evidence, solve, or registry snapshot is refused as stale before
 any registry write. Repeating the same solve against its committed version is
 an `already_committed` no-op.
+
+To accrete into an existing registry, initialize the next session with the
+same `--registry` directory rather than seeding a second copy:
+
+```bash
+canon entity session init --goal "day two aliases" \
+  --registry registries/organisations/ --work-dir work/day-two \
+  --entity-kind organisation
+canon entity session solve work/day-two --rules rules.yaml
+canon entity session commit work/day-two --bump patch --emit json
+```
+
+An accepted cluster with one incumbent ID attaches only new exact surfaces to
+that ID and reports them under `attached[]`; it does not mint a duplicate.
+Registry aliases can also be attached in a separate atomic JSONL batch:
+
+```bash
+canon registry add-entries --registry registries/organisations/ \
+  --from aliases.jsonl --bump patch --emit json
+```
+
+Each `aliases.jsonl` line has `canonical_id`, `alias_file`, `input`, and
+`rule_id`. Unknown IDs and aliases owned by another ID refuse the whole batch;
+aliases already owned by the requested ID are no-op skips.
 
 ## Where does the session stand
 
@@ -364,6 +390,21 @@ operator-accepted fact, so it goes through the registry maintenance commands:
 atomic: any refusal (a duplicate input inside the batch or already in the
 registry, a bad alias file, a lint error) leaves the registry byte-identical.
 `--emit plain` prints one new ID per line.
+
+For a later cut whose aliases belong to IDs already in the registry, use
+`registry add-entries` instead of minting a second ID:
+
+```jsonl
+{"canonical_id":"ORG-000012","alias_file":"aliases.json","input":"Acme Holdings Ltd.","rule_id":"SESSION_TIER_B"}
+```
+
+```bash
+canon registry add-entries --registry REG --from attach.jsonl --bump patch
+```
+
+The batch infers the incumbent canonical type, attaches all new aliases in one
+versioned write, skips aliases already owned by that ID, and refuses unknown
+IDs or cross-incumbent collisions without partial writes.
 
 ## Recording lookup misses for the next cut
 

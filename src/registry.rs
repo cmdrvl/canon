@@ -36,9 +36,10 @@ mod provider;
 pub mod transaction;
 
 pub use add_entry::{
+    RegistryAddEntriesItem, RegistryAddEntriesOutput, RegistryAddEntriesRequest,
     RegistryAddEntryAliasEntry, RegistryAddEntryOutput, RegistryAddEntryPlan,
-    RegistryAddEntryRequest, RegistryVersionBump, add_entry, add_entry_with_scope, plan_add_entry,
-    plan_add_entry_with_scope,
+    RegistryAddEntryRequest, RegistryVersionBump, add_entries, add_entry, add_entry_with_scope,
+    plan_add_entry, plan_add_entry_with_scope, read_add_entries,
 };
 pub use id_scheme::{
     RegistryDefaultIdSchemeOutput, RegistryDefaultIdSchemeRequest, set_default_id_scheme,

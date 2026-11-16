@@ -64,10 +64,10 @@ use crate::cli::{
     EntityReviewInclude, EntityReviewSubcommand, EntityRunCli, EntitySessionAssertCli,
     EntitySessionCommitCli, EntitySessionIngestCli, EntitySessionInitCli, EntitySessionSolveCli,
     EntitySessionStatusCli, EntitySessionSubcommand, EntitySolveCli, EntityStreamEmitMode,
-    EntitySubcommand, PackageCli, PackagePackCli, PackageSubcommand, RegistryAddEntryCli,
-    RegistryAuditCli, RegistryBuildCli, RegistryDefaultIdSchemeCli, RegistryDiffCli,
-    RegistryEmitMode, RegistryExportCli, RegistryExportFormatCli, RegistryInitCli, RegistryLintCli,
-    RegistryLintProfile, RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli,
+    EntitySubcommand, PackageCli, PackagePackCli, PackageSubcommand, RegistryAddEntriesCli,
+    RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli, RegistryDefaultIdSchemeCli,
+    RegistryDiffCli, RegistryEmitMode, RegistryExportCli, RegistryExportFormatCli, RegistryInitCli,
+    RegistryLintCli, RegistryLintProfile, RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli,
     RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand,
     RegistryVersionBumpMode, StrategyAuditCli, StrategyCommand, StrategyDeprecateCli,
     StrategyDiffCli, StrategyExplainCli, StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli,
@@ -197,6 +197,7 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
             RegistrySubcommand::Export(export) => run_registry_export(export),
             RegistrySubcommand::NextId(next_id) => run_registry_next_id(next_id),
             RegistrySubcommand::AddEntry(add_entry) => run_registry_add_entry(add_entry),
+            RegistrySubcommand::AddEntries(add_entries) => run_registry_add_entries(add_entries),
             RegistrySubcommand::Mint(mint) => run_registry_mint(mint),
             RegistrySubcommand::MintBatch(batch) => run_registry_mint_batch(batch),
             RegistrySubcommand::DefaultIdScheme(id_scheme) => {
@@ -4318,6 +4319,38 @@ fn run_registry_add_entry(add_entry: &RegistryAddEntryCli) -> Result<u8, Box<dyn
         Err(refusal) => {
             let output = refusal.to_canon_output();
             match add_entry.emit {
+                RegistryPlainJsonEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryPlainJsonEmitMode::Plain => {
+                    eprintln!("{}", serde_json::to_string(&output)?)
+                }
+            }
+            Ok(2)
+        }
+    }
+}
+
+fn run_registry_add_entries(add_entries: &RegistryAddEntriesCli) -> Result<u8, Box<dyn Error>> {
+    let result =
+        registry::read_add_entries(&add_entries.registry, &add_entries.from).and_then(|items| {
+            registry::add_entries(registry::RegistryAddEntriesRequest {
+                registry: add_entries.registry.clone(),
+                items,
+                bump: add_entries.bump.map(registry_version_bump),
+                next_version: add_entries.next_version.clone(),
+                no_lint: add_entries.no_lint,
+            })
+        });
+    match result {
+        Ok(output) => {
+            match add_entries.emit {
+                RegistryPlainJsonEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryPlainJsonEmitMode::Plain => println!("{}", output.render_plain()),
+            }
+            Ok(0)
+        }
+        Err(refusal) => {
+            let output = refusal.to_canon_output();
+            match add_entries.emit {
                 RegistryPlainJsonEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
                 RegistryPlainJsonEmitMode::Plain => {
                     eprintln!("{}", serde_json::to_string(&output)?)

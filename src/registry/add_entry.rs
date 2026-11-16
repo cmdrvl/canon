@@ -115,6 +115,48 @@ impl RegistryAddEntryOutput {
     }
 }
 
+/// One existing canonical ID and one exact alias to attach to it.  The JSONL
+/// form deliberately omits `canonical_type`: it is read from the incumbent
+/// registry entry so a batch cannot change an entity's kind while accreting.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RegistryAddEntriesItem {
+    pub canonical_id: String,
+    pub alias_file: String,
+    pub input: String,
+    pub rule_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryAddEntriesRequest {
+    pub registry: PathBuf,
+    pub items: Vec<RegistryAddEntriesItem>,
+    pub bump: Option<RegistryVersionBump>,
+    pub next_version: Option<String>,
+    pub no_lint: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RegistryAddEntriesOutput {
+    pub version: String,
+    pub registry: RegistryAddEntryRegistry,
+    pub attached: Vec<RegistryAddEntryAliasEntry>,
+    pub skipped: Vec<String>,
+    pub touched_files: Vec<String>,
+    pub lint: RegistryAddEntryLintSummary,
+    pub warnings: Vec<String>,
+}
+
+impl RegistryAddEntriesOutput {
+    pub fn render_plain(&self) -> String {
+        self.attached
+            .iter()
+            .map(|entry| format!("{} -> {}", entry.input, entry.canonical_id))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RegistryAddEntryPlan {
     pub registry_path: PathBuf,
@@ -1021,6 +1063,162 @@ fn stale_write_plan_refusal(
     )
 }
 
+/// Parse one JSON object per line for `registry add-entries`. Parsing all
+/// lines happens before the typed writer is called, so a malformed later line
+/// cannot leave an earlier alias on disk.
+pub fn read_add_entries(
+    registry: &Path,
+    path: &Path,
+) -> Result<Vec<RegistryAddEntriesItem>, Refusal> {
+    let text = fs::read_to_string(path).map_err(|error| io_refusal(path, error))?;
+    let mut items = Vec::new();
+    for (line_index, line) in text.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let item = serde_json::from_str::<RegistryAddEntriesItem>(line).map_err(|error| {
+            parse_refusal(
+                registry,
+                "Invalid add-entries line; expected {\"canonical_id\": ..., \"alias_file\": ..., \"input\": ..., \"rule_id\": ...}",
+                json!({ "line": line_index + 1, "error": error.to_string() }),
+                "Fix the add-entries JSONL file, then rerun; nothing was written",
+            )
+        })?;
+        items.push(item);
+    }
+    Ok(items)
+}
+
+/// Attach a batch of exact aliases to incumbent canonical IDs in one planned
+/// registry write. Existing aliases of the same ID are idempotent no-ops;
+/// an alias already owned by another ID refuses the whole batch.
+pub fn add_entries(
+    request: RegistryAddEntriesRequest,
+) -> Result<RegistryAddEntriesOutput, Refusal> {
+    if request.items.is_empty() {
+        return Err(parse_refusal(
+            &request.registry,
+            "canon registry add-entries requires at least one JSONL item",
+            json!({}),
+            "Add one canonical_id/alias_file/input/rule_id object per line, then rerun",
+        ));
+    }
+
+    let (registry_json, _, mapping_files) =
+        load_registry_definition(&request.registry).map_err(|error| {
+            Refusal::bad_registry(&request.registry.display().to_string(), &error.to_string())
+        })?;
+    let mut seen_inputs = BTreeSet::new();
+    let mut typed_entries = Vec::with_capacity(request.items.len());
+    for item in request.items {
+        let canonical_id = validate_trimmed_non_empty(
+            &request.registry,
+            "canonical_id",
+            &item.canonical_id,
+            false,
+            "Use a non-empty canonical_id",
+        )?;
+        if !mapping_files.iter().any(|file| {
+            file.entries
+                .iter()
+                .any(|entry| entry.canonical_id == canonical_id)
+        }) {
+            return Err(parse_refusal(
+                &request.registry,
+                "Unknown canonical_id in add-entries batch",
+                json!({ "canonical_id": canonical_id, "writes_performed": false }),
+                "Use a canonical_id already present in the registry, then rerun",
+            ));
+        }
+        let canonical_type =
+            resolve_canonical_type(&request.registry, &canonical_id, None, &mapping_files)?;
+        let alias_path = validate_alias_file(&request.registry, &item.alias_file)?;
+        let alias_file = alias_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(item.alias_file.as_str())
+            .to_string();
+        let input = validate_trimmed_non_empty(
+            &request.registry,
+            "input",
+            &item.input,
+            true,
+            "Use an ASCII-trimmed input",
+        )?;
+        if !seen_inputs.insert(input.clone()) {
+            return Err(parse_refusal(
+                &request.registry,
+                "Duplicate input inside add-entries batch",
+                json!({ "input": input, "writes_performed": false }),
+                "Remove the duplicate input, then rerun; nothing was written",
+            ));
+        }
+        if let Some(existing) = mapping_files
+            .iter()
+            .flat_map(|file| file.entries.iter())
+            .find(|entry| entry.input == input)
+            && existing.canonical_id != canonical_id
+        {
+            return Err(parse_refusal(
+                &request.registry,
+                "Input alias already belongs to a different canonical_id",
+                json!({
+                    "input": input,
+                    "requested_canonical_id": canonical_id,
+                    "existing_canonical_id": existing.canonical_id,
+                    "writes_performed": false,
+                }),
+                "Choose an unowned input or resolve the incumbent conflict before rerunning",
+            ));
+        }
+        let rule_id = validate_trimmed_non_empty(
+            &request.registry,
+            "rule_id",
+            &item.rule_id,
+            false,
+            "Use a non-empty rule_id",
+        )?;
+        typed_entries.push(super::mint::RegistryTypedAlias {
+            alias_file,
+            input,
+            canonical_id: Some(canonical_id),
+            new_id_slot: None,
+            canonical_type,
+            rule_id,
+            skip_if_existing: true,
+        });
+    }
+
+    let typed = super::mint::commit_typed_entries(super::mint::RegistryTypedWriteRequest {
+        registry: request.registry,
+        prefix: None,
+        entries: typed_entries,
+        bump: request.bump,
+        next_version: request.next_version,
+        no_lint: request.no_lint,
+        expected_version: Some(registry_json.version),
+    })?;
+    let attached = typed
+        .minted
+        .iter()
+        .flat_map(|entry| entry.aliases.iter().cloned())
+        .collect::<Vec<_>>();
+    let skipped = typed
+        .skipped
+        .into_iter()
+        .map(|entry| format!("{}: {}", entry.input, entry.reason))
+        .collect::<Vec<_>>();
+    Ok(RegistryAddEntriesOutput {
+        version: "canon_registry_add_entries.v0".to_string(),
+        registry: typed.registry,
+        attached,
+        skipped,
+        touched_files: typed.touched_files,
+        lint: typed.lint,
+        warnings: typed.warnings,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1098,6 +1296,65 @@ mod tests {
         let registry_json = read_json(&registry.path().join("registry.json"));
         assert_eq!(registry_json["version"], "1.0.1");
         assert_eq!(registry_json["entry_count"], 1);
+    }
+
+    #[test]
+    fn add_entries_groups_incumbent_aliases_and_rejects_unknown_ids_before_write() {
+        let registry = make_registry();
+        add_entry(add_entry_request(registry.path(), "PPL-001", "Alpha"))
+            .expect("seed incumbent through registry writer");
+        let output = add_entries(RegistryAddEntriesRequest {
+            registry: registry.path().to_path_buf(),
+            items: vec![
+                RegistryAddEntriesItem {
+                    canonical_id: "PPL-001".to_string(),
+                    alias_file: "aliases.json".to_string(),
+                    input: "Alpha Variant".to_string(),
+                    rule_id: "SESSION_TIER_A".to_string(),
+                },
+                RegistryAddEntriesItem {
+                    canonical_id: "PPL-001".to_string(),
+                    alias_file: "aliases.json".to_string(),
+                    input: "Alpha".to_string(),
+                    rule_id: "SESSION_TIER_A".to_string(),
+                },
+            ],
+            bump: None,
+            next_version: None,
+            no_lint: true,
+        })
+        .expect("attach incumbent aliases");
+        assert_eq!(output.attached.len(), 1);
+        assert_eq!(output.skipped, vec!["Alpha: already_present"]);
+        assert_eq!(output.registry.version_after, "1.0.2");
+        assert_eq!(
+            read_json(&registry.path().join("registry.json"))["entry_count"],
+            2
+        );
+
+        let before = read_json(&registry.path().join("registry.json"));
+        let refusal = add_entries(RegistryAddEntriesRequest {
+            registry: registry.path().to_path_buf(),
+            items: vec![RegistryAddEntriesItem {
+                canonical_id: "PPL-999".to_string(),
+                alias_file: "aliases.json".to_string(),
+                input: "Should Not Write".to_string(),
+                rule_id: "SESSION_TIER_A".to_string(),
+            }],
+            bump: None,
+            next_version: None,
+            no_lint: true,
+        })
+        .expect_err("unknown incumbent id must refuse");
+        assert_eq!(refusal.code, RefusalCode::EParse);
+        assert_eq!(read_json(&registry.path().join("registry.json")), before);
+        assert!(
+            !read_json(&registry.path().join("aliases.json"))
+                .as_array()
+                .expect("aliases")
+                .iter()
+                .any(|entry| entry["input"] == "Should Not Write")
+        );
     }
 
     #[test]

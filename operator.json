@@ -37,6 +37,7 @@
       "canon registry export --format dbt-seed|search-index --registry <DIR> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--emit json|summary]",
       "canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]",
       "canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
+      "canon registry add-entries --registry <DIR> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
       "canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--create-alias-file] [--no-lint] [--emit json|plain]",
       "canon registry mint-batch --registry <DIR> [--prefix <PREFIX>] --canonical-type <TYPE> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
       "canon registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict] [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]",
@@ -4433,6 +4434,99 @@
       "safety": {
         "owned_temp_fixtures_only": true,
         "notes": "mutates an explicitly supplied registry root with version movement",
+        "mutation_class": "RegistryMutation",
+        "network_class": "Offline",
+        "concurrency_class": "ExclusiveRegistryMutation",
+        "platform_classes": [
+          "PortablePathUtf8",
+          "SameFilesystemAtomicReplace"
+        ],
+        "declaration_command": "registry mutation"
+      },
+      "next_command": "canon registry lint <DIR> --emit json",
+      "recovery": {
+        "next_command": "canon registry lint <DIR> --emit json",
+        "refusal_exit_code": 2
+      }
+    },
+    {
+      "name": "registry add-entries",
+      "usage": "canon registry add-entries --registry <DIR> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
+      "description": "Attach a batch of exact aliases to existing canonical IDs in one atomic registry version",
+      "output_mode": "mixed",
+      "output_schema": "canon_registry_add_entries.v0",
+      "status": "implemented",
+      "read_only": false,
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": true,
+        "loads_sqlite": true,
+        "writes_registry_files": true,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false,
+        "appends_witness_ledger": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "aliases attached or already attached to incumbent IDs",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI error; the batch is unchanged",
+          "domain": "error"
+        }
+      },
+      "options": [
+        {
+          "name": "registry",
+          "flag": "--registry",
+          "type": "directory_path",
+          "required": true,
+          "description": "Registry directory to update"
+        },
+        {
+          "name": "from",
+          "flag": "--from",
+          "type": "file_path",
+          "required": true,
+          "description": "JSONL file with canonical_id, alias_file, input, and rule_id objects"
+        },
+        {
+          "name": "bump",
+          "flag": "--bump",
+          "type": "string",
+          "default": "patch",
+          "description": "Numeric semver bump: patch, minor, or major; mutually exclusive with --next-version"
+        },
+        {
+          "name": "next_version",
+          "flag": "--next-version",
+          "type": "string",
+          "description": "Explicit next registry version for non-numeric or calendar versions"
+        },
+        {
+          "name": "no_lint",
+          "flag": "--no-lint",
+          "type": "flag",
+          "description": "Skip the standard registry lint gate after planning the write"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json (canon_registry_add_entries.v0) or plain"
+        }
+      ],
+      "alternate_output_schemas": [
+        "text/plain"
+      ],
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "mutates only the explicitly supplied local registry root; one linted transaction covers the batch",
         "mutation_class": "RegistryMutation",
         "network_class": "Offline",
         "concurrency_class": "ExclusiveRegistryMutation",

@@ -139,6 +139,7 @@ canon registry providers [--emit json|summary]
 canon registry provider-schema <PROVIDER> [--emit json|summary]
 canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]
 canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
+canon registry add-entries --registry <DIR> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
 canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--create-alias-file] [--no-lint] [--emit json|plain]
 canon registry mint-batch --registry <DIR> [--prefix <PREFIX>] --canonical-type <TYPE> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
 canon registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict] [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]
@@ -304,6 +305,13 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - updates `registry.json.version` and `registry.json.entry_count`, runs standard lint by default, and restores the original files if lint reports errors
 - emits `canon_registry_add_entry.v0` JSON by default; `--emit plain` prints a one-line shell-oriented receipt
 - exits `0` on accepted write, `2` on refusal
+
+`canon registry add-entries --registry <DIR> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]`
+- attaches a JSONL batch of exact aliases to canonical IDs that already exist in the local registry; each line has `canonical_id`, `alias_file`, `input`, and `rule_id`
+- infers each incumbent's canonical type from the existing mapping and refuses unknown IDs, cross-incumbent alias collisions, duplicate inputs, malformed lines, or missing alias files before writing anything
+- aliases already owned by the requested ID are idempotent skips; new aliases share one registry version bump, one entry-count update, and one linted atomic write
+- emits `canon_registry_add_entries.v0` with `attached[]`, `skipped[]`, registry version/counts, and touched files; `--emit plain` prints attached input-to-ID pairs
+- exits `0` when the batch is attached or is already present, `2` on refusal
 
 `canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]`
 - creates one self-authored canonical ID with one or more starting exact aliases in a single versioned write

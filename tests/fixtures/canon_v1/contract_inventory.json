@@ -569,6 +569,14 @@
       "action": "preserve"
     },
     {
+      "id": "canon registry add-entries",
+      "family": "registry",
+      "clap_path": "registry add-entries",
+      "operator_name": "registry add-entries",
+      "primary_contracts": ["canon_registry_add_entries.v0"],
+      "action": "preserve"
+    },
+    {
       "id": "canon registry mint",
       "family": "registry",
       "clap_path": "registry mint",
@@ -1391,6 +1399,7 @@
     { "id": "canon_namekit_tokenize.v0", "family": "namekit", "action": "preserve" },
     { "id": "canon_regab_firm_normalize.v0", "family": "regab", "action": "preserve" },
     { "id": "canon_registry_add_entry.v0", "family": "registry", "action": "preserve" },
+    { "id": "canon_registry_add_entries.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_audit.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_build.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_init.v0", "family": "registry", "action": "preserve" },

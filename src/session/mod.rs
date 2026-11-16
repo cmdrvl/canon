@@ -168,6 +168,7 @@ pub struct SessionCommitEntry {
     pub tier: String,
     pub outcome_ref: String,
     pub closure_hash: String,
+    pub canonical_id: Option<String>,
     pub aliases: Vec<SessionCommitAlias>,
 }
 
@@ -202,6 +203,16 @@ pub struct SessionCommitMinted {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionCommitAttached {
+    pub canonical_id: String,
+    pub cluster_id: String,
+    pub tier: String,
+    pub aliases: Vec<registry::RegistryAddEntryAliasEntry>,
+    pub outcome_ref: String,
+    pub closure_hash: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionCommitSkipped {
     pub cluster_id: String,
     pub reason: String,
@@ -222,6 +233,8 @@ struct SessionCommitReceipt {
     solve_hash: String,
     registry: SessionCommitRegistry,
     minted: Vec<SessionCommitMinted>,
+    #[serde(default)]
+    attached: Vec<SessionCommitAttached>,
     skipped: Vec<SessionCommitSkipped>,
 }
 
@@ -233,6 +246,7 @@ pub struct SessionCommitOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub registry: Option<SessionCommitRegistry>,
     pub minted: Vec<SessionCommitMinted>,
+    pub attached: Vec<SessionCommitAttached>,
     pub skipped: Vec<SessionCommitSkipped>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub generation_id: Option<String>,
@@ -241,9 +255,10 @@ pub struct SessionCommitOutput {
 impl SessionCommitOutput {
     pub fn render_summary(&self) -> String {
         format!(
-            "outcome={} minted={} skipped={} registry_version={} generation={}",
+            "outcome={} minted={} attached={} skipped={} registry_version={} generation={}",
             self.outcome,
             self.minted.len(),
+            self.attached.len(),
             self.skipped.len(),
             self.registry
                 .as_ref()
@@ -700,11 +715,24 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             solve_hash: request.solve_hash,
             registry: None,
             minted: Vec::new(),
+            attached: Vec::new(),
             skipped: request.skipped,
             generation_id: None,
         });
     }
 
+    let entry_by_group = request
+        .entries
+        .iter()
+        .map(|entry| {
+            let group_key = match entry.canonical_id.as_deref() {
+                Some(canonical_id) => format!("existing:{canonical_id}"),
+                None => format!("new:{}", entry.cluster_id),
+            };
+            (group_key, entry)
+        })
+        .collect::<BTreeMap<_, _>>();
+    let requested_skipped = request.skipped.clone();
     let typed_entries = request
         .entries
         .iter()
@@ -715,8 +743,11 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
                 .map(|alias| registry::RegistryTypedAlias {
                     alias_file: alias.alias_file.clone(),
                     input: alias.input.clone(),
-                    canonical_id: None,
-                    new_id_slot: Some(entry.cluster_id.clone()),
+                    canonical_id: entry.canonical_id.clone(),
+                    new_id_slot: entry
+                        .canonical_id
+                        .is_none()
+                        .then(|| entry.cluster_id.clone()),
                     canonical_type: alias.canonical_type.clone(),
                     rule_id: alias.rule_id.clone(),
                     skip_if_existing: alias.skip_if_existing,
@@ -733,47 +764,66 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         expected_version: Some(request.registry.version.clone()),
     })?;
     let typed_skipped = typed.skipped.clone();
-    let entry_by_slot = request
-        .entries
-        .iter()
-        .map(|entry| (format!("new:{}", entry.cluster_id), entry))
-        .collect::<BTreeMap<_, _>>();
-    let minted = typed
-        .minted
-        .into_iter()
-        .filter_map(|entry| {
-            entry_by_slot
-                .get(&entry.group_key)
-                .map(|source| SessionCommitMinted {
-                    canonical_id: entry.canonical_id,
-                    cluster_id: source.cluster_id.clone(),
-                    tier: source.tier.clone(),
-                    aliases: entry.aliases,
-                    outcome_ref: source.outcome_ref.clone(),
-                    closure_hash: source.closure_hash.clone(),
-                })
-        })
-        .collect::<Vec<_>>();
+    let mut receipt_skipped = requested_skipped;
+    for skipped_alias in typed_skipped {
+        let group_key = skipped_alias.group_key;
+        let source = entry_by_group.get(&group_key);
+        receipt_skipped.push(SessionCommitSkipped {
+            cluster_id: source
+                .map(|entry| entry.cluster_id.clone())
+                .unwrap_or(group_key),
+            reason: skipped_alias.reason,
+        });
+    }
+    receipt_skipped.sort_by(|left, right| {
+        left.cluster_id
+            .cmp(&right.cluster_id)
+            .then_with(|| left.reason.cmp(&right.reason))
+    });
+    if typed.minted.iter().all(|entry| entry.aliases.is_empty()) {
+        return Ok(SessionCommitOutput {
+            version: SESSION_COMMIT_VERSION.to_string(),
+            outcome: "nothing_to_commit".to_string(),
+            solve_hash: request.solve_hash,
+            registry: None,
+            minted: Vec::new(),
+            attached: Vec::new(),
+            skipped: receipt_skipped,
+            generation_id: None,
+        });
+    }
+    let mut minted = Vec::new();
+    let mut attached = Vec::new();
+    for entry in typed.minted {
+        let Some(source) = entry_by_group.get(&entry.group_key) else {
+            continue;
+        };
+        if entry.group_key.starts_with("existing:") {
+            attached.push(SessionCommitAttached {
+                canonical_id: entry.canonical_id,
+                cluster_id: source.cluster_id.clone(),
+                tier: source.tier.clone(),
+                aliases: entry.aliases,
+                outcome_ref: source.outcome_ref.clone(),
+                closure_hash: source.closure_hash.clone(),
+            });
+        } else {
+            minted.push(SessionCommitMinted {
+                canonical_id: entry.canonical_id,
+                cluster_id: source.cluster_id.clone(),
+                tier: source.tier.clone(),
+                aliases: entry.aliases,
+                outcome_ref: source.outcome_ref.clone(),
+                closure_hash: source.closure_hash.clone(),
+            });
+        }
+    }
     let registry = Some(SessionCommitRegistry {
         id: typed.registry.id,
         version_before: typed.registry.version_before,
         version_after: typed.registry.version_after,
         entry_count_before: typed.registry.entry_count_before,
         entry_count_after: typed.registry.entry_count_after,
-    });
-    let mut receipt_skipped = request.skipped.clone();
-    for skipped_alias in typed_skipped {
-        if let Some(cluster_id) = skipped_alias.group_key.strip_prefix("new:") {
-            receipt_skipped.push(SessionCommitSkipped {
-                cluster_id: cluster_id.to_string(),
-                reason: skipped_alias.reason,
-            });
-        }
-    }
-    receipt_skipped.sort_by(|left, right| {
-        left.cluster_id
-            .cmp(&right.cluster_id)
-            .then_with(|| left.reason.cmp(&right.reason))
     });
     let receipt = SessionCommitReceipt {
         version: SESSION_COMMIT_VERSION.to_string(),
@@ -785,6 +835,7 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             next_command: Some("Reread the registry and session commit receipt".to_string()),
         })?,
         minted: minted.clone(),
+        attached: attached.clone(),
         skipped: receipt_skipped,
     };
     let bytes = serde_json::to_vec(&receipt).map_err(|error| Refusal {
@@ -842,6 +893,7 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         solve_hash: receipt.solve_hash,
         registry,
         minted,
+        attached,
         skipped: receipt.skipped,
         generation_id: Some(publication.generation_id),
     })
@@ -887,6 +939,7 @@ pub(crate) fn already_committed(
         solve_hash: existing.solve_hash,
         registry: Some(existing.registry),
         minted: existing.minted,
+        attached: existing.attached,
         skipped: existing.skipped,
         generation_id,
     }))
@@ -1085,6 +1138,7 @@ fn compile_short_assertion(
     let source_content_hash =
         optional_assertion_string(source, "content_hash", line_number)?.unwrap_or(short_form_hash);
     let lineage = optional_assertion_string(source, "lineage", line_number)?;
+    let ancestry = parse_assertion_ancestry(source, line_number)?;
 
     let (kind, reason_code, authority_basis, relation) = match assertion_type.as_str() {
         "same_key" | "same_slot" | "attribute_agreement" | "name_equivalent" | "asserted_alias" => {
@@ -1177,6 +1231,11 @@ fn compile_short_assertion(
             "lineage".to_string(),
             EvidenceExtensionValue::String(lineage),
         );
+    }
+    if let Some(ancestry) = ancestry {
+        if let Some(value) = extension_value(&ancestry) {
+            extension_payload.insert("ancestry".to_string(), value);
+        }
     }
     if let Some(relation) = relation {
         extension_payload.insert(
@@ -1322,6 +1381,75 @@ fn optional_assertion_string(
         ));
     }
     Ok(Some(value.to_string()))
+}
+
+fn parse_assertion_ancestry(
+    source: &Map<String, Value>,
+    line_number: usize,
+) -> Result<Option<Value>, AssertionRowError> {
+    let Some(value) = source.get("ancestry") else {
+        return Ok(None);
+    };
+    let object = value.as_object().ok_or_else(|| {
+        AssertionRowError::new(
+            line_number,
+            "non_scalar_value:source.ancestry",
+            "source.ancestry must be an object",
+            "source.ancestry.status and source.ancestry.origin_source_ids",
+        )
+    })?;
+    let status = object
+        .get("status")
+        .and_then(Value::as_str)
+        .map(ascii_trim)
+        .filter(|status| matches!(*status, "known" | "unknown"))
+        .ok_or_else(|| {
+            AssertionRowError::new(
+                line_number,
+                "invalid_value:source.ancestry.status",
+                "source.ancestry.status must be known or unknown",
+                "known or unknown",
+            )
+        })?;
+    let ids = object
+        .get("origin_source_ids")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            AssertionRowError::new(
+                line_number,
+                "missing_field:source.ancestry.origin_source_ids",
+                "source.ancestry.origin_source_ids must be an array",
+                "source.ancestry.origin_source_ids",
+            )
+        })?;
+    let mut canonical_ids = Vec::with_capacity(ids.len());
+    for id in ids {
+        let id = id
+            .as_str()
+            .map(ascii_trim)
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| {
+                AssertionRowError::new(
+                    line_number,
+                    "invalid_value:source.ancestry.origin_source_ids",
+                    "every origin source id must be a non-empty string",
+                    "non-empty strings",
+                )
+            })?;
+        canonical_ids.push(Value::String(id.to_string()));
+    }
+    if status == "known" && canonical_ids.is_empty() {
+        return Err(AssertionRowError::new(
+            line_number,
+            "missing_field:source.ancestry.origin_source_ids",
+            "known ancestry must name at least one origin source id",
+            "one or more origin source ids",
+        ));
+    }
+    Ok(Some(json!({
+        "status": status,
+        "origin_source_ids": canonical_ids,
+    })))
 }
 
 fn extension_value(value: &Value) -> Option<EvidenceExtensionValue> {
@@ -1552,6 +1680,7 @@ fn canonicalize_observation_line(
             error.obs_id = Some(obs_id.clone());
             error
         })?;
+    validate_observation_ancestry(source_object.get("ancestry"), line_number, &obs_id)?;
     if let Some(lineage_value) = source_object.get_mut("lineage") {
         let Some(lineage_text) = lineage_value.as_str() else {
             return Err(ObservationRowError::new(
@@ -1603,6 +1732,73 @@ fn canonicalize_observation_line(
         bytes,
         key_warnings,
     })
+}
+
+fn validate_observation_ancestry(
+    value: Option<&Value>,
+    line_number: usize,
+    obs_id: &str,
+) -> Result<(), ObservationRowError> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    let Some(object) = value.as_object() else {
+        return Err(ObservationRowError::new(
+            line_number,
+            Some(obs_id.to_string()),
+            "non_scalar_value:source.ancestry",
+            "source.ancestry must be an object",
+            "source.ancestry.status and source.ancestry.origin_source_ids",
+        ));
+    };
+    let Some(status) = object.get("status").and_then(Value::as_str) else {
+        return Err(ObservationRowError::new(
+            line_number,
+            Some(obs_id.to_string()),
+            "missing_field:source.ancestry.status",
+            "source.ancestry.status must be known or unknown",
+            "source.ancestry.status",
+        ));
+    };
+    if !matches!(status, "known" | "unknown") {
+        return Err(ObservationRowError::new(
+            line_number,
+            Some(obs_id.to_string()),
+            "invalid_value:source.ancestry.status",
+            "source.ancestry.status must be known or unknown",
+            "known or unknown",
+        ));
+    }
+    let Some(ids) = object.get("origin_source_ids").and_then(Value::as_array) else {
+        return Err(ObservationRowError::new(
+            line_number,
+            Some(obs_id.to_string()),
+            "missing_field:source.ancestry.origin_source_ids",
+            "source.ancestry.origin_source_ids must be an array",
+            "source.ancestry.origin_source_ids",
+        ));
+    };
+    for id in ids {
+        if id.as_str().is_none_or(|id| ascii_trim(id).is_empty()) {
+            return Err(ObservationRowError::new(
+                line_number,
+                Some(obs_id.to_string()),
+                "invalid_value:source.ancestry.origin_source_ids",
+                "every origin source id must be a non-empty string",
+                "non-empty strings",
+            ));
+        }
+    }
+    if status == "known" && ids.is_empty() {
+        return Err(ObservationRowError::new(
+            line_number,
+            Some(obs_id.to_string()),
+            "missing_field:source.ancestry.origin_source_ids",
+            "known ancestry must name at least one origin source id",
+            "one or more origin source ids",
+        ));
+    }
+    Ok(())
 }
 
 /// Validate each `keys` value against its namespace (`crate::keys`). A valid

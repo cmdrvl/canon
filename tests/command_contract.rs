@@ -1011,6 +1011,13 @@ impl RuntimeHarness {
         )
         .expect("scoped registry metadata");
         fs::write(scoped_registry.join("properties.json"), b"[]").expect("scoped aliases file");
+        let add_entries_batch = self.work.join("registry-add-entries.jsonl");
+        fs::write(
+            &add_entries_batch,
+            r#"{"canonical_id":"PROP-001","alias_file":"properties.json","input":"41-002","rule_id":"SESSION_TIER_A"}
+"#,
+        )
+        .expect("add-entries batch");
         let scoped_lookup_input = self.work.join("scoped-assets.csv");
         fs::write(&scoped_lookup_input, "asset_number\n41-001\n").expect("scoped lookup input");
         let export_seed = self.work.join("registry-export.csv");
@@ -1687,6 +1694,32 @@ impl RuntimeHarness {
                 )
                 .assert_eq("alias_entry.input", json!("41-001"))
                 .assert_eq("registry.entry_count_after", json!(2))
+                .with_stderr(StderrExpectation::Empty)
+                .with_mutation(MutationExpectation::Exists(
+                    scoped_registry.join("properties.json"),
+                )),
+            },
+            RuntimeCase {
+                id: "registry_add_entries_incumbent_alias_json",
+                command_name: "registry add-entries",
+                args: vec![
+                    "registry".to_string(),
+                    "add-entries".to_string(),
+                    "--registry".to_string(),
+                    path_arg(&scoped_registry),
+                    "--from".to_string(),
+                    path_arg(&add_entries_batch),
+                    "--emit".to_string(),
+                    "json".to_string(),
+                ],
+                expected: RuntimeExpectation::json(
+                    0,
+                    "canon_registry_add_entries.v0",
+                    SchemaField::Version,
+                )
+                .assert_eq("attached.0.input", json!("41-002"))
+                .assert_eq("attached.0.canonical_id", json!("PROP-001"))
+                .assert_eq("registry.entry_count_after", json!(3))
                 .with_stderr(StderrExpectation::Empty)
                 .with_mutation(MutationExpectation::Exists(
                     scoped_registry.join("properties.json"),
