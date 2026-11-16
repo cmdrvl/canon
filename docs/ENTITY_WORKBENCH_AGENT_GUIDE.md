@@ -119,6 +119,25 @@ standalone:
   mint_when_authoritative_key: true
 ```
 
+## Commit accepted session clusters
+
+Commit only accepted tier A/B clusters into the registry bound by the session:
+
+```bash
+canon entity session commit work/bdc-session --next-version 0.1.0 --emit json
+# or: canon entity session commit work/bdc-session --bump patch --emit summary
+```
+
+The commit is a bounded local registry transaction. It derives the canonical
+type from the session kind, mints one ID per accepted cluster, writes exact
+surface and authoritative-key aliases, and publishes `commit/commit.json` in
+the `entity-session-commit` stream. Review, contradiction, standalone, and
+incumbent clusters are reported in `skipped`; no human gate is required.
+Every minted row carries a stable `outcome_ref` and `closure_hash`. A changed
+observation, evidence, solve, or registry snapshot is refused as stale before
+any registry write. Repeating the same solve against its committed version is
+an `already_committed` no-op.
+
 ## The loop
 
 ```text

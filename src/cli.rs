@@ -1590,6 +1590,8 @@ pub enum EntitySessionSubcommand {
     Assert(EntitySessionAssertCli),
     /// Solve session observations and evidence with a declared deterministic rule table
     Solve(EntitySessionSolveCli),
+    /// Mint registry entries for accepted session clusters
+    Commit(EntitySessionCommitCli),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1661,6 +1663,29 @@ pub struct EntitySessionSolveCli {
     /// YAML rule table declaring authoritative keys and evidence tiers
     #[arg(long)]
     pub rules: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+#[command(group(
+    ArgGroup::new("version")
+        .required(true)
+        .args(["next_version", "bump"])
+))]
+pub struct EntitySessionCommitCli {
+    /// Session work directory
+    pub session: PathBuf,
+
+    /// Explicit registry version to write
+    #[arg(long = "next-version", conflicts_with = "bump")]
+    pub next_version: Option<String>,
+
+    /// Registry version component to bump
+    #[arg(long, value_enum, conflicts_with = "next-version")]
+    pub bump: Option<RegistryVersionBumpMode>,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]

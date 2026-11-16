@@ -36,8 +36,9 @@ mod provider;
 pub mod transaction;
 
 pub use add_entry::{
-    RegistryAddEntryOutput, RegistryAddEntryPlan, RegistryAddEntryRequest, RegistryVersionBump,
-    add_entry, add_entry_with_scope, plan_add_entry, plan_add_entry_with_scope,
+    RegistryAddEntryAliasEntry, RegistryAddEntryOutput, RegistryAddEntryPlan,
+    RegistryAddEntryRequest, RegistryVersionBump, add_entry, add_entry_with_scope, plan_add_entry,
+    plan_add_entry_with_scope,
 };
 pub use id_scheme::{
     RegistryDefaultIdSchemeOutput, RegistryDefaultIdSchemeRequest, set_default_id_scheme,
@@ -47,6 +48,10 @@ pub use mint::{
     RegistryMintBatchEntry, RegistryMintBatchItem, RegistryMintBatchOutput,
     RegistryMintBatchRequest, RegistryMintOutput, RegistryMintRequest, mint, mint_batch,
     mint_with_scope, read_batch_items,
+};
+pub(crate) use mint::{
+    RegistryTypedAlias, RegistryTypedMinted, RegistryTypedSkippedAlias, RegistryTypedWriteOutput,
+    RegistryTypedWriteRequest, commit_typed_entries,
 };
 pub use next_id::{RegistryNextIdOutput, RegistryNextIdRequest, next_id};
 pub use package::{

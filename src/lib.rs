@@ -62,9 +62,9 @@ use crate::cli::{
     EntityProfileSubcommand, EntityPromoteCli, EntityReviewCommand, EntityReviewExportArtifact,
     EntityReviewExportCli, EntityReviewExportEmitMode, EntityReviewGroupBy, EntityReviewImportCli,
     EntityReviewInclude, EntityReviewSubcommand, EntityRunCli, EntitySessionAssertCli,
-    EntitySessionIngestCli, EntitySessionInitCli, EntitySessionSolveCli, EntitySessionSubcommand,
-    EntitySolveCli, EntityStreamEmitMode, EntitySubcommand, PackageCli, PackagePackCli,
-    PackageSubcommand, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
+    EntitySessionCommitCli, EntitySessionIngestCli, EntitySessionInitCli, EntitySessionSolveCli,
+    EntitySessionSubcommand, EntitySolveCli, EntityStreamEmitMode, EntitySubcommand, PackageCli,
+    PackagePackCli, PackageSubcommand, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
     RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode, RegistryExportCli,
     RegistryExportFormatCli, RegistryInitCli, RegistryLintCli, RegistryLintProfile,
     RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli, RegistryPlainJsonEmitMode,
@@ -935,6 +935,7 @@ fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
             EntitySessionSubcommand::Ingest(ingest) => run_entity_session_ingest_command(ingest),
             EntitySessionSubcommand::Assert(assert) => run_entity_session_assert_command(assert),
             EntitySessionSubcommand::Solve(solve) => run_entity_session_solve_command(solve),
+            EntitySessionSubcommand::Commit(commit) => run_entity_session_commit_command(commit),
         },
         EntitySubcommand::Run(run) => run_entity_run_command(run),
         EntitySubcommand::Prepare(prepare) => run_entity_prepare_command(prepare),
@@ -1063,6 +1064,34 @@ fn run_entity_session_solve_command(solve: &EntitySessionSolveCli) -> Result<u8,
             refusal.to_canon_output(),
             true,
             matches!(solve.emit, EntityEmitMode::Summary),
+        ),
+    }
+}
+
+fn run_entity_session_commit_command(
+    commit: &EntitySessionCommitCli,
+) -> Result<u8, Box<dyn Error>> {
+    let result = entity::session::commit(entity::session::EntitySessionCommitRequest {
+        session: commit.session.clone(),
+        next_version: commit.next_version.clone(),
+        bump: commit.bump.map(registry_version_bump),
+    });
+    match result {
+        Ok(output) => {
+            let summary_mode = matches!(commit.emit, EntityEmitMode::Summary);
+            let nothing_to_commit = output.outcome == "nothing_to_commit";
+            let rendered = if summary_mode {
+                output.render_summary()
+            } else {
+                serde_json::to_string(&output)?
+            };
+            emit_entity_output(&rendered, summary_mode);
+            Ok(u8::from(nothing_to_commit))
+        }
+        Err(refusal) => emit_entity_refusal(
+            refusal.to_canon_output(),
+            true,
+            matches!(commit.emit, EntityEmitMode::Summary),
         ),
     }
 }

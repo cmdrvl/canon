@@ -157,8 +157,10 @@ fn run_operator_journey(label: &str) -> JourneyRun {
     let session_observations = fixture.root.join("session-observations.jsonl");
     fs::write(
         &session_observations,
-        r#"{"obs_id":"journey-observation-1","entity_type":"organisation","surface":"Journey Sponsor","keys":{"cik":null},"attrs":{"role":"borrower"},"context":{"as_of_date":"2025-06-30"},"source":{"channel":"file","file":"session-observations.jsonl","lineage":"journey-a"}}
-{"obs_id":"journey-observation-2","entity_type":"organisation","surface":"Journey Sponsor Alias","keys":{"cik":null},"attrs":{"role":"borrower"},"context":{"as_of_date":"2025-06-30"},"source":{"channel":"file","file":"session-observations.jsonl","lineage":"journey-b"}}
+        r#"{"obs_id":"journey-observation-1","entity_type":"organisation","surface":"Journey Sponsor","keys":{"cik":"111"},"attrs":{"role":"borrower"},"context":{"as_of_date":"2025-06-30"},"source":{"channel":"file","file":"session-observations.jsonl","lineage":"journey-a"}}
+{"obs_id":"journey-observation-2","entity_type":"organisation","surface":"Journey Sponsor Alias","keys":{"cik":"111"},"attrs":{"role":"borrower"},"context":{"as_of_date":"2025-06-30"},"source":{"channel":"file","file":"session-observations.jsonl","lineage":"journey-b"}}
+{"obs_id":"journey-review-1","entity_type":"organisation","surface":"Journey Review","keys":{"cik":null},"attrs":{"role":"borrower"},"context":{"as_of_date":"2025-06-30"},"source":{"channel":"file","file":"session-observations.jsonl","lineage":"journey-a"}}
+{"obs_id":"journey-review-2","entity_type":"organisation","surface":"Journey Review Alias","keys":{"cik":null},"attrs":{"role":"borrower"},"context":{"as_of_date":"2025-06-30"},"source":{"channel":"file","file":"session-observations.jsonl","lineage":"journey-b"}}
 "#,
     )
     .unwrap();
@@ -179,12 +181,12 @@ fn run_operator_journey(label: &str) -> JourneyRun {
         session_ingest.value["version"],
         "canon.entity.session.ingest.v1"
     );
-    assert_eq!(session_ingest.value["accepted"], 2);
+    assert_eq!(session_ingest.value["accepted"], 4);
 
     let session_evidence = fixture.root.join("session-evidence.jsonl");
     fs::write(
         &session_evidence,
-        r#"{"type":"same_slot","left":"journey-observation-1","right":"journey-observation-2","basis":{"rule":"same loan and role","left_value":"loan-7:sponsor","right_value":"loan-7:sponsor","steps":["join:loan_id","join:role"]},"source":{"channel":"agent","id":"journey-agent"},"asserted_by":"agent:journey"}
+        r#"{"type":"same_slot","left":"journey-review-1","right":"journey-review-2","basis":{"rule":"same loan and role","left_value":"loan-7:sponsor","right_value":"loan-7:sponsor","steps":["join:loan_id","join:role"]},"source":{"channel":"agent","id":"journey-agent"},"asserted_by":"agent:journey"}
 "#,
     )
     .unwrap();
@@ -232,6 +234,27 @@ fn run_operator_journey(label: &str) -> JourneyRun {
         "canon.entity.session.solve.v1"
     );
     assert_eq!(session_solve.value["summary"]["review"], 1);
+
+    let session_commit = canon_json(
+        &[
+            "entity",
+            "session",
+            "commit",
+            path_str(&session_work),
+            "--next-version",
+            "0.1.0",
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(session_commit.record);
+    assert_eq!(
+        session_commit.value["version"],
+        "canon.entity.session.commit.v1"
+    );
+    assert_eq!(session_commit.value["outcome"], "committed");
+    assert_eq!(session_commit.value["minted"].as_array().unwrap().len(), 1);
 
     let profile_list = canon_json(&["entity", "profile", "list", "--emit", "json"], 0);
     command_log.push(profile_list.record);
@@ -1545,6 +1568,7 @@ fn classify_entity_leaf(args: &[&str]) -> Option<String> {
         ["entity", "session", "ingest", ..] => Some("entity session ingest".to_string()),
         ["entity", "session", "assert", ..] => Some("entity session assert".to_string()),
         ["entity", "session", "solve", ..] => Some("entity session solve".to_string()),
+        ["entity", "session", "commit", ..] => Some("entity session commit".to_string()),
         ["entity", "index", "build", ..] => Some("entity index build".to_string()),
         ["entity", "profile", "list", ..] => Some("entity profile list".to_string()),
         ["entity", "profile", "init", ..] => Some("entity profile init".to_string()),

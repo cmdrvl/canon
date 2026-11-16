@@ -53,6 +53,7 @@
       "canon entity session ingest <SESSION> <OBSERVATIONS.jsonl|-> [--emit json|summary]",
       "canon entity session assert <SESSION> <EVIDENCE.jsonl|-> [--emit json|summary]",
       "canon entity session solve <SESSION> --rules <RULES.yaml> [--emit json|summary]",
+      "canon entity session commit <SESSION> (--next-version <VER>|--bump patch|minor|major) [--emit json|summary]",
       "canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY_DIR> --work-dir <DIR>",
       "canon entity index build <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit json|summary]",
       "canon entity block <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit jsonl|summary]",
@@ -6935,6 +6936,84 @@
       "next_command": "canon entity session solve <SESSION> --rules <RULES.yaml> --emit json",
       "recovery": {
         "next_command": "Run session init and ingest first, then rerun canon entity session solve",
+        "refusal_exit_code": 2
+      }
+    },
+    {
+      "name": "entity session commit",
+      "usage": "canon entity session commit <SESSION> (--next-version <VER>|--bump patch|minor|major) [--emit json|summary]",
+      "description": "Commit accepted tier A/B session clusters into the bound local registry and publish a deterministic receipt",
+      "output_mode": "mixed",
+      "output_schema": "canon.entity.session.commit.v1",
+      "status": "implemented",
+      "read_only": false,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "writes only the session-bound local registry and commit publication; no network or human gate",
+        "mutation_class": "OwnedOutput",
+        "network_class": "Offline",
+        "concurrency_class": "CacheRaceSafe",
+        "platform_classes": [
+          "PortablePathUtf8",
+          "SameFilesystemAtomicReplace"
+        ],
+        "declaration_command": "entity workbench"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": true,
+        "writes_registry_files": true,
+        "writes_work_dir": true,
+        "writes_output_files": false,
+        "uses_network": false,
+        "appends_witness_ledger": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "accepted clusters committed, no clusters needed committing, or the same solve was already committed",
+          "domain": "positive"
+        },
+        "1": {
+          "meaning": "the solve completed but no accepted cluster was available to commit",
+          "domain": "partial"
+        },
+        "2": {
+          "meaning": "REFUSAL / stale solve, invalid registry, or publication state",
+          "domain": "error"
+        }
+      },
+      "options": [
+        {
+          "name": "session",
+          "type": "directory_path",
+          "required": true,
+          "position": 0,
+          "description": "Session work directory"
+        },
+        {
+          "name": "next_version",
+          "flag": "--next-version",
+          "type": "string",
+          "description": "Explicit registry version to write; mutually exclusive with --bump"
+        },
+        {
+          "name": "bump",
+          "flag": "--bump",
+          "type": "string",
+          "description": "Registry version component to bump: patch, minor, or major; mutually exclusive with --next-version"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json or summary"
+        }
+      ],
+      "next_command": "canon entity session commit <SESSION> --next-version <VER> --emit json",
+      "recovery": {
+        "next_command": "Rerun canon entity session solve, then rerun this commit",
         "refusal_exit_code": 2
       }
     },

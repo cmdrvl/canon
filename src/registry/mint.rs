@@ -575,6 +575,416 @@ impl RegistryMintBatchOutput {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RegistryTypedAlias {
+    pub alias_file: String,
+    pub input: String,
+    pub canonical_id: Option<String>,
+    pub new_id_slot: Option<String>,
+    pub canonical_type: String,
+    pub rule_id: String,
+    pub skip_if_existing: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RegistryTypedWriteRequest {
+    pub registry: PathBuf,
+    pub prefix: Option<String>,
+    pub entries: Vec<RegistryTypedAlias>,
+    pub bump: Option<RegistryVersionBump>,
+    pub next_version: Option<String>,
+    pub no_lint: bool,
+    pub expected_version: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct RegistryTypedMinted {
+    pub group_key: String,
+    pub canonical_id: String,
+    pub canonical_type: String,
+    pub aliases: Vec<RegistryAddEntryAliasEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct RegistryTypedSkippedAlias {
+    pub group_key: String,
+    pub input: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct RegistryTypedWriteOutput {
+    pub registry: RegistryAddEntryRegistry,
+    pub scheme: Option<RegistryMintScheme>,
+    pub minted: Vec<RegistryTypedMinted>,
+    pub skipped: Vec<RegistryTypedSkippedAlias>,
+    pub touched_files: Vec<String>,
+    pub lint: RegistryAddEntryLintSummary,
+    pub warnings: Vec<String>,
+}
+
+pub(crate) fn commit_typed_entries(
+    request: RegistryTypedWriteRequest,
+) -> Result<RegistryTypedWriteOutput, Refusal> {
+    if request.entries.is_empty() {
+        return Err(add_entry::parse_refusal(
+            &request.registry,
+            "Typed registry commit requires at least one alias entry",
+            json!({}),
+            "Provide at least one accepted session cluster",
+        ));
+    }
+
+    let registry_path = request.registry.join("registry.json");
+    let (registry_json, registry_meta, mapping_files) = load_registry_definition(&request.registry)
+        .map_err(|error| {
+            Refusal::bad_registry(&request.registry.display().to_string(), &error.to_string())
+        })?;
+    if let Some(expected_version) = request.expected_version.as_deref()
+        && expected_version != registry_json.version
+    {
+        return Err(add_entry::bad_registry_refusal(
+            &request.registry,
+            "Registry changed after the typed commit plan was created",
+            json!({
+                "reason": "stale_registry",
+                "expected_version": expected_version,
+                "actual_version": registry_json.version,
+                "writes_performed": false,
+            }),
+            "Rerun the session solve, then rerun session commit",
+        ));
+    }
+
+    let mut groups = BTreeMap::<String, Vec<RegistryTypedAlias>>::new();
+    let mut group_order = Vec::new();
+    for entry in request.entries {
+        let group_key = match (&entry.canonical_id, &entry.new_id_slot) {
+            (Some(canonical_id), None) => format!("existing:{canonical_id}"),
+            (None, Some(slot)) => format!("new:{slot}"),
+            _ => {
+                return Err(add_entry::parse_refusal(
+                    &request.registry,
+                    "Typed registry alias must name either an existing canonical ID or a new-ID slot",
+                    json!({
+                        "canonical_id": entry.canonical_id,
+                        "new_id_slot": entry.new_id_slot,
+                    }),
+                    "Provide exactly one of canonical_id or new_id_slot",
+                ));
+            }
+        };
+        if !groups.contains_key(&group_key) {
+            group_order.push(group_key.clone());
+        }
+        groups.entry(group_key).or_default().push(entry);
+    }
+
+    let mut first_number = None;
+    let mut scheme = None;
+    if group_order
+        .iter()
+        .any(|group_key| group_key.starts_with("new:"))
+    {
+        let allocation = next_id(RegistryNextIdRequest {
+            registry: request.registry.clone(),
+            prefix: request.prefix.clone(),
+            zero_pad: None,
+        })?;
+        let namespace = format!("{}-", allocation.scheme.prefix);
+        let number = allocation
+            .next_id
+            .strip_prefix(&namespace)
+            .and_then(|digits| digits.parse::<u128>().ok())
+            .ok_or_else(|| {
+                add_entry::bad_registry_refusal(
+                    &request.registry,
+                    "Allocated ID does not follow the PREFIX-<digits> scheme",
+                    json!({ "next_id": allocation.next_id }),
+                    "Repair the registry ID namespace, then rerun",
+                )
+            })?;
+        first_number = Some(number);
+        scheme = Some(RegistryMintScheme {
+            prefix: allocation.scheme.prefix,
+            zero_pad: allocation.scheme.zero_pad,
+            source: if request.prefix.is_some() {
+                "prefix"
+            } else {
+                "registry_default"
+            }
+            .to_string(),
+        });
+    }
+
+    let mut seen_inputs = BTreeSet::<String>::new();
+    let mut parsed_by_group = BTreeMap::<String, Vec<RegistryAliasWriteEntry>>::new();
+    let mut skipped = Vec::new();
+    let mut minted = Vec::new();
+    for (group_index, group_key) in group_order.iter().enumerate() {
+        let entries = groups.get(group_key).ok_or_else(|| {
+            add_entry::bad_registry_refusal(
+                &request.registry,
+                "Typed registry group disappeared during planning",
+                json!({"group_key": group_key}),
+                "Rerun the typed registry commit against the current registry",
+            )
+        })?;
+        let first = entries.first().ok_or_else(|| {
+            add_entry::bad_registry_refusal(
+                &request.registry,
+                "Typed registry group is empty",
+                json!({"group_key": group_key}),
+                "Provide an alias for every typed registry group",
+            )
+        })?;
+        let canonical_id = if let Some(canonical_id) = first.canonical_id.as_deref() {
+            add_entry::validate_trimmed_non_empty(
+                &request.registry,
+                "canonical_id",
+                canonical_id,
+                false,
+                "Provide a non-empty canonical_id",
+            )?
+        } else {
+            let number = first_number
+                .ok_or_else(|| {
+                    add_entry::bad_registry_refusal(
+                        &request.registry,
+                        "New typed registry group has no allocated ID",
+                        json!({"group_key": group_key}),
+                        "Repair the registry ID scheme, then rerun the typed commit",
+                    )
+                })?
+                .checked_add(
+                    group_order[..group_index]
+                        .iter()
+                        .filter(|key| key.starts_with("new:"))
+                        .count() as u128,
+                )
+                .ok_or_else(|| {
+                    add_entry::bad_registry_refusal(
+                        &request.registry,
+                        "Typed commit would exhaust the registry ID namespace",
+                        json!({ "prefix": scheme.as_ref().map(|value| &value.prefix) }),
+                        "Choose a different registry prefix",
+                    )
+                })?;
+            let scheme_ref = scheme.as_ref().ok_or_else(|| {
+                add_entry::bad_registry_refusal(
+                    &request.registry,
+                    "New typed registry group has no ID scheme",
+                    json!({"group_key": group_key}),
+                    "Repair the registry ID scheme, then rerun the typed commit",
+                )
+            })?;
+            format!(
+                "{}-{:0width$}",
+                scheme_ref.prefix,
+                number,
+                width = scheme_ref.zero_pad
+            )
+        };
+        add_entry::validate_default_id_scheme(
+            &request.registry,
+            &canonical_id,
+            registry_json.default_id_scheme.as_ref(),
+        )?;
+        let canonical_type = add_entry::resolve_canonical_type(
+            &request.registry,
+            &canonical_id,
+            Some(first.canonical_type.as_str()),
+            &mapping_files,
+        )?;
+        let mut aliases = Vec::new();
+        for entry in entries {
+            if entry.canonical_type != canonical_type {
+                return Err(add_entry::parse_refusal(
+                    &request.registry,
+                    "Typed registry entries in one group must share canonical_type",
+                    json!({
+                        "group_key": group_key,
+                        "expected": canonical_type,
+                        "actual": entry.canonical_type,
+                    }),
+                    "Use one entity kind per accepted cluster",
+                ));
+            }
+            let alias_file = add_entry::validate_alias_file(&request.registry, &entry.alias_file)?;
+            let alias_file = alias_file
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(entry.alias_file.as_str())
+                .to_string();
+            let input = add_entry::validate_trimmed_non_empty(
+                &request.registry,
+                "typed alias input",
+                &entry.input,
+                false,
+                "Use an ASCII-trimmed alias input",
+            )?;
+            let rule_id = add_entry::validate_trimmed_non_empty(
+                &request.registry,
+                "typed alias rule_id",
+                &entry.rule_id,
+                false,
+                "Use a non-empty alias rule_id",
+            )?;
+            if let Some(existing) = mapping_files
+                .iter()
+                .flat_map(|file| file.entries.iter())
+                .find(|existing| existing.input == input)
+            {
+                if !entry.skip_if_existing {
+                    add_entry::ensure_input_is_new_in_scope(
+                        &request.registry,
+                        &input,
+                        None,
+                        &mapping_files,
+                    )?;
+                }
+                skipped.push(RegistryTypedSkippedAlias {
+                    group_key: group_key.clone(),
+                    input,
+                    reason: if existing.canonical_id == canonical_id {
+                        "already_present".to_string()
+                    } else {
+                        "key_alias_collision".to_string()
+                    },
+                });
+                continue;
+            }
+            if !seen_inputs.insert(input.clone()) {
+                return Err(add_entry::parse_refusal(
+                    &request.registry,
+                    "Duplicate input inside typed registry commit",
+                    json!({ "input": input, "group_key": group_key }),
+                    "Remove duplicate aliases, then rerun",
+                ));
+            }
+            aliases.push(RegistryAliasWriteEntry {
+                alias_file,
+                input,
+                canonical_id: canonical_id.clone(),
+                canonical_type: canonical_type.clone(),
+                rule_id,
+                scope: None,
+            });
+        }
+        parsed_by_group.insert(group_key.clone(), aliases);
+        minted.push(RegistryTypedMinted {
+            group_key: group_key.clone(),
+            canonical_id,
+            canonical_type,
+            aliases: Vec::new(),
+        });
+    }
+
+    let mut all_aliases = Vec::new();
+    let mut aliases_by_file = BTreeMap::<String, Vec<RegistryAliasWriteEntry>>::new();
+    for aliases in parsed_by_group.values() {
+        for alias in aliases {
+            aliases_by_file
+                .entry(alias.alias_file.clone())
+                .or_default()
+                .push(alias.clone());
+            all_aliases.push(alias.clone());
+        }
+    }
+    let entry_count_before: usize = mapping_files.iter().map(|file| file.entries.len()).sum();
+    let version_after = if all_aliases.is_empty() {
+        registry_json.version.clone()
+    } else {
+        add_entry::resolve_next_version(
+            &request.registry,
+            &registry_json.version,
+            request.bump,
+            request.next_version.as_deref(),
+        )?
+    };
+    let entry_count_after = entry_count_before
+        .checked_add(all_aliases.len())
+        .ok_or_else(|| {
+            add_entry::bad_registry_refusal(
+                &request.registry,
+                "Registry entry_count is too large to recount",
+                json!({ "entry_count": entry_count_before, "aliases_to_add": all_aliases.len() }),
+                "Repair the registry mapping files, then rerun",
+            )
+        })?;
+    let mut alias_writes = Vec::new();
+    for (alias_file, file_aliases) in &aliases_by_file {
+        let alias_path = add_entry::validate_alias_file(&request.registry, alias_file)?;
+        let alias_bytes = add_entry::build_alias_bytes_with_entries(
+            &request.registry,
+            &alias_path,
+            file_aliases,
+        )?;
+        alias_writes.push((alias_path, alias_bytes));
+        for minted_entry in &mut minted {
+            if let Some(group_aliases) = parsed_by_group.get(&minted_entry.group_key) {
+                minted_entry.aliases.extend(
+                    group_aliases
+                        .iter()
+                        .filter(|alias| alias.alias_file == *alias_file)
+                        .map(RegistryAliasWriteEntry::output_entry),
+                );
+            }
+        }
+    }
+    let mut touched_files = aliases_by_file.keys().cloned().collect::<Vec<_>>();
+    if !all_aliases.is_empty() {
+        touched_files.push("registry.json".to_string());
+    }
+    let mut output = RegistryTypedWriteOutput {
+        registry: RegistryAddEntryRegistry {
+            id: registry_meta.id,
+            source: registry_meta.source,
+            version_before: registry_json.version,
+            version_after,
+            entry_count_before,
+            entry_count_after,
+        },
+        scheme,
+        minted,
+        skipped,
+        touched_files,
+        lint: RegistryAddEntryLintSummary {
+            enabled: !request.no_lint,
+            profile: None,
+            total_findings: 0,
+            errors: 0,
+            warnings: 0,
+            info: 0,
+        },
+        warnings: Vec::new(),
+    };
+    if all_aliases.is_empty() {
+        return Ok(output);
+    }
+    let registry_bytes = add_entry::build_registry_bytes(
+        &request.registry,
+        &registry_path,
+        &output.registry.version_after,
+        output.registry.entry_count_after,
+    )?;
+    match commit_planned_writes(
+        &request.registry,
+        &registry_path,
+        &registry_bytes,
+        &alias_writes,
+        !request.no_lint,
+        false,
+    )? {
+        CommitOutcome::Committed(Some((lint, warnings))) => {
+            output.lint = lint;
+            output.warnings = warnings;
+        }
+        CommitOutcome::Committed(None) | CommitOutcome::AlreadyApplied => {}
+    }
+    Ok(output)
+}
+
 /// Read a batch file: one JSON object per line (blank lines ignored).
 pub fn read_batch_items(
     registry: &Path,
@@ -625,182 +1035,101 @@ pub fn mint_batch(request: RegistryMintBatchRequest) -> Result<RegistryMintBatch
         ));
     }
 
-    let registry_path = request.registry.join("registry.json");
-    let (registry_json, registry_meta, mapping_files) = load_registry_definition(&request.registry)
-        .map_err(|error| {
-            Refusal::bad_registry(&request.registry.display().to_string(), &error.to_string())
-        })?;
-
-    let allocation = next_id(RegistryNextIdRequest {
-        registry: request.registry.clone(),
-        prefix: request.prefix.clone(),
-        zero_pad: None,
-    })?;
-    let namespace = format!("{}-", allocation.scheme.prefix);
-    let first_number = allocation
-        .next_id
-        .strip_prefix(&namespace)
-        .and_then(|digits| digits.parse::<u128>().ok())
-        .ok_or_else(|| {
-            add_entry::bad_registry_refusal(
-                &request.registry,
-                "Allocated ID does not follow the PREFIX-<digits> scheme",
-                json!({ "next_id": allocation.next_id }),
-                "Repair the registry ID namespace, then rerun",
-            )
-        })?;
-    let scheme = RegistryMintScheme {
-        prefix: allocation.scheme.prefix.clone(),
-        zero_pad: allocation.scheme.zero_pad,
-        source: if request.prefix.is_some() {
-            "prefix"
-        } else {
-            "registry_default"
-        }
-        .to_string(),
-    };
-
-    let mut seen_inputs = BTreeSet::<String>::new();
-    let mut minted = Vec::new();
-    let mut all_aliases = Vec::new();
+    let mut typed_entries = Vec::new();
+    let mut seen_inputs = BTreeSet::new();
     for (index, item) in request.items.iter().enumerate() {
-        let number = first_number.checked_add(index as u128).ok_or_else(|| {
-            add_entry::bad_registry_refusal(
-                &request.registry,
-                "Batch would exhaust the registry ID namespace",
-                json!({ "prefix": scheme.prefix }),
-                "Choose a different prefix",
-            )
-        })?;
-        let canonical_id = format!(
-            "{}-{:0width$}",
-            scheme.prefix,
-            number,
-            width = scheme.zero_pad
-        );
-        let canonical_type = add_entry::resolve_canonical_type(
-            &request.registry,
-            &canonical_id,
-            Some(
-                item.canonical_type
-                    .as_deref()
-                    .unwrap_or(request.canonical_type.as_str()),
-            ),
-            &mapping_files,
-        )?;
-        let parsed = parse_aliases(
-            &request.registry,
-            &canonical_id,
-            &canonical_type,
-            &item.with_alias,
-            None,
-            &mapping_files,
-            false,
-        )?;
-        for alias in &parsed {
-            if !seen_inputs.insert(alias.input.clone()) {
+        let canonical_type = item
+            .canonical_type
+            .clone()
+            .unwrap_or_else(|| request.canonical_type.clone());
+        for raw_alias in &item.with_alias {
+            let (alias_file, input, rule_id) = split_alias_spec(&request.registry, raw_alias)?;
+            if !seen_inputs.insert(input.clone()) {
                 return Err(add_entry::parse_refusal(
                     &request.registry,
                     "Duplicate input inside mint-batch request",
-                    json!({ "input": alias.input, "item_index": index }),
+                    json!({ "input": input, "item_index": index }),
                     "Remove the duplicate alias input, then rerun; nothing was written",
                 ));
             }
+            typed_entries.push(RegistryTypedAlias {
+                alias_file,
+                input,
+                canonical_id: None,
+                new_id_slot: Some(index.to_string()),
+                canonical_type: canonical_type.clone(),
+                rule_id,
+                skip_if_existing: false,
+            });
         }
-        minted.push(RegistryMintBatchEntry {
-            canonical_id,
-            canonical_type,
-            aliases: parsed
-                .iter()
-                .map(RegistryAliasWriteEntry::output_entry)
-                .collect(),
-        });
-        all_aliases.extend(parsed);
     }
-
-    let version_after = add_entry::resolve_next_version(
-        &request.registry,
-        &registry_json.version,
-        request.bump,
-        request.next_version.as_deref(),
-    )?;
-    let entry_count_after = registry_json
-        .entry_count
-        .checked_add(all_aliases.len())
-        .ok_or_else(|| {
-            add_entry::bad_registry_refusal(
-                &request.registry,
-                "Registry entry_count is too large to increment",
-                json!({
-                    "entry_count": registry_json.entry_count,
-                    "aliases_to_add": all_aliases.len(),
-                }),
-                "Repair registry.json entry_count, then rerun",
-            )
-        })?;
-    let registry_bytes = add_entry::build_registry_bytes(
-        &request.registry,
-        &registry_path,
-        &version_after,
-        entry_count_after,
-    )?;
-
-    let mut aliases_by_file = BTreeMap::<String, Vec<RegistryAliasWriteEntry>>::new();
-    for alias in all_aliases {
-        aliases_by_file
-            .entry(alias.alias_file.clone())
-            .or_default()
-            .push(alias);
-    }
-    let mut alias_writes = Vec::new();
-    for (alias_file, file_aliases) in &aliases_by_file {
-        let alias_path = add_entry::validate_alias_file(&request.registry, alias_file)?;
-        let alias_bytes = add_entry::build_alias_bytes_with_entries(
+    let registry = request.registry.clone();
+    let typed = commit_typed_entries(RegistryTypedWriteRequest {
+        registry,
+        prefix: request.prefix,
+        entries: typed_entries,
+        bump: request.bump,
+        next_version: request.next_version,
+        no_lint: request.no_lint,
+        expected_version: None,
+    })?;
+    let scheme = typed.scheme.ok_or_else(|| {
+        add_entry::bad_registry_refusal(
             &request.registry,
-            &alias_path,
-            file_aliases,
-        )?;
-        alias_writes.push((alias_path, alias_bytes));
-    }
-
-    let mut touched_files = aliases_by_file.keys().cloned().collect::<Vec<_>>();
-    touched_files.push("registry.json".to_string());
-    let mut output = RegistryMintBatchOutput {
+            "Mint-batch did not allocate a new canonical ID",
+            json!({}),
+            "Provide a fresh mint-batch item, then rerun",
+        )
+    })?;
+    Ok(RegistryMintBatchOutput {
         version: "canon_registry_mint_batch.v0".to_string(),
-        registry: RegistryAddEntryRegistry {
-            id: registry_meta.id,
-            source: registry_meta.source,
-            version_before: registry_json.version,
-            version_after,
-            entry_count_before: registry_json.entry_count,
-            entry_count_after,
-        },
+        registry: typed.registry,
         scheme,
-        minted,
-        touched_files,
-        lint: RegistryAddEntryLintSummary {
-            enabled: !request.no_lint,
-            profile: None,
-            total_findings: 0,
-            errors: 0,
-            warnings: 0,
-            info: 0,
-        },
-        warnings: Vec::new(),
-    };
-    match commit_planned_writes(
-        &request.registry,
-        &registry_path,
-        &registry_bytes,
-        &alias_writes,
-        !request.no_lint,
+        minted: typed
+            .minted
+            .into_iter()
+            .map(|entry| RegistryMintBatchEntry {
+                canonical_id: entry.canonical_id,
+                canonical_type: entry.canonical_type,
+                aliases: entry.aliases,
+            })
+            .collect(),
+        touched_files: typed.touched_files,
+        lint: typed.lint,
+        warnings: typed.warnings,
+    })
+}
+
+fn split_alias_spec(registry: &Path, raw: &str) -> Result<(String, String, String), Refusal> {
+    let (alias_file, rest) = raw.split_once('=').ok_or_else(|| {
+        add_entry::parse_refusal(
+            registry,
+            "Invalid --with-alias; expected FILE=INPUT:RULE_ID",
+            json!({ "with_alias": raw }),
+            "Use --with-alias aliases.json='Input:RULE_ID'",
+        )
+    })?;
+    let (input, rule_id) = rest.rsplit_once(':').ok_or_else(|| {
+        add_entry::parse_refusal(
+            registry,
+            "Invalid --with-alias; expected FILE=INPUT:RULE_ID",
+            json!({ "with_alias": raw }),
+            "Use --with-alias aliases.json='Input:RULE_ID'",
+        )
+    })?;
+    let input = add_entry::validate_trimmed_non_empty(
+        registry,
+        "--with-alias input",
+        input,
+        true,
+        "Use --with-alias aliases.json='Trimmed input:RULE_ID'",
+    )?;
+    let rule_id = add_entry::validate_trimmed_non_empty(
+        registry,
+        "--with-alias rule_id",
+        rule_id,
         false,
-    )? {
-        CommitOutcome::Committed(Some((lint, warnings))) => {
-            output.lint = lint;
-            output.warnings = warnings;
-        }
-        CommitOutcome::Committed(None) | CommitOutcome::AlreadyApplied => {}
-    }
-    Ok(output)
+        "Use --with-alias aliases.json='Input:RULE_ID'",
+    )?;
+    Ok((alias_file.to_string(), input, rule_id))
 }

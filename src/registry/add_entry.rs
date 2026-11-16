@@ -8,7 +8,7 @@ use crate::{
     identity_scope::IdentityScope,
     registry_lint::{RegistryLintOutput, RegistryLintProfile, RegistryLintSeverity},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
@@ -51,7 +51,7 @@ pub struct RegistryAddEntryRegistry {
     pub entry_count_after: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RegistryAddEntryAliasEntry {
     pub alias_file: String,
     pub input: String,

@@ -7,8 +7,8 @@ use crate::{
     },
     entity::publication::{
         EntityPublicationError, EntityPublicationErrorKind, EntityPublicationFileInput,
-        EntityPublicationRequest, EntityPublicationUpstreamRef, open_current_stream_generation,
-        publish_stream_patch,
+        EntityPublicationRequest, EntityPublicationSnapshot, EntityPublicationUpstreamRef,
+        open_current_stream_generation, publish_stream_patch,
     },
     registry, registry_lint,
 };
@@ -27,6 +27,8 @@ pub const SESSION_INGEST_VERSION: &str = "canon.entity.session.ingest.v1";
 pub const SESSION_OBSERVATIONS_STREAM_ID: &str = "entity-session-observations";
 pub const SESSION_ASSERT_VERSION: &str = "canon.entity.session.assert.v1";
 pub const SESSION_EVIDENCE_STREAM_ID: &str = "entity-session-evidence";
+pub const SESSION_COMMIT_VERSION: &str = "canon.entity.session.commit.v1";
+pub const SESSION_COMMIT_STREAM_ID: &str = "entity-session-commit";
 const SESSION_PUBLICATION_STAGE: &str = "session";
 const SESSION_PUBLICATION_VERSION: &str = "canon.entity.session.v1";
 const SESSION_EVIDENCE_EXTENSION_SCHEMA: &str = "canon.entity.session.assertion.v1";
@@ -130,6 +132,107 @@ impl SessionAssertOutput {
             self.already_present,
             self.rejected.len(),
             self.shard.as_deref().unwrap_or("<none>"),
+            self.generation_id.as_deref().unwrap_or("<none>"),
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionCommitAlias {
+    pub alias_file: String,
+    pub input: String,
+    pub canonical_type: String,
+    pub rule_id: String,
+    pub skip_if_existing: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionCommitEntry {
+    pub cluster_id: String,
+    pub tier: String,
+    pub outcome_ref: String,
+    pub closure_hash: String,
+    pub aliases: Vec<SessionCommitAlias>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionCommitRegistryExpectation {
+    pub id: String,
+    pub version: String,
+    pub snapshot_hash: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionCommitRequest {
+    pub session: PathBuf,
+    pub solve_hash: String,
+    pub observations_generation: String,
+    pub evidence_generation: Option<String>,
+    pub registry: SessionCommitRegistryExpectation,
+    pub entries: Vec<SessionCommitEntry>,
+    pub skipped: Vec<SessionCommitSkipped>,
+    pub next_version: Option<String>,
+    pub bump: Option<registry::RegistryVersionBump>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionCommitMinted {
+    pub canonical_id: String,
+    pub cluster_id: String,
+    pub tier: String,
+    pub aliases: Vec<registry::RegistryAddEntryAliasEntry>,
+    pub outcome_ref: String,
+    pub closure_hash: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionCommitSkipped {
+    pub cluster_id: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionCommitRegistry {
+    pub id: String,
+    pub version_before: String,
+    pub version_after: String,
+    pub entry_count_before: usize,
+    pub entry_count_after: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct SessionCommitReceipt {
+    version: String,
+    solve_hash: String,
+    registry: SessionCommitRegistry,
+    minted: Vec<SessionCommitMinted>,
+    skipped: Vec<SessionCommitSkipped>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionCommitOutput {
+    pub version: String,
+    pub outcome: String,
+    pub solve_hash: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registry: Option<SessionCommitRegistry>,
+    pub minted: Vec<SessionCommitMinted>,
+    pub skipped: Vec<SessionCommitSkipped>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generation_id: Option<String>,
+}
+
+impl SessionCommitOutput {
+    pub fn render_summary(&self) -> String {
+        format!(
+            "outcome={} minted={} skipped={} registry_version={} generation={}",
+            self.outcome,
+            self.minted.len(),
+            self.skipped.len(),
+            self.registry
+                .as_ref()
+                .map(|registry| registry.version_after.as_str())
+                .unwrap_or("<none>"),
             self.generation_id.as_deref().unwrap_or("<none>"),
         )
     }
@@ -505,6 +608,305 @@ pub fn assert_evidence(request: SessionAssertRequest) -> Result<SessionAssertOut
         shard: Some(logical_path),
         generation_id: Some(receipt.generation_id),
     })
+}
+
+pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refusal> {
+    let work_dir = absolute_path(&request.session)?;
+    let Some(manifest) = read_current_manifest(&work_dir)? else {
+        return Err(session_not_initialized_refusal(&work_dir));
+    };
+    let binding = manifest.registries.first().ok_or_else(|| Refusal {
+        code: RefusalCode::EEntityArtifactContract,
+        message: "Session manifest has no registry binding".to_string(),
+        detail: json!({"writes_performed": false}),
+        next_command: Some("Initialize a session with one registry, then rerun commit".to_string()),
+    })?;
+    let observations_generation =
+        current_generation_id_for_stream(&work_dir, SESSION_OBSERVATIONS_STREAM_ID)?.ok_or_else(
+            || {
+                stale_solve_refusal(
+                    "observations_generation",
+                    &request.observations_generation,
+                    None,
+                )
+            },
+        )?;
+    if observations_generation != request.observations_generation {
+        return Err(stale_solve_refusal(
+            "observations_generation",
+            &request.observations_generation,
+            Some(&observations_generation),
+        ));
+    }
+    let evidence_generation =
+        current_generation_id_for_stream(&work_dir, SESSION_EVIDENCE_STREAM_ID)?;
+    if evidence_generation != request.evidence_generation {
+        return Err(stale_solve_refusal(
+            "evidence_generation",
+            request.evidence_generation.as_deref().unwrap_or("<none>"),
+            evidence_generation.as_deref(),
+        ));
+    }
+
+    let registry_path = Path::new(&binding.path);
+    let loaded_registry = registry::load_registry(registry_path)
+        .map_err(|error| Refusal::bad_registry(&binding.path, &error.to_string()))?;
+    if let Some(output) = already_committed(
+        &work_dir,
+        &request.solve_hash,
+        &loaded_registry.meta.version,
+    )? {
+        return Ok(output);
+    }
+    if loaded_registry.meta.id != request.registry.id
+        || loaded_registry.meta.version != request.registry.version
+    {
+        return Err(stale_solve_refusal(
+            "registry",
+            &format!("{}@{}", request.registry.id, request.registry.version),
+            Some(&format!(
+                "{}@{}",
+                loaded_registry.meta.id, loaded_registry.meta.version
+            )),
+        ));
+    }
+
+    if request.entries.is_empty() {
+        return Ok(SessionCommitOutput {
+            version: SESSION_COMMIT_VERSION.to_string(),
+            outcome: "nothing_to_commit".to_string(),
+            solve_hash: request.solve_hash,
+            registry: None,
+            minted: Vec::new(),
+            skipped: request.skipped,
+            generation_id: None,
+        });
+    }
+
+    let typed_entries = request
+        .entries
+        .iter()
+        .flat_map(|entry| {
+            entry
+                .aliases
+                .iter()
+                .map(|alias| registry::RegistryTypedAlias {
+                    alias_file: alias.alias_file.clone(),
+                    input: alias.input.clone(),
+                    canonical_id: None,
+                    new_id_slot: Some(entry.cluster_id.clone()),
+                    canonical_type: alias.canonical_type.clone(),
+                    rule_id: alias.rule_id.clone(),
+                    skip_if_existing: alias.skip_if_existing,
+                })
+        })
+        .collect::<Vec<_>>();
+    let typed = registry::commit_typed_entries(registry::RegistryTypedWriteRequest {
+        registry: registry_path.to_path_buf(),
+        prefix: None,
+        entries: typed_entries,
+        bump: request.bump,
+        next_version: request.next_version,
+        no_lint: false,
+        expected_version: Some(request.registry.version.clone()),
+    })?;
+    let typed_skipped = typed.skipped.clone();
+    let entry_by_slot = request
+        .entries
+        .iter()
+        .map(|entry| (format!("new:{}", entry.cluster_id), entry))
+        .collect::<BTreeMap<_, _>>();
+    let minted = typed
+        .minted
+        .into_iter()
+        .filter_map(|entry| {
+            entry_by_slot
+                .get(&entry.group_key)
+                .map(|source| SessionCommitMinted {
+                    canonical_id: entry.canonical_id,
+                    cluster_id: source.cluster_id.clone(),
+                    tier: source.tier.clone(),
+                    aliases: entry.aliases,
+                    outcome_ref: source.outcome_ref.clone(),
+                    closure_hash: source.closure_hash.clone(),
+                })
+        })
+        .collect::<Vec<_>>();
+    let registry = Some(SessionCommitRegistry {
+        id: typed.registry.id,
+        version_before: typed.registry.version_before,
+        version_after: typed.registry.version_after,
+        entry_count_before: typed.registry.entry_count_before,
+        entry_count_after: typed.registry.entry_count_after,
+    });
+    let mut receipt_skipped = request.skipped.clone();
+    for skipped_alias in typed_skipped {
+        if let Some(cluster_id) = skipped_alias.group_key.strip_prefix("new:") {
+            receipt_skipped.push(SessionCommitSkipped {
+                cluster_id: cluster_id.to_string(),
+                reason: skipped_alias.reason,
+            });
+        }
+    }
+    receipt_skipped.sort_by(|left, right| {
+        left.cluster_id
+            .cmp(&right.cluster_id)
+            .then_with(|| left.reason.cmp(&right.reason))
+    });
+    let receipt = SessionCommitReceipt {
+        version: SESSION_COMMIT_VERSION.to_string(),
+        solve_hash: request.solve_hash.clone(),
+        registry: registry.clone().ok_or_else(|| Refusal {
+            code: RefusalCode::EEntityArtifactContract,
+            message: "Typed registry commit returned no registry metadata".to_string(),
+            detail: json!({"writes_performed": true}),
+            next_command: Some("Reread the registry and session commit receipt".to_string()),
+        })?,
+        minted: minted.clone(),
+        skipped: receipt_skipped,
+    };
+    let bytes = serde_json::to_vec(&receipt).map_err(|error| Refusal {
+        code: RefusalCode::EEntityArtifactContract,
+        message: format!("Unable to serialize session commit receipt: {error}"),
+        detail: json!({"writes_performed": false}),
+        next_command: Some("Rerun canon entity session commit".to_string()),
+    })?;
+    let mut upstream_artifacts = vec![EntityPublicationUpstreamRef {
+        version: SESSION_OBSERVATIONS_STREAM_ID.to_string(),
+        content_hash: request.observations_generation,
+    }];
+    if let Some(generation) = request.evidence_generation {
+        upstream_artifacts.push(EntityPublicationUpstreamRef {
+            version: SESSION_EVIDENCE_STREAM_ID.to_string(),
+            content_hash: generation,
+        });
+    }
+    upstream_artifacts.push(EntityPublicationUpstreamRef {
+        version: "entity-session-solve".to_string(),
+        content_hash: request.solve_hash,
+    });
+    let publication = publish_stream_patch(
+        &work_dir,
+        EntityPublicationRequest {
+            stream_id: SESSION_COMMIT_STREAM_ID.to_string(),
+            supersedes_generation_id: current_generation_id_for_stream(
+                &work_dir,
+                SESSION_COMMIT_STREAM_ID,
+            )?,
+            request_fingerprint: hash_bytes(SESSION_COMMIT_VERSION.as_bytes()),
+            cache_mode: "disabled".to_string(),
+            cache_status: "cold_start".to_string(),
+            cache_receipt_hash: hash_bytes(b"canon.entity.session.commit.receipt.v1"),
+            stage_order: vec![SESSION_PUBLICATION_STAGE.to_string()],
+            upstream_artifacts,
+            files: vec![EntityPublicationFileInput::new(
+                "commit/commit.json",
+                SESSION_PUBLICATION_STAGE,
+                SESSION_COMMIT_VERSION,
+                bytes,
+            )],
+            omit_logical_paths: Vec::new(),
+        },
+    )
+    .map_err(|error| Refusal {
+        code: RefusalCode::EEntityArtifactContract,
+        message: format!("Unable to publish session commit receipt: {error}"),
+        detail: json!({"writes_performed": true, "stream": SESSION_COMMIT_STREAM_ID}),
+        next_command: Some("Reread the session commit receipt, then rerun commit".to_string()),
+    })?;
+    Ok(SessionCommitOutput {
+        version: SESSION_COMMIT_VERSION.to_string(),
+        outcome: "committed".to_string(),
+        solve_hash: receipt.solve_hash,
+        registry,
+        minted,
+        skipped: receipt.skipped,
+        generation_id: Some(publication.generation_id),
+    })
+}
+
+fn read_commit_receipt(work_dir: &Path) -> Result<Option<SessionCommitReceipt>, Refusal> {
+    let Some(snapshot) = open_optional_stream(work_dir, SESSION_COMMIT_STREAM_ID)? else {
+        return Ok(None);
+    };
+    let Some(bytes) = snapshot.read_logical_file("commit/commit.json") else {
+        return Err(Refusal {
+            code: RefusalCode::EEntityArtifactContract,
+            message: "Session commit generation is missing commit/commit.json".to_string(),
+            detail: json!({"stream": SESSION_COMMIT_STREAM_ID, "writes_performed": false}),
+            next_command: Some("Repair the session commit stream, then rerun commit".to_string()),
+        });
+    };
+    serde_json::from_slice(bytes)
+        .map(Some)
+        .map_err(|error| Refusal {
+            code: RefusalCode::EEntityArtifactContract,
+            message: format!("Session commit receipt is invalid: {error}"),
+            detail: json!({"stream": SESSION_COMMIT_STREAM_ID, "writes_performed": false}),
+            next_command: Some("Repair the session commit receipt, then rerun commit".to_string()),
+        })
+}
+
+pub(crate) fn already_committed(
+    work_dir: &Path,
+    solve_hash: &str,
+    registry_version: &str,
+) -> Result<Option<SessionCommitOutput>, Refusal> {
+    let Some(existing) = read_commit_receipt(work_dir)? else {
+        return Ok(None);
+    };
+    if existing.solve_hash != solve_hash || existing.registry.version_after != registry_version {
+        return Ok(None);
+    }
+    let generation_id = current_generation_id_for_stream(work_dir, SESSION_COMMIT_STREAM_ID)?;
+    Ok(Some(SessionCommitOutput {
+        version: SESSION_COMMIT_VERSION.to_string(),
+        outcome: "already_committed".to_string(),
+        solve_hash: existing.solve_hash,
+        registry: Some(existing.registry),
+        minted: existing.minted,
+        skipped: existing.skipped,
+        generation_id,
+    }))
+}
+
+fn current_generation_id_for_stream(
+    work_dir: &Path,
+    stream_id: &str,
+) -> Result<Option<String>, Refusal> {
+    match open_current_stream_generation(work_dir, stream_id) {
+        Ok(snapshot) => Ok(Some(snapshot.generation_id)),
+        Err(error) if error.kind == EntityPublicationErrorKind::UncommittedGeneration => Ok(None),
+        Err(error) => Err(publication_refusal(error)),
+    }
+}
+
+fn open_optional_stream(
+    work_dir: &Path,
+    stream_id: &str,
+) -> Result<Option<EntityPublicationSnapshot>, Refusal> {
+    match open_current_stream_generation(work_dir, stream_id) {
+        Ok(snapshot) => Ok(Some(snapshot)),
+        Err(error) if error.kind == EntityPublicationErrorKind::UncommittedGeneration => Ok(None),
+        Err(error) => Err(publication_refusal(error)),
+    }
+}
+
+fn stale_solve_refusal(field: &str, expected: &str, actual: Option<&str>) -> Refusal {
+    Refusal {
+        code: RefusalCode::EEntityArtifactContract,
+        message: format!("Session solve is stale for {field}"),
+        detail: json!({
+            "reason": "stale_solve",
+            "field": field,
+            "expected": expected,
+            "actual": actual,
+            "writes_performed": false,
+        }),
+        next_command: Some(
+            "Run canon entity session solve, then rerun canon entity session commit".to_string(),
+        ),
+    }
 }
 
 #[derive(Debug)]

@@ -20,8 +20,9 @@ use crate::{
     },
     lookup, registry,
     session::{
-        SESSION_EVIDENCE_STREAM_ID, SESSION_MANIFEST_STREAM_ID, SESSION_OBSERVATIONS_STREAM_ID,
-        SessionManifest,
+        self, SESSION_EVIDENCE_STREAM_ID, SESSION_MANIFEST_STREAM_ID,
+        SESSION_OBSERVATIONS_STREAM_ID, SessionCommitAlias, SessionCommitEntry,
+        SessionCommitRegistryExpectation, SessionCommitSkipped, SessionManifest,
     },
     witness::hash_bytes,
 };
@@ -49,7 +50,14 @@ pub struct SessionSolveRequest {
     pub rules: PathBuf,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone)]
+pub struct EntitySessionCommitRequest {
+    pub session: PathBuf,
+    pub next_version: Option<String>,
+    pub bump: Option<registry::RegistryVersionBump>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionSolveInputs {
     pub observations_generation: String,
     pub evidence_generation: Option<String>,
@@ -57,14 +65,14 @@ pub struct SessionSolveInputs {
     pub registry: SessionSolveRegistry,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionSolveRegistry {
     pub id: String,
     pub version: String,
     pub snapshot_hash: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct SessionSolveSummary {
     pub cluster_count: usize,
     pub node_count: usize,
@@ -78,7 +86,7 @@ pub struct SessionSolveSummary {
     pub dangling_evidence: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionSolveCluster {
     pub cluster_id: String,
     pub outcome: String,
@@ -93,7 +101,7 @@ pub struct SessionSolveCluster {
     pub reason: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionSolveReview {
     pub left_surface: String,
     pub right_surface: String,
@@ -102,7 +110,7 @@ pub struct SessionSolveReview {
     pub missing: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionSolveRelation {
     pub left_surface: String,
     pub right_surface: String,
@@ -110,7 +118,7 @@ pub struct SessionSolveRelation {
     pub evidence_ids: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionSolveContradiction {
     pub reason: String,
     pub surfaces: Vec<String>,
@@ -118,10 +126,11 @@ pub struct SessionSolveContradiction {
     pub evidence_ids: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionSolveArtifact {
     pub version: String,
     pub inputs: SessionSolveInputs,
+    pub authoritative_keys: Vec<String>,
     pub summary: SessionSolveSummary,
     pub clusters: Vec<SessionSolveCluster>,
     pub review: Vec<SessionSolveReview>,
@@ -598,6 +607,7 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             rules_hash,
             registry: registry_info.metadata,
         },
+        authoritative_keys: rules.authoritative_keys.clone(),
         summary,
         clusters,
         review,
@@ -654,6 +664,208 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         generation_id: receipt.generation_id,
         artifact_path: "solve/solve.json".to_string(),
     })
+}
+
+pub fn commit(
+    request: EntitySessionCommitRequest,
+) -> Result<session::SessionCommitOutput, Refusal> {
+    let session = absolute_session_path(&request.session)?;
+    let manifest = read_manifest(&session)?;
+    let binding = manifest.registries.first().ok_or_else(|| {
+        solve_refusal(
+            "The session manifest has no registry binding",
+            json!({"field": "registries", "writes_performed": false}),
+            "Reinitialize the session with --registry, then rerun canon entity session commit",
+        )
+    })?;
+    let solve_snapshot = open_required_stream(&session, SESSION_SOLVE_STREAM_ID, "solve")?;
+    let solve_bytes = solve_snapshot
+        .read_logical_file("solve/solve.json")
+        .ok_or_else(|| {
+            solve_refusal(
+                "Session solve generation is missing solve/solve.json",
+                json!({"stream": SESSION_SOLVE_STREAM_ID, "writes_performed": false}),
+                "Run canon entity session solve, then rerun canon entity session commit",
+            )
+        })?;
+    let solve_hash = hash_bytes(solve_bytes);
+    let artifact =
+        serde_json::from_slice::<SessionSolveArtifact>(solve_bytes).map_err(|error| {
+            solve_refusal(
+                format!("Session solve artifact is invalid: {error}"),
+                json!({"stream": SESSION_SOLVE_STREAM_ID, "writes_performed": false}),
+                "Run canon entity session solve, then rerun canon entity session commit",
+            )
+        })?;
+    let observations_snapshot =
+        open_required_stream(&session, SESSION_OBSERVATIONS_STREAM_ID, "observations")?;
+    if artifact.inputs.observations_generation != observations_snapshot.generation_id {
+        return Err(stale_solve_refusal(
+            "observations_generation",
+            &artifact.inputs.observations_generation,
+            &observations_snapshot.generation_id,
+        ));
+    }
+    let evidence_snapshot = open_optional_stream(&session, SESSION_EVIDENCE_STREAM_ID)?;
+    let evidence_generation = evidence_snapshot
+        .as_ref()
+        .map(|snapshot| snapshot.generation_id.clone());
+    if artifact.inputs.evidence_generation != evidence_generation {
+        return Err(stale_solve_refusal(
+            "evidence_generation",
+            artifact
+                .inputs
+                .evidence_generation
+                .as_deref()
+                .unwrap_or("<none>"),
+            evidence_generation.as_deref().unwrap_or("<none>"),
+        ));
+    }
+    let registry_path = Path::new(&binding.path);
+    let loaded_registry = registry::load_registry(registry_path)
+        .map_err(|error| Refusal::bad_registry(&binding.path, &error.to_string()))?;
+    let registry_snapshot = registry_snapshot_hash(
+        registry_path,
+        &loaded_registry.meta.id,
+        &loaded_registry.meta.version,
+    )?;
+    let expected_registry = artifact.inputs.registry.clone();
+    if expected_registry.id != loaded_registry.meta.id
+        || expected_registry.version != loaded_registry.meta.version
+        || expected_registry.snapshot_hash != registry_snapshot
+    {
+        if let Some(output) =
+            session::already_committed(&session, &solve_hash, &loaded_registry.meta.version)?
+        {
+            return Ok(output);
+        }
+        return Err(stale_solve_refusal(
+            "registry",
+            &format!(
+                "{}@{}:{}",
+                expected_registry.id, expected_registry.version, expected_registry.snapshot_hash
+            ),
+            &format!(
+                "{}@{}:{}",
+                loaded_registry.meta.id, loaded_registry.meta.version, registry_snapshot
+            ),
+        ));
+    }
+    let (entries, skipped) = build_commit_plan(&artifact, &binding.kind)?;
+    session::commit(session::SessionCommitRequest {
+        session,
+        solve_hash,
+        observations_generation: artifact.inputs.observations_generation,
+        evidence_generation: artifact.inputs.evidence_generation,
+        registry: SessionCommitRegistryExpectation {
+            id: expected_registry.id,
+            version: expected_registry.version,
+            snapshot_hash: expected_registry.snapshot_hash,
+        },
+        entries,
+        skipped,
+        next_version: request.next_version,
+        bump: request.bump,
+    })
+}
+
+fn build_commit_plan(
+    artifact: &SessionSolveArtifact,
+    entity_kind: &str,
+) -> Result<(Vec<SessionCommitEntry>, Vec<SessionCommitSkipped>), Refusal> {
+    let mut clusters = artifact.clusters.clone();
+    clusters.sort_by(|left, right| left.cluster_id.cmp(&right.cluster_id));
+    let mut entries = Vec::new();
+    let mut skipped = Vec::new();
+    for cluster in clusters {
+        let accepted = cluster.outcome == "accepted"
+            && matches!(cluster.tier.as_deref(), Some("A" | "B"))
+            && cluster.incumbent_canonical_id.is_none();
+        if !accepted {
+            let reason = if cluster.incumbent_canonical_id.is_some() {
+                "incumbent"
+            } else if cluster.outcome == "contradiction" {
+                "contradiction"
+            } else if cluster.outcome == "standalone" {
+                "standalone"
+            } else if cluster.outcome == "review" || cluster.tier.is_none() {
+                "review"
+            } else {
+                "not_accepted"
+            };
+            skipped.push(SessionCommitSkipped {
+                cluster_id: cluster.cluster_id,
+                reason: reason.to_string(),
+            });
+            continue;
+        }
+        let tier = cluster.tier.clone().unwrap_or_default();
+        let mut surfaces = cluster.surfaces.clone();
+        surfaces.sort();
+        let mut aliases = Vec::new();
+        let mut seen_inputs = BTreeSet::new();
+        for surface in surfaces {
+            if seen_inputs.insert(surface.clone()) {
+                aliases.push(SessionCommitAlias {
+                    alias_file: "aliases.json".to_string(),
+                    input: surface,
+                    canonical_type: entity_kind.to_string(),
+                    rule_id: format!("SESSION_TIER_{tier}"),
+                    skip_if_existing: false,
+                });
+            }
+        }
+        for namespace in &artifact.authoritative_keys {
+            let Some(values) = cluster.keys.get(namespace) else {
+                continue;
+            };
+            let mut values = values.clone();
+            values.sort();
+            for value in values {
+                if seen_inputs.insert(value.clone()) {
+                    aliases.push(SessionCommitAlias {
+                        alias_file: "aliases.json".to_string(),
+                        input: value,
+                        canonical_type: entity_kind.to_string(),
+                        rule_id: format!("SESSION_KEY_{}", namespace.to_ascii_uppercase()),
+                        skip_if_existing: true,
+                    });
+                }
+            }
+        }
+        let closure_bytes = serde_json::to_vec(&cluster).map_err(|error| {
+            solve_refusal(
+                format!(
+                    "Unable to hash accepted cluster {}: {error}",
+                    cluster.cluster_id
+                ),
+                json!({"cluster_id": cluster.cluster_id, "writes_performed": false}),
+                "Rerun canon entity session solve, then rerun commit",
+            )
+        })?;
+        entries.push(SessionCommitEntry {
+            cluster_id: cluster.cluster_id.clone(),
+            tier,
+            outcome_ref: format!("entity-session:{}", cluster.cluster_id),
+            closure_hash: hash_bytes(&closure_bytes),
+            aliases,
+        });
+    }
+    Ok((entries, skipped))
+}
+
+fn stale_solve_refusal(field: &str, expected: &str, actual: &str) -> Refusal {
+    solve_refusal(
+        format!("Session solve is stale for {field}"),
+        json!({
+            "reason": "stale_solve",
+            "field": field,
+            "expected": expected,
+            "actual": actual,
+            "writes_performed": false,
+        }),
+        "Run canon entity session solve, then rerun canon entity session commit",
+    )
 }
 
 fn parse_rules(path: &Path) -> Result<(SessionRules, String), Refusal> {
@@ -1570,10 +1782,11 @@ fn ascii_trim(value: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::{
-        EdgeFacts, EdgeTier, SessionRules, TIER_A_TYPES, TIER_B_TYPES,
-        exactly_one_authoritative_value, tier_for,
+        EdgeFacts, EdgeTier, SessionRules, SessionSolveArtifact, SessionSolveCluster,
+        SessionSolveInputs, SessionSolveRegistry, SessionSolveSummary, TIER_A_TYPES, TIER_B_TYPES,
+        build_commit_plan, exactly_one_authoritative_value, tier_for,
     };
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
 
     fn rules() -> SessionRules {
         SessionRules {
@@ -1642,5 +1855,82 @@ mod tests {
         node.keys
             .insert("lei".to_string(), BTreeSet::from(["LEI".to_string()]));
         assert!(!exactly_one_authoritative_value(&node, &rules()));
+    }
+
+    #[test]
+    fn commit_plan_sorts_clusters_and_skips_non_accepted_outcomes() {
+        let artifact = SessionSolveArtifact {
+            version: "canon.entity.session.solve.v1".to_string(),
+            inputs: SessionSolveInputs {
+                observations_generation: "obs-generation".to_string(),
+                evidence_generation: None,
+                rules_hash: "rules-hash".to_string(),
+                registry: SessionSolveRegistry {
+                    id: "organisations".to_string(),
+                    version: "0.0.0".to_string(),
+                    snapshot_hash: "registry-hash".to_string(),
+                },
+            },
+            authoritative_keys: vec!["cik".to_string()],
+            summary: SessionSolveSummary::default(),
+            clusters: vec![
+                SessionSolveCluster {
+                    cluster_id: "cluster-z".to_string(),
+                    outcome: "accepted".to_string(),
+                    tier: Some("B".to_string()),
+                    surfaces: vec!["Zeta Corporation".to_string(), "Zeta Corp".to_string()],
+                    observation_count: 2,
+                    keys: BTreeMap::from([(String::from("cik"), vec![String::from("222")])]),
+                    incumbent_canonical_id: None,
+                    accepting_evidence_ids: vec!["evidence-z".to_string()],
+                    reason: "tier B".to_string(),
+                },
+                SessionSolveCluster {
+                    cluster_id: "cluster-a".to_string(),
+                    outcome: "accepted".to_string(),
+                    tier: Some("A".to_string()),
+                    surfaces: vec!["Acme Holdings".to_string()],
+                    observation_count: 1,
+                    keys: BTreeMap::from([(String::from("cik"), vec![String::from("111")])]),
+                    incumbent_canonical_id: None,
+                    accepting_evidence_ids: vec!["evidence-a".to_string()],
+                    reason: "tier A".to_string(),
+                },
+                SessionSolveCluster {
+                    cluster_id: "cluster-r".to_string(),
+                    outcome: "review".to_string(),
+                    tier: None,
+                    surfaces: vec!["Review Only".to_string()],
+                    observation_count: 1,
+                    keys: BTreeMap::new(),
+                    incumbent_canonical_id: None,
+                    accepting_evidence_ids: Vec::new(),
+                    reason: "insufficient evidence".to_string(),
+                },
+            ],
+            review: Vec::new(),
+            relations: Vec::new(),
+            contradictions: Vec::new(),
+            standalone_count: 0,
+            dangling_evidence_count: 0,
+            derived_evidence: Vec::new(),
+        };
+
+        let (entries, skipped) = build_commit_plan(&artifact, "organisation").expect("commit plan");
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| entry.cluster_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["cluster-a", "cluster-z"]
+        );
+        assert_eq!(entries[0].tier, "A");
+        assert_eq!(entries[0].aliases[0].input, "Acme Holdings");
+        assert_eq!(entries[0].aliases[0].rule_id, "SESSION_TIER_A");
+        assert_eq!(entries[0].aliases[1].input, "111");
+        assert_eq!(entries[0].aliases[1].rule_id, "SESSION_KEY_CIK");
+        assert_eq!(skipped.len(), 1);
+        assert_eq!(skipped[0].cluster_id, "cluster-r");
+        assert_eq!(skipped[0].reason, "review");
     }
 }
