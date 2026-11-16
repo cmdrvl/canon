@@ -2744,9 +2744,9 @@ pub struct EntityReviewImportCli {
     /// Review JSON or CSV artifact
     pub review: PathBuf,
 
-    /// Entity registry directory for native registry imports
-    #[arg(long, default_value = "")]
-    pub registry: PathBuf,
+    /// Entity registry directory for non-session registry imports
+    #[arg(long, required_unless_present = "session")]
+    pub registry: Option<PathBuf>,
 
     /// Explicit next registry version
     #[arg(long = "next-version", default_value = "")]
@@ -4206,7 +4206,7 @@ mod tests {
             ));
             if let EntityReviewSubcommand::Import(import) = review_subcommand {
                 assert_eq!(import.review, PathBuf::from("review.csv"));
-                assert_eq!(import.registry, PathBuf::from("registries/org"));
+                assert_eq!(import.registry, Some(PathBuf::from("registries/org")));
                 assert_eq!(import.next_version, "2026.05.06");
                 assert_eq!(import.audit, Some(PathBuf::from("audit.json")));
                 assert_eq!(

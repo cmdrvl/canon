@@ -524,7 +524,7 @@ canon entity audit <RESULT.json> --suite <DIR> [--emit json|summary]
 canon entity promote <RESULT.json> --audit <AUDIT.json> --registry <DIR> --next-version <VER> [--emit json|summary]
 canon entity apply <RESULT.json> --rows <ROWS> --registry <DIR> [--column <COL>] [--output <PATH>] [--work-dir <DIR>] [--require-full-resolution|--allow-partial-output] [--emit json|summary]
 canon entity review export <RESULT.json> [--artifact queue|native-review] [--group-by signature] [--emit json|csv|html] [--include resolved|escrow|contradictions|all]
-canon entity review import <REVIEW.json|csv> --registry <DIR> --next-version <VER> [--session <SESSION_DIR>] [--reviewer <REVIEWER>] [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]
+canon entity review import <REVIEW.json|csv> (--registry <DIR> --next-version <VER> | --session <SESSION_DIR> --reviewer <REVIEWER>) [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]
 canon entity explain <RESULT.json> --row <ROW_ID>|--surface-id <SURFACE_ID>|--canon-id <CANON_ID>|--escrow-id <ESCROW_ID> [--emit json|summary]
 canon entity profile list [--emit json|summary]
 canon entity profile init <PROFILE> --output <PATH>
@@ -918,7 +918,7 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `entity promote <RESULT> --audit <JSON> --registry <DIR> --next-version <VER> [--emit json\|summary]` | Write audited results into registry aliases and escrow sidecars. |
 | `entity apply <RESULT> --rows <ROWS> --registry <DIR> [--column <COL>] [--output <PATH>] [--work-dir <DIR>] [--require-full-resolution\|--allow-partial-output] [--emit json\|summary]` | Replay accepted assignments from a solve or run artifact onto input rows without changing the registry. |
 | `entity review export <RESULT> [--artifact queue\|native-review] [--group-by signature] [--emit json\|csv\|html] [--include resolved\|escrow\|contradictions\|all]` | By default, produce the unchanged review queue contract. With `--artifact native-review`, emit `canon_entity_native_review.v0` as JSON, CSV, or offline HTML; `--group-by signature` presents native items by deterministic evidence signature without changing decision authority. |
-| `entity review import <REVIEW> --registry <DIR> --next-version <VER> [--audit <JSON>] [--source-review <NATIVE_REVIEW.json>] [--emit json\|summary]` | Import default queue decisions, or with `--source-review` import native decisions, including JSON group decisions expanded against the source review artifact, into `canon_entity_native_review_import.v0` while keeping registry/version compatibility arguments. |
+| `entity review import <REVIEW> (--registry <DIR> --next-version <VER> \| --session <SESSION_DIR> --reviewer <REVIEWER>) [--audit <JSON>] [--source-review <NATIVE_REVIEW.json>] [--emit json\|summary]` | Import default queue decisions, or with `--source-review` import native decisions, including JSON group decisions expanded against the source review artifact; session imports use the manifest-bound registry and return decisions as evidence. |
 | `entity explain <RESULT> --row <ID>\|--surface-id <ID>\|--canon-id <ID>\|--escrow-id <ID> [--emit json\|summary]` | Proof trace for one row, prepared surface, canonical entity, or escrow entity. |
 | `entity profile list [--emit json\|summary]` | List built-in entity profile templates. |
 | `entity profile init <PROFILE> --output <PATH>` | Write a built-in entity profile template to disk. |
@@ -1504,8 +1504,10 @@ unmatched directional link items carry `right_surface_id: null` and allow only
 defer actions. The HTML projection is static and offline; the canonical decision
 data remain a deterministic JSON/CSV envelope that other frontends can produce.
 
-`canon entity review import` keeps the positional decisions file plus required
-`--registry` and `--next-version` compatibility arguments. Without
+`canon entity review import` keeps the positional decisions file. Non-session
+imports require `--registry` and `--next-version`; session imports use
+`--session` and `--reviewer` and take the registry binding from the session
+manifest. Without
 `--source-review`, it imports the existing queue decisions. With
 `--source-review <canon_entity_native_review.v0>`, it treats the positional file
 as native JSON or CSV decisions, expands JSON `group_decisions` against that

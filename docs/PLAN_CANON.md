@@ -179,7 +179,7 @@ canon entity audit <RESULT.json> --suite <DIR> [--emit json|summary]
 canon entity promote <RESULT.json> --audit <AUDIT.json> --registry <REGISTRY> --next-version <VER> [--emit json|summary]
 canon entity apply <RESULT.json> --rows <ROWS> --registry <REGISTRY> [--column <COL>] [--output <PATH>] [--work-dir <DIR>] [--require-full-resolution|--allow-partial-output] [--emit json|summary]
 canon entity review export <RESULT.json> [--artifact queue|native-review] [--group-by signature] [--emit json|csv|html] [--include resolved|escrow|contradictions|all]
-canon entity review import <REVIEW.json|csv> --registry <REGISTRY> --next-version <VER> [--session <SESSION_DIR>] [--reviewer <REVIEWER>] [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]
+canon entity review import <REVIEW.json|csv> (--registry <REGISTRY> --next-version <VER> | --session <SESSION_DIR> --reviewer <REVIEWER>) [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]
 canon entity explain <RESULT.json> --row <ROW_ID>|--surface-id <SURFACE_ID>|--canon-id <CANON_ID>|--escrow-id <ESCROW_ID> [--emit json|summary]
 canon entity profile list [--emit json|summary]
 canon entity profile init <PROFILE> --output <PATH>
@@ -655,7 +655,7 @@ lookup path and it does not change `canon.v0` exact-match semantics.
   may carry `group_decisions` that expand against the cited source review
   artifact, and native HTML is a static offline projection of that artifact
 
-`canon entity review import <REVIEW.json|csv> --registry <REGISTRY> --next-version <VER> [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]`
+`canon entity review import <REVIEW.json|csv> (--registry <REGISTRY> --next-version <VER> | --session <SESSION_DIR> --reviewer <REVIEWER>) [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]`
 - without `--source-review`, imports the existing queue review decisions into
   alias, trusted-anchor, pending-escrow, and cannot-link sidecars, then bumps
   `registry.json` to `--next-version`
@@ -666,7 +666,8 @@ lookup path and it does not change `canon.v0` exact-match semantics.
   not read or mutate the registry and does not consume `--audit` or
   `--next-version` beyond Clap-required compatibility
 - default queue import uses the required `--registry` and `--next-version`
-  arguments; `--audit` remains required for default alias/anchor promotion
+  arguments; session import takes its registry binding from the session
+  manifest; `--audit` remains required for default alias/anchor promotion
   decisions
 - default queue import refuses malformed decisions, duplicate review IDs, stale
   registry snapshots, alias overwrites, trusted-anchor conflicts, and unchanged

@@ -3544,6 +3544,22 @@ fn run_entity_review_import_command(import: &EntityReviewImportCli) -> Result<u8
     if import.session.is_some() || import.reviewer.is_some() {
         return run_entity_session_review_import_command(import, &review_bytes, summary_mode);
     }
+    let registry = match import.registry.as_deref() {
+        Some(registry) => registry,
+        None => {
+            return emit_entity_refusal(
+                session_review_import_refusal(
+                    "Entity review import requires --registry outside session mode",
+                    serde_json::json!({
+                        "field": "registry",
+                        "writes_performed": false
+                    }),
+                ),
+                true,
+                summary_mode,
+            );
+        }
+    };
     if let Some(source_review) = import.source_review.as_ref() {
         return run_entity_native_review_import_command(
             import,
@@ -3571,7 +3587,7 @@ fn run_entity_review_import_command(import: &EntityReviewImportCli) -> Result<u8
             entity::review_import::ReviewImportV1Request {
                 review_path: &import.review,
                 review_bytes: &review_bytes,
-                registry: &import.registry,
+                registry,
                 next_version: &import.next_version,
                 audit,
             },
@@ -3592,7 +3608,7 @@ fn run_entity_review_import_command(import: &EntityReviewImportCli) -> Result<u8
         }
     }
 
-    match run_entity_review_import_pipeline(import) {
+    match run_entity_review_import_pipeline(import, registry) {
         Ok(artifact) => {
             let output = match import.emit {
                 EntityEmitMode::Json => serde_json::to_string(&artifact)?,
@@ -3636,7 +3652,7 @@ fn run_entity_session_review_import_command(
             );
         }
     };
-    if !import.registry.as_os_str().is_empty()
+    if import.registry.is_some()
         || !import.next_version.trim().is_empty()
         || import.audit.is_some()
         || import.source_review.is_some()
@@ -7112,6 +7128,7 @@ fn run_entity_review_export_pipeline(
 #[allow(clippy::result_large_err)]
 fn run_entity_review_import_pipeline(
     import: &EntityReviewImportCli,
+    registry: &Path,
 ) -> Result<entity_runtime::review::ReviewImportOutput, CanonOutput> {
     let review_bytes = read_artifact_bytes(&import.review, "entity review artifact")?;
     let audit_data = import
@@ -7128,7 +7145,7 @@ fn run_entity_review_import_pipeline(
     entity_runtime::review::import(
         &import.review,
         &review_bytes,
-        &import.registry,
+        registry,
         &import.next_version,
         audit,
     )

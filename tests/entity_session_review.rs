@@ -293,3 +293,17 @@ fn tier_c_review_export_group_import_returns_human_evidence_and_rejects_stale() 
         .assert()
         .code(2);
 }
+
+#[test]
+fn review_import_without_session_or_registry_refuses() {
+    let output = canon()
+        .args(["entity", "review", "import", "decisions.json"])
+        .output()
+        .expect("run review import");
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("--registry"),
+        "refusal should identify the missing registry argument"
+    );
+}
