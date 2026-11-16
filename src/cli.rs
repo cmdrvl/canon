@@ -1586,6 +1586,8 @@ pub enum EntitySessionSubcommand {
     Init(EntitySessionInitCli),
     /// Append observation JSONL to an evidence session, rejecting bad rows individually
     Ingest(EntitySessionIngestCli),
+    /// Append typed evidence JSONL to an evidence session, rejecting bad rows individually
+    Assert(EntitySessionAssertCli),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1630,6 +1632,19 @@ pub struct EntitySessionIngestCli {
 
     /// Observation JSONL file, or '-' for stdin
     pub observations: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntitySessionAssertCli {
+    /// Session work directory
+    pub session: PathBuf,
+
+    /// Evidence JSONL file, or '-' for stdin
+    pub evidence: PathBuf,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]

@@ -1,5 +1,10 @@
 use crate::{
     Refusal, RefusalCode,
+    entity::evidence_ir::{
+        CANON_EVIDENCE_VERSION, EvidenceAuthorityBasis, EvidenceExtension, EvidenceExtensionValue,
+        EvidenceKind, EvidenceOperatorRef, EvidencePolicyRef, EvidenceProvenanceRef,
+        EvidenceRecord, EvidenceTarget, canonicalize_record,
+    },
     entity::publication::{
         EntityPublicationError, EntityPublicationErrorKind, EntityPublicationFileInput,
         EntityPublicationRequest, EntityPublicationUpstreamRef, open_current_stream_generation,
@@ -8,7 +13,7 @@ use crate::{
     registry, registry_lint,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Map, Value, json};
 use std::{
     collections::BTreeMap,
     fs,
@@ -20,8 +25,11 @@ pub const SESSION_MANIFEST_VERSION: &str = "canon.entity.session.v1";
 pub const SESSION_MANIFEST_STREAM_ID: &str = "entity-session-manifest";
 pub const SESSION_INGEST_VERSION: &str = "canon.entity.session.ingest.v1";
 pub const SESSION_OBSERVATIONS_STREAM_ID: &str = "entity-session-observations";
+pub const SESSION_ASSERT_VERSION: &str = "canon.entity.session.assert.v1";
+pub const SESSION_EVIDENCE_STREAM_ID: &str = "entity-session-evidence";
 const SESSION_PUBLICATION_STAGE: &str = "session";
 const SESSION_PUBLICATION_VERSION: &str = "canon.entity.session.v1";
+const SESSION_EVIDENCE_EXTENSION_SCHEMA: &str = "canon.entity.session.assertion.v1";
 const EVIDENCE_VOCABULARY: &str = r#"[{"type":"same_key","kind":"pair_support","target":"pair"},{"type":"same_slot","kind":"pair_support","target":"pair"},{"type":"attribute_agreement","kind":"pair_support","target":"pair"},{"type":"name_equivalent","kind":"pair_support","target":"pair"},{"type":"asserted_alias","kind":"pair_support","target":"pair"},{"type":"distinct","kind":"anti_merge_veto","target":"pair"},{"type":"related","kind":"context_only","target":"pair"}]"#;
 
 #[derive(Debug, Clone)]
@@ -88,6 +96,43 @@ pub struct SessionIngestOutput {
     pub rejected: Vec<SessionIngestRejection>,
     pub shard: Option<String>,
     pub generation_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionAssertRequest {
+    pub session: PathBuf,
+    pub evidence: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SessionAssertRejection {
+    pub line: usize,
+    pub code: String,
+    pub message: String,
+    pub fix: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SessionAssertOutput {
+    pub version: String,
+    pub accepted: usize,
+    pub already_present: usize,
+    pub rejected: Vec<SessionAssertRejection>,
+    pub shard: Option<String>,
+    pub generation_id: Option<String>,
+}
+
+impl SessionAssertOutput {
+    pub fn render_summary(&self) -> String {
+        format!(
+            "accepted={} already_present={} rejected={} shard={} generation={}",
+            self.accepted,
+            self.already_present,
+            self.rejected.len(),
+            self.shard.as_deref().unwrap_or("<none>"),
+            self.generation_id.as_deref().unwrap_or("<none>"),
+        )
+    }
 }
 
 impl SessionIngestOutput {
@@ -356,6 +401,112 @@ pub fn ingest(request: SessionIngestRequest) -> Result<SessionIngestOutput, Refu
     })
 }
 
+pub fn assert_evidence(request: SessionAssertRequest) -> Result<SessionAssertOutput, Refusal> {
+    let work_dir = absolute_path(&request.session)?;
+    let Some(manifest) = read_current_manifest(&work_dir)? else {
+        return Err(session_not_initialized_refusal(&work_dir));
+    };
+
+    let current = match open_current_stream_generation(&work_dir, SESSION_EVIDENCE_STREAM_ID) {
+        Ok(snapshot) => Some(snapshot),
+        Err(error) if error.kind == EntityPublicationErrorKind::UncommittedGeneration => None,
+        Err(error) => return Err(evidence_artifact_refusal(&error.message)),
+    };
+    let existing = match current.as_ref() {
+        Some(snapshot) => existing_evidence(snapshot)?,
+        None => ExistingEvidence::default(),
+    };
+    let known_records = existing.records;
+    let existing_shard = existing.shard;
+    let input = read_evidence_input(&request.evidence)?;
+    let mut accepted_records = BTreeMap::new();
+    let mut already_present = 0;
+    let mut rejected = Vec::new();
+
+    for (line_index, line) in input.lines().enumerate() {
+        let line_number = line_index + 1;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let record = match canonicalize_assertion_line(
+            line,
+            line_number,
+            &manifest.evidence_vocabulary_hash,
+        ) {
+            Ok(record) => record,
+            Err(error) => {
+                rejected.push(error.into_rejection());
+                continue;
+            }
+        };
+
+        if let Some(existing) = known_records
+            .get(&record.evidence_id)
+            .or(accepted_records.get(&record.evidence_id))
+        {
+            if existing == &record.bytes {
+                already_present += 1;
+            } else {
+                rejected.push(SessionAssertRejection {
+                    line: line_number,
+                    code: "evidence_id_conflict".to_string(),
+                    message: "evidence_id already exists with different record content".to_string(),
+                    fix: "evidence fields or a new assertion".to_string(),
+                });
+            }
+            continue;
+        }
+
+        accepted_records.insert(record.evidence_id, record.bytes);
+    }
+
+    if accepted_records.is_empty() {
+        return Ok(SessionAssertOutput {
+            version: SESSION_ASSERT_VERSION.to_string(),
+            accepted: 0,
+            already_present,
+            rejected,
+            shard: existing_shard,
+            generation_id: current.map(|snapshot| snapshot.generation_id),
+        });
+    }
+
+    let shard_bytes = canonical_shard_bytes(&accepted_records);
+    let digest = hash_bytes(&shard_bytes);
+    let digest_hex = digest.strip_prefix("blake3:").unwrap_or(&digest);
+    let logical_path = format!("evidence/{digest_hex}.jsonl");
+    let request = EntityPublicationRequest {
+        stream_id: SESSION_EVIDENCE_STREAM_ID.to_string(),
+        supersedes_generation_id: current
+            .as_ref()
+            .map(|snapshot| snapshot.generation_id.clone()),
+        request_fingerprint: hash_bytes(b"canon.entity.session.evidence.v1"),
+        cache_mode: "disabled".to_string(),
+        cache_status: "cold_start".to_string(),
+        cache_receipt_hash: hash_bytes(b"canon.entity.session.evidence.receipt.v1"),
+        stage_order: vec![SESSION_PUBLICATION_STAGE.to_string()],
+        upstream_artifacts: Vec::<EntityPublicationUpstreamRef>::new(),
+        files: vec![EntityPublicationFileInput::new(
+            logical_path.clone(),
+            SESSION_PUBLICATION_STAGE,
+            SESSION_PUBLICATION_VERSION,
+            shard_bytes,
+        )],
+        omit_logical_paths: Vec::new(),
+    };
+    let receipt = publish_stream_patch(&work_dir, request)
+        .map_err(|error| evidence_publication_refusal(&error.message))?;
+
+    Ok(SessionAssertOutput {
+        version: SESSION_ASSERT_VERSION.to_string(),
+        accepted: accepted_records.len(),
+        already_present,
+        rejected,
+        shard: Some(logical_path),
+        generation_id: Some(receipt.generation_id),
+    })
+}
+
 #[derive(Debug)]
 struct CanonicalObservation {
     obs_id: String,
@@ -366,6 +517,484 @@ struct CanonicalObservation {
 struct ExistingObservations {
     rows: BTreeMap<String, Vec<u8>>,
     shard: Option<String>,
+}
+
+#[derive(Debug, Default)]
+struct ExistingEvidence {
+    records: BTreeMap<String, Vec<u8>>,
+    shard: Option<String>,
+}
+
+#[derive(Debug)]
+struct CanonicalEvidence {
+    evidence_id: String,
+    bytes: Vec<u8>,
+}
+
+#[derive(Debug)]
+struct AssertionRowError {
+    line: usize,
+    code: String,
+    message: String,
+    fix: String,
+}
+
+impl AssertionRowError {
+    fn into_rejection(self) -> SessionAssertRejection {
+        SessionAssertRejection {
+            line: self.line,
+            code: self.code,
+            message: self.message,
+            fix: self.fix,
+        }
+    }
+
+    fn new(
+        line: usize,
+        code: impl Into<String>,
+        message: impl Into<String>,
+        fix: impl Into<String>,
+    ) -> Self {
+        Self {
+            line,
+            code: code.into(),
+            message: message.into(),
+            fix: fix.into(),
+        }
+    }
+}
+
+fn canonicalize_assertion_line(
+    line: &str,
+    line_number: usize,
+    policy_hash: &str,
+) -> Result<CanonicalEvidence, AssertionRowError> {
+    let value = serde_json::from_str::<Value>(line).map_err(|error| {
+        AssertionRowError::new(
+            line_number,
+            "invalid_json",
+            format!("evidence line is not valid JSON: {error}"),
+            "valid JSON object per line",
+        )
+    })?;
+    let is_full_record = value.get("version").is_some();
+    let record = if is_full_record {
+        let parsed = serde_json::from_value::<EvidenceRecord>(value).map_err(|error| {
+            AssertionRowError::new(
+                line_number,
+                "invalid_record",
+                format!("full canon.evidence.v1 record is invalid: {error}"),
+                "a complete canon.evidence.v1 record",
+            )
+        })?;
+        canonicalize_record(parsed).map_err(|error| {
+            AssertionRowError::new(
+                line_number,
+                "invalid_evidence",
+                format!("full canon.evidence.v1 record is invalid: {error}"),
+                "canonical canon.evidence.v1 fields and provenance",
+            )
+        })?
+    } else {
+        let object = value.as_object().ok_or_else(|| {
+            AssertionRowError::new(
+                line_number,
+                "not_object",
+                "evidence line must be a JSON object",
+                "JSON object per line",
+            )
+        })?;
+        compile_short_assertion(object, line_number, policy_hash)?
+    };
+    let evidence_id = record.evidence_id.clone();
+    let bytes = serde_json::to_vec(&record).map_err(|error| {
+        AssertionRowError::new(
+            line_number,
+            "invalid_record",
+            format!("failed to serialize canonical evidence: {error}"),
+            "serializable canon.evidence.v1 fields",
+        )
+    })?;
+    Ok(CanonicalEvidence { evidence_id, bytes })
+}
+
+fn compile_short_assertion(
+    object: &Map<String, Value>,
+    line_number: usize,
+    policy_hash: &str,
+) -> Result<EvidenceRecord, AssertionRowError> {
+    let assertion_type = required_assertion_string(object, "type", line_number)?;
+    let left_id = required_assertion_string(object, "left", line_number)?;
+    let right_id = required_assertion_string(object, "right", line_number)?;
+    if left_id == right_id {
+        return Err(AssertionRowError::new(
+            line_number,
+            "same_target",
+            "evidence pair must contain two distinct ids",
+            "left and right",
+        ));
+    }
+    let asserted_by = required_assertion_string(object, "asserted_by", line_number)?;
+    let basis = assertion_object(object, "basis", line_number)?;
+    let source = assertion_object(object, "source", line_number)?;
+    let channel = required_assertion_string(source, "channel", line_number)?;
+    let source_id = required_assertion_string(source, "id", line_number)?;
+
+    let locator_supplied = supplied_assertion_string(source, "locator");
+    let content_hash_supplied = supplied_assertion_string(source, "content_hash");
+    if assertion_type == "asserted_alias"
+        && !asserted_by.starts_with("human:")
+        && !(locator_supplied && content_hash_supplied)
+    {
+        return Err(AssertionRowError::new(
+            line_number,
+            "asserted_alias_citation",
+            "asserted_alias requires locator and content_hash for a non-human asserter",
+            "source.locator and source.content_hash, or asserted_by human:<id>",
+        ));
+    }
+
+    let locator = optional_assertion_string(source, "locator", line_number)?
+        .unwrap_or_else(|| format!("line:{line_number}"));
+    let source_content_hash = optional_assertion_string(source, "content_hash", line_number)?
+        .unwrap_or_else(|| hash_bytes(&canonical_json_bytes(&Value::Object(object.clone()))));
+    let lineage = optional_assertion_string(source, "lineage", line_number)?;
+
+    let (kind, reason_code, authority_basis, relation) = match assertion_type.as_str() {
+        "same_key" | "same_slot" | "attribute_agreement" | "name_equivalent" | "asserted_alias" => {
+            (
+                EvidenceKind::PairSupport,
+                assertion_type.clone(),
+                None,
+                None,
+            )
+        }
+        "distinct" => {
+            let authority = required_assertion_string(basis, "authority", line_number)?;
+            let authority_basis = match authority.as_str() {
+                "reviewed" => EvidenceAuthorityBasis::ReviewedConstraint,
+                "authoritative_incompatibility" => {
+                    EvidenceAuthorityBasis::AuthoritativeIncompatibility
+                }
+                _ => {
+                    return Err(AssertionRowError::new(
+                        line_number,
+                        "invalid_authority",
+                        "distinct authority must be reviewed or authoritative_incompatibility",
+                        "basis.authority",
+                    ));
+                }
+            };
+            (
+                EvidenceKind::AntiMergeVeto,
+                "distinct".to_string(),
+                Some(authority_basis),
+                None,
+            )
+        }
+        "related" => {
+            let relation = required_assertion_string(basis, "relation", line_number)?;
+            if !matches!(
+                relation.as_str(),
+                "part_of"
+                    | "parent_of"
+                    | "successor_of"
+                    | "affiliate_of"
+                    | "co_borrower_of"
+                    | "trust_of"
+            ) {
+                return Err(AssertionRowError::new(
+                    line_number,
+                    "invalid_relation",
+                    "related relation is not in the session vocabulary",
+                    "basis.relation",
+                ));
+            }
+            let subject = required_assertion_string(basis, "subject", line_number)?;
+            if subject != left_id && subject != right_id {
+                return Err(AssertionRowError::new(
+                    line_number,
+                    "invalid_subject",
+                    "related basis.subject must equal left or right",
+                    "basis.subject",
+                ));
+            }
+            (
+                EvidenceKind::ContextOnly,
+                format!("related:{relation}"),
+                None,
+                Some(relation),
+            )
+        }
+        _ => {
+            return Err(AssertionRowError::new(
+                line_number,
+                "unknown_type",
+                format!("unknown session evidence type {assertion_type}"),
+                "type: same_key, same_slot, attribute_agreement, name_equivalent, asserted_alias, distinct, or related",
+            ));
+        }
+    };
+
+    let mut basis_payload = basis.clone();
+    basis_payload.remove("authority");
+    let mut extension_payload = BTreeMap::new();
+    if let Some(value) = extension_value(&Value::Object(basis_payload), line_number, "basis")? {
+        extension_payload.insert("basis".to_string(), value);
+    }
+    extension_payload.insert(
+        "asserted_by".to_string(),
+        EvidenceExtensionValue::String(asserted_by),
+    );
+    if let Some(lineage) = lineage {
+        extension_payload.insert(
+            "lineage".to_string(),
+            EvidenceExtensionValue::String(lineage),
+        );
+    }
+    if let Some(relation) = relation {
+        extension_payload.insert(
+            "relation".to_string(),
+            EvidenceExtensionValue::String(relation),
+        );
+    }
+
+    let record = EvidenceRecord {
+        version: CANON_EVIDENCE_VERSION.to_string(),
+        evidence_id: String::new(),
+        kind,
+        target: EvidenceTarget::Pair { left_id, right_id },
+        operator: EvidenceOperatorRef {
+            namespace: "entity-session".to_string(),
+            operator_id: assertion_type,
+            operator_version: "v1".to_string(),
+            adapter_id: None,
+        },
+        reason_code,
+        policy: EvidencePolicyRef {
+            policy_id: "canon.entity.session.evidence".to_string(),
+            policy_version: "v1".to_string(),
+            content_hash: policy_hash.to_string(),
+        },
+        authority_basis,
+        scope: None,
+        temporal_scope: None,
+        provenance: vec![EvidenceProvenanceRef {
+            source_type: channel,
+            source_id,
+            locator,
+            content_hash: source_content_hash,
+            observed_at: None,
+        }],
+        measurements: Vec::new(),
+        extensions: vec![EvidenceExtension {
+            namespace: "entity-session".to_string(),
+            schema_ref: SESSION_EVIDENCE_EXTENSION_SCHEMA.to_string(),
+            payload: extension_payload,
+        }],
+    };
+    canonicalize_record(record).map_err(|error| {
+        AssertionRowError::new(
+            line_number,
+            "invalid_evidence",
+            format!("short assertion does not satisfy canon.evidence.v1: {error}"),
+            "canonical evidence fields, policy hash, and provenance",
+        )
+    })
+}
+
+fn required_assertion_string(
+    object: &Map<String, Value>,
+    field: &str,
+    line_number: usize,
+) -> Result<String, AssertionRowError> {
+    let Some(value) = object.get(field) else {
+        return Err(AssertionRowError::new(
+            line_number,
+            format!("missing_field:{field}"),
+            format!("evidence field {field} is required"),
+            field,
+        ));
+    };
+    let Some(value) = value.as_str() else {
+        return Err(AssertionRowError::new(
+            line_number,
+            format!("non_scalar_value:{field}"),
+            format!("evidence field {field} must be a string"),
+            field,
+        ));
+    };
+    let value = ascii_trim(value);
+    if value.is_empty() {
+        return Err(AssertionRowError::new(
+            line_number,
+            format!("missing_field:{field}"),
+            format!("evidence field {field} must be non-empty"),
+            field,
+        ));
+    }
+    Ok(value.to_string())
+}
+
+fn assertion_object<'a>(
+    object: &'a Map<String, Value>,
+    field: &str,
+    line_number: usize,
+) -> Result<&'a Map<String, Value>, AssertionRowError> {
+    let Some(value) = object.get(field) else {
+        return Err(AssertionRowError::new(
+            line_number,
+            format!("missing_field:{field}"),
+            format!("evidence field {field} is required"),
+            field,
+        ));
+    };
+    value.as_object().ok_or_else(|| {
+        AssertionRowError::new(
+            line_number,
+            format!("non_scalar_value:{field}"),
+            format!("evidence field {field} must be an object"),
+            field,
+        )
+    })
+}
+
+fn supplied_assertion_string(object: &Map<String, Value>, field: &str) -> bool {
+    object.get(field).is_some_and(|value| {
+        value
+            .as_str()
+            .is_some_and(|value| !ascii_trim(value).is_empty())
+    })
+}
+
+fn optional_assertion_string(
+    object: &Map<String, Value>,
+    field: &str,
+    line_number: usize,
+) -> Result<Option<String>, AssertionRowError> {
+    let Some(value) = object.get(field) else {
+        return Ok(None);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+    let Some(value) = value.as_str() else {
+        return Err(AssertionRowError::new(
+            line_number,
+            format!("non_scalar_value:{field}"),
+            format!("evidence field {field} must be a string or null"),
+            field,
+        ));
+    };
+    let value = ascii_trim(value);
+    if value.is_empty() {
+        return Err(AssertionRowError::new(
+            line_number,
+            format!("missing_field:{field}"),
+            format!("evidence field {field} must be non-empty when supplied"),
+            field,
+        ));
+    }
+    Ok(Some(value.to_string()))
+}
+
+fn extension_value(
+    value: &Value,
+    line_number: usize,
+    field: &str,
+) -> Result<Option<EvidenceExtensionValue>, AssertionRowError> {
+    match value {
+        Value::Null => Ok(None),
+        Value::Bool(value) => Ok(Some(EvidenceExtensionValue::Bool(*value))),
+        Value::Number(value) => {
+            if let Some(value) = value.as_i64() {
+                Ok(Some(EvidenceExtensionValue::Int(value)))
+            } else if let Some(value) = value.as_u64() {
+                Ok(Some(EvidenceExtensionValue::UInt(value)))
+            } else {
+                Ok(Some(EvidenceExtensionValue::String(value.to_string())))
+            }
+        }
+        Value::String(value) => Ok(Some(EvidenceExtensionValue::String(value.clone()))),
+        Value::Array(values) => {
+            let mut converted = Vec::new();
+            for value in values {
+                if let Some(value) = extension_value(value, line_number, field)? {
+                    converted.push(value);
+                }
+            }
+            Ok(Some(EvidenceExtensionValue::List(converted)))
+        }
+        Value::Object(values) => {
+            let mut converted = BTreeMap::new();
+            for (key, value) in values {
+                if let Some(value) = extension_value(value, line_number, field)? {
+                    converted.insert(key.clone(), value);
+                }
+            }
+            if converted.is_empty() {
+                Err(AssertionRowError::new(
+                    line_number,
+                    "empty_extension_value",
+                    format!("extension field {field} cannot be an empty object"),
+                    field,
+                ))
+            } else {
+                Ok(Some(EvidenceExtensionValue::Object(converted)))
+            }
+        }
+    }
+}
+
+fn canonical_json_bytes(value: &Value) -> Vec<u8> {
+    fn append(value: &Value, bytes: &mut Vec<u8>) {
+        match value {
+            Value::Null => bytes.extend_from_slice(b"null"),
+            Value::Bool(value) => bytes.extend_from_slice(if *value {
+                b"true".as_slice()
+            } else {
+                b"false".as_slice()
+            }),
+            Value::Number(value) => bytes.extend_from_slice(value.to_string().as_bytes()),
+            Value::String(value) => bytes.extend_from_slice(
+                serde_json::to_string(value)
+                    .expect("serializing a JSON string cannot fail")
+                    .as_bytes(),
+            ),
+            Value::Array(values) => {
+                bytes.push(b'[');
+                for (index, value) in values.iter().enumerate() {
+                    if index > 0 {
+                        bytes.push(b',');
+                    }
+                    append(value, bytes);
+                }
+                bytes.push(b']');
+            }
+            Value::Object(values) => {
+                let mut keys = values.keys().collect::<Vec<_>>();
+                keys.sort();
+                bytes.push(b'{');
+                for (index, key) in keys.into_iter().enumerate() {
+                    if index > 0 {
+                        bytes.push(b',');
+                    }
+                    bytes.extend_from_slice(
+                        serde_json::to_string(key)
+                            .expect("serializing a JSON key cannot fail")
+                            .as_bytes(),
+                    );
+                    bytes.push(b':');
+                    append(&values[key], bytes);
+                }
+                bytes.push(b'}');
+            }
+        }
+    }
+
+    let mut bytes = Vec::new();
+    append(value, &mut bytes);
+    bytes
 }
 
 #[derive(Debug)]
@@ -673,6 +1302,54 @@ fn existing_observations(
     Ok(ExistingObservations { rows, shard })
 }
 
+fn existing_evidence(
+    snapshot: &crate::entity::publication::EntityPublicationSnapshot,
+) -> Result<ExistingEvidence, Refusal> {
+    let mut records = BTreeMap::new();
+    let mut shard = None;
+    for logical_path in snapshot
+        .logical_paths()
+        .filter(|path| path.starts_with("evidence/") && path.ends_with(".jsonl"))
+    {
+        if shard.is_none() {
+            shard = Some(logical_path.to_string());
+        }
+        let bytes = snapshot
+            .read_logical_file(logical_path)
+            .ok_or_else(|| evidence_artifact_refusal("evidence shard is missing"))?;
+        let text = std::str::from_utf8(bytes).map_err(|error| {
+            evidence_artifact_refusal(&format!("evidence shard is not UTF-8: {error}"))
+        })?;
+        for line in text.lines().filter(|line| !line.trim().is_empty()) {
+            let record = serde_json::from_str::<EvidenceRecord>(line).map_err(|error| {
+                evidence_artifact_refusal(&format!(
+                    "evidence shard contains invalid canon.evidence.v1 JSON: {error}"
+                ))
+            })?;
+            let canonical = canonicalize_record(record).map_err(|error| {
+                evidence_artifact_refusal(&format!(
+                    "evidence shard contains non-canonical canon.evidence.v1 record: {error}"
+                ))
+            })?;
+            let evidence_id = canonical.evidence_id.clone();
+            let row_bytes = serde_json::to_vec(&canonical).map_err(|error| {
+                evidence_artifact_refusal(&format!(
+                    "failed to canonicalize evidence shard record: {error}"
+                ))
+            })?;
+            if records
+                .insert(evidence_id.clone(), row_bytes.clone())
+                .is_some_and(|previous| previous != row_bytes)
+            {
+                return Err(evidence_artifact_refusal(&format!(
+                    "evidence shard contains conflicting records for evidence_id {evidence_id}"
+                )));
+            }
+        }
+    }
+    Ok(ExistingEvidence { records, shard })
+}
+
 fn canonical_shard_bytes(rows: &BTreeMap<String, Vec<u8>>) -> Vec<u8> {
     let mut bytes = Vec::new();
     for row in rows.values() {
@@ -683,6 +1360,14 @@ fn canonical_shard_bytes(rows: &BTreeMap<String, Vec<u8>>) -> Vec<u8> {
 }
 
 fn read_observation_input(path: &Path) -> Result<String, Refusal> {
+    read_session_jsonl_input(path, "Observation")
+}
+
+fn read_evidence_input(path: &Path) -> Result<String, Refusal> {
+    read_session_jsonl_input(path, "Evidence")
+}
+
+fn read_session_jsonl_input(path: &Path, label: &str) -> Result<String, Refusal> {
     let mut bytes = Vec::new();
     if path == Path::new("-") {
         let stdin = io::stdin();
@@ -695,15 +1380,15 @@ fn read_observation_input(path: &Path) -> Result<String, Refusal> {
     }
     String::from_utf8(bytes).map_err(|error| Refusal {
         code: RefusalCode::EEncoding,
-        message: format!("Observation JSONL '{}' is not valid UTF-8", path.display()),
+        message: format!("{label} JSONL '{}' is not valid UTF-8", path.display()),
         detail: json!({
             "path": path.display().to_string(),
             "error": error.to_string(),
             "writes_performed": false,
         }),
-        next_command: Some(
-            "Convert the observation JSONL to UTF-8, then rerun the same command".to_string(),
-        ),
+        next_command: Some(format!(
+            "Convert the {label} JSONL to UTF-8, then rerun the same command"
+        )),
     })
 }
 
@@ -746,6 +1431,26 @@ fn observation_publication_refusal(message: &str) -> Refusal {
         message: format!("Unable to publish session observations: {message}"),
         detail: json!({"stream": SESSION_OBSERVATIONS_STREAM_ID, "writes_performed": false}),
         next_command: Some("Rerun the same canon entity session ingest command".to_string()),
+    }
+}
+
+fn evidence_artifact_refusal(message: &str) -> Refusal {
+    Refusal {
+        code: RefusalCode::EEntityArtifactContract,
+        message: message.to_string(),
+        detail: json!({"stream": SESSION_EVIDENCE_STREAM_ID, "writes_performed": false}),
+        next_command: Some(
+            "Repair or choose a new session, then rerun canon entity session assert".to_string(),
+        ),
+    }
+}
+
+fn evidence_publication_refusal(message: &str) -> Refusal {
+    Refusal {
+        code: RefusalCode::EEntityArtifactContract,
+        message: format!("Unable to publish session evidence: {message}"),
+        detail: json!({"stream": SESSION_EVIDENCE_STREAM_ID, "writes_performed": false}),
+        next_command: Some("Rerun the same canon entity session assert command".to_string()),
     }
 }
 
@@ -1077,7 +1782,11 @@ fn publication_refusal(error: EntityPublicationError) -> Refusal {
 
 #[cfg(test)]
 mod tests {
-    use super::{SESSION_INGEST_VERSION, canonical_shard_bytes, canonicalize_observation_line};
+    use super::{
+        SESSION_ASSERT_VERSION, SESSION_INGEST_VERSION, canonical_shard_bytes,
+        canonicalize_assertion_line, canonicalize_observation_line, hash_bytes,
+    };
+    use crate::entity::evidence_ir::EvidenceKind;
     use serde_json::Value;
     use std::collections::BTreeMap;
 
@@ -1132,5 +1841,80 @@ mod tests {
             canonical_shard_bytes(&forward),
             canonical_shard_bytes(&reverse)
         );
+    }
+
+    #[test]
+    fn short_assertion_types_compile_to_typed_evidence_records() {
+        let policy_hash = hash_bytes(b"session-policy");
+        let cases = [
+            ("same_key", EvidenceKind::PairSupport, "same_key"),
+            ("same_slot", EvidenceKind::PairSupport, "same_slot"),
+            (
+                "attribute_agreement",
+                EvidenceKind::PairSupport,
+                "attribute_agreement",
+            ),
+            (
+                "name_equivalent",
+                EvidenceKind::PairSupport,
+                "name_equivalent",
+            ),
+            (
+                "asserted_alias",
+                EvidenceKind::PairSupport,
+                "asserted_alias",
+            ),
+            ("distinct", EvidenceKind::AntiMergeVeto, "distinct"),
+            ("related", EvidenceKind::ContextOnly, "related:affiliate_of"),
+        ];
+        for (assertion_type, expected_kind, expected_reason) in cases {
+            let basis = match assertion_type {
+                "distinct" => r#"{"authority":"reviewed"}"#,
+                "related" => r#"{"relation":"affiliate_of","subject":"left"}"#,
+                _ => r#"{"rule":"declared"}"#,
+            };
+            let source = if assertion_type == "asserted_alias" {
+                r#"{"channel":"script","id":"gold","locator":"row:1","content_hash":"blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"#
+            } else {
+                r#"{"channel":"agent","id":"agent-1"}"#
+            };
+            let line = format!(
+                r#"{{"type":"{assertion_type}","left":"left","right":"right","basis":{basis},"source":{source},"asserted_by":"agent:runner"}}"#
+            );
+            let record = canonicalize_assertion_line(&line, 1, &policy_hash)
+                .expect("short assertion compiles")
+                .bytes;
+            let value: Value = serde_json::from_slice(&record).expect("canonical evidence JSON");
+            assert_eq!(value["version"], "canon.evidence.v1");
+            assert_eq!(value["kind"], serde_json::to_value(expected_kind).unwrap());
+            assert_eq!(value["reason_code"], expected_reason);
+            assert_eq!(value["target"]["left_id"], "left");
+            assert_eq!(value["target"]["right_id"], "right");
+        }
+        assert_eq!(SESSION_ASSERT_VERSION, "canon.entity.session.assert.v1");
+    }
+
+    #[test]
+    fn short_assertion_evidence_id_is_stable_under_key_reordering() {
+        let policy_hash = hash_bytes(b"session-policy");
+        let first = r#"{"type":"name_equivalent","left":"left","right":"right","basis":{"rule":"casefold","left_value":"LEFT","right_value":"right"},"source":{"channel":"script","id":"gold"},"asserted_by":"script:runner"}"#;
+        let second = r#"{"asserted_by":"script:runner","source":{"id":"gold","channel":"script"},"right":"right","basis":{"right_value":"right","left_value":"LEFT","rule":"casefold"},"left":"left","type":"name_equivalent"}"#;
+        let first = canonicalize_assertion_line(first, 1, &policy_hash).expect("first assertion");
+        let second =
+            canonicalize_assertion_line(second, 1, &policy_hash).expect("reordered assertion");
+        assert_eq!(first.evidence_id, second.evidence_id);
+        assert_eq!(first.bytes, second.bytes);
+    }
+
+    #[test]
+    fn short_assertion_rejects_missing_distinct_authority() {
+        let error = canonicalize_assertion_line(
+            r#"{"type":"distinct","left":"left","right":"right","basis":{"rule":"different"},"source":{"channel":"agent","id":"agent-1"},"asserted_by":"agent:runner"}"#,
+            4,
+            &hash_bytes(b"session-policy"),
+        )
+        .expect_err("distinct without authority must be rejected");
+        assert_eq!(error.line, 4);
+        assert_eq!(error.code, "missing_field:authority");
     }
 }

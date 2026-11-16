@@ -32,7 +32,8 @@ Repeat the same command to get an idempotent `already_initialised` result.
 Changing the goal or registry id for an existing work directory is refused;
 use a new `--work-dir`. If the registry already exists, `--registry-id`
 and `--prefix` are only needed when you want to check the requested registry id.
-The next session step is `canon entity session ingest`.
+The next session steps are `canon entity session ingest` for observations and
+`canon entity session assert` for typed evidence.
 
 ## Ingest observations
 
@@ -53,6 +54,35 @@ means at least one row was rejected. Repeat an exact ingest to receive
 `accepted=0` and an `already_present` count without creating a new generation.
 Ingest trims only ASCII whitespace around required text fields; a surface such
 as `` `tick` `` is retained as-is.
+
+## Assert evidence
+
+Append typed evidence assertions to the same session, from a JSONL file or
+stdin:
+
+```bash
+canon entity session assert work/bdc-session evidence.jsonl --emit json
+cat evidence.jsonl | canon entity session assert work/bdc-session - --emit json
+```
+
+Short assertion rows compile into the existing `canon.evidence.v1` record:
+
+```json
+{"type":"name_equivalent","left":"obs-a","right":"obs-b",
+ "basis":{"rule":"casefold+strip_punct","left_value":"A, LLC","right_value":"A LLC","steps":["casefold","strip_punctuation"]},
+ "source":{"channel":"script","id":"goldset:1","locator":"row:4","content_hash":"blake3:<64 hex>"},
+ "asserted_by":"script:goldset"}
+```
+
+The supported types are `same_key`, `same_slot`, `attribute_agreement`,
+`name_equivalent`, and `asserted_alias` (positive pair support), `distinct`
+(a hard cannot-link requiring `basis.authority`), and `related` (a contextual
+pair relation requiring `basis.relation` and `basis.subject`). `asserted_alias`
+requires a locator and content hash for non-human asserters. Complete
+`canon.evidence.v1` records are accepted as well. Rows are canonicalized and
+stored in the `entity-session-evidence` publication stream; malformed rows are
+reported individually with line, code, message, and fix while valid rows are
+still appended. Exit 1 means at least one row was rejected.
 
 ## The loop
 

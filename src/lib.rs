@@ -61,12 +61,12 @@ use crate::cli::{
     EntityPrepareCli, EntityProfileCommand, EntityProfileInitCli, EntityProfileListCli,
     EntityProfileSubcommand, EntityPromoteCli, EntityReviewCommand, EntityReviewExportArtifact,
     EntityReviewExportCli, EntityReviewExportEmitMode, EntityReviewGroupBy, EntityReviewImportCli,
-    EntityReviewInclude, EntityReviewSubcommand, EntityRunCli, EntitySessionIngestCli,
-    EntitySessionInitCli, EntitySessionSubcommand, EntitySolveCli, EntityStreamEmitMode,
-    EntitySubcommand, PackageCli, PackagePackCli, PackageSubcommand, RegistryAddEntryCli,
-    RegistryAuditCli, RegistryBuildCli, RegistryDefaultIdSchemeCli, RegistryDiffCli,
-    RegistryEmitMode, RegistryExportCli, RegistryExportFormatCli, RegistryInitCli, RegistryLintCli,
-    RegistryLintProfile, RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli,
+    EntityReviewInclude, EntityReviewSubcommand, EntityRunCli, EntitySessionAssertCli,
+    EntitySessionIngestCli, EntitySessionInitCli, EntitySessionSubcommand, EntitySolveCli,
+    EntityStreamEmitMode, EntitySubcommand, PackageCli, PackagePackCli, PackageSubcommand,
+    RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli, RegistryDefaultIdSchemeCli,
+    RegistryDiffCli, RegistryEmitMode, RegistryExportCli, RegistryExportFormatCli, RegistryInitCli,
+    RegistryLintCli, RegistryLintProfile, RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli,
     RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand,
     RegistryVersionBumpMode, StrategyAuditCli, StrategyCommand, StrategyDeprecateCli,
     StrategyDiffCli, StrategyExplainCli, StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli,
@@ -932,6 +932,7 @@ fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
         EntitySubcommand::Session(session) => match &session.command {
             EntitySessionSubcommand::Init(init) => run_entity_session_init_command(init),
             EntitySessionSubcommand::Ingest(ingest) => run_entity_session_ingest_command(ingest),
+            EntitySessionSubcommand::Assert(assert) => run_entity_session_assert_command(assert),
         },
         EntitySubcommand::Run(run) => run_entity_run_command(run),
         EntitySubcommand::Prepare(prepare) => run_entity_prepare_command(prepare),
@@ -1009,6 +1010,33 @@ fn run_entity_session_ingest_command(
             refusal.to_canon_output(),
             true,
             matches!(ingest.emit, EntityEmitMode::Summary),
+        ),
+    }
+}
+
+fn run_entity_session_assert_command(
+    assert: &EntitySessionAssertCli,
+) -> Result<u8, Box<dyn Error>> {
+    let result = session::assert_evidence(session::SessionAssertRequest {
+        session: assert.session.clone(),
+        evidence: assert.evidence.clone(),
+    });
+    match result {
+        Ok(output) => {
+            let summary_mode = matches!(assert.emit, EntityEmitMode::Summary);
+            let rejected = !output.rejected.is_empty();
+            let rendered = if summary_mode {
+                output.render_summary()
+            } else {
+                serde_json::to_string(&output)?
+            };
+            emit_entity_output(&rendered, summary_mode);
+            Ok(u8::from(rejected))
+        }
+        Err(refusal) => emit_entity_refusal(
+            refusal.to_canon_output(),
+            true,
+            matches!(assert.emit, EntityEmitMode::Summary),
         ),
     }
 }

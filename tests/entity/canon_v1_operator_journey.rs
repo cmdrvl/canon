@@ -180,6 +180,32 @@ fn run_operator_journey(label: &str) -> JourneyRun {
     );
     assert_eq!(session_ingest.value["accepted"], 1);
 
+    let session_evidence = fixture.root.join("session-evidence.jsonl");
+    fs::write(
+        &session_evidence,
+        r#"{"type":"same_slot","left":"journey-observation-1","right":"journey-observation-2","basis":{"rule":"same loan and role","left_value":"loan-7:sponsor","right_value":"loan-7:sponsor","steps":["join:loan_id","join:role"]},"source":{"channel":"agent","id":"journey-agent"},"asserted_by":"agent:journey"}
+"#,
+    )
+    .unwrap();
+    let session_assert = canon_json(
+        &[
+            "entity",
+            "session",
+            "assert",
+            path_str(&session_work),
+            path_str(&session_evidence),
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(session_assert.record);
+    assert_eq!(
+        session_assert.value["version"],
+        "canon.entity.session.assert.v1"
+    );
+    assert_eq!(session_assert.value["accepted"], 1);
+
     let profile_list = canon_json(&["entity", "profile", "list", "--emit", "json"], 0);
     command_log.push(profile_list.record);
     assert!(
@@ -1490,6 +1516,7 @@ fn classify_entity_leaf(args: &[&str]) -> Option<String> {
     match args {
         ["entity", "session", "init", ..] => Some("entity session init".to_string()),
         ["entity", "session", "ingest", ..] => Some("entity session ingest".to_string()),
+        ["entity", "session", "assert", ..] => Some("entity session assert".to_string()),
         ["entity", "index", "build", ..] => Some("entity index build".to_string()),
         ["entity", "profile", "list", ..] => Some("entity profile list".to_string()),
         ["entity", "profile", "init", ..] => Some("entity profile init".to_string()),
