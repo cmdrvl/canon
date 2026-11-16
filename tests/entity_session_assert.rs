@@ -162,6 +162,19 @@ fn evidence_records(snapshot: &EntityPublicationSnapshot) -> Vec<EvidenceRecord>
     records
 }
 
+fn evidence_shard_bytes(session: &Path) -> Vec<u8> {
+    let snapshot = open_current_stream_generation(session, SESSION_EVIDENCE_STREAM_ID)
+        .expect("evidence stream");
+    let path = snapshot
+        .logical_paths()
+        .find(|path| path.starts_with("evidence/") && path.ends_with(".jsonl"))
+        .expect("evidence shard path");
+    snapshot
+        .read_logical_file(path)
+        .expect("evidence shard bytes")
+        .to_vec()
+}
+
 #[test]
 fn session_assert_accepts_file_stdin_full_form_and_exact_repeats() {
     let temp = TempDir::new().expect("temp root");
@@ -284,4 +297,37 @@ fn session_assert_reports_planted_bad_rows_and_keeps_valid_rows() {
     let snapshot = open_current_stream_generation(&session, SESSION_EVIDENCE_STREAM_ID)
         .expect("evidence stream after partial assertion");
     assert_eq!(evidence_records(&snapshot).len(), 1);
+}
+
+#[test]
+fn session_assert_writes_byte_stable_shard_when_input_is_shuffled() {
+    let first_temp = TempDir::new().expect("first temp root");
+    let second_temp = TempDir::new().expect("second temp root");
+    let first_session = init_session(&first_temp);
+    let second_session = init_session(&second_temp);
+    let first_input = first_temp.path().join("ordered.jsonl");
+    let second_input = second_temp.path().join("shuffled.jsonl");
+    let first_same_slot = same_slot("shuffle-left", "shuffle-right");
+    let first_name_equivalent = name_equivalent("shuffle-left", "shuffle-right");
+    fs::write(
+        &first_input,
+        format!("{first_same_slot}\n{first_name_equivalent}\n"),
+    )
+    .expect("ordered evidence input");
+    fs::write(
+        &second_input,
+        format!("{first_name_equivalent}\n{first_same_slot}\n"),
+    )
+    .expect("shuffled evidence input");
+
+    let first = assert_file(&first_session, &first_input).success();
+    run_and_log("ordered assert", &first);
+    let second = assert_file(&second_session, &second_input).success();
+    run_and_log("shuffled assert", &second);
+
+    assert_eq!(
+        evidence_shard_bytes(&first_session),
+        evidence_shard_bytes(&second_session),
+        "assertion shard bytes must be independent of input line order"
+    );
 }

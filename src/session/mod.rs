@@ -654,10 +654,11 @@ fn compile_short_assertion(
         ));
     }
 
+    let short_form_hash = hash_bytes(&canonical_json_bytes(&Value::Object(object.clone())));
     let locator = optional_assertion_string(source, "locator", line_number)?
-        .unwrap_or_else(|| format!("line:{line_number}"));
-    let source_content_hash = optional_assertion_string(source, "content_hash", line_number)?
-        .unwrap_or_else(|| hash_bytes(&canonical_json_bytes(&Value::Object(object.clone()))));
+        .unwrap_or_else(|| format!("assertion:{short_form_hash}"));
+    let source_content_hash =
+        optional_assertion_string(source, "content_hash", line_number)?.unwrap_or(short_form_hash);
     let lineage = optional_assertion_string(source, "lineage", line_number)?;
 
     let (kind, reason_code, authority_basis, relation) = match assertion_type.as_str() {
@@ -1343,7 +1344,9 @@ fn existing_evidence(
 
 fn canonical_shard_bytes(rows: &BTreeMap<String, Vec<u8>>) -> Vec<u8> {
     let mut bytes = Vec::new();
-    for row in rows.values() {
+    let mut entries = rows.iter().collect::<Vec<_>>();
+    entries.sort_by(|left, right| left.0.cmp(right.0));
+    for (_, row) in entries {
         bytes.extend_from_slice(row);
         bytes.push(b'\n');
     }
