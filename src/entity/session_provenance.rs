@@ -29,6 +29,30 @@ pub struct SessionAuthorityMaterial {
     pub closure: SessionClosure,
 }
 
+/// Stable inputs shared by every provenance outcome emitted for a session
+/// cluster.  The registry version is retained as context even though it is
+/// intentionally excluded from closure bytes, so copying a registry does not
+/// change an outcome's evidence hash.
+#[derive(Debug, Clone, Copy)]
+pub struct ProvenanceContext<'a> {
+    pub session_id: &'a str,
+    pub solve_hash: &'a str,
+    pub rules_hash: &'a str,
+    pub registry_id: &'a str,
+    pub registry_version: &'a str,
+    pub cluster: &'a SessionSolveCluster,
+    pub canonical_id: Option<&'a str>,
+    pub sensitivity: Option<&'a str>,
+}
+
+/// The outcome-specific subject and its retained observations.
+#[derive(Debug, Clone, Copy)]
+pub struct ProvenanceSubject<'a> {
+    pub kind: &'a str,
+    pub subject: &'a str,
+    pub observation_values: &'a [Value],
+}
+
 /// Missing sensitivity is deliberately conservative.  We preserve a supplied
 /// value verbatim, because the source system owns its sensitivity vocabulary;
 /// Canon must never silently turn an unstated source into public evidence.
@@ -43,32 +67,21 @@ pub fn effective_sensitivity(value: Option<&str>) -> String {
 /// Assemble the stable closure and the small authority object used by every
 /// alias emitted for one accepted session cluster.
 pub fn build_authority_material(
-    session_id: &str,
-    solve_hash: &str,
-    rules_hash: &str,
-    registry_id: &str,
-    _registry_version: &str,
-    cluster: &SessionSolveCluster,
-    canonical_id: Option<&str>,
-    sensitivity: Option<&str>,
+    context: ProvenanceContext<'_>,
 ) -> Result<SessionAuthorityMaterial, String> {
-    let kind = if canonical_id.is_some() {
+    let kind = if context.canonical_id.is_some() {
         "attached_alias"
     } else {
         "minted_id"
     };
+    let subject = outcome_subject(context.cluster);
     build_authority_material_for_subject_with_observations(
-        session_id,
-        solve_hash,
-        rules_hash,
-        registry_id,
-        _registry_version,
-        cluster,
-        canonical_id,
-        kind,
-        &outcome_subject(cluster),
-        &[],
-        sensitivity,
+        context,
+        ProvenanceSubject {
+            kind,
+            subject: &subject,
+            observation_values: &[],
+        },
     )
 }
 
@@ -76,45 +89,37 @@ pub fn build_authority_material(
 /// key aliases must use their exact input as the subject; a minted outcome
 /// uses the cluster's stable subject instead.
 pub fn build_authority_material_for_subject(
-    session_id: &str,
-    solve_hash: &str,
-    rules_hash: &str,
-    registry_id: &str,
-    _registry_version: &str,
-    cluster: &SessionSolveCluster,
-    canonical_id: Option<&str>,
-    kind: &str,
-    subject: &str,
-    sensitivity: Option<&str>,
+    context: ProvenanceContext<'_>,
+    subject: ProvenanceSubject<'_>,
 ) -> Result<SessionAuthorityMaterial, String> {
     build_authority_material_for_subject_with_observations(
-        session_id,
-        solve_hash,
-        rules_hash,
-        registry_id,
-        _registry_version,
-        cluster,
-        canonical_id,
-        kind,
-        subject,
-        &[],
-        sensitivity,
+        context,
+        ProvenanceSubject {
+            observation_values: &[],
+            ..subject
+        },
     )
 }
 
 pub fn build_authority_material_for_subject_with_observations(
-    session_id: &str,
-    solve_hash: &str,
-    rules_hash: &str,
-    registry_id: &str,
-    _registry_version: &str,
-    cluster: &SessionSolveCluster,
-    canonical_id: Option<&str>,
-    kind: &str,
-    subject: &str,
-    observation_values: &[Value],
-    sensitivity: Option<&str>,
+    context: ProvenanceContext<'_>,
+    subject: ProvenanceSubject<'_>,
 ) -> Result<SessionAuthorityMaterial, String> {
+    let ProvenanceContext {
+        session_id,
+        solve_hash,
+        rules_hash,
+        registry_id,
+        registry_version: _,
+        cluster,
+        canonical_id,
+        sensitivity,
+    } = context;
+    let ProvenanceSubject {
+        kind,
+        subject,
+        observation_values,
+    } = subject;
     let tier = cluster
         .tier
         .as_deref()
@@ -284,27 +289,29 @@ mod tests {
 
     #[test]
     fn evidence_order_changes_closure_material_but_not_surface_order() {
-        let left = build_authority_material(
-            "session",
-            "solve",
-            "rules",
-            "registry",
-            "0.1.0",
-            &cluster(&["b", "a"]),
-            None,
-            None,
-        )
+        let left_cluster = cluster(&["b", "a"]);
+        let left = build_authority_material(ProvenanceContext {
+            session_id: "session",
+            solve_hash: "solve",
+            rules_hash: "rules",
+            registry_id: "registry",
+            registry_version: "0.1.0",
+            cluster: &left_cluster,
+            canonical_id: None,
+            sensitivity: None,
+        })
         .expect("left material");
-        let right = build_authority_material(
-            "session",
-            "solve",
-            "rules",
-            "registry",
-            "0.1.0",
-            &cluster(&["a"]),
-            None,
-            None,
-        )
+        let right_cluster = cluster(&["a"]);
+        let right = build_authority_material(ProvenanceContext {
+            session_id: "session",
+            solve_hash: "solve",
+            rules_hash: "rules",
+            registry_id: "registry",
+            registry_version: "0.1.0",
+            cluster: &right_cluster,
+            canonical_id: None,
+            sensitivity: None,
+        })
         .expect("right material");
         assert_ne!(left.closure.closure_hash, right.closure.closure_hash);
         assert_eq!(left.closure.manifest["evidence_ids"], json!(["a", "b"]));
@@ -312,16 +319,17 @@ mod tests {
 
     #[test]
     fn closure_set_is_sorted_by_outcome_ref() {
-        let mut first = build_authority_material(
-            "session",
-            "solve",
-            "rules",
-            "registry",
-            "0.1.0",
-            &cluster(&["a"]),
-            None,
-            None,
-        )
+        let first_cluster = cluster(&["a"]);
+        let mut first = build_authority_material(ProvenanceContext {
+            session_id: "session",
+            solve_hash: "solve",
+            rules_hash: "rules",
+            registry_id: "registry",
+            registry_version: "0.1.0",
+            cluster: &first_cluster,
+            canonical_id: None,
+            sensitivity: None,
+        })
         .expect("material");
         first.closure.outcome_ref = "b".to_string();
         let mut second = first.clone();

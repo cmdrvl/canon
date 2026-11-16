@@ -1046,16 +1046,23 @@ pub fn commit(
                 ),
             ));
         }
-        let (entries, skipped, relations) = build_commit_plan(
+        let plan = build_commit_plan(
             &artifact,
-            &binding.kind,
-            binding.alias_file.as_deref().unwrap_or("aliases.json"),
-            binding.canonical_type.as_deref().unwrap_or(&binding.kind),
-            &manifest.session_id,
-            &solve_hash,
-            &loaded_registry.meta.version,
-            &observation_values,
+            CommitPlanContext {
+                entity_kind: &binding.kind,
+                alias_file: binding.alias_file.as_deref().unwrap_or("aliases.json"),
+                canonical_type: binding.canonical_type.as_deref().unwrap_or(&binding.kind),
+                session_id: &manifest.session_id,
+                solve_hash: &solve_hash,
+                registry_version: &loaded_registry.meta.version,
+                observation_values: &observation_values,
+            },
         )?;
+        let SessionCommitPlan {
+            entries,
+            skipped,
+            relations,
+        } = plan;
         let next_version = match request.next_version.as_deref() {
             Some(raw) => {
                 registries::flag_value_for_kind("--next-version", raw, &binding.kind, &known_kinds)
@@ -1140,27 +1147,15 @@ fn cluster_entity_kind(
 
 fn build_commit_plan(
     artifact: &SessionSolveArtifact,
-    entity_kind: &str,
-    alias_file: &str,
-    canonical_type: &str,
-    session_id: &str,
-    solve_hash: &str,
-    registry_version: &str,
-    observation_values: &BTreeMap<String, Vec<Value>>,
-) -> Result<
-    (
-        Vec<SessionCommitEntry>,
-        Vec<SessionCommitSkipped>,
-        Vec<SessionCommitRelation>,
-    ),
-    Refusal,
-> {
+    context: CommitPlanContext<'_>,
+) -> Result<SessionCommitPlan, Refusal> {
     let mut clusters = artifact.clusters.clone();
     clusters.sort_by(|left, right| left.cluster_id.cmp(&right.cluster_id));
     let mut entries = Vec::new();
     let mut skipped = Vec::new();
     for cluster in clusters {
-        if cluster_entity_kind(&cluster, observation_values).is_some_and(|kind| kind != entity_kind)
+        if cluster_entity_kind(&cluster, context.observation_values)
+            .is_some_and(|kind| kind != context.entity_kind)
         {
             continue;
         }
@@ -1187,9 +1182,9 @@ fn build_commit_plan(
             }
             if seen_inputs.insert(surface.clone()) {
                 aliases.push(SessionCommitAlias {
-                    alias_file: alias_file.to_string(),
+                    alias_file: context.alias_file.to_string(),
                     input: surface,
-                    canonical_type: canonical_type.to_string(),
+                    canonical_type: context.canonical_type.to_string(),
                     rule_id: format!("SESSION_TIER_{tier}"),
                     skip_if_existing: cluster.incumbent_canonical_id.is_some(),
                     session_authority: None,
@@ -1223,9 +1218,9 @@ fn build_commit_plan(
                 })?;
                 if seen_inputs.insert(value.clone()) {
                     aliases.push(SessionCommitAlias {
-                        alias_file: alias_file.to_string(),
+                        alias_file: context.alias_file.to_string(),
                         input: value,
-                        canonical_type: canonical_type.to_string(),
+                        canonical_type: context.canonical_type.to_string(),
                         rule_id: format!("SESSION_KEY_{}", namespace.to_ascii_uppercase()),
                         skip_if_existing: true,
                         session_authority: None,
@@ -1237,7 +1232,13 @@ fn build_commit_plan(
         let cluster_observations = cluster
             .surfaces
             .iter()
-            .flat_map(|surface| observation_values.get(surface).into_iter().flatten())
+            .flat_map(|surface| {
+                context
+                    .observation_values
+                    .get(surface)
+                    .into_iter()
+                    .flatten()
+            })
             .cloned()
             .collect::<Vec<_>>();
         let mut cluster_observations = cluster_observations;
@@ -1246,22 +1247,28 @@ fn build_commit_plan(
                 .and_then(Value::as_str)
                 .cmp(&right.get("obs_id").and_then(Value::as_str))
         });
+        let provenance_context = crate::entity::session_provenance::ProvenanceContext {
+            session_id: context.session_id,
+            solve_hash: context.solve_hash,
+            rules_hash: &artifact.inputs.rules_hash,
+            registry_id: &artifact.inputs.registry.id,
+            registry_version: context.registry_version,
+            cluster: &cluster,
+            canonical_id: cluster.incumbent_canonical_id.as_deref(),
+            sensitivity: None,
+        };
+        let cluster_subject = crate::entity::session_provenance::outcome_subject(&cluster);
         let cluster_authority = crate::entity::session_provenance::build_authority_material_for_subject_with_observations(
-            session_id,
-            solve_hash,
-            &artifact.inputs.rules_hash,
-            &artifact.inputs.registry.id,
-            registry_version,
-            &cluster,
-            cluster.incumbent_canonical_id.as_deref(),
-            if cluster.incumbent_canonical_id.is_some() {
-                "attached_alias"
-            } else {
-                "minted_id"
+            provenance_context,
+            crate::entity::session_provenance::ProvenanceSubject {
+                kind: if cluster.incumbent_canonical_id.is_some() {
+                    "attached_alias"
+                } else {
+                    "minted_id"
+                },
+                subject: &cluster_subject,
+                observation_values: &cluster_observations,
             },
-            &crate::entity::session_provenance::outcome_subject(&cluster),
-            &cluster_observations,
-            None,
         )
         .map_err(|error| {
             solve_refusal(
@@ -1294,16 +1301,12 @@ fn build_commit_plan(
                 cluster_authority.clone()
             } else {
                 crate::entity::session_provenance::build_authority_material_for_subject(
-                    session_id,
-                    solve_hash,
-                    &artifact.inputs.rules_hash,
-                    &artifact.inputs.registry.id,
-                    registry_version,
-                    &cluster,
-                    cluster.incumbent_canonical_id.as_deref(),
-                    kind,
-                    &subject,
-                    None,
+                    provenance_context,
+                    crate::entity::session_provenance::ProvenanceSubject {
+                        kind,
+                        subject: &subject,
+                        observation_values: &[],
+                    },
                 )
                 .map_err(|error| {
                     solve_refusal(
@@ -1345,7 +1348,7 @@ fn build_commit_plan(
     let relations = artifact
         .relations
         .iter()
-        .filter(|relation| relation.subject_entity_type == entity_kind)
+        .filter(|relation| relation.subject_entity_type == context.entity_kind)
         .filter_map(|relation| {
             let subject = commit_relation_endpoint(&artifact.clusters, relation, true)?;
             let object = if let Some(external_id) = &relation.object_external_id {
@@ -1367,7 +1370,11 @@ fn build_commit_plan(
             })
         })
         .collect();
-    Ok((entries, skipped, relations))
+    Ok(SessionCommitPlan {
+        entries,
+        skipped,
+        relations,
+    })
 }
 
 fn commit_relation_endpoint(
@@ -1755,6 +1762,22 @@ struct RegistryInfo {
     incumbents: BTreeMap<String, String>,
     incumbent_keys: BTreeMap<String, BTreeMap<String, BTreeSet<String>>>,
     endpoints: BTreeMap<String, RegistryEndpoint>,
+}
+
+struct CommitPlanContext<'a> {
+    entity_kind: &'a str,
+    alias_file: &'a str,
+    canonical_type: &'a str,
+    session_id: &'a str,
+    solve_hash: &'a str,
+    registry_version: &'a str,
+    observation_values: &'a BTreeMap<String, Vec<Value>>,
+}
+
+struct SessionCommitPlan {
+    entries: Vec<SessionCommitEntry>,
+    skipped: Vec<SessionCommitSkipped>,
+    relations: Vec<SessionCommitRelation>,
 }
 
 fn aggregate_registry_metadata(parts: &[(String, SessionSolveRegistry)]) -> SessionSolveRegistry {
@@ -3367,17 +3390,24 @@ mod tests {
             derived_evidence: Vec::new(),
         };
 
-        let (entries, skipped, relations) = build_commit_plan(
+        let plan = build_commit_plan(
             &artifact,
-            "organisation",
-            "aliases.json",
-            "organisation",
-            "session-id",
-            "solve-hash",
-            "0.0.0",
-            &BTreeMap::new(),
+            CommitPlanContext {
+                entity_kind: "organisation",
+                alias_file: "aliases.json",
+                canonical_type: "organisation",
+                session_id: "session-id",
+                solve_hash: "solve-hash",
+                registry_version: "0.0.0",
+                observation_values: &BTreeMap::new(),
+            },
         )
         .expect("commit plan");
+        let SessionCommitPlan {
+            entries,
+            skipped,
+            relations,
+        } = plan;
         assert_eq!(
             entries
                 .iter()
