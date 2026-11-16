@@ -455,14 +455,14 @@ fn canonicalize_observation_line(
             "surface",
         ));
     }
-    if surface.len() > crate::evidence::MAX_TEXT_BYTES {
+    if surface.len() > crate::entity::evidence_ir::MAX_TEXT_BYTES {
         return Err(ObservationRowError::new(
             line_number,
             Some(obs_id),
             "oversized_surface",
             format!(
                 "surface exceeds the maximum text size of {} bytes",
-                crate::evidence::MAX_TEXT_BYTES
+                crate::entity::evidence_ir::MAX_TEXT_BYTES
             ),
             "surface",
         ));
