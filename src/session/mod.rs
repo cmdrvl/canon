@@ -698,16 +698,15 @@ fn initialize_mapped_registry(
     if let registries::KindIdMode::Numbered {
         prefix, zero_pad, ..
     } = &config.id_mode
+        && let Value::Object(object) = &mut registry_json
     {
-        if let Value::Object(object) = &mut registry_json {
-            object.insert(
-                "default_id_scheme".to_string(),
-                json!({
-                    "prefix": prefix,
-                    "zero_pad": zero_pad.unwrap_or(3),
-                }),
-            );
-        }
+        object.insert(
+            "default_id_scheme".to_string(),
+            json!({
+                "prefix": prefix,
+                "zero_pad": zero_pad.unwrap_or(3),
+            }),
+        );
     }
     let bytes = serde_json::to_vec_pretty(&registry_json).map_err(|error| Refusal {
         code: RefusalCode::EEntityArtifactContract,
