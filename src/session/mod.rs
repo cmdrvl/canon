@@ -1069,6 +1069,33 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         })
         .collect::<BTreeMap<_, _>>();
     let requested_skipped = request.skipped.clone();
+    let (numbered_prefix, numbered_zero_pad, agent_ids) = match &binding.id_mode {
+        Some(registries::KindIdMode::Numbered {
+            prefix,
+            zero_pad,
+            agent_kind_prefix,
+        }) => (
+            Some(prefix.clone()),
+            *zero_pad,
+            agent_kind_prefix
+                .as_ref()
+                .map(|kind_prefix| registry::RegistryTypedAgentIds {
+                    kind_prefix: format!("{kind_prefix}_"),
+                    canonical: false,
+                    id_alias_file: binding.id_alias_file.clone(),
+                }),
+        ),
+        Some(registries::KindIdMode::Agent { kind_prefix }) => (
+            None,
+            None,
+            Some(registry::RegistryTypedAgentIds {
+                kind_prefix: format!("{kind_prefix}_"),
+                canonical: true,
+                id_alias_file: None,
+            }),
+        ),
+        None => (None, None, None),
+    };
     let typed_entries = request
         .entries
         .iter()
@@ -1088,6 +1115,7 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
                     rule_id: alias.rule_id.clone(),
                     skip_if_existing: alias.skip_if_existing,
                     session_authority: alias.session_authority.clone(),
+                    founding_ref: Some(entry.outcome_ref.clone()),
                 })
         })
         .collect::<Vec<_>>();
@@ -1113,12 +1141,14 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         Some(registry::commit_typed_entries(
             registry::RegistryTypedWriteRequest {
                 registry: registry_path.to_path_buf(),
-                prefix: None,
+                prefix: numbered_prefix,
+                zero_pad: numbered_zero_pad,
                 entries: typed_entries,
                 bump: request.bump,
                 next_version: request.next_version,
                 no_lint: false,
                 expected_version: Some(request.registry.version.clone()),
+                agent_ids,
             },
         )?)
     };

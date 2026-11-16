@@ -157,7 +157,7 @@ canon strategy list --registry <REGISTRY> [--key-type schema|task] [--grade oper
 canon strategy explain --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
 canon strategy diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 canon entity run <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--cache-mode enabled|disabled] [--suite <DIR>] [--emit json|summary] [--no-witness]
-canon entity session init --goal <GOAL> --registry <REGISTRY_DIR> --work-dir <DIR> [--entity-kind <KIND>] [--registry-id <ID>] [--prefix <PREFIX>] [--zero-pad <N>] [--emit json|summary]
+canon entity session init --goal <GOAL> (--registry <REGISTRY_DIR> | --registries <MAP_YAML>) --work-dir <DIR> [--entity-kind <KIND>] [--registry-id <ID>] [--prefix <PREFIX>] [--zero-pad <N>] [--emit json|summary]
 canon entity session ingest <SESSION> <OBSERVATIONS.jsonl|-> [--emit json|summary]
 canon entity session assert <SESSION> <EVIDENCE.jsonl|-> [--emit json|summary]
 canon entity session solve <SESSION> --rules <RULES.yaml> [--emit json|summary]

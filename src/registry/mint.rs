@@ -586,17 +586,34 @@ pub(crate) struct RegistryTypedAlias {
     pub rule_id: String,
     pub skip_if_existing: bool,
     pub session_authority: Option<serde_json::Value>,
+    /// Stable text that founds an agent id for a new group (the founding
+    /// outcome); falls back to the new-id slot when absent.
+    pub founding_ref: Option<String>,
+}
+
+/// How agent-friendly ids enter a typed write.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RegistryTypedAgentIds {
+    /// Kind prefix with its trailing underscore, for example `per_`.
+    pub kind_prefix: String,
+    /// True: the agent id is the canonical id of a new group. False: a numbered
+    /// canonical id keeps its number and gains one agent id alias.
+    pub canonical: bool,
+    /// Alias file for the agent id aliases (required when `canonical` is false).
+    pub id_alias_file: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct RegistryTypedWriteRequest {
     pub registry: PathBuf,
     pub prefix: Option<String>,
+    pub zero_pad: Option<usize>,
     pub entries: Vec<RegistryTypedAlias>,
     pub bump: Option<RegistryVersionBump>,
     pub next_version: Option<String>,
     pub no_lint: bool,
     pub expected_version: Option<String>,
+    pub agent_ids: Option<RegistryTypedAgentIds>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -623,6 +640,25 @@ pub(crate) struct RegistryTypedWriteOutput {
     pub touched_files: Vec<String>,
     pub lint: RegistryAddEntryLintSummary,
     pub warnings: Vec<String>,
+}
+
+/// Every id and alias input already in the registry, plus ids minted earlier
+/// in this batch: an agent id may not collide with any of them.
+fn taken_ids(
+    mapping_files: &[super::MappingFile],
+    minted: &[RegistryTypedMinted],
+) -> BTreeSet<String> {
+    let mut taken = BTreeSet::new();
+    for file in mapping_files {
+        for entry in &file.entries {
+            taken.insert(entry.canonical_id.to_ascii_lowercase());
+            taken.insert(entry.input.to_ascii_lowercase());
+        }
+    }
+    for entry in minted {
+        taken.insert(entry.canonical_id.to_ascii_lowercase());
+    }
+    taken
 }
 
 pub(crate) fn commit_typed_entries(
@@ -684,14 +720,19 @@ pub(crate) fn commit_typed_entries(
 
     let mut first_number = None;
     let mut scheme = None;
-    if group_order
-        .iter()
-        .any(|group_key| group_key.starts_with("new:"))
+    let agent_canonical = request
+        .agent_ids
+        .as_ref()
+        .is_some_and(|agent_ids| agent_ids.canonical);
+    if !agent_canonical
+        && group_order
+            .iter()
+            .any(|group_key| group_key.starts_with("new:"))
     {
         let allocation = next_id(RegistryNextIdRequest {
             registry: request.registry.clone(),
             prefix: request.prefix.clone(),
-            zero_pad: None,
+            zero_pad: request.zero_pad,
         })?;
         let namespace = format!("{}-", allocation.scheme.prefix);
         let number = allocation
@@ -748,6 +789,35 @@ pub(crate) fn commit_typed_entries(
                 false,
                 "Provide a non-empty canonical_id",
             )?
+        } else if agent_canonical {
+            let agent_ids = request.agent_ids.as_ref().ok_or_else(|| {
+                add_entry::bad_registry_refusal(
+                    &request.registry,
+                    "Agent id scheme is missing during typed commit",
+                    json!({"group_key": group_key}),
+                    "Rerun the typed registry commit",
+                )
+            })?;
+            let founding = first
+                .founding_ref
+                .clone()
+                .or_else(|| group_key.strip_prefix("new:").map(str::to_string))
+                .unwrap_or_else(|| group_key.clone());
+            let taken_ids = taken_ids(&mapping_files, &minted);
+            let (agent_id, _) = super::agent_id::mint_agent_id(
+                &agent_ids.kind_prefix,
+                &format!("{}|{founding}", registry_json.id),
+                &|candidate| taken_ids.contains(candidate),
+            )
+            .map_err(|error| {
+                add_entry::bad_registry_refusal(
+                    &request.registry,
+                    "Cannot mint an agent id for the new entry",
+                    json!({"reason": error.reason(), "kind_prefix": agent_ids.kind_prefix}),
+                    "Use a kind_prefix of lower-case letters, then rerun",
+                )
+            })?;
+            agent_id
         } else {
             let number = first_number
                 .ok_or_else(|| {
@@ -887,6 +957,72 @@ pub(crate) fn commit_typed_entries(
                 scope: None,
                 session_authority: entry.session_authority.clone(),
             });
+        }
+        if let Some(agent_ids) = request.agent_ids.as_ref()
+            && !agent_ids.canonical
+        {
+            let id_alias_file = agent_ids.id_alias_file.as_deref().ok_or_else(|| {
+                add_entry::parse_refusal(
+                    &request.registry,
+                    "Agent id aliases need id_alias_file in the registries map",
+                    json!({"group_key": group_key}),
+                    "Set id_alias_file for this kind, then rerun",
+                )
+            })?;
+            let founding = if first.canonical_id.is_some() {
+                canonical_id.clone()
+            } else {
+                first
+                    .founding_ref
+                    .clone()
+                    .or_else(|| group_key.strip_prefix("new:").map(str::to_string))
+                    .unwrap_or_else(|| group_key.clone())
+            };
+            let already_aliased = mapping_files
+                .iter()
+                .flat_map(|file| file.entries.iter())
+                .any(|existing| {
+                    existing.canonical_id == canonical_id
+                        && super::agent_id::parse_agent_id(
+                            &existing.input,
+                            &[agent_ids.kind_prefix.as_str()],
+                        )
+                        .is_ok()
+                });
+            if !already_aliased {
+                let taken_ids = taken_ids(&mapping_files, &minted);
+                let (agent_id, _) = super::agent_id::mint_agent_id(
+                    &agent_ids.kind_prefix,
+                    &format!("{}|{founding}", registry_json.id),
+                    &|candidate| taken_ids.contains(candidate),
+                )
+                .map_err(|error| {
+                    add_entry::bad_registry_refusal(
+                        &request.registry,
+                        "Cannot mint an agent id alias",
+                        json!({"reason": error.reason(), "kind_prefix": agent_ids.kind_prefix}),
+                        "Use a kind_prefix of lower-case letters, then rerun",
+                    )
+                })?;
+                if seen_inputs.insert(agent_id.clone()) {
+                    let alias_file =
+                        add_entry::validate_alias_file(&request.registry, id_alias_file)?;
+                    let alias_file = alias_file
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or(id_alias_file)
+                        .to_string();
+                    aliases.push(RegistryAliasWriteEntry {
+                        alias_file,
+                        input: agent_id,
+                        canonical_id: canonical_id.clone(),
+                        canonical_type: canonical_type.clone(),
+                        rule_id: "SESSION_AGENT_ID".to_string(),
+                        scope: None,
+                        session_authority: None,
+                    });
+                }
+            }
         }
         parsed_by_group.insert(group_key.clone(), aliases);
         minted.push(RegistryTypedMinted {
@@ -1078,6 +1214,7 @@ pub fn mint_batch(request: RegistryMintBatchRequest) -> Result<RegistryMintBatch
                 rule_id,
                 skip_if_existing: false,
                 session_authority: None,
+                founding_ref: None,
             });
         }
     }
@@ -1085,11 +1222,13 @@ pub fn mint_batch(request: RegistryMintBatchRequest) -> Result<RegistryMintBatch
     let typed = commit_typed_entries(RegistryTypedWriteRequest {
         registry,
         prefix: request.prefix,
+        zero_pad: None,
         entries: typed_entries,
         bump: request.bump,
         next_version: request.next_version,
         no_lint: request.no_lint,
         expected_version: None,
+        agent_ids: None,
     })?;
     let scheme = typed.scheme.ok_or_else(|| {
         add_entry::bad_registry_refusal(

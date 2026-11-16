@@ -543,6 +543,18 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         node_count: nodes.len(),
         ..SessionSolveSummary::default()
     };
+    let relation_suppressed_nodes = edge_facts
+        .values()
+        .filter(|facts| facts.positive && tier_for(facts, &rules) == Some(EdgeTier::C))
+        .filter(|facts| {
+            nodes_are_related(
+                nodes.get(&facts.left),
+                nodes.get(&facts.right),
+                &related_pairs,
+            )
+        })
+        .flat_map(|facts| [facts.left.clone(), facts.right.clone()])
+        .collect::<BTreeSet<_>>();
     for component in constraint_report.components {
         let mut member_keys = component.surface_ids.clone();
         member_keys.sort();
@@ -571,6 +583,12 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             .iter()
             .filter_map(|node| node.incumbent_canonical_id.clone())
             .collect::<BTreeSet<_>>();
+        let has_registry_endpoint = member_nodes
+            .iter()
+            .any(|node| node.observation_ids.is_empty());
+        let relation_suppressed = member_keys
+            .iter()
+            .any(|key| relation_suppressed_nodes.contains(key));
         let mut conflict_reasons = Vec::new();
         if incumbent_ids.len() > 1 {
             conflict_reasons.push("incumbent_conflict".to_string());
@@ -606,6 +624,16 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             ("contradiction", None, "incumbent_conflict".to_string())
         } else if key_conflict {
             ("contradiction", None, "key_conflict".to_string())
+        } else if relation_suppressed
+            && has_registry_endpoint
+            && !member_nodes.is_empty()
+            && incumbent_ids.len() == 1
+        {
+            (
+                "resolved_existing",
+                None,
+                "related_existing_attachment".to_string(),
+            )
         } else if has_positive {
             if all_tier_a {
                 ("accepted", Some("A".to_string()), "tier_a".to_string())
@@ -681,6 +709,9 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
                 summary.accepted_tier_a += 1;
             } else {
                 summary.accepted_tier_b += 1;
+            }
+            if has_registry_endpoint && incumbent_ids.len() == 1 {
+                summary.resolved_existing += 1;
             }
         } else if outcome == "resolved_existing" {
             summary.resolved_existing += 1;
@@ -1030,8 +1061,8 @@ pub fn commit(
             &loaded_registry.meta.id,
             &loaded_registry.meta.version,
         )?;
-        if already.is_some() {
-            final_output = already;
+        if let Some(already) = already {
+            final_output = Some(merge_commit_outputs(final_output.take(), already));
             continue;
         }
         if !partial_commit
@@ -1093,7 +1124,7 @@ pub fn commit(
             next_version,
             bump: request.bump,
         })?;
-        final_output = Some(output);
+        final_output = Some(merge_commit_outputs(final_output.take(), output));
     }
     final_output.ok_or_else(|| {
         solve_refusal(
@@ -1102,6 +1133,23 @@ pub fn commit(
             "Rerun canon entity session commit",
         )
     })
+}
+
+/// Combine the output of one kind's commit with what earlier kinds produced.
+/// A kind with nothing to commit must not mask a kind that did commit; later
+/// committed outputs already carry the receipt blocks of the earlier ones.
+fn merge_commit_outputs(
+    previous: Option<session::SessionCommitOutput>,
+    next: session::SessionCommitOutput,
+) -> session::SessionCommitOutput {
+    match previous {
+        Some(previous)
+            if next.outcome == "nothing_to_commit" && previous.outcome != "nothing_to_commit" =>
+        {
+            previous
+        }
+        _ => next,
+    }
 }
 
 fn expected_registry_version(version: &str, kind: &str) -> Option<String> {

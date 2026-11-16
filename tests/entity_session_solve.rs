@@ -67,6 +67,42 @@ fn init_session(temp: &TempDir, label: &str) -> std::path::PathBuf {
     session
 }
 
+/// A session whose registries map binds both `organisation` and `person`, so
+/// observations of either kind are accepted at ingest.
+fn init_two_kind_session(temp: &TempDir, label: &str) -> std::path::PathBuf {
+    let organisations = temp.path().join(format!("{label}-organisations"));
+    let people = temp.path().join(format!("{label}-people"));
+    let session = temp.path().join(format!("{label}-session"));
+    let map = temp.path().join(format!("{label}-registries.yaml"));
+    std::fs::write(
+        &map,
+        format!(
+            "version: canon.session.registries.v1\nkinds:\n  organisation:\n    registry: {}\n    registry_id: organisations\n    prefix: ORG\n    zero_pad: 4\n    canonical_type: firm\n    alias_file: aliases.json\n  person:\n    registry: {}\n    registry_id: people\n    prefix: PER\n    zero_pad: 4\n    canonical_type: person\n    alias_file: aliases.json\n",
+            organisations.display(),
+            people.display()
+        ),
+    )
+    .unwrap();
+    let output = canon_command()
+        .args([
+            "entity",
+            "session",
+            "init",
+            "--goal",
+            "session solve acceptance",
+            "--registries",
+            map.to_str().unwrap(),
+            "--work-dir",
+            session.to_str().unwrap(),
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .success();
+    run_and_log("session init (two kinds)", &output);
+    session
+}
+
 fn observation(
     obs_id: &str,
     lineage: &str,
@@ -471,7 +507,7 @@ fn session_solve_classifies_fixture_and_planted_negatives() {
     assert_eq!(relation_payload["summary"]["relations"], 1);
     assert_eq!(relation_payload["summary"]["standalone"], 2);
 
-    let mixed_key_session = init_session(&temp, "mixed-key-kinds");
+    let mixed_key_session = init_two_kind_session(&temp, "mixed-key-kinds");
     let mixed_key_observations = write_observations(
         &temp,
         "mixed-key-kinds",
@@ -485,7 +521,7 @@ fn session_solve_classifies_fixture_and_planted_negatives() {
     assert_eq!(mixed_key_payload["summary"]["cluster_count"], 2);
     assert_eq!(mixed_key_payload["summary"]["accepted_tier_a"], 2);
 
-    let cross_kind_session = init_session(&temp, "cross-kind-evidence");
+    let cross_kind_session = init_two_kind_session(&temp, "cross-kind-evidence");
     let cross_kind_observations = write_observations(
         &temp,
         "cross-kind-evidence",

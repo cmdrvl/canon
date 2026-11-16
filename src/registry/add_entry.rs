@@ -1196,17 +1196,20 @@ pub fn add_entries(
             rule_id,
             skip_if_existing: true,
             session_authority: None,
+            founding_ref: None,
         });
     }
 
     let typed = super::mint::commit_typed_entries(super::mint::RegistryTypedWriteRequest {
         registry: request.registry,
         prefix: None,
+        zero_pad: None,
         entries: typed_entries,
         bump: request.bump,
         next_version: request.next_version,
         no_lint: request.no_lint,
         expected_version: Some(registry_json.version),
+        agent_ids: None,
     })?;
     let attached = typed
         .minted

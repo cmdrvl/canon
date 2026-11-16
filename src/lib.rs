@@ -1042,15 +1042,23 @@ fn run_entity_session_rules_validate_command(
 }
 
 fn run_entity_session_init_command(init: &EntitySessionInitCli) -> Result<u8, Box<dyn Error>> {
-    let result = session::init(session::SessionInitRequest {
-        goal: init.goal.clone(),
-        registry: init.registry.clone(),
-        work_dir: init.work_dir.clone(),
-        entity_kind: init.entity_kind.clone(),
-        registry_id: init.registry_id.clone(),
-        prefix: init.prefix.clone(),
-        zero_pad: init.zero_pad,
-    });
+    let result = match (&init.registries, &init.registry) {
+        (Some(registries), _) => session::init_registries(session::SessionInitRegistriesRequest {
+            goal: init.goal.clone(),
+            registries: registries.clone(),
+            work_dir: init.work_dir.clone(),
+        }),
+        (None, Some(registry)) => session::init(session::SessionInitRequest {
+            goal: init.goal.clone(),
+            registry: registry.clone(),
+            work_dir: init.work_dir.clone(),
+            entity_kind: init.entity_kind.clone(),
+            registry_id: init.registry_id.clone(),
+            prefix: init.prefix.clone(),
+            zero_pad: init.zero_pad,
+        }),
+        (None, None) => unreachable!("clap requires --registry or --registries"),
+    };
     match result {
         Ok(output) => {
             let summary_mode = matches!(init.emit, EntityEmitMode::Summary);

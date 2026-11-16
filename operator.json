@@ -50,7 +50,7 @@
       "canon strategy register --registry <DIR> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --grade operator-attested|proof-attested --next-version <VERSION> [--operator <ID> --reason <TEXT>] [--verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json>] [--emit json|summary] [--no-witness]",
       "canon strategy diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
       "canon entity run <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--cache-mode enabled|disabled] [--suite <SUITE_DIR>] [--emit json|summary] [--no-witness]",
-      "canon entity session init --goal <GOAL> --registry <REGISTRY_DIR> --work-dir <DIR> [--entity-kind <KIND>] [--registry-id <ID>] [--prefix <PREFIX>] [--zero-pad <N>] [--emit json|summary]",
+      "canon entity session init --goal <GOAL> (--registry <REGISTRY_DIR> | --registries <MAP_YAML>) --work-dir <DIR> [--entity-kind <KIND>] [--registry-id <ID>] [--prefix <PREFIX>] [--zero-pad <N>] [--emit json|summary]",
       "canon entity session ingest <SESSION> <OBSERVATIONS.jsonl|-> [--emit json|summary]",
       "canon entity session assert <SESSION> <EVIDENCE.jsonl|-> [--emit json|summary]",
       "canon entity session solve <SESSION> --rules <RULES.yaml> [--emit json|summary]",
@@ -6722,7 +6722,7 @@
     },
     {
       "name": "entity session init",
-      "usage": "canon entity session init --goal <GOAL> --registry <REGISTRY_DIR> --work-dir <DIR> [--entity-kind <KIND>] [--registry-id <ID>] [--prefix <PREFIX>] [--zero-pad <N>] [--emit json|summary]",
+      "usage": "canon entity session init --goal <GOAL> (--registry <REGISTRY_DIR> | --registries <MAP_YAML>) --work-dir <DIR> [--entity-kind <KIND>] [--registry-id <ID>] [--prefix <PREFIX>] [--zero-pad <N>] [--emit json|summary]",
       "description": "Create an append-only evidence session manifest and create its empty registry when registry.json is absent",
       "output_mode": "mixed",
       "output_schema": "canon.entity.session.init.v1",

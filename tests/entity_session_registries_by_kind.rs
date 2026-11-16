@@ -134,7 +134,7 @@ fn session_registries_keep_kinds_separate_and_reject_unmapped_rows() {
         "observations.jsonl",
         &[
             observation("org-1", "organisation", "Shared Surface", Some("111")),
-            observation("person-1", "person", "Shared Surface", None),
+            observation("person-1", "person", "Shared Surface", Some("222")),
             observation("fund-1", "fund", "Unmapped Fund", None),
         ],
     );

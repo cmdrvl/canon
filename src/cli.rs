@@ -1688,9 +1688,17 @@ pub struct EntitySessionInitCli {
     #[arg(long)]
     pub goal: String,
 
-    /// Registry directory to use or create
-    #[arg(long)]
-    pub registry: PathBuf,
+    /// Registry directory to use or create (one-kind short form)
+    #[arg(
+        long,
+        required_unless_present = "registries",
+        conflicts_with = "registries"
+    )]
+    pub registry: Option<PathBuf>,
+
+    /// Registries map YAML (canon.session.registries.v1): one registry per entity kind
+    #[arg(long, conflicts_with_all = ["registry", "entity_kind", "registry_id", "prefix", "zero_pad"])]
+    pub registries: Option<PathBuf>,
 
     /// Session work directory
     #[arg(long = "work-dir")]

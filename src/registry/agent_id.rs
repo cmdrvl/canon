@@ -98,7 +98,14 @@ pub fn parse_agent_id(
         None => (input, None),
     };
     let lowered = id_part.to_ascii_lowercase();
-    let split = lowered.find('_').map(|index| index + 1).unwrap_or(0);
+    let Some(split) = lowered.find('_').map(|index| index + 1) else {
+        // No kind prefix at all: nothing to measure the symbols against.
+        return Err(if lowered.is_empty() {
+            AgentIdRejection::BadLength
+        } else {
+            AgentIdRejection::UnknownKind
+        });
+    };
     let (prefix, symbols) = lowered.split_at(split);
     if symbols.len() != AGENT_ID_SYMBOL_LEN {
         return Err(AgentIdRejection::BadLength);
