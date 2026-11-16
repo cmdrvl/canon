@@ -3135,11 +3135,11 @@ fn ascii_trim(value: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::{
-        EdgeFacts, EdgeTier, RegistryRow, SessionRules, SessionSolveArtifact, SessionSolveCluster,
-        SessionSolveInputs, SessionSolveRegistry, SessionSolveSummary, TIER_A_TYPES, TIER_B_TYPES,
-        build_commit_plan, canonical_key_value, commit_skip_reasons, component_has_key_conflict,
-        exactly_one_authoritative_value, has_positive_distinct, key_values, nodes_are_related,
-        tier_for,
+        CommitPlanContext, EdgeFacts, EdgeTier, RegistryRow, SessionCommitPlan, SessionRules,
+        SessionSolveArtifact, SessionSolveCluster, SessionSolveInputs, SessionSolveRegistry,
+        SessionSolveSummary, TIER_A_TYPES, TIER_B_TYPES, build_commit_plan, canonical_key_value,
+        commit_skip_reasons, component_has_key_conflict, exactly_one_authoritative_value,
+        has_positive_distinct, key_values, nodes_are_related, tier_for,
     };
     use std::collections::{BTreeMap, BTreeSet};
 
