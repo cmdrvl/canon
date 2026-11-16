@@ -14,6 +14,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
     ops::Range,
+    sync::OnceLock,
 };
 
 pub const ENTITY_POSTINGS_LAYOUT_VERSION: &str = "canon_entity_postings.v0";
@@ -75,7 +76,7 @@ pub struct CommonPostingDiagnostic {
     pub configured_limit: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PostingLayout {
     pub version: String,
     pub surface_count: u32,
@@ -84,6 +85,29 @@ pub struct PostingLayout {
     pub term_offsets: Vec<usize>,
     pub postings: Vec<PostingRecord>,
     pub common_posting_diagnostics: Vec<CommonPostingDiagnostic>,
+    #[serde(skip)]
+    lookup_entries: OnceLock<Vec<PostingLookupEntry>>,
+}
+
+impl PartialEq for PostingLayout {
+    fn eq(&self, other: &Self) -> bool {
+        self.version == other.version
+            && self.surface_count == other.surface_count
+            && self.dictionary_hash == other.dictionary_hash
+            && self.dictionary == other.dictionary
+            && self.term_offsets == other.term_offsets
+            && self.postings == other.postings
+            && self.common_posting_diagnostics == other.common_posting_diagnostics
+    }
+}
+
+impl Eq for PostingLayout {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PostingLookupEntry {
+    kind: PostingFeatureKind,
+    key: String,
+    term_id: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -401,6 +425,7 @@ impl PostingLayout {
             term_offsets,
             postings: flattened,
             common_posting_diagnostics: diagnostics,
+            lookup_entries: OnceLock::new(),
         };
         layout.validate_reload()?;
         Ok(layout)
@@ -426,10 +451,57 @@ impl PostingLayout {
     }
 
     pub fn term_id_for(&self, kind: PostingFeatureKind, key: &str) -> Option<u32> {
-        self.dictionary
-            .iter()
-            .find(|entry| entry.kind == kind && entry.key == key)
-            .map(|entry| entry.term_id)
+        self.term_id_for_with_lookup_steps(kind, key).0
+    }
+
+    /// Return a lookup result and the number of dictionary probes used.
+    ///
+    /// The probe count is exposed for deterministic scaling tests. It is not
+    /// part of the serialized posting layout or its artifact identity.
+    #[doc(hidden)]
+    pub fn term_id_for_with_lookup_steps(
+        &self,
+        kind: PostingFeatureKind,
+        key: &str,
+    ) -> (Option<u32>, usize) {
+        let entries = self.lookup_entries.get_or_init(|| {
+            let mut entries = self
+                .dictionary
+                .iter()
+                .map(|entry| PostingLookupEntry {
+                    kind: entry.kind,
+                    key: entry.key.clone(),
+                    term_id: entry.term_id,
+                })
+                .collect::<Vec<_>>();
+            entries.sort_by(|left, right| {
+                left.kind
+                    .cmp(&right.kind)
+                    .then_with(|| left.key.cmp(&right.key))
+                    .then_with(|| left.term_id.cmp(&right.term_id))
+            });
+            entries.dedup_by(|left, right| left.kind == right.kind && left.key == right.key);
+            entries
+        });
+
+        let mut lower = 0;
+        let mut upper = entries.len();
+        let mut probes = 0;
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2;
+            let entry = &entries[middle];
+            probes += 1;
+            match entry
+                .kind
+                .cmp(&kind)
+                .then_with(|| entry.key.as_str().cmp(key))
+            {
+                std::cmp::Ordering::Less => lower = middle + 1,
+                std::cmp::Ordering::Greater => upper = middle,
+                std::cmp::Ordering::Equal => return (Some(entry.term_id), probes),
+            }
+        }
+        (None, probes)
     }
 
     pub fn posting_range(&self, term_id: u32) -> Result<Range<usize>, PostingLayoutError> {

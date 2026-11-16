@@ -138,6 +138,47 @@ fn entity_index_postings_reject_unknown_dictionary_key_on_reload_lookup() {
         .expect("exact layout reloads");
 }
 
+#[test]
+fn posting_lookup_matches_first_linear_dictionary_match() {
+    let layout = canon::entity::postings::PostingLayout::build(
+        1,
+        vec![
+            canon::entity::postings::PostingDictionaryEntry::new(
+                PostingFeatureKind::Token,
+                2,
+                "duplicate",
+            ),
+            canon::entity::postings::PostingDictionaryEntry::new(
+                PostingFeatureKind::Token,
+                0,
+                "duplicate",
+            ),
+            canon::entity::postings::PostingDictionaryEntry::new(
+                PostingFeatureKind::Ngram,
+                1,
+                "duplicate",
+            ),
+        ],
+        Vec::new(),
+        0,
+    )
+    .expect("duplicate-key layout builds");
+
+    assert_eq!(
+        layout.term_id_for(PostingFeatureKind::Token, "duplicate"),
+        Some(0),
+        "lookup preserves the first match in normalized term-id order"
+    );
+    assert_eq!(
+        layout.term_id_for(PostingFeatureKind::Ngram, "duplicate"),
+        Some(1)
+    );
+    assert_eq!(
+        layout.term_id_for(PostingFeatureKind::Token, "missing"),
+        None
+    );
+}
+
 fn sample_index() -> EntityPostingIndex {
     EntityPostingIndex::build(
         &[
