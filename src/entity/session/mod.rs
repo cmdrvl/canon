@@ -18,6 +18,7 @@ use crate::{
         score::{ScoreLane, ScoreUnits},
         solve::evaluate_signed_graph_components,
     },
+    keys::KeyNamespace,
     lookup, registry,
     session::{
         self, SESSION_EVIDENCE_STREAM_ID, SESSION_MANIFEST_STREAM_ID,
@@ -873,12 +874,29 @@ fn build_commit_plan(
             }
         }
         for namespace in &artifact.authoritative_keys {
-            let Some(values) = cluster.keys.get(namespace) else {
+            let namespace = canonical_key_namespace(namespace);
+            let Some(values) = cluster.keys.get(&namespace) else {
                 continue;
             };
             let mut values = values.clone();
             values.sort();
             for value in values {
+                let invalid_value = value.clone();
+                let value = canonical_key_value(&namespace, &value).ok_or_else(|| {
+                    solve_refusal(
+                        format!(
+                            "Accepted cluster {} contains an invalid {} key",
+                            cluster.cluster_id, namespace
+                        ),
+                        json!({
+                            "cluster_id": cluster.cluster_id.clone(),
+                            "namespace": namespace.clone(),
+                            "value": invalid_value,
+                            "writes_performed": false
+                        }),
+                        "Repair the session observation key, then rerun solve and commit",
+                    )
+                })?;
                 if seen_inputs.insert(value.clone()) {
                     aliases.push(SessionCommitAlias {
                         alias_file: "aliases.json".to_string(),
@@ -1284,6 +1302,10 @@ fn read_observations(snapshot: &EntityPublicationSnapshot) -> Result<Vec<Observa
                 .keys
                 .into_iter()
                 .filter_map(|(key, value)| value_to_key_value(&key, value))
+                .filter_map(|(namespace, value)| {
+                    canonical_key_value(&namespace, &value)
+                        .map(|value| (canonical_key_namespace(&namespace), value))
+                })
                 .collect::<BTreeMap<_, _>>();
             let lineages = raw
                 .source
@@ -1448,6 +1470,16 @@ fn load_registry_info(
             RegistryEndpointSpec::CanonicalId(_) => {}
         }
     }
+    for observation in observations {
+        for (namespace, value) in &observation.keys {
+            values.extend(key_lookup_values(namespace, value).map(|value| (value, ())));
+        }
+    }
+    for spec in endpoint_targets.values() {
+        if let RegistryEndpointSpec::Key { namespace, value } = spec {
+            values.extend(key_lookup_values(namespace, value).map(|value| (value, ())));
+        }
+    }
     let resolved = lookup::resolve_values(
         &loaded,
         &InputValues {
@@ -1525,14 +1557,26 @@ fn load_registry_info(
                 })
             }
             RegistryEndpointSpec::Key { namespace, value } => {
+                let namespace = canonical_key_namespace(&namespace);
+                let Some(value) = canonical_key_value(&namespace, &value) else {
+                    continue;
+                };
                 let expected_rule = format!("SESSION_KEY_{}", namespace.to_ascii_uppercase());
-                mappings.get(&value).and_then(|mapping| {
-                    (mapping.rule_id == expected_rule).then(|| {
+                mappings
+                    .values()
+                    .find(|mapping| {
+                        mapping.rule_id == expected_rule
+                            && canonical_key_value(&namespace, &mapping.input).as_deref()
+                                == Some(value.as_str())
+                    })
+                    .map(|mapping| {
                         let mut keys = incumbent_keys
                             .get(&mapping.canonical_id)
                             .cloned()
                             .unwrap_or_default();
-                        keys.entry(namespace).or_default().insert(value.clone());
+                        keys.entry(namespace.clone())
+                            .or_default()
+                            .insert(value.clone());
                         RegistryEndpoint {
                             entity_type: entity_type.to_string(),
                             node_key: format!("{entity_type}\u{0}{value}"),
@@ -1542,7 +1586,6 @@ fn load_registry_info(
                             alias_endpoint: false,
                         }
                     })
-                })
             }
             RegistryEndpointSpec::CanonicalId(canonical_id) => {
                 rows_by_id.get(&canonical_id).and_then(|rows| {
@@ -1667,11 +1710,40 @@ fn key_values(rows: &[RegistryRow]) -> BTreeMap<String, BTreeSet<String>> {
         let Some(namespace) = row.rule_id.strip_prefix("SESSION_KEY_") else {
             continue;
         };
-        keys.entry(namespace.to_ascii_lowercase())
+        let namespace = canonical_key_namespace(namespace);
+        let Some(value) = canonical_key_value(&namespace, &row.input) else {
+            continue;
+        };
+        keys.entry(namespace)
             .or_insert_with(BTreeSet::new)
-            .insert(row.input.clone());
+            .insert(value);
     }
     keys
+}
+
+fn canonical_key_namespace(namespace: &str) -> String {
+    match KeyNamespace::from_name(namespace) {
+        KeyNamespace::Opaque => namespace.trim().to_ascii_lowercase(),
+        known => known.name().to_string(),
+    }
+}
+
+fn canonical_key_value(namespace: &str, value: &str) -> Option<String> {
+    KeyNamespace::from_name(namespace).canonicalise(value).ok()
+}
+
+fn key_lookup_values(namespace: &str, value: &str) -> Vec<String> {
+    let Some(canonical) = canonical_key_value(namespace, value) else {
+        return Vec::new();
+    };
+    if KeyNamespace::from_name(namespace) != KeyNamespace::Cik {
+        return vec![canonical];
+    }
+    let mut values = vec![canonical.clone()];
+    for width in (canonical.len() + 1)..=10 {
+        values.push(format!("{:0>width$}", canonical, width = width));
+    }
+    values
 }
 
 fn registry_snapshot_hash(path: &Path, id: &str, version: &str) -> Result<String, Refusal> {
@@ -1883,21 +1955,24 @@ fn derive_registry_key_edges(
         let Some((namespace, value)) = key_spec.split_once(':') else {
             continue;
         };
-        if !rules.authoritative_keys.iter().any(|key| key == namespace) {
+        let namespace = canonical_key_namespace(namespace);
+        let Some(value) = canonical_key_value(&namespace, value) else {
+            continue;
+        };
+        if !rules.authoritative_keys.iter().any(|key| key == &namespace) {
             continue;
         }
         for observation in observations.values().filter(|observation| {
             observation.entity_type.as_str() == endpoint.entity_type.as_str()
-                && observation
-                    .keys
-                    .get(namespace)
-                    .is_some_and(|key| key == value)
+                && observation.keys.get(&namespace).is_some_and(|key| {
+                    canonical_key_value(&namespace, key).as_deref() == Some(value.as_str())
+                })
         }) {
             if observation.node_key == endpoint.node_key {
                 continue;
             }
             let (left, right) = ordered_pair(&observation.node_key, &endpoint.node_key);
-            let record = derived_same_key_record(&observation.obs_id, target, namespace, value)?;
+            let record = derived_same_key_record(&observation.obs_id, target, &namespace, &value)?;
             let evidence_id = record.evidence_id.clone();
             let facts = edge_facts
                 .entry((left.clone(), right.clone()))
@@ -2259,9 +2334,10 @@ fn ascii_trim(value: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::{
-        EdgeFacts, EdgeTier, SessionRules, SessionSolveArtifact, SessionSolveCluster,
+        EdgeFacts, EdgeTier, RegistryRow, SessionRules, SessionSolveArtifact, SessionSolveCluster,
         SessionSolveInputs, SessionSolveRegistry, SessionSolveSummary, TIER_A_TYPES, TIER_B_TYPES,
-        build_commit_plan, exactly_one_authoritative_value, tier_for,
+        build_commit_plan, canonical_key_value, exactly_one_authoritative_value, key_values,
+        tier_for,
     };
     use std::collections::{BTreeMap, BTreeSet};
 
@@ -2333,6 +2409,22 @@ mod tests {
         node.keys
             .insert("lei".to_string(), BTreeSet::from(["LEI".to_string()]));
         assert!(!exactly_one_authoritative_value(&node, &rules()));
+    }
+
+    #[test]
+    fn registry_and_observation_cik_forms_share_canonical_key() {
+        let registry = key_values(&[RegistryRow {
+            rule_id: "SESSION_KEY_CIK".to_string(),
+            input: "222".to_string(),
+        }]);
+        let observation = canonical_key_value("cik", "0000000222").expect("valid CIK");
+
+        assert_eq!(observation, "222");
+        assert!(
+            registry
+                .get("cik")
+                .is_some_and(|values| values.contains(&observation))
+        );
     }
 
     #[test]
