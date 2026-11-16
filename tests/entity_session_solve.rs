@@ -356,7 +356,7 @@ fn session_solve_classifies_fixture_and_planted_negatives() {
     assert_eq!(payload["summary"]["standalone"], 1);
     assert!(clusters["Medline Borrower, LP|Mozart Borrower LP (dba Medline)"]["tier"] == "A");
     assert_eq!(
-        clusters["Project Falcon Buyer, Inc.|Falcon Parent Holdings (dba SkyWorks)"]["tier"],
+        clusters["Falcon Parent Holdings (dba SkyWorks)|Project Falcon Buyer, Inc."]["tier"],
         "B"
     );
     assert_eq!(clusters["Apex LLC"]["outcome"], "contradiction");

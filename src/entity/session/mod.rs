@@ -1445,7 +1445,12 @@ fn is_positive_type(evidence_type: &str) -> bool {
 }
 
 fn tier_for(facts: &EdgeFacts, rules: &SessionRules) -> Option<EdgeTier> {
-    if !facts.positive {
+    if !facts.positive
+        || !facts
+            .evidence_types
+            .iter()
+            .any(|kind| is_positive_type(kind))
+    {
         return None;
     }
     if facts
