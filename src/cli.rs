@@ -1968,6 +1968,10 @@ pub struct EntitySessionDeriveCli {
     #[arg(long)]
     pub strategy: PathBuf,
 
+    /// Do not use the registry's aliases as candidates for the session's surfaces
+    #[arg(long = "no-registry-candidates")]
+    pub no_registry_candidates: bool,
+
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: EntityEmitMode,

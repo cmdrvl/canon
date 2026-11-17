@@ -1249,6 +1249,7 @@ fn run_entity_session_derive_command(
         session: derive.session.clone(),
         profile: derive.profile.clone(),
         strategy: derive.strategy.clone(),
+        registry_candidates: !derive.no_registry_candidates,
     });
     let summary_mode = matches!(derive.emit, EntityEmitMode::Summary);
     match result {

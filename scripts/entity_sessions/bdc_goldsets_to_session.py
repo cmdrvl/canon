@@ -180,6 +180,87 @@ def selected_observations(
     ]
 
 
+BORROWER_ATTRS = ("investment_type", "maturity_date", "spread", "reference_rate")
+
+
+def borrower_observations(
+    gold_dir: Path, ciks: set[str] | None, pick: str
+) -> list[dict[str, Any]]:
+    """One observation per gold-set row: obs_id is the row id, the surface is the
+    portfolio company, attrs and context come straight from the row and its fund,
+    and the lineage is the fund's CIK. Nothing is inferred, normalised or
+    asserted: a null in the source stays absent here."""
+    grouped: dict[str, list[tuple[Path, dict[str, Any]]]] = {}
+    for path in goldset_files(gold_dir):
+        goldset = load_goldset(path)
+        cik = goldset["source"]["cik"]
+        if ciks is not None and cik not in ciks:
+            continue
+        grouped.setdefault(cik, []).append((path, goldset))
+    if ciks is not None:
+        missing = sorted(ciks.difference(grouped))
+        if missing:
+            fail(f"selected CIKs have no gold-set file: {', '.join(missing)}")
+    if not grouped:
+        fail("selection contains no gold-set files")
+
+    selected: list[tuple[Path, dict[str, Any]]] = []
+    for cik in sorted(grouped):
+        files = sorted(grouped[cik], key=lambda item: source_sort_key(item[0], item[1]["source"]))
+        if pick == "earliest":
+            selected.extend(files[:1])
+        elif pick == "later":
+            selected.extend(files[1:])
+        else:
+            selected.extend(files)
+    if not selected:
+        fail("selection contains no later filings")
+
+    observations: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for path, goldset in selected:
+        source = goldset["source"]
+        rows = goldset.get("rows")
+        if not isinstance(rows, list):
+            fail(f"{path} has no rows array")
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            row_id = row.get("row_id")
+            company = row.get("portfolio_company")
+            if not isinstance(row_id, str) or not isinstance(company, str) or not company.strip():
+                continue
+            if row_id in seen:
+                fail(f"duplicate row_id {row_id} across the selected gold sets")
+            seen.add(row_id)
+            attrs = {
+                name: row[name]
+                for name in BORROWER_ATTRS
+                if isinstance(row.get(name), (str, int, float)) and str(row[name]).strip()
+            }
+            observations.append(
+                {
+                    "obs_id": row_id,
+                    "entity_type": "organisation",
+                    "surface": company,
+                    "keys": {},
+                    "attrs": attrs,
+                    "context": {
+                        "fund": source["company"],
+                        "as_of_date": source["as_of_date"],
+                    },
+                    "source": {
+                        "channel": "file",
+                        "file": path.name,
+                        "lineage": f"edgar:cik:{source['cik']}",
+                    },
+                }
+            )
+    if not observations:
+        fail("selection contains no borrower rows")
+    return observations
+
+
 def canon_binary(explicit: Path | None) -> Path:
     candidates: list[str] = []
     if explicit is not None:
@@ -267,10 +348,11 @@ def run_self_check(output: Path, explicit_binary: Path | None) -> None:
 
 def main() -> None:
     args = parse_args()
-    if args.mode == "borrowers":
-        fail("--mode borrowers is reserved for the borrower converter bead")
     ciks = load_ciks(args.ciks_file)
-    rows = selected_observations(args.gold_dir, ciks, args.pick)
+    if args.mode == "borrowers":
+        rows = borrower_observations(args.gold_dir, ciks, args.pick)
+    else:
+        rows = selected_observations(args.gold_dir, ciks, args.pick)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", encoding="utf-8", newline="\n") as output:
         for row in rows:

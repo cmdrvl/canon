@@ -206,6 +206,16 @@ impl Blocking {
     }
 }
 
+/// A surface prepared from a registry alias row (`origin: registry` in the
+/// profile's provenance fields) rather than from a session observation.
+pub fn is_registry_origin(surface: &PreparedSurfaceRecord) -> bool {
+    !surface.provenance_samples.is_empty()
+        && surface
+            .provenance_samples
+            .iter()
+            .all(|sample| sample.provenance.get("origin").map(String::as_str) == Some("registry"))
+}
+
 /// Explicit declarations generate scored pair candidates, never the legacy
 /// equality hyperedges. Enumeration is bounded by the same candidate budgets.
 /// Keys are tuples, so delimiters inside values cannot create false collisions.
@@ -223,6 +233,15 @@ pub fn generate(
         .map_err(|error| error.to_refusal())?;
     let mut accumulator = BlockCandidateAccumulator::default();
     let mut budget = CandidateBudgetTracker::new(config, surfaces.len());
+    // Registry-origin rows (session derive, bd-vdcw.14) are candidates for a
+    // session surface, never a pair of their own: block emits no
+    // registry-to-registry candidate, so the registry's size does not grow the
+    // work beyond preparing and indexing its rows.
+    let registry_surfaces = surfaces
+        .iter()
+        .filter(|surface| is_registry_origin(surface))
+        .map(|surface| surface.surface_id.clone())
+        .collect::<BTreeSet<_>>();
     let mut diagnostics = Vec::new();
     let mut sorted_surfaces = surfaces.iter().collect::<Vec<_>>();
     sorted_surfaces.sort_by(|left, right| left.surface_id.cmp(&right.surface_id));
@@ -291,6 +310,11 @@ pub fn generate(
                 | Operator::CompositeKey { .. } => {
                     for (left_index, left) in members.iter().enumerate() {
                         for right in members.iter().skip(left_index + 1) {
+                            if registry_surfaces.contains(&left.surface_id)
+                                && registry_surfaces.contains(&right.surface_id)
+                            {
+                                continue;
+                            }
                             if !seen_pairs.insert((&left.surface_id, &right.surface_id)) {
                                 continue;
                             }
@@ -349,6 +373,7 @@ pub fn generate(
                         &mut accumulator,
                         &mut budget,
                         *max_ngram_df,
+                        &registry_surfaces,
                     )?;
                     add_diagnostic(&mut diagnostic, result);
                 }
@@ -403,6 +428,7 @@ pub fn generate(
                         &config,
                         &mut accumulator,
                         &mut budget,
+                        &registry_surfaces,
                     )?;
                     add_diagnostic(&mut diagnostic, result);
                 }

@@ -770,6 +770,7 @@ pub fn generate_block_candidates(
                     &mut accumulator,
                     &mut budget_observations,
                     None,
+                    &BTreeSet::new(),
                 )?;
                 operator_diagnostics.push(diagnostic);
             }
@@ -780,6 +781,7 @@ pub fn generate_block_candidates(
                     config,
                     &mut accumulator,
                     &mut budget_observations,
+                    &BTreeSet::new(),
                 )?;
                 operator_diagnostics.push(diagnostic);
             }
@@ -1361,11 +1363,17 @@ fn apply_ngram_topk_operator(
     accumulator: &mut BlockCandidateAccumulator,
     budget_observations: &mut CandidateBudgetTracker,
     max_ngram_df: Option<usize>,
+    skip_queries: &BTreeSet<String>,
 ) -> Result<BlockOperatorCandidateDiagnostics, Refusal> {
     let mut diagnostic = OperatorDiagnosticAccumulator::new(&config.operator_id);
 
     let mut workspace = crate::entity::index::ngram_index::NgramQueryWorkspace::default();
     for (ordinal, surface_id) in ngram_index.surface_ids.iter().enumerate() {
+        // A registry-origin surface is a candidate for a session surface's query,
+        // never a query itself: two registry rows are never paired.
+        if skip_queries.contains(surface_id) {
+            continue;
+        }
         let mut topk_config =
             TopKConfig::new(profile_id.to_string(), config.operator_id.clone(), config.k)
                 .with_candidate_cap(config.candidate_cap);
@@ -1414,6 +1422,7 @@ fn apply_rare_token_overlap_operator(
     config: &RareTokenOverlapBlockOperator,
     accumulator: &mut BlockCandidateAccumulator,
     budget_observations: &mut CandidateBudgetTracker,
+    skip_queries: &BTreeSet<String>,
 ) -> Result<BlockOperatorCandidateDiagnostics, Refusal> {
     let token_features =
         token_features_by_surface(posting_index).map_err(posting_layout_refusal)?;
@@ -1422,6 +1431,9 @@ fn apply_rare_token_overlap_operator(
     let mut diagnostic = OperatorDiagnosticAccumulator::new(&config.operator_id);
 
     for (query_ordinal, query_surface_id) in posting_index.surface_ids.iter().enumerate() {
+        if skip_queries.contains(query_surface_id) {
+            continue;
+        }
         let mut candidates = BTreeMap::<usize, RareTokenCandidateAccumulator>::new();
         let mut large_posting_suppressed_count = 0_u64;
 

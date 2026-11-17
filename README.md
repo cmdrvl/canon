@@ -517,7 +517,7 @@ canon entity session explain <SESSION> <OBS_ID|SURFACE|cluster:CLUSTER_ID> [--em
 canon entity session frontier <SESSION> [--seed-entity <SURFACE_OR_ID>] [--emit json|summary]
 canon entity session next <SESSION> [--seed-entity <SURFACE_OR_ID>]
 canon entity session export <SESSION> --format evidence-closure --out <DIR> [--outcome <OUTCOME_REF>] [--emit json|summary]
-canon entity session derive <SESSION> --profile <PROFILE.yaml> --strategy <STRATEGY.yaml> [--emit json|summary]
+canon entity session derive <SESSION> --profile <PROFILE.yaml> --strategy <STRATEGY.yaml> [--no-registry-candidates] [--emit json|summary]
 canon entity session sample <SESSION> [--stratum tier_a|tier_b|tier_c|standalone|neighbourhood] [--count <N>] [--seed <SEED>] [--entity-type <TYPE>] [--blind] [--seed-entity <SURFACE_OR_ID>] [--score <LABELS.jsonl>] [--emit jsonl|json|summary]
 canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
 canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]

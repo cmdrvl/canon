@@ -471,6 +471,17 @@ Which operator emits which evidence type:
 | `string_similarity`, `tfidf_cosine`, `two_token_reversal`, `token_overlap` | `name_similar` | never |
 | `date_transposed_digits` | `value_similar` | never |
 
+**Day two.** A new session whose rows share nothing with the first session's
+still finds its spellings: derive also puts the registry's aliases in the rows
+file (`origin: registry`, so the profile lists `origin` in
+`prepare.provenance_fields`) and an `exact_view` hit between a new surface and a
+registry alias is evidence to that alias, so the commit attaches the new
+spelling to the first session's ID instead of minting a second one. Registry
+rows are candidates only for the session's surfaces: a registry of 50,000
+unrelated aliases adds work to prepare and index it, but no registry-to-registry
+pair is generated or scored (`registry_candidates` in the output says so, and
+`records_digest` is unchanged). `--no-registry-candidates` turns it off.
+
 Similar is not equal: `Mode Purchaser` and `BGI Purchaser` produce
 `name_similar` only and are never accepted, whatever the lineages. The profile
 must put `source_row_id` in `prepare.provenance_fields` and use

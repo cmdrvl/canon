@@ -22,6 +22,8 @@ tier_b:
   min_distinct_lineages: 2
 standalone:
   mint_when_authoritative_key: true
+incumbent_attach:
+  name_equivalent_steps: [casefold, strip_punctuation, collapse_whitespace]
 "#;
 
 const STRATEGY: &str = "block:\n  preflight: false\n  max_candidates_per_run: 5000000\n";
@@ -76,7 +78,7 @@ prepare:
     lei: lei
   surface_key_fields: [row_key]
   nullable_fields: [cik, lei]
-  provenance_fields: [source_row_id]
+  provenance_fields: [source_row_id, origin]
 blocking:
   operators:
 {blocking}
@@ -109,7 +111,7 @@ const EXACT_SUPPORT: &str = "    - op: exact_view\n      view: core";
 const NO_CANNOT: &str = "    - op: protected_token_conflict\n      view: core\n      params:\n        score_units: \"0\"";
 
 struct Case {
-    _temp: TempDir,
+    _temp: Option<TempDir>,
     root: PathBuf,
     session: PathBuf,
     rules: PathBuf,
@@ -145,7 +147,7 @@ fn init(rules: &str) -> Case {
         0,
     );
     Case {
-        _temp: temp,
+        _temp: Some(temp),
         root,
         session,
         rules: rules_path,
@@ -415,4 +417,326 @@ fn two_rows_named_apex_llc_with_two_ciks_derive_a_distinct_record() {
     );
     assert_eq!(solved["summary"]["accepted_tier_a"], 0);
     assert_eq!(solved["summary"]["accepted_tier_b"], 0);
+}
+
+// ---------------------------------------------------------------------------
+// Day two: registry aliases are candidates for a new session's surfaces.
+// ---------------------------------------------------------------------------
+
+const DAY_TWO_BLOCK: &str = "    - op: exact_identity\n      view: core\n    - op: ngram_topk\n      view: core\n      k: 10\n      candidate_cap: 10";
+
+fn day_two_profile() -> String {
+    profile(EXACT_SUPPORT, NO_CANNOT, DAY_TWO_BLOCK, "")
+}
+
+impl Case {
+    /// A new session over the same registry, with none of the first session's rows.
+    fn second(&self, name: &str) -> Case {
+        let session = self.root.join(name);
+        run_json(
+            &[
+                "entity",
+                "session",
+                "init",
+                "--goal",
+                "derive day two",
+                "--registry",
+                p(&self.root.join("registry")),
+                "--work-dir",
+                p(&session),
+                "--registry-id",
+                "organisations",
+                "--prefix",
+                "ORG",
+                "--zero-pad",
+                "3",
+            ],
+            0,
+        );
+        Case {
+            _temp: None,
+            root: self.root.clone(),
+            session,
+            rules: self.rules.clone(),
+            strategy: self.strategy.clone(),
+        }
+    }
+
+    fn derive_with(&self, profile_text: &str, extra: &[&str], exit: i32) -> Value {
+        let profile_path = self.root.join(format!(
+            "profile-{}.yaml",
+            self.session.file_name().unwrap().to_string_lossy()
+        ));
+        fs::write(&profile_path, profile_text).unwrap();
+        let mut args = vec![
+            "entity",
+            "session",
+            "derive",
+            p(&self.session),
+            "--profile",
+            p(&profile_path),
+            "--strategy",
+            p(&self.strategy),
+        ];
+        args.extend_from_slice(extra);
+        run_json(&args, exit)
+    }
+
+    fn commit(&self, version: &str, exit: i32) -> Value {
+        run_json(
+            &[
+                "entity",
+                "session",
+                "commit",
+                p(&self.session),
+                "--next-version",
+                version,
+            ],
+            exit,
+        )
+    }
+}
+
+/// The first session mints ORG-001 "Apex Capital LLC" (cik 100) and commits it.
+fn first_session_committed() -> Case {
+    let first = init(RULES);
+    first.ingest(&[observation(
+        "f1",
+        "fundA",
+        "Apex Capital LLC",
+        json!({"cik": "100"}),
+    )]);
+    first.solve();
+    let committed = first.commit("0.2.0", 0);
+    assert_eq!(committed["outcome"], "committed", "{committed}");
+    first
+}
+
+fn registry_inputs(case: &Case) -> Vec<(String, String)> {
+    let mut found = Vec::new();
+    for entry in fs::read_dir(case.root.join("registry")).unwrap() {
+        let path = entry.unwrap().path();
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        if name.ends_with(".json")
+            && name != "registry.json"
+            && let Ok(Value::Array(rows)) =
+                serde_json::from_slice::<Value>(&fs::read(&path).unwrap())
+        {
+            for row in rows {
+                found.push((
+                    row["input"].as_str().unwrap_or_default().to_string(),
+                    row["canonical_id"].as_str().unwrap_or_default().to_string(),
+                ));
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+#[test]
+fn day_two_a_new_spelling_derives_to_a_registry_alias_and_attaches_without_minting() {
+    let first = first_session_committed();
+    let second = first.second("day-two");
+    second.ingest(&[observation("n1", "fundB", "APEX CAPITAL LLC", json!({}))]);
+
+    let derived = second.derive_with(&day_two_profile(), &[], 0);
+    eprintln!("day two derive: {derived}");
+    assert!(count(&derived, "name_equivalent") >= 1, "{derived}");
+    assert!(derived["registry_candidates"]["enabled"].as_bool().unwrap());
+    assert!(derived["registry_candidates"]["rows"].as_u64().unwrap() >= 1);
+    assert_eq!(
+        derived["registry_candidates"]["registry_registry_pairs_scored"], 0,
+        "two registry rows are never scored"
+    );
+
+    let solved = second.solve();
+    eprintln!("day two solve: {solved}");
+    let committed = second.commit("0.3.0", 0);
+    eprintln!("day two commit: {committed}");
+    assert_eq!(committed["outcome"], "committed", "{committed}");
+    assert!(
+        committed["minted"].as_array().unwrap().is_empty(),
+        "no second ID is minted for the spelling: {committed}"
+    );
+    assert_eq!(committed["attached"].as_array().unwrap().len(), 1);
+    assert_eq!(committed["attached"][0]["canonical_id"], "ORG-001");
+    assert!(
+        registry_inputs(&first).contains(&("APEX CAPITAL LLC".to_string(), "ORG-001".to_string())),
+        "the new spelling is an alias of the first session's ID"
+    );
+}
+
+#[test]
+fn day_two_no_registry_candidates_turns_it_off_and_the_spelling_is_not_attached() {
+    let first = first_session_committed();
+    let second = first.second("no-candidates");
+    second.ingest(&[observation("n1", "fundB", "APEX CAPITAL LLC", json!({}))]);
+    let before = registry_inputs(&first);
+
+    // Without the registry's aliases the profile need not mark row origin.
+    let derived = second.derive_with(&day_two_profile(), &["--no-registry-candidates"], 0);
+    eprintln!("flag off: {derived}");
+    assert_eq!(derived["registry_candidates"]["enabled"], false);
+    assert_eq!(derived["registry_candidates"]["rows"], 0);
+    assert_eq!(count(&derived, "name_equivalent"), 0, "{derived}");
+    second.solve();
+    let committed = second.commit("0.3.0", 1);
+    assert_eq!(committed["outcome"], "nothing_to_commit");
+    assert_eq!(registry_inputs(&first), before, "not attached");
+}
+
+#[test]
+fn day_two_with_fifty_thousand_unrelated_aliases_emits_the_same_records_and_scores_no_registry_pair()
+ {
+    let baseline_world = first_session_committed();
+    let baseline_second = baseline_world.second("baseline");
+    baseline_second.ingest(&[observation("n1", "fundB", "APEX CAPITAL LLC", json!({}))]);
+    let baseline = baseline_second.derive_with(&day_two_profile(), &[], 0);
+
+    let big_world = first_session_committed();
+    // 50,000 invented aliases, none related to the cut: a second mapping file
+    // in the registry, with the entry count kept honest.
+    let synthetic = (0..50_000)
+        .map(|index| {
+            json!({
+                "input": format!("Zq{index:05} Synthetic Holdings"),
+                "canonical_id": format!("SYN-{index:05}"),
+                "canonical_type": "organisation",
+                "rule_id": "SYNTHETIC",
+            })
+        })
+        .collect::<Vec<_>>();
+    let registry_dir = big_world.root.join("registry");
+    fs::write(
+        registry_dir.join("synthetic.json"),
+        serde_json::to_vec(&synthetic).unwrap(),
+    )
+    .unwrap();
+    let registry_json_path = registry_dir.join("registry.json");
+    let mut registry_json: Value =
+        serde_json::from_slice(&fs::read(&registry_json_path).unwrap()).unwrap();
+    let entry_count = registry_json["entry_count"].as_u64().unwrap() + 50_000;
+    registry_json["entry_count"] = json!(entry_count);
+    fs::write(
+        &registry_json_path,
+        serde_json::to_vec(&registry_json).unwrap(),
+    )
+    .unwrap();
+
+    let big_second = big_world.second("big");
+    big_second.ingest(&[observation("n1", "fundB", "APEX CAPITAL LLC", json!({}))]);
+    let big = big_second.derive_with(&day_two_profile(), &[], 0);
+    eprintln!(
+        "50k: rows={} session_registry_pairs={} registry_registry={} digest={}",
+        big["registry_candidates"]["rows"],
+        big["registry_candidates"]["session_registry_pairs"],
+        big["registry_candidates"]["registry_registry_pairs_scored"],
+        big["records_digest"]
+    );
+    assert!(big["registry_candidates"]["rows"].as_u64().unwrap() >= 50_000);
+    assert_eq!(
+        big["registry_candidates"]["registry_registry_pairs_scored"], 0,
+        "no registry-to-registry pair is generated or scored"
+    );
+    assert_eq!(
+        big["records_digest"], baseline["records_digest"],
+        "the same records"
+    );
+    assert_eq!(big["records_by_type"], baseline["records_by_type"]);
+    assert_eq!(big["records_by_operator"], baseline["records_by_operator"]);
+}
+
+/// The 3-fund real-data run of bd-vdcw.14: borrowers from the BDC gold sets
+/// become observations (the converter's borrower mode), `derive` finds the
+/// name equivalences with no script evidence, and solve + commit accept them.
+/// Ignored by default; run it with the gold-set directory in the environment:
+///
+/// `CANON_BDC_GOLD_DIR=/path/to/gold_sets cargo test --test entity_session_derive -- --ignored real_bdc`
+#[test]
+#[ignore = "reads the real BDC gold sets from CANON_BDC_GOLD_DIR"]
+fn real_bdc_gold_sets_derive_name_equivalent_without_script_evidence() {
+    let gold_dir = std::env::var("CANON_BDC_GOLD_DIR")
+        .expect("set CANON_BDC_GOLD_DIR to the BDC gold_sets directory");
+    let gold_dir = PathBuf::from(gold_dir);
+
+    // The first three funds by CIK.
+    let mut ciks = std::collections::BTreeSet::new();
+    for entry in fs::read_dir(&gold_dir).expect("gold-set directory") {
+        let path = entry.unwrap().path();
+        if path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.contains(".goldset.v") && name.ends_with(".json"))
+        {
+            let value: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            if let Some(cik) = value["source"]["cik"].as_str() {
+                ciks.insert(cik.to_string());
+            }
+        }
+    }
+    let ciks = ciks.into_iter().take(3).collect::<Vec<_>>();
+    assert_eq!(ciks.len(), 3, "need three funds in {gold_dir:?}");
+
+    let case = init(RULES);
+    let ciks_file = case.root.join("ciks.txt");
+    fs::write(&ciks_file, format!("{}\n", ciks.join("\n"))).unwrap();
+    let observations = case.root.join("borrowers.jsonl");
+    let converter = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("scripts/entity_sessions/bdc_goldsets_to_session.py");
+    let status = std::process::Command::new("python3")
+        .arg(&converter)
+        .args(["--mode", "borrowers", "--pick", "all", "--gold-dir"])
+        .arg(&gold_dir)
+        .arg("--ciks-file")
+        .arg(&ciks_file)
+        .arg("--out")
+        .arg(&observations)
+        .status()
+        .expect("python3 runs the converter");
+    assert!(status.success(), "converter failed");
+    let ingested = run_json(
+        &[
+            "entity",
+            "session",
+            "ingest",
+            p(&case.session),
+            p(&observations),
+        ],
+        0,
+    );
+    eprintln!(
+        "ingested {} borrower observations from funds {ciks:?}",
+        ingested["accepted"]
+    );
+
+    let derived = case.derive_with(&day_two_profile(), &["--no-registry-candidates"], 0);
+    eprintln!("real-data derive: {derived}");
+    let equivalent = count(&derived, "name_equivalent");
+    assert!(equivalent > 0, "no name_equivalent derived: {derived}");
+    let solved = case.solve();
+    eprintln!(
+        "real-data solve: tier_b={} review={} contradiction={}",
+        solved["summary"]["accepted_tier_b"],
+        solved["summary"]["review"],
+        solved["summary"]["contradiction"]
+    );
+    // Derived evidence reaches solve: as accepted clusters where two lineages
+    // support the equivalence, as review items where one fund holds both
+    // spellings. How many of each depends on the cut, so the counts are logged
+    // for the verifier; the claim asserted here is that nothing was scripted.
+    let tier_b = solved["summary"]["accepted_tier_b"].as_u64().unwrap();
+    let review = solved["summary"]["review"].as_u64().unwrap();
+    assert!(
+        tier_b + review > 0,
+        "derived evidence produced neither clusters nor review items: {solved}"
+    );
+    if tier_b > 0 {
+        let committed = case.commit("0.2.0", 0);
+        eprintln!(
+            "real-data commit: minted={}",
+            committed["minted"].as_array().unwrap().len()
+        );
+        assert_eq!(committed["outcome"], "committed");
+    }
 }

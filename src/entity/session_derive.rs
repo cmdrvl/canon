@@ -41,6 +41,23 @@ pub struct SessionDeriveRequest {
     pub session: PathBuf,
     pub profile: String,
     pub strategy: PathBuf,
+    /// Registry aliases are candidates for the session's surfaces (day two).
+    /// `false` is `--no-registry-candidates`.
+    pub registry_candidates: bool,
+}
+
+/// What the registry contributed, measured from the block stage's own
+/// candidate file.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct RegistryCandidateStats {
+    pub enabled: bool,
+    /// Registry alias rows added to the rows file.
+    pub rows: usize,
+    /// Candidate pairs between a session surface and a registry row.
+    pub session_registry_pairs: usize,
+    /// Candidate pairs between two registry rows; the registry's size must not
+    /// make this grow, and block never generates one.
+    pub registry_registry_pairs_scored: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -72,6 +89,10 @@ pub struct SessionDeriveOutput {
     /// Declared relation hints: a profile must list them, `entity run` emits one
     /// generic review hint instead, and derive runs none of them.
     pub relation_hints_not_executed: Vec<String>,
+    pub registry_candidates: RegistryCandidateStats,
+    /// Hash of the sorted assertion lines this run produced: the same cut gives
+    /// the same digest whatever else the registry holds.
+    pub records_digest: String,
     pub shard: Option<String>,
     pub generation_id: Option<String>,
 }
@@ -85,7 +106,7 @@ impl SessionDeriveOutput {
             .collect::<Vec<_>>()
             .join(",");
         format!(
-            "observations={} surfaces={} records={} accepted={} already_present={} rejected_observations={} cross_type_skipped={} generation={}",
+            "observations={} surfaces={} records={} accepted={} already_present={} rejected_observations={} cross_type_skipped={} registry_rows={} registry_registry_pairs_scored={} generation={}",
             self.observations,
             self.surfaces,
             by_type,
@@ -93,6 +114,8 @@ impl SessionDeriveOutput {
             self.already_present,
             self.rejected_observations.len(),
             self.cross_type_skipped,
+            self.registry_candidates.rows,
+            self.registry_candidates.registry_registry_pairs_scored,
             self.generation_id.as_deref().unwrap_or("<none>"),
         )
     }
@@ -136,8 +159,15 @@ fn text_of(value: &Value) -> Option<String> {
 /// `obs_id`, `source_row_id` (the same id), `surface`, `entity_type`, each key
 /// namespace as a column, each attribute as a column (`attr_<name>` when it
 /// would collide) and each context field as `context_<name>`.
-fn write_rows(path: &Path, observations: &[Value]) -> Result<Vec<String>, Refusal> {
+fn write_rows(
+    path: &Path,
+    observations: &[Value],
+    registry_rows: &[RegistryRow],
+) -> Result<Vec<String>, Refusal> {
     let mut key_columns = BTreeSet::new();
+    for row in registry_rows {
+        key_columns.extend(row.keys.keys().cloned());
+    }
     let mut attr_columns = BTreeSet::new();
     let mut context_columns = BTreeSet::new();
     for observation in observations {
@@ -156,7 +186,13 @@ fn write_rows(path: &Path, observations: &[Value]) -> Result<Vec<String>, Refusa
             }
         }
     }
-    let reserved = ["obs_id", "source_row_id", "surface", "entity_type"];
+    let reserved = [
+        "obs_id",
+        "source_row_id",
+        "surface",
+        "entity_type",
+        "origin",
+    ];
     let attr_header = |name: &str| {
         if reserved.contains(&name) || key_columns.contains(name) {
             format!("attr_{name}")
@@ -209,6 +245,7 @@ fn write_rows(path: &Path, observations: &[Value]) -> Result<Vec<String>, Refusa
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string(),
+            "session".to_string(),
         ];
         row.extend(key_columns.iter().map(|name| field_text("keys", name)));
         row.extend(attr_columns.iter().map(|name| field_text("attrs", name)));
@@ -222,10 +259,124 @@ fn write_rows(path: &Path, observations: &[Value]) -> Result<Vec<String>, Refusa
             .map_err(|error| io_error(error.to_string()))?;
         order.push(obs_id.to_string());
     }
+    // Registry rows: one per alias, keyed `registry:alias:<input>`, carrying the
+    // key aliases of its id. Marked `origin: registry` so block never pairs two.
+    for registry_row in registry_rows {
+        let mut row = vec![
+            registry_row.row_id(),
+            registry_row.row_id(),
+            registry_row.input.clone(),
+            registry_row.entity_type.clone(),
+            "registry".to_string(),
+        ];
+        row.extend(
+            key_columns
+                .iter()
+                .map(|name| registry_row.keys.get(name).cloned().unwrap_or_default()),
+        );
+        row.extend(attr_columns.iter().map(|_| String::new()));
+        row.extend(context_columns.iter().map(|_| String::new()));
+        writer
+            .write_record(&row)
+            .map_err(|error| io_error(error.to_string()))?;
+    }
     writer
         .flush()
         .map_err(|error| io_error(error.to_string()))?;
     Ok(order)
+}
+
+/// One registry alias as a candidate row.
+#[derive(Debug, Clone)]
+struct RegistryRow {
+    input: String,
+    canonical_id: String,
+    entity_type: String,
+    /// The id's key aliases by namespace.
+    keys: BTreeMap<String, String>,
+}
+
+impl RegistryRow {
+    fn row_id(&self) -> String {
+        format!("registry:alias:{}", self.input)
+    }
+}
+
+/// The aliases of the registries the session maps, as candidate rows: name
+/// aliases only (key aliases ride along as columns, retired and agent ids are
+/// not names), first entry in file order per input, as exact lookup reads them.
+fn registry_rows(
+    registries: &[crate::session::SessionRegistryBinding],
+) -> Result<Vec<RegistryRow>, Refusal> {
+    let mut rows = Vec::new();
+    let mut seen = BTreeSet::new();
+    for binding in registries {
+        let dir = Path::new(&binding.path);
+        let mut files = fs::read_dir(dir)
+            .map_err(|error| {
+                explain_refusal(
+                    format!("Unable to read registry {}: {error}", dir.display()),
+                    json!({"writes_performed": false}),
+                    "Check the session's registry binding",
+                )
+            })?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.is_file()
+                    && path.extension() == Some("json".as_ref())
+                    && path.file_name() != Some("registry.json".as_ref())
+                    && path.file_name() != Some("_build.json".as_ref())
+            })
+            .collect::<Vec<_>>();
+        files.sort();
+        let mut entries = Vec::new();
+        for file in files {
+            if let Ok(bytes) = fs::read(&file)
+                && let Ok(Value::Array(found)) = serde_json::from_slice::<Value>(&bytes)
+            {
+                entries.extend(found);
+            }
+        }
+        let text = |entry: &Value, name: &str| {
+            entry
+                .get(name)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        };
+        let mut keys_by_id = BTreeMap::<String, BTreeMap<String, String>>::new();
+        for entry in &entries {
+            if let Some(namespace) = text(entry, "rule_id").strip_prefix("SESSION_KEY_") {
+                keys_by_id
+                    .entry(text(entry, "canonical_id"))
+                    .or_default()
+                    .entry(namespace.to_ascii_lowercase())
+                    .or_insert_with(|| text(entry, "input"));
+            }
+        }
+        for entry in &entries {
+            let rule = text(entry, "rule_id");
+            if rule.starts_with("SESSION_KEY_")
+                || rule == "SUPERSEDED_ID_ALIAS"
+                || rule == "SESSION_AGENT_ID"
+            {
+                continue;
+            }
+            let input = text(entry, "input");
+            let canonical_id = text(entry, "canonical_id");
+            if input.is_empty() || canonical_id.is_empty() || !seen.insert(input.clone()) {
+                continue;
+            }
+            rows.push(RegistryRow {
+                keys: keys_by_id.get(&canonical_id).cloned().unwrap_or_default(),
+                input,
+                canonical_id,
+                entity_type: binding.kind.clone(),
+            });
+        }
+    }
+    Ok(rows)
 }
 
 /// What an operator hit means as session evidence.
@@ -285,6 +436,24 @@ struct SurfaceInfo<'a> {
     obs_id: String,
     entity_type: String,
     record: &'a PreparedSurfaceRecord,
+    /// For a registry alias row: the id it names.
+    canonical_id: Option<String>,
+}
+
+impl SurfaceInfo<'_> {
+    fn is_registry(&self) -> bool {
+        self.obs_id.starts_with("registry:alias:")
+    }
+
+    /// The id the evidence record names: an observation id, or the registry
+    /// endpoint form (`registry:alias:<input>`; `registry:<id>` for a shared
+    /// key, which is evidence about the incumbent itself).
+    fn target(&self, kind: DerivedKind) -> String {
+        match (&self.canonical_id, kind) {
+            (Some(id), DerivedKind::SameKey) => format!("registry:{id}"),
+            _ => self.obs_id.clone(),
+        }
+    }
 }
 
 fn view_value<'a>(surface: &'a PreparedSurfaceRecord, view: &str) -> &'a str {
@@ -317,7 +486,7 @@ fn assertion_line(
     steps: &[String],
     explanation: &str,
 ) -> Value {
-    let (left, right) = if left.obs_id <= right.obs_id {
+    let (left, right) = if left.target(kind) <= right.target(kind) {
         (left, right)
     } else {
         (right, left)
@@ -360,8 +529,8 @@ fn assertion_line(
     }
     json!({
         "type": kind.evidence_type(),
-        "left": left.obs_id,
-        "right": right.obs_id,
+        "left": left.target(kind),
+        "right": right.target(kind),
         "basis": Value::Object(basis),
         "source": {"channel": "canon", "id": format!("derive:{operator_id}")},
         "asserted_by": format!("canon:{namespace}:{operator_id}@{profile_hash}"),
@@ -417,6 +586,24 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
         });
     }
     let profile_hash = loaded.content_hash.clone();
+    if request.registry_candidates
+        && !loaded.document.prepare.as_ref().is_some_and(|mapping| {
+            mapping
+                .provenance_fields
+                .iter()
+                .any(|field| field == "origin")
+        })
+    {
+        return Err(Refusal {
+            code: RefusalCode::EParse,
+            message: "The profile must list origin in prepare.provenance_fields so block can tell registry rows from session rows".to_string(),
+            detail: json!({"field": "prepare.provenance_fields", "writes_performed": false}),
+            next_command: Some(
+                "Add origin to the profile's prepare.provenance_fields, or pass --no-registry-candidates"
+                    .to_string(),
+            ),
+        });
+    }
 
     let snapshot = open_current_stream_generation(&session, SESSION_OBSERVATIONS_STREAM_ID)
         .map_err(|error| {
@@ -443,7 +630,12 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
             "Run canon entity session ingest, then rerun derive",
         ));
     }
-    let entity_types = observations
+    let candidate_rows = if request.registry_candidates {
+        registry_rows(&manifest.registries)?
+    } else {
+        Vec::new()
+    };
+    let mut entity_types = observations
         .iter()
         .filter_map(|observation| {
             Some((
@@ -452,6 +644,13 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
             ))
         })
         .collect::<BTreeMap<_, _>>();
+    let canonical_ids = candidate_rows
+        .iter()
+        .map(|row| (row.row_id(), row.canonical_id.clone()))
+        .collect::<BTreeMap<_, _>>();
+    for row in &candidate_rows {
+        entity_types.insert(row.row_id(), row.entity_type.clone());
+    }
 
     // The existing stages run on a rows file the session owns.
     let work_dir = session.join(DERIVE_WORK_DIR);
@@ -472,7 +671,7 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
         )
     })?;
     let rows_path = work_dir.join("rows.csv");
-    let row_order = write_rows(&rows_path, &observations)?;
+    let row_order = write_rows(&rows_path, &observations, &candidate_rows)?;
     let stage_dir = work_dir.join("stages");
     let result = run_entity_workbench(EntityRunRequest {
         rows: &rows_path,
@@ -520,6 +719,7 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
             surface.surface_id.clone(),
             SurfaceInfo {
                 entity_type: entity_types.get(&obs_id).cloned().unwrap_or_default(),
+                canonical_id: canonical_ids.get(&obs_id).cloned(),
                 obs_id,
                 record: surface,
             },
@@ -547,7 +747,7 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
         ) else {
             continue;
         };
-        if left.obs_id == right.obs_id {
+        if left.obs_id == right.obs_id || (left.is_registry() && right.is_registry()) {
             continue;
         }
         for hit in &record.hits {
@@ -606,9 +806,14 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
             .filter_map(|id| by_surface.get(id))
             .collect::<Vec<_>>();
         members.sort_by(|left, right| left.obs_id.cmp(&right.obs_id));
-        let Some((hub, rest)) = members.split_first() else {
+        // The star's hub is the lowest session surface: a bucket is lifted to
+        // session-to-member edges only, never registry-to-registry (two ids
+        // sharing a normalised name would otherwise read as incumbent_conflict).
+        let Some(hub_index) = members.iter().position(|member| !member.is_registry()) else {
             continue;
         };
+        let hub = members.remove(hub_index);
+        let rest = members;
         let operator_id = format!("exact_view:{view}");
         let namespace = document.profile.as_str();
         for member in rest {
@@ -631,6 +836,44 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
             );
         }
     }
+
+    // What the registry contributed, measured from the candidates block wrote.
+    let registry_surfaces = by_surface
+        .iter()
+        .filter(|(_, info)| info.is_registry())
+        .map(|(id, _)| id.clone())
+        .collect::<BTreeSet<_>>();
+    let candidate_records: Vec<crate::entity::block::BlockCandidateRecord> = read_jsonl(
+        &stage_dir.join(&layout.candidate_records_path),
+        "candidate records",
+    )
+    .unwrap_or_default();
+    let registry_stats = RegistryCandidateStats {
+        enabled: request.registry_candidates,
+        rows: candidate_rows.len(),
+        session_registry_pairs: candidate_records
+            .iter()
+            .filter(|pair| {
+                registry_surfaces.contains(&pair.left_surface_id)
+                    != registry_surfaces.contains(&pair.right_surface_id)
+            })
+            .count(),
+        registry_registry_pairs_scored: candidate_records
+            .iter()
+            .filter(|pair| {
+                registry_surfaces.contains(&pair.left_surface_id)
+                    && registry_surfaces.contains(&pair.right_surface_id)
+            })
+            .count(),
+    };
+    let records_digest = crate::witness::hash_bytes(
+        lines
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
+            .as_bytes(),
+    );
 
     let mut records_by_type = BTreeMap::<String, usize>::new();
     let mut records_by_operator = BTreeMap::<String, usize>::new();
@@ -717,6 +960,8 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
         cross_type_skipped,
         exact_bucket_ranges_skipped,
         relation_hints_not_executed,
+        registry_candidates: registry_stats,
+        records_digest,
         shard: asserted.shard,
         generation_id: asserted.generation_id,
     })
