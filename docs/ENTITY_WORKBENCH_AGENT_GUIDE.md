@@ -384,6 +384,25 @@ when every input states `public`; an input with no stated sensitivity counts as
 `unstated_inputs` and is never treated as public. A closure shows what canon
 decided and on which records, not that the upstream source told the truth.
 
+## How are these two linked?
+
+```bash
+canon registry export --registry REG --format link-evidence --from 'Fund Alpha Name' --to 'Adviser Spelling Inc'
+canon registry export --registries registries.yaml --format link-evidence --from key:cik:10 --to 'Deal One'
+```
+
+The answer is the shortest chain of committed outcomes between the two, read from
+the registry directories alone (delete the session directories and it is the
+same). Alias, key and superseded-id entries are `identity` hops; a
+`relations.jsonl` line is a `relation` hop with its relation name and is never
+called identity. Each hop carries the `outcome_ref` and `closure_hash` it was
+written under: export that closure with `session export` from the session that
+wrote it, or look it up in a sealed pack. A hop that predates sessions has
+`closure_hash: null`. Two look-alike names with no committed chain return
+`chain: null, reason: no_committed_chain`; nothing is inferred from name
+similarity. Across registries (`--registries`) only a relation line whose object
+names another registry's id crosses between them.
+
 ## The loop
 
 ```text

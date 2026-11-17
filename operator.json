@@ -34,7 +34,7 @@
       "canon geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVENTORY.json> --question <QUESTION.json> --capabilities <CAPABILITIES.json> --profile <PROFILE.json> --budget <BUDGET.json> --satisfy <REQUEST_ID=RECEIPT.json> --local-artifact <LOCAL_ARTIFACT_ID=PATH>... [--result <DIGEST_ID=PATH>...] --advancement-out <ADVANCEMENT.json>",
       "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
       "canon registry init --registry <DIR> --registry-id <ID> --prefix <PREFIX> [--zero-pad <N>] [--description <TEXT>] [--emit json|summary]",
-      "canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card --registry <DIR> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>] [--emit json|summary]",
+      "canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card|link-evidence (--registry <DIR>|--registries <MAP>) [--out <PATH>] [--from <A> --to <B>] [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>] [--emit json|summary]",
       "canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]",
       "canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary]",
       "canon registry identity --registry <DIR> [--ref <REF>] [--emit json|summary]",
@@ -5271,7 +5271,7 @@
     },
     {
       "name": "registry export",
-      "usage": "canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card --registry <DIR> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>] [--emit json|summary]",
+      "usage": "canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card|link-evidence (--registry <DIR>|--registries <MAP>) [--out <PATH>] [--from <A> --to <B>] [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>] [--emit json|summary]",
       "description": "Export a versioned flat registry into deterministic downstream artifacts without changing lookup semantics: dbt-seed writes a context-scoped CSV seed plus optional dbt scaffolds; search-index writes a self-describing SQLite artifact with entities, aliases, external keys, scoring metadata, normalization metadata, canonical IRIs, and entity context; entity-card writes one bounded JSON document per canonical ID",
       "output_mode": "mixed",
       "output_schema": "canon_registry_export.v0",
@@ -5310,21 +5310,39 @@
           "flag": "--format",
           "type": "string",
           "required": true,
-          "description": "Export format: dbt-seed, search-index, key-crosswalk or entity-card"
+          "description": "Export format: dbt-seed, search-index, key-crosswalk, entity-card or link-evidence"
         },
         {
           "name": "registry",
           "flag": "--registry",
           "type": "directory_path",
-          "required": true,
+          "required": false,
           "description": "Registry directory to export"
         },
         {
           "name": "out",
           "flag": "--out",
           "type": "file_path",
-          "required": true,
-          "description": "Output artifact path"
+          "required": false,
+          "description": "Output artifact path; required for every format except link-evidence, whose answer goes to stdout"
+        },
+        {
+          "name": "registries",
+          "flag": "--registries",
+          "type": "file_path",
+          "description": "Registries map (kind to registry); link-evidence only, searched in kind-name order"
+        },
+        {
+          "name": "from",
+          "flag": "--from",
+          "type": "string",
+          "description": "link-evidence start: an exact surface, key:<namespace>:<value> or a canonical id"
+        },
+        {
+          "name": "to",
+          "flag": "--to",
+          "type": "string",
+          "description": "link-evidence end"
         },
         {
           "name": "namespace",

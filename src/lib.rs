@@ -4907,6 +4907,10 @@ fn run_registry_export(export: &RegistryExportCli) -> Result<u8, Box<dyn Error>>
         RegistryExportFormatCli::SearchIndex => registry::RegistryExportFormat::SearchIndex,
         RegistryExportFormatCli::KeyCrosswalk => registry::RegistryExportFormat::KeyCrosswalk,
         RegistryExportFormatCli::EntityCard => return run_registry_entity_cards(export),
+        RegistryExportFormatCli::LinkEvidence => return run_registry_link_evidence(export),
+    };
+    let Some((registry_dir, out_path)) = export_paths_or_refuse(export)? else {
+        return Ok(2);
     };
     if !export.ids.is_empty() || export.max_bytes.is_some() {
         let refusal = refusal::create_refusal(
@@ -4925,9 +4929,9 @@ fn run_registry_export(export: &RegistryExportCli) -> Result<u8, Box<dyn Error>>
         return Ok(2);
     }
     let request = registry::RegistryExportRequest {
-        registry: export.registry.clone(),
+        registry: registry_dir,
         format,
-        out: export.out.clone(),
+        out: out_path,
         namespace: export.namespace.clone(),
         source_files: export.source_files.clone(),
         canonical_types: export.canonical_types.clone(),
@@ -4942,6 +4946,119 @@ fn run_registry_export(export: &RegistryExportCli) -> Result<u8, Box<dyn Error>>
             match export.emit {
                 RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
                 RegistryEmitMode::Summary => println!("{}", output.render_summary()),
+            }
+            Ok(0)
+        }
+        Err(refusal) => {
+            let output = refusal.to_canon_output();
+            match export.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => eprintln!("{}", serde_json::to_string(&output)?),
+            }
+            Ok(2)
+        }
+    }
+}
+
+/// `--registry` and `--out` are optional on the command line only for
+/// link-evidence; every other format needs both.
+fn export_paths_or_refuse(
+    export: &RegistryExportCli,
+) -> Result<Option<(PathBuf, PathBuf)>, Box<dyn Error>> {
+    if let (Some(registry), Some(out)) = (&export.registry, &export.out) {
+        return Ok(Some((registry.clone(), out.clone())));
+    }
+    let refusal = refusal::create_refusal(
+        RefusalCode::EParse,
+        "this export format needs both --registry and --out".to_string(),
+        serde_json::json!({"registry": export.registry, "out": export.out}),
+        Some("Pass --registry <DIR> and --out <PATH>".to_string()),
+    );
+    match export.emit {
+        RegistryEmitMode::Json => println!("{}", serde_json::to_string(&refusal)?),
+        RegistryEmitMode::Summary => eprintln!("{}", serde_json::to_string(&refusal)?),
+    }
+    Ok(None)
+}
+
+fn run_registry_link_evidence(export: &RegistryExportCli) -> Result<u8, Box<dyn Error>> {
+    let refuse = |message: String, next: &str| -> Result<u8, Box<dyn Error>> {
+        let refusal = refusal::create_refusal(
+            RefusalCode::EParse,
+            message,
+            serde_json::json!({"format": "link-evidence"}),
+            Some(next.to_string()),
+        );
+        match export.emit {
+            RegistryEmitMode::Json => println!("{}", serde_json::to_string(&refusal)?),
+            RegistryEmitMode::Summary => eprintln!("{}", serde_json::to_string(&refusal)?),
+        }
+        Ok(2)
+    };
+    let (Some(from), Some(to)) = (&export.from, &export.to) else {
+        return refuse(
+            "link-evidence needs --from and --to".to_string(),
+            "Pass --from <A> --to <B>",
+        );
+    };
+    if export.namespace.is_some()
+        || !export.source_files.is_empty()
+        || !export.canonical_types.is_empty()
+        || !export.rule_id_prefixes.is_empty()
+        || !export.ids.is_empty()
+        || export.max_bytes.is_some()
+        || export.schema_out.is_some()
+        || export.anti_collapse_test_out.is_some()
+    {
+        return refuse(
+            "link-evidence accepts only --registry or --registries, --from, --to, --out and --emit"
+                .to_string(),
+            "Remove the other export filters",
+        );
+    }
+    let registries = match (&export.registry, &export.registries) {
+        (Some(registry), None) => vec![registry.clone()],
+        (None, Some(map)) => {
+            let text = std::fs::read_to_string(map);
+            let parsed = text.map_err(|error| error.to_string()).and_then(|text| {
+                session::registries::parse_registries_map(&text)
+                    .map_err(|error| format!("{}: {}", error.path, error.message))
+            });
+            match parsed {
+                Ok(map) => map
+                    .kinds
+                    .values()
+                    .map(|kind| kind.registry.clone())
+                    .collect(),
+                Err(message) => {
+                    return refuse(
+                        format!("Unable to read the registries map: {message}"),
+                        "Fix the registries YAML",
+                    );
+                }
+            }
+        }
+        _ => {
+            return refuse(
+                "link-evidence needs exactly one of --registry or --registries".to_string(),
+                "Pass --registry <DIR> or --registries <MAP>",
+            );
+        }
+    };
+    let result = registry::link_evidence(registry::LinkEvidenceRequest {
+        registries,
+        from: from.clone(),
+        to: to.clone(),
+    });
+    match result {
+        Ok(output) => {
+            let rendered = match export.emit {
+                RegistryEmitMode::Json => serde_json::to_string(&output)?,
+                RegistryEmitMode::Summary => output.render_summary(),
+            };
+            match &export.out {
+                Some(path) => std::fs::write(path, format!("{rendered}\n"))?,
+                None => println!("{rendered}"),
             }
             Ok(0)
         }
@@ -4978,9 +5095,12 @@ fn run_registry_entity_cards(export: &RegistryExportCli) -> Result<u8, Box<dyn E
         }
         return Ok(2);
     }
+    let Some((registry_dir, out_path)) = export_paths_or_refuse(export)? else {
+        return Ok(2);
+    };
     let result = registry::export_entity_cards(registry::RegistryEntityCardRequest {
-        registry: export.registry.clone(),
-        out: export.out.clone(),
+        registry: registry_dir,
+        out: out_path,
         ids: export.ids.clone(),
         max_bytes: export.max_bytes,
     });

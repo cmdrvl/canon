@@ -134,7 +134,7 @@ canon inbox apply-review --inbox <INBOX.json> --review <REVIEW.json> --expected-
 canon inbox plan-entity --inbox <INBOX.json> --expected-inbox-hash <HASH> --out <REQUEST.json> [--policy <POLICY.json>] [--event-key <KEY>...] [--limit <N>] [--mode cluster|link] [--emit json|summary]
 canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]
 canon registry init --registry <DIR> --registry-id <ID> --prefix <PREFIX> [--zero-pad <N>] [--description <TEXT>] [--emit json|summary]
-canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card --registry <REGISTRY> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>] [--emit json|summary]
+canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card|link-evidence (--registry <REGISTRY>|--registries <MAP>) [--out <PATH>] [--from <A> --to <B>] [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>] [--emit json|summary]
 canon registry providers [--emit json|summary]
 canon registry provider-schema <PROVIDER> [--emit json|summary]
 canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]
@@ -316,6 +316,12 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - outcome kinds are `minted_id`, `attached_alias`, `key_alias`, `relation` and `cannot_link`; relation lines and cannot-link records now carry `outcome_ref` and `closure_hash`
 - stdout lists each closure with its sensitivity `{level, values, unstated_inputs}`: `public` only when every input states `public` and none is unstated; no stated sensitivity is never public
 - deterministic (no clock, no session id in the closure directories); a session with no commit refuses and names `canon entity session commit`; canon does not seal, upload or index: `pack seal` runs on the directories
+
+`canon registry export --format link-evidence (--registry <DIR>|--registries <MAP>) --from <A> --to <B> [--out <FILE>] [--emit json|summary]`
+- answers "how are these two linked?" from the registry directory alone (no session directory is read); `A` and `B` are an exact surface, `key:<namespace>:<value>` or a canonical id
+- `canon_registry_link_evidence.v0`: `chain[{from, to, hop: identity|relation, relation, outcome_ref, closure_hash}]`, the shortest chain over committed outcomes only: alias and key entries and superseded-id aliases are identity hops, `relations.jsonl` lines are relation hops (never reported as identity); ties break by canonical id order
+- a hop whose entry predates sessions has `closure_hash: null, reason: no_session_authority`; no chain is `chain: null, reason: no_committed_chain` (exit 0), with `unresolved` naming an endpoint no registry holds
+- with `--registries` every mapped registry is searched in kind-name order, ids read `<registry id>:<canonical id>`, each hop names its registry, and the search leaves a registry only along a relation whose object is another registry's id; an identity hop never crosses a registry; with `--registry` alone a relation that names an id outside it adds a `note` pointing at `--registries`
 
 `canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary]`
 - verifies an agent-friendly id (`<kind>_` plus a 10-symbol body and 2 check symbols) before any lookup; every single-symbol substitution and adjacent swap is refused

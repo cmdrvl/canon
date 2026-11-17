@@ -1262,21 +1262,36 @@ pub enum RegistryExportFormatCli {
     /// One deterministic JSON entity card per canonical ID, including relation and distinct context
     #[value(name = "entity-card")]
     EntityCard,
+    /// How two things are linked, answered from the registry alone: the chain of committed outcomes
+    #[value(name = "link-evidence")]
+    LinkEvidence,
 }
 
 #[derive(Args, Debug, Clone)]
 pub struct RegistryExportCli {
     /// Registry directory to export
+    #[arg(long, required_unless_present = "registries")]
+    pub registry: Option<PathBuf>,
+
+    /// Registries map (kind to registry); only valid with --format link-evidence
+    #[arg(long, conflicts_with = "registry")]
+    pub registries: Option<PathBuf>,
+
+    /// Start of a link-evidence question: an exact surface, key:<namespace>:<value> or a canonical id
     #[arg(long)]
-    pub registry: PathBuf,
+    pub from: Option<String>,
+
+    /// End of a link-evidence question
+    #[arg(long)]
+    pub to: Option<String>,
 
     /// Export format
     #[arg(long, value_enum)]
     pub format: RegistryExportFormatCli,
 
-    /// Output artifact path
+    /// Output artifact path; optional for link-evidence, whose answer goes to stdout
     #[arg(long)]
-    pub out: PathBuf,
+    pub out: Option<PathBuf>,
 
     /// Required context namespace for dbt-seed exports; optional metadata for search-index exports
     #[arg(long)]
