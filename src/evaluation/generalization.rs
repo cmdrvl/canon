@@ -10653,6 +10653,7 @@ mod leakage_provenance_tests {
             crate::entity::prepare::PreparedNormalizedView {
                 value: raw.clone(),
                 reason_codes: vec!["test_fixture".to_string()],
+                removed_tail: None,
             },
         )]);
         let material = SurfaceIdMaterial::new(

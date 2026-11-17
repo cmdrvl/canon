@@ -954,13 +954,15 @@ const SUPPORTED_NORMALIZE_OPS: &[&str] = &[
     "strip_regab_noise",
     "preserve_legal_form",
     "preserve_legal_form_with_bare",
+    "strip_footnote_marks",
+    "strip_security_tail",
     "firm_core",
     "expand_na_abbreviation",
     "placeholder_to_null",
     "person_name",
+    "name_structure",
 ];
 
-    "name_structure",
 const SUPPORTED_SUPPORT_OPS: &[&str] = &[
     "exact_view",
     "anchor_match",

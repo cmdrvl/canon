@@ -323,6 +323,106 @@ fn preserve_legal_form_derives_variant_equivalence_and_keeps_distinct_forms() {
 }
 
 #[test]
+fn security_tails_and_footnotes_are_declared_steps_with_audit_attributes() {
+    let case = init(RULES);
+    case.ingest(&[
+        observation("f1", "fundA", "ACP Avenu Midco LLC (14)", json!({})),
+        observation("f2", "fundB", "ACP Avenu Midco LLC", json!({})),
+        observation(
+            "s1",
+            "fundC",
+            "Acme Holdings, Inc. - Class A Common Units",
+            json!({}),
+        ),
+        observation("s2", "fundD", "Acme Holdings Inc", json!({})),
+        observation("n1", "fundE", "LD II Sub III, LLC", json!({})),
+        observation("n2", "fundF", "LD II Sub IV, LLC", json!({})),
+        observation("n3", "fundG", "Acme Fund III", json!({})),
+        observation("n4", "fundH", "Acme - Class A", json!({})),
+    ]);
+    let profile_text = profile(EXACT_SUPPORT, NO_CANNOT, EXACT_BLOCK, "").replace(
+        "operators: [legal_basename]",
+        "operators: [strip_footnote_marks, strip_security_tail, preserve_legal_form_with_bare]",
+    );
+    let derived = case.derive(&profile_text, 0);
+
+    assert_eq!(count(&derived, "name_equivalent"), 2, "{derived}");
+    let solved = case.solve();
+    assert_eq!(solved["summary"]["accepted_tier_b"], 2, "{solved}");
+    let footnote_basis = stored_basis(&case, "f1");
+    let footnote_steps = footnote_basis
+        .iter()
+        .find(|record| record["type"] == "name_equivalent")
+        .expect("footnote pair emits name evidence")["basis"]["steps"]
+        .as_array()
+        .expect("steps array");
+    assert!(
+        footnote_steps.iter().any(|step| step == "footnote_marks"),
+        "{footnote_steps:?}"
+    );
+
+    let security_basis = stored_basis(&case, "s1");
+    let security_record = security_basis
+        .iter()
+        .find(|record| record["type"] == "name_equivalent")
+        .expect("security-tail pair emits name evidence");
+    let security_steps = security_record["basis"]["steps"]
+        .as_array()
+        .expect("steps array");
+    assert!(
+        security_steps
+            .iter()
+            .any(|step| step == "security_tail:class_a_common_units")
+    );
+    assert!(
+        security_steps
+            .iter()
+            .any(|step| step == "legal_form:bare_equivalence")
+    );
+    assert_eq!(
+        security_record["basis"]["left_removed_tail"]
+            .as_str()
+            .or_else(|| security_record["basis"]["right_removed_tail"].as_str()),
+        Some("Class A Common Units")
+    );
+
+    let surfaces_path = case
+        .session
+        .join("derive-work/stages/prepare/surfaces.jsonl");
+    let surfaces = fs::read_to_string(surfaces_path)
+        .expect("prepared surfaces")
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("surface JSON"))
+        .collect::<Vec<_>>();
+    let acme_surface = surfaces
+        .iter()
+        .find(|surface| {
+            surface["raw_variants"].as_array().is_some_and(|variants| {
+                variants
+                    .iter()
+                    .any(|variant| variant == "Acme Holdings, Inc. - Class A Common Units")
+            })
+        })
+        .expect("Acme prepared surface");
+    assert_eq!(
+        acme_surface["normalized_views"]["core"]["removed_tail"],
+        "Class A Common Units"
+    );
+    assert!(surfaces.iter().any(|surface| {
+        surface["raw_variants"]
+            .as_array()
+            .is_some_and(|variants| variants.iter().any(|variant| variant == "Acme Fund III"))
+    }));
+    assert!(surfaces.iter().any(|surface| {
+        surface["raw_variants"]
+            .as_array()
+            .is_some_and(|variants| variants.iter().any(|variant| variant == "Acme - Class A"))
+    }));
+    assert!(stored_basis(&case, "n1").is_empty());
+    assert!(stored_basis(&case, "n2").is_empty());
+}
+
+#[test]
 fn bare_legal_form_equivalence_is_declared_and_does_not_bridge_forms() {
     let case = init(RULES);
     case.ingest(&[

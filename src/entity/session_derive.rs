@@ -537,6 +537,22 @@ fn assertion_line(
     basis.insert("steps".to_string(), json!(steps));
     basis.insert("applies_to".to_string(), json!("surface"));
     basis.insert("explanation".to_string(), json!(explanation));
+    if let (DerivedKind::NameEquivalent, Some(view)) = (kind, suffix) {
+        let left_tail = left
+            .record
+            .normalized_views
+            .get(view)
+            .and_then(|normalized| normalized.removed_tail.clone());
+        let right_tail = right
+            .record
+            .normalized_views
+            .get(view)
+            .and_then(|normalized| normalized.removed_tail.clone());
+        if left_tail.is_some() || right_tail.is_some() {
+            basis.insert("left_removed_tail".to_string(), json!(left_tail));
+            basis.insert("right_removed_tail".to_string(), json!(right_tail));
+        }
+    }
     match kind {
         DerivedKind::SameKey => {
             if let Some(field) = suffix {
@@ -868,22 +884,6 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
         }
         name_stats = Some(stats);
     }
-    let steps_for = |view: &str, left: &SurfaceInfo<'_>, right: &SurfaceInfo<'_>| {
-        let mut steps = document
-            .normalized_views
-            .get(view)
-            .map(|view| view.operators.clone())
-            .unwrap_or_default();
-        let mut legal_form_steps = BTreeSet::new();
-        for surface in [left, right] {
-            if let Some(normalized) = surface.record.normalized_views.get(view) {
-                legal_form_steps.extend(
-                    normalized
-                        .reason_codes
-                        .iter()
-                        .filter(|reason| reason.starts_with("legal_form:"))
-                        .cloned(),
-                );
     // Alternates and member lists: only the surfaces that parse into a list are
     // needed ahead of the pairwise loop, so a generic hit never merges a list.
     let structure_view_names = structure_views(document);
@@ -904,9 +904,23 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
     };
     let list_obs = multi_party_ids(&structure_nodes);
     let mut structure_deferred = 0_usize;
+    let steps_for = |view: &str, left: &SurfaceInfo<'_>, right: &SurfaceInfo<'_>| {
+        let mut steps = document
+            .normalized_views
+            .get(view)
+            .map(|view| view.operators.clone())
+            .unwrap_or_default();
+        let mut normalization_steps = BTreeSet::new();
+        for surface in [left, right] {
+            if let Some(normalized) = surface.record.normalized_views.get(view) {
+                normalization_steps.extend(normalized.reason_codes.iter().cloned());
             }
         }
-        steps.extend(legal_form_steps);
+        for step in normalization_steps {
+            if !steps.contains(&step) {
+                steps.push(step);
+            }
+        }
         steps
     };
 
@@ -947,6 +961,12 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
                 stats.generic_hits_deferred += 1;
                 continue;
             }
+            if kind == DerivedKind::NameEquivalent
+                && (list_obs.contains(&left.obs_id) || list_obs.contains(&right.obs_id))
+            {
+                structure_deferred += 1;
+                continue;
+            }
             if kind == DerivedKind::AttributeAgreement {
                 agreeing.push(hit);
                 continue;
@@ -961,12 +981,6 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
                     &hit.operator_id,
                     &hit.namespace,
                     &profile_hash,
-            if kind == DerivedKind::NameEquivalent
-                && (list_obs.contains(&left.obs_id) || list_obs.contains(&right.obs_id))
-            {
-                structure_deferred += 1;
-                continue;
-            }
                     left,
                     right,
                     &steps,
@@ -1020,20 +1034,6 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
         }
     }
 
-    // Exact buckets are not expanded to pairs by block; a bucket whose view the
-    // profile declares an exact_view support operator on becomes a star of
-    // name_equivalent records around its lowest observation.
-    let declared_views = document
-        .evidence
-        .support
-        .iter()
-        .filter(|spec| spec.op == "exact_view")
-        .filter_map(|spec| spec.view.clone())
-        .collect::<BTreeSet<_>>();
-    let mut exact_bucket_ranges_skipped = 0;
-    for bucket in &buckets {
-        if !bucket.membership.surface_ranges.is_empty() {
-            exact_bucket_ranges_skipped += 1;
     let mut structure_stats = None;
     if let Some(view) = structure_view_names.iter().next() {
         let (structure_lines, mut stats) = structure_assertions(
@@ -1049,6 +1049,20 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
         structure_stats = Some(stats);
     }
 
+    // Exact buckets are not expanded to pairs by block; a bucket whose view the
+    // profile declares an exact_view support operator on becomes a star of
+    // name_equivalent records around its lowest observation.
+    let declared_views = document
+        .evidence
+        .support
+        .iter()
+        .filter(|spec| spec.op == "exact_view")
+        .filter_map(|spec| spec.view.clone())
+        .collect::<BTreeSet<_>>();
+    let mut exact_bucket_ranges_skipped = 0;
+    for bucket in &buckets {
+        if !bucket.membership.surface_ranges.is_empty() {
+            exact_bucket_ranges_skipped += 1;
         }
         let Some(view) = bucket.operator_id.split_once(':').map(|(_, view)| view) else {
             continue;
@@ -1095,6 +1109,12 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
                 cross_type_skipped += 1;
                 continue;
             }
+            if list_obs.contains(&hub.obs_id) || list_obs.contains(&member.obs_id) {
+                if let Some(stats) = structure_stats.as_mut() {
+                    stats.generic_hits_deferred += 1;
+                }
+                continue;
+            }
             if let Some(stats) = name_stats.as_mut()
                 && hub.entity_type == "person"
             {
@@ -1109,12 +1129,6 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
                     &profile_hash,
                     hub,
                     member,
-            if list_obs.contains(&hub.obs_id) || list_obs.contains(&member.obs_id) {
-                if let Some(stats) = structure_stats.as_mut() {
-                    stats.generic_hits_deferred += 1;
-                }
-                continue;
-            }
                     &steps_for(view, hub, member),
                     "exact bucket",
                 ),
@@ -1245,6 +1259,7 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
         rejected_observations,
         cross_type_skipped,
         names: name_stats,
+        structure: structure_stats,
         exact_bucket_ranges_skipped,
         relation_hints_not_executed,
         registry_candidates: registry_stats,
@@ -1259,7 +1274,6 @@ mod tests {
     use super::*;
 
     #[test]
-        structure: structure_stats,
     fn each_operator_maps_to_its_evidence_kind() {
         let cases = [
             (

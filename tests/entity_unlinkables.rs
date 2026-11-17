@@ -339,6 +339,7 @@ fn surface(id: &str, views: &[(&str, &str)]) -> PreparedSurfaceRecord {
                     PreparedNormalizedView {
                         value: (*value).to_string(),
                         reason_codes: Vec::new(),
+                        removed_tail: None,
                     },
                 )
             })

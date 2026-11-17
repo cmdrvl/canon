@@ -959,6 +959,15 @@ retains the form in the normalized value, and records the applied
 or `Trust`, and it never treats a mid-name token such as `Co` in `Co-Invest`
 as a suffix.
 
+The separately declared `strip_footnote_marks` step removes only terminal source
+markers such as `(14)`, `(a)(b)`, `#`, `^`, `~`, `*`, `†`, and superscript digits.
+The separately declared `strip_security_tail` step is table-driven and removes
+only a recognized terminal security phrase after ` - `, `, `, or a terminal
+parenthesized separator. It records a `security_tail:<descriptor>` step and
+keeps the removed fragment as `removed_tail`; it does not strip `Fund III`,
+`Class A` without a complete instrument phrase, `Series 2021-1 Trust`, or an
+unseparated name beginning with `Warrants`.
+
 The separately declared `preserve_legal_form_with_bare` step maps a bare name
 to the same name with exactly one recognized, non-protected trailing legal
 form. It records the canonical form and `legal_form:bare_equivalence`, leaves

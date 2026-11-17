@@ -32,6 +32,7 @@ use crate::namekit::{
         normalize_legal_forms_with_bare,
     },
     normalize::{NamekitNormalization, normalize_normality, normalize_openrefine_fingerprint},
+    security_tail::{strip_footnote_marks, strip_security_tail},
     tokenize::{NamekitTokenization, tokenize_sorted_unique},
 };
 use crate::{InputFormat, InputValues, Mapping, Refusal, Registry, lookup, registry, witness};
@@ -224,6 +225,8 @@ pub struct PreparedSurfaceRecord {
 pub struct PreparedNormalizedView {
     pub value: String,
     pub reason_codes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub removed_tail: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1349,6 +1352,7 @@ fn prepare_surface_records_from_profile_execution_with_rejections(
                     PreparedNormalizedView {
                         value: value.clone(),
                         reason_codes,
+                        removed_tail: None,
                     },
                 )
             })
@@ -1478,6 +1482,18 @@ impl PreparedSurfaceAccumulator {
                         .collect::<Vec<_>>();
                     reason_codes.sort();
                     existing.reason_codes = reason_codes;
+                    existing.removed_tail = match (
+                        existing.removed_tail.as_deref(),
+                        view.removed_tail.as_deref(),
+                    ) {
+                        (Some(left), Some(right)) if left != right => {
+                            let mut tails = [left, right];
+                            tails.sort_unstable();
+                            Some(tails.join(" | "))
+                        }
+                        (Some(existing), _) => Some(existing.to_string()),
+                        (None, incoming) => incoming.map(str::to_string),
+                    };
                 })
                 .or_insert(view);
         }
@@ -1792,6 +1808,7 @@ fn legal_normalized_view(raw: &str, operator: &str) -> PreparedNormalizedView {
         return PreparedNormalizedView {
             value: normalized.normalized,
             reason_codes: normalized.steps,
+            removed_tail: None,
         };
     }
     if operator == "preserve_legal_form_with_bare" {
@@ -1799,6 +1816,7 @@ fn legal_normalized_view(raw: &str, operator: &str) -> PreparedNormalizedView {
         return PreparedNormalizedView {
             value: normalized.normalized,
             reason_codes: normalized.steps,
+            removed_tail: None,
         };
     }
     let normal = normalize_normality(raw);
@@ -1814,6 +1832,7 @@ fn legal_normalized_view(raw: &str, operator: &str) -> PreparedNormalizedView {
         return PreparedNormalizedView {
             value: fingerprint.fingerprint.clone(),
             reason_codes: namekit_reason_codes(&fingerprint),
+            removed_tail: None,
         };
     }
     if operator.ends_with("_tokens") {
@@ -1821,11 +1840,13 @@ fn legal_normalized_view(raw: &str, operator: &str) -> PreparedNormalizedView {
         return PreparedNormalizedView {
             value: tokenized_value(&tokens),
             reason_codes: reason_codes(&normal, Some(&legal), Some(&tokens)),
+            removed_tail: None,
         };
     }
     PreparedNormalizedView {
         value: core,
         reason_codes: reason_codes(&normal, Some(&legal), None),
+        removed_tail: None,
     }
 }
 
@@ -1836,6 +1857,7 @@ fn generic_normalized_views(raw: &str) -> BTreeMap<String, PreparedNormalizedVie
         PreparedNormalizedView {
             value: normal.normalized.clone(),
             reason_codes: namekit_reason_codes(&normal),
+            removed_tail: None,
         },
     )])
 }
@@ -1889,18 +1911,20 @@ fn configured_normalized_views(
                     )
             })
             .map(|operator| legal_normalized_view(&value, operator));
-        let value = if let Some(normalized) = &legal {
-            normalized.value.clone()
+        let normalized = if let Some(normalized) = legal {
+            normalized
         } else {
-            apply_configured_normalizers(value.as_str(), &view.operators)?
+            apply_configured_normalizers_with_metadata(value.as_str(), &view.operators)?
         };
+        let value = normalized.value.clone();
         if value.trim().is_empty() || (!canonical && is_placeholder_value(&value, mapping)) {
             continue;
         }
 
-        let mut reason_codes = legal
-            .map(|normalized| normalized.reason_codes)
-            .unwrap_or_else(|| vec!["configured_field_mapping".to_string()]);
+        let mut reason_codes = normalized.reason_codes;
+        if reason_codes.is_empty() {
+            reason_codes.push("configured_field_mapping".to_string());
+        }
         if mapping
             .canonical_surface_normalized_view
             .as_deref()
@@ -1913,6 +1937,7 @@ fn configured_normalized_views(
             PreparedNormalizedView {
                 value,
                 reason_codes,
+                removed_tail: normalized.removed_tail,
             },
         );
     }
@@ -1939,28 +1964,56 @@ fn value_to_string(value: &Value) -> Option<String> {
     }
 }
 
-fn apply_configured_normalizers(raw: &str, operators: &[String]) -> Result<String, Refusal> {
-    let mut value = raw.to_string();
+fn apply_configured_normalizers_with_metadata(
+    raw: &str,
+    operators: &[String],
+) -> Result<PreparedNormalizedView, Refusal> {
+    let mut normalized = PreparedNormalizedView {
+        value: raw.to_string(),
+        reason_codes: Vec::new(),
+        removed_tail: None,
+    };
     for operator in operators {
-        value = match operator.as_str() {
+        normalized.value = match operator.as_str() {
             "legal_basename"
             | "legal_basename_tokens"
             | "legal_basename_fingerprint"
             | "legal_name_preserved"
             | "legal_name_preserved_tokens"
             | "preserve_legal_form"
-            | "preserve_legal_form_with_bare" => legal_normalized_view(&value, operator).value,
-            "identity" => value,
-            "ascii_trim_upper" => value.trim().to_ascii_uppercase(),
-            "unicode_fold" => normalize_normality(&value).normalized,
-            "lowercase" => value.to_lowercase(),
-            "uppercase" => value.to_uppercase(),
-            "normalize_whitespace" | "tokenize" => {
-                value.split_whitespace().collect::<Vec<_>>().join(" ")
+            | "preserve_legal_form_with_bare" => {
+                let step = legal_normalized_view(&normalized.value, operator);
+                normalized.reason_codes.extend(step.reason_codes);
+                step.value
             }
-            "fingerprint" => normalize_openrefine_fingerprint(&value).fingerprint,
+            "strip_footnote_marks" => {
+                let step = strip_footnote_marks(&normalized.value);
+                if let Some(code) = step.step {
+                    normalized.reason_codes.push(code);
+                }
+                step.normalized
+            }
+            "strip_security_tail" => {
+                let step = strip_security_tail(&normalized.value);
+                if let Some(code) = step.step {
+                    normalized.reason_codes.push(code);
+                    normalized.removed_tail = step.removed;
+                }
+                step.normalized
+            }
+            "identity" => normalized.value.clone(),
+            "ascii_trim_upper" => normalized.value.trim().to_ascii_uppercase(),
+            "unicode_fold" => normalize_normality(&normalized.value).normalized,
+            "lowercase" => normalized.value.to_lowercase(),
+            "uppercase" => normalized.value.to_uppercase(),
+            "normalize_whitespace" | "tokenize" => normalized
+                .value
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" "),
+            "fingerprint" => normalize_openrefine_fingerprint(&normalized.value).fingerprint,
             "reverse_two_tokens" => {
-                let tokens = value.split_whitespace().collect::<Vec<_>>();
+                let tokens = normalized.value.split_whitespace().collect::<Vec<_>>();
                 if let [first, second] = tokens.as_slice() {
                     format!("{second} {first}")
                 } else {
@@ -1969,7 +2022,7 @@ fn apply_configured_normalizers(raw: &str, operators: &[String]) -> Result<Strin
             }
             // The comparable form of a person name; text that is not a person
             // name keeps its trimmed, case-folded spelling (nothing is guessed).
-            "person_name" => crate::namekit::person::parse_person_name(&value)
+            "person_name" => crate::namekit::person::parse_person_name(&normalized.value)
                 .map(|person| person.key())
                 .unwrap_or_else(|| normalized.value.trim().to_lowercase()),
             // The primary name of a surface with a dba / fka marker, normalised;
@@ -1979,10 +2032,10 @@ fn apply_configured_normalizers(raw: &str, operators: &[String]) -> Result<Strin
                 crate::namekit::structure::structure_key(&structure.primary).0
             }
             "placeholder_to_null" => {
-                if is_common_placeholder_value(&value) {
+                if is_common_placeholder_value(&normalized.value) {
                     String::new()
                 } else {
-                    value
+                    normalized.value.clone()
                 }
             }
             _ => {
@@ -1994,7 +2047,8 @@ fn apply_configured_normalizers(raw: &str, operators: &[String]) -> Result<Strin
             }
         };
     }
-    Ok(value.trim().to_string())
+    normalized.value = normalized.value.trim().to_string();
+    Ok(normalized)
 }
 
 fn core_view_value(

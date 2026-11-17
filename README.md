@@ -1570,6 +1570,14 @@ $ canon entity explain result.json --canon-id IC-00042
 
 ### Strategy
 
+Normalization views may declare the terminal-only `strip_footnote_marks` and
+table-driven `strip_security_tail` steps before legal-form equivalence.
+Footnotes such as `(14)`, `(a)(b)`, `#`, `^`, `~`, `*`, `†`, and superscript
+digits are removed only at the end of a source name. Security tails are removed
+only when a complete recognized phrase follows a separator; the removed tail
+is retained as evidence metadata, while meaningful text such as `Fund III` and
+`Class A` without a complete instrument phrase remains part of the name.
+
 A normalization view may declare the `name_structure` operator. `canon entity session derive` then parses `X (dba Y)`, `X f/k/a Y`, `X aka Y` and member lists (`;`, ` / `, newline, or ` and ` / ` & ` only when every side ends in a legal form) out of one surface: a stated alternate becomes `asserted_alias` to an observation equal to the alternate or the primary, a list is `multi_party` and `related` (`co_borrower_of`) to its members and never `name_equivalent` with one, and `Johnson and Johnson` or `Smith, Jones and Partners LLP` stay one name.
 
 A YAML file that configures the entire pipeline. Defines observation fields (`name_fields`, `anchor_fields`, `context_fields`), normalization views (lowercase, listed legal-form equivalence with `preserve_legal_form`, the separately declared `preserve_legal_form_with_bare` step, strip legal suffixes, extract initials), blocking operators, evidence rules, solver thresholds, reconciliation policy, and promotion gates. `preserve_legal_form` keeps distinct forms distinct (`LLC` is not `Inc`) while recording variant steps such as `legal_form:inc`; `preserve_legal_form_with_bare` additionally equates a bare name with exactly one unprotected trailing form and refuses ambiguous buckets containing multiple forms. Protected `Bank` and `Trust` tokens and mid-name `Co` in `Co-Invest` are retained.
