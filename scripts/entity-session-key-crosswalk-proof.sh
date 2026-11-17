@@ -16,6 +16,7 @@ work_dir=""
 canon_bin="$(printenv CANON_BIN || true)"
 seed="bd-vdcw.35-crosswalk-v1"
 sample_size=100
+allow_partial_coverage=0
 
 usage() {
   cat >&2 <<'EOF'
@@ -34,6 +35,14 @@ options:
   --canon-bin PATH       canon executable (or CANON_BIN)
   --seed TEXT            recorded crosswalk sample seed
   --sample-size N        maximum rows in operator sample (default: 100)
+  --allow-partial-coverage
+                         run with joined BDC CIKs only; record the missing
+                         CIK list and coverage denominator instead of claiming
+                         full population coverage
+
+Evidence-closure verification requires the `b3sum` command available from the
+local Rust toolchain. All output directories are retained; this script never
+deletes a work directory.
 EOF
 }
 
@@ -47,6 +56,7 @@ while [[ $# -gt 0 ]]; do
     --canon-bin) canon_bin="$2"; shift 2 ;;
     --seed) seed="$2"; shift 2 ;;
     --sample-size) sample_size="$2"; shift 2 ;;
+    --allow-partial-coverage) allow_partial_coverage=1; shift ;;
     --help|-h) usage; exit 0 ;;
     *) printf 'unknown argument: %s\n' "$1" >&2; usage; exit 2 ;;
   esac
@@ -74,6 +84,10 @@ for required in "$registry_source" "$gold_dir" "$cik_source" "$lei_source"; do
 done
 if [[ -z "$canon_bin" || ! -x "$canon_bin" ]]; then
   printf 'set CANON_BIN or --canon-bin to an executable canon binary\n' >&2
+  exit 2
+fi
+if ! command -v b3sum >/dev/null 2>&1; then
+  printf '%s\n' 'evidence-closure verification requires b3sum on PATH' >&2
   exit 2
 fi
 if ! [[ "$sample_size" =~ ^[0-9]+$ ]]; then
@@ -151,12 +165,13 @@ EOF
 # one uses exact registry names; day two joins the independent LEI source by
 # CIK. The gold-set ticker is retained in source metadata but not ingested as a
 # key: these values are lower-case filing slugs, not declared exchange tickers.
-python3 - "$registry" "$gold_dir" "$cik_source" "$lei_source" "$work_dir" <<'PY'
+python3 - "$registry" "$gold_dir" "$cik_source" "$lei_source" "$work_dir" "$allow_partial_coverage" <<'PY'
 import json
 import pathlib
 import sys
 
-registry, gold_dir, cik_path, lei_path, work = map(pathlib.Path, sys.argv[1:])
+registry, gold_dir, cik_path, lei_path, work = map(pathlib.Path, sys.argv[1:6])
+allow_partial = sys.argv[6] == "1"
 
 def jsonl(path):
     rows = []
@@ -279,6 +294,14 @@ write_jsonl(work / "day-one.jsonl", day_one)
 write_jsonl(work / "day-two.jsonl", day_two)
 (work / "day-one-missing.json").write_text(json.dumps(day_one_missing, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 (work / "day-two-missing-lei.json").write_text(json.dumps(day_two_missing_lei, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+coverage = {
+    "joined_ciks": len(day_two) // 2,
+    "gold_ciks": len(gold_by_cik),
+    "coverage_numerator": len(day_two) // 2,
+    "coverage_denominator": len(gold_by_cik),
+    "missing_ciks": len(day_two_missing_lei),
+    "missing_cik_list": str(work / "day-two-missing-lei.json"),
+}
 (work / "source-manifest.json").write_text(json.dumps({
     "registry_exact_name_count": len(registered),
     "day_one_exact_name_count": len(day_one) // 2,
@@ -289,6 +312,9 @@ write_jsonl(work / "day-two.jsonl", day_two)
     "ticker_slug_rows_not_ingested_as_keys": len(day_two) // 2,
     "day_one_observation_count": len(day_one),
     "day_two_observation_count": len(day_two),
+    "coverage_mode": "partial" if allow_partial else "complete",
+    "partial_coverage_allowed": allow_partial,
+    "day_two_coverage": coverage,
 }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 with (work / "day-two-replay.csv").open("w", encoding="utf-8") as output:
@@ -306,13 +332,30 @@ print(json.dumps({
     "day_two_joined_cik_count": len(day_two) // 2,
     "day_two_missing_lei_count": len(day_two_missing_lei),
     "ticker_slug_rows_not_ingested_as_keys": len(day_two) // 2,
+    "coverage_mode": "partial" if allow_partial else "complete",
+    "day_two_coverage": coverage,
 }, sort_keys=True))
 if not day_one:
     raise SystemExit("no exact day-one source pair matched the registry")
-if day_two_missing_lei:
-    raise SystemExit("independent LEI source is missing one or more BDC CIKs; see day-two-missing-lei.json")
+if day_two_missing_lei and not allow_partial:
+    raise SystemExit(
+        "independent LEI source covers "
+        f"{len(day_two) // 2}/{len(gold_by_cik)} BDC CIKs; "
+        "missing list is day-two-missing-lei.json; "
+        "rerun with --allow-partial-coverage for a declared partial proof"
+    )
 PY
 printf 'source_manifest=%s\n' "$(cat "$work_dir/source-manifest.json")"
+python3 - "$work_dir/source-manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+coverage = manifest["day_two_coverage"]
+print(f"day_two_coverage={coverage['coverage_numerator']}/{coverage['coverage_denominator']}")
+print(f"day_two_missing_cik_list={coverage['missing_cik_list']}")
+PY
 
 run_json() {
   local label="$1"
@@ -354,6 +397,155 @@ run_expected_failure_json() {
   fi
 }
 
+record_registry_closure_hashes() {
+  local registry_path="$1"
+  local output_path="$2"
+  python3 - "$registry_path" "$output_path" <<'PY'
+import json
+import pathlib
+import sys
+
+registry, output = map(pathlib.Path, sys.argv[1:])
+hashes = set()
+
+def collect(value):
+    if isinstance(value, dict):
+        closure_hash = value.get("closure_hash")
+        if isinstance(closure_hash, str):
+            hashes.add(closure_hash)
+        for child in value.values():
+            collect(child)
+    elif isinstance(value, list):
+        for child in value:
+            collect(child)
+
+for path in sorted(registry.rglob("*")):
+    if not path.is_file() or path.suffix not in {".json", ".jsonl"}:
+        continue
+    if path.suffix == ".jsonl":
+        values = [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    else:
+        values = [json.loads(path.read_text(encoding="utf-8"))]
+    for value in values:
+        collect(value)
+output.write_text(json.dumps(sorted(hashes), indent=2) + "\n", encoding="utf-8")
+PY
+}
+
+verify_evidence_closure() {
+  local label="$1"
+  local registry_path="$2"
+  local commit_path="$3"
+  local export_path="$4"
+  local baseline_path="$5"
+  local summary_path="$6"
+  python3 - "$label" "$registry_path" "$commit_path" "$export_path" "$baseline_path" "$summary_path" <<'PY'
+import collections
+import json
+import pathlib
+import subprocess
+import sys
+
+label, registry_path, commit_path, export_path, baseline_path, summary_path = map(pathlib.Path, sys.argv[1:])
+
+def collect_closure_hashes(value):
+    hashes = set()
+
+    def collect(node):
+        if isinstance(node, dict):
+            closure_hash = node.get("closure_hash")
+            if isinstance(closure_hash, str):
+                hashes.add(closure_hash)
+            for child in node.values():
+                collect(child)
+        elif isinstance(node, list):
+            for child in node:
+                collect(child)
+
+    collect(value)
+    return hashes
+
+def b3(path):
+    output = subprocess.check_output(["b3sum", str(path)], text=True)
+    return output.split()[0]
+
+commit = json.loads(commit_path.read_text(encoding="utf-8"))
+export = json.loads(export_path.read_text(encoding="utf-8"))
+closures = export.get("closures")
+if not isinstance(closures, list) or not closures:
+    raise SystemExit(f"{label}: evidence-closure export emitted no closures")
+emitted = {row.get("closure_hash") for row in closures}
+if None in emitted or not all(isinstance(value, str) for value in emitted):
+    raise SystemExit(f"{label}: evidence-closure export has a missing closure_hash")
+commit_hashes = collect_closure_hashes(commit)
+if not commit_hashes <= emitted:
+    raise SystemExit(f"{label}: commit closure hashes not emitted: {sorted(commit_hashes - emitted)}")
+
+closure_root = pathlib.Path(export["out"])
+for closure in closures:
+    closure_hash = closure["closure_hash"]
+    directory = closure.get("directory")
+    expected_directory = closure_hash.removeprefix("blake3:")
+    if directory != expected_directory:
+        raise SystemExit(f"{label}: closure directory does not match hash: {closure}")
+    sensitivity = closure.get("sensitivity")
+    if not isinstance(sensitivity, dict) or sensitivity.get("level") not in {"public", "restricted"}:
+        raise SystemExit(f"{label}: closure has no recorded sensitivity level: {closure}")
+    if not isinstance(sensitivity.get("unstated_inputs"), int):
+        raise SystemExit(f"{label}: closure has no sensitivity input count: {closure}")
+    closure_file = closure_root / directory / "closure.json"
+    if not closure_file.is_file() or b3(closure_file) != expected_directory:
+        raise SystemExit(f"{label}: emitted closure does not hash to {closure_hash}: {closure_file}")
+    listed = {entry.get("path"): entry.get("blake3") for entry in closure.get("files", [])}
+    closure_entry = listed.get(f"{directory}/closure.json")
+    if closure_entry != closure_hash:
+        raise SystemExit(f"{label}: export file record disagrees with closure hash: {closure}")
+    for relative, listed_hash in listed.items():
+        file_path = closure_root / relative
+        if not file_path.is_file() or b3(file_path) != str(listed_hash).removeprefix("blake3:"):
+            raise SystemExit(f"{label}: exported file hash mismatch: {file_path}")
+
+registry_hashes = set()
+for path in sorted(registry_path.rglob("*")):
+    if not path.is_file() or path.suffix not in {".json", ".jsonl"}:
+        continue
+    if path.suffix == ".jsonl":
+        values = [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    else:
+        values = [json.loads(path.read_text(encoding="utf-8"))]
+    for value in values:
+        registry_hashes |= collect_closure_hashes(value)
+baseline = set(json.loads(baseline_path.read_text(encoding="utf-8")))
+new_registry_hashes = registry_hashes - baseline
+if not new_registry_hashes <= emitted:
+    raise SystemExit(
+        f"{label}: registry closure hashes not emitted: {sorted(new_registry_hashes - emitted)}"
+    )
+
+sensitivity_counts = collections.Counter(row["sensitivity"]["level"] for row in closures)
+summary = {
+    "label": str(label),
+    "commit_closure_hash_count": len(commit_hashes),
+    "emitted_closure_count": len(emitted),
+    "new_registry_closure_hash_count": len(new_registry_hashes),
+    "sensitivity_counts": dict(sorted(sensitivity_counts.items())),
+    "sensitivity_levels": {
+        row["closure_hash"]: row["sensitivity"]["level"] for row in closures
+    },
+}
+summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+print(json.dumps(summary, sort_keys=True))
+PY
+}
+
 run_positive() {
   local label="$1"
   local target_registry="$2"
@@ -363,6 +555,11 @@ run_positive() {
   local day_one_session="$session_root/day-one"
   local day_two_session="$session_root/day-two"
   local registries_map="$work_dir/$label-registries.yaml"
+  local day_one_closure_dir="$work_dir/$label-evidence-closures-day-one"
+  local day_two_closure_dir="$work_dir/$label-evidence-closures-day-two"
+  local registry_closure_baseline="$work_dir/$label-registry-closures-before-day-one.json"
+  local day_two_registry_closure_baseline="$work_dir/$label-registry-closures-before-day-two.json"
+  record_registry_closure_hashes "$target_registry" "$registry_closure_baseline"
   cat >"$registries_map" <<EOF
 version: canon.session.registries.v1
 kinds:
@@ -395,6 +592,7 @@ PY
   run_expected_json "$label commit day one" "$canon_bin" entity session commit \
     "$day_one_session" --next-version 2026-09-30-bd35-day-one --emit json
   local day_one_commit="$RUN_JSON"
+  printf '%s\n' "$day_one_commit" >"$work_dir/$label-day-one-commit.json"
   python3 - "$day_one_commit" <<'PY'
 import json
 import sys
@@ -414,10 +612,17 @@ print(json.loads(sys.argv[1])["registry"]["new"]["content_hash"])
 PY
 )"
   printf '%s.day_one_new_hash=%s\n' "$label" "$day_one_new_hash"
+  run_expected_json "$label export evidence closure day one" "$canon_bin" entity session export \
+    "$day_one_session" --format evidence-closure --out "$day_one_closure_dir" --emit json
+  printf '%s\n' "$RUN_JSON" >"$work_dir/$label-day-one-evidence-closure.json"
+  verify_evidence_closure "$label day one" "$target_registry" \
+    "$work_dir/$label-day-one-commit.json" "$work_dir/$label-day-one-evidence-closure.json" \
+    "$registry_closure_baseline" "$work_dir/$label-day-one-evidence-closure-summary.json"
   run_expected_json "$label registry lint after day one" "$canon_bin" registry lint \
     "$target_registry" --emit json
 
   cp -R "$target_registry" "$work_dir/$label-registry-before-day-two"
+  record_registry_closure_hashes "$target_registry" "$day_two_registry_closure_baseline"
   run_expected_json "$label session init day two" "$canon_bin" entity session init \
     --goal "BDC key crosswalk proof day two" \
     --registries "$registries_map" \
@@ -438,6 +643,7 @@ PY
     "$day_two_session" --next-version 2026-09-30-bd35-day-two \
     --expect-base "$day_one_new_hash" --emit json
   local day_two_commit="$RUN_JSON"
+  printf '%s\n' "$day_two_commit" >"$work_dir/$label-day-two-commit.json"
   python3 - "$day_two_commit" "$day_one_new_hash" <<'PY'
 import json
 import sys
@@ -450,6 +656,12 @@ if not value.get("minted") and not value.get("attached"):
 if value["registry"]["base"]["content_hash"] != expected_base:
     raise SystemExit("day-two receipt did not record the day-one base")
 PY
+  run_expected_json "$label export evidence closure day two" "$canon_bin" entity session export \
+    "$day_two_session" --format evidence-closure --out "$day_two_closure_dir" --emit json
+  printf '%s\n' "$RUN_JSON" >"$work_dir/$label-day-two-evidence-closure.json"
+  verify_evidence_closure "$label day two" "$target_registry" \
+    "$work_dir/$label-day-two-commit.json" "$work_dir/$label-day-two-evidence-closure.json" \
+    "$day_two_registry_closure_baseline" "$work_dir/$label-day-two-evidence-closure-summary.json"
   run_expected_json "$label registry lint after day two" "$canon_bin" registry lint \
     "$target_registry" --emit json
   run_expected_json "$label export key crosswalk" "$canon_bin" registry export \
