@@ -427,6 +427,29 @@ spelling returns a chain that includes it. A merge across a cannot-link, or
 without `--rules` the output says `key_check: not_run`. Rerunning the same file
 is `already_applied`.
 
+### Detach, split and removing a cannot-link
+
+The same file and command take three more reviewer-written ops:
+
+```jsonl
+{"op":"detach","canonical_id":"ORG-000412","inputs":["Newmark Realty Capital"],"keys":[{"namespace":"cik","value":"1234567"}],"reviewer":"human:zac","evidence_ids":["..."],"reason":"..."}
+{"op":"split","canonical_id":"ORG-000412","move":{"inputs":["Apex Capital LLC"],"keys":[{"namespace":"cik","value":"444"}]},"reviewer":"human:zac","evidence_ids":["..."],"reason":"two CIKs, two entities"}
+{"op":"remove_cannot_link","left":"ORG-000412","right":"ORG-000977","reviewer":"human:zac","evidence_ids":["..."],"reason":"..."}
+```
+
+A **detach** takes a wrong spelling or key off the id; exact lookup of it is
+unresolved afterwards, and registry memory holds a cannot-link against the id so
+a later session does not re-attach it (it reports `registry_cannot_link`). A
+**split** mints a new id for the moved entries and records a cannot-link between
+the two ids; relations stay on the old id and are reported for you to move by
+hand. Both refuse to take the last entry. **remove_cannot_link** is the only way
+a cannot-link leaves memory (for example before a merge of two ids a split
+separated). Every kept and moved entry keeps the `session_authority` it had;
+the correction line carries its own closure and, for a detach, the closure of
+each entry it removed, so earlier evidence stays reachable from
+`corrections.jsonl`, which is append-only. Nothing in a session ever detaches or
+splits on its own.
+
 ## The loop
 
 ```text

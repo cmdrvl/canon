@@ -4843,7 +4843,7 @@
     {
       "name": "registry correct",
       "usage": "canon registry correct --registry <DIR> --from <CORRECTIONS.jsonl> (--next-version <VER>|--bump patch|minor|major) [--rules <RULES.yaml>] [--expect-base <HASH>] [--dry-run] [--emit json|summary]",
-      "description": "Merge two canonical IDs as a reviewed registry version: re-point every alias, key alias, relation and memory record of the retired ID to the survivor, keep the retired ID resolving to the survivor as a SUPERSEDED_ID_ALIAS, and record the correction and its closure in corrections.jsonl; never automatic",
+      "description": "Apply reviewer-written corrections as one new registry version: merge two canonical IDs (the retired ID keeps resolving to the survivor as a SUPERSEDED_ID_ALIAS), detach an alias or key from an ID, split one ID into two, or remove a cannot-link from registry memory; each is recorded with its closure in corrections.jsonl and never automatic",
       "output_mode": "mixed",
       "output_schema": "canon_registry_correct.v0",
       "status": "implemented",

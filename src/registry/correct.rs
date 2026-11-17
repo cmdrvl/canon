@@ -31,6 +31,8 @@ pub const REGISTRY_CORRECTION_LINE_VERSION: &str = "canon.registry.correction.v0
 pub const SUPERSEDED_ID_ALIAS: &str = "SUPERSEDED_ID_ALIAS";
 const CORRECTIONS_FILE: &str = "corrections.jsonl";
 
+mod ops;
+
 #[derive(Debug, Clone)]
 pub struct RegistryCorrectRequest {
     pub registry: PathBuf,
@@ -42,15 +44,23 @@ pub struct RegistryCorrectRequest {
     pub dry_run: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct RegistryCorrectionSummary {
     pub correction_id: String,
     pub op: String,
-    pub survivor: String,
-    pub retired: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub survivor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retired: Option<String>,
+    /// detach and split: the id the correction acts on.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub canonical_id: Option<String>,
+    /// split: the id minted for the moved entries.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_id: Option<String>,
     pub outcome_ref: String,
     pub closure_hash: String,
-    /// `passed` with `--rules`, `not_run` without.
+    /// merge: `passed` with `--rules`, `not_run` without.
     pub key_check: String,
     pub repointed_aliases: usize,
     pub repointed_key_aliases: usize,
@@ -58,6 +68,17 @@ pub struct RegistryCorrectionSummary {
     pub dropped_relations: usize,
     pub repointed_memory: usize,
     pub superseded_aliases: Vec<String>,
+    /// detach: spellings and keys taken off the id; split: entries moved.
+    pub detached: usize,
+    pub moved: usize,
+    /// Cannot-link facts written to registry memory.
+    pub memory_written: usize,
+    pub cannot_links_removed: usize,
+    /// split: relations still naming the old id, for the reviewer.
+    pub relations_left_on_old_id: usize,
+    /// What the stored `corrections.jsonl` line carries beyond the common fields.
+    #[serde(skip)]
+    pub stored: Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -86,17 +107,39 @@ impl RegistryCorrectOutput {
             self.changed_files.len()
         )];
         for correction in &self.corrections {
-            lines.push(format!(
-                "merge {} -> {} correction_id={} key_check={} aliases={} key_aliases={} relations={} dropped_relations={}",
-                correction.retired,
-                correction.survivor,
-                correction.correction_id,
-                correction.key_check,
-                correction.repointed_aliases,
-                correction.repointed_key_aliases,
-                correction.repointed_relations,
-                correction.dropped_relations
-            ));
+            let line = match correction.op.as_str() {
+                "merge" => format!(
+                    "merge {} -> {} correction_id={} key_check={} aliases={} key_aliases={} relations={} dropped_relations={}",
+                    correction.retired.as_deref().unwrap_or(""),
+                    correction.survivor.as_deref().unwrap_or(""),
+                    correction.correction_id,
+                    correction.key_check,
+                    correction.repointed_aliases,
+                    correction.repointed_key_aliases,
+                    correction.repointed_relations,
+                    correction.dropped_relations
+                ),
+                "detach" => format!(
+                    "detach {} correction_id={} detached={} memory_written={}",
+                    correction.canonical_id.as_deref().unwrap_or(""),
+                    correction.correction_id,
+                    correction.detached,
+                    correction.memory_written
+                ),
+                "split" => format!(
+                    "split {} -> {} correction_id={} moved={} relations_left_on_old_id={}",
+                    correction.canonical_id.as_deref().unwrap_or(""),
+                    correction.new_id.as_deref().unwrap_or(""),
+                    correction.correction_id,
+                    correction.moved,
+                    correction.relations_left_on_old_id
+                ),
+                _ => format!(
+                    "{} correction_id={} cannot_links_removed={}",
+                    correction.op, correction.correction_id, correction.cannot_links_removed
+                ),
+            };
+            lines.push(line);
         }
         lines.join("\n")
     }
@@ -153,7 +196,75 @@ fn refusal(registry: &Path, message: impl Into<String>, detail: Value, next: &st
     bad_registry_refusal(registry, message.into(), detail, next)
 }
 
-fn parse_lines(registry: &Path, from: &Path) -> Result<Vec<MergeLine>, Refusal> {
+/// One correction as the reviewer wrote it.
+#[derive(Debug, Clone)]
+enum Correction {
+    Merge(MergeLine),
+    Detach(ops::DetachLine),
+    Split(ops::SplitLine),
+    RemoveCannotLink(ops::RemoveLine),
+}
+
+impl Correction {
+    fn canonical(&self) -> Value {
+        match self {
+            Self::Merge(line) => line.canonical(),
+            Self::Detach(line) => line.canonical(),
+            Self::Split(line) => line.canonical(),
+            Self::RemoveCannotLink(line) => line.canonical(),
+        }
+    }
+
+    fn closure_hash(&self) -> String {
+        match self {
+            Self::Merge(line) => line.closure_hash(),
+            _ => hash_bytes(&serde_json::to_vec(&self.canonical()).unwrap_or_default()),
+        }
+    }
+
+    fn correction_id(&self) -> String {
+        format!(
+            "correction:{}",
+            self.closure_hash().trim_start_matches("blake3:")
+        )
+    }
+
+    fn outcome_ref(&self, registry_id: &str) -> String {
+        match self {
+            Self::Merge(line) => line.outcome_ref(registry_id),
+            _ => format!(
+                "cmdrvl://canon/outcome/{registry_id}/correction/{}",
+                self.closure_hash().trim_start_matches("blake3:")
+            ),
+        }
+    }
+
+    /// reviewer, evidence ids, reason and source, as written.
+    fn review(&self) -> (&str, &[String], &str, &Value) {
+        match self {
+            Self::Merge(line) => (
+                &line.reviewer,
+                &line.evidence_ids,
+                &line.reason,
+                &line.source,
+            ),
+            Self::Detach(line) => line.review.parts(),
+            Self::Split(line) => line.review.parts(),
+            Self::RemoveCannotLink(line) => line.review.parts(),
+        }
+    }
+
+    fn op(&self) -> &'static str {
+        match self {
+            Self::Merge(_) => "merge",
+            Self::Detach(_) => "detach",
+            Self::Split(_) => "split",
+            Self::RemoveCannotLink(_) => "remove_cannot_link",
+        }
+    }
+}
+
+fn parse_lines(registry: &Path, from: &Path) -> Result<Vec<Correction>, Refusal> {
     let text = fs::read_to_string(from).map_err(|error| io_refusal(from, error))?;
     let mut lines = Vec::new();
     for (index, raw) in text
@@ -171,14 +282,18 @@ fn parse_lines(registry: &Path, from: &Path) -> Result<Vec<MergeLine>, Refusal> 
             )
         })?;
         let field = |name: &str| value.get(name).and_then(Value::as_str).map(str::trim);
-        if field("op") != Some("merge") {
+        let op = field("op").unwrap_or_default().to_string();
+        if !matches!(
+            op.as_str(),
+            "merge" | "detach" | "split" | "remove_cannot_link"
+        ) {
             return Err(refusal(
                 registry,
                 format!(
-                    "corrections line {number}: only op \"merge\" is supported (detach and split are separate corrections)"
+                    "corrections line {number}: op must be merge, detach, split or remove_cannot_link"
                 ),
                 json!({"line": number, "op": value.get("op"), "writes_performed": false}),
-                "Use {\"op\":\"merge\",\"survivor\":...,\"retired\":...}",
+                "Use {\"op\":\"merge\"|\"detach\"|\"split\"|\"remove_cannot_link\", ...}",
             ));
         }
         let required = |name: &str| -> Result<String, Refusal> {
@@ -199,10 +314,10 @@ fn parse_lines(registry: &Path, from: &Path) -> Result<Vec<MergeLine>, Refusal> 
             return Err(refusal(
                 registry,
                 format!(
-                    "corrections line {number}: a merge needs a human reviewer, got '{reviewer}'"
+                    "corrections line {number}: a correction needs a human reviewer, got '{reviewer}'"
                 ),
                 json!({"line": number, "reviewer": reviewer, "writes_performed": false}),
-                "Set reviewer to human:<name>; canon never merges on its own",
+                "Set reviewer to human:<name>; canon never corrects on its own",
             ));
         }
         let mut evidence_ids = value
@@ -222,10 +337,22 @@ fn parse_lines(registry: &Path, from: &Path) -> Result<Vec<MergeLine>, Refusal> 
         if evidence_ids.is_empty() {
             return Err(refusal(
                 registry,
-                format!("corrections line {number}: a merge needs at least one evidence id"),
+                format!("corrections line {number}: a correction needs at least one evidence id"),
                 json!({"line": number, "writes_performed": false}),
-                "List the evidence ids that justify the merge",
+                "List the evidence ids that justify the correction",
             ));
+        }
+        let reason = field("reason").unwrap_or_default().to_string();
+        let source = value.get("source").cloned().unwrap_or(Value::Null);
+        if op != "merge" {
+            let review = ops::Review {
+                reviewer,
+                evidence_ids,
+                reason,
+                source,
+            };
+            lines.push(ops::parse_op(registry, &op, &value, number, review)?);
+            continue;
         }
         let survivor = required("survivor")?;
         let retired = required("retired")?;
@@ -237,14 +364,14 @@ fn parse_lines(registry: &Path, from: &Path) -> Result<Vec<MergeLine>, Refusal> 
                 "Name two different canonical ids",
             ));
         }
-        lines.push(MergeLine {
+        lines.push(Correction::Merge(MergeLine {
             survivor,
             retired,
             reviewer,
             evidence_ids,
-            reason: field("reason").unwrap_or_default().to_string(),
-            source: value.get("source").cloned().unwrap_or(Value::Null),
-        });
+            reason,
+            source,
+        }));
     }
     if lines.is_empty() {
         return Err(refusal(
@@ -362,7 +489,10 @@ fn load_model(registry: &Path) -> Result<Model, Refusal> {
         version_before: text("version"),
         mapping,
         relations: read_lines(&relations_path).map(|lines| (relations_path, lines)),
-        cannot_link: read_lines(&cannot_path).map(|lines| (cannot_path, lines)),
+        cannot_link: Some((
+            cannot_path.clone(),
+            read_lines(&cannot_path).unwrap_or_default(),
+        )),
         anchors,
         corrections_text: fs::read_to_string(registry.join(CORRECTIONS_FILE)).unwrap_or_default(),
     })
@@ -742,8 +872,8 @@ fn apply_merge(
     Ok(RegistryCorrectionSummary {
         correction_id,
         op: "merge".to_string(),
-        survivor: line.survivor.clone(),
-        retired: line.retired.clone(),
+        survivor: Some(line.survivor.clone()),
+        retired: Some(line.retired.clone()),
         outcome_ref,
         closure_hash,
         key_check,
@@ -753,6 +883,7 @@ fn apply_merge(
         dropped_relations,
         repointed_memory,
         superseded_aliases: superseded,
+        ..Default::default()
     })
 }
 
@@ -827,9 +958,23 @@ pub fn correct(request: RegistryCorrectRequest) -> Result<RegistryCorrectOutput,
     let original_anchors = model.anchors.clone();
 
     let mut summaries = Vec::new();
-    for line in &pending {
-        let key_check = validate(&registry, &model, line, rules.as_ref())?;
-        summaries.push(apply_merge(&registry, &mut model, line, key_check)?);
+    for correction in &pending {
+        let ctx = ops::Ctx {
+            correction_id: correction.correction_id(),
+            closure_hash: correction.closure_hash(),
+            outcome_ref: correction.outcome_ref(&model.registry_id),
+        };
+        summaries.push(match correction {
+            Correction::Merge(line) => {
+                let key_check = validate(&registry, &model, line, rules.as_ref())?;
+                apply_merge(&registry, &mut model, line, key_check)?
+            }
+            Correction::Detach(line) => ops::apply_detach(&registry, &mut model, line, &ctx)?,
+            Correction::Split(line) => ops::apply_split(&registry, &mut model, line, &ctx)?,
+            Correction::RemoveCannotLink(line) => {
+                ops::apply_remove_cannot_link(&registry, &mut model, line, &ctx)?
+            }
+        });
     }
 
     let version_after = resolve_next_version(
@@ -890,31 +1035,48 @@ pub fn correct(request: RegistryCorrectRequest) -> Result<RegistryCorrectOutput,
     if !corrections_text.is_empty() && !corrections_text.ends_with('\n') {
         corrections_text.push('\n');
     }
-    for (line, summary) in pending.iter().zip(&summaries) {
-        let stored = json!({
+    for (correction, summary) in pending.iter().zip(&summaries) {
+        let (reviewer, evidence_ids, reason, source) = correction.review();
+        let mut stored = json!({
             "version": REGISTRY_CORRECTION_LINE_VERSION,
             "correction_id": summary.correction_id,
-            "op": "merge",
-            "survivor": line.survivor,
-            "retired": line.retired,
-            "reviewer": line.reviewer,
-            "evidence_ids": line.evidence_ids,
-            "reason": line.reason,
-            "source": line.source,
+            "op": correction.op(),
+            "reviewer": reviewer,
+            "evidence_ids": evidence_ids,
+            "reason": reason,
+            "source": source,
             "outcome_ref": summary.outcome_ref,
             "closure_hash": summary.closure_hash,
-            "key_check": summary.key_check,
             "version_before": version_before,
             "version_after": version_after,
-            "repointed": {
-                "aliases": summary.repointed_aliases,
-                "key_aliases": summary.repointed_key_aliases,
-                "relations": summary.repointed_relations,
-                "dropped_relations": summary.dropped_relations,
-                "memory": summary.repointed_memory,
-            },
             "changed_files": recorded_files,
         });
+        if let Some(object) = stored.as_object_mut() {
+            match correction {
+                Correction::Merge(line) => {
+                    object.insert("survivor".to_string(), json!(line.survivor));
+                    object.insert("retired".to_string(), json!(line.retired));
+                    object.insert("key_check".to_string(), json!(summary.key_check));
+                    object.insert(
+                        "repointed".to_string(),
+                        json!({
+                            "aliases": summary.repointed_aliases,
+                            "key_aliases": summary.repointed_key_aliases,
+                            "relations": summary.repointed_relations,
+                            "dropped_relations": summary.dropped_relations,
+                            "memory": summary.repointed_memory,
+                        }),
+                    );
+                }
+                _ => {
+                    if let Some(extra) = summary.stored.as_object() {
+                        for (key, value) in extra {
+                            object.insert(key.clone(), value.clone());
+                        }
+                    }
+                }
+            }
+        }
         corrections_text.push_str(&serde_json::to_string(&stored).unwrap_or_default());
         corrections_text.push('\n');
     }
