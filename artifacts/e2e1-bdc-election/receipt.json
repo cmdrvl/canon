@@ -1,0 +1,31 @@
+{
+  "schema": "e2e1.artifact_receipt.v0",
+  "bead": "bd-z4eu",
+  "source_table": "edgar_db.DBT_STAGING_EDGAR.STG_EDGAR_BDC_ELECTION_INDEX",
+  "catalog_key": "snowflake://edgar_db.dbt_staging_edgar/stg_edgar_bdc_election_index",
+  "read_on": "2026-11-17",
+  "read_through": "cmdrvl-data MCP (edgar_data_run_query, then edgar_data_fetch_result paging)",
+  "query": "SELECT LPAD(TO_VARCHAR(CIK),10,'0') || '|' || COMPANY_NAME || '|' || LISTAGG(DISTINCT FILING_TYPE, '+') WITHIN GROUP (ORDER BY FILING_TYPE) || '|' || TO_VARCHAR(MIN(DATE_FILED)) || '|' || TO_VARCHAR(MAX(DATE_FILED)) || '|' || TO_VARCHAR(COUNT(*)) AS r FROM DBT_STAGING_EDGAR.STG_EDGAR_BDC_ELECTION_INDEX GROUP BY CIK, COMPANY_NAME ORDER BY CIK, COMPANY_NAME",
+  "mcp_first_page_result_digest": "sha256:ebc5590505db9e6e4e4ea660a8a3c31da330e8c23490dee4d4f60ad50e913df8",
+  "warehouse_counts": {
+    "submission_rows": 958,
+    "distinct_ciks": 523,
+    "cik_name_pairs": 609,
+    "distinct_upper_names": 607,
+    "ciks_with_multiple_names": 82,
+    "names_with_multiple_ciks": 2
+  },
+  "file_counts": {
+    "rows": 609,
+    "distinct_ciks": 523,
+    "sum_submissions": 958
+  },
+  "byte_check": {
+    "method": "MD5 over the 609 pipe-delimited rows joined by a single newline, no trailing newline, in (CIK, COMPANY_NAME) order",
+    "warehouse_md5": "f0a7d9c4c6d5bc7a918b1183d7b47015",
+    "file_md5": "f0a7d9c4c6d5bc7a918b1183d7b47015",
+    "equal": true
+  },
+  "csv_sha256": "bad0c2d13219b5e89dfbbc620d2614be182a41e7bc2e8bbccc93969486b0e3c6",
+  "transcription_note": "The rows reached this file through an agent's context from the MCP pages, not through a program; the equal MD5 against a warehouse-computed MD5 is the control that no byte changed."
+}
