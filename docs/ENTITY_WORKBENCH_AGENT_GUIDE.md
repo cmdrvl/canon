@@ -481,6 +481,13 @@ rows are candidates only for the session's surfaces: a registry of 50,000
 unrelated aliases adds work to prepare and index it, but no registry-to-registry
 pair is generated or scored (`registry_candidates` in the output says so, and
 `records_digest` is unchanged). `--no-registry-candidates` turns it off.
+The rule table decides what is the same spelling: an `exact_view` hit to a
+registry alias attaches only when the two spellings are equal after
+`incumbent_attach.name_equivalent_steps` in the rules file (the template from
+`session rules init` ships `[casefold, strip_punctuation, collapse_whitespace]`).
+A rules file without that section still gets the evidence, but solve treats it
+as a review item that needs a second lineage, which a registry alias cannot
+bring, and nothing attaches.
 
 Similar is not equal: `Mode Purchaser` and `BGI Purchaser` produce
 `name_similar` only and are never accepted, whatever the lineages. The profile

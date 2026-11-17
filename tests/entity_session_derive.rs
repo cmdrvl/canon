@@ -116,6 +116,8 @@ struct Case {
     session: PathBuf,
     rules: PathBuf,
     strategy: PathBuf,
+    /// registry id, id prefix and zero pad the session binds.
+    shape: (String, String, String),
 }
 
 fn init(rules: &str) -> Case {
@@ -152,6 +154,7 @@ fn init(rules: &str) -> Case {
         session,
         rules: rules_path,
         strategy,
+        shape: ("organisations".into(), "ORG".into(), "3".into()),
     }
 }
 
@@ -445,11 +448,11 @@ impl Case {
                 "--work-dir",
                 p(&session),
                 "--registry-id",
-                "organisations",
+                &self.shape.0,
                 "--prefix",
-                "ORG",
+                &self.shape.1,
                 "--zero-pad",
-                "3",
+                &self.shape.2,
             ],
             0,
         );
@@ -459,6 +462,7 @@ impl Case {
             session,
             rules: self.rules.clone(),
             strategy: self.strategy.clone(),
+            shape: self.shape.clone(),
         }
     }
 
@@ -739,4 +743,139 @@ fn real_bdc_gold_sets_derive_name_equivalent_without_script_evidence() {
         );
         assert_eq!(committed["outcome"], "committed");
     }
+}
+
+// ---------------------------------------------------------------------------
+// An independently shaped fixture: a different registry id, prefix and pad (the
+// registry created by `registry init`, not by session init), a different source
+// id, and derive run on day one as well as day two.
+// ---------------------------------------------------------------------------
+
+fn shaped_observation(obs_id: &str, lineage: &str, surface: &str, keys: Value) -> Value {
+    let mut row = observation(obs_id, lineage, surface, keys);
+    row["source"]["id"] = json!("mine");
+    row
+}
+
+fn shaped_case(rules: &str) -> Case {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    let rules_path = root.join("rules.yaml");
+    fs::write(&rules_path, rules).unwrap();
+    let strategy = root.join("strategy.yaml");
+    fs::write(&strategy, STRATEGY).unwrap();
+    run_json(
+        &[
+            "registry",
+            "init",
+            "--registry",
+            p(&root.join("registry")),
+            "--registry-id",
+            "orgs",
+            "--prefix",
+            "O",
+            "--zero-pad",
+            "4",
+        ],
+        0,
+    );
+    let case = Case {
+        _temp: Some(temp),
+        root: root.clone(),
+        session: root.join("day-one"),
+        rules: rules_path,
+        strategy,
+        shape: ("orgs".into(), "O".into(), "4".into()),
+    };
+    run_json(
+        &[
+            "entity",
+            "session",
+            "init",
+            "--goal",
+            "day one",
+            "--registry",
+            p(&root.join("registry")),
+            "--work-dir",
+            p(&case.session),
+            "--registry-id",
+            "orgs",
+            "--prefix",
+            "O",
+            "--zero-pad",
+            "4",
+        ],
+        0,
+    );
+    case
+}
+
+/// Day one mints O-0001 "Apex Capital LLC" (cik 100) and commits; day two is a
+/// new session with one row, no key, another lineage.
+fn shaped_day_two(rules: &str) -> (Case, Case) {
+    let day_one = shaped_case(rules);
+    day_one.ingest(&[shaped_observation(
+        "a1",
+        "fundA",
+        "Apex Capital LLC",
+        json!({"cik": "100"}),
+    )]);
+    day_one.derive_with(&day_two_profile(), &[], 0);
+    day_one.solve();
+    let committed = day_one.commit("1.0.0", 0);
+    assert_eq!(committed["outcome"], "committed", "{committed}");
+    let day_two = day_one.second("day-two");
+    day_two.ingest(&[shaped_observation(
+        "n1",
+        "fundB",
+        "APEX CAPITAL LLC",
+        json!({}),
+    )]);
+    (day_one, day_two)
+}
+
+#[test]
+fn day_two_attaches_on_an_independently_shaped_fixture() {
+    let (day_one, day_two) = shaped_day_two(RULES);
+    let derived = day_two.derive_with(&day_two_profile(), &[], 0);
+    eprintln!("shaped derive: {derived}");
+    assert!(count(&derived, "name_equivalent") >= 1, "{derived}");
+    let solved = day_two.solve();
+    eprintln!("shaped solve: {solved}");
+    assert_eq!(solved["summary"]["review"], 0, "{solved}");
+    let committed = day_two.commit("1.1.0", 0);
+    assert_eq!(committed["outcome"], "committed", "{committed}");
+    assert!(committed["minted"].as_array().unwrap().is_empty());
+    assert_eq!(committed["attached"].as_array().unwrap().len(), 1);
+    assert_eq!(committed["attached"][0]["canonical_id"], "O-0001");
+    assert!(
+        registry_inputs(&day_one).contains(&("APEX CAPITAL LLC".to_string(), "O-0001".to_string()))
+    );
+}
+
+/// The rule table decides what counts as the same spelling: without
+/// `incumbent_attach.name_equivalent_steps` a derived name_equivalent to a
+/// registry alias is review material that needs a second lineage (the registry
+/// endpoint brings none), so nothing attaches. The guide says to keep the
+/// section the rules template ships with.
+#[test]
+fn without_incumbent_attach_steps_the_registry_hit_is_a_review_item_and_nothing_attaches() {
+    let without = RULES.replace(
+        "incumbent_attach:\n  name_equivalent_steps: [casefold, strip_punctuation, collapse_whitespace]\n",
+        "",
+    );
+    assert!(!without.contains("incumbent_attach"));
+    let (day_one, day_two) = shaped_day_two(&without);
+    let before = registry_inputs(&day_one);
+    let derived = day_two.derive_with(&day_two_profile(), &[], 0);
+    assert!(
+        count(&derived, "name_equivalent") >= 1,
+        "evidence is derived either way"
+    );
+    let solved = day_two.solve();
+    assert_eq!(solved["summary"]["review"], 1, "{solved}");
+    assert_eq!(solved["review"][0]["missing"], "second_lineage");
+    let committed = day_two.commit("1.1.0", 1);
+    assert_eq!(committed["outcome"], "nothing_to_commit");
+    assert_eq!(registry_inputs(&day_one), before);
 }
