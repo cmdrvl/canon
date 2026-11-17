@@ -403,6 +403,30 @@ wrote it, or look it up in a sealed pack. A hop that predates sessions has
 similarity. Across registries (`--registries`) only a relation line whose object
 names another registry's id crosses between them.
 
+## Corrections: merging two IDs that are one entity
+
+A session never merges two existing IDs (a cluster with two incumbents is an
+`incumbent_conflict` contradiction). A reviewer decides a merge, writes it as a
+line, and `registry correct` applies it as a new registry version:
+
+```bash
+echo '{"op":"merge","survivor":"ORG-001","retired":"ORG-002","reviewer":"human:zac","evidence_ids":["evidence:blake3:..."],"reason":"same legal entity, CIK 1234567 on both"}' > merge.jsonl
+canon registry correct --registry REG --from merge.jsonl --next-version 1.1.0 --rules rules.yaml --dry-run
+canon registry correct --registry REG --from merge.jsonl --next-version 1.1.0 --rules rules.yaml --expect-base blake3:...
+```
+
+The retired ID keeps resolving, exactly, to the survivor: `canon rows.csv
+--registry REG --column id` returns the survivor with rule_id
+`SUPERSEDED_ID_ALIAS`. It is not found by search (`superseded-id` in the search
+index) and is never minted again. Every re-pointed entry keeps the
+`session_authority` it had; the correction adds its own closure
+(`corrections.jsonl`, and the `SUPERSEDED_ID_ALIAS` entry), so
+`registry export --format link-evidence` from the retired ID to a survivor
+spelling returns a chain that includes it. A merge across a cannot-link, or
+(with `--rules`) of two IDs with different authoritative keys, is refused;
+without `--rules` the output says `key_check: not_run`. Rerunning the same file
+is `already_applied`.
+
 ## The loop
 
 ```text

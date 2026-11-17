@@ -433,6 +433,76 @@ fn lint_standard(context: &mut LintContext) {
     check_duplicate_inputs(context, &records);
     check_index_status(context, &mapping_files);
     lint_relation_sidecar(context, &records);
+    lint_corrections(context, &records);
+}
+
+/// A retired id (`corrections.jsonl`) has no remaining entry as a canonical id
+/// and exactly one `SUPERSEDED_ID_ALIAS`.
+fn lint_corrections(context: &mut LintContext, records: &[MappingRecord]) {
+    let path = context.registry_dir.join("corrections.jsonl");
+    let Ok(text) = fs::read_to_string(&path) else {
+        return;
+    };
+    let mut retired = std::collections::BTreeSet::new();
+    for line in text.lines().filter(|line| !line.trim().is_empty()) {
+        if let Ok(value) = serde_json::from_str::<Value>(line)
+            && let Some(id) = value.get("retired").and_then(Value::as_str)
+        {
+            retired.insert(id.to_string());
+        }
+    }
+    for id in retired {
+        let canonical = records
+            .iter()
+            .filter(|record| record.canonical_id == id)
+            .count();
+        if canonical > 0 {
+            context.finding(
+                RegistryLintSeverity::Error,
+                "corrections",
+                "retired_id_still_canonical",
+                format!("Retired id '{id}' still has {canonical} entr(ies) as a canonical_id"),
+                FindingLocation::path(&path),
+                json!({"retired": id, "entries": canonical}),
+                "Re-point the entries to the survivor with canon registry correct",
+            );
+        }
+        let superseded = records
+            .iter()
+            .filter(|record| record.input == id && record.rule_id.ends_with("SUPERSEDED_ID_ALIAS"))
+            .count();
+        // Exact lookup is first match in file order: an earlier entry holding the
+        // retired id's string would shadow the superseded alias.
+        if let Some(first) = records.iter().find(|record| record.input == id)
+            && !first.rule_id.ends_with("SUPERSEDED_ID_ALIAS")
+        {
+            context.finding(
+                RegistryLintSeverity::Error,
+                "corrections",
+                "retired_id_shadowed",
+                format!(
+                    "Retired id '{id}' is shadowed by an earlier entry for canonical id '{}'",
+                    first.canonical_id
+                ),
+                FindingLocation::path(&path),
+                json!({"retired": id, "shadowed_by": first.canonical_id, "source_file": first.source_file}),
+                "Remove the entry that claims the retired id's string, then rerun",
+            );
+        }
+        if superseded != 1 {
+            context.finding(
+                RegistryLintSeverity::Error,
+                "corrections",
+                "retired_id_alias_count",
+                format!(
+                    "Retired id '{id}' needs exactly one SUPERSEDED_ID_ALIAS, found {superseded}"
+                ),
+                FindingLocation::path(&path),
+                json!({"retired": id, "superseded_id_aliases": superseded}),
+                "Repair the registry or reapply the correction",
+            );
+        }
+    }
 }
 
 fn lint_relation_sidecar(context: &mut LintContext, records: &[MappingRecord]) {

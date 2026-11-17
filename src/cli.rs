@@ -1243,6 +1243,8 @@ pub enum RegistrySubcommand {
     Lint(RegistryLintCli),
     /// List registry build providers available for materialization
     Providers(RegistryProvidersCli),
+    /// Merge two canonical IDs as a reviewed registry version; the retired ID resolves to the survivor
+    Correct(RegistryCorrectCli),
     /// Show the --provider-config option schema for one provider
     #[command(name = "provider-schema")]
     ProviderSchema(RegistryProviderSchemaCli),
@@ -1355,6 +1357,46 @@ pub struct RegistryInitCli {
     /// Human-readable registry description
     #[arg(long)]
     pub description: Option<String>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+#[command(group(
+    ArgGroup::new("version")
+        .required(true)
+        .args(["next_version", "bump"])
+))]
+pub struct RegistryCorrectCli {
+    /// Registry directory to correct
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Corrections JSONL written by a reviewer: one {"op":"merge",...} line per merge
+    #[arg(long = "from")]
+    pub from: PathBuf,
+
+    /// Explicit next registry version
+    #[arg(long = "next-version")]
+    pub next_version: Option<String>,
+
+    /// Registry version component to bump
+    #[arg(long, value_enum, conflicts_with = "next_version")]
+    pub bump: Option<RegistryVersionBumpMode>,
+
+    /// Rule table; with it a merge of ids carrying different authoritative single-valued keys is refused
+    #[arg(long)]
+    pub rules: Option<PathBuf>,
+
+    /// Refuse with base_moved unless the registry directory's content_hash is this value
+    #[arg(long = "expect-base")]
+    pub expect_base: Option<String>,
+
+    /// Print the plan and leave every file byte-identical
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]

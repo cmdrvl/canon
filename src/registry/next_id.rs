@@ -146,6 +146,9 @@ fn allocate_next(
 ) -> Result<Allocation, Refusal> {
     let namespace = format!("{}-", scheme.prefix);
     let mut distinct_ids = BTreeSet::new();
+    // A retired id is never minted again, even though no entry carries it as a
+    // canonical id any more.
+    distinct_ids.extend(super::correct::retired_ids(registry));
     for mapping_file in mapping_files {
         for entry in &mapping_file.entries {
             distinct_ids.insert(entry.canonical_id.clone());

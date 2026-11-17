@@ -492,6 +492,7 @@ canon registry mint-batch --registry <DIR> [--prefix <PREFIX>] --canonical-type 
 canon registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict] [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]
 canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
+canon registry correct --registry <DIR> --from <CORRECTIONS.jsonl> (--next-version <VER>|--bump patch|minor|major) [--rules <RULES.yaml>] [--expect-base <HASH>] [--dry-run] [--emit json|summary]
 canon registry lint <REGISTRY> [--profile standard|org|strategy|auto] [--emit json|summary]
 canon strategy profile <INPUT> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
 canon strategy audit --schema <PROFILE.json> --script <SCRIPT> --suite <DIR> [--emit json|summary]

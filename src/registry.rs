@@ -29,6 +29,7 @@ mod add_entry;
 pub mod agent_id;
 mod build;
 mod check_id;
+mod correct;
 pub mod domain_compile;
 mod export;
 pub mod export_projection;
@@ -49,6 +50,10 @@ pub use add_entry::{
     plan_add_entry, plan_add_entry_with_scope, read_add_entries,
 };
 pub use check_id::{RegistryCheckIdOutput, RegistryCheckIdRequest, check_id};
+pub use correct::{
+    REGISTRY_CORRECT_VERSION, RegistryCorrectOutput, RegistryCorrectRequest,
+    RegistryCorrectionSummary, correct,
+};
 pub use id_scheme::{
     RegistryDefaultIdSchemeOutput, RegistryDefaultIdSchemeRequest, set_default_id_scheme,
 };

@@ -394,7 +394,9 @@ pub fn build_entity_card_views(
                 &entry.canonical_type,
                 &entry.rule_id,
             ));
-            entity.names.insert(entry.input.clone());
+            if rank < 5 {
+                entity.names.insert(entry.input.clone());
+            }
             let candidate = (rank, entry.input);
             if entity
                 .display_name
@@ -1704,7 +1706,7 @@ fn insert_aliases(conn: &Connection, rows: &[ExportRow], path: &Path) -> Result<
         .map_err(|error| io_refusal(path, error))?;
     }
     conn.execute(
-        "INSERT INTO aliases_fts (rowid, alias, normalized_key, canonical_id, canonical_iri) SELECT id, alias, normalized_key, canonical_id, canonical_iri FROM aliases",
+        "INSERT INTO aliases_fts (rowid, alias, normalized_key, canonical_id, canonical_iri) SELECT id, alias, normalized_key, canonical_id, canonical_iri FROM aliases WHERE alias_kind <> 'superseded-id'",
         [],
     )
     .map_err(|error| io_refusal(path, error))?;
@@ -1941,6 +1943,11 @@ fn infer_alias_kind(
 ) -> String {
     let rule = rule_id.to_ascii_uppercase();
     let canonical_type_upper = canonical_type.to_ascii_uppercase();
+    // A retired id resolves on an exact hit only: it must be classed before the
+    // NAME / ALIAS tests, which its rule_id would satisfy.
+    if rule.ends_with("SUPERSEDED_ID_ALIAS") {
+        return "superseded-id".to_string();
+    }
     if normalize_search_key(input) == normalize_search_key(canonical_id) {
         return "id".to_string();
     }

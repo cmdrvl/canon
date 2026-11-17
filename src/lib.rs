@@ -206,6 +206,7 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
             RegistrySubcommand::AddEntry(add_entry) => run_registry_add_entry(add_entry),
             RegistrySubcommand::AddEntries(add_entries) => run_registry_add_entries(add_entries),
             RegistrySubcommand::Mint(mint) => run_registry_mint(mint),
+            RegistrySubcommand::Correct(correct) => run_registry_correct(correct),
             RegistrySubcommand::MintBatch(batch) => run_registry_mint_batch(batch),
             RegistrySubcommand::DefaultIdScheme(id_scheme) => {
                 run_registry_default_id_scheme(id_scheme)
@@ -4779,6 +4780,35 @@ fn run_registry_add_entries(add_entries: &RegistryAddEntriesCli) -> Result<u8, B
                 RegistryPlainJsonEmitMode::Plain => {
                     eprintln!("{}", serde_json::to_string(&output)?)
                 }
+            }
+            Ok(2)
+        }
+    }
+}
+
+fn run_registry_correct(correct: &crate::cli::RegistryCorrectCli) -> Result<u8, Box<dyn Error>> {
+    let result = registry::correct(registry::RegistryCorrectRequest {
+        registry: correct.registry.clone(),
+        from: correct.from.clone(),
+        next_version: correct.next_version.clone(),
+        bump: correct.bump.map(registry_version_bump),
+        rules: correct.rules.clone(),
+        expect_base: correct.expect_base.clone(),
+        dry_run: correct.dry_run,
+    });
+    match result {
+        Ok(output) => {
+            match correct.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => println!("{}", output.render_summary()),
+            }
+            Ok(0)
+        }
+        Err(refusal) => {
+            let output = refusal.to_canon_output();
+            match correct.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => eprintln!("{}", serde_json::to_string(&output)?),
             }
             Ok(2)
         }

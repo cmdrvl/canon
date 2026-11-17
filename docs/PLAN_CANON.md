@@ -147,6 +147,7 @@ canon registry mint-batch --registry <DIR> [--prefix <PREFIX>] --canonical-type 
 canon registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict] [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]
 canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
+canon registry correct --registry <DIR> --from <CORRECTIONS.jsonl> (--next-version <VER>|--bump patch|minor|major) [--rules <RULES.yaml>] [--expect-base <HASH>] [--dry-run] [--emit json|summary]
 canon registry lint <REGISTRY> [--profile standard|org|strategy|auto] [--emit json|summary]
 canon strategy profile <INPUT> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
 canon strategy audit --schema <PROFILE.json> --script <SCRIPT> --suite <DIR> [--emit json|summary]
@@ -322,6 +323,14 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - `canon_registry_link_evidence.v0`: `chain[{from, to, hop: identity|relation, relation, outcome_ref, closure_hash}]`, the shortest chain over committed outcomes only: alias and key entries and superseded-id aliases are identity hops, `relations.jsonl` lines are relation hops (never reported as identity); ties break by canonical id order
 - a hop whose entry predates sessions has `closure_hash: null, reason: no_session_authority`; no chain is `chain: null, reason: no_committed_chain` (exit 0), with `unresolved` naming an endpoint no registry holds
 - with `--registries` every mapped registry is searched in kind-name order, ids read `<registry id>:<canonical id>`, each hop names its registry, and the search leaves a registry only along a relation whose object is another registry's id; an identity hop never crosses a registry; with `--registry` alone a relation that names an id outside it adds a `note` pointing at `--registries`
+
+`canon registry correct --registry <DIR> --from <CORRECTIONS.jsonl> (--next-version <VER>|--bump patch|minor|major) [--rules <RULES.yaml>] [--expect-base <HASH>] [--dry-run] [--emit json|summary]`
+- merges two canonical IDs as a reviewed registry version: each line is `{"op":"merge","survivor","retired","reviewer":"human:<name>","evidence_ids":[...],"reason","source"}`; canon never generates or applies a merge on its own
+- refuses (writing nothing) unless both ids exist with one `canonical_type`, `reviewer` starts with `human:` and `evidence_ids` is non-empty; refuses a merge across a recorded cannot-link between the two ids, and with `--rules` a merge of ids carrying different values of an authoritative single-valued key (naming both); without `--rules` the output says `key_check: not_run`
+- re-points every alias and key alias (rule_id kept; the entry gains `correction` beside its original `session_authority`), relations and memory that name the retired id (a relation that becomes self-referential is dropped and reported), and writes the retired id (and its `cmdrvl:<ID>` form when present) as a `SUPERSEDED_ID_ALIAS` of the survivor, so exact lookup of the retired id resolves to the survivor and shows that rule_id
+- appends one line per correction to `corrections.jsonl` (full correction, versions, changed-file hashes, `outcome_ref`, `closure_hash`); the closure is the blake3 of the canonical correction as the reviewer wrote it, so one correction has one closure wherever applied, and the same closure is stamped on the `SUPERSEDED_ID_ALIAS` entry; `registry lint` checks every retired id has no canonical entry, exactly one `SUPERSEDED_ID_ALIAS`, and is not shadowed by an earlier entry; `registry next-id` never mints a retired id again
+- the output carries `base`, `new` and `changed_files` as `registry identity` defines them; `--expect-base` refuses `base_moved`; `--dry-run` writes nothing; rerunning an applied file is `already_applied` with no writes; a lint failure after the write restores every file
+- `registry export --format search-index` classes the retired id as `alias_kind` `superseded-id` and keeps it out of the full-text and ranked material, so only an exact hit finds it; detach and split are separate corrections (bd-vdcw.53)
 
 `canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary]`
 - verifies an agent-friendly id (`<kind>_` plus a 10-symbol body and 2 check symbols) before any lookup; every single-symbol substitution and adjacent swap is refused
