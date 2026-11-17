@@ -142,6 +142,12 @@ pub struct RelationProvenance {
     pub fragment: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observed_at: Option<String>,
+    /// The session outcome that wrote this line and the hash of its stored
+    /// closure (bd-vdcw.44). Absent on lines that predate sessions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closure_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

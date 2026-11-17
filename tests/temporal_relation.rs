@@ -319,6 +319,7 @@ fn sample_relation(spec: SampleRelationSpec<'_>) -> DirectedRelationFact {
             locator: "fixtures/temporal/relation.jsonl".to_string(),
             fragment: Some("row-1".to_string()),
             observed_at: Some("2026-08-01T09:30:00Z".to_string()),
+            ..Default::default()
         },
         policy_ref: "relation.default.v1".to_string(),
         constraints: RelationCardinalityConstraints {

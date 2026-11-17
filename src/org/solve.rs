@@ -108,6 +108,7 @@ fn solve_with_version(
                         left_key: incumbent_ids[0].clone(),
                         right_key: incumbent_ids[1].clone(),
                         reason: "multiple_incumbent_overlap".to_string(),
+                        ..Default::default()
                     }),
                 }),
             });
@@ -131,6 +132,7 @@ fn solve_with_version(
                             left_key: format!("{namespace}:{cluster_value}"),
                             right_key: format!("{namespace}:{incumbent_value}"),
                             reason: "trusted_anchor_conflict".to_string(),
+                            ..Default::default()
                         }),
                     }),
                 });

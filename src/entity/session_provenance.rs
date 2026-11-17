@@ -204,6 +204,66 @@ pub fn build_authority_material_for_subject_with_observations(
     })
 }
 
+/// What a relation or a cannot-link outcome closes over. Both are written at
+/// commit time next to the alias outcomes and share their manifest shape.
+#[derive(Debug, Clone)]
+pub struct OutcomeClosureInput<'a> {
+    /// `relation` or `cannot_link`.
+    pub kind: &'a str,
+    pub subject: &'a str,
+    pub registry_id: &'a str,
+    pub rules_hash: &'a str,
+    pub decision: Value,
+    pub observations: Vec<Value>,
+    pub evidence_ids: Vec<String>,
+}
+
+pub fn build_outcome_closure(input: OutcomeClosureInput<'_>) -> Result<SessionClosure, String> {
+    if !matches!(input.kind, "relation" | "cannot_link") {
+        return Err(format!("unsupported closure kind {}", input.kind));
+    }
+    if input.subject.trim().is_empty() {
+        return Err("closure subject cannot be empty".to_string());
+    }
+    let subject_hash = hash_bytes(input.subject.as_bytes());
+    let subject_hash = subject_hash
+        .strip_prefix("blake3:")
+        .unwrap_or(subject_hash.as_str());
+    let outcome_ref = format!(
+        "cmdrvl://canon/outcome/{}/{}/{subject_hash}",
+        input.registry_id, input.kind
+    );
+    let mut observations = input.observations;
+    observations.sort_by(|left, right| {
+        left.get("obs_id")
+            .and_then(Value::as_str)
+            .cmp(&right.get("obs_id").and_then(Value::as_str))
+    });
+    let manifest = json!({
+        "version": SESSION_CLOSURE_VERSION,
+        "outcome_ref": outcome_ref,
+        "kind": input.kind,
+        "subject": input.subject,
+        "decision": input.decision,
+        "inputs": {
+            "rules_hash": input.rules_hash,
+            "registry": {"id": input.registry_id},
+            "incumbents": [],
+        },
+        "observations": observations,
+        "evidence_ids": sorted_evidence_ids(&input.evidence_ids),
+        "upstream": [],
+        "sensitivity": DEFAULT_SENSITIVITY,
+    });
+    let bytes = serde_json::to_vec(&manifest)
+        .map_err(|error| format!("serialize evidence closure: {error}"))?;
+    Ok(SessionClosure {
+        outcome_ref,
+        closure_hash: hash_bytes(&bytes),
+        manifest,
+    })
+}
+
 pub fn sorted_evidence_ids(ids: &[String]) -> Vec<String> {
     let mut ids = ids.to_vec();
     ids.sort();

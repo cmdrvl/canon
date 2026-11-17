@@ -1675,6 +1675,7 @@ fn cannot_link_for_item(item: &ReviewItem) -> EntityResult<CannotLinkFact> {
             .contradiction_reason
             .clone()
             .unwrap_or_else(|| format!("review:{}", item.review_id)),
+        ..Default::default()
     })
 }
 

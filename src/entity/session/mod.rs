@@ -1021,12 +1021,25 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         cache_receipt_hash: hash_bytes(b"canon.entity.session.solve.receipt.v1"),
         stage_order: vec![SESSION_PUBLICATION_STAGE.to_string()],
         upstream_artifacts,
-        files: vec![EntityPublicationFileInput::new(
-            "solve/solve.json",
-            SESSION_PUBLICATION_STAGE,
-            SESSION_SOLVE_VERSION,
-            bytes,
-        )],
+        files: {
+            let mut files = vec![EntityPublicationFileInput::new(
+                "solve/solve.json",
+                SESSION_PUBLICATION_STAGE,
+                SESSION_SOLVE_VERSION,
+                bytes,
+            )];
+            // The rule table text the solve ran under, so an evidence closure
+            // can carry the text whose hash is `rules_hash`.
+            if let Ok(rules_text) = fs::read(&request.rules) {
+                files.push(EntityPublicationFileInput::new(
+                    "solve/rules.yaml",
+                    SESSION_PUBLICATION_STAGE,
+                    SESSION_SOLVE_VERSION,
+                    rules_text,
+                ));
+            }
+            files
+        },
         omit_logical_paths: Vec::new(),
     };
     let receipt = publish_stream_patch(&session, request).map_err(|error| {
@@ -1273,6 +1286,7 @@ pub fn commit(
             &observation_values,
             &binding.kind,
             Path::new(&binding.path),
+            &loaded_registry.meta.id,
         )?;
         let next_version = match request.next_version.as_deref() {
             Some(raw) => {
@@ -1298,6 +1312,7 @@ pub fn commit(
                 version: loaded_registry.meta.version.clone(),
                 snapshot_hash: registry_snapshot.clone(),
             },
+            rules_hash: artifact.inputs.rules_hash.clone(),
             entries,
             skipped,
             relations,
@@ -1398,11 +1413,13 @@ fn build_registry_memory_write(
     observation_values: &BTreeMap<String, Vec<Value>>,
     entity_kind: &str,
     registry_path: &Path,
+    registry_id: &str,
 ) -> Result<SessionRegistryMemoryWrite, Refusal> {
     let mut cannot_link = BTreeMap::<(String, String), CannotLinkFact>::new();
     let mut pending = BTreeMap::<String, PendingClusterRecord>::new();
     let mut review_pending = BTreeSet::<String>::new();
     let mut pending_clear = BTreeSet::new();
+    let mut closures = Vec::new();
 
     for record in evidence {
         if record.operator.operator_id != "distinct" || record.authority_basis.is_none() {
@@ -1421,13 +1438,48 @@ fn build_registry_memory_write(
             continue;
         }
         let (left_key, right_key) = ordered_pair(&left_key, &right_key);
-        cannot_link
-            .entry((left_key.clone(), right_key.clone()))
-            .or_insert(CannotLinkFact {
+        if let std::collections::btree_map::Entry::Vacant(slot) =
+            cannot_link.entry((left_key.clone(), right_key.clone()))
+        {
+            let observations = target_surfaces(left_id, right_id, observation_values)
+                .iter()
+                .flat_map(|surface| observation_values.get(surface).into_iter().flatten())
+                .cloned()
+                .collect::<Vec<_>>();
+            let closure = crate::entity::session_provenance::build_outcome_closure(
+                crate::entity::session_provenance::OutcomeClosureInput {
+                    kind: "cannot_link",
+                    subject: &format!("{left_key}|{right_key}"),
+                    registry_id,
+                    rules_hash: &artifact.inputs.rules_hash,
+                    decision: json!({
+                        "rule": "distinct",
+                        "reason": record.reason_code,
+                    }),
+                    observations,
+                    evidence_ids: vec![record.evidence_id.clone()],
+                },
+            )
+            .map_err(|error| {
+                solve_refusal(
+                    format!("Unable to build the evidence closure of a cannot-link fact: {error}"),
+                    json!({"left_key": left_key, "right_key": right_key, "writes_performed": false}),
+                    "Rerun canon entity session solve, then rerun commit",
+                )
+            })?;
+            slot.insert(CannotLinkFact {
                 left_key,
                 right_key,
                 reason: record.reason_code.clone(),
+                outcome_ref: Some(closure.outcome_ref.clone()),
+                closure_hash: Some(closure.closure_hash.clone()),
             });
+            closures.push(session::SessionCommitClosure {
+                outcome_ref: closure.outcome_ref,
+                closure_hash: closure.closure_hash,
+                manifest: closure.manifest,
+            });
+        }
         clear_pending_for_surfaces(
             &mut pending_clear,
             registry_path,
@@ -1537,6 +1589,7 @@ fn build_registry_memory_write(
         pending: pending.into_values().collect(),
         pending_clear: pending_clear.into_iter().collect(),
         review_pending: review_pending.into_iter().collect(),
+        closures,
     })
 }
 
@@ -1971,6 +2024,17 @@ fn build_commit_plan(
                 object,
                 valid_time: relation.valid_time.clone(),
                 evidence_ids: relation.evidence_ids.clone(),
+                observations: [&relation.subject_surface, &relation.object_surface]
+                    .iter()
+                    .flat_map(|surface| {
+                        context
+                            .observation_values
+                            .get(*surface)
+                            .into_iter()
+                            .flatten()
+                    })
+                    .cloned()
+                    .collect(),
             })
         })
         .collect();

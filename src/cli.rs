@@ -1699,6 +1699,8 @@ pub enum EntitySessionSubcommand {
     Frontier(EntitySessionFrontierCli),
     /// Plain rendering of the session frontier (same as frontier --emit summary)
     Next(EntitySessionNextCli),
+    /// Write the evidence behind each committed outcome as deterministic local files
+    Export(EntitySessionExportCli),
     /// Draw a deterministic tier sample or score operator labels
     Sample(EntitySessionSampleCli),
     /// Initialize or validate the deterministic session rule table
@@ -1888,6 +1890,35 @@ pub struct EntitySessionFrontierCli {
     /// Restrict the frontier to one entity's neighbourhood: a surface or canonical id
     #[arg(long = "seed-entity")]
     pub seed_entity: Option<String>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
+}
+
+#[derive(Debug, Clone, ValueEnum)]
+pub enum EntitySessionExportFormatCli {
+    /// One closure directory per outcome of the latest commit, ready for `pack seal`
+    #[value(name = "evidence-closure")]
+    EvidenceClosure,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntitySessionExportCli {
+    /// Session work directory
+    pub session: PathBuf,
+
+    /// Export format
+    #[arg(long, value_enum)]
+    pub format: EntitySessionExportFormatCli,
+
+    /// Directory to write the closure directories into
+    #[arg(long)]
+    pub out: PathBuf,
+
+    /// Write only this outcome's closure (its outcome_ref, as printed by commit)
+    #[arg(long)]
+    pub outcome: Option<String>,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]

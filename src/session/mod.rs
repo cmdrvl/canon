@@ -233,6 +233,8 @@ pub struct SessionCommitRelation {
     pub object: SessionCommitRelationEndpoint,
     pub valid_time: TimeInterval,
     pub evidence_ids: Vec<String>,
+    /// The observation records of both endpoints, kept in the relation's closure.
+    pub observations: Vec<Value>,
 }
 
 /// Registry sidecars that a session commit should merge with the current
@@ -246,6 +248,8 @@ pub struct SessionRegistryMemoryWrite {
     /// Escrow ids of `pending` records that come from a review pair. Records
     /// parked only for a contradiction are not listed here.
     pub review_pending: Vec<String>,
+    /// Closures of the cannot-link facts in `cannot_link`, keyed by their pair.
+    pub closures: Vec<SessionCommitClosure>,
 }
 
 /// Memory a commit must record on its own: a reviewed negative constraint, a
@@ -279,6 +283,7 @@ pub struct SessionCommitRequest {
     pub observations_generation: String,
     pub evidence_generation: Option<String>,
     pub registry: SessionCommitRegistryExpectation,
+    pub rules_hash: String,
     pub entries: Vec<SessionCommitEntry>,
     pub skipped: Vec<SessionCommitSkipped>,
     pub relations: Vec<SessionCommitRelation>,
@@ -1476,11 +1481,51 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
     }
     let prior_receipt =
         read_commit_receipt(&work_dir)?.filter(|receipt| receipt.solve_hash == request.solve_hash);
+    // Relations and cannot-link facts are outcomes too: each gets a closure,
+    // stored beside the alias closures and named on the line it wrote.
+    let relation_closures = request
+        .relations
+        .iter()
+        .map(|relation| {
+            relation_closure(
+                relation,
+                &minted_by_cluster,
+                &loaded_registry.meta.id,
+                &request.rules_hash,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut extra_refs = Vec::new();
+    for (subject_id, closure) in relation_closures.iter().flatten() {
+        validate_commit_closure(closure)?;
+        extra_refs.push((subject_id.clone(), closure.clone()));
+        closures.push(closure.clone());
+    }
+    if let Some(memory) = &request.memory {
+        for fact in &memory.cannot_link {
+            let Some(hash) = &fact.closure_hash else {
+                continue;
+            };
+            if let Some(closure) = memory
+                .closures
+                .iter()
+                .find(|closure| &closure.closure_hash == hash)
+            {
+                validate_commit_closure(closure)?;
+                extra_refs.push((fact.left_key.clone(), closure.clone()));
+                closures.push(closure.clone());
+            }
+        }
+    }
     if let Some(prior) = &prior_receipt {
         closures.extend(prior.closures.iter().cloned());
-        closures.sort_by(|left, right| left.closure_hash.cmp(&right.closure_hash));
-        closures.dedup_by(|left, right| left.closure_hash == right.closure_hash);
     }
+    closures.sort_by(|left, right| left.closure_hash.cmp(&right.closure_hash));
+    closures.dedup_by(|left, right| left.closure_hash == right.closure_hash);
+    let relation_closure_slots = relation_closures
+        .into_iter()
+        .map(|slot| slot.map(|(_, closure)| closure))
+        .collect::<Vec<_>>();
     let (closure_set, closure_set_hash) = if closures.is_empty() {
         (None, None)
     } else {
@@ -1563,6 +1608,7 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         &manifest.session_id,
         &request.solve_hash,
         &request.relations,
+        &relation_closure_slots,
         &minted_by_cluster,
     )?;
     let new_identity = registry::registry_identity(registry_path)?;
@@ -1599,6 +1645,18 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
                 ),
             });
         }
+    }
+    for (subject, closure) in &extra_refs {
+        closure_refs.push(SessionCommitClosureRef {
+            outcome_ref: closure.outcome_ref.clone(),
+            closure_hash: closure.closure_hash.clone(),
+            reference: registry::pinned_ref(
+                &new_identity.registry_id,
+                subject,
+                &new_identity.registry_version,
+                &closure.closure_hash,
+            ),
+        });
     }
     let mut current_registry = handoff_registry(
         current_registry,
@@ -2061,6 +2119,7 @@ fn write_relation_sidecar(
     session_id: &str,
     solve_hash: &str,
     relations: &[SessionCommitRelation],
+    closures: &[Option<SessionCommitClosure>],
     minted_by_cluster: &BTreeMap<String, String>,
 ) -> Result<usize, Refusal> {
     if relations.is_empty() {
@@ -2086,8 +2145,14 @@ fn write_relation_sidecar(
         .map(|fact| fact.relation_id.clone())
         .collect::<std::collections::BTreeSet<_>>();
     let mut new_facts = Vec::new();
-    for relation in relations {
-        let Some(fact) = build_relation_fact(relation, session_id, solve_hash, minted_by_cluster)?
+    for (index, relation) in relations.iter().enumerate() {
+        let Some(fact) = build_relation_fact(
+            relation,
+            session_id,
+            solve_hash,
+            minted_by_cluster,
+            closures.get(index).and_then(Option::as_ref),
+        )?
         else {
             continue;
         };
@@ -2181,6 +2246,7 @@ fn build_relation_fact(
     session_id: &str,
     solve_hash: &str,
     minted_by_cluster: &BTreeMap<String, String>,
+    closure: Option<&SessionCommitClosure>,
 ) -> Result<Option<DirectedRelationFact>, Refusal> {
     let Some(subject_id) = relation_endpoint_id(&relation.subject, minted_by_cluster) else {
         return Ok(None);
@@ -2258,6 +2324,8 @@ fn build_relation_fact(
             locator: format!("session:{session_id}:solve:{solve_hash}"),
             fragment,
             observed_at,
+            outcome_ref: closure.map(|closure| closure.outcome_ref.clone()),
+            closure_hash: closure.map(|closure| closure.closure_hash.clone()),
         },
         policy_ref: "canon.entity.session.relations.v1".to_string(),
         constraints: RelationCardinalityConstraints {
@@ -2272,6 +2340,55 @@ fn build_relation_fact(
             reason_code: "related_evidence".to_string(),
         },
     }))
+}
+
+/// The closure of one relation outcome: the pair of committed ids, the relation
+/// and the records of both endpoints. `None` when an endpoint has no id.
+fn relation_closure(
+    relation: &SessionCommitRelation,
+    minted_by_cluster: &BTreeMap<String, String>,
+    registry_id: &str,
+    rules_hash: &str,
+) -> Result<Option<(String, SessionCommitClosure)>, Refusal> {
+    let Some(subject_id) = relation_endpoint_id(&relation.subject, minted_by_cluster) else {
+        return Ok(None);
+    };
+    let Some(object_id) = relation_endpoint_id(&relation.object, minted_by_cluster) else {
+        return Ok(None);
+    };
+    let start = relation.valid_time.start_at.clone().unwrap_or_default();
+    let subject = format!("{subject_id}|{}|{object_id}|{start}", relation.relation);
+    let closure = crate::entity::session_provenance::build_outcome_closure(
+        crate::entity::session_provenance::OutcomeClosureInput {
+            kind: "relation",
+            subject: &subject,
+            registry_id,
+            rules_hash,
+            decision: json!({
+                "rule": "related_evidence",
+                "relation": relation.relation,
+                "subject_id": subject_id,
+                "object_id": object_id,
+                "valid_from": relation.valid_time.start_at,
+            }),
+            observations: relation.observations.clone(),
+            evidence_ids: relation.evidence_ids.clone(),
+        },
+    )
+    .map_err(|error| {
+        relation_refusal(
+            format!("Unable to build the evidence closure of a relation: {error}"),
+            false,
+        )
+    })?;
+    Ok(Some((
+        subject_id,
+        SessionCommitClosure {
+            outcome_ref: closure.outcome_ref,
+            closure_hash: closure.closure_hash,
+            manifest: closure.manifest,
+        },
+    )))
 }
 
 fn relation_endpoint_id(
@@ -4077,8 +4194,9 @@ mod tests {
                 end_bound: IntervalBoundary::Inclusive,
             },
             evidence_ids: vec!["evidence-1".to_string()],
+            observations: Vec::new(),
         };
-        let fact = build_relation_fact(&relation, "session-1", "solve-1", &BTreeMap::new())
+        let fact = build_relation_fact(&relation, "session-1", "solve-1", &BTreeMap::new(), None)
             .expect("valid relation")
             .expect("committed endpoints");
 
@@ -4117,9 +4235,12 @@ mod tests {
             },
             valid_time: TimeInterval::default(),
             evidence_ids: Vec::new(),
+            observations: Vec::new(),
         };
 
-        assert!(build_relation_fact(&relation, "session-1", "solve-1", &BTreeMap::new()).is_err());
+        assert!(
+            build_relation_fact(&relation, "session-1", "solve-1", &BTreeMap::new(), None).is_err()
+        );
     }
 }
 
@@ -4179,6 +4300,7 @@ mod commit_effect_tests {
                 left_key: "a".to_string(),
                 right_key: "b".to_string(),
                 reason: "distinct".to_string(),
+                ..Default::default()
             }],
             ..SessionRegistryMemoryWrite::default()
         };

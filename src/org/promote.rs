@@ -1161,6 +1161,7 @@ mod tests {
                             left_key: "lei:549300AAA".to_string(),
                             right_key: "lei:549300BBB".to_string(),
                             reason: "conflicting_trusted_anchor".to_string(),
+                            ..Default::default()
                         }),
                     }),
                 },

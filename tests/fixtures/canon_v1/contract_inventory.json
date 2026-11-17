@@ -549,7 +549,7 @@
       "family": "registry",
       "clap_path": "registry export",
       "operator_name": "registry export",
-      "primary_contracts": ["canon_registry_export.v0"],
+      "primary_contracts": ["canon_registry_export.v0", "canon_registry_link_evidence.v0"],
       "action": "preserve"
     },
     {
@@ -830,6 +830,14 @@
       "clap_path": "entity session explain",
       "operator_name": "entity session explain",
       "primary_contracts": ["canon.entity.session.explain.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity session export",
+      "family": "entity",
+      "clap_path": "entity session export",
+      "operator_name": "entity session export",
+      "primary_contracts": ["canon.entity.session.evidence_closure_export.v0"],
       "action": "preserve"
     },
     {
@@ -1430,6 +1438,7 @@
     { "id": "canon.entity.session.authority.v1", "family": "entity", "action": "preserve" },
     { "id": "canon.evidence_closure.v0", "family": "entity", "action": "preserve" },
     { "id": "canon.evidence_closure_set.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon.entity.session.evidence_closure_export.v0", "family": "entity", "action": "preserve" },
     { "id": "canon.entity.session.commit.receipt.v1", "family": "entity", "action": "preserve" },
     { "id": "canon.entity.session.evidence.v1", "family": "entity", "action": "preserve" },
     { "id": "canon.entity.session.evidence.receipt.v1", "family": "entity", "action": "preserve" },
@@ -1489,6 +1498,7 @@
     { "id": "canon_registry_mint_batch.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_check_id.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_identity.v0", "family": "registry", "action": "preserve" },
+    { "id": "canon_registry_link_evidence.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_ref_check.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_next_id.v0", "family": "registry", "action": "preserve" },
     { "id": "canon.registry_index.v2", "family": "registry", "action": "preserve" },

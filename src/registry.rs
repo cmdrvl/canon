@@ -35,6 +35,7 @@ pub mod export_projection;
 mod id_scheme;
 mod identity;
 mod init;
+mod link_evidence;
 mod mint;
 mod next_id;
 pub mod package;
@@ -58,6 +59,9 @@ pub use identity::{
     search_index_export_command,
 };
 pub use init::{RegistryInitOutput, RegistryInitRequest, init};
+pub use link_evidence::{
+    LinkEvidenceOutput, LinkEvidenceRequest, LinkHop, REGISTRY_LINK_EVIDENCE_VERSION, link_evidence,
+};
 pub use mint::{
     RegistryMintBatchEntry, RegistryMintBatchItem, RegistryMintBatchOutput,
     RegistryMintBatchRequest, RegistryMintOutput, RegistryMintRequest, mint, mint_batch,

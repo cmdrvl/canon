@@ -332,6 +332,11 @@ pub struct CannotLinkFact {
     pub left_key: String,
     pub right_key: String,
     pub reason: String,
+    /// The session outcome that wrote this fact (bd-vdcw.44).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closure_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

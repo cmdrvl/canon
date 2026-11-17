@@ -63,6 +63,7 @@
       "canon entity session explain <SESSION> <OBS_ID|SURFACE|cluster:CLUSTER_ID> [--emit json|summary]",
       "canon entity session frontier <SESSION> [--seed-entity <SURFACE_OR_ID>] [--emit json|summary]",
       "canon entity session next <SESSION> [--seed-entity <SURFACE_OR_ID>]",
+      "canon entity session export <SESSION> --format evidence-closure --out <DIR> [--outcome <OUTCOME_REF>] [--emit json|summary]",
       "canon entity session sample <SESSION> [--stratum tier_a|tier_b|tier_c|standalone|neighbourhood] [--count <N>] [--seed <SEED>] [--entity-type <TYPE>] [--blind] [--seed-entity <SURFACE_OR_ID>] [--score <LABELS.jsonl>] [--emit jsonl|json|summary]",
       "canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY_DIR> --work-dir <DIR>",
       "canon entity index build <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit json|summary]",
@@ -7637,6 +7638,88 @@
       "next_command": "canon entity session explain <SESSION> <OBS_ID|SURFACE|cluster:CLUSTER_ID> --emit json",
       "recovery": {
         "next_command": "Run canon entity session status <SESSION> --emit json",
+        "refusal_exit_code": 2
+      }
+    },
+    {
+      "name": "entity session export",
+      "usage": "canon entity session export <SESSION> --format evidence-closure --out <DIR> [--outcome <OUTCOME_REF>] [--emit json|summary]",
+      "description": "Write the evidence behind each outcome of the latest commit as deterministic local files, one directory per closure hash (closure.json, observations.jsonl, evidence.jsonl, rules.yaml) plus commit.json, for pack seal; canon seals, uploads and indexes nothing",
+      "output_mode": "mixed",
+      "output_schema": "canon.entity.session.evidence_closure_export.v0",
+      "status": "implemented",
+      "read_only": false,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads the committed session streams; writes only the closure files under --out",
+        "mutation_class": "OwnedOutput",
+        "network_class": "Offline",
+        "concurrency_class": "AtomicOwnedOutput",
+        "platform_classes": [
+          "PortablePathUtf8",
+          "SameFilesystemAtomicReplace"
+        ],
+        "declaration_command": "registry export"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": true,
+        "writes_registry_files": false,
+        "writes_work_dir": false,
+        "writes_output_files": true,
+        "uses_network": false,
+        "appends_witness_ledger": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "closure files written",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / the session has no commit, the outcome is unknown, or session artifacts are unreadable",
+          "domain": "error"
+        }
+      },
+      "options": [
+        {
+          "name": "session",
+          "type": "directory_path",
+          "required": true,
+          "position": 0,
+          "description": "Session work directory"
+        },
+        {
+          "name": "format",
+          "flag": "--format",
+          "type": "string",
+          "required": true,
+          "description": "Export format: evidence-closure"
+        },
+        {
+          "name": "out",
+          "flag": "--out",
+          "type": "directory_path",
+          "required": true,
+          "description": "Directory to write the closure directories into"
+        },
+        {
+          "name": "outcome",
+          "flag": "--outcome",
+          "type": "string",
+          "description": "Write only this outcome's closure (its outcome_ref)"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json or summary"
+        }
+      ],
+      "next_command": "canon entity session export <SESSION> --format evidence-closure --out <DIR> [--outcome <OUTCOME_REF>] [--emit json|summary]",
+      "recovery": {
+        "next_command": "Run canon entity session commit <SESSION> --next-version <VER>, then rerun",
         "refusal_exit_code": 2
       }
     },

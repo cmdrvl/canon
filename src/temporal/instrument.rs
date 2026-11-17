@@ -252,6 +252,7 @@ pub fn derive_instrument_identifier_succession(
             locator: fact.source_locator.locator.clone(),
             fragment: fact.source_locator.fragment.clone(),
             observed_at: fact.recorded_time.start_at.clone(),
+            ..Default::default()
         },
         policy_ref: INSTRUMENT_SUPERSEDED_BY_RELATION_POLICY_REF.to_string(),
         constraints: RelationCardinalityConstraints {
