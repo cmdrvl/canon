@@ -967,6 +967,9 @@ const SUPPORTED_SUPPORT_OPS: &[&str] = &[
     "tfidf_cosine",
     "date_transposed_digits",
     "two_token_reversal",
+    "numeric_within_tolerance",
+    "date_exact",
+    "categorical_match",
 ];
 
 const SUPPORTED_CANNOT_LINK_OPS: &[&str] = &[

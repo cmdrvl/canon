@@ -50,12 +50,16 @@ use crate::{
         },
         error::EntityRefusalKind,
         evidence::{
-            AnchorMatchSupportRequest, DateTransposedDigitSupportRequest, ExactViewSupportRequest,
-            IsinCusipArithmeticSupportRequest, StringSimilaritySupportRequest,
-            StructuredSupportError, TokenOverlapSupportRequest, TwoTokenReversalSupportRequest,
-            anchor_match_support_hit, date_transposed_digit_support_hit, exact_view_support_hit,
-            isin_cusip_arithmetic_support_hit, string_similarity_support_hit,
-            token_overlap_support_hit, two_token_reversal_support_hit,
+            AnchorMatchSupportRequest, CategoricalMatchSupportRequest, DateExactSupportRequest,
+            DateTransposedDigitSupportRequest, ExactViewSupportRequest,
+            IsinCusipArithmeticSupportRequest, NumericWithinToleranceSupportRequest,
+            StringSimilaritySupportRequest, StructuredSupportError, TokenOverlapSupportRequest,
+            TwoTokenReversalSupportRequest, anchor_match_support_hit,
+            categorical_match_support_hit, date_exact_support_hit,
+            date_transposed_digit_support_hit, exact_view_support_hit,
+            isin_cusip_arithmetic_support_hit, numeric_within_tolerance_support_hit,
+            string_similarity_support_hit, token_overlap_support_hit,
+            two_token_reversal_support_hit, validate_numeric_tolerance_params,
         },
         evidence_ir::{CANON_EVIDENCE_VERSION, canonical_bundle_bytes},
         graph::{
@@ -4035,6 +4039,11 @@ fn support_hits_for_candidate(
             "two_token_reversal" => {
                 two_token_reversal_support_for_spec(spec, left, right, context)?
             }
+            "numeric_within_tolerance" => {
+                numeric_within_tolerance_support_for_spec(spec, left, right, context)?
+            }
+            "date_exact" => date_exact_support_for_spec(spec, left, right, context)?,
+            "categorical_match" => categorical_match_support_for_spec(spec, left, right, context)?,
             _ => None,
         };
         if let Some(hit) = hit {
@@ -4231,6 +4240,9 @@ pub const RUN_SUPPORT_OPS: &[&str] = &[
     "tfidf_cosine",
     "date_transposed_digits",
     "two_token_reversal",
+    "numeric_within_tolerance",
+    "date_exact",
+    "categorical_match",
 ];
 
 /// Evidence operators a profile declares that `entity run` does not execute.
@@ -4567,6 +4579,122 @@ fn date_transposed_digits_support_for_spec(
     .map_err(|error| structured_edge_support_refusal("date_transposed_digits", error))
 }
 
+/// Attribute agreement is partial support: two rows agreeing on one attribute
+/// are not the same entity on that alone. The default score is therefore a
+/// fraction of the scale; `score_units: "0"` disables the operator.
+const ATTRIBUTE_AGREEMENT_DEFAULT_UNITS: u64 = 2_500;
+
+fn attribute_agreement_score_units(
+    spec: &EntityOperatorSpec,
+) -> Result<Option<ScoreUnits>, Refusal> {
+    let units = optional_score_units_param(spec, "score_units", "score")?.unwrap_or(
+        ScoreUnits::saturating_from_units(ATTRIBUTE_AGREEMENT_DEFAULT_UNITS),
+    );
+    Ok((units != ScoreUnits::ZERO).then_some(units))
+}
+
+/// `numeric_within_tolerance` over a declared field (a normalized view or an
+/// anchor): scaled-integer comparison, `absolute` and optional `relative_bps`.
+/// A value that is not a decimal is not agreement; a malformed tolerance is a
+/// profile error.
+fn numeric_within_tolerance_support_for_spec(
+    spec: &EntityOperatorSpec,
+    left: &PreparedSurfaceRecord,
+    right: &PreparedSurfaceRecord,
+    context: &EdgeSupportScoringContext<'_>,
+) -> Result<Option<EdgeEvidenceHit>, Refusal> {
+    let Some(score_units) = attribute_agreement_score_units(spec)? else {
+        return Ok(None);
+    };
+    let field = required_field_param(spec, "numeric_within_tolerance")?;
+    let absolute = optional_non_empty_param(spec, "absolute")?.unwrap_or("0");
+    validate_numeric_tolerance_params(absolute)
+        .map_err(|error| structured_edge_support_refusal("numeric_within_tolerance", error))?;
+    let relative_bps = optional_u32_param(spec, "relative_bps")?;
+    let operator_id = field_operator_id(spec, field);
+    for left_value in surface_field_values(left, field) {
+        for right_value in surface_field_values(right, field) {
+            let hit = numeric_within_tolerance_support_hit(NumericWithinToleranceSupportRequest {
+                namespace: context.support_namespace,
+                operator_id: &operator_id,
+                reason_code: "numeric_within_tolerance_support",
+                view_name: field,
+                left_value,
+                right_value,
+                absolute_tolerance: absolute,
+                relative_tolerance_bps: relative_bps,
+                score_units,
+            });
+            if let Ok(Some(hit)) = hit {
+                return Ok(Some(hit));
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// `date_exact` over a declared field: ISO dates only; anything else is not
+/// agreement.
+fn date_exact_support_for_spec(
+    spec: &EntityOperatorSpec,
+    left: &PreparedSurfaceRecord,
+    right: &PreparedSurfaceRecord,
+    context: &EdgeSupportScoringContext<'_>,
+) -> Result<Option<EdgeEvidenceHit>, Refusal> {
+    let Some(score_units) = attribute_agreement_score_units(spec)? else {
+        return Ok(None);
+    };
+    let field = required_field_param(spec, "date_exact")?;
+    let operator_id = field_operator_id(spec, field);
+    for left_value in surface_field_values(left, field) {
+        for right_value in surface_field_values(right, field) {
+            let hit = date_exact_support_hit(DateExactSupportRequest {
+                namespace: context.support_namespace,
+                operator_id: &operator_id,
+                reason_code: "date_exact_support",
+                view_name: field,
+                left_value,
+                right_value,
+                score_units,
+            });
+            if let Ok(Some(hit)) = hit {
+                return Ok(Some(hit));
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// `categorical_match` over a declared field: equal non-empty values.
+fn categorical_match_support_for_spec(
+    spec: &EntityOperatorSpec,
+    left: &PreparedSurfaceRecord,
+    right: &PreparedSurfaceRecord,
+    context: &EdgeSupportScoringContext<'_>,
+) -> Result<Option<EdgeEvidenceHit>, Refusal> {
+    let Some(score_units) = attribute_agreement_score_units(spec)? else {
+        return Ok(None);
+    };
+    let field = required_field_param(spec, "categorical_match")?;
+    let operator_id = field_operator_id(spec, field);
+    for left_value in surface_field_values(left, field) {
+        for right_value in surface_field_values(right, field) {
+            if let Some(hit) = categorical_match_support_hit(CategoricalMatchSupportRequest {
+                namespace: context.support_namespace,
+                operator_id: &operator_id,
+                reason_code: "categorical_match_support",
+                view_name: field,
+                left_value,
+                right_value,
+                score_units,
+            }) {
+                return Ok(Some(hit));
+            }
+        }
+    }
+    Ok(None)
+}
+
 fn two_token_reversal_support_for_spec(
     spec: &EntityOperatorSpec,
     left: &PreparedSurfaceRecord,
@@ -4641,6 +4769,24 @@ fn validate_edge_operator_params(profile: &EntityProfileDocument) -> Result<(), 
                     != Some(ScoreUnits::ZERO) =>
             {
                 required_support_view_name(spec, "two_token_reversal")?;
+            }
+            "numeric_within_tolerance" | "date_exact" | "categorical_match" => {
+                let enabled = attribute_agreement_score_units(spec)?.is_some();
+                if enabled {
+                    let operator: &'static str = match spec.op.as_str() {
+                        "numeric_within_tolerance" => "numeric_within_tolerance",
+                        "date_exact" => "date_exact",
+                        _ => "categorical_match",
+                    };
+                    required_field_param(spec, operator)?;
+                    if operator == "numeric_within_tolerance" {
+                        validate_numeric_tolerance_params(
+                            optional_non_empty_param(spec, "absolute")?.unwrap_or("0"),
+                        )
+                        .map_err(|error| structured_edge_support_refusal(operator, error))?;
+                        optional_u32_param(spec, "relative_bps")?;
+                    }
+                }
             }
             _ => {}
         }
@@ -7005,5 +7151,189 @@ mod cache_runtime_tests {
             .collect::<Vec<_>>();
         lines.sort();
         lines
+    }
+}
+
+#[cfg(test)]
+mod attribute_agreement_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn surface(id: &str, views: &[(&str, &str)]) -> PreparedSurfaceRecord {
+        let normalized_views = views
+            .iter()
+            .map(|(name, value)| {
+                (
+                    (*name).to_string(),
+                    json!({"value": value, "reason_codes": []}),
+                )
+            })
+            .collect::<serde_json::Map<_, _>>();
+        serde_json::from_value(json!({
+            "surface_id": id,
+            "profile_id": "attribute_test",
+            "surface_key": id,
+            "primary_surface": id,
+            "normalized_views": normalized_views,
+            "exact_lookup": {
+                "status": "unresolved",
+                "canonical_id": null,
+                "canonical_type": null,
+                "rule_id": null,
+                "matched_input": null,
+                "lookup_inputs": [],
+                "registry_snapshot": {
+                    "id": "r", "version": "1.0.0", "source": "r", "lookup_snapshot_hash": "blake3:00"
+                }
+            },
+            "raw_variants": [id],
+            "alias_surfaces": [],
+            "mention_surfaces": [],
+            "row_count": 1,
+            "deal_count": 0,
+            "provenance_samples": []
+        }))
+        .expect("surface fixture")
+    }
+
+    fn spec(op: &str, params: &[(&str, &str)]) -> EntityOperatorSpec {
+        EntityOperatorSpec {
+            op: op.to_string(),
+            view: None,
+            params: params
+                .iter()
+                .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+                .collect(),
+        }
+    }
+
+    fn run_spec(
+        spec: &EntityOperatorSpec,
+        left: &PreparedSurfaceRecord,
+        right: &PreparedSurfaceRecord,
+    ) -> Result<Option<EdgeEvidenceHit>, Refusal> {
+        let profile = EntityProfileDocument::default();
+        let surfaces = [left.clone(), right.clone()];
+        let context =
+            EdgeSupportScoringContext::new(&profile, "ns", "rel", &surfaces).expect("context");
+        match spec.op.as_str() {
+            "numeric_within_tolerance" => {
+                numeric_within_tolerance_support_for_spec(spec, left, right, &context)
+            }
+            "date_exact" => date_exact_support_for_spec(spec, left, right, &context),
+            _ => categorical_match_support_for_spec(spec, left, right, &context),
+        }
+    }
+
+    #[test]
+    fn numeric_within_tolerance_uses_scaled_integers_and_the_declared_tolerance() {
+        let tolerance = spec(
+            "numeric_within_tolerance",
+            &[("field", "par"), ("absolute", "0.05")],
+        );
+        let left = surface("l", &[("par", "12500000")]);
+        let hit = run_spec(&tolerance, &left, &surface("r", &[("par", "12500000.04")]))
+            .unwrap()
+            .expect("within 0.05");
+        assert_eq!(hit.operator_id, "numeric_within_tolerance:par");
+        assert_eq!(hit.reason_code, "numeric_within_tolerance_support");
+        assert_eq!(
+            hit.score_units.as_u32(),
+            2_500,
+            "partial support by default"
+        );
+        // Outside the tolerance, a different value, a malformed value and a
+        // missing field are all no agreement.
+        for other in [
+            surface("r", &[("par", "13000000")]),
+            surface("r", &[("par", "n/a")]),
+            surface("r", &[("other", "12500000")]),
+        ] {
+            assert!(run_spec(&tolerance, &left, &other).unwrap().is_none());
+        }
+        // A relative tolerance in basis points.
+        let relative = spec(
+            "numeric_within_tolerance",
+            &[("field", "par"), ("relative_bps", "100")],
+        );
+        assert!(
+            run_spec(&relative, &left, &surface("r", &[("par", "12600000")]))
+                .unwrap()
+                .is_some(),
+            "0.8% is within 100 bps"
+        );
+        assert!(
+            run_spec(&relative, &left, &surface("r", &[("par", "13000000")]))
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn a_malformed_tolerance_or_missing_field_is_a_profile_error_and_score_zero_disables() {
+        let left = surface("l", &[("par", "1")]);
+        let right = surface("r", &[("par", "1")]);
+        let bad_tolerance = spec(
+            "numeric_within_tolerance",
+            &[("field", "par"), ("absolute", "lots")],
+        );
+        assert!(run_spec(&bad_tolerance, &left, &right).is_err());
+        let no_field = spec("numeric_within_tolerance", &[("absolute", "0.05")]);
+        assert!(run_spec(&no_field, &left, &right).is_err());
+        let disabled = spec(
+            "numeric_within_tolerance",
+            &[("field", "par"), ("score_units", "0")],
+        );
+        assert!(run_spec(&disabled, &left, &right).unwrap().is_none());
+    }
+
+    #[test]
+    fn date_exact_needs_equal_iso_dates() {
+        let date = spec("date_exact", &[("field", "maturity")]);
+        let left = surface("l", &[("maturity", "2030-06-30")]);
+        let hit = run_spec(&date, &left, &surface("r", &[("maturity", "2030-06-30")]))
+            .unwrap()
+            .expect("equal dates");
+        assert_eq!(hit.reason_code, "date_exact_support");
+        for other in [
+            surface("r", &[("maturity", "2030-06-29")]),
+            surface("r", &[("maturity", "06/2030")]),
+            surface("r", &[("maturity", "")]),
+            surface("r", &[("rate", "2030-06-30")]),
+        ] {
+            assert!(run_spec(&date, &left, &other).unwrap().is_none());
+        }
+    }
+
+    #[test]
+    fn categorical_match_needs_equal_non_empty_values() {
+        let categorical = spec("categorical_match", &[("field", "kind")]);
+        let left = surface("l", &[("kind", "First lien term loan")]);
+        let hit = run_spec(
+            &categorical,
+            &left,
+            &surface("r", &[("kind", "First lien term loan")]),
+        )
+        .unwrap()
+        .expect("equal categories");
+        assert_eq!(hit.reason_code, "categorical_match_support");
+        for other in [
+            surface("r", &[("kind", "Second lien term loan")]),
+            surface("r", &[("kind", "")]),
+            surface("r", &[("other", "First lien term loan")]),
+        ] {
+            assert!(run_spec(&categorical, &left, &other).unwrap().is_none());
+        }
+    }
+
+    #[test]
+    fn the_three_operators_are_executed_by_run_and_accepted_by_the_validator() {
+        for op in [
+            "numeric_within_tolerance",
+            "date_exact",
+            "categorical_match",
+        ] {
+            assert!(RUN_SUPPORT_OPS.contains(&op), "{op}");
+        }
     }
 }

@@ -470,6 +470,34 @@ Which operator emits which evidence type:
 | `anchor_conflict`, `attribute_conflict`, `protected_token_conflict` | `distinct` | vetoes a join |
 | `string_similarity`, `tfidf_cosine`, `two_token_reversal`, `token_overlap` | `name_similar` | never |
 | `date_transposed_digits` | `value_similar` | never |
+| `numeric_within_tolerance`, `date_exact`, `categorical_match` | `attribute_agreement` (one record per pair listing every agreeing attribute) | yes, as one evidence type (tier B needs a second type or lineage by the rule table) |
+
+**Attribute agreement.** Two rows that agree on declared attributes with no
+shared key and no similar name produce no candidate by name, so declare an exact
+blocking view over a composite of the attribute views
+(`composite_key: {views: [maturity_date, investment_type]}`) and the support
+operators on the attribute fields:
+
+```yaml
+evidence:
+  support:
+    - op: categorical_match
+      params: {field: investment_type}
+    - op: date_exact
+      params: {field: maturity_date}
+    - op: numeric_within_tolerance
+      params: {field: par_amount, absolute: "0.05"}
+```
+
+`field` names a normalized view (or anchor) of the profile, so map the attribute
+columns with `normalized_view_fields`. Values compare as scaled integers (no
+floats); a value that does not parse is not agreement, a malformed tolerance is a
+profile error. Derive writes ONE `attribute_agreement` record per pair, its
+`basis.attributes` listing each agreeing field with both values and the
+tolerance: three agreeing attributes are one evidence type, so they do not reach
+tier B on a same-lineage pair, and an `attribute_conflict` on the pair still
+vetoes. The default score of an attribute hit is 2,500 of 10,000 units
+(`score_units` changes it, `"0"` disables the operator).
 
 **Day two.** A new session whose rows share nothing with the first session's
 still finds its spellings: derive also puts the registry's aliases in the rows
@@ -788,6 +816,9 @@ hint per retained candidate.
 | support | tfidf_cosine | yes |
 | support | date_transposed_digits | yes |
 | support | two_token_reversal | yes |
+| support | numeric_within_tolerance | yes |
+| support | date_exact | yes |
+| support | categorical_match | yes |
 | cannot_link | anchor_conflict | yes |
 | cannot_link | attribute_conflict | yes |
 | cannot_link | protected_token_conflict | yes |

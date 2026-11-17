@@ -879,3 +879,267 @@ fn without_incumbent_attach_steps_the_registry_hit_is_a_review_item_and_nothing_
     assert_eq!(committed["outcome"], "nothing_to_commit");
     assert_eq!(registry_inputs(&day_one), before);
 }
+
+// ---------------------------------------------------------------------------
+// Attribute agreement (bd-vdcw.15): numeric_within_tolerance, date_exact and
+// categorical_match become one attribute_agreement record per pair.
+// ---------------------------------------------------------------------------
+
+const ATTRIBUTE_RULES: &str = r#"version: canon.entity.session.rules.v1
+keys:
+  cik: {authoritative: true, single_valued: true}
+tier_a:
+  evidence_types: [same_key, asserted_alias]
+tier_b:
+  eligible_evidence_types: [same_slot, attribute_agreement, name_equivalent]
+  min_distinct_evidence_types: 2
+  min_distinct_lineages: 2
+standalone:
+  mint_when_authoritative_key: true
+"#;
+
+const AGREE_ALL: &str = "    - op: categorical_match\n      params:\n        field: investment_type\n    - op: date_exact\n      params:\n        field: maturity_date\n    - op: numeric_within_tolerance\n      params:\n        field: par_amount\n        absolute: \"0.05\"";
+const AGREE_PAR_ONLY: &str = "    - op: numeric_within_tolerance\n      params:\n        field: par_amount\n        absolute: \"0.05\"";
+const ATTRIBUTE_BLOCK: &str =
+    "    - op: composite_key\n      views: [maturity_date, investment_type]";
+
+fn attribute_profile(support: &str, cannot_link: &str) -> String {
+    format!(
+        r#"profile: session_derive_attributes
+version: 0.1.0
+entity_type: organisation
+identity_semantics: same_normalized_name
+canonical_type: org
+required_fields: [source_row_id, surface]
+normalized_views:
+  core:
+    operators: [legal_basename]
+  row_key:
+    operators: [ascii_trim_upper]
+  investment_type:
+    operators: [identity]
+  maturity_date:
+    operators: [identity]
+  spread:
+    operators: [identity]
+  par_amount:
+    operators: [identity]
+prepare:
+  primary_surface_fields: [surface]
+  canonical_surface_normalized_view: core
+  normalized_view_fields:
+    core: surface
+    row_key: source_row_id
+    investment_type: investment_type
+    maturity_date: maturity_date
+    spread: spread
+    par_amount: par_amount
+  surface_key_fields: [row_key]
+  nullable_fields: [investment_type, maturity_date, spread, par_amount]
+  provenance_fields: [source_row_id, origin]
+blocking:
+  operators:
+{ATTRIBUTE_BLOCK}
+evidence:
+  support:
+{support}
+  cannot_link:
+{cannot_link}
+  relation_hints:
+    - op: cross_profile_alignment
+      params:
+        merge_authorized: "false"
+        review_policy: relation_hint_only
+patch_namespaces:
+  aliases: session_derive_attributes.aliases
+  distinct: session_derive_attributes.distinct
+  relations: session_derive_attributes.relations
+solve:
+  hard_cannot_link: contradiction
+  standalone_surfaces: include
+"#
+    )
+}
+
+fn loan(obs_id: &str, lineage: &str, surface: &str, spread: &str, par: &str) -> Value {
+    let mut row = observation(obs_id, lineage, surface, json!({}));
+    row["attrs"] = json!({
+        "investment_type": "First lien term loan",
+        "maturity_date": "2030-06-30",
+        "spread": spread,
+        "par_amount": par,
+    });
+    row
+}
+
+/// The `basis` Canon stored for the evidence between two observations.
+fn stored_basis(case: &Case, obs: &str) -> Vec<Value> {
+    let explained = run_json(&["entity", "session", "explain", p(&case.session), obs], 0);
+    explained["edges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|edge| edge["evidence"].as_array().unwrap().iter().cloned())
+        .collect()
+}
+
+#[test]
+fn agreeing_attributes_derive_one_record_per_pair_listing_each_of_them() {
+    let case = init(ATTRIBUTE_RULES);
+    case.ingest(&[
+        loan(
+            "r8",
+            "fundA",
+            "Project Falcon Buyer, Inc.",
+            "9.75",
+            "12500000",
+        ),
+        loan(
+            "r9",
+            "fundB",
+            "Falcon Parent Holdings (dba SkyWorks)",
+            "9.75",
+            "12500000",
+        ),
+        loan("z1", "fundA", "Zenith Partners", "9.75", "99999999"),
+    ]);
+    let derived = case.derive(&attribute_profile(AGREE_ALL, NO_CANNOT), 0);
+    eprintln!("attribute derive: {derived}");
+    // The pair agrees on three attributes: ONE evidence record, not three.
+    assert_eq!(count(&derived, "attribute_agreement"), 3, "{derived}");
+    let solved = case.solve();
+    eprintln!("attribute solve: {solved}");
+    assert_eq!(solved["summary"]["accepted_tier_a"], 0);
+    assert_eq!(
+        solved["summary"]["accepted_tier_b"], 0,
+        "attribute agreement alone is not acceptance"
+    );
+    // r8 / r9 as a review pair missing a second evidence type.
+    let review = solved["review"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| {
+            let pair = [
+                item["left_surface"].as_str(),
+                item["right_surface"].as_str(),
+            ];
+            pair.contains(&Some("Project Falcon Buyer, Inc."))
+                && pair.contains(&Some("Falcon Parent Holdings (dba SkyWorks)"))
+        })
+        .unwrap_or_else(|| panic!("no review item for r8/r9: {solved}"));
+    assert_eq!(review["missing"], "second_evidence_type");
+    assert_eq!(review["evidence_types"], json!(["attribute_agreement"]));
+
+    // The stored basis lists every agreeing attribute with both values and the tolerance.
+    let basis = stored_basis(&case, "r8");
+    let attribute = basis
+        .iter()
+        .find(|record| record["type"] == "attribute_agreement")
+        .and_then(|record| record["basis"].as_object().cloned())
+        .expect("attribute_agreement basis");
+    eprintln!("basis: {}", Value::Object(attribute.clone()));
+    assert_eq!(
+        attribute["fields"],
+        json!(["investment_type", "maturity_date", "par_amount"])
+    );
+    let par = attribute["attributes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["field"] == "par_amount")
+        .unwrap();
+    assert_eq!(par["left_value"], "12500000");
+    assert_eq!(par["right_value"], "12500000");
+    assert_eq!(par["tolerance"]["absolute"], "0.05");
+
+    // Idempotent.
+    let again = case.derive(&attribute_profile(AGREE_ALL, NO_CANNOT), 0);
+    assert_eq!(again["accepted"], 0);
+}
+
+#[test]
+fn a_par_outside_the_tolerance_yields_no_record_and_the_rest_still_agree() {
+    let case = init(ATTRIBUTE_RULES);
+    case.ingest(&[
+        loan(
+            "r8",
+            "fundA",
+            "Project Falcon Buyer, Inc.",
+            "9.75",
+            "12500000",
+        ),
+        loan(
+            "r9",
+            "fundB",
+            "Falcon Parent Holdings (dba SkyWorks)",
+            "9.75",
+            "13000000",
+        ),
+    ]);
+    // par alone: no record.
+    let par_only = case.derive(&attribute_profile(AGREE_PAR_ONLY, NO_CANNOT), 0);
+    assert_eq!(count(&par_only, "attribute_agreement"), 0, "{par_only}");
+}
+
+#[test]
+fn three_agreeing_attributes_on_a_same_lineage_pair_do_not_reach_tier_b() {
+    let case = init(ATTRIBUTE_RULES);
+    case.ingest(&[
+        loan(
+            "r8",
+            "fundA",
+            "Project Falcon Buyer, Inc.",
+            "9.75",
+            "12500000",
+        ),
+        loan(
+            "r9",
+            "fundA",
+            "Falcon Parent Holdings (dba SkyWorks)",
+            "9.75",
+            "12500000",
+        ),
+    ]);
+    let derived = case.derive(&attribute_profile(AGREE_ALL, NO_CANNOT), 0);
+    assert_eq!(
+        count(&derived, "attribute_agreement"),
+        1,
+        "one evidence type, not three: {derived}"
+    );
+    let solved = case.solve();
+    assert_eq!(solved["summary"]["accepted_tier_b"], 0, "{solved}");
+    assert_eq!(solved["summary"]["review"], 1);
+}
+
+#[test]
+fn an_attribute_conflict_on_the_same_pair_still_vetoes() {
+    let case = init(ATTRIBUTE_RULES);
+    case.ingest(&[
+        loan(
+            "r8",
+            "fundA",
+            "Project Falcon Buyer, Inc.",
+            "9.75",
+            "12500000",
+        ),
+        loan(
+            "r9",
+            "fundB",
+            "Falcon Parent Holdings (dba SkyWorks)",
+            "9.80",
+            "12500000",
+        ),
+    ]);
+    let conflict = "    - op: attribute_conflict\n      params:\n        field: spread\n        comparison: decimal_bps\n        tolerance_bps: \"1\"\n        rate_scale: percent\n        score_units: \"10000\"";
+    let derived = case.derive(&attribute_profile(AGREE_ALL, conflict), 0);
+    eprintln!("conflict derive: {derived}");
+    assert_eq!(count(&derived, "attribute_agreement"), 1, "{derived}");
+    assert_eq!(count(&derived, "distinct"), 1, "{derived}");
+    let solved = case.solve();
+    assert!(
+        solved["summary"]["contradiction"].as_u64().unwrap() >= 1,
+        "{solved}"
+    );
+    assert_eq!(solved["summary"]["accepted_tier_b"], 0);
+}

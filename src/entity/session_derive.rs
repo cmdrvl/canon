@@ -392,6 +392,10 @@ pub(crate) enum DerivedKind {
     NameSimilar,
     /// `date_transposed_digits`.
     ValueSimilar,
+    /// `numeric_within_tolerance`, `date_exact`, `categorical_match`: one record
+    /// per pair listing every agreeing attribute, so three agreeing attributes
+    /// are one evidence type, not three.
+    AttributeAgreement,
 }
 
 impl DerivedKind {
@@ -402,6 +406,7 @@ impl DerivedKind {
             Self::Distinct => "distinct",
             Self::NameSimilar => "name_similar",
             Self::ValueSimilar => "value_similar",
+            Self::AttributeAgreement => "attribute_agreement",
         }
     }
 }
@@ -424,6 +429,9 @@ pub(crate) fn kind_for_hit(lane: ScoreLane, operator_id: &str) -> Option<Derived
             "string_similarity" | "tfidf_cosine" | "two_token_reversal" | "token_overlap",
         ) => Some(DerivedKind::NameSimilar),
         (ScoreLane::Support, "date_transposed_digits") => Some(DerivedKind::ValueSimilar),
+        (ScoreLane::Support, "numeric_within_tolerance" | "date_exact" | "categorical_match") => {
+            Some(DerivedKind::AttributeAgreement)
+        }
         (
             ScoreLane::AntiMerge,
             "anchor_conflict" | "attribute_conflict" | "protected_token_conflict",
@@ -498,8 +506,8 @@ fn assertion_line(
             view_value(right.record, view).to_string(),
         ),
         (DerivedKind::SameKey | DerivedKind::Distinct, Some(field)) => (
-            anchor_text(left.record, field),
-            anchor_text(right.record, field),
+            attribute_value(left.record, field),
+            attribute_value(right.record, field),
         ),
         _ => (
             left.record.primary_surface.clone(),
@@ -545,6 +553,87 @@ fn split_inert(unwired: Vec<String>) -> (Vec<String>, Vec<String>) {
     unwired
         .into_iter()
         .partition(|label| !label.starts_with("relation_hints:"))
+}
+
+/// The value a surface holds for a declared attribute field: its normalized
+/// view of that name, else an anchor of that name.
+fn attribute_value(surface: &PreparedSurfaceRecord, field: &str) -> String {
+    let view = view_value(surface, field).trim();
+    if !view.is_empty() {
+        return view.to_string();
+    }
+    anchor_text(surface, field)
+}
+
+/// One `attribute_agreement` record for a pair, listing every attribute the
+/// pair agrees on: field, both values, the operator and its tolerance. Three
+/// agreeing attributes are one evidence type, never three records.
+fn attribute_agreement_line(
+    hits: &[&crate::entity::edge::EdgeEvidenceHit],
+    support: &[crate::entity::profile::EntityOperatorSpec],
+    profile_hash: &str,
+    left: &SurfaceInfo<'_>,
+    right: &SurfaceInfo<'_>,
+) -> Value {
+    let (left, right) = if left.obs_id <= right.obs_id {
+        (left, right)
+    } else {
+        (right, left)
+    };
+    let mut attributes = hits
+        .iter()
+        .map(|hit| {
+            let (operator, field) = hit
+                .operator_id
+                .split_once(':')
+                .unwrap_or((hit.operator_id.as_str(), ""));
+            let spec = support.iter().find(|spec| {
+                spec.op == operator
+                    && (spec.params.get("field").map(String::as_str) == Some(field)
+                        || spec.view.as_deref() == Some(field))
+            });
+            let tolerance = match (operator, spec) {
+                ("numeric_within_tolerance", Some(spec)) => json!({
+                    "absolute": spec.params.get("absolute").cloned().unwrap_or_else(|| "0".to_string()),
+                    "relative_bps": spec.params.get("relative_bps").cloned(),
+                }),
+                _ => Value::Null,
+            };
+            json!({
+                "field": field,
+                "operator": operator,
+                "left_value": attribute_value(left.record, field),
+                "right_value": attribute_value(right.record, field),
+                "tolerance": tolerance,
+            })
+        })
+        .collect::<Vec<_>>();
+    attributes.sort_by_key(|attribute| attribute["field"].as_str().unwrap_or_default().to_string());
+    attributes.dedup();
+    let fields = attributes
+        .iter()
+        .filter_map(|attribute| attribute["field"].as_str())
+        .collect::<Vec<_>>();
+    let rule = format!("attribute_agreement:{}", fields.join("+"));
+    let namespace = hits.first().map_or("", |hit| hit.namespace.as_str());
+    json!({
+        "type": "attribute_agreement",
+        "left": left.obs_id,
+        "right": right.obs_id,
+        "basis": {
+            "rule": rule,
+            "fields": fields,
+            "attributes": attributes,
+            "applies_to": "surface",
+            "explanation": hits
+                .iter()
+                .map(|hit| hit.explanation.as_str())
+                .collect::<Vec<_>>()
+                .join("; "),
+        },
+        "source": {"channel": "canon", "id": format!("derive:{rule}")},
+        "asserted_by": format!("canon:{namespace}:{rule}@{profile_hash}"),
+    })
 }
 
 pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refusal> {
@@ -750,12 +839,17 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
         if left.obs_id == right.obs_id || (left.is_registry() && right.is_registry()) {
             continue;
         }
+        let mut agreeing = Vec::<&crate::entity::edge::EdgeEvidenceHit>::new();
         for hit in &record.hits {
             let Some(kind) = kind_for_hit(hit.lane, &hit.operator_id) else {
                 continue;
             };
             if left.entity_type != right.entity_type {
                 cross_type_skipped += 1;
+                continue;
+            }
+            if kind == DerivedKind::AttributeAgreement {
+                agreeing.push(hit);
                 continue;
             }
             let steps = match (kind, hit.operator_id.split_once(':')) {
@@ -772,6 +866,18 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
                     right,
                     &steps,
                     &hit.explanation,
+                ),
+                &mut lines,
+            );
+        }
+        if !agreeing.is_empty() {
+            push(
+                attribute_agreement_line(
+                    &agreeing,
+                    &document.evidence.support,
+                    &profile_hash,
+                    left,
+                    right,
                 ),
                 &mut lines,
             );
