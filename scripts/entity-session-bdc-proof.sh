@@ -442,6 +442,7 @@ if len(second_aliases) != len(set(second_aliases)):
 print(json.dumps({"day_one_rows":len(first_rows),"day_two_rows":len(second_rows),"day_two_new_aliases":len(second_aliases)},sort_keys=True))
 PY
 
+snapshot_closures "$registry" "$work_dir/closures-before-step-eight.json"
 python3 - "$work_dir/heldout-b.jsonl" "$work_dir/step-eight-input.jsonl" <<'PY'
 import json, pathlib, sys
 source,out=map(pathlib.Path,sys.argv[1:]); rows=[json.loads(line) for line in source.read_text().splitlines() if line.strip()]
@@ -476,10 +477,16 @@ python3 - "$work_dir/step-eight-commit.json" <<'PY'
 import json, pathlib, sys
 value=json.loads(pathlib.Path(sys.argv[1]).read_text())
 if value.get("outcome")!="committed": raise SystemExit(f"step eight failed: {value}")
-if value.get("minted"): raise SystemExit(f"step eight minted IDs: {value['minted']}")
 if not value.get("attached"): raise SystemExit("step eight attached no spelling to an earlier ID")
-print(json.dumps({"minted":0,"attached":len(value.get("attached",[])),"skipped":len(value.get("skipped",[]))},sort_keys=True))
+attached_ids={row.get("canonical_id") for row in value.get("attached",[])}
+minted_ids={row.get("canonical_id") for row in value.get("minted",[])}
+if attached_ids & minted_ids:
+    raise SystemExit(f"step eight attached spelling received a newly minted ID: {sorted(attached_ids & minted_ids)}")
+print(json.dumps({"minted":len(minted_ids),"attached":len(value.get("attached",[])),"skipped":len(value.get("skipped",[]))},sort_keys=True))
 PY
+run_ok "step-eight-evidence-closure-export" "$canon_bin" entity session export "$step_session" --format evidence-closure --out "$work_dir/step-eight-evidence-closures" --emit json
+cp "$RUN_STDOUT_PATH" "$work_dir/step-eight-evidence-closure.json"
+python3 "$work_dir/verify-closures.py" step-eight "$registry" "$work_dir/step-eight-commit.json" "$work_dir/step-eight-evidence-closure.json" "$work_dir/closures-before-step-eight.json" "$work_dir/step-eight-closure-summary.json"
 run_ok "step-eight-registry-lint" "$canon_bin" registry lint "$registry" --emit json
 
 if [[ -n "$decision_review" ]]; then
@@ -494,7 +501,7 @@ fi
 python3 - "$work_dir/preexisting-aliases.json" "$registry" "$session" "$step_session" "$work_dir/evidence-provenance.json" <<'PY'
 import json, pathlib, sys
 baseline,registry,session,step,out=map(pathlib.Path,sys.argv[1:])
-old=json.loads(baseline.read_text()); current={}
+old={name: [tuple(row) for row in rows] for name, rows in json.loads(baseline.read_text()).items()}; current={}
 for path in sorted(registry.glob("*.json")):
     if path.name in {"registry.json","20-firm-keys.json"}: continue
     value=json.loads(path.read_text())
@@ -528,7 +535,7 @@ import json, pathlib, sys
 root,seed=pathlib.Path(sys.argv[1]),sys.argv[2]
 def load(name): return json.loads((root/name).read_text())
 one=load("day-one-solve.json"); d2=load("day-two-commit.json"); d3=load("step-eight-commit.json")
-summary={"proof_class":"real_data_public_command_replay","selection_seed":seed,"source_manifest":load("source-manifest.json"),"sample_manifest":load("sample-manifest.json"),"day_one_solve_hash":one.get("content_hash"),"day_one_counts":one.get("summary",one.get("counts",{})),"day_one_minted":len(load("day-one-commit.json").get("minted",[])),"day_one_attached":len(load("day-one-commit.json").get("attached",[])),"day_one_closure":load("day-one-closure-summary.json"),"day_two_minted":len(d2.get("minted",[])),"day_two_attached":len(d2.get("attached",[])),"day_two_noop":load("day-two-no-op.json").get("outcome"),"day_two_closure":load("day-two-closure-summary.json"),"step_eight_prelookup":load("step-eight-prelookup.json").get("summary",{}),"step_eight_minted":len(d3.get("minted",[])),"step_eight_attached":len(d3.get("attached",[])),"seeded_variant_lookup":load("seeded-variant-lookup.json").get("summary",{}),"evidence_provenance":load("evidence-provenance.json"),"operator_labels":"supplied" if (root/"operator-label-score.json").is_file() else "blocked","different_veto":"imported" if (root/"operator-different-review-import.json").is_file() else "blocked"}
+summary={"proof_class":"real_data_public_command_replay","selection_seed":seed,"source_manifest":load("source-manifest.json"),"sample_manifest":load("sample-manifest.json"),"day_one_solve_hash":one.get("content_hash"),"day_one_counts":one.get("summary",one.get("counts",{})),"day_one_minted":len(load("day-one-commit.json").get("minted",[])),"day_one_attached":len(load("day-one-commit.json").get("attached",[])),"day_one_closure":load("day-one-closure-summary.json"),"day_two_minted":len(d2.get("minted",[])),"day_two_attached":len(d2.get("attached",[])),"day_two_noop":load("day-two-no-op.json").get("outcome"),"day_two_closure":load("day-two-closure-summary.json"),"step_eight_prelookup":load("step-eight-prelookup.json").get("summary",{}),"step_eight_minted":len(d3.get("minted",[])),"step_eight_attached":len(d3.get("attached",[])),"step_eight_closure":load("step-eight-closure-summary.json"),"seeded_variant_lookup":load("seeded-variant-lookup.json").get("summary",{}),"evidence_provenance":load("evidence-provenance.json"),"operator_labels":"supplied" if (root/"operator-label-score.json").is_file() else "blocked","different_veto":"imported" if (root/"operator-different-review-import.json").is_file() else "blocked"}
 (root/"proof-summary.json").write_text(json.dumps(summary,indent=2,sort_keys=True)+"\n"); print(json.dumps(summary,sort_keys=True))
 PY
 printf 'proof_complete=true\noperator_label_sheet=%s\nproof_summary=%s\nretained_work_dir=true\n' "$work_dir/operator-label-sheet.jsonl" "$work_dir/proof-summary.json"
