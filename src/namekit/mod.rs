@@ -12,6 +12,7 @@ pub mod legal_suffix;
 pub mod ngram;
 pub mod normalize;
 pub mod person;
+pub mod security_tail;
 pub mod similarity;
 pub mod tenant;
 pub mod tfidf;
