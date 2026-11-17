@@ -6,7 +6,7 @@ use crate::{Refusal, RefusalCode, RegistryMeta};
 use chrono::{DateTime, SecondsFormat, Utc};
 use rusqlite::{Connection, params};
 use serde::Serialize;
-use serde_json::json;
+use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{self, File},
@@ -47,6 +47,62 @@ pub struct RegistryExportRequest {
     pub canonical_iri_prefix: String,
     pub schema_out: Option<PathBuf>,
     pub anti_collapse_test_out: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryEntityCardRequest {
+    pub registry: PathBuf,
+    pub out: PathBuf,
+    pub ids: Vec<String>,
+    pub max_bytes: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct RegistryEntityCard {
+    pub version: String,
+    pub id: String,
+    pub agent_id: String,
+    pub kind: String,
+    pub registry: RegistryEntityCardRegistry,
+    pub status: String,
+    pub successor: Option<String>,
+    pub name: String,
+    pub names: Vec<String>,
+    pub keys: BTreeMap<String, Vec<String>>,
+    pub part_of: Vec<RegistryEntityCardCounterpart>,
+    pub units: Vec<RegistryEntityCardCounterpart>,
+    pub distinct: Vec<RegistryEntityCardCounterpart>,
+    pub evidence: Option<RegistryEntityCardEvidence>,
+    pub truncated: Vec<RegistryEntityCardTruncation>,
+    #[serde(skip)]
+    authoritative_key_namespaces: BTreeSet<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct RegistryEntityCardRegistry {
+    pub id: String,
+    pub version: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct RegistryEntityCardCounterpart {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct RegistryEntityCardEvidence {
+    #[serde(rename = "ref")]
+    pub outcome_ref: String,
+    pub closure_hash: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct RegistryEntityCardTruncation {
+    pub field: String,
+    pub kept: usize,
+    pub of: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -288,6 +344,617 @@ impl RegistryExportFormat {
 pub fn export_registry(request: RegistryExportRequest) -> Result<RegistryExportOutput, Refusal> {
     let plan = plan_registry_export(request)?;
     execute_registry_export_plan(&plan)
+}
+
+pub fn build_entity_card_views(
+    registry_path: &Path,
+    ids: Option<&[String]>,
+) -> Result<Vec<RegistryEntityCard>, Refusal> {
+    let (_, registry, mapping_files) =
+        load_registry_definition(registry_path).map_err(|error| {
+            Refusal::bad_registry(&registry_path.display().to_string(), &error.to_string())
+        })?;
+    let source = read_card_source(registry_path, &mapping_files)?;
+    let mut entities = BTreeMap::<String, CardEntity>::new();
+    let mut retired = BTreeMap::<String, (String, String)>::new();
+    let mut aliases = BTreeMap::<String, BTreeSet<String>>::new();
+
+    for entry in source {
+        aliases
+            .entry(entry.input.clone())
+            .or_default()
+            .insert(entry.canonical_id.clone());
+        if entry.rule_id == "SUPERSEDED_ID_ALIAS" {
+            retired.insert(entry.input, (entry.canonical_id, entry.canonical_type));
+            continue;
+        }
+
+        let entity = entities
+            .entry(entry.canonical_id.clone())
+            .or_insert_with(|| CardEntity::new(&entry.canonical_id, &entry.canonical_type));
+        let key_namespace = card_key_namespace_of(&entry.rule_id);
+        if let Some((namespace, authoritative)) = key_namespace {
+            entity
+                .keys
+                .entry(namespace)
+                .or_default()
+                .insert(entry.input);
+            if authoritative && let Some(namespace) = key_namespace_of(&entry.rule_id) {
+                entity.authoritative_key_namespaces.insert(namespace);
+            }
+        } else if entry.rule_id == "SESSION_AGENT_ID" {
+            entity.agent_id = Some(match entity.agent_id.take() {
+                Some(current) => current.min(entry.input),
+                None => entry.input,
+            });
+        } else {
+            let rank = alias_display_rank(&infer_alias_kind(
+                &entry.input,
+                &entry.canonical_id,
+                &entry.canonical_type,
+                &entry.rule_id,
+            ));
+            entity.names.insert(entry.input.clone());
+            let candidate = (rank, entry.input);
+            if entity
+                .display_name
+                .as_ref()
+                .is_none_or(|current| candidate < *current)
+            {
+                entity.display_name = Some(candidate);
+            }
+        }
+        if let Some(authority) = entry.session_authority
+            && let (Some(outcome_ref), Some(closure_hash)) = (
+                authority.get("outcome_ref").and_then(Value::as_str),
+                authority.get("closure_hash").and_then(Value::as_str),
+            )
+        {
+            entity
+                .evidence
+                .insert((outcome_ref.to_string(), closure_hash.to_string()));
+        }
+    }
+
+    let mut cards = BTreeMap::<String, RegistryEntityCard>::new();
+    for entity in entities.values() {
+        cards.insert(entity.id.clone(), entity.to_card(&registry));
+    }
+    for (retired_id, (successor, kind)) in &retired {
+        let Some(successor_card) = cards.get(successor) else {
+            continue;
+        };
+        let mut card = successor_card.clone();
+        card.id = retired_id.clone();
+        card.kind = kind.clone();
+        card.status = "retired".to_string();
+        card.successor = Some(successor.clone());
+        cards.insert(retired_id.clone(), card);
+        aliases
+            .entry(retired_id.clone())
+            .or_default()
+            .insert(successor.clone());
+    }
+
+    let mut part_of = BTreeMap::<String, BTreeSet<RegistryEntityCardCounterpart>>::new();
+    let mut units = BTreeMap::<String, BTreeSet<RegistryEntityCardCounterpart>>::new();
+    let mut distinct = BTreeMap::<String, BTreeSet<RegistryEntityCardCounterpart>>::new();
+    for fact in read_jsonl_sidecar(&registry_path.join("relations.jsonl"))? {
+        let relation = fact
+            .get("relation")
+            .and_then(|value| value.get("value"))
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let subject = fact
+            .get("subject")
+            .and_then(|value| value.get("identity_id"))
+            .and_then(Value::as_str);
+        let object = fact
+            .get("object")
+            .and_then(|value| value.get("identity_id"))
+            .and_then(Value::as_str);
+        let (Some(subject), Some(object)) = (subject, object) else {
+            continue;
+        };
+        let Some(subject_id) = resolve_card_endpoint(subject, &aliases, &cards) else {
+            continue;
+        };
+        let Some(object_id) = resolve_card_endpoint(object, &aliases, &cards) else {
+            continue;
+        };
+        if subject_id == object_id {
+            continue;
+        }
+        match relation {
+            "part_of" => {
+                insert_counterpart(&mut part_of, &subject_id, &object_id, &cards);
+                insert_counterpart(&mut units, &object_id, &subject_id, &cards);
+            }
+            "parent_of" => {
+                insert_counterpart(&mut units, &subject_id, &object_id, &cards);
+                insert_counterpart(&mut part_of, &object_id, &subject_id, &cards);
+            }
+            _ => {}
+        }
+    }
+    for fact in read_jsonl_sidecar(&registry_path.join("_escrow/cannot_link.jsonl"))? {
+        let left = fact.get("left_key").and_then(Value::as_str);
+        let right = fact.get("right_key").and_then(Value::as_str);
+        let (Some(left), Some(right)) = (left, right) else {
+            continue;
+        };
+        let left_id = resolve_card_endpoint(left, &aliases, &cards);
+        let right_id = resolve_card_endpoint(right, &aliases, &cards);
+        match (left_id, right_id) {
+            (Some(left_id), Some(right_id)) if left_id != right_id => {
+                insert_counterpart(&mut distinct, &left_id, &right_id, &cards);
+                insert_counterpart(&mut distinct, &right_id, &left_id, &cards);
+            }
+            (Some(id), None) => insert_unknown_counterpart(&mut distinct, &id, right),
+            (None, Some(id)) => insert_unknown_counterpart(&mut distinct, &id, left),
+            _ => {}
+        }
+    }
+
+    for (id, card) in &mut cards {
+        card.part_of = part_of.remove(id).unwrap_or_default().into_iter().collect();
+        card.units = units.remove(id).unwrap_or_default().into_iter().collect();
+        card.distinct = distinct
+            .remove(id)
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
+    }
+
+    let selected = ids.map(sorted_unique_ref);
+    let selected_ids = if let Some(ids) = selected {
+        for id in &ids {
+            if !cards.contains_key(id) {
+                return Err(parse_refusal(
+                    "Entity card export was asked for an unknown canonical id",
+                    json!({ "id": id, "registry": registry.id }),
+                    "Copy an id from the registry, then rerun canon registry export --format entity-card",
+                ));
+            }
+        }
+        ids
+    } else {
+        cards.keys().cloned().collect()
+    };
+    Ok(selected_ids
+        .into_iter()
+        .filter_map(|id| cards.remove(&id))
+        .collect())
+}
+
+pub fn export_entity_cards(
+    request: RegistryEntityCardRequest,
+) -> Result<RegistryExportOutput, Refusal> {
+    let (_, registry, mapping_files) =
+        load_registry_definition(&request.registry).map_err(|error| {
+            Refusal::bad_registry(&request.registry.display().to_string(), &error.to_string())
+        })?;
+    let mut cards = build_entity_card_views(
+        &request.registry,
+        (!request.ids.is_empty()).then_some(request.ids.as_slice()),
+    )?;
+    let mut rendered = Vec::with_capacity(cards.len());
+    for card in &mut cards {
+        apply_card_budget(card, request.max_bytes)?;
+        validate_card_filename(&card.id)?;
+        let path = request.out.join(format!("{}.json", card.id));
+        let bytes = serde_json::to_vec(card).map_err(|error| {
+            parse_refusal(
+                "Failed to serialize entity card",
+                json!({ "id": card.id, "error": error.to_string() }),
+                "Repair the registry card inputs, then rerun the export",
+            )
+        })?;
+        rendered.push((path, bytes));
+    }
+    for (path, bytes) in rendered {
+        ensure_parent_dir(&path)?;
+        fs::write(&path, bytes).map_err(|error| io_refusal(&path, error))?;
+    }
+    let card_values = cards
+        .iter()
+        .map(|card| serde_json::to_value(card).unwrap_or_else(|_| json!({})))
+        .collect::<Vec<_>>();
+    let content_hash = hash_json_value(&json!({
+        "format": "entity-card",
+        "registry": registry_hash_identity(&registry),
+        "cards": card_values,
+    }))?;
+    let exported_alias_count = cards
+        .iter()
+        .map(|card| 1 + card.names.len() + card.keys.values().map(Vec::len).sum::<usize>())
+        .sum();
+    let files = cards
+        .iter()
+        .map(|card| {
+            request
+                .out
+                .join(format!("{}.json", card.id))
+                .display()
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+    Ok(RegistryExportOutput {
+        version: EXPORT_VERSION.to_string(),
+        format: "entity-card".to_string(),
+        registry,
+        output_path: request.out.display().to_string(),
+        content_hash,
+        normalization_spec: NORMALIZATION_SPEC_ID.to_string(),
+        filters: RegistryExportFilters {
+            namespace: None,
+            source_files: Vec::new(),
+            canonical_types: Vec::new(),
+            rule_id_prefixes: Vec::new(),
+        },
+        summary: RegistryExportSummary {
+            source_entry_count: mapping_files.iter().map(|file| file.entries.len()).sum(),
+            filtered_entry_count: mapping_files.iter().map(|file| file.entries.len()).sum(),
+            exported_alias_count,
+            exported_entity_count: cards.len(),
+            skipped_filter_count: 0,
+            skipped_shadowed_count: 0,
+        },
+        files,
+    })
+}
+
+#[derive(Debug, Clone)]
+struct CardSourceEntry {
+    input: String,
+    canonical_id: String,
+    canonical_type: String,
+    rule_id: String,
+    session_authority: Option<Value>,
+}
+
+#[derive(Debug, Clone)]
+struct CardEntity {
+    id: String,
+    kind: String,
+    agent_id: Option<String>,
+    display_name: Option<(u8, String)>,
+    names: BTreeSet<String>,
+    keys: BTreeMap<String, BTreeSet<String>>,
+    authoritative_key_namespaces: BTreeSet<String>,
+    evidence: BTreeSet<(String, String)>,
+}
+
+impl CardEntity {
+    fn new(id: &str, kind: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            kind: kind.to_string(),
+            agent_id: None,
+            display_name: None,
+            names: BTreeSet::new(),
+            keys: BTreeMap::new(),
+            authoritative_key_namespaces: BTreeSet::new(),
+            evidence: BTreeSet::new(),
+        }
+    }
+
+    fn to_card(&self, registry: &RegistryMeta) -> RegistryEntityCard {
+        let name = self
+            .display_name
+            .as_ref()
+            .map(|(_, name)| name.clone())
+            .unwrap_or_else(|| self.id.clone());
+        RegistryEntityCard {
+            version: "canon.entity_card.v0".to_string(),
+            id: self.id.clone(),
+            agent_id: self.agent_id.clone().unwrap_or_else(|| self.id.clone()),
+            kind: self.kind.clone(),
+            registry: RegistryEntityCardRegistry {
+                id: registry.id.clone(),
+                version: registry.version.clone(),
+            },
+            status: "current".to_string(),
+            successor: None,
+            name,
+            names: self.names.iter().cloned().collect(),
+            keys: self
+                .keys
+                .iter()
+                .map(|(namespace, values)| (namespace.clone(), values.iter().cloned().collect()))
+                .collect(),
+            part_of: Vec::new(),
+            units: Vec::new(),
+            distinct: Vec::new(),
+            evidence: self.evidence.iter().next().map(|(outcome_ref, hash)| {
+                RegistryEntityCardEvidence {
+                    outcome_ref: outcome_ref.clone(),
+                    closure_hash: hash.clone(),
+                }
+            }),
+            truncated: Vec::new(),
+            authoritative_key_namespaces: self.authoritative_key_namespaces.clone(),
+        }
+    }
+}
+
+fn read_card_source(
+    registry_path: &Path,
+    mapping_files: &[MappingFile],
+) -> Result<Vec<CardSourceEntry>, Refusal> {
+    let mut source = Vec::new();
+    for mapping_file in mapping_files {
+        let text = fs::read_to_string(&mapping_file.path)
+            .map_err(|error| io_refusal(&mapping_file.path, error))?;
+        let raw_entries: Vec<Value> = serde_json::from_str(&text).map_err(|error| {
+            Refusal::bad_registry(
+                &registry_path.display().to_string(),
+                &format!(
+                    "Failed to parse mapping file '{}': {error}",
+                    mapping_file.path.display()
+                ),
+            )
+        })?;
+        if raw_entries.len() != mapping_file.entries.len() {
+            return Err(Refusal::bad_registry(
+                &registry_path.display().to_string(),
+                &format!(
+                    "Mapping file '{}' changed while it was being read",
+                    mapping_file.path.display()
+                ),
+            ));
+        }
+        for (entry, raw) in mapping_file.entries.iter().zip(raw_entries) {
+            source.push(CardSourceEntry {
+                input: entry.input.clone(),
+                canonical_id: entry.canonical_id.clone(),
+                canonical_type: entry.canonical_type.clone(),
+                rule_id: entry.rule_id.clone(),
+                session_authority: raw.get("session_authority").cloned(),
+            });
+        }
+    }
+    Ok(source)
+}
+
+fn read_jsonl_sidecar(path: &Path) -> Result<Vec<Value>, Refusal> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let text = fs::read_to_string(path).map_err(|error| io_refusal(path, error))?;
+    text.lines()
+        .enumerate()
+        .filter(|(_, line)| !line.trim().is_empty())
+        .map(|(line_number, line)| {
+            serde_json::from_str(line).map_err(|error| {
+                Refusal::bad_registry(
+                    &path.display().to_string(),
+                    &format!("Invalid JSONL at line {}: {error}", line_number + 1),
+                )
+            })
+        })
+        .collect()
+}
+
+fn resolve_card_endpoint(
+    raw: &str,
+    aliases: &BTreeMap<String, BTreeSet<String>>,
+    cards: &BTreeMap<String, RegistryEntityCard>,
+) -> Option<String> {
+    let candidate = raw
+        .strip_prefix("registry:alias:")
+        .or_else(|| raw.strip_prefix("registry:key:"))
+        .unwrap_or(raw);
+    if cards.contains_key(candidate) {
+        return Some(candidate.to_string());
+    }
+    aliases
+        .get(candidate)
+        .filter(|ids| ids.len() == 1)
+        .and_then(|ids| ids.iter().next().cloned())
+}
+
+fn insert_counterpart(
+    values: &mut BTreeMap<String, BTreeSet<RegistryEntityCardCounterpart>>,
+    owner: &str,
+    counterpart: &str,
+    cards: &BTreeMap<String, RegistryEntityCard>,
+) {
+    if let Some(card) = cards.get(counterpart) {
+        values
+            .entry(owner.to_string())
+            .or_default()
+            .insert(RegistryEntityCardCounterpart {
+                id: Some(card.id.clone()),
+                name: card.name.clone(),
+            });
+    }
+}
+
+fn insert_unknown_counterpart(
+    values: &mut BTreeMap<String, BTreeSet<RegistryEntityCardCounterpart>>,
+    owner: &str,
+    name: &str,
+) {
+    values
+        .entry(owner.to_string())
+        .or_default()
+        .insert(RegistryEntityCardCounterpart {
+            id: None,
+            name: name
+                .strip_prefix("registry:alias:")
+                .or_else(|| name.strip_prefix("registry:key:"))
+                .unwrap_or(name)
+                .to_string(),
+        });
+}
+
+fn sorted_unique_ref(values: &[String]) -> Vec<String> {
+    values
+        .iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn card_key_namespace_of(rule_id: &str) -> Option<(String, bool)> {
+    if let Some(namespace) = key_namespace_of(rule_id) {
+        return Some((namespace, true));
+    }
+    let rule = rule_id.to_ascii_lowercase();
+    let namespace = rule
+        .strip_suffix("_key")
+        .or_else(|| rule.strip_suffix("_keys"))
+        .filter(|namespace| !namespace.is_empty())?;
+    Some((namespace.to_string(), false))
+}
+
+fn apply_card_budget(
+    card: &mut RegistryEntityCard,
+    max_bytes: Option<usize>,
+) -> Result<(), Refusal> {
+    let Some(max_bytes) = max_bytes else {
+        return Ok(());
+    };
+    if card_size(card)? <= max_bytes {
+        return Ok(());
+    }
+
+    if card.distinct.len() > 5 {
+        let of = card.distinct.len();
+        card.distinct.truncate(5);
+        card.truncated.push(RegistryEntityCardTruncation {
+            field: "distinct".to_string(),
+            kept: 5,
+            of,
+        });
+        if card_size(card)? <= max_bytes {
+            return Ok(());
+        }
+    }
+    if card.names.len() > 5 {
+        let of = card.names.len();
+        card.names.truncate(5);
+        card.truncated.push(RegistryEntityCardTruncation {
+            field: "names".to_string(),
+            kept: 5,
+            of,
+        });
+        if card_size(card)? <= max_bytes {
+            return Ok(());
+        }
+    }
+    if card.units.len() > 5 {
+        let of = card.units.len();
+        card.units.truncate(5);
+        card.truncated.push(RegistryEntityCardTruncation {
+            field: "units".to_string(),
+            kept: 5,
+            of,
+        });
+        if card_size(card)? <= max_bytes {
+            return Ok(());
+        }
+    }
+    let removable_namespaces = card
+        .keys
+        .keys()
+        .filter(|namespace| !card.authoritative_key_namespaces.contains(*namespace))
+        .cloned()
+        .collect::<Vec<_>>();
+    for namespace in removable_namespaces {
+        let of = card.keys.get(&namespace).map_or(0, Vec::len);
+        card.keys.remove(&namespace);
+        card.truncated.push(RegistryEntityCardTruncation {
+            field: format!("keys.{namespace}"),
+            kept: 0,
+            of,
+        });
+        if card_size(card)? <= max_bytes {
+            return Ok(());
+        }
+    }
+    if !card.distinct.is_empty() {
+        let of = card.distinct.len();
+        card.distinct.clear();
+        card.truncated.push(RegistryEntityCardTruncation {
+            field: "distinct".to_string(),
+            kept: 0,
+            of,
+        });
+        if card_size(card)? <= max_bytes {
+            return Ok(());
+        }
+    }
+    if !card.units.is_empty() {
+        let of = card.units.len();
+        card.units.clear();
+        card.truncated.push(RegistryEntityCardTruncation {
+            field: "units".to_string(),
+            kept: 0,
+            of,
+        });
+        if card_size(card)? <= max_bytes {
+            return Ok(());
+        }
+    }
+    if !card.names.is_empty() {
+        let of = card.names.len();
+        card.names.clear();
+        card.truncated.push(RegistryEntityCardTruncation {
+            field: "names".to_string(),
+            kept: 0,
+            of,
+        });
+        if card_size(card)? <= max_bytes {
+            return Ok(());
+        }
+    }
+
+    let minimum_bytes = card_size(card)?;
+    Err(parse_refusal(
+        &format!(
+            "Entity card cannot fit the requested --max-bytes budget; minimum is {minimum_bytes} bytes"
+        ),
+        json!({
+            "id": card.id,
+            "max_bytes": max_bytes,
+            "minimum_bytes": minimum_bytes,
+            "writes_performed": false,
+        }),
+        "Increase --max-bytes to at least the reported minimum_bytes, then rerun the export",
+    ))
+}
+
+fn card_size(card: &RegistryEntityCard) -> Result<usize, Refusal> {
+    serde_json::to_vec(card)
+        .map(|bytes| bytes.len())
+        .map_err(|error| {
+            parse_refusal(
+                "Failed to measure entity card",
+                json!({ "id": card.id, "error": error.to_string() }),
+                "Repair the registry card inputs, then rerun the export",
+            )
+        })
+}
+
+fn validate_card_filename(id: &str) -> Result<(), Refusal> {
+    let path = Path::new(id);
+    if id.is_empty()
+        || id == "."
+        || id == ".."
+        || path.components().count() != 1
+        || path.file_name().and_then(|name| name.to_str()) != Some(id)
+    {
+        return Err(parse_refusal(
+            "Entity card id is not safe as a single output filename",
+            json!({ "id": id }),
+            "Use a canonical id without path separators, then rerun the export",
+        ));
+    }
+    Ok(())
 }
 
 fn plan_registry_export(
@@ -758,6 +1425,13 @@ fn plan_search_index_files(request: &RegistryExportRequest) -> Vec<RegistryExpor
 
 fn write_search_index(path: &Path, plan: &RegistryExportExecutionPlan) -> Result<(), Refusal> {
     ensure_parent_dir(path)?;
+    let context_ids = plan
+        .snapshot
+        .entities
+        .iter()
+        .map(|entity| entity.canonical_id.clone())
+        .collect::<Vec<_>>();
+    let context_cards = build_entity_card_views(&plan.request.registry, Some(&context_ids))?;
     let mut conn = Connection::open(path).map_err(|error| io_refusal(path, error))?;
     conn.execute_batch(RESET_SEARCH_INDEX_SCHEMA)
         .map_err(|error| io_refusal(path, error))?;
@@ -773,6 +1447,7 @@ fn write_search_index(path: &Path, plan: &RegistryExportExecutionPlan) -> Result
     insert_entities(&tx, &plan.snapshot.entities, path)?;
     insert_aliases(&tx, &plan.snapshot.rows, path)?;
     insert_external_keys(&tx, &plan.snapshot.rows, path)?;
+    insert_entity_context(&tx, &context_cards, path)?;
     tx.commit().map_err(|error| io_refusal(path, error))?;
     Ok(())
 }
@@ -1068,6 +1743,34 @@ fn insert_external_keys(conn: &Connection, rows: &[ExportRow], path: &Path) -> R
     Ok(())
 }
 
+fn insert_entity_context(
+    conn: &Connection,
+    cards: &[RegistryEntityCard],
+    path: &Path,
+) -> Result<(), Refusal> {
+    for card in cards {
+        for (kind, counterparts) in [
+            ("part_of", &card.part_of),
+            ("unit", &card.units),
+            ("distinct", &card.distinct),
+        ] {
+            for counterpart in counterparts {
+                conn.execute(
+                    "INSERT INTO entity_context (canonical_id, kind, counterpart_id, counterpart_name) VALUES (?, ?, ?, ?)",
+                    params![
+                        card.id,
+                        kind,
+                        counterpart.id,
+                        counterpart.name,
+                    ],
+                )
+                .map_err(|error| io_refusal(path, error))?;
+            }
+        }
+    }
+    Ok(())
+}
+
 const RESET_SEARCH_INDEX_SCHEMA: &str = r#"
 DROP TABLE IF EXISTS aliases_fts;
 DROP TABLE IF EXISTS alias_kind_weights;
@@ -1075,6 +1778,7 @@ DROP TABLE IF EXISTS field_weights;
 DROP TABLE IF EXISTS scoring_tiers;
 DROP TABLE IF EXISTS capabilities;
 DROP TABLE IF EXISTS external_keys;
+DROP TABLE IF EXISTS entity_context;
 DROP TABLE IF EXISTS aliases;
 DROP TABLE IF EXISTS entities;
 DROP TABLE IF EXISTS metadata;
@@ -1127,6 +1831,14 @@ CREATE TABLE external_keys (
 );
 
 CREATE INDEX idx_external_keys_lookup ON external_keys(key_namespace, key_value);
+
+CREATE TABLE entity_context (
+    canonical_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('distinct', 'unit', 'part_of')),
+    counterpart_id TEXT,
+    counterpart_name TEXT NOT NULL,
+    PRIMARY KEY (canonical_id, kind, counterpart_id, counterpart_name)
+);
 
 CREATE TABLE capabilities (
     capability TEXT PRIMARY KEY,

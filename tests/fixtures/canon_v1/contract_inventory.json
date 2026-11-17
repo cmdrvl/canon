@@ -1434,6 +1434,7 @@
     { "id": "canon.entity.session.evidence.v1", "family": "entity", "action": "preserve" },
     { "id": "canon.entity.session.evidence.receipt.v1", "family": "entity", "action": "preserve" },
     { "id": "canon.entity.session.assertion.v1", "family": "entity", "action": "preserve" },
+    { "id": "canon.entity_card.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_run_manifest.v0", "family": "entity", "action": "preserve" },
     {
       "id": "canon_entity_run_publication_request.v1",

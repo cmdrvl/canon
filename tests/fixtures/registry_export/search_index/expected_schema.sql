@@ -43,6 +43,15 @@ CREATE TABLE entities (
     PRIMARY KEY (canonical_type, canonical_id)
 );
 
+-- table entity_context on entity_context
+CREATE TABLE entity_context (
+    canonical_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('distinct', 'unit', 'part_of')),
+    counterpart_id TEXT,
+    counterpart_name TEXT NOT NULL,
+    PRIMARY KEY (canonical_id, kind, counterpart_id, counterpart_name)
+);
+
 -- table external_keys on external_keys
 CREATE TABLE external_keys (
     canonical_type TEXT NOT NULL,

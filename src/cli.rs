@@ -1259,6 +1259,9 @@ pub enum RegistryExportFormatCli {
     /// Deterministic key-to-key CSV: one row per canonical ID, one column per key namespace
     #[value(name = "key-crosswalk")]
     KeyCrosswalk,
+    /// One deterministic JSON entity card per canonical ID, including relation and distinct context
+    #[value(name = "entity-card")]
+    EntityCard,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1302,6 +1305,14 @@ pub struct RegistryExportCli {
     /// Optional dbt singular test SQL path guarding normalized-key collapse
     #[arg(long = "anti-collapse-test-out")]
     pub anti_collapse_test_out: Option<PathBuf>,
+
+    /// Restrict entity-card output to these canonical IDs; only valid with --format entity-card
+    #[arg(long = "id")]
+    pub ids: Vec<String>,
+
+    /// Maximum bytes per entity-card JSON document; only valid with --format entity-card
+    #[arg(long = "max-bytes")]
+    pub max_bytes: Option<usize>,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]

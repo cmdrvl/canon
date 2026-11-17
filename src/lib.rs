@@ -4876,7 +4876,24 @@ fn run_registry_export(export: &RegistryExportCli) -> Result<u8, Box<dyn Error>>
         RegistryExportFormatCli::DbtSeed => registry::RegistryExportFormat::DbtSeed,
         RegistryExportFormatCli::SearchIndex => registry::RegistryExportFormat::SearchIndex,
         RegistryExportFormatCli::KeyCrosswalk => registry::RegistryExportFormat::KeyCrosswalk,
+        RegistryExportFormatCli::EntityCard => return run_registry_entity_cards(export),
     };
+    if !export.ids.is_empty() || export.max_bytes.is_some() {
+        let refusal = refusal::create_refusal(
+            RefusalCode::EParse,
+            "--id and --max-bytes are only valid with --format entity-card".to_string(),
+            serde_json::json!({
+                "ids": export.ids,
+                "max_bytes": export.max_bytes,
+            }),
+            Some("Use --format entity-card, or remove --id/--max-bytes".to_string()),
+        );
+        match export.emit {
+            RegistryEmitMode::Json => println!("{}", serde_json::to_string(&refusal)?),
+            RegistryEmitMode::Summary => eprintln!("{}", serde_json::to_string(&refusal)?),
+        }
+        return Ok(2);
+    }
     let request = registry::RegistryExportRequest {
         registry: export.registry.clone(),
         format,
@@ -4891,6 +4908,53 @@ fn run_registry_export(export: &RegistryExportCli) -> Result<u8, Box<dyn Error>>
     };
 
     match registry::export_registry(request) {
+        Ok(output) => {
+            match export.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => println!("{}", output.render_summary()),
+            }
+            Ok(0)
+        }
+        Err(refusal) => {
+            let output = refusal.to_canon_output();
+            match export.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => eprintln!("{}", serde_json::to_string(&output)?),
+            }
+            Ok(2)
+        }
+    }
+}
+
+fn run_registry_entity_cards(export: &RegistryExportCli) -> Result<u8, Box<dyn Error>> {
+    if export.namespace.is_some()
+        || !export.source_files.is_empty()
+        || !export.canonical_types.is_empty()
+        || !export.rule_id_prefixes.is_empty()
+        || export.canonical_iri_prefix != "cmdrvl:"
+        || export.schema_out.is_some()
+        || export.anti_collapse_test_out.is_some()
+    {
+        let refusal = refusal::create_refusal(
+            RefusalCode::EParse,
+            "entity-card export accepts only --registry, --out, --id, --max-bytes, and --emit"
+                .to_string(),
+            serde_json::json!({ "format": "entity-card" }),
+            Some("Remove dbt/search export filters, then rerun --format entity-card".to_string()),
+        );
+        match export.emit {
+            RegistryEmitMode::Json => println!("{}", serde_json::to_string(&refusal)?),
+            RegistryEmitMode::Summary => eprintln!("{}", serde_json::to_string(&refusal)?),
+        }
+        return Ok(2);
+    }
+    let result = registry::export_entity_cards(registry::RegistryEntityCardRequest {
+        registry: export.registry.clone(),
+        out: export.out.clone(),
+        ids: export.ids.clone(),
+        max_bytes: export.max_bytes,
+    });
+    match result {
         Ok(output) => {
             match export.emit {
                 RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),

@@ -10,7 +10,10 @@ use crate::{
 };
 pub use build::{RegistryBuildError, RegistryBuildErrorKind, RegistryBuildRequest, build_registry};
 pub use export::{
-    RegistryExportFormat, RegistryExportOutput, RegistryExportRequest, export_registry,
+    RegistryEntityCard, RegistryEntityCardCounterpart, RegistryEntityCardEvidence,
+    RegistryEntityCardRegistry, RegistryEntityCardRequest, RegistryEntityCardTruncation,
+    RegistryExportFormat, RegistryExportOutput, RegistryExportRequest, build_entity_card_views,
+    export_entity_cards, export_registry,
 };
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};

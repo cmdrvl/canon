@@ -235,6 +235,21 @@ canon registry export --registry registries/organisations/ \
 The crosswalk has one row per canonical ID that holds a key and one column per
 key namespace present; several values of one namespace are joined with `;` in
 sorted order. It lists only keys committed through a session.
+
+To give an agent bounded context for one ID, export entity cards from the same
+registry:
+
+```bash
+canon registry export --registry registries/organisations/ \
+  --format entity-card --out cards/ --id ORG-001 --max-bytes 4096
+```
+
+Each `<id>.json` card carries the exact registry identity, display names and
+keys, part-of and unit relations, reviewed distinct counterparts, retired
+successor information, and founding evidence when present. `--max-bytes`
+records every dropped field in `truncated`; it never drops the ID, kind,
+registry, status, successor, primary name, authoritative keys, part-of, or
+evidence.
 Registry aliases can also be attached in a separate atomic JSONL batch:
 
 ```bash
@@ -345,6 +360,29 @@ a `seed` block: authoritative namespaces still missing per entity, spellings
 still in review, units with no `part_of` evidence, and the history needed.
 Nothing here names a command; rejected ingest rows are not persisted, so they
 are not part of the frontier.
+
+## The evidence behind an outcome
+
+`session export --format evidence-closure` writes the records a committed outcome
+rests on, as local files `pack seal` can seal. Canon seals, uploads and indexes
+nothing.
+
+```bash
+canon entity session export work/bdc-session --format evidence-closure --out out/closures
+canon entity session export work/bdc-session --format evidence-closure --out out/one --outcome cmdrvl://canon/outcome/organisations/minted_id/<HASH>
+pack seal out/closures            # one pack per commit
+pack seal out/closures/<HEX>      # one pack per outcome
+```
+
+Each outcome gets `out/closures/<64 hex>/` with `closure.json` (the stored
+manifest; its blake3 is the `closure_hash` written on the alias entry, relation
+line or cannot-link record), `observations.jsonl` (the stored records plus their
+`source_handles`; a handle the observation does not carry is `null`),
+`evidence.jsonl` and `rules.yaml`. `out/closures/commit.json` is the stored
+closure set. The JSON on stdout gives each closure's `sensitivity`: `public` only
+when every input states `public`; an input with no stated sensitivity counts as
+`unstated_inputs` and is never treated as public. A closure shows what canon
+decided and on which records, not that the upstream source told the truth.
 
 ## The loop
 

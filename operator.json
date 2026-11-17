@@ -34,7 +34,7 @@
       "canon geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVENTORY.json> --question <QUESTION.json> --capabilities <CAPABILITIES.json> --profile <PROFILE.json> --budget <BUDGET.json> --satisfy <REQUEST_ID=RECEIPT.json> --local-artifact <LOCAL_ARTIFACT_ID=PATH>... [--result <DIGEST_ID=PATH>...] --advancement-out <ADVANCEMENT.json>",
       "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
       "canon registry init --registry <DIR> --registry-id <ID> --prefix <PREFIX> [--zero-pad <N>] [--description <TEXT>] [--emit json|summary]",
-      "canon registry export --format dbt-seed|search-index|key-crosswalk--registry <DIR> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--emit json|summary]",
+      "canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card --registry <DIR> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>] [--emit json|summary]",
       "canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]",
       "canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary]",
       "canon registry identity --registry <DIR> [--ref <REF>] [--emit json|summary]",
@@ -5270,8 +5270,8 @@
     },
     {
       "name": "registry export",
-      "usage": "canon registry export --format dbt-seed|search-index|key-crosswalk--registry <DIR> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--emit json|summary]",
-      "description": "Export a versioned flat registry into deterministic downstream artifacts without changing lookup semantics: dbt-seed writes a context-scoped CSV seed plus optional dbt scaffolds; search-index writes a self-describing SQLite artifact with entities, aliases, external keys, scoring metadata, normalization metadata, and canonical IRIs",
+      "usage": "canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card --registry <DIR> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>] [--emit json|summary]",
+      "description": "Export a versioned flat registry into deterministic downstream artifacts without changing lookup semantics: dbt-seed writes a context-scoped CSV seed plus optional dbt scaffolds; search-index writes a self-describing SQLite artifact with entities, aliases, external keys, scoring metadata, normalization metadata, canonical IRIs, and entity context; entity-card writes one bounded JSON document per canonical ID",
       "output_mode": "mixed",
       "output_schema": "canon_registry_export.v0",
       "status": "implemented",
@@ -5309,7 +5309,7 @@
           "flag": "--format",
           "type": "string",
           "required": true,
-          "description": "Export format: dbt-seed, search-index or key-crosswalk"
+          "description": "Export format: dbt-seed, search-index, key-crosswalk or entity-card"
         },
         {
           "name": "registry",
@@ -5370,6 +5370,19 @@
           "flag": "--anti-collapse-test-out",
           "type": "file_path",
           "description": "Optional dbt singular test SQL path asserting one normalized key does not collapse to multiple canonical IDs; dbt-seed only"
+        },
+        {
+          "name": "id",
+          "flag": "--id",
+          "type": "string",
+          "repeatable": true,
+          "description": "Restrict entity-card output to these canonical IDs; entity-card only"
+        },
+        {
+          "name": "max_bytes",
+          "flag": "--max-bytes",
+          "type": "integer",
+          "description": "Maximum bytes per entity-card JSON document; entity-card only"
         },
         {
           "name": "emit",

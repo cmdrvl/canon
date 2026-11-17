@@ -134,7 +134,7 @@ canon inbox apply-review --inbox <INBOX.json> --review <REVIEW.json> --expected-
 canon inbox plan-entity --inbox <INBOX.json> --expected-inbox-hash <HASH> --out <REQUEST.json> [--policy <POLICY.json>] [--event-key <KEY>...] [--limit <N>] [--mode cluster|link] [--emit json|summary]
 canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]
 canon registry init --registry <DIR> --registry-id <ID> --prefix <PREFIX> [--zero-pad <N>] [--description <TEXT>] [--emit json|summary]
-canon registry export --format dbt-seed|search-index|key-crosswalk --registry <REGISTRY> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--emit json|summary]
+canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card --registry <REGISTRY> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>] [--emit json|summary]
 canon registry providers [--emit json|summary]
 canon registry provider-schema <PROVIDER> [--emit json|summary]
 canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]
@@ -170,6 +170,7 @@ canon entity session status <SESSION> [--rules <RULES.yaml>] [--emit json|summar
 canon entity session explain <SESSION> <OBS_ID|SURFACE|cluster:CLUSTER_ID> [--emit json|summary]
 canon entity session frontier <SESSION> [--seed-entity <SURFACE_OR_ID>] [--emit json|summary]
 canon entity session next <SESSION> [--seed-entity <SURFACE_OR_ID>]
+canon entity session export <SESSION> --format evidence-closure --out <DIR> [--outcome <OUTCOME_REF>] [--emit json|summary]
 canon entity session sample <SESSION> [--stratum tier_a|tier_b|tier_c|standalone|neighbourhood] [--count <N>] [--seed <SEED>] [--entity-type <TYPE>] [--blind] [--seed-entity <SURFACE_OR_ID>] [--score <LABELS.jsonl>] [--emit jsonl|json|summary]
 canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--suite <DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
 canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]
@@ -273,14 +274,15 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - identifier-heavy OpenFIGI workflows should extract identifiers from source tapes, normalize/dedupe them, split CUSIP/ISIN/SEDOL into separate seed files, run one build per id type, publish static registries, and use `--incremental` for refreshes
 - provider implementation and regression tests should use a local `twinning rest` fixture through `--provider-config base_url=...`; live OpenFIGI calls are maintenance operations, never normal lookup behavior
 
-`canon registry export --format dbt-seed|search-index|key-crosswalk --registry <REGISTRY> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--emit json|summary]`
+`canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card --registry <REGISTRY> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>] [--emit json|summary]`
 - exports a versioned flat registry into a downstream artifact without changing normal lookup semantics or mutating registry files
 - applies explicit narrowing filters before deterministic first-match deduplication; `--namespace` is required for `dbt-seed` so transform consumers cannot accidentally treat a full shared registry as one context
 - `dbt-seed` writes a deterministic CSV with `namespace`, `source_input`, `normalized_key`, `canonical_id`, `canonical_iri`, `canonical_type`, `alias_kind`, `rule_id`, `match_source`, registry provenance, source file, and entry order
 - `dbt-seed` can also write a companion dbt `schema.yml` and an anti-collapse singular test asserting one `(namespace, normalized_key)` does not map to multiple canonical IDs
-- `search-index` writes a self-describing SQLite artifact with `metadata`, `entities`, `aliases`, `external_keys`, `scoring_tiers`, `field_weights`, `alias_kind_weights`, and FTS5-backed `aliases_fts`
+- `search-index` writes a self-describing SQLite artifact with `metadata`, `entities`, `aliases`, `external_keys`, `entity_context`, `scoring_tiers`, `field_weights`, `alias_kind_weights`, and FTS5-backed `aliases_fts`; `entity_context` is assembled from the same relation and cannot-link view as entity cards
 - `key-crosswalk` writes a deterministic CSV: one row per canonical ID that holds at least one key alias (rule ids `SESSION_KEY_<NAMESPACE>`, written by `entity session commit`), columns `canonical_id,canonical_type,primary_name` then one column per key namespace present, several values of one namespace joined with `;` in sorted order; a key value is never a primary name and an ID with no key has no row
 - `canonical_iri` is generated by prefixing bare canonical IDs with `--canonical-iri-prefix` (default `cmdrvl:`); IDs that already look like IRIs or URLs are preserved
+- `entity-card` writes one deterministic JSON document per canonical ID to `<out>/<id>.json`; `--id` restricts the documents and `--max-bytes` applies the documented drop order while preserving identity, registry, status, successor, primary name, authoritative keys, part-of, and founding evidence
 - the embedded normalization spec is generic (`canon_registry_search_key.v0`): ASCII uppercase, then remove every non-ASCII-alphanumeric character
 - emits `canon_registry_export.v0` JSON or a human-readable summary; exits `0` on successful export, `2` on refusal
 
@@ -308,6 +310,12 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - `coverage[{key_family, source, attempted, supported, conflicted, unresolved}]`, `unresolved_keys[{namespace, value, surfaces, sources}]`, `components[{group_id, missing, settles_with, items, surfaces, observation_count}]` grouped by `needs_authoritative_key`, `needs_second_evidence_type`, `needs_independent_origin` and `needs_human` (the first three are the solve's `missing` values), `terminal[{reason, count}]`, and `history_requests[{group_id, need: prior_observations, scope, before, settles_with}]`; order is by group id, no score or rank; no field names a command
 - `--seed-entity` restricts the frontier to the seed's neighbourhood and adds `seed{unresolved_keys, unresolved_spellings, unresolved_units, history_requests}`
 - `next` is the same data rendered as plain lines (equal to `frontier --emit summary`)
+
+`canon entity session export <SESSION> --format evidence-closure --out <DIR> [--outcome <OUTCOME_REF>] [--emit json|summary]`
+- writes, for every outcome of the session's latest commit (or one `--outcome`), `DIR/<64 hex of closure_hash>/` holding `closure.json` (the stored manifest byte for byte, so its blake3 is the `closure_hash` on the registry entry, relation line or cannot-link record), `observations.jsonl` (each stored record with `source_handles`: artifact_id, receipt_digest, result_digest, catalog_key, columns and row_hash, `null` when the observation does not carry one), `evidence.jsonl` and `rules.yaml`; without `--outcome` also `DIR/commit.json`, the stored closure set whose blake3 is the receipt's `closure_set_hash`
+- outcome kinds are `minted_id`, `attached_alias`, `key_alias`, `relation` and `cannot_link`; relation lines and cannot-link records now carry `outcome_ref` and `closure_hash`
+- stdout lists each closure with its sensitivity `{level, values, unstated_inputs}`: `public` only when every input states `public` and none is unstated; no stated sensitivity is never public
+- deterministic (no clock, no session id in the closure directories); a session with no commit refuses and names `canon entity session commit`; canon does not seal, upload or index: `pack seal` runs on the directories
 
 `canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary]`
 - verifies an agent-friendly id (`<kind>_` plus a 10-symbol body and 2 check symbols) before any lookup; every single-symbol substitution and adjacent swap is refused
