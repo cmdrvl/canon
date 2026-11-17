@@ -447,12 +447,17 @@ import json, pathlib, sys
 source,out=map(pathlib.Path,sys.argv[1:]); rows=[json.loads(line) for line in source.read_text().splitlines() if line.strip()]
 out.write_text("".join(json.dumps({"name":r["surface"]},sort_keys=True)+"\n" for r in rows))
 PY
-run_ok "step-eight-exact-prelookup" "$canon_bin" "$work_dir/step-eight-input.jsonl" --registry "$registry" --column name --no-witness --emit json
+run_json "step-eight-exact-prelookup" "$canon_bin" "$work_dir/step-eight-input.jsonl" --registry "$registry" --column name --no-witness --emit json
+[[ "$RUN_STATUS" -eq 0 || "$RUN_STATUS" -eq 1 ]] || {
+  printf '[step-eight-exact-prelookup] unexpected exit=%s\n' "$RUN_STATUS" >&2
+  exit "$RUN_STATUS"
+}
 cp "$RUN_STDOUT_PATH" "$work_dir/step-eight-prelookup.json"
 python3 - "$work_dir/heldout-b.jsonl" "$work_dir/step-eight-prelookup.json" "$work_dir/step-eight-unresolved.jsonl" <<'PY'
 import json, pathlib, sys
 source,lookup,out=map(pathlib.Path,sys.argv[1:]); value=json.loads(lookup.read_text())
 unresolved={r.get("input") for r in value.get("unresolved",[]) if r.get("input") is not None}
+if not unresolved: raise SystemExit("step eight exact prelookup found no unresolved surfaces")
 rows=[json.loads(line) for line in source.read_text().splitlines() if line.strip()]; selected=[r for r in rows if r["surface"] in unresolved]
 out.write_text("".join(json.dumps(r,sort_keys=True)+"\n" for r in selected))
 print(json.dumps({"input_rows":len(rows),"exactly_resolved_rows":len(rows)-len(selected),"unresolved_rows":len(selected),"unresolved_surfaces":len({r["surface"] for r in selected})},sort_keys=True))
