@@ -429,17 +429,17 @@ first, second = (json.loads(pathlib.Path(path).read_text()) for path in sys.argv
 def rows(value):
     return [row for kind in ("minted", "attached") for row in value.get(kind, [])]
 first_rows, second_rows = rows(first), rows(second)
-first_clusters = {row.get("cluster_id") for row in first_rows}
-second_clusters = {row.get("cluster_id") for row in second_rows}
-if first_clusters & second_clusters:
-    raise SystemExit(f"day two re-committed day-one clusters: {sorted(first_clusters & second_clusters)}")
+first_minted_clusters = {row.get("cluster_id") for row in first.get("minted", [])}
+second_minted_clusters = {row.get("cluster_id") for row in second.get("minted", [])}
+if first_minted_clusters & second_minted_clusters:
+    raise SystemExit(f"day two re-minted day-one clusters: {sorted(first_minted_clusters & second_minted_clusters)}")
 first_aliases = {alias.get("input") for row in first_rows for alias in row.get("aliases", [])}
 second_aliases = [alias.get("input") for row in second_rows for alias in row.get("aliases", [])]
 if first_aliases & set(second_aliases):
     raise SystemExit(f"day two repeated aliases: {sorted(first_aliases & set(second_aliases))}")
 if len(second_aliases) != len(set(second_aliases)):
     raise SystemExit("day two contains a duplicate alias")
-print(json.dumps({"day_one_rows":len(first_rows),"day_two_rows":len(second_rows),"day_two_new_aliases":len(second_aliases)},sort_keys=True))
+print(json.dumps({"day_one_rows":len(first_rows),"day_two_rows":len(second_rows),"day_two_new_aliases":len(second_aliases),"day_two_new_ids":len(second_minted_clusters)},sort_keys=True))
 PY
 
 snapshot_closures "$registry" "$work_dir/closures-before-step-eight.json"
