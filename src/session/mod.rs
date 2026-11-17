@@ -190,6 +190,8 @@ pub struct SessionCommitAlias {
     pub skip_if_existing: bool,
     pub session_authority: Option<Value>,
     pub closure: Option<SessionCommitClosure>,
+    /// Role the alias is scoped to (a unit's role-scoped spelling).
+    pub scope_role: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1351,6 +1353,11 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
                     rule_id: alias.rule_id.clone(),
                     skip_if_existing: alias.skip_if_existing,
                     session_authority: alias.session_authority.clone(),
+                    scope: alias.scope_role.as_deref().and_then(|role| {
+                        crate::registry::parse_scope_flag_bindings(&[format!("role={role}")])
+                            .ok()
+                            .flatten()
+                    }),
                     founding_ref: Some(entry.outcome_ref.clone()),
                 })
         })
@@ -2715,6 +2722,34 @@ fn compile_short_assertion(
             "asserted_alias requires locator and content_hash for a non-human asserter",
             "source.locator and source.content_hash, or asserted_by human:<id>",
         ));
+    }
+
+    if assertion_type == "asserted_alias"
+        && let Some(scope) = basis.get("scope")
+    {
+        let role = scope
+            .as_object()
+            .filter(|scope| scope.len() == 1)
+            .and_then(|scope| scope.get("role"))
+            .and_then(Value::as_str)
+            .filter(|role| !role.trim().is_empty());
+        if role.is_none() {
+            return Err(AssertionRowError::new(
+                line_number,
+                "invalid_scope",
+                "asserted_alias basis.scope must be {\"role\": <non-empty string>}",
+                "basis.scope",
+            ));
+        }
+        let subject = required_assertion_string(basis, "subject", line_number)?;
+        if subject != left_id && subject != right_id {
+            return Err(AssertionRowError::new(
+                line_number,
+                "invalid_subject",
+                "a scoped asserted_alias basis.subject must name the observation whose spelling is scoped (left or right)",
+                "basis.subject",
+            ));
+        }
     }
 
     let short_form_hash = hash_bytes(&canonical_json_bytes(&Value::Object(object.clone())));

@@ -20,7 +20,9 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::entity::profile::EntityProfileDocument;
-use crate::namekit::structure::{NameStructure, parse_name_structure, structure_key};
+use crate::namekit::structure::{
+    NameStructure, parse_name_structure, parse_part_of, structure_key,
+};
 use crate::witness::hash_bytes;
 
 /// The operator that turns the mode on.
@@ -61,6 +63,8 @@ pub struct StructureStats {
     pub asserted_alias_records: usize,
     pub co_borrower_records: usize,
     pub list_equivalence_records: usize,
+    /// `part_of` records from a unit phrase ("X, a division of Y").
+    pub part_of_records: usize,
     /// Pairs the structure stage skipped because the types differ.
     pub cross_type_skipped: usize,
     /// Generic name-equivalence hits that involved a list, which a list never
@@ -279,6 +283,50 @@ pub fn structure_assertions(
                     ));
                 }
             }
+        }
+    }
+
+    // Units: "X, a division of Y" is related part_of to an observation equal to Y.
+    // The unit is its own entity, never an alias of the firm.
+    for item in &parsed {
+        let Some(part) = parse_part_of(item.node.surface) else {
+            continue;
+        };
+        let (key, form_steps) = structure_key(&part.parent);
+        for other in by_key.get(&key).into_iter().flatten() {
+            if other.node.obs_id == item.node.obs_id {
+                continue;
+            }
+            if other.node.entity_type != item.node.entity_type {
+                stats.cross_type_skipped += 1;
+                continue;
+            }
+            let (left, right) = ordered(item, other);
+            let mut steps = vec![format!("name_structure:unit:{}", part.pattern)];
+            steps.extend(form_steps.clone());
+            let mut line_basis = basis(
+                &rule,
+                &left.structure.primary,
+                &right.structure.primary,
+                &steps,
+                "the source states that the first name is a unit of the second",
+            );
+            line_basis.insert("relation".to_string(), json!("part_of"));
+            line_basis.insert("subject".to_string(), json!(item.node.obs_id));
+            line_basis.insert("unit".to_string(), json!(part.unit));
+            line_basis.insert("parent".to_string(), json!(part.parent));
+            line_basis.insert("pattern".to_string(), json!(part.pattern));
+            stats.part_of_records += 1;
+            lines.push(line(
+                "related",
+                left.node.obs_id,
+                right.node.obs_id,
+                line_basis,
+                &rule,
+                namespace,
+                profile_hash,
+                None,
+            ));
         }
     }
 

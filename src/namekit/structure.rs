@@ -258,6 +258,55 @@ fn split_explicit(text: &str) -> Option<Vec<String>> {
     None
 }
 
+/// Phrases that make the name on their left a unit of the name on their right.
+/// A table, not a guess: a name without one of these is never read as a unit.
+const UNIT_PATTERNS: &[&str] = &[
+    "an operating division of",
+    "a business unit of",
+    "a division of",
+    "a unit of",
+];
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PartOf {
+    pub unit: String,
+    pub parent: String,
+    pub pattern: &'static str,
+}
+
+/// "X, a division of Y": X is a unit of Y. Only the listed phrases; a surface
+/// that also states a dba/fka alternate or a member list is not parsed.
+pub fn parse_part_of(raw: &str) -> Option<PartOf> {
+    let text = raw.trim();
+    let lower = text.to_ascii_lowercase();
+    for pattern in UNIT_PATTERNS {
+        let mut from = 0;
+        while let Some(found) = lower[from..].find(pattern) {
+            let at = from + found;
+            let end = at + pattern.len();
+            from = end;
+            let before = text[..at].trim_end();
+            let separated = at == 0 || text[..at].ends_with([' ', ',']);
+            let followed = text[end..].starts_with(' ');
+            let unit = trim_name(before.trim_end_matches(',').trim());
+            let parent = trim_name(&text[end..]);
+            if !separated || !followed || unit.is_empty() || parent.is_empty() {
+                continue;
+            }
+            let parsed = parse_name_structure(text);
+            if parsed.members.is_some() || !parsed.alternates.is_empty() {
+                return None;
+            }
+            return Some(PartOf {
+                unit,
+                parent,
+                pattern,
+            });
+        }
+    }
+    None
+}
+
 /// A segment that is nothing but legal-form words ("Inc.", "L.P."): never a
 /// party of its own.
 fn is_legal_form_only(part: &str) -> bool {
@@ -579,6 +628,27 @@ mod tests {
                 members.iter().all(|m| !is_legal_form_only(m)),
                 "{members:?}"
             );
+        }
+    }
+
+    #[test]
+    fn a_listed_phrase_makes_a_unit_and_nothing_else_does() {
+        let part = parse_part_of("Alder Servicing, a division of Alder Trust Bank, N.A.").unwrap();
+        assert_eq!(part.unit, "Alder Servicing");
+        assert_eq!(part.parent, "Alder Trust Bank, N.A.");
+        assert_eq!(part.pattern, "a division of");
+        assert!(parse_part_of("Alder Servicing a business unit of Alder Holdings LLC").is_some());
+        for text in [
+            "Alder Trust Bank, N.A.",
+            "Alder Division of Trust",
+            "Alder Servicing, a divisionof Alder Bank",
+            ", a division of Alder Bank",
+            "Alder Servicing, a division of",
+            "Alder Servicing, a division of Alder LLC and Birch Corp",
+            "Alder Servicing, a division of Alder Bank (dba Alder Home Loans)",
+            "Black Rock Coffee Bar",
+        ] {
+            assert!(parse_part_of(text).is_none(), "{text}");
         }
     }
 }

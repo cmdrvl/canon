@@ -587,6 +587,8 @@ pub(crate) struct RegistryTypedAlias {
     pub rule_id: String,
     pub skip_if_existing: bool,
     pub session_authority: Option<serde_json::Value>,
+    /// Scope the entry is written under (a role-scoped alias of a unit).
+    pub scope: Option<crate::identity_scope::IdentityScope>,
     /// Stable text that founds an agent id for a new group (the founding
     /// outcome); falls back to the new-id slot when absent.
     pub founding_ref: Option<String>,
@@ -926,7 +928,7 @@ pub(crate) fn commit_typed_entries(
             if let Some(existing) = mapping_files
                 .iter()
                 .flat_map(|file| file.entries.iter())
-                .find(|existing| existing.input == input)
+                .find(|existing| existing.input == input && existing.scope == entry.scope)
             {
                 if !entry.skip_if_existing {
                     add_entry::ensure_input_is_new_in_scope(
@@ -961,7 +963,14 @@ pub(crate) fn commit_typed_entries(
                 });
                 continue;
             }
-            if entry.skip_if_existing && seen_inputs.contains(&input) {
+            let seen_key = match entry.scope.as_ref() {
+                Some(scope) => format!(
+                    "{input}\u{0}{}",
+                    serde_json::to_string(scope).unwrap_or_default()
+                ),
+                None => input.clone(),
+            };
+            if entry.skip_if_existing && seen_inputs.contains(&seen_key) {
                 // The string is claimed by another entry of this same commit:
                 // keep that one, report this one, write the rest.
                 skipped.push(RegistryTypedSkippedAlias {
@@ -974,7 +983,7 @@ pub(crate) fn commit_typed_entries(
                 });
                 continue;
             }
-            if !seen_inputs.insert(input.clone()) {
+            if !seen_inputs.insert(seen_key) {
                 return Err(add_entry::parse_refusal(
                     &request.registry,
                     "Duplicate input inside typed registry commit",
@@ -993,7 +1002,7 @@ pub(crate) fn commit_typed_entries(
                 canonical_id: canonical_id.clone(),
                 canonical_type: canonical_type.clone(),
                 rule_id,
-                scope: None,
+                scope: entry.scope.clone(),
                 namespace,
                 session_authority: entry.session_authority.clone(),
             });
@@ -1267,6 +1276,7 @@ pub fn mint_batch(request: RegistryMintBatchRequest) -> Result<RegistryMintBatch
                 canonical_type: canonical_type.clone(),
                 rule_id,
                 skip_if_existing: false,
+                scope: None,
                 session_authority: None,
                 founding_ref: None,
             });

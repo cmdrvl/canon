@@ -183,6 +183,31 @@ pub struct SessionSolveContradiction {
     pub evidence_ids: Vec<String>,
 }
 
+/// A spelling the source scopes to a role: written at commit as an entry
+/// scoped role=R on the unit's id, never as an unscoped alias.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionSolveScopedAlias {
+    pub surface: String,
+    pub role: String,
+    pub unit_surface: String,
+    pub entity_type: String,
+    pub evidence_id: String,
+}
+
+/// A unit inside a firm: its own entity, `part_of` the firm.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionSolveUnit {
+    pub unit_surface: String,
+    pub part_of_surface: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster_id: Option<String>,
+    /// surface_pattern or asserted_relation.
+    pub evidence: String,
+    pub evidence_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionSolveArtifact {
     pub version: String,
@@ -200,6 +225,10 @@ pub struct SessionSolveArtifact {
     pub standalone_count: usize,
     pub dangling_evidence_count: usize,
     pub derived_evidence: Vec<crate::entity::evidence_ir::EvidenceRecord>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scoped_aliases: Vec<SessionSolveScopedAlias>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub units: Vec<SessionSolveUnit>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -342,6 +371,11 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         Some(snapshot) => read_evidence(snapshot)?,
         None => Vec::new(),
     };
+    // A role-scoped asserted_alias never becomes an edge: it would merge the
+    // unit into the firm. It is kept apart and written scoped at commit.
+    let (scoped_alias_records, evidence): (Vec<_>, Vec<_>) = evidence
+        .into_iter()
+        .partition(|record| scoped_alias_role(record).is_some());
     if manifest.registries.is_empty() {
         return Err(solve_refusal(
             "The session manifest has no registry binding",
@@ -431,6 +465,19 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         }
     }
 
+    let structure_evidence_ids = evidence
+        .iter()
+        .filter(|record| {
+            record.extensions.iter().any(|extension| {
+                matches!(
+                    extension.payload.get("asserted_by"),
+                    Some(crate::entity::evidence_ir::EvidenceExtensionValue::String(by))
+                        if by.starts_with("canon:") && by.contains(":name_structure:")
+                )
+            })
+        })
+        .map(|record| record.evidence_id.clone())
+        .collect::<BTreeSet<_>>();
     let mut dangling_evidence_count = 0;
     for record in evidence {
         let Some((left_target_id, right_target_id)) = pair_target(&record) else {
@@ -995,6 +1042,8 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
     });
     let standalone_count = summary.standalone;
 
+    let scoped_aliases = build_scoped_aliases(&scoped_alias_records, &observations_by_id);
+    let units = build_units(&relations, &clusters, &structure_evidence_ids);
     let artifact = SessionSolveArtifact {
         version: SESSION_SOLVE_VERSION.to_string(),
         inputs: SessionSolveInputs {
@@ -1015,6 +1064,8 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         standalone_count,
         dangling_evidence_count,
         derived_evidence,
+        scoped_aliases,
+        units,
     };
     let bytes = serde_json::to_vec(&artifact).map_err(|error| {
         solve_refusal(
@@ -1302,6 +1353,25 @@ pub fn commit(
             skipped,
             relations,
         } = plan;
+        if entries
+            .iter()
+            .any(|entry| entry.aliases.iter().any(|alias| alias.scope_role.is_some()))
+            && !loaded_registry
+                .scope_policy
+                .optional_dimensions
+                .iter()
+                .any(|dimension| dimension == "role")
+        {
+            return Err(solve_refusal(
+                "The session has role-scoped aliases but the registry has not opted in to an optional role scope",
+                json!({
+                    "reason": "scope_policy_missing",
+                    "registry": binding.path,
+                    "writes_performed": false
+                }),
+                "Run canon entity session solve after canon registry scope-policy --registry <DIR> --optional-dimension role --bump patch, then rerun commit",
+            ));
+        }
         let memory = build_registry_memory_write(
             &artifact,
             &evidence_records,
@@ -1860,6 +1930,7 @@ fn build_commit_plan(
                     skip_if_existing: cluster.incumbent_canonical_id.is_some(),
                     session_authority: None,
                     closure: None,
+                    scope_role: None,
                 });
             }
         }
@@ -1904,6 +1975,7 @@ fn build_commit_plan(
                         skip_if_existing: true,
                         session_authority: None,
                         closure: None,
+                        scope_role: None,
                     });
                 }
             }
@@ -2023,6 +2095,107 @@ fn build_commit_plan(
                 manifest: authority.closure.manifest,
             }),
         });
+    }
+    for scoped in artifact
+        .scoped_aliases
+        .iter()
+        .filter(|scoped| scoped.entity_type == context.entity_kind)
+    {
+        let Some(cluster) = artifact.clusters.iter().find(|cluster| {
+            cluster.surfaces.contains(&scoped.unit_surface)
+                && ((cluster.outcome == "accepted"
+                    && matches!(cluster.tier.as_deref(), Some("A" | "B")))
+                    || (cluster.outcome == "resolved_existing"
+                        && cluster.incumbent_canonical_id.is_some()))
+        }) else {
+            skipped.push(SessionCommitSkipped {
+                cluster_id: scoped.unit_surface.clone(),
+                reason: "scoped_alias_unit_unresolved".to_string(),
+                detail: Some(scoped.surface.clone()),
+            });
+            continue;
+        };
+        // A surface is never written scoped and unscoped to the same id.
+        if cluster.surfaces.contains(&scoped.surface) {
+            skipped.push(SessionCommitSkipped {
+                cluster_id: cluster.cluster_id.clone(),
+                reason: "scoped_alias_also_unscoped".to_string(),
+                detail: Some(scoped.surface.clone()),
+            });
+            continue;
+        }
+        // The proof of a scoped alias is the cited asserted_alias (a tier A
+        // type); an existing-id cluster carries no tier of its own.
+        let mut proof_cluster = cluster.clone();
+        if proof_cluster.tier.is_none() {
+            proof_cluster.tier = Some("A".to_string());
+        }
+        let provenance_context = crate::entity::session_provenance::ProvenanceContext {
+            session_id: context.session_id,
+            solve_hash: context.solve_hash,
+            rules_hash: &artifact.inputs.rules_hash,
+            registry_id: &artifact.inputs.registry.id,
+            registry_version: context.registry_version,
+            cluster: &proof_cluster,
+            canonical_id: cluster.incumbent_canonical_id.as_deref(),
+            sensitivity: None,
+        };
+        let subject = format!("role={}:{}", scoped.role, scoped.surface);
+        let material = crate::entity::session_provenance::build_authority_material_for_subject(
+            provenance_context,
+            crate::entity::session_provenance::ProvenanceSubject {
+                kind: "attached_alias",
+                subject: &subject,
+                observation_values: &[],
+            },
+        )
+        .map_err(|error| {
+            solve_refusal(
+                format!(
+                    "Unable to build evidence closure for scoped alias {} of cluster {}: {error}",
+                    scoped.surface, cluster.cluster_id
+                ),
+                json!({"cluster_id": cluster.cluster_id, "input": scoped.surface, "writes_performed": false}),
+                "Rerun canon entity session solve, then rerun commit",
+            )
+        })?;
+        let alias = SessionCommitAlias {
+            alias_file: context.alias_file.to_string(),
+            input: scoped.surface.clone(),
+            canonical_type: context.canonical_type.to_string(),
+            rule_id: "SESSION_SCOPED_ROLE".to_string(),
+            skip_if_existing: true,
+            session_authority: Some(material.authority.clone()),
+            closure: Some(SessionCommitClosure {
+                outcome_ref: material.closure.outcome_ref.clone(),
+                closure_hash: material.closure.closure_hash.clone(),
+                manifest: material.closure.manifest.clone(),
+            }),
+            scope_role: Some(scoped.role.clone()),
+        };
+        match entries
+            .iter_mut()
+            .find(|entry| entry.cluster_id == cluster.cluster_id)
+        {
+            Some(entry) => entry.aliases.push(alias),
+            None => entries.push(SessionCommitEntry {
+                cluster_id: cluster.cluster_id.clone(),
+                tier: cluster
+                    .tier
+                    .clone()
+                    .unwrap_or_else(|| "existing".to_string()),
+                outcome_ref: material.closure.outcome_ref.clone(),
+                closure_hash: material.closure.closure_hash.clone(),
+                canonical_id: cluster.incumbent_canonical_id.clone(),
+                aliases: vec![alias],
+                session_authority: Some(material.authority),
+                closure: Some(SessionCommitClosure {
+                    outcome_ref: material.closure.outcome_ref,
+                    closure_hash: material.closure.closure_hash,
+                    manifest: material.closure.manifest,
+                }),
+            }),
+        }
     }
     let relations = artifact
         .relations
@@ -3338,6 +3511,127 @@ fn derived_same_key_record(
     })
 }
 
+fn basis_object(
+    record: &crate::entity::evidence_ir::EvidenceRecord,
+) -> Option<&BTreeMap<String, crate::entity::evidence_ir::EvidenceExtensionValue>> {
+    record
+        .extensions
+        .iter()
+        .find_map(|extension| match extension.payload.get("basis")? {
+            crate::entity::evidence_ir::EvidenceExtensionValue::Object(basis) => Some(basis),
+            _ => None,
+        })
+}
+
+/// The role of an asserted_alias that the source scopes to a role.
+fn scoped_alias_role(record: &crate::entity::evidence_ir::EvidenceRecord) -> Option<String> {
+    if record.operator.operator_id != "asserted_alias" {
+        return None;
+    }
+    match basis_object(record)?.get("scope")? {
+        crate::entity::evidence_ir::EvidenceExtensionValue::Object(scope) => {
+            match scope.get("role")? {
+                crate::entity::evidence_ir::EvidenceExtensionValue::String(role)
+                    if !role.trim().is_empty() =>
+                {
+                    Some(role.trim().to_string())
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn build_scoped_aliases(
+    records: &[crate::entity::evidence_ir::EvidenceRecord],
+    observations: &BTreeMap<String, Observation>,
+) -> Vec<SessionSolveScopedAlias> {
+    let mut aliases = records
+        .iter()
+        .filter_map(|record| {
+            let role = scoped_alias_role(record)?;
+            let (left, right) = pair_target(record)?;
+            let subject = basis_string(record, "subject")?;
+            let (subject_id, unit_id) = if subject == left {
+                (left, right)
+            } else if subject == right {
+                (right, left)
+            } else {
+                return None;
+            };
+            let scoped = observations.get(subject_id)?;
+            let unit = observations.get(unit_id)?;
+            (scoped.entity_type == unit.entity_type && scoped.surface != unit.surface).then(|| {
+                SessionSolveScopedAlias {
+                    surface: scoped.surface.clone(),
+                    role,
+                    unit_surface: unit.surface.clone(),
+                    entity_type: scoped.entity_type.clone(),
+                    evidence_id: record.evidence_id.clone(),
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    aliases.sort_by(|left, right| {
+        (
+            &left.unit_surface,
+            &left.role,
+            &left.surface,
+            &left.evidence_id,
+        )
+            .cmp(&(
+                &right.unit_surface,
+                &right.role,
+                &right.surface,
+                &right.evidence_id,
+            ))
+    });
+    aliases.dedup();
+    aliases
+}
+
+fn build_units(
+    relations: &[SessionSolveRelation],
+    clusters: &[SessionSolveCluster],
+    structure_evidence_ids: &BTreeSet<String>,
+) -> Vec<SessionSolveUnit> {
+    let mut units = relations
+        .iter()
+        .filter(|relation| relation.relation == "part_of")
+        .map(|relation| {
+            let cluster = clusters
+                .iter()
+                .find(|cluster| cluster.surfaces.contains(&relation.subject_surface));
+            let from_pattern = relation
+                .evidence_ids
+                .iter()
+                .any(|id| structure_evidence_ids.contains(id));
+            SessionSolveUnit {
+                unit_surface: relation.subject_surface.clone(),
+                part_of_surface: relation.object_surface.clone(),
+                canonical_id: cluster.and_then(|cluster| cluster.incumbent_canonical_id.clone()),
+                cluster_id: cluster
+                    .filter(|cluster| cluster.incumbent_canonical_id.is_none())
+                    .map(|cluster| cluster.cluster_id.clone()),
+                evidence: if from_pattern {
+                    "surface_pattern"
+                } else {
+                    "asserted_relation"
+                }
+                .to_string(),
+                evidence_ids: relation.evidence_ids.clone(),
+            }
+        })
+        .collect::<Vec<_>>();
+    units.sort_by(|left, right| {
+        (&left.unit_surface, &left.part_of_surface)
+            .cmp(&(&right.unit_surface, &right.part_of_surface))
+    });
+    units.dedup();
+    units
+}
+
 fn pair_target(record: &crate::entity::evidence_ir::EvidenceRecord) -> Option<(&str, &str)> {
     match &record.target {
         crate::entity::evidence_ir::EvidenceTarget::Pair { left_id, right_id } => {
@@ -3461,17 +3755,21 @@ fn relation_subject_node(
     left_node: &str,
     right_node: &str,
 ) -> String {
-    let subject = record.extensions.iter().find_map(|extension| {
-        extension
-            .payload
-            .get("subject")
-            .and_then(|value| match value {
-                crate::entity::evidence_ir::EvidenceExtensionValue::String(value) => {
-                    Some(value.as_str())
-                }
-                _ => None,
-            })
-    });
+    let subject = record
+        .extensions
+        .iter()
+        .find_map(|extension| {
+            extension
+                .payload
+                .get("subject")
+                .and_then(|value| match value {
+                    crate::entity::evidence_ir::EvidenceExtensionValue::String(value) => {
+                        Some(value.as_str())
+                    }
+                    _ => None,
+                })
+        })
+        .or_else(|| basis_string(record, "subject"));
     match subject {
         Some(subject) if subject == right_target_id => right_node.to_string(),
         Some(subject) if subject == left_target_id => left_node.to_string(),
@@ -4274,6 +4572,8 @@ mod tests {
             standalone_count: 0,
             dangling_evidence_count: 0,
             derived_evidence: Vec::new(),
+            scoped_aliases: Vec::new(),
+            units: Vec::new(),
         };
 
         let plan = build_commit_plan(

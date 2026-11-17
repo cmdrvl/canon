@@ -1207,6 +1207,7 @@ pub fn add_entries(
             rule_id,
             skip_if_existing: true,
             session_authority: None,
+            scope: None,
             founding_ref: None,
         });
     }

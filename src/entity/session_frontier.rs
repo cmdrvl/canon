@@ -909,6 +909,8 @@ mod tests {
             standalone_count: 0,
             dangling_evidence_count: 0,
             derived_evidence: Vec::new(),
+            scoped_aliases: Vec::new(),
+            units: Vec::new(),
         }
     }
 
