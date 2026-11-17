@@ -14,6 +14,7 @@ pub mod normalize;
 pub mod person;
 pub mod security_tail;
 pub mod similarity;
+pub mod structure;
 pub mod tenant;
 pub mod tfidf;
 pub mod tokenize;

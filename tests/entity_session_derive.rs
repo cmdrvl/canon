@@ -1529,3 +1529,318 @@ fn fragments_are_rejected_and_a_trust_is_related_to_its_person_never_merged() {
     assert_eq!(solved["summary"]["accepted_tier_a"], 0, "{solved}");
     assert_eq!(solved["summary"]["accepted_tier_b"], 0, "{solved}");
 }
+
+fn structure_profile() -> String {
+    profile(EXACT_SUPPORT, NO_CANNOT, EXACT_BLOCK, "")
+        .replace(
+            "  row_key:\n    operators: [ascii_trim_upper]\n",
+            "  row_key:\n    operators: [ascii_trim_upper]\n  structure:\n    operators: [name_structure]\n",
+        )
+        .replace(
+            "    row_key: source_row_id\n",
+            "    row_key: source_row_id\n    structure: surface\n",
+        )
+}
+
+fn assert_lines(case: &Case, name: &str, lines: &[Value]) {
+    let path = case.root.join(name);
+    let text = lines
+        .iter()
+        .map(|line| serde_json::to_string(line).unwrap())
+        .collect::<Vec<_>>()
+        .join("\n");
+    fs::write(&path, format!("{text}\n")).unwrap();
+    run_json(
+        &["entity", "session", "assert", p(&case.session), p(&path)],
+        0,
+    );
+}
+
+fn cluster_sets(solved: &Value) -> Vec<Vec<String>> {
+    let mut sets = solved["clusters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|cluster| {
+            let mut surfaces = cluster["surfaces"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|surface| surface.as_str().unwrap().to_string())
+                .collect::<Vec<_>>();
+            surfaces.sort();
+            surfaces
+        })
+        .collect::<Vec<_>>();
+    sets.sort();
+    sets
+}
+
+#[test]
+fn a_stated_dba_is_an_asserted_alias_to_the_alternate_and_nothing_else_links() {
+    let case = names_case(RULES);
+    case.ingest(&[
+        observation("r2", "fundA", "Mozart Borrower LP (dba Medline)", json!({})),
+        observation("r_med", "fundB", "Medline", json!({})),
+        observation("g1", "fundC", "Medline Borrower, LP", json!({})),
+        observation(
+            "f1",
+            "fundA",
+            "Falcon Parent Holdings (dba SkyWorks)",
+            json!({}),
+        ),
+        observation("f2", "fundB", "Project Falcon Buyer, Inc.", json!({})),
+        observation("j1", "fundA", "Johnson and Johnson", json!({})),
+        observation("s1", "fundB", "Smith, Jones and Partners LLP", json!({})),
+    ]);
+    let derived = case.derive(&structure_profile(), 0);
+    eprintln!("structure derive: {derived}");
+    // Only the one stated alias: the dba "Medline" equals the whole surface of r_med.
+    assert_eq!(count(&derived, "asserted_alias"), 1, "{derived}");
+    let structure = &derived["structure"];
+    assert_eq!(structure["surfaces_with_alternates"], 2, "{derived}");
+    assert_eq!(structure["alternates_by_marker"]["dba"], 2);
+    assert_eq!(structure["multi_party"].as_array().unwrap().len(), 0);
+    assert_eq!(structure["ambiguous_conjunctions"], 2, "{derived}");
+    let records = records_of(&case, "r2", "asserted_alias");
+    assert_eq!(records.len(), 1, "{records:?}");
+    let basis = &records[0]["basis"];
+    assert_eq!(basis["marker"], "dba");
+    assert_eq!(basis["marker_text"], "dba");
+    assert_eq!(basis["primary"], "Mozart Borrower LP");
+    assert_eq!(basis["alternate"], "Medline");
+    assert!(
+        basis["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|step| step == "name_structure:marker:dba"),
+        "{basis}"
+    );
+    // One tier A cluster of the two rows; every other row stays alone.
+    let solved = case.solve();
+    assert_eq!(solved["summary"]["accepted_tier_a"], 1, "{solved}");
+    let sets = cluster_sets(&solved);
+    assert!(
+        sets.contains(&vec![
+            "Medline".to_string(),
+            "Mozart Borrower LP (dba Medline)".to_string()
+        ]),
+        "{sets:?}"
+    );
+    assert_eq!(
+        sets.iter().filter(|set| set.len() > 1).count(),
+        1,
+        "{sets:?}"
+    );
+}
+
+#[test]
+fn a_list_is_related_to_its_members_never_merged_and_a_wrong_merge_is_a_contradiction() {
+    let case = names_case(ATTRIBUTE_RULES);
+    case.ingest(&[
+        observation(
+            "l1",
+            "fundA",
+            "Alpha Holdings LLC and Beta Capital LP",
+            json!({}),
+        ),
+        observation("a1", "fundB", "Alpha Holdings LLC", json!({})),
+        observation("b1", "fundC", "Beta Capital LP", json!({})),
+        observation(
+            "l2",
+            "fundD",
+            "Beta Capital, LP; ALPHA HOLDINGS LLC",
+            json!({}),
+        ),
+        observation("g1", "fundE", "Alpha Holdings LLC; Gamma Inc", json!({})),
+    ]);
+    let derived = case.derive(&structure_profile(), 0);
+    eprintln!("list derive: {derived}");
+    let structure = &derived["structure"];
+    let mut listed = structure["multi_party"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| entry["obs_id"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    listed.sort();
+    assert_eq!(listed, ["g1", "l1", "l2"], "{derived}");
+    // l1 and l2 each relate to a1 and b1; g1 to a1 only.
+    assert_eq!(count(&derived, "related"), 5, "{derived}");
+    assert_eq!(structure["co_borrower_records"], 5);
+    // Equivalence only between the two lists with equal member sets.
+    assert_eq!(count(&derived, "name_equivalent"), 1, "{derived}");
+    assert_eq!(structure["list_equivalence_records"], 1);
+    let equal = records_of(&case, "l1", "name_equivalent");
+    assert_eq!(equal.len(), 1);
+    assert_eq!(equal[0]["basis"]["members"].as_array().unwrap().len(), 2);
+    let related = records_of(&case, "l1", "related");
+    assert_eq!(related.len(), 2, "{related:?}");
+    assert!(related.iter().all(|record| {
+        record["basis"]["relation"] == "co_borrower_of" && record["basis"]["subject"] == "l1"
+    }));
+    // No list shares a cluster with a member on derive's evidence alone.
+    let solved = case.solve();
+    assert_eq!(solved["summary"]["accepted_tier_a"], 0, "{solved}");
+    assert_eq!(solved["summary"]["accepted_tier_b"], 0, "{solved}");
+
+    // An agent wrongly asserts the list equals a member, with two types of
+    // evidence from two lineages: solve reports the contradiction, no merge.
+    let wrong = |kind: &str, lineage: &str| {
+        let basis = if kind == "same_slot" {
+            json!({"rule": "agent claim", "left_value": "x", "right_value": "x"})
+        } else {
+            json!({"rule": "agent claim", "left_value": "Alpha Holdings LLC and Beta Capital LP", "right_value": "Alpha Holdings LLC", "steps": ["agent"], "applies_to": "surface", "explanation": "wrong"})
+        };
+        json!({
+            "type": kind,
+            "left": "a1",
+            "right": "l1",
+            "basis": basis,
+            "source": {"channel": "fixture", "id": lineage, "lineage": lineage},
+            "asserted_by": "agent:fixture"
+        })
+    };
+    assert_lines(
+        &case,
+        "wrong.jsonl",
+        &[
+            wrong("same_slot", "lineageX"),
+            wrong("name_equivalent", "lineageY"),
+        ],
+    );
+    let solved = case.solve();
+    assert_eq!(solved["summary"]["accepted_tier_b"], 0, "{solved}");
+    assert!(
+        solved["contradictions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["reason"] == "related_not_same"),
+        "{solved}"
+    );
+}
+
+#[test]
+fn a_marker_with_no_equal_surface_and_a_plain_comma_name_derive_nothing() {
+    let case = names_case(RULES);
+    case.ingest(&[
+        observation(
+            "m1",
+            "fundA",
+            "Quill Holdings LP formerly Harbor",
+            json!({}),
+        ),
+        observation("m2", "fundB", "Harbor", json!({})),
+        observation("c1", "fundA", "Medline Borrower, LP", json!({})),
+        observation("c2", "fundB", "Medline Borrower LP", json!({})),
+        observation("d1", "fundC", "Pike Foods LLC (dba )", json!({})),
+        observation("n1", "fundC", "Madbaker Foods LLC", json!({})),
+        observation("n2", "fundD", "Baker Foods LLC", json!({})),
+    ]);
+    let derived = case.derive(&structure_profile(), 0);
+    eprintln!("negative derive: {derived}");
+    assert_eq!(count(&derived, "asserted_alias"), 0, "{derived}");
+    assert_eq!(count(&derived, "related"), 0, "{derived}");
+    assert_eq!(derived["structure"]["surfaces_with_alternates"], 0);
+    assert_eq!(
+        derived["structure"]["multi_party"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0
+    );
+}
+
+/// The real BDC gold-set borrowers through the structure stage. Ignored by
+/// default; the counts are logged and 50 examples of each kind are written for
+/// the verifier to read (a parser hit is not a correct alias until read):
+///
+/// `CANON_BDC_GOLD_DIR=/path/to/gold_sets CANON_STRUCTURE_EXAMPLES_OUT=/tmp/ex.json cargo test --test entity_session_derive -- --ignored real_bdc_gold_sets_name_structure`
+#[test]
+#[ignore = "reads the real BDC gold sets from CANON_BDC_GOLD_DIR"]
+fn real_bdc_gold_sets_name_structure_counts_markers_and_lists() {
+    let gold_dir = PathBuf::from(
+        std::env::var("CANON_BDC_GOLD_DIR")
+            .expect("set CANON_BDC_GOLD_DIR to the BDC gold_sets directory"),
+    );
+    let mut ciks = std::collections::BTreeSet::new();
+    for entry in fs::read_dir(&gold_dir).expect("gold-set directory") {
+        let path = entry.unwrap().path();
+        if path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.contains(".goldset.v") && name.ends_with(".json"))
+        {
+            let value: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            if let Some(cik) = value["source"]["cik"].as_str() {
+                ciks.insert(cik.to_string());
+            }
+        }
+    }
+    let case = names_case(RULES);
+    let ciks_file = case.root.join("ciks.txt");
+    fs::write(
+        &ciks_file,
+        format!("{}\n", ciks.iter().cloned().collect::<Vec<_>>().join("\n")),
+    )
+    .unwrap();
+    let observations = case.root.join("borrowers.jsonl");
+    let status = std::process::Command::new("python3")
+        .arg(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("scripts/entity_sessions/bdc_goldsets_to_session.py"),
+        )
+        .args(["--mode", "borrowers", "--pick", "all", "--gold-dir"])
+        .arg(&gold_dir)
+        .arg("--ciks-file")
+        .arg(&ciks_file)
+        .arg("--out")
+        .arg(&observations)
+        .status()
+        .expect("python3 runs the converter");
+    assert!(status.success(), "converter failed");
+    run_json(
+        &[
+            "entity",
+            "session",
+            "ingest",
+            p(&case.session),
+            p(&observations),
+        ],
+        0,
+    );
+    let derived = case.derive_with(&structure_profile(), &["--no-registry-candidates"], 0);
+    let structure = &derived["structure"];
+    eprintln!(
+        "real-data structure: parsed={} with_alternates={} by_marker={} multi_party={} ambiguous_conjunctions={} asserted_alias={} co_borrower={} list_equivalence={}",
+        structure["surfaces_parsed"],
+        structure["surfaces_with_alternates"],
+        structure["alternates_by_marker"],
+        structure["multi_party"].as_array().unwrap().len(),
+        structure["ambiguous_conjunctions"],
+        structure["asserted_alias_records"],
+        structure["co_borrower_records"],
+        structure["list_equivalence_records"],
+    );
+    if let Ok(out) = std::env::var("CANON_STRUCTURE_EXAMPLES_OUT") {
+        let take = |value: &Value| {
+            let all = value.as_array().cloned().unwrap_or_default();
+            let step = (all.len() / 50).max(1);
+            all.into_iter().step_by(step).take(50).collect::<Vec<_>>()
+        };
+        let examples = json!({
+            "counts": structure.clone(),
+            "alternate_examples": take(&structure["alternate_surfaces"]),
+            "list_examples": take(&structure["multi_party"]),
+        });
+        fs::write(out, serde_json::to_string_pretty(&examples).unwrap()).unwrap();
+    }
+    // Nothing is merged on the strength of a parse alone: every record the
+    // stage wrote cites a marker or a list the source string states.
+    assert_eq!(
+        count(&derived, "asserted_alias"),
+        structure["asserted_alias_records"].as_u64().unwrap()
+    );
+}

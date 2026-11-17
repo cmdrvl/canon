@@ -926,3 +926,25 @@ workbench has no "agent sources facts" step and no enrichment-row contract.
   an anchor conflict is a hard cannot-link.
 
 Revisit only if a second use case needs a shared enrichment shape.
+
+## Alternates and member lists (`name_structure`)
+
+A profile view with the `name_structure` operator makes `session derive` parse
+each surface (`namekit::structure`). Only what the source string states becomes
+evidence:
+
+- `X (dba Y)`, `X, f/k/a Y`, `X aka Y` (markers: dba, d/b/a, doing business as,
+  trading as, fka, f/k/a, formerly known as, aka, a/k/a; `formerly` and `t/a`
+  only in parentheses or after a comma): `asserted_alias` to an observation
+  whose whole surface equals Y or X after the listed steps. The citation is the
+  observation itself; the basis holds marker, primary and alternate.
+- Lists (`;`, ` / `, newline, or ` and ` / ` & ` only when every side ends in a
+  legal form): the surface is `multi_party`. `related` (co_borrower_of) to the
+  observations equal to a member, never `name_equivalent`; two lists are
+  equivalent only when their member sets are equal. A session-stated `related`
+  pair that something else would merge is a `related_not_same` contradiction.
+- "Johnson and Johnson", "Smith, Jones and Partners LLP" and bare commas are
+  never split (step `no_split:ambiguous_conjunction`). No alias without a marker,
+  none from similarity.
+
+The derive output has a `structure` block (counts, alternate surfaces, lists).

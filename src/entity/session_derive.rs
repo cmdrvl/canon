@@ -26,6 +26,9 @@ use crate::{
             FragmentRejection, NameNode, NameStageStats, classify_observation, effective_type,
             name_assertions, person_views,
         },
+        session_structure::{
+            StructureNode, StructureStats, multi_party_ids, structure_assertions, structure_views,
+        },
     },
     session::{SESSION_OBSERVATIONS_STREAM_ID, SessionAssertRequest, assert_evidence},
 };
@@ -92,6 +95,11 @@ pub struct SessionDeriveOutput {
     /// observations by classified type, fragments rejected, people compared.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub names: Option<NameStageStats>,
+    /// Alternates (dba / fka) and member lists (a profile view with the
+    /// `name_structure` operator): surfaces parsed, alternates by marker,
+    /// multi_party surfaces and the records they produced.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub structure: Option<StructureStats>,
     /// Exact buckets stored as surface ranges, which derive does not expand.
     pub exact_bucket_ranges_skipped: usize,
     /// Declared relation hints: a profile must list them, `entity run` emits one
@@ -876,6 +884,26 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
                         .filter(|reason| reason.starts_with("legal_form:"))
                         .cloned(),
                 );
+    // Alternates and member lists: only the surfaces that parse into a list are
+    // needed ahead of the pairwise loop, so a generic hit never merges a list.
+    let structure_view_names = structure_views(document);
+    let structure_nodes = if structure_view_names.is_empty() {
+        Vec::new()
+    } else {
+        by_surface
+            .values()
+            .filter(|info| !info.is_registry())
+            .map(|info| StructureNode {
+                obs_id: info.obs_id.as_str(),
+                surface: surface_text
+                    .get(&info.obs_id)
+                    .map_or(info.record.primary_surface.as_str(), String::as_str),
+                entity_type: info.entity_type.as_str(),
+            })
+            .collect::<Vec<_>>()
+    };
+    let list_obs = multi_party_ids(&structure_nodes);
+    let mut structure_deferred = 0_usize;
             }
         }
         steps.extend(legal_form_steps);
@@ -933,6 +961,12 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
                     &hit.operator_id,
                     &hit.namespace,
                     &profile_hash,
+            if kind == DerivedKind::NameEquivalent
+                && (list_obs.contains(&left.obs_id) || list_obs.contains(&right.obs_id))
+            {
+                structure_deferred += 1;
+                continue;
+            }
                     left,
                     right,
                     &steps,
@@ -1000,6 +1034,21 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
     for bucket in &buckets {
         if !bucket.membership.surface_ranges.is_empty() {
             exact_bucket_ranges_skipped += 1;
+    let mut structure_stats = None;
+    if let Some(view) = structure_view_names.iter().next() {
+        let (structure_lines, mut stats) = structure_assertions(
+            &structure_nodes,
+            view,
+            document.profile.as_str(),
+            &profile_hash,
+        );
+        stats.generic_hits_deferred = structure_deferred;
+        for structure_line in structure_lines {
+            push(structure_line, &mut lines);
+        }
+        structure_stats = Some(stats);
+    }
+
         }
         let Some(view) = bucket.operator_id.split_once(':').map(|(_, view)| view) else {
             continue;
@@ -1060,6 +1109,12 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
                     &profile_hash,
                     hub,
                     member,
+            if list_obs.contains(&hub.obs_id) || list_obs.contains(&member.obs_id) {
+                if let Some(stats) = structure_stats.as_mut() {
+                    stats.generic_hits_deferred += 1;
+                }
+                continue;
+            }
                     &steps_for(view, hub, member),
                     "exact bucket",
                 ),
@@ -1204,6 +1259,7 @@ mod tests {
     use super::*;
 
     #[test]
+        structure: structure_stats,
     fn each_operator_maps_to_its_evidence_kind() {
         let cases = [
             (

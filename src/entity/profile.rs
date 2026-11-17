@@ -960,6 +960,7 @@ const SUPPORTED_NORMALIZE_OPS: &[&str] = &[
     "person_name",
 ];
 
+    "name_structure",
 const SUPPORTED_SUPPORT_OPS: &[&str] = &[
     "exact_view",
     "anchor_match",

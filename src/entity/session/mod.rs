@@ -682,8 +682,14 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             .iter()
             .any(|key| member_keys.contains(key))
             || !component.hard_cannot_link_violations.is_empty();
+        // A pair the session itself states as related (a co-borrower list and
+        // one of its members, a parent and a subsidiary) is not the same entity,
+        // whatever else was asserted about it.
         let related_not_same = joining.iter().any(|((left, right), _)| {
             nodes_are_related(nodes.get(left), nodes.get(right), &related_pairs)
+                || edge_facts
+                    .get(&(left.clone(), right.clone()))
+                    .is_some_and(|facts| !facts.relation.is_empty())
         });
         if related_not_same {
             conflict_reasons.push("related_not_same".to_string());

@@ -1971,7 +1971,13 @@ fn apply_configured_normalizers(raw: &str, operators: &[String]) -> Result<Strin
             // name keeps its trimmed, case-folded spelling (nothing is guessed).
             "person_name" => crate::namekit::person::parse_person_name(&value)
                 .map(|person| person.key())
-                .unwrap_or_else(|| value.trim().to_lowercase()),
+                .unwrap_or_else(|| normalized.value.trim().to_lowercase()),
+            // The primary name of a surface with a dba / fka marker, normalised;
+            // a list or a plain name keeps its whole normalised spelling.
+            "name_structure" => {
+                let structure = crate::namekit::structure::parse_name_structure(&normalized.value);
+                crate::namekit::structure::structure_key(&structure.primary).0
+            }
             "placeholder_to_null" => {
                 if is_common_placeholder_value(&value) {
                     String::new()
