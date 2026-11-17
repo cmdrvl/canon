@@ -411,7 +411,10 @@ cp "$RUN_STDOUT_PATH" "$work_dir/day-two-no-op.json"
 python3 - "$work_dir/day-two-no-op.json" "$work_dir/registry-before-noop.json" "$registry" <<'PY'
 import hashlib, json, pathlib, sys
 receipt=json.loads(pathlib.Path(sys.argv[1]).read_text())
-if receipt.get("outcome")!="nothing_to_commit": raise SystemExit(f"repeat commit was not no-op: {receipt}")
+if receipt.get("outcome") not in {"nothing_to_commit", "already_committed"}:
+    raise SystemExit(f"repeat commit was not no-op: {receipt}")
+if receipt.get("registry", {}).get("changed_files"):
+    raise SystemExit("no-op commit reported changed registry files")
 before=json.loads(pathlib.Path(sys.argv[2]).read_text())
 root=pathlib.Path(sys.argv[3]); after={}
 for path in sorted(root.rglob("*")):
