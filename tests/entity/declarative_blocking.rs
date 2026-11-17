@@ -163,7 +163,7 @@ fn declared_validation_rejects_unknown_fields_operators_and_duplicate_ids() {
 }
 
 #[test]
-fn exact_retrieval_stops_at_first_budget_crossing() {
+fn exact_retrieval_reports_the_full_budget_crossing() {
     let profile = profile(json!([{"op": "exact_view", "view": "cusip"}]));
     let surfaces = (0..100)
         .map(|id| surface(&format!("{id:03}"), "same", "ID", "2030", "5"))
@@ -174,9 +174,11 @@ fn exact_retrieval_stops_at_first_budget_crossing() {
         BlockCandidateBudgetConfig::new(100, 3, 3),
     )
     .unwrap_err();
-    assert_eq!(refusal.detail["stopped_early"], true);
-    assert_eq!(refusal.detail["observed_at_stop"], 4);
-    assert_eq!(refusal.detail["surfaces_visited"], 1);
+    assert_eq!(refusal.detail["stopped_early"], false);
+    assert_eq!(refusal.detail["observation_kind"], "full_run");
+    assert_eq!(refusal.detail["observed_at_stop"], 4_950);
+    assert_eq!(refusal.detail["surfaces_visited"], 100);
+    assert_eq!(refusal.detail["surfaces_total"], 100);
     assert_eq!(refusal.detail["partial_candidate_artifact_written"], false);
 }
 

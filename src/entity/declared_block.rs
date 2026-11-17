@@ -300,7 +300,10 @@ pub fn generate(
                                 &id,
                                 1,
                                 0,
-                            ))?;
+                            ));
+                            if budget.breached() {
+                                continue;
+                            }
                             accumulator.add_hit(
                                 &left.surface_id,
                                 &right.surface_id,

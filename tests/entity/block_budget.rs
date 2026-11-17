@@ -10,8 +10,8 @@ use canon::{
     },
     entity::run::{EntityRunRequest, run_entity_workbench},
 };
-use serde_json::json;
-use std::{fs, path::Path};
+use serde_json::{Value, json};
+use std::{fs, path::Path, process::Command};
 
 #[test]
 fn block_candidate_budget_matrix_allows_within_caps_and_reports_diagnostics() {
@@ -235,6 +235,65 @@ fn candidate_budget_refusal_fragment_can_be_pasted_and_passes_same_observations(
 }
 
 #[test]
+fn candidate_budget_fragment_replays_same_dense_input_to_success() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let rows = temp.path().join("dense_org_mentions.csv");
+    write_dense_candidate_rows(&rows);
+    let strategy_source =
+        fs::read_to_string("tests/fixtures/entity/strategies/regab_firm_identity.yaml")
+            .expect("strategy fixture");
+    let low_strategy = temp.path().join("low-budget-strategy.yaml");
+    fs::write(
+        &low_strategy,
+        format!("{strategy_source}\nblock:\n  max_candidates_per_run: 100\n"),
+    )
+    .expect("low-budget strategy");
+    let first_work_dir = temp.path().join("first-work");
+    let first = run_dense_candidate_command(&rows, &low_strategy, &first_work_dir);
+
+    assert_eq!(first.status.code(), Some(2));
+    assert!(
+        first.stderr.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let refusal: Value = serde_json::from_slice(&first.stdout).expect("refusal JSON");
+    let detail = &refusal["refusal"]["detail"];
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(detail["policy_id"], "block.max_candidates_per_run");
+    assert_eq!(detail["configuration_file_role"], "strategy file");
+    assert_eq!(detail["suggested_value_scope"], "full_run");
+    assert_eq!(detail["suggested_value_is_sufficient_for_same_input"], true);
+    assert_eq!(detail["stopped_early"], false);
+    assert_eq!(detail["surfaces_visited"], detail["surfaces_total"]);
+    let suggested_fragment = detail["suggested_fragment"]
+        .as_str()
+        .expect("refusal includes a strategy fragment");
+
+    let repaired_strategy = temp.path().join("repaired-strategy.yaml");
+    fs::write(
+        &repaired_strategy,
+        format!("{strategy_source}\n{suggested_fragment}\n"),
+    )
+    .expect("paste suggested fragment into a strategy copy");
+    let second_work_dir = temp.path().join("second-work");
+    let second = run_dense_candidate_command(&rows, &repaired_strategy, &second_work_dir);
+
+    assert_eq!(
+        second.status.code(),
+        Some(0),
+        "pasted full-run budget must permit the same dense input: {}",
+        String::from_utf8_lossy(&second.stdout)
+    );
+    assert!(
+        second.stderr.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    serde_json::from_slice::<Value>(&second.stdout).expect("successful entity run JSON");
+}
+
+#[test]
 fn entity_run_summary_warns_when_candidates_have_no_executed_support() {
     let temp = tempfile::tempdir().expect("tempdir");
     let rows = temp.path().join("rows.csv");
@@ -259,6 +318,60 @@ r2,fixture,doc-2,acc-2,0000000002,servicer,Alpha Services Holdings LLC,servicer,
         result.artifact.summary.labels["candidate_support_warning"],
         "candidates cannot be supported by any executed operator"
     );
+}
+
+fn run_dense_candidate_command(
+    rows: &Path,
+    strategy: &Path,
+    work_dir: &Path,
+) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "run",
+            rows.to_str().expect("rows path"),
+            "--profile",
+            "regab_firm_identity",
+            "--strategy",
+            strategy.to_str().expect("strategy path"),
+            "--registry",
+            "tests/fixtures/entity/regab/sec10d_baseline_public/registry_snapshot/firms",
+            "--work-dir",
+            work_dir.to_str().expect("work directory path"),
+            "--emit",
+            "json",
+            "--no-witness",
+        ])
+        .output()
+        .expect("canon entity run executes")
+}
+
+fn write_dense_candidate_rows(rows: &Path) {
+    let mut csv = String::from(
+        "source_row_id,record_id,dataset,record_version,field_name,org_name,doc_id,as_of_date,filing_cik,accession,filing_form,filed_date,period,source_exhibit_document_name,source_exhibit_type,source_item,role_context,capacity,capacity_normalized,reporting_party_capacity,platform_capacity,platform_capacity_normalized,subject_role,deal_key,transaction_name,alias_surfaces_json,mention_surfaces_json\n",
+    );
+    let groups = [
+        "aurora",
+        "borealis",
+        "cascade",
+        "driftwood",
+        "emberline",
+        "frostline",
+        "granite",
+        "harborview",
+        "ironwood",
+        "juniper",
+        "keystone",
+    ];
+    for (group_index, group) in groups.iter().enumerate() {
+        for member in 0..100 {
+            let index = group_index * 100 + member;
+            csv.push_str(&format!(
+                "row-{index:04},record-{index:04},regab_servicer_schedules,sec10d.regab_servicer_schedule.v0,servicer_name,Budget {group} Shared Servicing Firm {member:03} LLC,doc-1,2026-03-31,0000000000,0000000000-26-000001,10-K,2026-03-31,2025-12-31,fixture.htm,EX-35,1123,servicer_name:servicer,Servicer,servicer,master servicer,,,,DEAL-1,Deal 1,[],[]\n"
+            ));
+        }
+    }
+    fs::write(rows, csv).expect("dense rows fixture");
 }
 
 #[test]

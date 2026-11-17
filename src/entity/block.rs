@@ -803,10 +803,16 @@ fn finish_candidates(
     budget_observations: CandidateBudgetTracker,
     mut operator_diagnostics: Vec<BlockOperatorCandidateDiagnostics>,
 ) -> Result<BlockCandidateGenerationResult, Refusal> {
-    let budget = validate_block_candidate_budget_before_artifact_emission(
+    let budget = match validate_block_candidate_budget_before_artifact_emission(
         &budget_observations.config,
         &budget_observations.observations,
-    )?;
+    ) {
+        Ok(budget) => budget,
+        Err(mut refusal) => {
+            annotate_full_run_budget_refusal(&mut refusal, &budget_observations);
+            return Err(refusal);
+        }
+    };
     operator_diagnostics.sort_by(block_operator_diagnostic_cmp);
     let candidates = accumulator.into_records();
     let candidate_artifact_bytes = candidate_artifact_byte_count(&candidates)?;
@@ -1380,7 +1386,11 @@ fn apply_ngram_topk_operator(
             &config.operator_id,
             usize_to_u64(result.diagnostics.emitted_candidate_count),
             usize_to_u64(result.diagnostics.dropped_candidate_count),
-        ))?;
+        ));
+
+        if budget_observations.breached() {
+            continue;
+        }
 
         for candidate in result.candidates {
             accumulator.add_hit(
@@ -1471,7 +1481,11 @@ fn apply_rare_token_overlap_operator(
             &config.operator_id,
             usize_to_u64(result.diagnostics.emitted_candidate_count),
             usize_to_u64(result.diagnostics.dropped_candidate_count),
-        ))?;
+        ));
+
+        if budget_observations.breached() {
+            continue;
+        }
 
         for candidate in result.candidates {
             accumulator.add_hit(
@@ -1537,7 +1551,10 @@ fn apply_alias_patch_operator(
                 &config.operator_id,
                 1,
                 0,
-            ))?;
+            ));
+            if budget_observations.breached() {
+                continue;
+            }
             accumulator.add_hit(
                 &left_surface_id,
                 &right_surface_id,
@@ -2121,6 +2138,33 @@ fn block_candidate_budget_refusal(
     )
 }
 
+fn annotate_full_run_budget_refusal(
+    refusal: &mut Refusal,
+    budget_observations: &CandidateBudgetTracker,
+) {
+    let observed = refusal.detail["observed"]
+        .as_u64()
+        .unwrap_or(budget_observations.total);
+    refusal.detail["stopped_early"] = json!(false);
+    refusal.detail["observed_at_stop"] = json!(observed);
+    refusal.detail["observed_at_refusal"] = json!(observed);
+    refusal.detail["observation_kind"] = json!("full_run");
+    refusal.detail["surfaces_visited"] = json!(budget_observations.surfaces_total);
+    refusal.detail["surfaces_total"] = json!(budget_observations.surfaces_total);
+    refusal.detail["suggested_value_scope"] = json!("full_run");
+    refusal.detail["suggested_value_is_sufficient_for_same_input"] = json!(
+        refusal.detail["policy_id"] == json!("block.max_candidates_per_run")
+            && observed <= ABSOLUTE_BLOCK_MAX_CANDIDATES_PER_RUN
+    );
+    let next_command = refusal
+        .next_command
+        .take()
+        .unwrap_or_else(|| "Rerun canon entity block after adjusting the budget.".to_string());
+    refusal.next_command = Some(format!(
+        "{next_command} Full candidate counts were collected; paste suggested_fragment into the strategy file and rerun this input."
+    ));
+}
+
 struct CandidateBudgetTracker {
     config: BlockCandidateBudgetConfig,
     observations: Vec<BlockCandidateBudgetObservation>,
@@ -2128,6 +2172,7 @@ struct CandidateBudgetTracker {
     operators: BTreeMap<String, u64>,
     total: u64,
     surfaces_total: usize,
+    breached: bool,
 }
 
 impl CandidateBudgetTracker {
@@ -2139,10 +2184,11 @@ impl CandidateBudgetTracker {
             operators: BTreeMap::new(),
             total: 0,
             surfaces_total,
+            breached: false,
         }
     }
 
-    fn push(&mut self, observation: BlockCandidateBudgetObservation) -> Result<(), Refusal> {
+    fn push(&mut self, observation: BlockCandidateBudgetObservation) {
         let surface = self
             .surfaces
             .entry(observation.surface_id.clone())
@@ -2167,30 +2213,12 @@ impl CandidateBudgetTracker {
                     .config
                     .max_candidates_per_run
                     .min(ABSOLUTE_BLOCK_MAX_CANDIDATES_PER_RUN);
-        let operator_id = observation.operator_id.clone();
         self.observations.push(observation);
-        if exceeded {
-            let mut refusal = validate_block_candidate_budget_before_artifact_emission(
-                &self.config,
-                &self.observations,
-            )
-            .expect_err("incremental counters exceeded a declared budget");
-            refusal.detail["stopped_early"] = json!(true);
-            refusal.detail["observed_at_stop"] = json!(self.total);
-            refusal.detail["observation_kind"] = json!("lower_bound");
-            refusal.detail["surfaces_visited"] = json!(self.surfaces.len());
-            refusal.detail["surfaces_total"] = json!(self.surfaces_total);
-            refusal.detail["operator_id"] = json!(operator_id);
-            refusal.next_command = Some(format!(
-                "{} Review operator {operator_id} in the profile blocking section and the strategy candidate_budget.",
-                refusal
-                    .next_command
-                    .as_deref()
-                    .unwrap_or("Rerun canon entity block after adjusting the budget.")
-            ));
-            return Err(refusal);
-        }
-        Ok(())
+        self.breached |= exceeded;
+    }
+
+    fn breached(&self) -> bool {
+        self.breached
     }
 }
 
