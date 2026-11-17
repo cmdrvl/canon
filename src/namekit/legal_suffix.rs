@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 
 pub const LEGAL_FORM_CONTRACT_VERSION: &str = "canon_namekit_legal_form.v0";
 pub const LEGAL_FORM_EQUIVALENCE_CONTRACT_VERSION: &str = "canon_namekit_legal_form_equivalence.v0";
+pub const LEGAL_FORM_BARE_EQUIVALENCE_CONTRACT_VERSION: &str =
+    "canon_namekit_legal_form_bare_equivalence.v0";
 pub const LEGAL_FORM_DATA_DIGEST: &str =
     "blake3:ed516e3781086c4d2d990f2b87e6d429c851284a4e16af7d94b47c222eb1823f";
 pub const LEGAL_FORM_LICENSE_REVIEW: &str = "canon_curated_seed_no_external_suffix_table_copied";
@@ -680,6 +682,68 @@ pub fn normalize_legal_forms(input: &str) -> LegalFormNormalization {
     }
 }
 
+/// Normalize a name for the declared bare-name equivalence step.
+///
+/// This is intentionally narrower than stripping legal suffixes: a bare name
+/// is equivalent to the same name with exactly one recognized, non-protected
+/// trailing legal form. Different forms remain distinguishable to the derive
+/// stage, which refuses an ambiguous bare-name bucket containing more than one
+/// form. Protected tokens such as `Bank` and `Trust` never receive this step.
+pub fn normalize_legal_forms_with_bare(input: &str) -> LegalFormNormalization {
+    let normalized = normalize_legal_forms(input);
+    if normalized.steps.len() != 1 {
+        return LegalFormNormalization {
+            contract_version: LEGAL_FORM_BARE_EQUIVALENCE_CONTRACT_VERSION,
+            ..normalized
+        };
+    }
+
+    let Some(canonical) = normalized.steps[0].strip_prefix("legal_form:") else {
+        return LegalFormNormalization {
+            contract_version: LEGAL_FORM_BARE_EQUIVALENCE_CONTRACT_VERSION,
+            ..normalized
+        };
+    };
+    let Some(entry) = LEGAL_SUFFIX_ENTRIES
+        .iter()
+        .find(|entry| entry.normalized_term == canonical)
+    else {
+        return LegalFormNormalization {
+            contract_version: LEGAL_FORM_BARE_EQUIVALENCE_CONTRACT_VERSION,
+            ..normalized
+        };
+    };
+    if entry.protected_token {
+        return LegalFormNormalization {
+            contract_version: LEGAL_FORM_BARE_EQUIVALENCE_CONTRACT_VERSION,
+            ..normalized
+        };
+    }
+
+    let mut tokens = normalized
+        .normalized
+        .split_whitespace()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let suffix_len = entry.token_count();
+    if suffix_len == 0 || suffix_len >= tokens.len() {
+        return LegalFormNormalization {
+            contract_version: LEGAL_FORM_BARE_EQUIVALENCE_CONTRACT_VERSION,
+            ..normalized
+        };
+    }
+    tokens.truncate(tokens.len() - suffix_len);
+    let mut steps = normalized.steps;
+    steps.push("legal_form:bare_equivalence".to_string());
+    LegalFormNormalization {
+        contract_version: LEGAL_FORM_BARE_EQUIVALENCE_CONTRACT_VERSION,
+        data_digest: normalized.data_digest,
+        raw: normalized.raw,
+        normalized: tokens.join(" "),
+        steps,
+    }
+}
+
 fn normalize_tokens(input: &str) -> Vec<String> {
     normalize_normality(input)
         .normalized
@@ -783,7 +847,7 @@ fn push_reason(
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_legal_forms;
+    use super::{normalize_legal_forms, normalize_legal_forms_with_bare};
 
     #[test]
     fn legal_form_equivalence_covers_each_curated_family() {
@@ -857,5 +921,54 @@ mod tests {
         let trust = normalize_legal_forms("Series 2021-1 Trust");
         assert_eq!(trust.normalized, "series 2021 1 trust");
         assert!(trust.steps.contains(&"legal_form:trust".to_string()));
+    }
+
+    #[test]
+    fn bare_equivalence_removes_one_unprotected_trailing_form_only() {
+        let bare = normalize_legal_forms_with_bare("Acme Holdings");
+        let inc = normalize_legal_forms_with_bare("Acme Holdings Incorporated");
+        let llc = normalize_legal_forms_with_bare("Acme Holdings LLC");
+        assert_eq!(bare.normalized, "acme holdings");
+        assert_eq!(inc.normalized, bare.normalized);
+        assert_eq!(llc.normalized, bare.normalized);
+        assert!(inc.steps.contains(&"legal_form:inc".to_string()));
+        assert!(
+            inc.steps
+                .contains(&"legal_form:bare_equivalence".to_string())
+        );
+        assert!(
+            llc.steps
+                .contains(&"legal_form:bare_equivalence".to_string())
+        );
+
+        let mixed = normalize_legal_forms_with_bare("Acme Holdings LLC Inc");
+        assert_ne!(mixed.normalized, "acme holdings");
+        assert!(
+            !mixed
+                .steps
+                .contains(&"legal_form:bare_equivalence".to_string())
+        );
+    }
+
+    #[test]
+    fn bare_equivalence_preserves_protected_forms_and_distinct_form_evidence() {
+        let bank = normalize_legal_forms_with_bare("First National Bank");
+        let trust = normalize_legal_forms_with_bare("Series 2021-1 Trust");
+        assert_eq!(bank.normalized, "first national bank");
+        assert_eq!(trust.normalized, "series 2021 1 trust");
+        assert!(
+            !bank
+                .steps
+                .contains(&"legal_form:bare_equivalence".to_string())
+        );
+        assert!(
+            !trust
+                .steps
+                .contains(&"legal_form:bare_equivalence".to_string())
+        );
+        assert_ne!(
+            normalize_legal_forms_with_bare("Acme LLC").steps,
+            normalize_legal_forms_with_bare("Acme Inc").steps
+        );
     }
 }

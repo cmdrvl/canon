@@ -959,6 +959,13 @@ retains the form in the normalized value, and records the applied
 or `Trust`, and it never treats a mid-name token such as `Co` in `Co-Invest`
 as a suffix.
 
+The separately declared `preserve_legal_form_with_bare` step maps a bare name
+to the same name with exactly one recognized, non-protected trailing legal
+form. It records the canonical form and `legal_form:bare_equivalence`, leaves
+different forms distinct, and refuses an ambiguous bare-name bucket containing
+more than one distinct form. Protected `Bank` and `Trust` tokens and mid-name
+`Co` in `Co-Invest` remain unchanged.
+
 With no `blocking` section, the legacy n-gram/rare-token candidate defaults and
 canonical-view equality buckets remain. Explicit built-in declarations preserve
 retrieval semantics, with reviewed differences in operator IDs, profile hashes,

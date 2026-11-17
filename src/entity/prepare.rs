@@ -29,6 +29,7 @@ use crate::entity::{
 use crate::namekit::{
     legal_suffix::{
         LegalSuffixAnalysis, LegalSuffixProfile, analyze_legal_suffixes, normalize_legal_forms,
+        normalize_legal_forms_with_bare,
     },
     normalize::{NamekitNormalization, normalize_normality, normalize_openrefine_fingerprint},
     tokenize::{NamekitTokenization, tokenize_sorted_unique},
@@ -1793,6 +1794,13 @@ fn legal_normalized_view(raw: &str, operator: &str) -> PreparedNormalizedView {
             reason_codes: normalized.steps,
         };
     }
+    if operator == "preserve_legal_form_with_bare" {
+        let normalized = normalize_legal_forms_with_bare(raw);
+        return PreparedNormalizedView {
+            value: normalized.normalized,
+            reason_codes: normalized.steps,
+        };
+    }
     let normal = normalize_normality(raw);
     let policy = if operator.starts_with("legal_basename") {
         LegalSuffixProfile::CmbsTenantLabel
@@ -1877,6 +1885,7 @@ fn configured_normalized_views(
                             | "legal_name_preserved"
                             | "legal_name_preserved_tokens"
                             | "preserve_legal_form"
+                            | "preserve_legal_form_with_bare"
                     )
             })
             .map(|operator| legal_normalized_view(&value, operator));
@@ -1939,7 +1948,8 @@ fn apply_configured_normalizers(raw: &str, operators: &[String]) -> Result<Strin
             | "legal_basename_fingerprint"
             | "legal_name_preserved"
             | "legal_name_preserved_tokens"
-            | "preserve_legal_form" => legal_normalized_view(&value, operator).value,
+            | "preserve_legal_form"
+            | "preserve_legal_form_with_bare" => legal_normalized_view(&value, operator).value,
             "identity" => value,
             "ascii_trim_upper" => value.trim().to_ascii_uppercase(),
             "unicode_fold" => normalize_normality(&value).normalized,
@@ -1957,6 +1967,11 @@ fn apply_configured_normalizers(raw: &str, operators: &[String]) -> Result<Strin
                     String::new()
                 }
             }
+            // The comparable form of a person name; text that is not a person
+            // name keeps its trimmed, case-folded spelling (nothing is guessed).
+            "person_name" => crate::namekit::person::parse_person_name(&value)
+                .map(|person| person.key())
+                .unwrap_or_else(|| value.trim().to_lowercase()),
             "placeholder_to_null" => {
                 if is_common_placeholder_value(&value) {
                     String::new()
@@ -1967,11 +1982,6 @@ fn apply_configured_normalizers(raw: &str, operators: &[String]) -> Result<Strin
             _ => {
                 return Err(EntityRefusalKind::Profile.to_refusal(
                     "Prepare configured field mapping uses a normalization operator without a generic field-view implementation",
-            // The comparable form of a person name; text that is not a person
-            // name keeps its trimmed, case-folded spelling (nothing is guessed).
-            "person_name" => crate::namekit::person::parse_person_name(&value)
-                .map(|person| person.key())
-                .unwrap_or_else(|| value.trim().to_lowercase()),
                     json!({ "operator": operator }),
                     None,
                 ));

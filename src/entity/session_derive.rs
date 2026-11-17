@@ -1019,15 +1019,17 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
         // `Name`, `Name LLC`, and `Name Inc` cannot become one component by
         // way of the bare spelling.  The canonical-form view still emits
         // same-form variants independently.
-        let distinct_legal_forms = members
-            .iter()
-            .filter_map(|member| member.record.normalized_views.get(view))
-            .flat_map(|normalized| normalized.reason_codes.iter())
-            .filter_map(|reason| reason.strip_prefix("legal_form:"))
-            .filter(|form| *form != "bare_equivalence")
-            .collect::<BTreeSet<_>>();
-        if distinct_legal_forms.len() > 1 {
-            continue;
+        if view == "bare" {
+            let distinct_legal_forms = members
+                .iter()
+                .filter_map(|member| member.record.normalized_views.get(view))
+                .flat_map(|normalized| normalized.reason_codes.iter())
+                .filter_map(|reason| reason.strip_prefix("legal_form:"))
+                .filter(|form| *form != "bare_equivalence")
+                .collect::<BTreeSet<_>>();
+            if distinct_legal_forms.len() > 1 {
+                continue;
+            }
         }
         // The star's hub is the lowest session surface: a bucket is lifted to
         // session-to-member edges only, never registry-to-registry (two ids

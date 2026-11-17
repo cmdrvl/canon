@@ -953,11 +953,12 @@ const SUPPORTED_NORMALIZE_OPS: &[&str] = &[
     "drop_tenant_stopwords",
     "strip_regab_noise",
     "preserve_legal_form",
+    "preserve_legal_form_with_bare",
     "firm_core",
     "expand_na_abbreviation",
     "placeholder_to_null",
-];
     "person_name",
+];
 
 const SUPPORTED_SUPPORT_OPS: &[&str] = &[
     "exact_view",
