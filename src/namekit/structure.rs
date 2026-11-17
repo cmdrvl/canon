@@ -258,6 +258,54 @@ fn split_explicit(text: &str) -> Option<Vec<String>> {
     None
 }
 
+/// A segment that is nothing but legal-form words ("Inc.", "L.P."): never a
+/// party of its own.
+fn is_legal_form_only(part: &str) -> bool {
+    let normalized = normalize_legal_forms(part);
+    if normalized.steps.is_empty() {
+        return false;
+    }
+    let form_words = normalized
+        .steps
+        .iter()
+        .filter_map(|step| step.strip_prefix("legal_form:"))
+        .map(|form| form.split_whitespace().count())
+        .sum::<usize>();
+    normalized.normalized.split_whitespace().count() <= form_words
+}
+
+/// Merge every member that is only a legal-form word into the member before it.
+fn rejoin_legal_form_only(members: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for member in members {
+        match out.last_mut() {
+            Some(previous) if is_legal_form_only(&member) => {
+                previous.push_str(", ");
+                previous.push_str(&member);
+            }
+            _ => out.push(member),
+        }
+    }
+    out
+}
+
+/// An Oxford-style comma list inside one part: split on ", " only when, after
+/// a legal-form-only segment is rejoined to its name, every group ends in a
+/// legal form on its own.
+fn split_comma_members(part: &str) -> Vec<String> {
+    let segments = part
+        .split(", ")
+        .map(trim_name)
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    let groups = rejoin_legal_form_only(segments);
+    if groups.len() > 1 && groups.iter().all(|group| ends_in_legal_form(group)) {
+        groups
+    } else {
+        vec![trim_name(part)]
+    }
+}
+
 /// Parse one surface into its primary name, alternates and members.
 pub fn parse_name_structure(raw: &str) -> NameStructure {
     let text = raw.trim();
@@ -315,18 +363,9 @@ pub fn parse_name_structure(raw: &str) -> NameStructure {
             // legal form on its own.
             let mut members = Vec::new();
             for part in parts {
-                let segments = part
-                    .split(", ")
-                    .map(trim_name)
-                    .filter(|segment| !segment.is_empty())
-                    .collect::<Vec<_>>();
-                if segments.len() > 1 && segments.iter().all(|segment| ends_in_legal_form(segment))
-                {
-                    members.extend(segments);
-                } else {
-                    members.push(trim_name(&part));
-                }
+                members.extend(split_comma_members(&part));
             }
+            let members = rejoin_legal_form_only(members);
             steps.push("name_structure:list".to_string());
             NameStructure {
                 primary: text.to_string(),
@@ -505,5 +544,41 @@ mod tests {
                 .steps
                 .contains(&"name_structure:marker_inside_list".to_string())
         );
+    }
+
+    #[test]
+    fn a_legal_form_word_is_never_a_member_of_its_own() {
+        let list = |text: &str| parse_name_structure(text).members;
+        assert_eq!(
+            list("Alder Works Company, Inc., Birch Fund, L.P. and Cedar Trading LLC"),
+            Some(vec![
+                "Alder Works Company, Inc.".to_string(),
+                "Birch Fund, L.P.".to_string(),
+                "Cedar Trading LLC".to_string()
+            ])
+        );
+        assert_eq!(
+            list("Alder Build, LLC and Birch Stone Company, LLC"),
+            Some(vec![
+                "Alder Build, LLC".to_string(),
+                "Birch Stone Company, LLC".to_string()
+            ])
+        );
+        assert_eq!(
+            list("Alder Build; LLC"),
+            Some(vec!["Alder Build, LLC".to_string()])
+        );
+        for members in [
+            list("Alder Works, Inc., Birch Fund, L.P., Cedar Co., Ltd; Dune Corp"),
+            list("Alder Build, LLC / Birch Stone, Inc."),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            assert!(
+                members.iter().all(|m| !is_legal_form_only(m)),
+                "{members:?}"
+            );
+        }
     }
 }
