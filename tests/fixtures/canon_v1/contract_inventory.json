@@ -1496,6 +1496,7 @@
     { "id": "canon_namekit_explain.v0", "family": "namekit", "action": "preserve" },
     { "id": "canon_namekit_ids.v0", "family": "namekit", "action": "preserve" },
     { "id": "canon_namekit_legal_form.v0", "family": "namekit", "action": "preserve" },
+    { "id": "canon_namekit_legal_form_equivalence.v0", "family": "namekit", "action": "preserve" },
     { "id": "canon_namekit_ngram.v0", "family": "namekit", "action": "preserve" },
     { "id": "canon_namekit_normalize.v0", "family": "namekit", "action": "preserve" },
     { "id": "canon_namekit_similarity.v0", "family": "namekit", "action": "preserve" },

@@ -1570,7 +1570,7 @@ $ canon entity explain result.json --canon-id IC-00042
 
 ### Strategy
 
-A YAML file that configures the entire pipeline. Defines observation fields (`name_fields`, `anchor_fields`, `context_fields`), normalization views (lowercase, strip legal suffixes, extract initials), blocking operators, evidence rules, solver thresholds, reconciliation policy, and promotion gates.
+A YAML file that configures the entire pipeline. Defines observation fields (`name_fields`, `anchor_fields`, `context_fields`), normalization views (lowercase, listed legal-form equivalence with `preserve_legal_form`, strip legal suffixes, extract initials), blocking operators, evidence rules, solver thresholds, reconciliation policy, and promotion gates. `preserve_legal_form` keeps distinct forms distinct (`LLC` is not `Inc`) while recording variant steps such as `legal_form:inc`; protected `Bank` and `Trust` tokens and mid-name `Co` in `Co-Invest` are retained.
 
 ### Block
 

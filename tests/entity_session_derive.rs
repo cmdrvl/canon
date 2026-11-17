@@ -272,6 +272,57 @@ fn an_exact_view_on_a_normalised_name_derives_name_equivalent_and_the_session_ac
 }
 
 #[test]
+fn preserve_legal_form_derives_variant_equivalence_and_keeps_distinct_forms() {
+    let case = init(RULES);
+    case.ingest(&[
+        observation("a1", "fundA", "Acme Holdings Inc", json!({})),
+        observation("a2", "fundB", "Acme Holdings, Inc.", json!({})),
+        observation("a3", "fundC", "Acme Holdings Incorporated", json!({})),
+        observation("l1", "fundD", "Acme Holdings LLC", json!({})),
+    ]);
+    let profile_text = profile(EXACT_SUPPORT, NO_CANNOT, EXACT_BLOCK, "").replace(
+        "operators: [legal_basename]",
+        "operators: [preserve_legal_form]",
+    );
+    let derived = case.derive(&profile_text, 0);
+
+    // The three Inc spellings form one exact bucket and produce a star with
+    // two records. LLC remains a separate form and cannot join that bucket.
+    assert_eq!(count(&derived, "name_equivalent"), 2, "{derived}");
+    let solved = case.solve();
+    assert_eq!(solved["summary"]["accepted_tier_b"], 1, "{solved}");
+    let basis = stored_basis(&case, "a1");
+    let equivalent = basis
+        .iter()
+        .filter(|record| record["type"] == "name_equivalent")
+        .collect::<Vec<_>>();
+    assert_eq!(equivalent.len(), 2, "{basis:?}");
+    for record in equivalent {
+        assert_eq!(record["basis"]["left_value"], "acme holdings inc");
+        assert_eq!(record["basis"]["right_value"], "acme holdings inc");
+        assert!(
+            record["basis"]["steps"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|step| step == "legal_form:inc")
+        );
+        assert!(
+            !record["basis"]["left_value"]
+                .as_str()
+                .unwrap()
+                .contains("llc")
+        );
+        assert!(
+            !record["basis"]["right_value"]
+                .as_str()
+                .unwrap()
+                .contains("llc")
+        );
+    }
+}
+
+#[test]
 fn anchor_match_on_cik_and_lei_gives_the_same_tier_a_clusters_as_the_built_in_key_rule() {
     let rows = [
         observation(

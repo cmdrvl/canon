@@ -951,7 +951,13 @@ and invalid limits refuse. Multi-view profiles with declared blocking must name
 view/field tuple. Built-in names select embedded YAML only; normalization and
 blocking follow declarations. The generic legal-name operators are
 `legal_basename`, `legal_basename_tokens`, `legal_basename_fingerprint`,
-`legal_name_preserved`, and `legal_name_preserved_tokens`.
+`legal_name_preserved`, `legal_name_preserved_tokens`, and
+`preserve_legal_form`. `preserve_legal_form` canonicalizes only a recognized
+legal-form suffix (for example `Inc`, `Inc.`, and `Incorporated` to `inc`),
+retains the form in the normalized value, and records the applied
+`legal_form:<canonical>` step. It never strips protected forms such as `Bank`
+or `Trust`, and it never treats a mid-name token such as `Co` in `Co-Invest`
+as a suffix.
 
 With no `blocking` section, the legacy n-gram/rare-token candidate defaults and
 canonical-view equality buckets remain. Explicit built-in declarations preserve

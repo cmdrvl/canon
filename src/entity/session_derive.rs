@@ -816,12 +816,26 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
     }
 
     let document = &loaded.document;
-    let steps_for = |view: &str| -> Vec<String> {
-        document
+    let steps_for = |view: &str, left: &SurfaceInfo<'_>, right: &SurfaceInfo<'_>| {
+        let mut steps = document
             .normalized_views
             .get(view)
             .map(|view| view.operators.clone())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        let mut legal_form_steps = BTreeSet::new();
+        for surface in [left, right] {
+            if let Some(normalized) = surface.record.normalized_views.get(view) {
+                legal_form_steps.extend(
+                    normalized
+                        .reason_codes
+                        .iter()
+                        .filter(|reason| reason.starts_with("legal_form:"))
+                        .cloned(),
+                );
+            }
+        }
+        steps.extend(legal_form_steps);
+        steps
     };
 
     let mut lines = BTreeMap::<String, Value>::new();
@@ -853,7 +867,7 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
                 continue;
             }
             let steps = match (kind, hit.operator_id.split_once(':')) {
-                (DerivedKind::NameEquivalent, Some((_, view))) => steps_for(view),
+                (DerivedKind::NameEquivalent, Some((_, view))) => steps_for(view, left, right),
                 _ => Vec::new(),
             };
             push(
@@ -935,7 +949,7 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
                     &profile_hash,
                     hub,
                     member,
-                    &steps_for(view),
+                    &steps_for(view, hub, member),
                     "exact bucket",
                 ),
                 &mut lines,

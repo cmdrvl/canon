@@ -27,7 +27,9 @@ use crate::entity::{
     surface_id::{SurfaceIdMaterial, derive_surface_ids},
 };
 use crate::namekit::{
-    legal_suffix::{LegalSuffixAnalysis, LegalSuffixProfile, analyze_legal_suffixes},
+    legal_suffix::{
+        LegalSuffixAnalysis, LegalSuffixProfile, analyze_legal_suffixes, normalize_legal_forms,
+    },
     normalize::{NamekitNormalization, normalize_normality, normalize_openrefine_fingerprint},
     tokenize::{NamekitTokenization, tokenize_sorted_unique},
 };
@@ -1784,6 +1786,13 @@ fn project_prepare_row(
 }
 
 fn legal_normalized_view(raw: &str, operator: &str) -> PreparedNormalizedView {
+    if operator == "preserve_legal_form" {
+        let normalized = normalize_legal_forms(raw);
+        return PreparedNormalizedView {
+            value: normalized.normalized,
+            reason_codes: normalized.steps,
+        };
+    }
     let normal = normalize_normality(raw);
     let policy = if operator.starts_with("legal_basename") {
         LegalSuffixProfile::CmbsTenantLabel
@@ -1867,6 +1876,7 @@ fn configured_normalized_views(
                             | "legal_basename_fingerprint"
                             | "legal_name_preserved"
                             | "legal_name_preserved_tokens"
+                            | "preserve_legal_form"
                     )
             })
             .map(|operator| legal_normalized_view(&value, operator));
@@ -1928,7 +1938,8 @@ fn apply_configured_normalizers(raw: &str, operators: &[String]) -> Result<Strin
             | "legal_basename_tokens"
             | "legal_basename_fingerprint"
             | "legal_name_preserved"
-            | "legal_name_preserved_tokens" => legal_normalized_view(&value, operator).value,
+            | "legal_name_preserved_tokens"
+            | "preserve_legal_form" => legal_normalized_view(&value, operator).value,
             "identity" => value,
             "ascii_trim_upper" => value.trim().to_ascii_uppercase(),
             "unicode_fold" => normalize_normality(&value).normalized,
