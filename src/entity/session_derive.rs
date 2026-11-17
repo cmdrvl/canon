@@ -1,0 +1,821 @@
+#![forbid(unsafe_code)]
+
+//! `canon entity session derive`: Canon's existing entity operators run over
+//! the session's observations and append what they find to the session as
+//! canon.evidence.v1 records, through the same assert path an agent uses.
+//!
+//! Nothing here reimplements blocking or scoring. The observations become a
+//! rows file, the existing prepare -> index -> block -> evidence stages run on
+//! it with the caller's profile and strategy, and every support or
+//! cannot-link hit becomes one assertion line. Similarity is ranking material,
+//! not proof: it is stored as `name_similar` or `value_similar`, which solve
+//! never counts toward tier A or B.
+
+use crate::{
+    Refusal, RefusalCode,
+    entity::{
+        block_artifact::ExactBucketAssertion,
+        edge::EdgeEvidenceRecord,
+        prepare::{PreparedSurfaceRecord, load_prepare_profile_with_hash},
+        publication::open_current_stream_generation,
+        run::{EntityRunRequest, run_entity_workbench, unwired_run_operators},
+        score::ScoreLane,
+        session_closure_export::shard_lines,
+        session_explain::{explain_refusal, read_manifest},
+    },
+    session::{SESSION_OBSERVATIONS_STREAM_ID, SessionAssertRequest, assert_evidence},
+};
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value, json};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::{Path, PathBuf},
+};
+
+pub const SESSION_DERIVE_VERSION: &str = "canon.entity.session.derive.v1";
+const DERIVE_WORK_DIR: &str = "derive-work";
+
+#[derive(Debug, Clone)]
+pub struct SessionDeriveRequest {
+    pub session: PathBuf,
+    pub profile: String,
+    pub strategy: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SessionDeriveRejection {
+    pub obs_id: String,
+    pub code: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SessionDeriveOutput {
+    pub version: String,
+    pub profile: String,
+    pub profile_hash: String,
+    pub observations: usize,
+    pub surfaces: usize,
+    /// Records the operators produced, by evidence type and by operator.
+    pub records_by_type: BTreeMap<String, usize>,
+    pub records_by_operator: BTreeMap<String, usize>,
+    pub accepted: usize,
+    pub already_present: usize,
+    pub rejected_assertions: usize,
+    /// Observations the prepare stage could not normalise, by obs_id.
+    pub rejected_observations: Vec<SessionDeriveRejection>,
+    /// Hits between observations of different entity types, never recorded.
+    pub cross_type_skipped: usize,
+    /// Exact buckets stored as surface ranges, which derive does not expand.
+    pub exact_bucket_ranges_skipped: usize,
+    /// Declared relation hints: a profile must list them, `entity run` emits one
+    /// generic review hint instead, and derive runs none of them.
+    pub relation_hints_not_executed: Vec<String>,
+    pub shard: Option<String>,
+    pub generation_id: Option<String>,
+}
+
+impl SessionDeriveOutput {
+    pub fn render_summary(&self) -> String {
+        let by_type = self
+            .records_by_type
+            .iter()
+            .map(|(kind, count)| format!("{kind}={count}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(
+            "observations={} surfaces={} records={} accepted={} already_present={} rejected_observations={} cross_type_skipped={} generation={}",
+            self.observations,
+            self.surfaces,
+            by_type,
+            self.accepted,
+            self.already_present,
+            self.rejected_observations.len(),
+            self.cross_type_skipped,
+            self.generation_id.as_deref().unwrap_or("<none>"),
+        )
+    }
+}
+
+fn read_jsonl<T: for<'de> Deserialize<'de>>(path: &Path, what: &str) -> Result<Vec<T>, Refusal> {
+    let text = fs::read_to_string(path).map_err(|error| {
+        explain_refusal(
+            format!(
+                "Unable to read the derive {what} {}: {error}",
+                path.display()
+            ),
+            json!({"writes_performed": false}),
+            "Rerun canon entity session derive",
+        )
+    })?;
+    text.lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            serde_json::from_str::<T>(line).map_err(|error| {
+                explain_refusal(
+                    format!("The derive {what} is invalid: {error}"),
+                    json!({"writes_performed": false}),
+                    "Rerun canon entity session derive",
+                )
+            })
+        })
+        .collect()
+}
+
+fn text_of(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) => Some(text.trim().to_string()),
+        Value::Number(number) => Some(number.to_string()),
+        Value::Bool(flag) => Some(flag.to_string()),
+        _ => None,
+    }
+}
+
+/// The rows file the existing stages run on: one row per observation, with
+/// `obs_id`, `source_row_id` (the same id), `surface`, `entity_type`, each key
+/// namespace as a column, each attribute as a column (`attr_<name>` when it
+/// would collide) and each context field as `context_<name>`.
+fn write_rows(path: &Path, observations: &[Value]) -> Result<Vec<String>, Refusal> {
+    let mut key_columns = BTreeSet::new();
+    let mut attr_columns = BTreeSet::new();
+    let mut context_columns = BTreeSet::new();
+    for observation in observations {
+        for (field, columns) in [
+            ("keys", &mut key_columns),
+            ("attrs", &mut attr_columns),
+            ("context", &mut context_columns),
+        ] {
+            if let Some(object) = observation.get(field).and_then(Value::as_object) {
+                columns.extend(
+                    object
+                        .iter()
+                        .filter(|(_, value)| text_of(value).is_some())
+                        .map(|(name, _)| name.clone()),
+                );
+            }
+        }
+    }
+    let reserved = ["obs_id", "source_row_id", "surface", "entity_type"];
+    let attr_header = |name: &str| {
+        if reserved.contains(&name) || key_columns.contains(name) {
+            format!("attr_{name}")
+        } else {
+            name.to_string()
+        }
+    };
+    let mut header = reserved
+        .iter()
+        .map(|name| name.to_string())
+        .collect::<Vec<_>>();
+    header.extend(key_columns.iter().cloned());
+    header.extend(attr_columns.iter().map(|name| attr_header(name)));
+    header.extend(context_columns.iter().map(|name| format!("context_{name}")));
+
+    let io_error = |error: String| {
+        explain_refusal(
+            format!("Unable to write the derive rows file: {error}"),
+            json!({"path": path.display().to_string(), "writes_performed": true}),
+            "Rerun canon entity session derive",
+        )
+    };
+    let mut writer = csv::Writer::from_path(path).map_err(|error| io_error(error.to_string()))?;
+    writer
+        .write_record(&header)
+        .map_err(|error| io_error(error.to_string()))?;
+    let mut order = Vec::new();
+    for observation in observations {
+        let obs_id = observation
+            .get("obs_id")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let field_text = |object: &str, name: &str| {
+            observation
+                .get(object)
+                .and_then(|value| value.get(name))
+                .and_then(text_of)
+                .unwrap_or_default()
+        };
+        let mut row = vec![
+            obs_id.to_string(),
+            obs_id.to_string(),
+            observation
+                .get("surface")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            observation
+                .get("entity_type")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+        ];
+        row.extend(key_columns.iter().map(|name| field_text("keys", name)));
+        row.extend(attr_columns.iter().map(|name| field_text("attrs", name)));
+        row.extend(
+            context_columns
+                .iter()
+                .map(|name| field_text("context", name)),
+        );
+        writer
+            .write_record(&row)
+            .map_err(|error| io_error(error.to_string()))?;
+        order.push(obs_id.to_string());
+    }
+    writer
+        .flush()
+        .map_err(|error| io_error(error.to_string()))?;
+    Ok(order)
+}
+
+/// What an operator hit means as session evidence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DerivedKind {
+    /// `exact_view` on a normalised view.
+    NameEquivalent,
+    /// `anchor_match`, `isin_cusip_arithmetic`.
+    SameKey,
+    /// `anchor_conflict`, `attribute_conflict`, `protected_token_conflict`.
+    Distinct,
+    /// `string_similarity`, `tfidf_cosine`, `two_token_reversal`, `token_overlap`.
+    NameSimilar,
+    /// `date_transposed_digits`.
+    ValueSimilar,
+}
+
+impl DerivedKind {
+    pub(crate) fn evidence_type(self) -> &'static str {
+        match self {
+            Self::NameEquivalent => "name_equivalent",
+            Self::SameKey => "same_key",
+            Self::Distinct => "distinct",
+            Self::NameSimilar => "name_similar",
+            Self::ValueSimilar => "value_similar",
+        }
+    }
+}
+
+/// The base operator of an operator id such as `exact_view:core`.
+fn base_operator(operator_id: &str) -> &str {
+    operator_id.split(':').next().unwrap_or(operator_id)
+}
+
+/// Mapping of one hit to a session evidence kind; `None` for hits that are not
+/// evidence about two surfaces (relation hints).
+pub(crate) fn kind_for_hit(lane: ScoreLane, operator_id: &str) -> Option<DerivedKind> {
+    match (lane, base_operator(operator_id)) {
+        (ScoreLane::Support, "exact_view") => Some(DerivedKind::NameEquivalent),
+        (ScoreLane::Support, "anchor_match" | "isin_cusip_arithmetic") => {
+            Some(DerivedKind::SameKey)
+        }
+        (
+            ScoreLane::Support,
+            "string_similarity" | "tfidf_cosine" | "two_token_reversal" | "token_overlap",
+        ) => Some(DerivedKind::NameSimilar),
+        (ScoreLane::Support, "date_transposed_digits") => Some(DerivedKind::ValueSimilar),
+        (
+            ScoreLane::AntiMerge,
+            "anchor_conflict" | "attribute_conflict" | "protected_token_conflict",
+        ) => Some(DerivedKind::Distinct),
+        _ => None,
+    }
+}
+
+struct SurfaceInfo<'a> {
+    obs_id: String,
+    entity_type: String,
+    record: &'a PreparedSurfaceRecord,
+}
+
+fn view_value<'a>(surface: &'a PreparedSurfaceRecord, view: &str) -> &'a str {
+    surface
+        .normalized_views
+        .get(view)
+        .map_or("", |view| view.value.as_str())
+}
+
+fn anchor_text(surface: &PreparedSurfaceRecord, field: &str) -> String {
+    let mut values = surface
+        .anchors
+        .iter()
+        .filter(|anchor| anchor.namespace == field || anchor.field == field)
+        .map(|anchor| anchor.value.clone())
+        .collect::<Vec<_>>();
+    values.sort();
+    values.dedup();
+    values.join(",")
+}
+
+#[allow(clippy::too_many_arguments)]
+fn assertion_line(
+    kind: DerivedKind,
+    operator_id: &str,
+    namespace: &str,
+    profile_hash: &str,
+    left: &SurfaceInfo<'_>,
+    right: &SurfaceInfo<'_>,
+    steps: &[String],
+    explanation: &str,
+) -> Value {
+    let (left, right) = if left.obs_id <= right.obs_id {
+        (left, right)
+    } else {
+        (right, left)
+    };
+    let suffix = operator_id.split_once(':').map(|(_, rest)| rest);
+    let (left_value, right_value) = match (kind, suffix) {
+        (DerivedKind::NameEquivalent, Some(view)) => (
+            view_value(left.record, view).to_string(),
+            view_value(right.record, view).to_string(),
+        ),
+        (DerivedKind::SameKey | DerivedKind::Distinct, Some(field)) => (
+            anchor_text(left.record, field),
+            anchor_text(right.record, field),
+        ),
+        _ => (
+            left.record.primary_surface.clone(),
+            right.record.primary_surface.clone(),
+        ),
+    };
+    let mut basis = Map::new();
+    basis.insert("rule".to_string(), json!(operator_id));
+    basis.insert("left_value".to_string(), json!(left_value));
+    basis.insert("right_value".to_string(), json!(right_value));
+    basis.insert("steps".to_string(), json!(steps));
+    basis.insert("applies_to".to_string(), json!("surface"));
+    basis.insert("explanation".to_string(), json!(explanation));
+    match kind {
+        DerivedKind::SameKey => {
+            if let Some(field) = suffix {
+                basis.insert("namespace".to_string(), json!(field));
+            }
+        }
+        DerivedKind::Distinct => {
+            basis.insert(
+                "authority".to_string(),
+                json!("authoritative_incompatibility"),
+            );
+        }
+        _ => {}
+    }
+    json!({
+        "type": kind.evidence_type(),
+        "left": left.obs_id,
+        "right": right.obs_id,
+        "basis": Value::Object(basis),
+        "source": {"channel": "canon", "id": format!("derive:{operator_id}")},
+        "asserted_by": format!("canon:{namespace}:{operator_id}@{profile_hash}"),
+    })
+}
+
+/// Operators the profile declares that derive would silently ignore are
+/// refused by name. Relation hints are the exception: the profile validator
+/// requires the lane to be declared, no run executes them per operator, and
+/// derive reports them instead.
+fn split_inert(unwired: Vec<String>) -> (Vec<String>, Vec<String>) {
+    unwired
+        .into_iter()
+        .partition(|label| !label.starts_with("relation_hints:"))
+}
+
+pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refusal> {
+    let session = if request.session.is_absolute() {
+        request.session.clone()
+    } else {
+        std::env::current_dir()
+            .map(|cwd| cwd.join(&request.session))
+            .map_err(|error| {
+                explain_refusal(
+                    format!("Unable to resolve the session path: {error}"),
+                    json!({"writes_performed": false}),
+                    "Pass an absolute session path",
+                )
+            })?
+    };
+    let manifest = read_manifest(&session)?;
+    let registry = manifest.registries.first().ok_or_else(|| {
+        explain_refusal(
+            "The session manifest has no registry binding",
+            json!({"writes_performed": false}),
+            "Initialize the session with a registry, then rerun derive",
+        )
+    })?;
+
+    let loaded = load_prepare_profile_with_hash(&request.profile)?;
+    let (inert, relation_hints_not_executed) = split_inert(unwired_run_operators(&loaded.document));
+    if !inert.is_empty() {
+        return Err(Refusal {
+            code: RefusalCode::EParse,
+            message: format!(
+                "The profile declares operators session derive does not execute: {}",
+                inert.join(", ")
+            ),
+            detail: json!({"operators": inert, "writes_performed": false}),
+            next_command: Some(
+                "Remove the operators from the profile, or run them outside derive".to_string(),
+            ),
+        });
+    }
+    let profile_hash = loaded.content_hash.clone();
+
+    let snapshot = open_current_stream_generation(&session, SESSION_OBSERVATIONS_STREAM_ID)
+        .map_err(|error| {
+            explain_refusal(
+                format!("No committed session observations are available: {error}"),
+                json!({"writes_performed": false}),
+                "Run canon entity session ingest, then rerun derive",
+            )
+        })?;
+    let mut observations = shard_lines(&snapshot, "observations/")
+        .into_iter()
+        .filter_map(|line| serde_json::from_str::<Value>(&line).ok())
+        .collect::<Vec<_>>();
+    observations.sort_by(|left, right| {
+        left.get("obs_id")
+            .and_then(Value::as_str)
+            .cmp(&right.get("obs_id").and_then(Value::as_str))
+    });
+    observations.dedup_by(|left, right| left.get("obs_id") == right.get("obs_id"));
+    if observations.is_empty() {
+        return Err(explain_refusal(
+            "The session has no observations to derive evidence from",
+            json!({"writes_performed": false}),
+            "Run canon entity session ingest, then rerun derive",
+        ));
+    }
+    let entity_types = observations
+        .iter()
+        .filter_map(|observation| {
+            Some((
+                observation.get("obs_id")?.as_str()?.to_string(),
+                observation.get("entity_type")?.as_str()?.to_string(),
+            ))
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    // The existing stages run on a rows file the session owns.
+    let work_dir = session.join(DERIVE_WORK_DIR);
+    if work_dir.exists() {
+        fs::remove_dir_all(&work_dir).map_err(|error| {
+            explain_refusal(
+                format!("Unable to reset {}: {error}", work_dir.display()),
+                json!({"writes_performed": false}),
+                "Remove the derive-work directory, then rerun",
+            )
+        })?;
+    }
+    fs::create_dir_all(&work_dir).map_err(|error| {
+        explain_refusal(
+            format!("Unable to create {}: {error}", work_dir.display()),
+            json!({"writes_performed": false}),
+            "Check the session directory is writable",
+        )
+    })?;
+    let rows_path = work_dir.join("rows.csv");
+    let row_order = write_rows(&rows_path, &observations)?;
+    let stage_dir = work_dir.join("stages");
+    let result = run_entity_workbench(EntityRunRequest {
+        rows: &rows_path,
+        profile: &request.profile,
+        strategy: &request.strategy,
+        registry: Path::new(&registry.path),
+        work_dir: &stage_dir,
+    })?;
+    let layout = &result.artifact.work_dir;
+
+    let surfaces: Vec<PreparedSurfaceRecord> =
+        read_jsonl(&stage_dir.join(&layout.surfaces_path), "prepared surfaces")?;
+    let edge_records: Vec<EdgeEvidenceRecord> = read_jsonl(
+        &stage_dir.join(&layout.edge_records_path),
+        "evidence records",
+    )?;
+    let buckets: Vec<ExactBucketAssertion> = read_jsonl(
+        &stage_dir.join(&layout.exact_bucket_assertions_path),
+        "exact bucket assertions",
+    )
+    .unwrap_or_default();
+    let prepare_value: Value = fs::read(stage_dir.join(&layout.prepare_artifact_path))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or(Value::Null);
+
+    let mut by_surface = BTreeMap::<String, SurfaceInfo<'_>>::new();
+    for surface in &surfaces {
+        let obs_id = surface
+            .provenance_samples
+            .iter()
+            .filter_map(|sample| sample.source_row_id.clone())
+            .min()
+            .ok_or_else(|| {
+                explain_refusal(
+                    format!(
+                        "Surface {} carries no source_row_id; the profile must list source_row_id in prepare.provenance_fields",
+                        surface.surface_id
+                    ),
+                    json!({"surface_id": surface.surface_id, "writes_performed": false}),
+                    "Add source_row_id to the profile's prepare.provenance_fields",
+                )
+            })?;
+        by_surface.insert(
+            surface.surface_id.clone(),
+            SurfaceInfo {
+                entity_type: entity_types.get(&obs_id).cloned().unwrap_or_default(),
+                obs_id,
+                record: surface,
+            },
+        );
+    }
+
+    let document = &loaded.document;
+    let steps_for = |view: &str| -> Vec<String> {
+        document
+            .normalized_views
+            .get(view)
+            .map(|view| view.operators.clone())
+            .unwrap_or_default()
+    };
+
+    let mut lines = BTreeMap::<String, Value>::new();
+    let mut cross_type_skipped = 0;
+    fn push(line: Value, lines: &mut BTreeMap<String, Value>) {
+        lines.insert(line.to_string(), line);
+    }
+    for record in &edge_records {
+        let (Some(left), Some(right)) = (
+            by_surface.get(&record.left_surface_id),
+            by_surface.get(&record.right_surface_id),
+        ) else {
+            continue;
+        };
+        if left.obs_id == right.obs_id {
+            continue;
+        }
+        for hit in &record.hits {
+            let Some(kind) = kind_for_hit(hit.lane, &hit.operator_id) else {
+                continue;
+            };
+            if left.entity_type != right.entity_type {
+                cross_type_skipped += 1;
+                continue;
+            }
+            let steps = match (kind, hit.operator_id.split_once(':')) {
+                (DerivedKind::NameEquivalent, Some((_, view))) => steps_for(view),
+                _ => Vec::new(),
+            };
+            push(
+                assertion_line(
+                    kind,
+                    &hit.operator_id,
+                    &hit.namespace,
+                    &profile_hash,
+                    left,
+                    right,
+                    &steps,
+                    &hit.explanation,
+                ),
+                &mut lines,
+            );
+        }
+    }
+
+    // Exact buckets are not expanded to pairs by block; a bucket whose view the
+    // profile declares an exact_view support operator on becomes a star of
+    // name_equivalent records around its lowest observation.
+    let declared_views = document
+        .evidence
+        .support
+        .iter()
+        .filter(|spec| spec.op == "exact_view")
+        .filter_map(|spec| spec.view.clone())
+        .collect::<BTreeSet<_>>();
+    let mut exact_bucket_ranges_skipped = 0;
+    for bucket in &buckets {
+        if !bucket.membership.surface_ranges.is_empty() {
+            exact_bucket_ranges_skipped += 1;
+        }
+        let Some(view) = bucket.operator_id.split_once(':').map(|(_, view)| view) else {
+            continue;
+        };
+        if !declared_views.contains(view) {
+            continue;
+        }
+        let mut members = bucket
+            .membership
+            .surface_ids
+            .iter()
+            .filter_map(|id| by_surface.get(id))
+            .collect::<Vec<_>>();
+        members.sort_by(|left, right| left.obs_id.cmp(&right.obs_id));
+        let Some((hub, rest)) = members.split_first() else {
+            continue;
+        };
+        let operator_id = format!("exact_view:{view}");
+        let namespace = document.profile.as_str();
+        for member in rest {
+            if hub.entity_type != member.entity_type {
+                cross_type_skipped += 1;
+                continue;
+            }
+            push(
+                assertion_line(
+                    DerivedKind::NameEquivalent,
+                    &operator_id,
+                    namespace,
+                    &profile_hash,
+                    hub,
+                    member,
+                    &steps_for(view),
+                    "exact bucket",
+                ),
+                &mut lines,
+            );
+        }
+    }
+
+    let mut records_by_type = BTreeMap::<String, usize>::new();
+    let mut records_by_operator = BTreeMap::<String, usize>::new();
+    for line in lines.values() {
+        *records_by_type
+            .entry(line["type"].as_str().unwrap_or_default().to_string())
+            .or_default() += 1;
+        *records_by_operator
+            .entry(
+                line["basis"]["rule"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+            )
+            .or_default() += 1;
+    }
+
+    // Rows the prepare stage rejected, by obs_id.
+    let rejected_observations = prepare_value
+        .get("rejected_rows")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|row| {
+            let obs_id = row
+                .get("source_row_id")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .or_else(|| {
+                    row.get("row_number")
+                        .and_then(Value::as_u64)
+                        .and_then(|number| number.checked_sub(1))
+                        .and_then(|index| row_order.get(index as usize).cloned())
+                })
+                .unwrap_or_default();
+            SessionDeriveRejection {
+                obs_id,
+                code: row
+                    .get("code")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                message: row
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    // Append through the assert path: the same canonical records an agent
+    // would assert, idempotent by evidence id.
+    let assertions_path = work_dir.join("assertions.jsonl");
+    let text = lines
+        .values()
+        .map(|line| serde_json::to_string(line).unwrap_or_default())
+        .collect::<Vec<_>>()
+        .join("\n");
+    fs::write(&assertions_path, format!("{text}\n")).map_err(|error| {
+        explain_refusal(
+            format!("Unable to write {}: {error}", assertions_path.display()),
+            json!({"writes_performed": true}),
+            "Rerun canon entity session derive",
+        )
+    })?;
+    let asserted = assert_evidence(SessionAssertRequest {
+        session: session.clone(),
+        evidence: assertions_path,
+    })?;
+
+    Ok(SessionDeriveOutput {
+        version: SESSION_DERIVE_VERSION.to_string(),
+        profile: document.profile.clone(),
+        profile_hash,
+        observations: observations.len(),
+        surfaces: surfaces.len(),
+        records_by_type,
+        records_by_operator,
+        accepted: asserted.accepted,
+        already_present: asserted.already_present,
+        rejected_assertions: asserted.rejected.len(),
+        rejected_observations,
+        cross_type_skipped,
+        exact_bucket_ranges_skipped,
+        relation_hints_not_executed,
+        shard: asserted.shard,
+        generation_id: asserted.generation_id,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_operator_maps_to_its_evidence_kind() {
+        let cases = [
+            (
+                ScoreLane::Support,
+                "exact_view:core",
+                DerivedKind::NameEquivalent,
+            ),
+            (ScoreLane::Support, "anchor_match:cik", DerivedKind::SameKey),
+            (
+                ScoreLane::Support,
+                "isin_cusip_arithmetic:isin",
+                DerivedKind::SameKey,
+            ),
+            (
+                ScoreLane::Support,
+                "string_similarity:core",
+                DerivedKind::NameSimilar,
+            ),
+            (ScoreLane::Support, "tfidf_cosine", DerivedKind::NameSimilar),
+            (
+                ScoreLane::Support,
+                "two_token_reversal:core",
+                DerivedKind::NameSimilar,
+            ),
+            (
+                ScoreLane::Support,
+                "token_overlap:core",
+                DerivedKind::NameSimilar,
+            ),
+            (
+                ScoreLane::Support,
+                "date_transposed_digits:maturity",
+                DerivedKind::ValueSimilar,
+            ),
+            (
+                ScoreLane::AntiMerge,
+                "anchor_conflict:cik",
+                DerivedKind::Distinct,
+            ),
+            (
+                ScoreLane::AntiMerge,
+                "attribute_conflict:spread",
+                DerivedKind::Distinct,
+            ),
+            (
+                ScoreLane::AntiMerge,
+                "protected_token_conflict:core",
+                DerivedKind::Distinct,
+            ),
+        ];
+        for (lane, operator, expected) in cases {
+            assert_eq!(kind_for_hit(lane, operator), Some(expected), "{operator}");
+        }
+        assert_eq!(
+            kind_for_hit(ScoreLane::RelationHint, "cross_profile_alignment"),
+            None
+        );
+        assert_eq!(kind_for_hit(ScoreLane::Support, "unknown_op"), None);
+    }
+
+    #[test]
+    fn an_inert_support_or_cannot_link_operator_is_refused_but_relation_hints_are_reported() {
+        let (refused, reported) = split_inert(vec![
+            "support:frobnicate".to_string(),
+            "cannot_link:mystery".to_string(),
+            "relation_hints:division_of".to_string(),
+        ]);
+        assert_eq!(refused, ["support:frobnicate", "cannot_link:mystery"]);
+        assert_eq!(reported, ["relation_hints:division_of"]);
+    }
+
+    #[test]
+    fn similarity_is_never_filed_under_equivalence() {
+        for operator in [
+            "string_similarity:core",
+            "tfidf_cosine",
+            "two_token_reversal:core",
+            "date_transposed_digits:d",
+        ] {
+            let kind = kind_for_hit(ScoreLane::Support, operator).unwrap();
+            assert!(
+                matches!(kind.evidence_type(), "name_similar" | "value_similar"),
+                "{operator} -> {}",
+                kind.evidence_type()
+            );
+        }
+        assert_eq!(
+            DerivedKind::NameEquivalent.evidence_type(),
+            "name_equivalent"
+        );
+    }
+}

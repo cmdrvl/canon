@@ -955,6 +955,7 @@ fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
                 matches!(frontier.emit, EntityEmitMode::Summary),
             ),
             EntitySessionSubcommand::Export(export) => run_entity_session_export_command(export),
+            EntitySessionSubcommand::Derive(derive) => run_entity_session_derive_command(derive),
             EntitySessionSubcommand::Next(next) => {
                 run_entity_session_frontier_command(&next.session, next.seed_entity.clone(), true)
             }
@@ -1227,6 +1228,29 @@ fn run_entity_session_frontier_command(
             session: session.to_path_buf(),
             seed_entity,
         });
+    match result {
+        Ok(output) => {
+            let rendered = if summary_mode {
+                output.render_summary()
+            } else {
+                serde_json::to_string(&output)?
+            };
+            emit_entity_output(&rendered, summary_mode);
+            Ok(0)
+        }
+        Err(refusal) => emit_entity_refusal(refusal.to_canon_output(), true, summary_mode),
+    }
+}
+
+fn run_entity_session_derive_command(
+    derive: &crate::cli::EntitySessionDeriveCli,
+) -> Result<u8, Box<dyn Error>> {
+    let result = entity::session_derive::derive(entity::session_derive::SessionDeriveRequest {
+        session: derive.session.clone(),
+        profile: derive.profile.clone(),
+        strategy: derive.strategy.clone(),
+    });
+    let summary_mode = matches!(derive.emit, EntityEmitMode::Summary);
     match result {
         Ok(output) => {
             let rendered = if summary_mode {

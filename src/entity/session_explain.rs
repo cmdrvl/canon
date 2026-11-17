@@ -677,7 +677,7 @@ pub(crate) fn read_solve_hashed(session: &Path) -> Result<(SessionSolveArtifact,
         })
 }
 
-fn read_manifest(session: &Path) -> Result<SessionManifest, Refusal> {
+pub(crate) fn read_manifest(session: &Path) -> Result<SessionManifest, Refusal> {
     let snapshot = open_stream(session, SESSION_MANIFEST_STREAM_ID)?;
     let bytes = snapshot
         .read_logical_file("session/session.json")

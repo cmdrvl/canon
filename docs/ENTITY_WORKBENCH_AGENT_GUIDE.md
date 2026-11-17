@@ -450,6 +450,36 @@ each entry it removed, so earlier evidence stays reachable from
 `corrections.jsonl`, which is append-only. Nothing in a session ever detaches or
 splits on its own.
 
+## Evidence Canon derives itself
+
+`session derive` runs Canon's own entity operators over the observations and
+appends their findings as evidence, so a session does not need a script to
+assert name evidence:
+
+```bash
+canon entity session derive work/bdc-session --profile profile.yaml --strategy strategy.yaml
+canon entity session solve work/bdc-session --rules rules.yaml
+```
+
+Which operator emits which evidence type:
+
+| Operator in the profile | Evidence type | Counts toward tier A or B |
+|---|---|---|
+| `exact_view` on a normalised view | `name_equivalent` (`basis.steps` lists the view's steps) | yes (tier B) |
+| `anchor_match`, `isin_cusip_arithmetic` | `same_key` | yes (tier A) |
+| `anchor_conflict`, `attribute_conflict`, `protected_token_conflict` | `distinct` | vetoes a join |
+| `string_similarity`, `tfidf_cosine`, `two_token_reversal`, `token_overlap` | `name_similar` | never |
+| `date_transposed_digits` | `value_similar` | never |
+
+Similar is not equal: `Mode Purchaser` and `BGI Purchaser` produce
+`name_similar` only and are never accepted, whatever the lineages. The profile
+must put `source_row_id` in `prepare.provenance_fields` and use
+`surface_key_fields` that make a surface of one observation (or a name view),
+and it must declare `cannot_link` and `relation_hints` (the validator requires
+them; derive runs no relation hint and lists them). The output lists records by
+type and operator, the observations prepare rejected (by obs_id), and how many
+hits crossed entity types. Running derive again adds nothing.
+
 ## The loop
 
 ```text

@@ -1758,6 +1758,8 @@ pub enum EntitySessionSubcommand {
     Next(EntitySessionNextCli),
     /// Write the evidence behind each committed outcome as deterministic local files
     Export(EntitySessionExportCli),
+    /// Run Canon's entity operators over the session's observations and append their findings as evidence
+    Derive(EntitySessionDeriveCli),
     /// Draw a deterministic tier sample or score operator labels
     Sample(EntitySessionSampleCli),
     /// Initialize or validate the deterministic session rule table
@@ -1947,6 +1949,24 @@ pub struct EntitySessionFrontierCli {
     /// Restrict the frontier to one entity's neighbourhood: a surface or canonical id
     #[arg(long = "seed-entity")]
     pub seed_entity: Option<String>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntitySessionDeriveCli {
+    /// Session work directory
+    pub session: PathBuf,
+
+    /// Entity profile (YAML or package JSON) declaring the operators to run
+    #[arg(long)]
+    pub profile: String,
+
+    /// Entity strategy YAML (blocking and budget configuration)
+    #[arg(long)]
+    pub strategy: PathBuf,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]

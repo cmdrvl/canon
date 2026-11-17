@@ -65,6 +65,7 @@
       "canon entity session frontier <SESSION> [--seed-entity <SURFACE_OR_ID>] [--emit json|summary]",
       "canon entity session next <SESSION> [--seed-entity <SURFACE_OR_ID>]",
       "canon entity session export <SESSION> --format evidence-closure --out <DIR> [--outcome <OUTCOME_REF>] [--emit json|summary]",
+      "canon entity session derive <SESSION> --profile <PROFILE.yaml> --strategy <STRATEGY.yaml> [--emit json|summary]",
       "canon entity session sample <SESSION> [--stratum tier_a|tier_b|tier_c|standalone|neighbourhood] [--count <N>] [--seed <SEED>] [--entity-type <TYPE>] [--blind] [--seed-entity <SURFACE_OR_ID>] [--score <LABELS.jsonl>] [--emit jsonl|json|summary]",
       "canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY_DIR> --work-dir <DIR>",
       "canon entity index build <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit json|summary]",
@@ -7334,6 +7335,86 @@
         }
       ],
       "next_command": "canon entity session assert <SESSION> <EVIDENCE.jsonl|-> --emit json",
+      "recovery": {
+        "next_command": "Run canon entity session init for the session, then rerun this assert",
+        "refusal_exit_code": 2
+      }
+    },
+    {
+      "name": "entity session derive",
+      "usage": "canon entity session derive <SESSION> --profile <PROFILE.yaml> --strategy <STRATEGY.yaml> [--emit json|summary]",
+      "description": "Run Canon's existing entity operators (exact_view, anchor_match, isin_cusip_arithmetic, string_similarity, tfidf_cosine, two_token_reversal, date_transposed_digits, anchor_conflict, attribute_conflict, protected_token_conflict) over the session's observations with a declared profile and strategy and append what they find as canon.evidence.v1 records through the assert path: exact_view becomes name_equivalent, anchors become same_key, conflicts become distinct, similarity becomes name_similar or value_similar and is never eligible for tier A or B; idempotent",
+      "output_mode": "mixed",
+      "output_schema": "canon.entity.session.derive.v1",
+      "status": "implemented",
+      "read_only": false,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "appends deterministic evidence shards to the explicit session without network access",
+        "mutation_class": "OwnedOutput",
+        "network_class": "Offline",
+        "concurrency_class": "CacheRaceSafe",
+        "platform_classes": [
+          "PortablePathUtf8",
+          "SameFilesystemAtomicReplace"
+        ],
+        "declaration_command": "entity workbench"
+      },
+      "side_effects": {
+        "reads_stdin": true,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "writes_registry_files": false,
+        "writes_work_dir": true,
+        "writes_output_files": false,
+        "uses_network": false,
+        "appends_witness_ledger": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "all evidence rows were accepted or already present",
+          "domain": "positive"
+        },
+        "1": {
+          "meaning": "at least one evidence row was rejected and accepted rows were written",
+          "domain": "partial"
+        },
+        "2": {
+          "meaning": "REFUSAL / missing session, unreadable input, or publication state",
+          "domain": "error"
+        }
+      },
+      "options": [
+        {
+          "name": "session",
+          "type": "directory_path",
+          "required": true,
+          "position": 0,
+          "description": "Session work directory"
+        },
+        {
+          "name": "profile",
+          "flag": "--profile",
+          "type": "string",
+          "required": true,
+          "description": "Entity profile declaring the normalised views and the support and cannot-link operators to run"
+        },
+        {
+          "name": "strategy",
+          "flag": "--strategy",
+          "type": "file_path",
+          "required": true,
+          "description": "Entity strategy YAML (blocking and candidate budget)"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json or summary"
+        }
+      ],
+      "next_command": "canon entity session derive <SESSION> --profile <PROFILE.yaml> --strategy <STRATEGY.yaml> [--emit json|summary]",
       "recovery": {
         "next_command": "Run canon entity session init for the session, then rerun this assert",
         "refusal_exit_code": 2

@@ -481,6 +481,22 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         origin_components.extend(left_target.origin_components.iter().cloned());
         origin_components.extend(right_target.origin_components.iter().cloned());
         origin_components.extend(record_origin_components(&record));
+        // `basis.applies_to: surface` (derived evidence): the record names one
+        // observation per surface, but the finding holds for the surface, so
+        // every observation of both nodes counts toward lineages and origins.
+        if basis_string(&record, "applies_to") == Some("surface") {
+            for node_key in [&left_node, &right_node] {
+                let Some(node) = nodes.get(node_key) else {
+                    continue;
+                };
+                for observation_id in &node.observation_ids {
+                    if let Some(observation) = observations_by_id.get(observation_id) {
+                        lineage_ids.extend(observation.lineages.iter().cloned());
+                        origin_components.extend(observation.origin_components.iter().cloned());
+                    }
+                }
+            }
+        }
         if left_node == right_node {
             if DISTINCT_TYPES.contains(&evidence_type.as_str()) {
                 same_node_distinct.insert(left_node.clone());

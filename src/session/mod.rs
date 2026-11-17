@@ -43,7 +43,7 @@ pub const SESSION_COMMIT_STREAM_ID: &str = "entity-session-commit";
 const SESSION_PUBLICATION_STAGE: &str = "session";
 const SESSION_PUBLICATION_VERSION: &str = "canon.entity.session.v1";
 const SESSION_EVIDENCE_EXTENSION_SCHEMA: &str = "canon.entity.session.assertion.v1";
-const EVIDENCE_VOCABULARY: &str = r#"[{"type":"same_key","kind":"pair_support","target":"pair"},{"type":"same_slot","kind":"pair_support","target":"pair"},{"type":"attribute_agreement","kind":"pair_support","target":"pair"},{"type":"name_equivalent","kind":"pair_support","target":"pair"},{"type":"asserted_alias","kind":"pair_support","target":"pair"},{"type":"distinct","kind":"anti_merge_veto","target":"pair"},{"type":"related","kind":"context_only","target":"pair"}]"#;
+const EVIDENCE_VOCABULARY: &str = r#"[{"type":"same_key","kind":"pair_support","target":"pair"},{"type":"same_slot","kind":"pair_support","target":"pair"},{"type":"attribute_agreement","kind":"pair_support","target":"pair"},{"type":"name_equivalent","kind":"pair_support","target":"pair"},{"type":"asserted_alias","kind":"pair_support","target":"pair"},{"type":"distinct","kind":"anti_merge_veto","target":"pair"},{"type":"related","kind":"context_only","target":"pair"},{"type":"name_similar","kind":"pair_support","target":"pair"},{"type":"value_similar","kind":"pair_support","target":"pair"}]"#;
 
 #[derive(Debug, Clone)]
 pub struct SessionInitRequest {
@@ -2726,14 +2726,20 @@ fn compile_short_assertion(
     let ancestry = parse_assertion_ancestry(source, line_number)?;
 
     let (kind, reason_code, authority_basis, relation) = match assertion_type.as_str() {
-        "same_key" | "same_slot" | "attribute_agreement" | "name_equivalent" | "asserted_alias" => {
-            (
-                EvidenceKind::PairSupport,
-                assertion_type.clone(),
-                None,
-                None,
-            )
-        }
+        // Similarity is stored and shown, but it is ranking material, not
+        // proof: solve never counts it toward tier A or B.
+        "same_key"
+        | "same_slot"
+        | "attribute_agreement"
+        | "name_equivalent"
+        | "asserted_alias"
+        | "name_similar"
+        | "value_similar" => (
+            EvidenceKind::PairSupport,
+            assertion_type.clone(),
+            None,
+            None,
+        ),
         "distinct" => {
             let authority = required_assertion_string(basis, "authority", line_number)?;
             let authority_basis = match authority.as_str() {
@@ -2796,7 +2802,7 @@ fn compile_short_assertion(
                 line_number,
                 "unknown_type",
                 format!("unknown session evidence type {assertion_type}"),
-                "type: same_key, same_slot, attribute_agreement, name_equivalent, asserted_alias, distinct, or related",
+                "type: same_key, same_slot, attribute_agreement, name_equivalent, asserted_alias, name_similar, value_similar, distinct, or related",
             ));
         }
     };

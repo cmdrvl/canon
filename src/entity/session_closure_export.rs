@@ -141,7 +141,7 @@ fn open_stream(
     }
 }
 
-fn shard_lines(snapshot: &EntityPublicationSnapshot, prefix: &str) -> Vec<String> {
+pub(crate) fn shard_lines(snapshot: &EntityPublicationSnapshot, prefix: &str) -> Vec<String> {
     let mut lines = Vec::new();
     let mut paths = snapshot
         .logical_paths()
