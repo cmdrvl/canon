@@ -56,6 +56,7 @@ pub mod session_closure_export;
 pub mod session_derive;
 pub mod session_explain;
 pub mod session_frontier;
+pub mod session_names;
 pub mod session_provenance;
 pub mod session_sample;
 pub mod sidecar;

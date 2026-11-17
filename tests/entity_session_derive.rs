@@ -323,6 +323,57 @@ fn preserve_legal_form_derives_variant_equivalence_and_keeps_distinct_forms() {
 }
 
 #[test]
+fn bare_legal_form_equivalence_is_declared_and_does_not_bridge_forms() {
+    let case = init(RULES);
+    case.ingest(&[
+        observation("a1", "fundA", "Acme Holdings", json!({})),
+        observation("a2", "fundB", "Acme Holdings Inc", json!({})),
+        observation("a3", "fundC", "Acme Holdings, Incorporated", json!({})),
+        observation("z1", "fundD", "Zeta Holdings", json!({})),
+        observation("z2", "fundE", "Zeta Holdings LLC", json!({})),
+        observation("z3", "fundF", "Zeta Holdings Inc", json!({})),
+    ]);
+    let profile_text = profile(EXACT_SUPPORT, NO_CANNOT, EXACT_BLOCK, "")
+        .replace(
+            "normalized_views:\n  core:\n    operators: [legal_basename]",
+            "normalized_views:\n  core:\n    operators: [preserve_legal_form]\n  bare:\n    operators: [preserve_legal_form_with_bare]",
+        )
+        .replace("    core: surface\n    row_key", "    core: surface\n    bare: surface\n    row_key")
+        .replace(
+            "    - op: exact_identity\n      view: core",
+            "    - op: exact_identity\n      view: core\n    - op: exact_identity\n      view: bare",
+        )
+        .replace(
+            "    - op: exact_view\n      view: core",
+            "    - op: exact_view\n      view: core\n    - op: exact_view\n      view: bare",
+        );
+    let derived = case.derive(&profile_text, 0);
+    let _solved = case.solve();
+
+    // Acme's bare spelling has exactly one form in its bucket and joins the
+    // two equivalent Inc spellings. The canonical-form support also records
+    // the direct Inc-to-Inc edge. Zeta's bare spelling would bridge LLC and
+    // Inc, so the ambiguous bucket is refused and emits no evidence for that
+    // trio.
+    assert_eq!(count(&derived, "name_equivalent"), 3, "{derived}");
+    let basis = stored_basis(&case, "a1");
+    for record in basis
+        .iter()
+        .filter(|record| record["type"] == "name_equivalent")
+    {
+        assert_eq!(record["basis"]["left_value"], "acme holdings");
+        assert_eq!(record["basis"]["right_value"], "acme holdings");
+        assert!(
+            record["basis"]["steps"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|step| step == "legal_form:bare_equivalence")
+        );
+    }
+}
+
+#[test]
 fn anchor_match_on_cik_and_lei_gives_the_same_tier_a_clusters_as_the_built_in_key_rule() {
     let rows = [
         observation(
@@ -1193,4 +1244,288 @@ fn an_attribute_conflict_on_the_same_pair_still_vetoes() {
         "{solved}"
     );
     assert_eq!(solved["summary"]["accepted_tier_b"], 0);
+}
+
+// ---------------------------------------------------------------------------
+// Person and trust names (bd-vdcw.26). All names here are invented.
+// ---------------------------------------------------------------------------
+
+fn names_profile() -> String {
+    profile(EXACT_SUPPORT, NO_CANNOT, EXACT_BLOCK, "")
+        .replace(
+            "  row_key:\n    operators: [ascii_trim_upper]\n",
+            "  row_key:\n    operators: [ascii_trim_upper]\n  person:\n    operators: [person_name]\n",
+        )
+        .replace(
+            "    row_key: source_row_id\n",
+            "    row_key: source_row_id\n    person: surface\n",
+        )
+}
+
+/// A session whose registries map the kinds person, trust and unknown beside
+/// organisation (a kind must be mapped for ingest to accept it).
+fn names_case(rules: &str) -> Case {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().to_path_buf();
+    let session = root.join("session");
+    let rules_path = root.join("rules.yaml");
+    fs::write(&rules_path, rules).unwrap();
+    let strategy = root.join("strategy.yaml");
+    fs::write(&strategy, STRATEGY).unwrap();
+    let organisations = root.join("organisations");
+    let mut init_registry = assert_cmd::Command::new(env!("CARGO_BIN_EXE_canon"));
+    init_registry.args([
+        "registry",
+        "init",
+        "--registry",
+        p(&organisations),
+        "--registry-id",
+        "organisations",
+        "--prefix",
+        "ORG",
+        "--zero-pad",
+        "3",
+    ]);
+    init_registry.assert().success();
+    let agent_kind = |name: &str, canonical: &str| {
+        format!(
+            "  {name}:\n    registry: {}\n    registry_id: {name}s\n    id_scheme: agent\n    kind_prefix: {}\n    canonical_type: {canonical}\n    alias_file: aliases.json\n",
+            root.join(format!("{name}s")).display(),
+            &name[..3]
+        )
+    };
+    let map = root.join("registries.yaml");
+    fs::write(
+        &map,
+        format!(
+            "version: canon.session.registries.v1\nkinds:\n  organisation:\n    registry: {}\n    registry_id: organisations\n    prefix: ORG\n    zero_pad: 3\n    canonical_type: firm\n    alias_file: 30-session-aliases.json\n{}{}{}",
+            organisations.display(),
+            agent_kind("person", "person"),
+            agent_kind("trust", "trust"),
+            agent_kind("unknown", "unknown"),
+        ),
+    )
+    .unwrap();
+    run_json(
+        &[
+            "entity",
+            "session",
+            "init",
+            "--goal",
+            "names",
+            "--work-dir",
+            p(&session),
+            "--registries",
+            p(&map),
+        ],
+        0,
+    );
+    Case {
+        _temp: Some(temp),
+        root,
+        session,
+        rules: rules_path,
+        strategy,
+        shape: ("organisations".into(), "ORG".into(), "3".into()),
+    }
+}
+
+fn typed(obs_id: &str, lineage: &str, surface: &str, entity_type: &str) -> Value {
+    let mut row = observation(obs_id, lineage, surface, json!({}));
+    row["entity_type"] = json!(entity_type);
+    row
+}
+
+/// Every stored evidence record of `type` touching `obs` (explain reads the
+/// solve generation, so solve first).
+fn records_of(case: &Case, obs: &str, kind: &str) -> Vec<Value> {
+    case.solve();
+    stored_basis(case, obs)
+        .into_iter()
+        .filter(|record| record["type"] == kind)
+        .collect()
+}
+
+#[test]
+fn one_person_in_three_spellings_is_name_equivalent_with_listed_steps() {
+    let case = names_case(ATTRIBUTE_RULES);
+    case.ingest(&[
+        typed("p1", "fundA", "Smith, John A. Jr.", "person"),
+        typed("p2", "fundB", "John A Smith Jr", "person"),
+        typed("p3", "fundC", "JOHN A. SMITH, JR.", "person"),
+        typed("d1", "fundA", "Jane Doe", "person"),
+        typed("d2", "fundB", "Doe, Jane", "person"),
+    ]);
+    let derived = case.derive(&names_profile(), 0);
+    eprintln!("names derive: {derived}");
+    // three spellings = three pairs, plus Jane Doe's pair
+    assert_eq!(count(&derived, "name_equivalent"), 4, "{derived}");
+    let reordered = records_of(&case, "p1", "name_equivalent");
+    assert_eq!(reordered.len(), 2, "{reordered:?}");
+    for record in &reordered {
+        let steps = record["basis"]["steps"].as_array().unwrap();
+        assert!(steps.contains(&json!("person_name")), "{steps:?}");
+        assert!(steps.contains(&json!("person:suffix_split")), "{steps:?}");
+    }
+    assert!(reordered.iter().any(|record| {
+        record["basis"]["steps"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("person:last_first_reordered"))
+    }));
+    // Name equivalence is one evidence type: it never accepts alone.
+    let solved = case.solve();
+    assert_eq!(solved["summary"]["accepted_tier_b"], 0, "{solved}");
+    assert_eq!(derived["names"]["classified"]["person"], 5);
+}
+
+#[test]
+fn a_different_suffix_is_distinct_and_a_different_middle_is_not_equivalent() {
+    let case = names_case(ATTRIBUTE_RULES);
+    case.ingest(&[
+        typed("j1", "fundA", "John A. Smith Jr.", "person"),
+        typed("j2", "fundB", "John A. Smith Sr.", "person"),
+        typed("m1", "fundA", "John A. Smith", "person"),
+        typed("m2", "fundB", "John B. Smith", "person"),
+        typed("m3", "fundC", "John Andrew Smith", "person"),
+    ]);
+    let derived = case.derive(&names_profile(), 0);
+    eprintln!("suffix derive: {derived}");
+    // Jr / Sr both carry a suffix and differ: distinct with authority.
+    assert_eq!(count(&derived, "distinct"), 1, "{derived}");
+    let distinct = records_of(&case, "j1", "distinct");
+    // (the authority is consumed by assert; solve treats it as a veto below)
+    assert!(
+        distinct[0]["basis"]["explanation"]
+            .as_str()
+            .unwrap()
+            .contains("suffixes differ"),
+        "{}",
+        distinct[0]
+    );
+    // A with B: nothing. A with Andrew: similar, for review. Neither is equivalent.
+    // "John A. Smith" vs "John Smith"-style middle absence has no row here; Jr and
+    // Sr never reach the unsuffixed rows (one side absent: nothing claimed).
+    assert_eq!(count(&derived, "name_equivalent"), 0, "{derived}");
+    assert_eq!(count(&derived, "name_similar"), 1, "{derived}");
+    let similar = records_of(&case, "m1", "name_similar");
+    assert_eq!(similar.len(), 1);
+    assert!(records_of(&case, "m2", "name_similar").is_empty());
+    // Two lineages say the Jr and the Sr hold the same slot: the veto still wins.
+    let slots = ["lineageX", "lineageY"]
+        .iter()
+        .map(|lineage| {
+            serde_json::to_string(&json!({
+                "type": "same_slot",
+                "left": "j1",
+                "right": "j2",
+                "basis": {"rule": "same loan and role", "left_value": "loan-7:guarantor", "right_value": "loan-7:guarantor"},
+                "source": {"channel": "fixture", "id": lineage, "lineage": lineage},
+                "asserted_by": "agent:fixture"
+            }))
+            .unwrap()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let slot_path = case.root.join("slots.jsonl");
+    fs::write(&slot_path, format!("{slots}\n")).unwrap();
+    run_json(
+        &[
+            "entity",
+            "session",
+            "assert",
+            p(&case.session),
+            p(&slot_path),
+        ],
+        0,
+    );
+    let solved = case.solve();
+    assert!(
+        solved["summary"]["contradiction"].as_u64().unwrap() >= 1,
+        "{solved}"
+    );
+    assert_eq!(solved["summary"]["accepted_tier_b"], 0);
+}
+
+#[test]
+fn a_middle_name_absent_on_one_side_is_equivalent_with_a_step() {
+    let case = names_case(ATTRIBUTE_RULES);
+    case.ingest(&[
+        typed("a1", "fundA", "John Smith", "person"),
+        typed("a2", "fundB", "John A. Smith", "person"),
+    ]);
+    let derived = case.derive(&names_profile(), 0);
+    assert_eq!(count(&derived, "name_equivalent"), 1, "{derived}");
+    let record = &records_of(&case, "a1", "name_equivalent")[0];
+    assert!(
+        record["basis"]["steps"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("person:middle_absent"))
+    );
+}
+
+#[test]
+fn a_person_an_org_and_a_typed_org_with_comma_are_never_parsed_across_types() {
+    let case = names_case(ATTRIBUTE_RULES);
+    case.ingest(&[
+        typed("p1", "fundA", "John Smith", "person"),
+        typed("o1", "fundB", "John Smith LLC", "organisation"),
+        // typed org: "Smith, Jones" must not be read as family Smith, given Jones
+        typed("o2", "fundA", "Smith, Jones", "organisation"),
+        typed("o3", "fundB", "Jones Smith", "organisation"),
+    ]);
+    let derived = case.derive(&names_profile(), 0);
+    eprintln!("cross type derive: {derived}");
+    for kind in ["name_equivalent", "name_similar", "distinct", "related"] {
+        assert_eq!(count(&derived, kind), 0, "{kind}: {derived}");
+    }
+}
+
+#[test]
+fn fragments_are_rejected_and_a_trust_is_related_to_its_person_never_merged() {
+    let case = names_case(ATTRIBUTE_RULES);
+    case.ingest(&[
+        typed("f1", "fundA", "Jr", "unknown"),
+        typed("f2", "fundA", "LP", "unknown"),
+        typed("f3", "fundA", "Sr.", "unknown"),
+        typed(
+            "t1",
+            "fundA",
+            "The John A. Smith Revocable Trust dated 1/1/2001",
+            "unknown",
+        ),
+        typed("p1", "fundB", "John A. Smith", "person"),
+        typed("u1", "fundC", "John A. Smith Holdings", "unknown"),
+    ]);
+    let derived = case.derive(&names_profile(), 0);
+    eprintln!("fragment derive: {derived}");
+    let rejected = derived["names"]["fragments_rejected"].as_array().unwrap();
+    let mut ids = rejected
+        .iter()
+        .map(|entry| entry["obs_id"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    ids.sort();
+    assert_eq!(ids, ["f1", "f2", "f3"]);
+    let classified = &derived["names"]["classified"];
+    assert_eq!(classified["fragment"], 3);
+    assert_eq!(classified["trust"], 1);
+    assert_eq!(classified["person"], 1);
+    // The trust names the person: reported, not written as evidence (solve
+    // refuses evidence between two entity types).
+    assert_eq!(count(&derived, "related"), 0, "{derived}");
+    let relations = derived["names"]["trust_relations"].as_array().unwrap();
+    assert_eq!(relations.len(), 1, "{derived}");
+    assert_eq!(relations[0]["trust_obs_id"], "t1");
+    assert_eq!(relations[0]["person_obs_id"], "p1");
+    assert_eq!(relations[0]["relation"], "trust_of");
+    // No evidence of any kind names a fragment as a node.
+    for fragment in ["f1", "f2", "f3"] {
+        case.solve();
+        assert!(stored_basis(&case, fragment).is_empty(), "{fragment}");
+    }
+    // The trust is related, never merged, with its person.
+    let solved = case.solve();
+    assert_eq!(solved["summary"]["accepted_tier_a"], 0, "{solved}");
+    assert_eq!(solved["summary"]["accepted_tier_b"], 0, "{solved}");
 }

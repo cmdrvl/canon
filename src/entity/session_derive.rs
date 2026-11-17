@@ -22,6 +22,10 @@ use crate::{
         score::ScoreLane,
         session_closure_export::shard_lines,
         session_explain::{explain_refusal, read_manifest},
+        session_names::{
+            FragmentRejection, NameNode, NameStageStats, classify_observation, effective_type,
+            name_assertions, person_views,
+        },
     },
     session::{SESSION_OBSERVATIONS_STREAM_ID, SessionAssertRequest, assert_evidence},
 };
@@ -84,6 +88,10 @@ pub struct SessionDeriveOutput {
     pub rejected_observations: Vec<SessionDeriveRejection>,
     /// Hits between observations of different entity types, never recorded.
     pub cross_type_skipped: usize,
+    /// Person and trust names (a profile view with the `person_name` operator):
+    /// observations by classified type, fragments rejected, people compared.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub names: Option<NameStageStats>,
     /// Exact buckets stored as surface ranges, which derive does not expand.
     pub exact_bucket_ranges_skipped: usize,
     /// Declared relation hints: a profile must list them, `entity run` emits one
@@ -816,6 +824,42 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
     }
 
     let document = &loaded.document;
+
+    // Person and trust names: classify, reject fragments, set effective types.
+    let name_views = person_views(document);
+    let mut name_stats = None;
+    let surface_text = observations
+        .iter()
+        .filter_map(|observation| {
+            Some((
+                observation.get("obs_id")?.as_str()?.to_string(),
+                observation.get("surface")?.as_str()?.to_string(),
+            ))
+        })
+        .collect::<BTreeMap<_, _>>();
+    if !name_views.is_empty() {
+        let mut stats = NameStageStats::default();
+        let mut fragment_obs = BTreeSet::new();
+        for (obs_id, surface) in &surface_text {
+            let declared = entity_types.get(obs_id).map_or("", String::as_str);
+            let (class, fragment) = classify_observation(declared, surface);
+            *stats.classified.entry(class).or_default() += 1;
+            if fragment {
+                fragment_obs.insert(obs_id.clone());
+                stats.fragments_rejected.push(FragmentRejection {
+                    obs_id: obs_id.clone(),
+                    surface: surface.clone(),
+                });
+            }
+        }
+        by_surface.retain(|_, info| !fragment_obs.contains(&info.obs_id));
+        for info in by_surface.values_mut() {
+            if let Some(text) = surface_text.get(&info.obs_id) {
+                info.entity_type = effective_type(&info.entity_type, text);
+            }
+        }
+        name_stats = Some(stats);
+    }
     let steps_for = |view: &str, left: &SurfaceInfo<'_>, right: &SurfaceInfo<'_>| {
         let mut steps = document
             .normalized_views
@@ -862,6 +906,19 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
                 cross_type_skipped += 1;
                 continue;
             }
+            // People are compared by their parsed components below, never by a
+            // generic name hit (a person view, or similarity between people).
+            if let Some(stats) = name_stats.as_mut()
+                && (hit
+                    .operator_id
+                    .split_once(':')
+                    .is_some_and(|(_, view)| name_views.contains(view))
+                    || (left.entity_type == "person"
+                        && matches!(kind, DerivedKind::NameEquivalent | DerivedKind::NameSimilar)))
+            {
+                stats.generic_hits_deferred += 1;
+                continue;
+            }
             if kind == DerivedKind::AttributeAgreement {
                 agreeing.push(hit);
                 continue;
@@ -898,6 +955,37 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
         }
     }
 
+    if let (Some(stats), Some(view)) = (name_stats.as_mut(), name_views.iter().next()) {
+        let nodes = by_surface
+            .values()
+            .filter(|info| !info.is_registry())
+            .map(|info| NameNode {
+                obs_id: info.obs_id.as_str(),
+                surface: surface_text
+                    .get(&info.obs_id)
+                    .map_or(info.record.primary_surface.as_str(), String::as_str),
+                entity_type: info.entity_type.as_str(),
+            })
+            .collect::<Vec<_>>();
+        let view_steps = document
+            .normalized_views
+            .get(view)
+            .map(|view| view.operators.clone())
+            .unwrap_or_default();
+        let (name_lines, pass) = name_assertions(
+            &nodes,
+            view,
+            &view_steps,
+            document.profile.as_str(),
+            &profile_hash,
+        );
+        stats.person_pairs_compared = pass.person_pairs_compared;
+        stats.trust_relations = pass.trust_relations;
+        for name_line in name_lines {
+            push(name_line, &mut lines);
+        }
+    }
+
     // Exact buckets are not expanded to pairs by block; a bucket whose view the
     // profile declares an exact_view support operator on becomes a star of
     // name_equivalent records around its lowest observation.
@@ -926,6 +1014,21 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
             .filter_map(|id| by_surface.get(id))
             .collect::<Vec<_>>();
         members.sort_by(|left, right| left.obs_id.cmp(&right.obs_id));
+        // A bare spelling may share this view with one form, but it must not
+        // bridge two different forms.  Refuse the whole ambiguous bucket so
+        // `Name`, `Name LLC`, and `Name Inc` cannot become one component by
+        // way of the bare spelling.  The canonical-form view still emits
+        // same-form variants independently.
+        let distinct_legal_forms = members
+            .iter()
+            .filter_map(|member| member.record.normalized_views.get(view))
+            .flat_map(|normalized| normalized.reason_codes.iter())
+            .filter_map(|reason| reason.strip_prefix("legal_form:"))
+            .filter(|form| *form != "bare_equivalence")
+            .collect::<BTreeSet<_>>();
+        if distinct_legal_forms.len() > 1 {
+            continue;
+        }
         // The star's hub is the lowest session surface: a bucket is lifted to
         // session-to-member edges only, never registry-to-registry (two ids
         // sharing a normalised name would otherwise read as incumbent_conflict).
@@ -939,6 +1042,12 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
         for member in rest {
             if hub.entity_type != member.entity_type {
                 cross_type_skipped += 1;
+                continue;
+            }
+            if let Some(stats) = name_stats.as_mut()
+                && hub.entity_type == "person"
+            {
+                stats.generic_hits_deferred += 1;
                 continue;
             }
             push(
@@ -1078,6 +1187,7 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
         rejected_assertions: asserted.rejected.len(),
         rejected_observations,
         cross_type_skipped,
+        names: name_stats,
         exact_bucket_ranges_skipped,
         relation_hints_not_executed,
         registry_candidates: registry_stats,

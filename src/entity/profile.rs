@@ -957,6 +957,7 @@ const SUPPORTED_NORMALIZE_OPS: &[&str] = &[
     "expand_na_abbreviation",
     "placeholder_to_null",
 ];
+    "person_name",
 
 const SUPPORTED_SUPPORT_OPS: &[&str] = &[
     "exact_view",

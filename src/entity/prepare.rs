@@ -1967,6 +1967,11 @@ fn apply_configured_normalizers(raw: &str, operators: &[String]) -> Result<Strin
             _ => {
                 return Err(EntityRefusalKind::Profile.to_refusal(
                     "Prepare configured field mapping uses a normalization operator without a generic field-view implementation",
+            // The comparable form of a person name; text that is not a person
+            // name keeps its trimmed, case-folded spelling (nothing is guessed).
+            "person_name" => crate::namekit::person::parse_person_name(&value)
+                .map(|person| person.key())
+                .unwrap_or_else(|| value.trim().to_lowercase()),
                     json!({ "operator": operator }),
                     None,
                 ));

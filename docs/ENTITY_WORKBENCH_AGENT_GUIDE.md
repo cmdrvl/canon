@@ -499,6 +499,45 @@ tier B on a same-lineage pair, and an `attribute_conflict` on the pair still
 vetoes. The default score of an attribute hit is 2,500 of 10,000 units
 (`score_units` changes it, `"0"` disables the operator).
 
+**Person and trust names.** Declare a normalized view with the `person_name`
+operator and derive treats people differently from organisations:
+
+```yaml
+normalized_views:
+  person:
+    operators: [person_name]
+prepare:
+  normalized_view_fields:
+    person: surface
+```
+
+- The session's registries must map the kinds you use (`person`, `trust`,
+  `unknown` ...); ingest refuses an unmapped `entity_type`.
+- An observation whose `entity_type` is `unknown` (or empty) is classified from
+  table-driven cues: a legal form is `org`; "Trust", "Revocable", "Estate of",
+  "u/a/d", "dated" is `trust`; a single token that is a legal form or a
+  generational suffix ("Jr", "LP", "Sr.") is a `fragment`. Anything else stays
+  `unknown`: a name is never guessed into `person`. A declared type always wins.
+- Fragments are rejected: never a node in evidence, listed in
+  `names.fragments_rejected`, counted in `names.classified`.
+- People are the observations declared `person`. They compare on parsed
+  components (given, middle, family, suffix; "Last, First Middle Jr", honorifics
+  dropped, family-name particles kept) and only when family and given name are
+  equal: "Smith, John A. Jr." = "John A Smith Jr" = "JOHN A. SMITH, JR." is
+  `name_equivalent` with listed `person:*` steps; a missing middle name on one side is
+  equivalent with `person:middle_absent`; an initial against a full middle name
+  ("A" and "Andrew") is `name_similar` for review; "A" and "B" is nothing; two
+  different suffixes (Jr, Sr) are `distinct`, one absent suffix claims nothing.
+  Generic exact-view and similarity hits between two people are deferred to this
+  comparison (`names.generic_hits_deferred`).
+- A trust that names a person in the session is listed in `names.trust_relations`
+  as `trust_of`. It is not written as evidence: solve refuses evidence between two
+  entity types, so a trust and a person are never merged, and the relation is
+  reported rather than stored.
+- No nickname table, no phonetic matching, no gender or ethnicity inference, no
+  merge on a family name plus an initial. Two people can share a full name: name
+  equivalence is one evidence type and the rule table decides what it accepts.
+
 **Day two.** A new session whose rows share nothing with the first session's
 still finds its spellings: derive also puts the registry's aliases in the rows
 file (`origin: registry`, so the profile lists `origin` in
