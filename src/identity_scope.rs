@@ -81,6 +81,7 @@ pub enum CoreScopeDimension {
     Jurisdiction,
     SourceSystem,
     Profile,
+    Role,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

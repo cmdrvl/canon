@@ -1233,6 +1233,9 @@ pub enum RegistrySubcommand {
     /// Persist a registry's default self-authored canonical ID scheme
     #[command(name = "default-id-scheme")]
     DefaultIdScheme(RegistryDefaultIdSchemeCli),
+    /// Opt a registry into optional scope dimensions (bare lookup allowed; scoped lookup falls back to the unscoped entry)
+    #[command(name = "scope-policy")]
+    ScopePolicy(RegistryScopePolicyCli),
     /// Compare two registry versions and report what changed
     Diff(RegistryDiffCli),
     /// Audit a seed corpus against a registry for authoring workflows
@@ -1674,6 +1677,38 @@ pub struct RegistryDefaultIdSchemeCli {
     /// Refuse instead of warning when existing in-namespace IDs are out of scheme
     #[arg(long)]
     pub strict: bool,
+
+    /// Numeric semver bump to apply; defaults to patch when --next-version is absent
+    #[arg(long, value_enum)]
+    pub bump: Option<RegistryVersionBumpMode>,
+
+    /// Explicit next registry version for non-numeric or calendar versions
+    #[arg(long = "next-version")]
+    pub next_version: Option<String>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryPlainJsonEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+#[command(group(
+    ArgGroup::new("version_update")
+        .multiple(false)
+        .args(["bump", "next_version"])
+))]
+pub struct RegistryScopePolicyCli {
+    /// Registry directory to update
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Scope dimension to declare optional (repeatable; supported: role)
+    #[arg(long = "optional-dimension")]
+    pub optional_dimension: Vec<String>,
+
+    /// Scope dimension to take off the optional list (repeatable)
+    #[arg(long = "remove-dimension")]
+    pub remove_dimension: Vec<String>,
 
     /// Numeric semver bump to apply; defaults to patch when --next-version is absent
     #[arg(long, value_enum)]

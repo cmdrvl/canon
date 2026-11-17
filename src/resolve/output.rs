@@ -151,6 +151,7 @@ mod tests {
                 source: "tests/registry".to_string(),
             },
             db_path: PathBuf::from("unused.sqlite"),
+            scope_policy: Default::default(),
         }
     }
 

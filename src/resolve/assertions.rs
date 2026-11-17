@@ -923,6 +923,7 @@ mod tests {
                 version: "1.0.0".to_string(),
                 source: "test".to_string(),
             },
+            scope_policy: Default::default(),
             db_path: temp_db.path().to_path_buf(),
         };
 

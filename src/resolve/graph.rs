@@ -630,6 +630,7 @@ mod tests {
                 version: "0.0.0".to_string(),
                 source: "unused".to_string(),
             },
+            scope_policy: Default::default(),
             db_path: Path::new("does-not-exist.sqlite").to_path_buf(),
         };
         let filters = vec![filter("exact", "deal", "deal", &[])];

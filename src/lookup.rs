@@ -65,8 +65,25 @@ pub fn resolve_values_with_context(
             .map_err(|e| LookupError::Database(format!("Cannot prepare query statement: {}", e)))?;
 
         // Query each unique input value
+        let fallback_to_unscoped = context
+            .scope
+            .as_ref()
+            .is_some_and(|scope| scope_dimensions_all_optional(scope, &registry.scope_policy));
         for input_value in input_values.values.keys() {
-            match first_qualified_candidate(&mut stmt, input_value, context)? {
+            let mut found = first_qualified_candidate(&mut stmt, input_value, context)?;
+            if found.is_none() && fallback_to_unscoped {
+                // The registry opted this dimension in: a scoped lookup with no
+                // entry scoped exactly so returns the unscoped entry.
+                found = first_qualified_candidate(
+                    &mut stmt,
+                    input_value,
+                    &ExactLookupContext {
+                        namespace: context.namespace.clone(),
+                        scope: None,
+                    },
+                )?;
+            }
+            match found {
                 Some(candidate) => {
                     mappings.push(Mapping {
                         input: input_value.clone(),
@@ -130,13 +147,66 @@ pub fn registry_has_scoped_entries(registry: &Registry) -> Result<bool, LookupEr
     )
     .map_err(|e| LookupError::Database(format!("Cannot open registry database: {}", e)))?;
 
-    conn.query_row(
-        "SELECT EXISTS(SELECT 1 FROM entries WHERE scope IS NOT NULL LIMIT 1)",
-        [],
-        |row| row.get::<_, i64>(0),
-    )
-    .map(|count| count != 0)
-    .map_err(|e| LookupError::Database(format!("Cannot inspect registry scope metadata: {}", e)))
+    if registry.scope_policy.optional_dimensions.is_empty() {
+        return conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM entries WHERE scope IS NOT NULL LIMIT 1)",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|count| count != 0)
+            .map_err(|e| {
+                LookupError::Database(format!("Cannot inspect registry scope metadata: {}", e))
+            });
+    }
+
+    // With a scope_policy, only entries scoped on a dimension that is not
+    // declared optional force a bare lookup to name a scope.
+    let mut stmt = conn
+        .prepare("SELECT DISTINCT scope FROM entries WHERE scope IS NOT NULL")
+        .map_err(|e| {
+            LookupError::Database(format!("Cannot inspect registry scope metadata: {}", e))
+        })?;
+    let scopes = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| {
+            LookupError::Database(format!("Cannot inspect registry scope metadata: {}", e))
+        })?;
+    for scope_json in scopes {
+        let scope_json = scope_json.map_err(|e| {
+            LookupError::Database(format!("Cannot inspect registry scope metadata: {}", e))
+        })?;
+        let scope: IdentityScope = serde_json::from_str(&scope_json).map_err(|e| {
+            LookupError::IdentityScope(format!("Invalid scoped registry scope: {e}"))
+        })?;
+        if !scope_dimensions_all_optional(&scope, &registry.scope_policy) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn dimension_name(dimension: &crate::identity_scope::ScopeDimensionRef) -> Option<String> {
+    match dimension {
+        crate::identity_scope::ScopeDimensionRef::Core { dimension } => {
+            serde_json::to_value(dimension)
+                .ok()
+                .and_then(|value| value.as_str().map(str::to_string))
+        }
+        _ => None,
+    }
+}
+
+/// True when every dimension of `scope` is declared optional by the policy.
+pub fn scope_dimensions_all_optional(
+    scope: &IdentityScope,
+    policy: &crate::registry::ScopePolicy,
+) -> bool {
+    !policy.optional_dimensions.is_empty()
+        && scope.dimensions.iter().all(|binding| {
+            dimension_name(&binding.dimension)
+                .is_some_and(|name| policy.optional_dimensions.contains(&name))
+        })
 }
 
 fn first_qualified_candidate(
@@ -360,6 +430,7 @@ mod tests {
                 source: "test".to_string(),
             },
             db_path: PathBuf::from(temp_db.path()),
+            scope_policy: Default::default(),
         };
 
         (registry, temp_db)
@@ -554,5 +625,36 @@ mod tests {
             result.summary.resolved + result.summary.unresolved
         );
         assert_eq!(result.summary.total, 3); // 1 resolved + 2 unresolved (1 no match + 1 special)
+    }
+
+    #[test]
+    fn optional_dimensions_cover_only_the_listed_scope_dimensions() {
+        use crate::identity_scope::{
+            CoreScopeDimension, ScopeBinding, ScopeDimensionBinding, ScopeDimensionRef,
+        };
+        let scope = |dimension| IdentityScope {
+            dimensions: vec![ScopeDimensionBinding {
+                dimension: ScopeDimensionRef::Core { dimension },
+                binding: ScopeBinding::Exact {
+                    value: "x".to_string(),
+                },
+            }],
+        };
+        let policy = crate::registry::ScopePolicy {
+            optional_dimensions: vec!["role".to_string()],
+        };
+        assert!(scope_dimensions_all_optional(
+            &scope(CoreScopeDimension::Role),
+            &policy
+        ));
+        assert!(!scope_dimensions_all_optional(
+            &scope(CoreScopeDimension::Dataset),
+            &policy
+        ));
+        // No policy: nothing is optional, so every existing registry behaves as before.
+        assert!(!scope_dimensions_all_optional(
+            &scope(CoreScopeDimension::Role),
+            &Default::default()
+        ));
     }
 }

@@ -625,6 +625,14 @@
       "action": "preserve"
     },
     {
+      "id": "canon registry scope-policy",
+      "family": "registry",
+      "clap_path": "registry scope-policy",
+      "operator_name": "registry scope-policy",
+      "primary_contracts": ["canon_registry_scope_policy.v0"],
+      "action": "preserve"
+    },
+    {
       "id": "canon registry diff",
       "family": "registry",
       "clap_path": "registry diff",
@@ -1512,6 +1520,7 @@
     { "id": "canon_registry_build.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_init.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_default_id_scheme.v0", "family": "registry", "action": "preserve" },
+    { "id": "canon_registry_scope_policy.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_diff.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_export.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_lint.v0", "family": "registry", "action": "preserve" },

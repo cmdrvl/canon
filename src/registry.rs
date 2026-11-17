@@ -41,6 +41,7 @@ mod mint;
 mod next_id;
 pub mod package;
 mod provider;
+mod scope_policy;
 pub mod transaction;
 
 pub use add_entry::{
@@ -91,6 +92,7 @@ pub use provider::{
     ProviderCatalogEntry, ProviderExample, ProviderOption, ProviderSchema, provider_catalog,
     provider_schema,
 };
+pub use scope_policy::{RegistryScopePolicyOutput, RegistryScopePolicyRequest, set_scope_policy};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct RegistryJson {
@@ -106,6 +108,16 @@ struct RegistryJson {
     #[allow(dead_code)]
     #[serde(default)]
     default_id_scheme: Option<DefaultIdScheme>,
+    #[serde(default)]
+    scope_policy: ScopePolicy,
+}
+
+/// Opt-in per registry: scope dimensions for which a bare lookup is allowed and a
+/// scoped lookup falls back to the unscoped entry.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ScopePolicy {
+    #[serde(default)]
+    pub optional_dimensions: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -327,6 +339,7 @@ pub fn load_registry(registry_dir: &Path) -> Result<Registry, Box<dyn Error>> {
     Ok(Registry {
         meta: registry_meta,
         db_path: index_target.db_path,
+        scope_policy: registry_json.scope_policy.clone(),
     })
 }
 
@@ -616,9 +629,10 @@ fn parse_scope_dimension_flag(dimension: &str) -> Result<ScopeDimensionRef, Stri
         "jurisdiction" => CoreScopeDimension::Jurisdiction,
         "source_system" => CoreScopeDimension::SourceSystem,
         "profile" => CoreScopeDimension::Profile,
+        "role" => CoreScopeDimension::Role,
         _ => {
             return Err(format!(
-                "Unsupported --scope dimension '{dimension}'; expected dataset, deal, jurisdiction, source_system, or profile"
+                "Unsupported --scope dimension '{dimension}'; expected dataset, deal, jurisdiction, source_system, profile, or role"
             ));
         }
     };

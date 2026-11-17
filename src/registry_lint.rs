@@ -159,6 +159,7 @@ struct MappingRecord {
     rule_id: String,
     source_file: String,
     entry_order: usize,
+    scope: Option<IdentityScope>,
 }
 
 #[derive(Debug)]
@@ -431,6 +432,7 @@ fn lint_standard(context: &mut LintContext) {
     let records = load_mapping_records(context, &mapping_files, "standard mapping");
     check_entry_count(context, records.len(), "standard_entries");
     check_duplicate_inputs(context, &records);
+    check_scope_collisions(context, &records);
     check_index_status(context, &mapping_files);
     lint_relation_sidecar(context, &records);
     lint_corrections(context, &records);
@@ -921,7 +923,45 @@ fn mapping_record_from_raw(
         rule_id,
         source_file: source_file.to_string(),
         entry_order,
+        scope: entry.scope,
     })
+}
+
+/// Two entries with the same input and the same scope must name the same id.
+fn check_scope_collisions(context: &mut LintContext, records: &[MappingRecord]) {
+    let mut first_by_key = BTreeMap::<(String, String), &MappingRecord>::new();
+    for record in records {
+        let scope_key = record
+            .scope
+            .as_ref()
+            .and_then(|scope| serde_json::to_string(scope).ok())
+            .unwrap_or_default();
+        match first_by_key.get(&(record.input.clone(), scope_key.clone())) {
+            Some(first) if first.canonical_id != record.canonical_id => {
+                context.finding(
+                    RegistryLintSeverity::Error,
+                    "scope_collisions",
+                    "scope_collision",
+                    format!(
+                        "Input '{}' maps to two ids under the same scope",
+                        record.input
+                    ),
+                    FindingLocation::default(),
+                    json!({
+                        "input": record.input,
+                        "scope": record.scope,
+                        "first": mapping_record_detail(first),
+                        "conflicting": mapping_record_detail(record),
+                    }),
+                    "Give the entries different scopes or one id, then rerun canon registry lint",
+                );
+            }
+            Some(_) => {}
+            None => {
+                first_by_key.insert((record.input.clone(), scope_key), record);
+            }
+        }
+    }
 }
 
 fn check_duplicate_inputs(context: &mut LintContext, records: &[MappingRecord]) {

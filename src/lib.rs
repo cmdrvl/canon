@@ -71,11 +71,12 @@ use crate::cli::{
     RegistryCheckIdCli, RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode,
     RegistryExportCli, RegistryExportFormatCli, RegistryIdentityCli, RegistryInitCli,
     RegistryLintCli, RegistryLintProfile, RegistryMintBatchCli, RegistryMintCli, RegistryNextIdCli,
-    RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand,
-    RegistryVersionBumpMode, StrategyAuditCli, StrategyCommand, StrategyDeprecateCli,
-    StrategyDiffCli, StrategyExplainCli, StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli,
-    StrategyProfileCli, StrategyPromoteCli, StrategyRegisterCli, StrategyResolveCli,
-    StrategyStatusArg, StrategySubcommand, StrategyUpdateCli,
+    RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli,
+    RegistryScopePolicyCli, RegistrySubcommand, RegistryVersionBumpMode, StrategyAuditCli,
+    StrategyCommand, StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli, StrategyGradeArg,
+    StrategyKeyTypeArg, StrategyListCli, StrategyProfileCli, StrategyPromoteCli,
+    StrategyRegisterCli, StrategyResolveCli, StrategyStatusArg, StrategySubcommand,
+    StrategyUpdateCli,
 };
 use crate::entity::runtime as entity_runtime;
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
@@ -208,6 +209,7 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
             RegistrySubcommand::Mint(mint) => run_registry_mint(mint),
             RegistrySubcommand::Correct(correct) => run_registry_correct(correct),
             RegistrySubcommand::MintBatch(batch) => run_registry_mint_batch(batch),
+            RegistrySubcommand::ScopePolicy(policy) => run_registry_scope_policy(policy),
             RegistrySubcommand::DefaultIdScheme(id_scheme) => {
                 run_registry_default_id_scheme(id_scheme)
             }
@@ -4905,6 +4907,35 @@ fn run_registry_mint_batch(batch: &RegistryMintBatchCli) -> Result<u8, Box<dyn E
         Err(refusal) => {
             let output = refusal.to_canon_output();
             match batch.emit {
+                RegistryPlainJsonEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryPlainJsonEmitMode::Plain => {
+                    eprintln!("{}", serde_json::to_string(&output)?)
+                }
+            }
+            Ok(2)
+        }
+    }
+}
+
+fn run_registry_scope_policy(policy: &RegistryScopePolicyCli) -> Result<u8, Box<dyn Error>> {
+    let request = registry::RegistryScopePolicyRequest {
+        registry: policy.registry.clone(),
+        add_dimensions: policy.optional_dimension.clone(),
+        remove_dimensions: policy.remove_dimension.clone(),
+        bump: policy.bump.map(registry_version_bump),
+        next_version: policy.next_version.clone(),
+    };
+    match registry::set_scope_policy(request) {
+        Ok(output) => {
+            match policy.emit {
+                RegistryPlainJsonEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryPlainJsonEmitMode::Plain => println!("{}", output.render_summary()),
+            }
+            Ok(0)
+        }
+        Err(refusal) => {
+            let output = refusal.to_canon_output();
+            match policy.emit {
                 RegistryPlainJsonEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
                 RegistryPlainJsonEmitMode::Plain => {
                     eprintln!("{}", serde_json::to_string(&output)?)
@@ -10784,6 +10815,7 @@ pub struct InputValues {
 pub struct Registry {
     pub meta: RegistryMeta,
     pub db_path: PathBuf,
+    pub scope_policy: registry::ScopePolicy,
 }
 
 #[derive(Debug, Clone)]

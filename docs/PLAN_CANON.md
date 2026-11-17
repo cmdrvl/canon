@@ -145,6 +145,7 @@ canon registry add-entries --registry <DIR> --from <FILE.jsonl> [--bump patch|mi
 canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--create-alias-file] [--no-lint] [--emit json|plain]
 canon registry mint-batch --registry <DIR> [--prefix <PREFIX>] --canonical-type <TYPE> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
 canon registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict] [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]
+canon registry scope-policy --registry <DIR> (--optional-dimension <DIM>... | --remove-dimension <DIM>...) [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]
 canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
 canon registry correct --registry <DIR> --from <CORRECTIONS.jsonl> (--next-version <VER>|--bump patch|minor|major) [--rules <RULES.yaml>] [--expect-base <HASH>] [--dry-run] [--emit json|summary]
@@ -398,6 +399,13 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - warns about existing in-namespace canonical IDs that do not conform; `--strict` turns those warnings into a refusal
 - defaults to a patch semver bump when `--next-version` is absent
 - emits `canon_registry_default_id_scheme.v0` JSON by default; `--emit plain` prints `<PREFIX>-<zero_pad>`
+- exits `0` on accepted write, `2` on refusal
+
+`canon registry scope-policy --registry <DIR> (--optional-dimension <DIM>... | --remove-dimension <DIM>...) [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]`
+- writes `registry.json.scope_policy.optional_dimensions` (supported: `role`) as a new registry version; no mapping entry changes
+- `role` is a core scope dimension (`--scope role=R`); a role is scope context for exact lookup, never an identity or a registry
+- for a listed dimension a bare lookup resolves only unscoped entries and a scoped lookup returns the entry scoped exactly so, else the unscoped entry; other dimensions and registries without the policy keep `E_SCOPE_REQUIRED` and exact scope matching
+- `registry lint` reports `scope_collision` when one input maps to two ids under the same scope
 - exits `0` on accepted write, `2` on refusal
 
 `canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]`

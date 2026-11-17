@@ -43,6 +43,7 @@
       "canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--create-alias-file] [--no-lint] [--emit json|plain]",
       "canon registry mint-batch --registry <DIR> [--prefix <PREFIX>] --canonical-type <TYPE> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
       "canon registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict] [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]",
+      "canon registry scope-policy --registry <DIR> (--optional-dimension <DIM>... | --remove-dimension <DIM>...) [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]",
       "canon registry diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
       "canon registry audit <SEED> --registry <DIR> --column <COL> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]",
       "canon registry correct --registry <DIR> --from <CORRECTIONS.jsonl> (--next-version <VER>|--bump patch|minor|major) [--rules <RULES.yaml>] [--expect-base <HASH>] [--dry-run] [--emit json|summary]",
@@ -5143,6 +5144,103 @@
           "type": "string",
           "default": "json",
           "description": "Output mode: json (canon_registry_default_id_scheme.v0) or plain (<PREFIX>-<zero_pad>)"
+        }
+      ],
+      "alternate_output_schemas": [
+        "text/plain"
+      ],
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "mutates an explicitly supplied registry root with version movement",
+        "mutation_class": "RegistryMutation",
+        "network_class": "Offline",
+        "concurrency_class": "ExclusiveRegistryMutation",
+        "platform_classes": [
+          "PortablePathUtf8",
+          "SameFilesystemAtomicReplace"
+        ],
+        "declaration_command": "registry mutation"
+      },
+      "next_command": "canon registry lint <DIR> --emit json",
+      "recovery": {
+        "next_command": "canon registry lint <DIR> --emit json",
+        "refusal_exit_code": 2
+      }
+    },
+    {
+      "name": "registry scope-policy",
+      "usage": "canon registry scope-policy --registry <DIR> (--optional-dimension <DIM>... | --remove-dimension <DIM>...) [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]",
+      "description": "Declare scope dimensions optional for a registry in registry.json scope_policy (supported: role): a bare lookup then resolves the unscoped entry, and a lookup with --scope role=R returns the entry scoped exactly role=R when one exists for the input, otherwise the unscoped entry; a registry without the policy keeps refusing a bare lookup with E_SCOPE_REQUIRED",
+      "output_mode": "mixed",
+      "output_schema": "canon_registry_scope_policy.v0",
+      "status": "implemented",
+      "read_only": false,
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": false,
+        "reads_registry_files": true,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": true,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "default_id_scheme persisted in registry.json",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI error",
+          "domain": "error"
+        }
+      },
+      "options": [
+        {
+          "name": "registry",
+          "flag": "--registry",
+          "type": "directory_path",
+          "required": true,
+          "description": "Registry directory to update"
+        },
+        {
+          "name": "optional_dimension",
+          "flag": "--optional-dimension",
+          "type": "string",
+          "description": "Scope dimension to declare optional; repeatable; supported: role"
+        },
+        {
+          "name": "remove_dimension",
+          "flag": "--remove-dimension",
+          "type": "string",
+          "description": "Scope dimension to take off the optional list; repeatable"
+        },
+        {
+          "name": "bump",
+          "flag": "--bump",
+          "type": "string",
+          "default": "patch",
+          "description": "Numeric semver bump: patch, minor, or major; mutually exclusive with --next-version"
+        },
+        {
+          "name": "next_version",
+          "flag": "--next-version",
+          "type": "string",
+          "description": "Explicit next registry version for non-numeric or calendar versions"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json (canon_registry_scope_policy.v0) or plain (one summary line)"
         }
       ],
       "alternate_output_schemas": [

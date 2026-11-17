@@ -2206,6 +2206,7 @@ mod tests {
             entry_count: 1,
             canonical_iri_namespace: Some("https://example.test/fixture/".to_string()),
             default_id_scheme: None,
+            scope_policy: Default::default(),
         };
         write_registry_json(temp.path(), &registry_json)?;
         let file_path = temp.path().join("aliases.json");
