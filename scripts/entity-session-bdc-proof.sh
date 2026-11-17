@@ -447,7 +447,7 @@ import json, pathlib, sys
 source,out=map(pathlib.Path,sys.argv[1:]); rows=[json.loads(line) for line in source.read_text().splitlines() if line.strip()]
 out.write_text("".join(json.dumps({"name":r["surface"]},sort_keys=True)+"\n" for r in rows))
 PY
-run_json "step-eight-exact-prelookup" "$canon_bin" "$work_dir/step-eight-input.jsonl" --registry "$registry" --column name --no-witness --explicit --emit json
+run_json "step-eight-exact-prelookup" "$canon_bin" "$work_dir/step-eight-input.jsonl" --registry "$registry" --column name --no-witness --explicit --plain-json-values --emit json
 [[ "$RUN_STATUS" -eq 0 || "$RUN_STATUS" -eq 1 ]] || {
   printf '[step-eight-exact-prelookup] unexpected exit=%s\n' "$RUN_STATUS" >&2
   exit "$RUN_STATUS"
