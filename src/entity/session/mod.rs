@@ -272,6 +272,8 @@ struct Observation {
     keys: BTreeMap<String, String>,
     lineages: BTreeSet<String>,
     origin_components: BTreeSet<BTreeSet<String>>,
+    /// context.role, the scope an incumbent lookup tries first.
+    role: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -388,6 +390,7 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
     let mut incumbent_keys = BTreeMap::new();
     let mut endpoints = BTreeMap::new();
     let mut related_pairs = BTreeSet::new();
+    let mut role_incumbents = Vec::new();
     let mut registry_cannot_link_facts = Vec::new();
     let mut registry_pending_clusters = Vec::new();
     for registry_binding in &manifest.registries {
@@ -406,6 +409,7 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         incumbents.extend(registry_info.incumbents);
         incumbent_keys.extend(registry_info.incumbent_keys);
         endpoints.extend(registry_info.endpoints);
+        role_incumbents.extend(registry_info.role_incumbents);
         registry_cannot_link_facts.extend(registry_info.cannot_link_facts);
         registry_pending_clusters.extend(registry_info.pending_clusters);
         related_pairs.extend(read_related_registry_pairs(Path::new(
@@ -413,6 +417,23 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         ))?);
     }
     let registry_metadata = aggregate_registry_metadata(&registry_metadata_parts);
+    // An observation whose role-scoped entry names a different id than the
+    // unscoped one is its own node: the same spelling is a different entity in
+    // that role.
+    let observations = observations
+        .into_iter()
+        .map(|mut observation| {
+            if let Some(role) = observation.role.clone()
+                && let Some((_, _, canonical_id)) = role_incumbents
+                    .iter()
+                    .find(|(surface, r, _)| *surface == observation.surface && *r == role)
+            {
+                observation.node_key = format!("{}\u{0}role={role}", observation.node_key);
+                incumbents.insert(observation.node_key.clone(), canonical_id.clone());
+            }
+            observation
+        })
+        .collect::<Vec<_>>();
     let (nodes, observations_by_id) =
         build_nodes(observations, incumbents, incumbent_keys, endpoints.clone());
     let mut derived_evidence = Vec::new();
@@ -465,19 +486,10 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         }
     }
 
-    let structure_evidence_ids = evidence
+    let unit_evidence = evidence
         .iter()
-        .filter(|record| {
-            record.extensions.iter().any(|extension| {
-                matches!(
-                    extension.payload.get("asserted_by"),
-                    Some(crate::entity::evidence_ir::EvidenceExtensionValue::String(by))
-                        if by.starts_with("canon:") && by.contains(":name_structure:")
-                )
-            })
-        })
-        .map(|record| record.evidence_id.clone())
-        .collect::<BTreeSet<_>>();
+        .map(|record| (record.evidence_id.clone(), unit_evidence_info(record)))
+        .collect::<BTreeMap<_, _>>();
     let mut dangling_evidence_count = 0;
     for record in evidence {
         let Some((left_target_id, right_target_id)) = pair_target(&record) else {
@@ -1043,7 +1055,12 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
     let standalone_count = summary.standalone;
 
     let scoped_aliases = build_scoped_aliases(&scoped_alias_records, &observations_by_id);
-    let units = build_units(&relations, &clusters, &structure_evidence_ids);
+    let units = build_units(
+        &relations,
+        &clusters,
+        &unit_evidence,
+        &rules.authoritative_keys,
+    );
     let artifact = SessionSolveArtifact {
         version: SESSION_SOLVE_VERSION.to_string(),
         inputs: SessionSolveInputs {
@@ -2488,6 +2505,12 @@ fn read_observations(snapshot: &EntityPublicationSnapshot) -> Result<Vec<Observa
                 .collect::<BTreeMap<_, _>>();
             let (lineages, origin_components) = observation_origins(&raw.source);
             let node_key = format!("{entity_type}\u{0}{surface}");
+            let role = raw
+                .context
+                .get("role")
+                .and_then(Value::as_str)
+                .map(|role| ascii_trim(role).to_string())
+                .filter(|role| !role.is_empty());
             let observation = Observation {
                 obs_id: obs_id.clone(),
                 entity_type,
@@ -2496,6 +2519,7 @@ fn read_observations(snapshot: &EntityPublicationSnapshot) -> Result<Vec<Observa
                 keys,
                 lineages,
                 origin_components,
+                role,
             };
             if observations.insert(obs_id.clone(), observation).is_some() {
                 return Err(solve_refusal(
@@ -2627,6 +2651,9 @@ struct RegistryInfo {
     endpoints: BTreeMap<String, RegistryEndpoint>,
     cannot_link_facts: Vec<CannotLinkFact>,
     pending_clusters: Vec<PendingClusterRecord>,
+    /// (surface, role, canonical id) where the role-scoped entry answers
+    /// differently from the unscoped one.
+    role_incumbents: Vec<(String, String, String)>,
 }
 
 struct CommitPlanContext<'a> {
@@ -2818,6 +2845,68 @@ fn load_registry_info(
         .into_iter()
         .map(|mapping| (mapping.input.clone(), mapping))
         .collect::<BTreeMap<_, _>>();
+    // A registry that opted in to the role scope answers an observation with
+    // context.role = R from the entry scoped role=R first, then the unscoped one.
+    let mut role_incumbents = Vec::new();
+    if loaded
+        .scope_policy
+        .optional_dimensions
+        .iter()
+        .any(|dimension| dimension == "role")
+    {
+        let roles = observations
+            .iter()
+            .filter_map(|observation| observation.role.clone())
+            .collect::<BTreeSet<_>>();
+        for role in roles {
+            let Some(scope) = registry::parse_scope_flag_bindings(&[format!("role={role}")])
+                .ok()
+                .flatten()
+            else {
+                continue;
+            };
+            let surfaces = observations
+                .iter()
+                .filter(|observation| observation.role.as_deref() == Some(role.as_str()))
+                .map(|observation| (observation.surface.clone(), ()))
+                .collect::<HashMap<_, _>>();
+            let scoped = lookup::resolve_values_with_context(
+                &loaded,
+                &InputValues {
+                    values: surfaces,
+                    special: HashMap::<SpecialReason, usize>::new(),
+                    format: InputFormat::Jsonl,
+                    delimiter: None,
+                    source_hash: None,
+                    source_bytes: None,
+                },
+                &lookup::ExactLookupContext {
+                    namespace: None,
+                    scope: Some(scope),
+                },
+            )
+            .map_err(|error| Refusal {
+                code: RefusalCode::EBadRegistry,
+                message: format!("Unable to perform role-scoped registry lookup: {error}"),
+                detail: json!({"registry": registry_path.display().to_string(), "writes_performed": false}),
+                next_command: Some(
+                    "Repair the registry index, then rerun canon entity session solve".to_string(),
+                ),
+            })?;
+            for mapping in scoped.mappings {
+                let unscoped = mappings
+                    .get(&mapping.input)
+                    .map(|m| m.canonical_id.as_str());
+                if unscoped != Some(mapping.canonical_id.as_str()) {
+                    role_incumbents.push((
+                        mapping.input.clone(),
+                        role.clone(),
+                        mapping.canonical_id.clone(),
+                    ));
+                }
+            }
+        }
+    }
     let incumbents = observations
         .iter()
         .filter_map(|observation| {
@@ -2937,6 +3026,7 @@ fn load_registry_info(
         endpoints,
         cannot_link_facts: memory.cannot_link_facts,
         pending_clusters: memory.pending_clusters,
+        role_incumbents,
     })
 }
 
@@ -3591,37 +3681,111 @@ fn build_scoped_aliases(
     aliases
 }
 
+/// What a stored evidence record says about a unit.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct UnitEvidenceInfo {
+    /// Written by the structure stage from a listed unit phrase.
+    pattern: bool,
+    /// A human asserter or a supplied document citation.
+    cited: bool,
+}
+
+fn unit_evidence_info(record: &crate::entity::evidence_ir::EvidenceRecord) -> UnitEvidenceInfo {
+    let asserted_by =
+        record
+            .extensions
+            .iter()
+            .find_map(|extension| match extension.payload.get("asserted_by") {
+                Some(crate::entity::evidence_ir::EvidenceExtensionValue::String(by)) => {
+                    Some(by.as_str())
+                }
+                _ => None,
+            });
+    UnitEvidenceInfo {
+        pattern: asserted_by
+            .is_some_and(|by| by.starts_with("canon:") && by.contains(":name_structure:")),
+        cited: asserted_by.is_some_and(|by| by.starts_with("human:"))
+            || record
+                .provenance
+                .iter()
+                .any(|provenance| !provenance.locator.starts_with("assertion:")),
+    }
+}
+
+/// How a unit is established: a listed surface pattern, an asserted `part_of`
+/// with a citation or a human asserter, or a different authoritative key.
+/// Nothing else makes a unit; role, similarity and shared tokens never do.
+pub(crate) fn classify_unit_evidence(
+    pattern: bool,
+    cited_relation: bool,
+    distinct_key: bool,
+) -> Option<&'static str> {
+    if pattern {
+        Some("surface_pattern")
+    } else if cited_relation {
+        Some("asserted_relation")
+    } else if distinct_key {
+        Some("distinct_key")
+    } else {
+        None
+    }
+}
+
+fn clusters_have_distinct_key(
+    left: Option<&SessionSolveCluster>,
+    right: Option<&SessionSolveCluster>,
+    authoritative_keys: &[String],
+) -> bool {
+    let (Some(left), Some(right)) = (left, right) else {
+        return false;
+    };
+    authoritative_keys.iter().any(|namespace| {
+        let namespace = canonical_key_namespace(namespace);
+        match (left.keys.get(&namespace), right.keys.get(&namespace)) {
+            (Some(left), Some(right)) if !left.is_empty() && !right.is_empty() => {
+                !left.iter().any(|value| right.contains(value))
+            }
+            _ => false,
+        }
+    })
+}
+
 fn build_units(
     relations: &[SessionSolveRelation],
     clusters: &[SessionSolveCluster],
-    structure_evidence_ids: &BTreeSet<String>,
+    unit_evidence: &BTreeMap<String, UnitEvidenceInfo>,
+    authoritative_keys: &[String],
 ) -> Vec<SessionSolveUnit> {
     let mut units = relations
         .iter()
         .filter(|relation| relation.relation == "part_of")
-        .map(|relation| {
+        .filter_map(|relation| {
             let cluster = clusters
                 .iter()
                 .find(|cluster| cluster.surfaces.contains(&relation.subject_surface));
-            let from_pattern = relation
+            let parent = clusters
+                .iter()
+                .find(|cluster| cluster.surfaces.contains(&relation.object_surface));
+            let infos = relation
                 .evidence_ids
                 .iter()
-                .any(|id| structure_evidence_ids.contains(id));
-            SessionSolveUnit {
+                .filter_map(|id| unit_evidence.get(id))
+                .collect::<Vec<_>>();
+            let evidence = classify_unit_evidence(
+                infos.iter().any(|info| info.pattern),
+                infos.iter().any(|info| info.cited),
+                clusters_have_distinct_key(cluster, parent, authoritative_keys),
+            )?;
+            Some(SessionSolveUnit {
                 unit_surface: relation.subject_surface.clone(),
                 part_of_surface: relation.object_surface.clone(),
                 canonical_id: cluster.and_then(|cluster| cluster.incumbent_canonical_id.clone()),
                 cluster_id: cluster
                     .filter(|cluster| cluster.incumbent_canonical_id.is_none())
                     .map(|cluster| cluster.cluster_id.clone()),
-                evidence: if from_pattern {
-                    "surface_pattern"
-                } else {
-                    "asserted_relation"
-                }
-                .to_string(),
+                evidence: evidence.to_string(),
                 evidence_ids: relation.evidence_ids.clone(),
-            }
+            })
         })
         .collect::<Vec<_>>();
     units.sort_by(|left, right| {
@@ -4273,9 +4437,9 @@ mod tests {
         CommitPlanContext, EdgeFacts, EdgeTier, RegistryRow, SessionCommitPlan, SessionRules,
         SessionSolveArtifact, SessionSolveCluster, SessionSolveInputs, SessionSolveRegistry,
         SessionSolveSummary, TIER_A_TYPES, TIER_B_TYPES, build_commit_plan, canonical_key_value,
-        commit_skip_reasons, component_has_key_conflict, exactly_one_authoritative_value,
-        generated_pending_id_for_many, has_positive_distinct, key_values, memory_key_for_target,
-        nodes_are_related, ordered_pair, tier_for,
+        classify_unit_evidence, commit_skip_reasons, component_has_key_conflict,
+        exactly_one_authoritative_value, generated_pending_id_for_many, has_positive_distinct,
+        key_values, memory_key_for_target, nodes_are_related, ordered_pair, tier_for,
     };
     use serde_json::json;
     use std::collections::{BTreeMap, BTreeSet};
@@ -4666,5 +4830,29 @@ mod tests {
             vec!["contradiction"],
             "stored keys from two incumbent endpoints must not become a key conflict"
         );
+    }
+
+    #[test]
+    fn a_unit_needs_a_pattern_a_cited_relation_or_a_distinct_key() {
+        assert_eq!(
+            classify_unit_evidence(true, false, false),
+            Some("surface_pattern")
+        );
+        assert_eq!(
+            classify_unit_evidence(false, true, false),
+            Some("asserted_relation")
+        );
+        assert_eq!(
+            classify_unit_evidence(false, false, true),
+            Some("distinct_key")
+        );
+        // Precedence when more than one holds.
+        assert_eq!(
+            classify_unit_evidence(true, true, true),
+            Some("surface_pattern")
+        );
+        // Role, similarity and shared tokens are not inputs: with none of the
+        // three there is no unit.
+        assert_eq!(classify_unit_evidence(false, false, false), None);
     }
 }

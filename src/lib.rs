@@ -10237,6 +10237,10 @@ pub struct Mapping {
     pub canonical_type: String,
     pub rule_id: String,
     pub confidence: String,
+    /// Which scope the lookup matched, reported only for a registry with a
+    /// scope_policy: `role=R` for an entry scoped so, `unscoped` for the fallback.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matched_scope: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

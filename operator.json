@@ -129,7 +129,7 @@
       "flag": "--scope",
       "type": "string",
       "repeatable": true,
-      "description": "Exact lookup scope binding DIMENSION=VALUE; core dimensions: dataset/deal, jurisdiction, source_system, profile"
+      "description": "Exact lookup scope binding DIMENSION=VALUE; core dimensions: dataset/deal, jurisdiction, source_system, profile, role (role needs a registry scope_policy to be optional; mappings then report matched_scope)"
     },
     {
       "name": "emit",
@@ -7441,7 +7441,7 @@
     {
       "name": "entity session derive",
       "usage": "canon entity session derive <SESSION> --profile <PROFILE.yaml> --strategy <STRATEGY.yaml> [--no-registry-candidates] [--emit json|summary]",
-      "description": "Run Canon's existing entity operators (exact_view, anchor_match, isin_cusip_arithmetic, string_similarity, tfidf_cosine, two_token_reversal, date_transposed_digits, anchor_conflict, attribute_conflict, protected_token_conflict) over the session's observations with a declared profile and strategy and append what they find as canon.evidence.v1 records through the assert path: declared strip_footnote_marks removes only terminal source markers such as (14), (a)(b), #, ^, ~, *, †, or superscript digits and records footnote_marks; declared strip_security_tail removes only a table-recognized terminal security phrase after a separator (for example Class A Common Units, Series B Preferred, Warrants, Revolver, or First Lien Term Loan), records security_tail:<descriptor>, and keeps removed_tail on the normalized view; exact_view becomes name_equivalent, declared preserve_legal_form views retain distinct legal forms and record applied legal_form:<canonical> steps such as legal_form:inc, declared preserve_legal_form_with_bare views additionally equate a bare name with exactly one unprotected trailing form and record legal_form:bare_equivalence while refusing ambiguous multi-form buckets, anchors become same_key, conflicts become distinct, similarity becomes name_similar or value_similar and is never eligible for tier A or B; a view declaring name_structure parses dba/fka/aka alternates and member lists out of one surface (no split on bare commas or ambiguous and/&) and derive then appends asserted_alias cited to the observation itself, related co_borrower_of between a list and its members (never name_equivalent), and name_equivalent between lists with equal member sets, reporting a structure block; idempotent",
+      "description": "Run Canon's existing entity operators (exact_view, anchor_match, isin_cusip_arithmetic, string_similarity, tfidf_cosine, two_token_reversal, date_transposed_digits, anchor_conflict, attribute_conflict, protected_token_conflict) over the session's observations with a declared profile and strategy and append what they find as canon.evidence.v1 records through the assert path: declared strip_footnote_marks removes only terminal source markers such as (14), (a)(b), #, ^, ~, *, †, or superscript digits and records footnote_marks; declared strip_security_tail removes only a table-recognized terminal security phrase after a separator (for example Class A Common Units, Series B Preferred, Warrants, Revolver, or First Lien Term Loan), records security_tail:<descriptor>, and keeps removed_tail on the normalized view; exact_view becomes name_equivalent, declared preserve_legal_form views retain distinct legal forms and record applied legal_form:<canonical> steps such as legal_form:inc, declared preserve_legal_form_with_bare views additionally equate a bare name with exactly one unprotected trailing form and record legal_form:bare_equivalence while refusing ambiguous multi-form buckets, anchors become same_key, conflicts become distinct, similarity becomes name_similar or value_similar and is never eligible for tier A or B; a view declaring name_structure parses dba/fka/aka alternates and member lists out of one surface (no split on bare commas or ambiguous and/&) and derive then appends asserted_alias cited to the observation itself, related co_borrower_of between a list and its members (never name_equivalent), and name_equivalent between lists with equal member sets, reporting a structure block; an 'X, a division of Y' phrase (also a unit of, a business unit of, an operating division of) is related part_of from X to an observation equal to Y, never an alias, counted in part_of_records; idempotent",
       "output_mode": "mixed",
       "output_schema": "canon.entity.session.derive.v1",
       "status": "implemented",
@@ -7656,7 +7656,7 @@
     {
       "name": "entity session solve",
       "usage": "canon entity session solve <SESSION> --rules <RULES.yaml> [--what-if <EXTRA.jsonl>] [--emit json|summary]",
-      "description": "Solve an evidence session with exact registry lookup and a declared tier rule table",
+      "description": "Solve an evidence session with exact registry lookup and a declared tier rule table; for a registry that opted in to the role scope, an observation with context.role looks up the entry scoped role=R first, then the unscoped one, and is its own node when they differ; an asserted_alias with basis.scope {role} and basis.subject never merges and is reported as scoped_aliases; part_of relations are reported as units with evidence surface_pattern, asserted_relation (a human asserter or a document citation) or distinct_key (a different authoritative key)",
       "output_mode": "mixed",
       "output_schema": "canon.entity.session.solve.v1",
       "status": "implemented",
@@ -7731,7 +7731,7 @@
     {
       "name": "entity session commit",
       "usage": "canon entity session commit <SESSION> (--next-version <VER>|--bump patch|minor|major) [--expect-base <HASH>] [--emit json|summary]",
-      "description": "Commit accepted tier A/B session clusters into the bound local registry and publish a deterministic receipt",
+      "description": "Commit accepted tier A/B session clusters into the bound local registry and publish a deterministic receipt; a scoped alias is written scoped role=R on the unit's id, and the commit refuses with scope_policy_missing when the registry has no role scope_policy",
       "output_mode": "mixed",
       "output_schema": "canon.entity.session.commit.v1",
       "status": "implemented",

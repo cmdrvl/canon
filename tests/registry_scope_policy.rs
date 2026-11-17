@@ -213,3 +213,28 @@ fn lint_refuses_two_ids_for_one_input_under_the_same_scope() {
         .unwrap();
     assert!(!String::from_utf8_lossy(&output.stdout).contains("scope_collision"));
 }
+
+#[test]
+fn a_policy_registry_reports_the_scope_each_lookup_matched() {
+    let temp = tempdir().unwrap();
+    let registry = staged_registry(temp.path(), true);
+    set_policy(
+        &registry,
+        &["--optional-dimension", "role", "--next-version", "1.0.1"],
+    );
+    let matched = |name: &str, scope: Option<&str>| {
+        lookup(&registry, temp.path(), name, scope).1["mappings"][0]["matched_scope"]
+            .as_str()
+            .map(str::to_string)
+    };
+    assert_eq!(
+        matched(FIRM_NAME, Some("role=servicer")).as_deref(),
+        Some("role=servicer")
+    );
+    assert_eq!(
+        matched(FIRM_NAME, Some("role=trustee")).as_deref(),
+        Some("unscoped")
+    );
+    // A bare lookup reports nothing extra.
+    assert_eq!(matched(FIRM_NAME, None), None);
+}

@@ -948,3 +948,26 @@ evidence:
   none from similarity.
 
 The derive output has a `structure` block (counts, alternate surfaces, lists).
+
+## Units inside a firm (`part_of`, role-scoped spellings)
+
+A group inside a firm is its own entity, `part_of` the firm; it is never an alias
+and never merged into it. A unit exists only on evidence: a listed phrase on one
+surface (`X, a division of Y`, `a unit of`, `a business unit of`, `an operating
+division of`, with the `name_structure` operator), an asserted `related` /
+`part_of` with a human asserter or a document citation, or a different
+authoritative key on the two sides. Role, similarity and shared tokens never
+make a unit.
+
+- Opt the registry in once: `canon registry scope-policy --registry REG
+  --optional-dimension role --bump patch`.
+- A spelling that means the unit only in a role is an `asserted_alias` whose
+  basis carries `scope: {role: R}` and `subject: <obs id of the scoped
+  spelling>`. It never merges; commit writes it scoped `role=R` on the unit's id
+  and refuses with `scope_policy_missing` when the registry did not opt in.
+- Lookup: `--scope role=R` returns the unit when an entry is scoped exactly so,
+  otherwise the unscoped entry; a bare lookup returns the unscoped entry.
+  Mappings from a registry with the policy report `matched_scope`.
+- Solve: an observation with `context.role = R` tries the role-scoped entry
+  first. `units` lists each `part_of` unit with its evidence; `scoped_aliases`
+  lists the role-scoped spellings.

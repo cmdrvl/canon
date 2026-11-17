@@ -748,6 +748,7 @@ mod tests {
                 canonical_type: "loan_id".to_string(),
                 rule_id: "STRUCTURAL_MATCH:cmbs-loan-match.v1".to_string(),
                 confidence: "deterministic".to_string(),
+                matched_scope: None,
             }]
         );
     }

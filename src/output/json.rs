@@ -93,6 +93,7 @@ fn mapping_to_wire(mapping: &Mapping, explicit: bool, plain_values: bool) -> Wir
             canonical_type: mapping.canonical_type.clone(),
             rule_id: mapping.rule_id.clone(),
             confidence: mapping.confidence.clone(),
+            matched_scope: mapping.matched_scope.clone(),
         }
     } else {
         WireMapping {
@@ -103,6 +104,7 @@ fn mapping_to_wire(mapping: &Mapping, explicit: bool, plain_values: bool) -> Wir
             canonical_type: mapping.canonical_type.clone(),
             rule_id: mapping.rule_id.clone(),
             confidence: mapping.confidence.clone(),
+            matched_scope: mapping.matched_scope.clone(),
         }
     }
 }
@@ -204,6 +206,8 @@ struct WireMapping {
     canonical_type: String,
     rule_id: String,
     confidence: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    matched_scope: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -254,6 +258,7 @@ mod tests {
                 canonical_type: "ticker".to_string(),
                 rule_id: "CUSIP_TO_TICKER".to_string(),
                 confidence: "deterministic".to_string(),
+                matched_scope: None,
             }],
             unresolved: vec![UnresolvedEntry {
                 input: Some("UNKNOWN99".to_string()),
@@ -292,6 +297,7 @@ mod tests {
                 canonical_type: "ticker".to_string(),
                 rule_id: "CONTROL".to_string(),
                 confidence: "deterministic".to_string(),
+                matched_scope: None,
             }],
             unresolved: vec![],
             summary: Summary {
@@ -356,6 +362,7 @@ mod tests {
                 canonical_type: "ticker".to_string(),
                 rule_id: "CUSIP_TO_TICKER".to_string(),
                 confidence: "deterministic".to_string(),
+                matched_scope: None,
             }],
             unresolved: vec![
                 UnresolvedEntry {
@@ -410,6 +417,7 @@ mod tests {
                 canonical_type: "ticker".to_string(),
                 rule_id: "CUSIP_TO_TICKER".to_string(),
                 confidence: "deterministic".to_string(),
+                matched_scope: None,
             }],
             unresolved: vec![UnresolvedEntry {
                 input: Some("UNKNOWN99".to_string()),

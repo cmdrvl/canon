@@ -107,7 +107,7 @@ fn p(path: &Path) -> &str {
 }
 
 struct Case {
-    _temp: TempDir,
+    _temp: Option<TempDir>,
     root: PathBuf,
     registry: PathBuf,
     session: PathBuf,
@@ -218,9 +218,48 @@ fn case(opt_in: bool) -> Case {
         0,
     );
     Case {
-        _temp: temp,
+        _temp: Some(temp),
         root,
         registry,
+        session,
+        rules,
+    }
+}
+
+/// A second session over the same registry, as the next filing batch would be.
+fn next_session(first: &Case) -> Case {
+    let root = first.root.join("second");
+    fs::create_dir_all(&root).unwrap();
+    let rules = root.join("rules.yaml");
+    fs::write(&rules, RULES).unwrap();
+    let map = root.join("registries.yaml");
+    fs::write(
+        &map,
+        format!(
+            "version: canon.session.registries.v1\nkinds:\n  organisation:\n    registry: {}\n    registry_id: organisations\n    prefix: ORG\n    zero_pad: 3\n    canonical_type: firm\n    alias_file: 30-session-aliases.json\n",
+            first.registry.display()
+        ),
+    )
+    .unwrap();
+    let session = root.join("session");
+    run_json(
+        &[
+            "entity",
+            "session",
+            "init",
+            "--goal",
+            "units-next",
+            "--work-dir",
+            p(&session),
+            "--registries",
+            p(&map),
+        ],
+        0,
+    );
+    Case {
+        _temp: None,
+        root,
+        registry: first.registry.clone(),
         session,
         rules,
     }
@@ -530,4 +569,109 @@ fn a_registry_that_has_not_opted_in_refuses_the_commit_of_a_scoped_alias() {
     // Nothing was written: no scoped entry, the bare lookup is unchanged.
     assert!(!case.registry_text().contains("\"binding\""));
     assert_eq!(case.lookup(FIRM, None).as_deref(), Some("ORG-012"));
+}
+
+#[test]
+fn after_commit_a_role_row_resolves_to_the_unit_and_a_bare_row_to_the_firm() {
+    let first = case(true);
+    first.ingest(&rows());
+    first.derive();
+    first.assert_lines("scoped.jsonl", &[scoped_alias_assertion("f1", "u1")]);
+    first.solve();
+    first.commit("0.9.0");
+
+    // The next batch: the same spelling once with role=servicer, once bare.
+    let second = next_session(&first);
+    second.ingest(&[
+        observation("n1", "fundD", FIRM, json!({}), Some("servicer")),
+        observation("n2", "fundE", FIRM, json!({}), None),
+    ]);
+    let solved = second.solve();
+    let ids = solved["clusters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|cluster| {
+            cluster["incumbent_canonical_id"]
+                .as_str()
+                .map(str::to_string)
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    assert!(
+        ids.contains("ORG-053") && ids.contains("ORG-012"),
+        "the role row is the unit and the bare row the firm: {solved}"
+    );
+}
+
+fn part_of_assertion(unit: &str, firm: &str, asserted_by: &str, cited: bool) -> Value {
+    let mut source = json!({"channel": "note", "id": "units-fixture-note"});
+    if cited {
+        source["locator"] = json!("note:units-fixture-note#1");
+        source["content_hash"] = json!(format!("blake3:{}", "c".repeat(64)));
+    }
+    json!({
+        "type": "related",
+        "left": unit,
+        "right": firm,
+        "basis": {"relation": "part_of", "subject": unit},
+        "source": source,
+        "asserted_by": asserted_by
+    })
+}
+
+#[test]
+fn a_unit_is_classified_by_its_evidence_and_an_uncited_relation_alone_is_not_a_unit() {
+    // A human asserted part_of is an asserted_relation.
+    let human = case(true);
+    human.ingest(&[
+        observation("x1", "fundA", "Cedar Payments", json!({}), None),
+        observation("y1", "fundB", "Cedar Financial Group", json!({}), None),
+    ]);
+    human.assert_lines(
+        "rel.jsonl",
+        &[part_of_assertion("x1", "y1", "human:analyst", false)],
+    );
+    let solved = human.solve();
+    assert_eq!(
+        solved["units"][0]["evidence"], "asserted_relation",
+        "{solved}"
+    );
+
+    // The same relation, uncited and from a script, with no differing key: no unit.
+    let weak = case(true);
+    weak.ingest(&[
+        observation("x1", "fundA", "Cedar Payments", json!({}), None),
+        observation("y1", "fundB", "Cedar Financial Group", json!({}), None),
+    ]);
+    weak.assert_lines(
+        "rel.jsonl",
+        &[part_of_assertion("x1", "y1", "script:loader", false)],
+    );
+    let solved = weak.solve();
+    assert!(solved.get("units").is_none(), "{solved}");
+
+    // Uncited, but the two carry different authoritative keys: a distinct_key unit.
+    let keyed = case(true);
+    keyed.ingest(&[
+        observation(
+            "x1",
+            "fundA",
+            "Cedar Payments",
+            json!({"cik": "222222"}),
+            None,
+        ),
+        observation(
+            "y1",
+            "fundB",
+            "Cedar Financial Group",
+            json!({"cik": "333333"}),
+            None,
+        ),
+    ]);
+    keyed.assert_lines(
+        "rel.jsonl",
+        &[part_of_assertion("x1", "y1", "script:loader", false)],
+    );
+    let solved = keyed.solve();
+    assert_eq!(solved["units"][0]["evidence"], "distinct_key", "{solved}");
 }

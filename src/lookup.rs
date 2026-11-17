@@ -71,7 +71,9 @@ pub fn resolve_values_with_context(
             .is_some_and(|scope| scope_dimensions_all_optional(scope, &registry.scope_policy));
         for input_value in input_values.values.keys() {
             let mut found = first_qualified_candidate(&mut stmt, input_value, context)?;
+            let mut fell_back = false;
             if found.is_none() && fallback_to_unscoped {
+                fell_back = true;
                 // The registry opted this dimension in: a scoped lookup with no
                 // entry scoped exactly so returns the unscoped entry.
                 found = first_qualified_candidate(
@@ -91,6 +93,12 @@ pub fn resolve_values_with_context(
                         canonical_type: candidate.canonical_type,
                         rule_id: candidate.rule_id,
                         confidence: "deterministic".to_string(),
+                        matched_scope: matched_scope_label(
+                            &registry.scope_policy,
+                            context,
+                            fell_back,
+                            &candidate.scope,
+                        ),
                     });
                 }
                 None => {
@@ -184,6 +192,41 @@ pub fn registry_has_scoped_entries(registry: &Registry) -> Result<bool, LookupEr
         }
     }
     Ok(false)
+}
+
+/// The scope a lookup matched, for a registry with a scope_policy: `role=R`
+/// when an entry scoped exactly so answered, `unscoped` when a scoped query
+/// fell back to the unscoped entry. Bare lookups and other registries: none.
+fn matched_scope_label(
+    policy: &crate::registry::ScopePolicy,
+    context: &ExactLookupContext,
+    fell_back: bool,
+    candidate_scope: &IdentityScope,
+) -> Option<String> {
+    if policy.optional_dimensions.is_empty() || context.scope.is_none() {
+        return None;
+    }
+    if fell_back {
+        return Some("unscoped".to_string());
+    }
+    let parts = candidate_scope
+        .dimensions
+        .iter()
+        .filter_map(|binding| {
+            let name = dimension_name(&binding.dimension)?;
+            match &binding.binding {
+                crate::identity_scope::ScopeBinding::Exact { value } => {
+                    Some(format!("{name}={value}"))
+                }
+                _ => None,
+            }
+        })
+        .collect::<Vec<_>>();
+    Some(if parts.is_empty() {
+        "unscoped".to_string()
+    } else {
+        parts.join(",")
+    })
 }
 
 fn dimension_name(dimension: &crate::identity_scope::ScopeDimensionRef) -> Option<String> {
