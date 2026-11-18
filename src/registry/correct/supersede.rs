@@ -192,16 +192,36 @@ pub(super) fn apply(
         hops += 1;
     }
 
-    // Name inputs: each moves to the successor; an unheld one is added to it.
-    let template = model
+    // Name inputs: a spelling the superseded id holds moves to the successor; a
+    // spelling nobody holds (a shared name) is written to the successor as a new
+    // alias carrying this correction's closure. The alias goes into a file that
+    // already holds spellings of this canonical type, never into a key file.
+    let successor_type = model
+        .types_of(&line.successor)
+        .into_iter()
+        .next()
+        .unwrap_or_default();
+    let alias_file = model
         .mapping
         .iter()
         .flat_map(|(path, rows)| rows.iter().map(move |entry| (path, entry)))
+        .filter(|(_, entry)| key_namespace(entry_str(entry, "rule_id")).is_none())
         .find(|(_, entry)| {
             entry_str(entry, "canonical_id") == line.successor
-                && key_namespace(entry_str(entry, "rule_id")).is_none()
+                || entry_str(entry, "canonical_type") == successor_type
         })
-        .map(|(path, entry)| (path.clone(), entry.clone()));
+        .map(|(path, _)| path.clone());
+    let authority = json!({
+        "version": "canon.registry.correction.authority.v1",
+        "outcome_ref": ctx.outcome_ref,
+        "closure_hash": ctx.closure_hash,
+        "correction_id": ctx.correction_id,
+    });
+    let mark = json!({
+        "op": "supersede",
+        "from": line.superseded,
+        "correction_id": ctx.correction_id,
+    });
     let mut moved_inputs = Vec::new();
     let mut added_inputs = Vec::new();
     for input in &line.inputs {
@@ -238,21 +258,22 @@ pub(super) fn apply(
             ));
         }
         if holders.is_empty() {
-            let Some((path, template)) = template.clone() else {
+            let Some(path) = alias_file.clone() else {
                 return Err(refusal(
                     registry,
-                    "the successor has no spelling entry to place a name beside",
-                    json!({"successor": line.successor, "writes_performed": false}),
-                    "Give the successor at least one name, then rerun",
+                    "the registry has no spelling file to place the name in",
+                    json!({"input": input, "successor": line.successor, "writes_performed": false}),
+                    "Add a spelling entry to the registry, then rerun",
                 ));
             };
-            let mut entry = template;
-            if let Some(object) = entry.as_object_mut() {
-                object.insert("input".to_string(), json!(input));
-                object.insert("rule_id".to_string(), json!(SUCCESSION_NAME_RULE));
-                object.remove("session_authority");
-                object.remove("scope");
-            }
+            let entry = json!({
+                "input": input,
+                "canonical_id": line.successor,
+                "canonical_type": successor_type,
+                "rule_id": SUCCESSION_NAME_RULE,
+                "session_authority": authority,
+                "correction": mark,
+            });
             if let Some(rows) = model.mapping.get_mut(&path) {
                 rows.push(entry);
             }
@@ -268,6 +289,7 @@ pub(super) fn apply(
                 && let Some(object) = entry.as_object_mut()
             {
                 object.insert("canonical_id".to_string(), json!(line.successor));
+                object.insert("correction".to_string(), mark.clone());
                 moved_inputs.push(input.clone());
             }
         }

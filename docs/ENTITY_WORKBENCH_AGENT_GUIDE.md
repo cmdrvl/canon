@@ -463,7 +463,7 @@ from the filing:
 
 Both ids stay. Lookup of the old id or its CIK answers its own id with
 `succession.superseded_by` and the `chain` to the active end; the listed names
-move to the successor, so the shared name resolves to the active holder only.
+move to the successor (a name that belongs to neither entity, as after `split_shared_names`, is written to the successor as a new alias carrying the correction's closure; a name another entity holds is refused), so the shared name resolves to the active holder only.
 Supersede the active end to extend the chain. The date comes from the cited
 filing; canon never infers one.
 

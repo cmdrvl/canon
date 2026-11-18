@@ -393,3 +393,199 @@ fn a_moved_base_refuses_the_succession() {
         "{refused}"
     );
 }
+
+// ---- stage 2b: the shared name of a split_shared_names run -----------------
+
+const OTHER: &str = "Orion Lending Corp";
+
+/// The registry a flag-on session builds from three rows: one name under two
+/// CIKs and one unrelated entity. The shared name is an alias of none of them.
+fn session_registry(root: &Path) -> PathBuf {
+    let registry = root.join("funds");
+    let rules = root.join("rules.yaml");
+    fs::write(
+        &rules,
+        "version: canon.entity.session.rules.v1\nkeys:\n  authoritative: [cik]\ntier_a:\n  evidence_types: [same_key, asserted_alias]\ntier_b:\n  eligible_evidence_types: [same_slot, attribute_agreement, name_equivalent]\n  min_distinct_evidence_types: 2\n  min_distinct_lineages: 2\nstandalone:\n  mint_when_authoritative_key: true\n  split_shared_names: true\nincumbent_attach:\n  name_equivalent_steps: [casefold, strip_punctuation, collapse_whitespace]\n",
+    )
+    .unwrap();
+    let map = root.join("registries.yaml");
+    fs::write(
+        &map,
+        format!(
+            "version: canon.session.registries.v1\nkinds:\n  fund:\n    registry: {}\n    registry_id: funds\n    id_scheme: agent\n    kind_prefix: fund\n    canonical_type: fund\n    alias_file: aliases.json\n",
+            registry.display()
+        ),
+    )
+    .unwrap();
+    let session = root.join("session");
+    run_json(
+        &[
+            "entity",
+            "session",
+            "init",
+            "--goal",
+            "succession",
+            "--work-dir",
+            p(&session),
+            "--registries",
+            p(&map),
+        ],
+        0,
+    );
+    let rows = [
+        ("a1", SHARED, "0000003845"),
+        ("b1", SHARED, "0000003906"),
+        ("c1", OTHER, "0001287750"),
+    ]
+    .iter()
+    .map(|(id, surface, cik)| {
+        serde_json::to_string(&json!({
+            "obs_id": id, "entity_type": "fund", "surface": surface, "keys": {"cik": cik},
+            "source": {"channel": "file", "id": "succession-fixture", "lineage": format!("cik:{cik}")}
+        }))
+        .unwrap()
+    })
+    .collect::<Vec<_>>()
+    .join("\n");
+    let obs = root.join("obs.jsonl");
+    fs::write(&obs, format!("{rows}\n")).unwrap();
+    run_json(&["entity", "session", "ingest", p(&session), p(&obs)], 0);
+    run_json(
+        &[
+            "entity",
+            "session",
+            "solve",
+            p(&session),
+            "--rules",
+            p(&rules),
+        ],
+        0,
+    );
+    let committed = run_json(
+        &[
+            "entity",
+            "session",
+            "commit",
+            p(&session),
+            "--next-version",
+            "1.0.0",
+        ],
+        0,
+    );
+    assert_eq!(committed["outcome"], "committed", "{committed}");
+    registry
+}
+
+fn all_bytes(registry: &Path) -> Vec<(String, Vec<u8>)> {
+    fn walk(dir: &Path, root: &Path, out: &mut Vec<(String, Vec<u8>)>) {
+        let mut paths = fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect::<Vec<_>>();
+        paths.sort();
+        for path in paths {
+            if path.is_dir() {
+                walk(&path, root, out);
+            } else {
+                out.push((
+                    path.strip_prefix(root).unwrap().display().to_string(),
+                    fs::read(&path).unwrap(),
+                ));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(registry, registry, &mut out);
+    out
+}
+
+#[test]
+fn the_shared_name_of_a_split_run_follows_the_chain_to_the_active_end() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    let registry = session_registry(root);
+    let id = |cik: &str| id_of(&registry, root, cik).expect("cik resolves");
+    let (first, middle, active) = (id("3845"), id("3906"), id("1287750"));
+    assert!(first != middle && middle != active);
+    assert_eq!(id_of(&registry, root, SHARED), None, "an alias of none");
+
+    // 3845 -> 3906, handing the name over; a dry run writes nothing.
+    let one = write_line(
+        root,
+        "one.jsonl",
+        &line(&first, &middle, "1997-12-31", &[SHARED]),
+    );
+    let before = all_bytes(&registry);
+    let dry = correct(&registry, &one, "1.1.0", &["--dry-run"], 0);
+    assert_eq!(dry["outcome"], "dry_run", "{dry}");
+    assert_eq!(all_bytes(&registry), before);
+    let refused_base = correct(&registry, &one, "1.1.0", &["--expect-base", "blake3:00"], 2);
+    assert_eq!(refused_base["refusal"]["detail"]["reason"], "base_moved");
+    let applied = correct(&registry, &one, "1.1.0", &[], 0);
+    assert_eq!(applied["outcome"], "applied", "{applied}");
+    assert_eq!(
+        id_of(&registry, root, SHARED).as_deref(),
+        Some(middle.as_str())
+    );
+    // The new alias carries the correction's closure.
+    let text = all_bytes(&registry)
+        .into_iter()
+        .map(|(_, bytes)| String::from_utf8_lossy(&bytes).to_string())
+        .collect::<String>();
+    assert!(
+        text.contains("SUCCESSION_NAME_HOLDER")
+            && text.contains("canon.registry.correction.authority.v1")
+    );
+    assert_eq!(
+        correct(&registry, &one, "1.1.1", &[], 0)["outcome"],
+        "already_applied"
+    );
+
+    // 3906 -> Ares-shaped active end: the name moves again.
+    let two = write_line(
+        root,
+        "two.jsonl",
+        &line(&middle, &active, "2010-04-01", &[SHARED]),
+    );
+    let applied = correct(&registry, &two, "1.2.0", &[], 0);
+    assert_eq!(applied["outcome"], "applied", "{applied}");
+    assert_eq!(
+        id_of(&registry, root, SHARED).as_deref(),
+        Some(active.as_str())
+    );
+    let old = lookup(&registry, root, "3845").unwrap();
+    assert_eq!(old["canonical_id"], json!(first));
+    assert_eq!(old["succession"]["chain"], json!([middle, active]), "{old}");
+    let mid = lookup(&registry, root, "3906").unwrap();
+    assert_eq!(mid["canonical_id"], json!(middle));
+    assert_eq!(mid["succession"]["superseded_by"], json!(active));
+    assert!(
+        lookup(&registry, root, "1287750")
+            .unwrap()
+            .get("succession")
+            .is_none()
+    );
+    let lint = run_json(&["registry", "lint", p(&registry), "--emit", "json"], 0);
+    assert_eq!(lint["summary"]["errors"], 0, "{lint}");
+}
+
+#[test]
+fn a_name_that_belongs_to_a_third_entity_is_refused_and_nothing_is_written() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    let registry = session_registry(root);
+    let id = |cik: &str| id_of(&registry, root, cik).expect("cik resolves");
+    let (first, middle) = (id("3845"), id("3906"));
+    assert_eq!(id_of(&registry, root, OTHER), Some(id("1287750")));
+    let before = all_bytes(&registry);
+    refused_with(
+        &registry,
+        &write_line(
+            root,
+            "third.jsonl",
+            &line(&first, &middle, "1997-12-31", &[OTHER]),
+        ),
+        "already names",
+    );
+    assert_eq!(all_bytes(&registry), before);
+}
