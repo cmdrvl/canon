@@ -1903,13 +1903,15 @@ fn write_registry_memory(
         .into_iter()
         .map(|record| (record.escrow_id.clone(), record))
         .collect::<BTreeMap<_, _>>();
+    // The snapshot a change is measured against is taken before the clears:
+    // a commit that only clears stale pending records must write that.
+    let before_pending = pending_by_id.clone();
     let mut pending_cleared = 0;
     for escrow_id in &requested.pending_clear {
         if pending_by_id.remove(escrow_id).is_some() {
             pending_cleared += 1;
         }
     }
-    let before_pending = pending_by_id.clone();
     for record in &requested.pending {
         validate_memory_pending(record)?;
         pending_by_id.insert(record.escrow_id.clone(), record.clone());
