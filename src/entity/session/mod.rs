@@ -229,6 +229,10 @@ pub struct SessionSolveArtifact {
     pub scoped_aliases: Vec<SessionSolveScopedAlias>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub units: Vec<SessionSolveUnit>,
+    /// Spellings shared by different authoritative keys, split into one
+    /// entity per key (`standalone.split_shared_names`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shared_names: Vec<session::SessionSharedName>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -434,6 +438,57 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             observation
         })
         .collect::<Vec<_>>();
+    // standalone.split_shared_names: one spelling carried by rows with different
+    // values of an authoritative single-valued key is one node per value. The
+    // keys decide; nothing is inferred from the name. Rows without the key stay
+    // on the plain node.
+    let mut observations = observations;
+    let mut shared_name_facts: Vec<(String, String, String, BTreeSet<String>)> = Vec::new();
+    if rules.split_shared_names {
+        let namespaces = rules
+            .key_rules
+            .iter()
+            .filter(|(_, rule)| rule.authoritative && rule.single_valued)
+            .map(|(namespace, _)| namespace.clone())
+            .collect::<Vec<_>>();
+        for namespace in namespaces {
+            let mut values = BTreeMap::<(String, String), BTreeSet<String>>::new();
+            for observation in &observations {
+                if let Some(value) = observation.keys.get(&namespace) {
+                    values
+                        .entry((observation.entity_type.clone(), observation.surface.clone()))
+                        .or_default()
+                        .insert(value.clone());
+                }
+            }
+            for ((entity_type, surface), distinct) in values {
+                if distinct.len() < 2 {
+                    continue;
+                }
+                for observation in observations
+                    .iter_mut()
+                    .filter(|o| o.entity_type == entity_type && o.surface == surface)
+                {
+                    let Some(value) = observation.keys.get(&namespace).cloned() else {
+                        continue;
+                    };
+                    let base_key = observation.node_key.clone();
+                    observation.node_key = format!("{base_key}\u{0}shared:{namespace}={value}");
+                    // A name the registry already holds keeps its id only for
+                    // the row whose key is that id's key.
+                    if let Some(canonical_id) = incumbents.get(&base_key).cloned()
+                        && incumbent_keys
+                            .get(&format!("{}\u{0}{canonical_id}", observation.entity_type))
+                            .and_then(|keys| keys.get(&namespace))
+                            .is_some_and(|held| held.contains(&value))
+                    {
+                        incumbents.insert(observation.node_key.clone(), canonical_id);
+                    }
+                }
+                shared_name_facts.push((surface, entity_type, namespace.clone(), distinct));
+            }
+        }
+    }
     let (nodes, observations_by_id) =
         build_nodes(observations, incumbents, incumbent_keys, endpoints.clone());
     let mut derived_evidence = Vec::new();
@@ -1055,6 +1110,33 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
     let standalone_count = summary.standalone;
 
     let scoped_aliases = build_scoped_aliases(&scoped_alias_records, &observations_by_id);
+    let shared_names = shared_name_facts
+        .into_iter()
+        .map(
+            |(surface, entity_type, namespace, values)| session::SessionSharedName {
+                members: values
+                    .into_iter()
+                    .map(|value| session::SessionSharedNameMember {
+                        cluster_id: clusters
+                            .iter()
+                            .find(|cluster| {
+                                cluster.surfaces.contains(&surface)
+                                    && cluster
+                                        .keys
+                                        .get(&namespace)
+                                        .is_some_and(|held| held.contains(&value))
+                            })
+                            .map(|cluster| cluster.cluster_id.clone()),
+                        canonical_id: None,
+                        value,
+                    })
+                    .collect(),
+                surface,
+                entity_type,
+                namespace,
+            },
+        )
+        .collect::<Vec<_>>();
     let units = build_units(
         &relations,
         &clusters,
@@ -1083,6 +1165,7 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         derived_evidence,
         scoped_aliases,
         units,
+        shared_names,
     };
     let bytes = serde_json::to_vec(&artifact).map_err(|error| {
         solve_refusal(
@@ -1430,6 +1513,9 @@ pub fn commit(
             bump: request.bump,
         })?;
         final_output = Some(merge_commit_outputs(final_output.take(), output));
+    }
+    if let Some(output) = final_output.as_mut() {
+        output.shared_names = commit_shared_names(&artifact, output);
     }
     final_output.ok_or_else(|| {
         solve_refusal(
@@ -1938,6 +2024,11 @@ fn build_commit_plan(
             if surface.starts_with("registry:") {
                 continue;
             }
+            if artifact.shared_names.iter().any(|shared| {
+                shared.surface == surface && shared.entity_type == context.entity_kind
+            }) {
+                continue;
+            }
             if seen_inputs.insert(surface.clone()) {
                 aliases.push(SessionCommitAlias {
                     alias_file: context.alias_file.to_string(),
@@ -2007,6 +2098,7 @@ fn build_commit_plan(
                     .into_iter()
                     .flatten()
             })
+            .filter(|value| observation_belongs_to_cluster(value, &cluster, &artifact.shared_names))
             .cloned()
             .collect::<Vec<_>>();
         let mut cluster_observations = cluster_observations;
@@ -2671,6 +2763,72 @@ struct SessionCommitPlan {
     entries: Vec<SessionCommitEntry>,
     skipped: Vec<SessionCommitSkipped>,
     relations: Vec<SessionCommitRelation>,
+}
+
+/// An observation of a shared spelling belongs to the cluster that holds its
+/// key value; any other observation belongs wherever its surface is.
+fn observation_belongs_to_cluster(
+    value: &Value,
+    cluster: &SessionSolveCluster,
+    shared_names: &[session::SessionSharedName],
+) -> bool {
+    let Some(surface) = value.get("surface").and_then(Value::as_str) else {
+        return true;
+    };
+    shared_names
+        .iter()
+        .filter(|shared| shared.surface == ascii_trim(surface))
+        .all(|shared| {
+            let held = value
+                .get("keys")
+                .and_then(Value::as_object)
+                .and_then(|keys| {
+                    keys.iter().find_map(|(key, raw)| {
+                        (canonical_key_namespace(key) == shared.namespace)
+                            .then(|| value_to_key_value(key, raw.clone()))
+                            .flatten()
+                    })
+                })
+                .and_then(|(namespace, raw)| canonical_key_value(&namespace, &raw));
+            match held {
+                Some(held) => cluster
+                    .keys
+                    .get(&shared.namespace)
+                    .is_some_and(|values| values.contains(&held)),
+                None => true,
+            }
+        })
+}
+
+fn commit_shared_names(
+    artifact: &SessionSolveArtifact,
+    output: &session::SessionCommitOutput,
+) -> Vec<session::SessionSharedName> {
+    artifact
+        .shared_names
+        .iter()
+        .map(|shared| {
+            let mut shared = shared.clone();
+            for member in &mut shared.members {
+                let Some(cluster_id) = member.cluster_id.as_ref() else {
+                    continue;
+                };
+                member.canonical_id = output
+                    .minted
+                    .iter()
+                    .map(|item| (&item.cluster_id, &item.canonical_id))
+                    .chain(
+                        output
+                            .attached
+                            .iter()
+                            .map(|item| (&item.cluster_id, &item.canonical_id)),
+                    )
+                    .find(|(candidate, _)| *candidate == cluster_id)
+                    .map(|(_, canonical_id)| canonical_id.clone());
+            }
+            shared
+        })
+        .collect()
 }
 
 fn aggregate_registry_metadata(parts: &[(String, SessionSolveRegistry)]) -> SessionSolveRegistry {
@@ -4482,6 +4640,7 @@ mod tests {
             }],
             required_evidence_types: Vec::new(),
             mint_when_authoritative_key: true,
+            split_shared_names: false,
             max_cluster_surfaces: 50,
             incumbent_attach_steps: Vec::new(),
         }
@@ -4738,6 +4897,7 @@ mod tests {
             derived_evidence: Vec::new(),
             scoped_aliases: Vec::new(),
             units: Vec::new(),
+            shared_names: Vec::new(),
         };
 
         let plan = build_commit_plan(

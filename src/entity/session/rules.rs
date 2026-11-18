@@ -51,6 +51,11 @@ pub struct SessionRules {
     pub min_distinct_lineages: usize,
     pub required_evidence_types: Vec<String>,
     pub mint_when_authoritative_key: bool,
+    /// `standalone.split_shared_names`: one spelling carried by rows with
+    /// different values of an authoritative single-valued key is one node per
+    /// value, not a key conflict. Off by default.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub split_shared_names: bool,
     pub max_cluster_surfaces: usize,
     pub incumbent_attach_steps: Vec<String>,
 }
@@ -274,7 +279,7 @@ fn parse_value(path: &Path, value: &Value) -> Result<(SessionRules, String), Ref
         min_distinct_evidence_types,
         min_distinct_lineages,
     )?;
-    let mint_when_authoritative_key = parse_standalone(root, path)?;
+    let (mint_when_authoritative_key, split_shared_names) = parse_standalone(root, path)?;
     let max_cluster_surfaces = parse_guards(root, path)?;
     let incumbent_attach_steps = parse_incumbent_attach(root, path)?;
     let commit_key_namespaces = parse_commit(root, path, &key_rules)?;
@@ -290,6 +295,7 @@ fn parse_value(path: &Path, value: &Value) -> Result<(SessionRules, String), Ref
         min_distinct_lineages,
         required_evidence_types,
         mint_when_authoritative_key,
+        split_shared_names,
         max_cluster_surfaces,
         incumbent_attach_steps,
     };
@@ -537,9 +543,9 @@ fn parse_alternatives(
     Ok(parsed)
 }
 
-fn parse_standalone(root: &Map<String, Value>, path: &Path) -> Result<bool, Refusal> {
+fn parse_standalone(root: &Map<String, Value>, path: &Path) -> Result<(bool, bool), Refusal> {
     let Some(value) = root.get("standalone") else {
-        return Ok(false);
+        return Ok((false, false));
     };
     let object = value.as_object().ok_or_else(|| {
         rules_refusal(
@@ -550,14 +556,27 @@ fn parse_standalone(root: &Map<String, Value>, path: &Path) -> Result<bool, Refu
             &["mapping"],
         )
     })?;
-    reject_unknown_keys(object, &["mint_when_authoritative_key"], path, "standalone")?;
-    Ok(optional_bool(
+    reject_unknown_keys(
+        object,
+        &["mint_when_authoritative_key", "split_shared_names"],
+        path,
+        "standalone",
+    )?;
+    let mint = optional_bool(
         object,
         "mint_when_authoritative_key",
         path,
         "standalone.mint_when_authoritative_key",
     )?
-    .unwrap_or(false))
+    .unwrap_or(false);
+    let split = optional_bool(
+        object,
+        "split_shared_names",
+        path,
+        "standalone.split_shared_names",
+    )?
+    .unwrap_or(false);
+    Ok((mint, split))
 }
 
 fn parse_guards(root: &Map<String, Value>, path: &Path) -> Result<usize, Refusal> {

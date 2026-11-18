@@ -7656,7 +7656,7 @@
     {
       "name": "entity session solve",
       "usage": "canon entity session solve <SESSION> --rules <RULES.yaml> [--what-if <EXTRA.jsonl>] [--emit json|summary]",
-      "description": "Solve an evidence session with exact registry lookup and a declared tier rule table; for a registry that opted in to the role scope, an observation with context.role looks up the entry scoped role=R first, then the unscoped one, and is its own node when they differ; an asserted_alias with basis.scope {role} and basis.subject never merges and is reported as scoped_aliases; part_of relations are reported as units with evidence surface_pattern, asserted_relation (a human asserter or a document citation) or distinct_key (a different authoritative key)",
+      "description": "Solve an evidence session with exact registry lookup and a declared tier rule table; for a registry that opted in to the role scope, an observation with context.role looks up the entry scoped role=R first, then the unscoped one, and is its own node when they differ; an asserted_alias with basis.scope {role} and basis.subject never merges and is reported as scoped_aliases; part_of relations are reported as units with evidence surface_pattern, asserted_relation (a human asserter or a document citation) or distinct_key (a different authoritative key); with standalone.split_shared_names in the rules, one spelling carried by rows with different authoritative single-valued keys (the same name under two CIKs) is one entity per key instead of a key_conflict, and is reported as shared_names",
       "output_mode": "mixed",
       "output_schema": "canon.entity.session.solve.v1",
       "status": "implemented",
@@ -7731,7 +7731,7 @@
     {
       "name": "entity session commit",
       "usage": "canon entity session commit <SESSION> (--next-version <VER>|--bump patch|minor|major) [--expect-base <HASH>] [--emit json|summary]",
-      "description": "Commit accepted tier A/B session clusters into the bound local registry and publish a deterministic receipt; a scoped alias is written scoped role=R on the unit's id, and the commit refuses with scope_policy_missing when the registry has no role scope_policy",
+      "description": "Commit accepted tier A/B session clusters into the bound local registry and publish a deterministic receipt; a scoped alias is written scoped role=R on the unit's id, and the commit refuses with scope_policy_missing when the registry has no role scope_policy; a shared name (rules standalone.split_shared_names) is written as an alias of none of its entities, each key minting its own id, and the receipt lists each shared name with its keys and ids",
       "output_mode": "mixed",
       "output_schema": "canon.entity.session.commit.v1",
       "status": "implemented",

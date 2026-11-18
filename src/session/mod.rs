@@ -314,6 +314,27 @@ pub struct SessionCommitAttached {
     pub closure_hash: String,
 }
 
+/// One spelling carried by rows with different authoritative key values
+/// (`standalone.split_shared_names`): each key is its own entity and the
+/// spelling is an alias of none of them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionSharedName {
+    pub surface: String,
+    pub entity_type: String,
+    pub namespace: String,
+    pub members: Vec<SessionSharedNameMember>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionSharedNameMember {
+    pub value: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster_id: Option<String>,
+    /// Filled in the commit output, once the id exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_id: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionCommitSkipped {
     pub cluster_id: String,
@@ -511,6 +532,8 @@ pub struct SessionCommitOutput {
     pub minted: Vec<SessionCommitMinted>,
     pub attached: Vec<SessionCommitAttached>,
     pub skipped: Vec<SessionCommitSkipped>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shared_names: Vec<SessionSharedName>,
     #[serde(default)]
     pub relations_written: usize,
     #[serde(default)]
@@ -1278,6 +1301,7 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         memory_substantive,
     ) {
         return Ok(SessionCommitOutput {
+            shared_names: Vec::new(),
             version: SESSION_COMMIT_VERSION.to_string(),
             outcome: "nothing_to_commit".to_string(),
             solve_hash: request.solve_hash,
@@ -1429,6 +1453,7 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         let summary =
             current_registry_summary(registry_path, &after.registry_id, &after.registry_version)?;
         return Ok(SessionCommitOutput {
+            shared_names: Vec::new(),
             version: SESSION_COMMIT_VERSION.to_string(),
             outcome: "nothing_to_commit".to_string(),
             solve_hash: request.solve_hash,
@@ -1788,6 +1813,7 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         next_command: Some("Reread the session commit receipt, then rerun commit".to_string()),
     })?;
     Ok(SessionCommitOutput {
+        shared_names: Vec::new(),
         version: SESSION_COMMIT_VERSION.to_string(),
         outcome: "committed".to_string(),
         solve_hash: receipt.solve_hash,
@@ -2520,6 +2546,7 @@ pub(crate) fn already_committed(
     };
     let generation_id = current_generation_id_for_stream(work_dir, SESSION_COMMIT_STREAM_ID)?;
     Ok(Some(SessionCommitOutput {
+        shared_names: Vec::new(),
         version: SESSION_COMMIT_VERSION.to_string(),
         outcome: "already_committed".to_string(),
         solve_hash: existing.solve_hash,

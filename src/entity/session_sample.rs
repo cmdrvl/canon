@@ -740,6 +740,7 @@ mod tests {
             derived_evidence: Vec::new(),
             scoped_aliases: Vec::new(),
             units: Vec::new(),
+            shared_names: Vec::new(),
         }
     }
 

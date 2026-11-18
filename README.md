@@ -1582,6 +1582,13 @@ is retained as evidence metadata, while meaningful text such as `Fund III` and
 
 A normalization view may declare the `name_structure` operator. `canon entity session derive` then parses `X (dba Y)`, `X f/k/a Y`, `X aka Y` and member lists (`;`, ` / `, newline, or ` and ` / ` & ` only when every side ends in a legal form) out of one surface: a stated alternate becomes `asserted_alias` to an observation equal to the alternate or the primary, a list is `multi_party` and `related` (`co_borrower_of`) to its members and never `name_equivalent` with one, and `Johnson and Johnson` or `Smith, Jones and Partners LLP` stay one name.
 
+A name shared by two entities (the same company name under two different CIKs, a
+merger survivor that took its predecessor's name) blocks both from minting by
+default (`key_conflict`). With `standalone.split_shared_names: true` in the rules,
+`session solve` makes one entity per key value, writes the shared name as an alias
+of none of them, and reports it under `shared_names`; one row carrying two keys, or
+evidence joining the two, is still a `key_conflict`.
+
 A unit inside a firm (a trust division, a servicing platform) is its own entity with a
 `part_of` relation to the firm, never an alias of it. Stated on one surface as
 `X, a division of Y`, the `name_structure` view makes `derive` relate X `part_of` Y.
