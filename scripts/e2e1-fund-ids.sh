@@ -14,6 +14,7 @@ input_csv="$repo_dir/artifacts/e2e1-bdc-election/bdc_election_cik_names.csv"
 receipt_json="$repo_dir/artifacts/e2e1-bdc-election/receipt.json"
 canon_bin="${CANON_BIN:-}"
 work_dir=""
+proof_revision="${PROOF_REVISION:-}"
 
 usage() {
   cat <<'EOF'
@@ -27,6 +28,7 @@ The directory must be empty if supplied and is never deleted by this script.
   --input CSV        source CSV (default: artifacts/e2e1-bdc-election/...csv)
   --receipt JSON     source receipt (default: artifacts/e2e1-bdc-election/receipt.json)
   --work-dir DIR     retained, initially empty output directory
+  PROOF_REVISION=... optional revision label recorded in the proof output
   --help
 EOF
 }
@@ -126,7 +128,10 @@ run_maybe() {
 }
 
 printf 'proof_class=real_data_public_command_replay\n'
-printf 'revision=%s\n' "$(git -C "$repo_dir" rev-parse HEAD 2>/dev/null || printf unknown)"
+if [[ -z "$proof_revision" ]]; then
+  proof_revision="$(git -C "$repo_dir" rev-parse HEAD 2>/dev/null || printf unknown)"
+fi
+printf 'revision=%s\n' "$proof_revision"
 printf 'work_dir=%s\n' "$work_dir"
 printf 'served_registry_untouched=true\n'
 printf 'operator_decision=entity_is_CIK; mint_all_non_conflicting_CIKs; flags_are_informational\n'
@@ -283,6 +288,7 @@ tier_b:
   min_distinct_lineages: 2
 standalone:
   mint_when_authoritative_key: true
+  split_shared_names: true
 incumbent_attach:
   name_equivalent_steps: [casefold, strip_punctuation, collapse_whitespace]
 EOF
@@ -566,15 +572,16 @@ run_maybe "plain-name-lookup" "$canon_bin" "$work_dir/name-lookup.jsonl" --regis
   --column name --explicit --no-witness --emit json
 cp "$RUN_STDOUT_PATH" "$work_dir/name-lookup.json"
 
-python3 - "$input_csv" "$work_dir/commit.json" "$work_dir/cik-lookup.json" "$work_dir/name-lookup.json" "$work_dir/key-crosswalk.csv" "$work_dir/lookup-summary.json" <<'PY'
+python3 - "$input_csv" "$work_dir/commit.json" "$work_dir/solve.json" "$work_dir/cik-lookup.json" "$work_dir/name-lookup.json" "$work_dir/key-crosswalk.csv" "$work_dir/lookup-summary.json" <<'PY'
 import csv
 import json
 import pathlib
 import sys
 
-csv_path, commit_path, cik_lookup_path, name_lookup_path, crosswalk_path, summary_path = map(pathlib.Path, sys.argv[1:])
+csv_path, commit_path, solve_path, cik_lookup_path, name_lookup_path, crosswalk_path, summary_path = map(pathlib.Path, sys.argv[1:])
 source = list(csv.DictReader(csv_path.open(newline="", encoding="utf-8")))
 commit = json.loads(commit_path.read_text())
+solve = json.loads(solve_path.read_text())
 cik_lookup = json.loads(cik_lookup_path.read_text())
 name_lookup = json.loads(name_lookup_path.read_text())
 
@@ -588,11 +595,26 @@ expected_ciks = {row["cik"] for row in source} - skipped_ciks
 cik_map = {raw(row["input"]): raw(row["canonical_id"]) for row in cik_lookup.get("mappings", [])}
 unresolved_ciks = {raw(row["input"]) for row in cik_lookup.get("unresolved", [])}
 name_map = {raw(row["input"]): raw(row["canonical_id"]) for row in name_lookup.get("mappings", [])}
-shared_names = {
-    name
-    for group in holdbacks
-    for name in group.get("cluster_surfaces", [])
-}
+shared_groups = solve.get("shared_names")
+if not isinstance(shared_groups, list) or not shared_groups:
+    raise SystemExit("solve did not report shared_names for the split_shared_names proof")
+shared_names = {group.get("surface") for group in shared_groups}
+if None in shared_names or not all(isinstance(name, str) and name for name in shared_names):
+    raise SystemExit(f"solve shared_names have invalid surfaces: {shared_groups}")
+expected_shared_names = {"ALLIED CAPITAL CORP", "INFINITY CAPITAL GROUP INC"}
+if shared_names != expected_shared_names:
+    raise SystemExit(f"unexpected shared names: {sorted(shared_names)}")
+commit_shared_groups = commit.get("shared_names")
+if not isinstance(commit_shared_groups, list):
+    raise SystemExit("commit did not report shared_names")
+if {group.get("surface") for group in commit_shared_groups} != shared_names:
+    raise SystemExit(f"commit shared_names differ from solve: {commit_shared_groups}")
+for group in commit_shared_groups:
+    for member in group.get("members", []):
+        if not isinstance(member.get("canonical_id"), str) or member["canonical_id"] not in minted:
+            raise SystemExit(f"shared-name member was not minted: {group}")
+if holdbacks:
+    raise SystemExit(f"split_shared_names unexpectedly held back clusters: {holdbacks}")
 for cik in sorted(expected_ciks):
     if cik not in cik_map or cik_map[cik] not in minted:
         raise SystemExit(f"CIK did not resolve to a minted id: {cik}: {cik_map.get(cik)}")
@@ -602,6 +624,8 @@ for cik in sorted(skipped_ciks):
 for row in source:
     name = row["company_name"]
     if name in shared_names:
+        if raw(name) in name_map:
+            raise SystemExit(f"shared name unexpectedly resolved: {name!r}: {name_map[raw(name)]}")
         continue
     if raw(name) not in name_map or name_map[raw(name)] != cik_map.get(row["cik"]):
         raise SystemExit(f"historical name did not resolve to its CIK id: {row}")
@@ -609,6 +633,8 @@ if len(minted) != len(expected_ciks):
     raise SystemExit(f"minted {len(minted)} ids for {len(expected_ciks)} non-conflicting CIKs")
 if len(cik_map) != len(expected_ciks):
     raise SystemExit(f"CIK lookup resolved {len(cik_map)} values, expected {len(expected_ciks)}")
+if unresolved_ciks:
+    raise SystemExit(f"unexpected unresolved CIKs: {sorted(unresolved_ciks)}")
 crosswalk = list(csv.DictReader(crosswalk_path.open(newline="", encoding="utf-8")))
 crosswalk_ids = {}
 for row in crosswalk:
@@ -632,7 +658,7 @@ summary = {
     "plain_cik_resolved": len(cik_map),
     "plain_cik_unresolved": len(unresolved_ciks),
     "historical_name_rows": len(source),
-    "shared_names_held_back": sorted(shared_names),
+    "shared_names_unresolved": sorted(shared_names),
     "historical_name_unresolved_expected": len([row for row in source if row["company_name"] in shared_names]),
     "one_id_per_cik": True,
 }
@@ -877,29 +903,68 @@ PY
 run_maybe "same-session-no-op-commit" "$canon_bin" entity session commit "$session" \
   --bump patch --emit json
 cp "$RUN_STDOUT_PATH" "$work_dir/same-session-no-op.json"
-python3 - "$work_dir/same-session-no-op.json" "$work_dir/registry-before-noop.json" "$registry" <<'PY'
+same_session_check_status=0
+if ! python3 - "$work_dir/same-session-no-op.json" "$work_dir/registry-before-noop.json" "$registry" "$work_dir/same-session-repeat-defect.json" <<'PY'
 import hashlib
 import json
 import pathlib
 import sys
-receipt, before_path, root = map(pathlib.Path, sys.argv[1:])
+receipt, before_path, root, defect_path = map(pathlib.Path, sys.argv[1:])
 value = json.loads(receipt.read_text())
-if value.get("outcome") not in {"nothing_to_commit", "already_committed"}:
-    raise SystemExit(f"same-session repeat was not a no-op: {value}")
-if value.get("minted") or value.get("attached"):
-    raise SystemExit("same-session repeat produced outcomes")
 before = json.loads(before_path.read_text())
 after = {}
 for path in sorted(root.rglob("*")):
     if path.is_file() and path.name != "_index.sqlite":
         after[path.relative_to(root).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+failures = []
+if value.get("outcome") != "nothing_to_commit":
+    failures.append({"field": "outcome", "expected": "nothing_to_commit", "actual": value.get("outcome")})
+if value.get("minted"):
+    failures.append({"field": "minted", "expected": [], "actual_count": len(value["minted"])})
+if value.get("attached"):
+    failures.append({"field": "attached", "expected": [], "actual_count": len(value["attached"])})
 if before != after:
-    raise SystemExit("same-session repeat changed registry bytes")
-print(json.dumps({"same_session_no_op": True}, sort_keys=True))
+    failures.append({"field": "registry_bytes", "expected": "unchanged", "actual": "changed"})
+if failures:
+    defect = {
+        "repeat": "same_session",
+        "failures": failures,
+        "observed": {
+            "outcome": value.get("outcome"),
+            "attached": len(value.get("attached", [])),
+            "minted": len(value.get("minted", [])),
+            "changed_files": value.get("registry", {}).get("changed_files"),
+        },
+    }
+    defect_path.write_text(json.dumps(defect, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(json.dumps(defect, sort_keys=True))
+    raise SystemExit(1)
+print(json.dumps({
+    "same_session_no_op": True,
+    "outcome": "nothing_to_commit",
+    "attached": 0,
+    "minted": 0,
+}, sort_keys=True))
 PY
+then
+  same_session_check_status=1
+  printf '[same-session] strict no-write assertion failed; continuing to complete the retained proof\n' >&2
+fi
 
 second_session="$work_dir/second-session"
 cp "$registry/aliases.json" "$work_dir/aliases-before-second-session.json"
+python3 - "$registry" "$work_dir/registry-before-second-session.json" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+root, out = map(pathlib.Path, sys.argv[1:])
+value = {}
+for path in sorted(root.rglob("*")):
+    if path.is_file() and path.name != "_index.sqlite":
+        value[path.relative_to(root).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+out.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
 run_ok "second-session-init" "$canon_bin" entity session init --goal "E2E-1 BDC repeat session" \
   --registries "$work_dir/registries.yaml" --work-dir "$second_session" --emit json
 run_ok "second-session-ingest" "$canon_bin" entity session ingest "$second_session" "$work_dir/observations.jsonl" \
@@ -909,26 +974,63 @@ run_ok "second-session-derive" "$canon_bin" entity session derive "$second_sessi
 run_ok "second-session-solve" "$canon_bin" entity session solve "$second_session" --rules "$work_dir/rules.yaml" --emit json
 run_maybe "second-session-commit" "$canon_bin" entity session commit "$second_session" --bump patch --emit json
 cp "$RUN_STDOUT_PATH" "$work_dir/second-session-commit.json"
-python3 - "$work_dir/second-session-commit.json" "$work_dir/aliases-before-second-session.json" "$registry/aliases.json" <<'PY'
+second_session_check_status=0
+if ! python3 - "$work_dir/second-session-commit.json" "$work_dir/aliases-before-second-session.json" "$registry/aliases.json" "$work_dir/registry-before-second-session.json" "$registry" "$work_dir/second-session-repeat-defect.json" <<'PY'
 import json
+import hashlib
 import pathlib
 import sys
-value, before_path, aliases = map(pathlib.Path, sys.argv[1:])
+value, before_path, aliases, before_registry_path, registry_root, defect_path = map(pathlib.Path, sys.argv[1:])
 commit = json.loads(value.read_text())
-if commit.get("minted") or commit.get("attached"):
-    raise SystemExit(f"second session wrote outcomes: {commit}")
-if commit.get("outcome") not in {"nothing_to_commit", "already_committed"}:
-    raise SystemExit(f"second session was not a no-op: {commit}")
 before = before_path.read_bytes()
 after = aliases.read_bytes()
-if before != after:
-    raise SystemExit("second session changed aliases.json")
+before_registry = json.loads(before_registry_path.read_text())
+after_registry = {}
+for path in sorted(registry_root.rglob("*")):
+    if path.is_file() and path.name != "_index.sqlite":
+        after_registry[path.relative_to(registry_root).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
 alias_rows = json.loads(after)
 alias_inputs = [row.get("input") for row in alias_rows]
+failures = []
+if commit.get("outcome") != "nothing_to_commit":
+    failures.append({"field": "outcome", "expected": "nothing_to_commit", "actual": commit.get("outcome")})
+if commit.get("minted"):
+    failures.append({"field": "minted", "expected": [], "actual_count": len(commit["minted"])})
+if commit.get("attached"):
+    failures.append({"field": "attached", "expected": [], "actual_count": len(commit["attached"])})
+if before != after:
+    failures.append({"field": "aliases.json", "expected": "unchanged", "actual": "changed"})
+if before_registry != after_registry:
+    failures.append({"field": "registry_bytes", "expected": "unchanged", "actual": "changed"})
 if len(alias_inputs) != len(set(alias_inputs)):
-    raise SystemExit("aliases.json contains duplicate inputs after second session")
-print(json.dumps({"second_session_no_op": True, "alias_count": len(alias_rows), "alias_inputs_unique": True}, sort_keys=True))
+    failures.append({"field": "alias_inputs", "expected": "unique", "actual": "duplicates"})
+if failures:
+    defect = {
+        "repeat": "second_session",
+        "failures": failures,
+        "observed": {
+            "outcome": commit.get("outcome"),
+            "attached": len(commit.get("attached", [])),
+            "minted": len(commit.get("minted", [])),
+            "changed_files": commit.get("registry", {}).get("changed_files"),
+        },
+    }
+    defect_path.write_text(json.dumps(defect, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(json.dumps(defect, sort_keys=True))
+    raise SystemExit(1)
+print(json.dumps({
+    "second_session_no_op": True,
+    "outcome": "nothing_to_commit",
+    "attached": 0,
+    "minted": 0,
+    "alias_count": len(alias_rows),
+    "alias_inputs_unique": True,
+}, sort_keys=True))
 PY
+then
+  second_session_check_status=1
+  printf '[second-session] strict no-write assertion failed; continuing to complete the retained proof\n' >&2
+fi
 
 cp -R "$registry" "$work_dir/negative-registry"
 python3 - "$work_dir/registries.yaml" "$registry" "$work_dir/negative-registries.yaml" "$work_dir/negative-registry" <<'PY'
@@ -1007,7 +1109,8 @@ if commit.get("minted"):
 print(json.dumps({"malformed_cik_reported": True, "malformed_cik_minted": 0}, sort_keys=True))
 PY
 
-python3 - "$work_dir" <<'PY'
+repeat_check_status=0
+if ! python3 - "$work_dir" <<'PY'
 import json
 import pathlib
 import sys
@@ -1029,8 +1132,12 @@ summary = {
     "evidence_closure": json.loads((root / "evidence-closure-summary.json").read_text()),
     "plain_lookup": json.loads((root / "lookup-summary.json").read_text()),
     "exports": json.loads((root / "exports-summary.json").read_text()),
-    "same_session_no_op": json.loads((root / "same-session-no-op.json").read_text()).get("outcome"),
-    "second_session_no_op": True,
+    "same_session_no_op": not (root / "same-session-repeat-defect.json").exists(),
+    "second_session_no_op": not (root / "second-session-repeat-defect.json").exists(),
+    "repeat_defects": [
+        json.loads(path.read_text())
+        for path in sorted(root.glob("*-session-repeat-defect.json"))
+    ],
     "planted_existing_cik_alias": True,
     "malformed_cik_reported": True,
     "held_back_rows": holdbacks,
@@ -1039,6 +1146,13 @@ summary = {
 (root / "proof-summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 print(json.dumps(summary, sort_keys=True))
 PY
+then
+  repeat_check_status=1
+fi
 printf 'proof_summary=%s\nflags=%s\nholdbacks=%s\nretained_work_dir=true\n' \
   "$work_dir/proof-summary.json" "$work_dir/flags.jsonl" "$work_dir/holdbacks.json"
+if [[ "$same_session_check_status" -ne 0 || "$second_session_check_status" -ne 0 || "$repeat_check_status" -ne 0 ]]; then
+  printf 'strict_repeat_assertion=failed\n' >&2
+  exit 1
+fi
 
