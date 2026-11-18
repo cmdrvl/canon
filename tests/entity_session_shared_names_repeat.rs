@@ -223,3 +223,113 @@ fn a_repeat_and_a_second_session_after_a_flag_on_commit_write_and_attach_nothing
     assert_eq!(repeat["attached"].as_array().unwrap().len(), 0, "{repeat}");
     assert_eq!(registry_bytes(&registry), before);
 }
+
+const PROFILE: &str = r#"profile: repeat_fund
+version: 0.1.0
+entity_type: fund
+identity_semantics: same_normalized_name
+canonical_type: fund
+required_fields: [source_row_id, surface]
+normalized_views:
+  core:
+    operators: [ascii_trim_upper]
+  row_key:
+    operators: [ascii_trim_upper]
+prepare:
+  primary_surface_fields: [surface]
+  canonical_surface_normalized_view: core
+  normalized_view_fields:
+    core: surface
+    row_key: source_row_id
+  anchor_fields:
+    cik: cik
+  surface_key_fields: [row_key]
+  nullable_fields: [cik]
+  provenance_fields: [source_row_id, origin]
+blocking:
+  operators:
+    - op: exact_identity
+      view: core
+evidence:
+  support:
+    - op: exact_view
+      view: core
+  cannot_link:
+    - op: protected_token_conflict
+      view: core
+      params:
+        score_units: "0"
+  relation_hints:
+    - op: cross_profile_alignment
+      params:
+        merge_authorized: "false"
+        review_policy: relation_hint_only
+patch_namespaces:
+  aliases: repeat_fund.aliases
+  distinct: repeat_fund.distinct
+  relations: repeat_fund.relations
+solve:
+  hard_cannot_link: contradiction
+  standalone_surfaces: include
+"#;
+
+impl Batch {
+    fn derive(&self, root: &Path) {
+        let profile = root.join("profile.yaml");
+        fs::write(&profile, PROFILE).unwrap();
+        let strategy = root.join("strategy.yaml");
+        fs::write(
+            &strategy,
+            "block:\n  preflight: false\n  max_candidates_per_run: 5000000\n",
+        )
+        .unwrap();
+        run_json(
+            &[
+                "entity",
+                "session",
+                "derive",
+                p(&self.session),
+                "--profile",
+                p(&profile),
+                "--strategy",
+                p(&strategy),
+                "--no-registry-candidates",
+            ],
+            0,
+        );
+    }
+}
+
+#[test]
+fn an_active_pending_record_already_stored_is_not_work_in_the_next_session() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    let registry = root.join("funds");
+
+    // Session A over an empty registry, derive included: it mints and parks the
+    // shared-name evidence as an active pending record.
+    let a = batch(root, &registry, "session-a", true);
+    a.derive(root);
+    a.solve();
+    let first = a.commit("1.0.0");
+    assert_eq!(first["outcome"], "committed", "{first}");
+    assert_eq!(first["minted"].as_array().unwrap().len(), 3, "{first}");
+    let pending = fs::read_to_string(registry.join("_escrow/pending.jsonl")).unwrap_or_default();
+    assert!(
+        pending.contains(SHARED),
+        "the derive evidence should leave an active pending record: {pending:?}"
+    );
+    // The same session again is already committed.
+    assert_eq!(a.commit("1.0.0")["outcome"], "already_committed");
+
+    // Session B: same ingest, derive and solve. Nothing is new.
+    let before = registry_bytes(&registry);
+    let b = batch(root, &registry, "session-b", true);
+    b.derive(root);
+    b.solve();
+    let second = b.commit("1.1.0");
+    assert_eq!(second["outcome"], "nothing_to_commit", "{second}");
+    assert_eq!(second["attached"].as_array().unwrap().len(), 0, "{second}");
+    assert_eq!(second["minted"].as_array().unwrap().len(), 0, "{second}");
+    assert_eq!(registry_bytes(&registry), before);
+}

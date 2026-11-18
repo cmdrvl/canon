@@ -1294,7 +1294,14 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             ));
         }
     }
-    let memory_substantive = request.memory.as_ref().is_some_and(memory_is_substantive);
+    // Memory counts as an effect only when it would change what is stored: a
+    // pending record already stored unchanged is not work to commit again.
+    let memory_substantive = match request.memory.as_ref() {
+        Some(memory) if memory_is_substantive(memory) => {
+            memory_changes_stored(registry_path, memory)?
+        }
+        _ => false,
+    };
     if !commit_has_effect(
         !request.entries.is_empty(),
         request.relations.len(),
@@ -1629,12 +1636,6 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
             .cmp(&right.cluster_id)
             .then_with(|| left.reason.cmp(&right.reason))
     });
-    let memory_counts = request
-        .memory
-        .as_ref()
-        .map(|memory| write_registry_memory(registry_path, memory))
-        .transpose()?
-        .unwrap_or_default();
     let relations_written = write_relation_sidecar(
         registry_path,
         &manifest.session_id,
@@ -1643,6 +1644,47 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
         &relation_closure_slots,
         &minted_by_cluster,
     )?;
+    // The outcome comes from what was written: no alias, no new relation and no
+    // memory that changes what is stored is nothing to commit, whatever the
+    // session proposed. Nothing is written for a quiet commit.
+    if !commit_has_effect(
+        !written_groups.is_empty(),
+        relations_written,
+        memory_substantive,
+    ) {
+        let after = registry::registry_identity(registry_path)?;
+        let summary =
+            current_registry_summary(registry_path, &after.registry_id, &after.registry_version)?;
+        return Ok(SessionCommitOutput {
+            shared_names: Vec::new(),
+            version: SESSION_COMMIT_VERSION.to_string(),
+            outcome: "nothing_to_commit".to_string(),
+            solve_hash: request.solve_hash,
+            registry: None,
+            registries: vec![handoff_registry(
+                summary,
+                registry_path,
+                &base_identity,
+                &after,
+                Vec::new(),
+            )],
+            minted: Vec::new(),
+            attached: Vec::new(),
+            skipped: receipt_skipped,
+            relations_written: 0,
+            cannot_link_written: 0,
+            pending_written: 0,
+            pending_cleared: 0,
+            closure_set_hash: None,
+            generation_id: None,
+        });
+    }
+    let memory_counts = request
+        .memory
+        .as_ref()
+        .map(|memory| write_registry_memory(registry_path, memory))
+        .transpose()?
+        .unwrap_or_default();
     let new_identity = registry::registry_identity(registry_path)?;
     let mut closure_refs = Vec::new();
     for entry in &request.entries {
@@ -1870,6 +1912,55 @@ struct RegistryMemoryWriteCounts {
     cannot_link_written: usize,
     pending_written: usize,
     pending_cleared: usize,
+}
+
+/// Whether the substantive part of `requested` differs from what the registry
+/// already stores: a cannot-link pair not yet there, a pending record to clear
+/// that is there, or a review-pending record that is new or changed.
+fn memory_changes_stored(
+    registry_path: &Path,
+    requested: &SessionRegistryMemoryWrite,
+) -> Result<bool, Refusal> {
+    let escrow_dir = registry_path.join("_escrow");
+    let existing_cannot = read_memory_jsonl::<crate::entity::runtime::CannotLinkFact>(
+        &escrow_dir.join("cannot_link.jsonl"),
+    )?;
+    let existing_pending = read_memory_jsonl::<crate::entity::runtime::PendingClusterRecord>(
+        &escrow_dir.join("pending.jsonl"),
+    )?;
+    let stored_pairs = existing_cannot
+        .iter()
+        .map(|fact| ordered_memory_pair(&fact.left_key, &fact.right_key))
+        .collect::<std::collections::BTreeSet<_>>();
+    if requested
+        .cannot_link
+        .iter()
+        .any(|fact| !stored_pairs.contains(&ordered_memory_pair(&fact.left_key, &fact.right_key)))
+    {
+        return Ok(true);
+    }
+    // A record cleared and proposed again is not removed: only a stored record
+    // that really goes counts here (a changed one is checked below).
+    if requested.pending_clear.iter().any(|id| {
+        existing_pending
+            .iter()
+            .any(|record| record.escrow_id == *id)
+            && !requested
+                .pending
+                .iter()
+                .any(|record| record.escrow_id == *id)
+    }) {
+        return Ok(true);
+    }
+    Ok(requested
+        .pending
+        .iter()
+        .filter(|record| requested.review_pending.contains(&record.escrow_id))
+        .any(|record| {
+            !existing_pending
+                .iter()
+                .any(|stored| stored.escrow_id == record.escrow_id && stored == record)
+        }))
 }
 
 fn write_registry_memory(
