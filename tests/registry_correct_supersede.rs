@@ -397,6 +397,7 @@ fn a_moved_base_refuses_the_succession() {
 // ---- stage 2b: the shared name of a split_shared_names run -----------------
 
 const OTHER: &str = "Orion Lending Corp";
+const OWN: &str = "Gamma Lending Co";
 
 /// The registry a flag-on session builds from three rows: one name under two
 /// CIKs and one unrelated entity. The shared name is an alias of none of them.
@@ -588,4 +589,87 @@ fn a_name_that_belongs_to_a_third_entity_is_refused_and_nothing_is_written() {
         "already names",
     );
     assert_eq!(all_bytes(&registry), before);
+}
+
+// ---- stage 3: a placed name follows the chain without being listed ----------
+
+#[test]
+fn a_name_placed_by_an_earlier_supersede_follows_the_next_link_unlisted() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    let registry = session_registry(root);
+    let id = |cik: &str| id_of(&registry, root, cik).expect("cik resolves");
+    let (first, middle, active) = (id("3845"), id("3906"), id("1287750"));
+
+    let one = write_line(
+        root,
+        "one.jsonl",
+        &line(&first, &middle, "1997-12-31", &[SHARED]),
+    );
+    assert_eq!(
+        correct(&registry, &one, "1.1.0", &[], 0)["outcome"],
+        "applied"
+    );
+    assert_eq!(
+        id_of(&registry, root, SHARED).as_deref(),
+        Some(middle.as_str())
+    );
+
+    // An alias the middle entity holds that no supersede placed: it must stay.
+    let alias_file = all_bytes(&registry)
+        .into_iter()
+        .find(|(_, bytes)| String::from_utf8_lossy(bytes).contains("SUCCESSION_NAME_HOLDER"))
+        .map(|(name, _)| registry.join(name))
+        .expect("alias file");
+    let mut rows: Value = serde_json::from_slice(&fs::read(&alias_file).unwrap()).unwrap();
+    rows.as_array_mut().expect("array of entries").push(json!({
+        "input": OWN,
+        "canonical_id": middle,
+        "canonical_type": "fund",
+        "rule_id": "MANUAL_ALIAS",
+    }));
+    fs::write(&alias_file, serde_json::to_vec_pretty(&rows).unwrap()).unwrap();
+    assert_eq!(
+        id_of(&registry, root, OWN).as_deref(),
+        Some(middle.as_str())
+    );
+
+    // 3906 -> active with an empty input list: the placed name follows.
+    let two = write_line(
+        root,
+        "two.jsonl",
+        &line(&middle, &active, "2010-04-01", &[]),
+    );
+    let before = all_bytes(&registry);
+    let dry = correct(&registry, &two, "1.2.0", &["--dry-run"], 0);
+    assert_eq!(dry["outcome"], "dry_run", "{dry}");
+    assert_eq!(all_bytes(&registry), before);
+    let refused_base = correct(&registry, &two, "1.2.0", &["--expect-base", "blake3:00"], 2);
+    assert_eq!(refused_base["refusal"]["detail"]["reason"], "base_moved");
+    let applied = correct(&registry, &two, "1.2.0", &[], 0);
+    assert_eq!(applied["outcome"], "applied", "{applied}");
+    assert_eq!(
+        id_of(&registry, root, SHARED).as_deref(),
+        Some(active.as_str()),
+        "the placed name resolves to the current holder"
+    );
+    assert_eq!(
+        id_of(&registry, root, OWN).as_deref(),
+        Some(middle.as_str()),
+        "an alias no supersede placed stays unless listed"
+    );
+    assert_eq!(
+        correct(&registry, &two, "1.2.1", &[], 0)["outcome"],
+        "already_applied"
+    );
+
+    // A cycle is still refused, and lint is clean.
+    let back = write_line(
+        root,
+        "back.jsonl",
+        &line(&active, &first, "2011-01-01", &[]),
+    );
+    refused_with(&registry, &back, "cycle");
+    let lint = run_json(&["registry", "lint", p(&registry), "--emit", "json"], 0);
+    assert_eq!(lint["summary"]["errors"], 0, "{lint}");
 }

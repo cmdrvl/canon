@@ -1584,7 +1584,7 @@ A normalization view may declare the `name_structure` operator. `canon entity se
 
 `canon registry correct` also takes `{"op":"supersede","superseded","successor","succession":"merged_into","effective_date","inputs"}`:
 the old id stays, answers lookups as itself with a `succession` block (`superseded_by`,
-the `chain` to the active end), and the named spellings move to the successor.
+the `chain` to the active end), and the named spellings move to the successor; a name an earlier supersede placed on the old id follows without being listed again.
 It needs a human reviewer, evidence ids and a date the evidence states.
 
 A name shared by two entities (the same company name under two different CIKs, a

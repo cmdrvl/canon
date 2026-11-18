@@ -464,7 +464,7 @@ from the filing:
 Both ids stay. Lookup of the old id or its CIK answers its own id with
 `succession.superseded_by` and the `chain` to the active end; the listed names
 move to the successor (a name that belongs to neither entity, as after `split_shared_names`, is written to the successor as a new alias carrying the correction's closure; a name another entity holds is refused), so the shared name resolves to the active holder only.
-Supersede the active end to extend the chain. The date comes from the cited
+Supersede the active end to extend the chain; a name an earlier supersede placed on the old id (it carries the correction mark) follows to the new successor in the same correction without being listed again, while the old id's own original spellings stay unless listed. The date comes from the cited
 filing; canon never infers one.
 
 ## Evidence Canon derives itself

@@ -294,6 +294,33 @@ pub(super) fn apply(
             }
         }
     }
+    // A spelling an earlier supersede placed on the superseded id follows it to
+    // the successor without being listed again, so a shared name keeps resolving
+    // to the current holder. The superseded id's own original spellings stay.
+    for rows in model.mapping.values_mut() {
+        for entry in rows.iter_mut() {
+            let placed_by_supersede = entry
+                .get("correction")
+                .and_then(|value| value.get("op"))
+                .and_then(Value::as_str)
+                == Some("supersede");
+            if placed_by_supersede
+                && entry_str(entry, "canonical_id") == line.superseded
+                && key_namespace(entry_str(entry, "rule_id")).is_none()
+                && entry.get("scope").is_none_or(Value::is_null)
+                && let Some(object) = entry.as_object_mut()
+            {
+                let input = object
+                    .get("input")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                object.insert("canonical_id".to_string(), json!(line.successor));
+                object.insert("correction".to_string(), mark.clone());
+                moved_inputs.push(input);
+            }
+        }
+    }
     moved_inputs.sort();
     moved_inputs.dedup();
     // The two stay two entities: registry memory says they never merge.
