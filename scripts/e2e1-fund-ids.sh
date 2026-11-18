@@ -5,7 +5,8 @@ set -euo pipefail
 # entity-session CLI. The work directory is deliberately retained. This
 # script never deletes it and never redirects a command's stderr: every command
 # has a retained stdout and command/status record while stderr remains visible
-# to the operator.
+# to the operator. The export namespace below is a stable E2E projection
+# namespace, not a registry namespace.
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_dir="$(cd "$script_dir/.." && pwd -P)"
@@ -54,9 +55,18 @@ fi
   printf 'set CANON_BIN or --canon-bin to an executable canon binary\n' >&2
   exit 2
 }
+if [[ "$canon_bin" != /* ]]; then
+  if [[ -x "$repo_dir/$canon_bin" ]]; then
+    canon_bin="$repo_dir/$canon_bin"
+  else
+    canon_bin="$(command -v "$canon_bin" || true)"
+  fi
+fi
+canon_bin="$(cd "$(dirname "$canon_bin")" && pwd -P)/$(basename "$canon_bin")"
 [[ -f "$input_csv" ]] || { printf 'missing input CSV: %s\n' "$input_csv" >&2; exit 2; }
 [[ -f "$receipt_json" ]] || { printf 'missing receipt JSON: %s\n' "$receipt_json" >&2; exit 2; }
 command -v b3sum >/dev/null 2>&1 || { printf 'b3sum is required\n' >&2; exit 2; }
+command -v sqlite3 >/dev/null 2>&1 || { printf 'sqlite3 is required\n' >&2; exit 2; }
 
 if [[ -z "$work_dir" ]]; then
   work_dir="$(mktemp -d "${TMPDIR:-/tmp}/canon-e2e1-fund-ids.XXXXXX")"
@@ -630,6 +640,209 @@ summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", en
 print(json.dumps(summary, sort_keys=True))
 PY
 
+export_namespace="e2e1_bdc_election_fund"
+exports_dir="$work_dir/exports"
+exports_repeat_dir="$work_dir/exports-repeat"
+
+run_export_set() {
+  local label="$1"
+  local output_dir="$2"
+  mkdir -p "$output_dir/entity-cards"
+  (
+    cd "$work_dir"
+    run_ok "${label}-dbt-seed" "$canon_bin" registry export \
+      --format dbt-seed --registry registry --namespace "$export_namespace" \
+      --canonical-type fund --out "$output_dir/dbt-seed.csv" \
+      --schema-out "$output_dir/schema.yml" \
+      --anti-collapse-test-out "$output_dir/anti-collapse.sql" --emit json
+  )
+  cp "$work_dir/commands/${label}-dbt-seed.stdout" "$output_dir/dbt-seed.json"
+  (
+    cd "$work_dir"
+    run_ok "${label}-search-index" "$canon_bin" registry export \
+      --format search-index --registry registry --namespace "$export_namespace" \
+      --out "$output_dir/search-index.sqlite" --emit json
+  )
+  cp "$work_dir/commands/${label}-search-index.stdout" "$output_dir/search-index.json"
+  (
+    cd "$work_dir"
+    run_ok "${label}-search-index-sqlite-open" sqlite3 "$output_dir/search-index.sqlite" ".tables"
+  )
+  (
+    cd "$work_dir"
+    run_ok "${label}-entity-card" "$canon_bin" registry export \
+      --format entity-card --registry registry --out "$output_dir/entity-cards" --emit json
+  )
+  cp "$work_dir/commands/${label}-entity-card.stdout" "$output_dir/entity-card.json"
+}
+
+run_export_set "export-1" "$exports_dir"
+run_export_set "export-2" "$exports_repeat_dir"
+python3 - "$registry" "$work_dir/commit.json" "$input_csv" "$exports_dir" "$exports_repeat_dir" "$work_dir/exports-summary.json" <<'PY'
+import csv
+import hashlib
+import json
+import pathlib
+import sqlite3
+import sys
+
+registry, commit_path, source_path, first_root, second_root, summary_path = map(
+    pathlib.Path, sys.argv[1:]
+)
+commit = json.loads(commit_path.read_text(encoding="utf-8"))
+minted = {row["canonical_id"] for row in commit.get("minted", [])}
+registry_version = json.loads((registry / "registry.json").read_text(encoding="utf-8"))["version"]
+source_rows = list(csv.DictReader(source_path.open(newline="", encoding="utf-8")))
+renamed_names = sorted(
+    {row["company_name"] for row in source_rows if row["cik"] == "0000748268"}
+)
+if len(renamed_names) < 2:
+    raise SystemExit(f"CIK 748268 is not a renamed CIK in the source: {renamed_names}")
+
+mapping_counts = {}
+for path in sorted(registry.glob("*.json")):
+    if path.name == "registry.json":
+        continue
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, list):
+        raise SystemExit(f"mapping file is not a JSON array: {path}")
+    mapping_counts[path.name] = len(value)
+expected_entries = sum(mapping_counts.values())
+
+def artifact_snapshot(root):
+    paths = [
+        root / "dbt-seed.csv",
+        root / "schema.yml",
+        root / "anti-collapse.sql",
+        root / "search-index.sqlite",
+        *sorted((root / "entity-cards").glob("*.json")),
+    ]
+    if any(not path.is_file() for path in paths):
+        missing = [str(path) for path in paths if not path.is_file()]
+        raise SystemExit(f"export artifact is missing: {missing}")
+    return {
+        path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in paths
+    }
+
+def verify_export(root):
+    payloads = {
+        name: json.loads((root / name).read_text(encoding="utf-8"))
+        for name in ("dbt-seed.json", "search-index.json", "entity-card.json")
+    }
+    versions = {payload["registry"]["version"] for payload in payloads.values()}
+    if versions != {registry_version}:
+        raise SystemExit(f"export registry versions drifted: {versions} vs {registry_version}")
+    seed_rows = list(csv.DictReader((root / "dbt-seed.csv").open(newline="", encoding="utf-8")))
+    if len(seed_rows) != expected_entries:
+        raise SystemExit(f"dbt-seed rows {len(seed_rows)} != expected alias+key entries {expected_entries}")
+    if payloads["dbt-seed.json"]["summary"]["exported_alias_count"] != expected_entries:
+        raise SystemExit("dbt-seed summary count disagrees with alias+key entries")
+    if any(row["canonical_id"] not in minted for row in seed_rows):
+        raise SystemExit("dbt-seed contains a canonical id that was not minted")
+    if any(not row["canonical_id"].startswith("fund_") for row in seed_rows):
+        raise SystemExit("dbt-seed contains a non-fund canonical id")
+    if any(row["namespace"] != "e2e1_bdc_election_fund" for row in seed_rows):
+        raise SystemExit("dbt-seed namespace is not the declared stable namespace")
+
+    by_key = {}
+    for row in seed_rows:
+        key = (row["namespace"], row["normalized_key"])
+        by_key.setdefault(key, set()).add(row["canonical_id"])
+    collapsed = {key: sorted(ids) for key, ids in by_key.items() if len(ids) > 1}
+    if collapsed:
+        raise SystemExit(f"dbt anti-collapse check found multiple ids: {collapsed}")
+    anti_sql = (root / "anti-collapse.sql").read_text(encoding="utf-8").lower()
+    if "count(distinct canonical_id) > 1" not in anti_sql:
+        raise SystemExit("generated anti-collapse SQL does not assert distinct canonical ids")
+
+    search_path = root / "search-index.sqlite"
+    with sqlite3.connect(search_path) as connection:
+        tables = {
+            row[0]
+            for row in connection.execute("select name from sqlite_master where type = 'table'")
+        }
+        required_tables = {"metadata", "entities", "aliases", "external_keys"}
+        if not required_tables <= tables:
+            raise SystemExit(f"search index is missing tables: {sorted(required_tables - tables)}")
+        search_version = connection.execute(
+            "select value from metadata where key = 'registry_version'"
+        ).fetchone()[0]
+        if search_version != registry_version:
+            raise SystemExit(f"search index version {search_version} != {registry_version}")
+        cik_ids = connection.execute(
+            "select distinct canonical_id from external_keys where key_namespace = 'key' and key_value = ?",
+            ("0000748268",),
+        ).fetchall()
+        if len(cik_ids) != 1:
+            raise SystemExit(f"search index CIK lookup was not unique: {cik_ids}")
+        renamed_id = cik_ids[0][0]
+        name_ids = {}
+        for name in renamed_names:
+            ids = connection.execute(
+                "select distinct canonical_id from aliases where alias = ?", (name,)
+            ).fetchall()
+            if len(ids) != 1 or ids[0][0] != renamed_id:
+                raise SystemExit(f"search index name lookup failed for {name!r}: {ids}")
+            name_ids[name] = ids[0][0]
+
+    card_paths = sorted((root / "entity-cards").glob("*.json"))
+    if len(card_paths) != len(minted):
+        raise SystemExit(f"entity cards {len(card_paths)} != minted ids {len(minted)}")
+    sizes = []
+    renamed_card = None
+    for path in card_paths:
+        card = json.loads(path.read_text(encoding="utf-8"))
+        if card.get("id") != path.stem or card.get("version") != "canon.entity_card.v0":
+            raise SystemExit(f"entity card identity/version mismatch: {path}")
+        sizes.append(path.stat().st_size)
+        if card["id"] == renamed_id:
+            renamed_card = card
+    if renamed_card is None or not set(renamed_names) <= set(renamed_card.get("names", [])):
+        raise SystemExit(f"renamed CIK card does not list both names: {renamed_card}")
+    return {
+        "registry_version": registry_version,
+        "dbt_seed_rows": len(seed_rows),
+        "expected_alias_key_entries": expected_entries,
+        "mapping_file_counts": mapping_counts,
+        "dbt_seed_count_matches_expected": True,
+        "dbt_seed_canonical_ids": len({row["canonical_id"] for row in seed_rows}),
+        "anti_collapse_keys_checked": len(by_key),
+        "anti_collapse_collisions": 0,
+        "search_index_tables": sorted(tables),
+        "search_index_cik": {"cik": "0000748268", "canonical_id": renamed_id},
+        "search_index_renamed_names": name_ids,
+        "entity_card_count": len(card_paths),
+        "entity_card_bytes": {
+            "min": min(sizes),
+            "max": max(sizes),
+            "total": sum(sizes),
+        },
+        "renamed_cik_card": {"cik": "0000748268", "canonical_id": renamed_id, "names": renamed_names},
+    }
+
+first_summary = verify_export(first_root)
+second_summary = verify_export(second_root)
+first_files = artifact_snapshot(first_root)
+second_files = artifact_snapshot(second_root)
+if first_files != second_files:
+    differences = sorted(set(first_files) ^ set(second_files))
+    differences += sorted(
+        name for name in set(first_files) & set(second_files) if first_files[name] != second_files[name]
+    )
+    raise SystemExit(f"two exports from the same registry version differ: {differences}")
+summary = {
+    "namespace": "e2e1_bdc_election_fund",
+    "registry_version": registry_version,
+    "first": first_summary,
+    "second": second_summary,
+    "two_exports_byte_identical": True,
+    "artifact_files_compared": len(first_files),
+}
+summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+print(json.dumps(summary, sort_keys=True))
+PY
+
 python3 - "$registry" "$work_dir/commit.json" "$work_dir/check-id" <<'PY'
 import json
 import pathlib
@@ -815,6 +1028,7 @@ summary = {
     },
     "evidence_closure": json.loads((root / "evidence-closure-summary.json").read_text()),
     "plain_lookup": json.loads((root / "lookup-summary.json").read_text()),
+    "exports": json.loads((root / "exports-summary.json").read_text()),
     "same_session_no_op": json.loads((root / "same-session-no-op.json").read_text()).get("outcome"),
     "second_session_no_op": True,
     "planted_existing_cik_alias": True,
