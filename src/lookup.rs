@@ -87,6 +87,7 @@ pub fn resolve_values_with_context(
             }
             match found {
                 Some(candidate) => {
+                    let candidate_id = candidate.canonical_id.clone();
                     mappings.push(Mapping {
                         input: input_value.clone(),
                         canonical_id: candidate.canonical_id,
@@ -98,6 +99,10 @@ pub fn resolve_values_with_context(
                             context,
                             fell_back,
                             &candidate.scope,
+                        ),
+                        succession: crate::registry::succession_of(
+                            &registry.successions,
+                            &candidate_id,
                         ),
                     });
                 }
@@ -474,6 +479,7 @@ mod tests {
             },
             db_path: PathBuf::from(temp_db.path()),
             scope_policy: Default::default(),
+            successions: Default::default(),
         };
 
         (registry, temp_db)

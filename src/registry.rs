@@ -55,6 +55,7 @@ pub use correct::{
     REGISTRY_CORRECT_VERSION, RegistryCorrectOutput, RegistryCorrectRequest,
     RegistryCorrectionSummary, correct,
 };
+pub use correct::{Succession, SuccessionRecord, read_successions, succession_of};
 pub use id_scheme::{
     RegistryDefaultIdSchemeOutput, RegistryDefaultIdSchemeRequest, set_default_id_scheme,
 };
@@ -340,6 +341,7 @@ pub fn load_registry(registry_dir: &Path) -> Result<Registry, Box<dyn Error>> {
         meta: registry_meta,
         db_path: index_target.db_path,
         scope_policy: registry_json.scope_policy.clone(),
+        successions: read_successions(registry_dir),
     })
 }
 

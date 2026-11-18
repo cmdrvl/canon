@@ -450,6 +450,23 @@ each entry it removed, so earlier evidence stays reachable from
 `corrections.jsonl`, which is append-only. Nothing in a session ever detaches or
 splits on its own.
 
+### Succession: one name, a chain of entities
+
+When a company merges into another and the survivor takes its name, the two stay
+two entities. Mint each CIK as its own id (rules `standalone.split_shared_names:
+true` writes the shared name as an alias of neither), then record the succession
+from the filing:
+
+```jsonl
+{"op":"supersede","superseded":"ORG-000412","successor":"ORG-000977","succession":"merged_into","effective_date":"1997-12-31","inputs":["Delta Holdings Corp"],"reviewer":"human:zac","evidence_ids":["..."],"reason":"the filing states the merger and its effective date"}
+```
+
+Both ids stay. Lookup of the old id or its CIK answers its own id with
+`succession.superseded_by` and the `chain` to the active end; the listed names
+move to the successor, so the shared name resolves to the active holder only.
+Supersede the active end to extend the chain. The date comes from the cited
+filing; canon never infers one.
+
 ## Evidence Canon derives itself
 
 `session derive` runs Canon's own entity operators over the observations and

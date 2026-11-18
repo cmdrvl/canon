@@ -924,6 +924,7 @@ mod tests {
                 source: "test".to_string(),
             },
             scope_policy: Default::default(),
+            successions: Default::default(),
             db_path: temp_db.path().to_path_buf(),
         };
 

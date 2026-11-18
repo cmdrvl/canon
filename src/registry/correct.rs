@@ -32,6 +32,7 @@ pub const SUPERSEDED_ID_ALIAS: &str = "SUPERSEDED_ID_ALIAS";
 const CORRECTIONS_FILE: &str = "corrections.jsonl";
 
 mod ops;
+mod supersede;
 
 #[derive(Debug, Clone)]
 pub struct RegistryCorrectRequest {
@@ -119,6 +120,13 @@ impl RegistryCorrectOutput {
                     correction.repointed_relations,
                     correction.dropped_relations
                 ),
+                "supersede" => format!(
+                    "supersede {} -> {} correction_id={} moved={}",
+                    correction.canonical_id.as_deref().unwrap_or(""),
+                    correction.survivor.as_deref().unwrap_or(""),
+                    correction.correction_id,
+                    correction.moved
+                ),
                 "detach" => format!(
                     "detach {} correction_id={} detached={} memory_written={}",
                     correction.canonical_id.as_deref().unwrap_or(""),
@@ -203,6 +211,7 @@ enum Correction {
     Detach(ops::DetachLine),
     Split(ops::SplitLine),
     RemoveCannotLink(ops::RemoveLine),
+    Supersede(supersede::SupersedeLine),
 }
 
 impl Correction {
@@ -212,6 +221,7 @@ impl Correction {
             Self::Detach(line) => line.canonical(),
             Self::Split(line) => line.canonical(),
             Self::RemoveCannotLink(line) => line.canonical(),
+            Self::Supersede(line) => line.canonical(),
         }
     }
 
@@ -251,6 +261,7 @@ impl Correction {
             Self::Detach(line) => line.review.parts(),
             Self::Split(line) => line.review.parts(),
             Self::RemoveCannotLink(line) => line.review.parts(),
+            Self::Supersede(line) => line.review.parts(),
         }
     }
 
@@ -260,6 +271,7 @@ impl Correction {
             Self::Detach(_) => "detach",
             Self::Split(_) => "split",
             Self::RemoveCannotLink(_) => "remove_cannot_link",
+            Self::Supersede(_) => "supersede",
         }
     }
 }
@@ -285,15 +297,15 @@ fn parse_lines(registry: &Path, from: &Path) -> Result<Vec<Correction>, Refusal>
         let op = field("op").unwrap_or_default().to_string();
         if !matches!(
             op.as_str(),
-            "merge" | "detach" | "split" | "remove_cannot_link"
+            "merge" | "detach" | "split" | "remove_cannot_link" | "supersede"
         ) {
             return Err(refusal(
                 registry,
                 format!(
-                    "corrections line {number}: op must be merge, detach, split or remove_cannot_link"
+                    "corrections line {number}: op must be merge, detach, split, remove_cannot_link or supersede"
                 ),
                 json!({"line": number, "op": value.get("op"), "writes_performed": false}),
-                "Use {\"op\":\"merge\"|\"detach\"|\"split\"|\"remove_cannot_link\", ...}",
+                "Use {\"op\":\"merge\"|\"detach\"|\"split\"|\"remove_cannot_link\"|\"supersede\", ...}",
             ));
         }
         let required = |name: &str| -> Result<String, Refusal> {
@@ -344,6 +356,16 @@ fn parse_lines(registry: &Path, from: &Path) -> Result<Vec<Correction>, Refusal>
         }
         let reason = field("reason").unwrap_or_default().to_string();
         let source = value.get("source").cloned().unwrap_or(Value::Null);
+        if op == "supersede" {
+            let review = ops::Review {
+                reviewer,
+                evidence_ids,
+                reason,
+                source,
+            };
+            lines.push(supersede::parse(registry, &value, number, review)?);
+            continue;
+        }
         if op != "merge" {
             let review = ops::Review {
                 reviewer,
@@ -386,6 +408,68 @@ fn parse_lines(registry: &Path, from: &Path) -> Result<Vec<Correction>, Refusal>
 
 /// Retired ids recorded by corrections; `allocate_next` must never mint them
 /// again.
+/// One recorded succession: the old id keeps its own entries and is flagged
+/// `superseded_by` the successor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SuccessionRecord {
+    pub successor: String,
+    pub succession: String,
+    pub effective_date: String,
+}
+
+/// What a lookup of a superseded id reports: the direct successor and the chain
+/// to the active end (the last element).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+pub struct Succession {
+    pub superseded_by: String,
+    pub chain: Vec<String>,
+    pub succession: String,
+    pub effective_date: String,
+}
+
+/// Successions recorded by `supersede` corrections, old id to its record.
+pub fn read_successions(registry: &Path) -> BTreeMap<String, SuccessionRecord> {
+    let Ok(text) = fs::read_to_string(registry.join(CORRECTIONS_FILE)) else {
+        return BTreeMap::new();
+    };
+    text.lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter(|line| line.get("op").and_then(Value::as_str) == Some("supersede"))
+        .filter_map(|line| {
+            let field = |name: &str| line.get(name)?.as_str().map(str::to_string);
+            Some((
+                field("superseded")?,
+                SuccessionRecord {
+                    successor: field("successor")?,
+                    succession: field("succession")?,
+                    effective_date: field("effective_date")?,
+                },
+            ))
+        })
+        .collect()
+}
+
+/// The succession of `id`, if it is superseded, with the chain to the active end.
+pub fn succession_of(
+    successions: &BTreeMap<String, SuccessionRecord>,
+    id: &str,
+) -> Option<Succession> {
+    let record = successions.get(id)?;
+    let mut chain = vec![record.successor.clone()];
+    while let Some(next) = successions.get(chain.last()?) {
+        if chain.contains(&next.successor) || chain.len() > successions.len() {
+            break;
+        }
+        chain.push(next.successor.clone());
+    }
+    Some(Succession {
+        superseded_by: record.successor.clone(),
+        chain,
+        succession: record.succession.clone(),
+        effective_date: record.effective_date.clone(),
+    })
+}
+
 pub(crate) fn retired_ids(registry: &Path) -> Vec<String> {
     let Ok(text) = fs::read_to_string(registry.join(CORRECTIONS_FILE)) else {
         return Vec::new();
@@ -970,6 +1054,7 @@ pub fn correct(request: RegistryCorrectRequest) -> Result<RegistryCorrectOutput,
                 apply_merge(&registry, &mut model, line, key_check)?
             }
             Correction::Detach(line) => ops::apply_detach(&registry, &mut model, line, &ctx)?,
+            Correction::Supersede(line) => supersede::apply(&registry, &mut model, line, &ctx)?,
             Correction::Split(line) => ops::apply_split(&registry, &mut model, line, &ctx)?,
             Correction::RemoveCannotLink(line) => {
                 ops::apply_remove_cannot_link(&registry, &mut model, line, &ctx)?

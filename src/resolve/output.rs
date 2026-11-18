@@ -152,6 +152,7 @@ mod tests {
             },
             db_path: PathBuf::from("unused.sqlite"),
             scope_policy: Default::default(),
+            successions: Default::default(),
         }
     }
 

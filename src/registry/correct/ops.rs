@@ -39,7 +39,7 @@ impl Review {
         )
     }
 
-    fn put(&self, object: &mut serde_json::Map<String, Value>) {
+    pub(super) fn put(&self, object: &mut serde_json::Map<String, Value>) {
         object.insert("reviewer".to_string(), json!(self.reviewer));
         object.insert("evidence_ids".to_string(), json!(self.evidence_ids));
         object.insert("reason".to_string(), json!(self.reason));
@@ -121,7 +121,7 @@ impl RemoveLine {
     }
 }
 
-fn strings(value: Option<&Value>) -> Vec<String> {
+pub(super) fn strings(value: Option<&Value>) -> Vec<String> {
     let mut out = value
         .and_then(Value::as_array)
         .map(|items| {
@@ -331,7 +331,13 @@ fn pair_of(text: &str) -> Option<(String, String)> {
 
 /// Write one cannot-link fact to registry memory; `false` when the pair is
 /// already there.
-fn add_cannot_link(model: &mut Model, left: &str, right: &str, reason: &str, ctx: &Ctx) -> bool {
+pub(super) fn add_cannot_link(
+    model: &mut Model,
+    left: &str,
+    right: &str,
+    reason: &str,
+    ctx: &Ctx,
+) -> bool {
     let (left_key, right_key) = ordered(left, right);
     let Some((_, lines)) = model.cannot_link.as_mut() else {
         return false;

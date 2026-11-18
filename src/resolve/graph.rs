@@ -631,6 +631,7 @@ mod tests {
                 source: "unused".to_string(),
             },
             scope_policy: Default::default(),
+            successions: Default::default(),
             db_path: Path::new("does-not-exist.sqlite").to_path_buf(),
         };
         let filters = vec![filter("exact", "deal", "deal", &[])];

@@ -10241,6 +10241,11 @@ pub struct Mapping {
     /// scope_policy: `role=R` for an entry scoped so, `unscoped` for the fallback.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub matched_scope: Option<String>,
+    /// Set when the id was superseded by a reviewed `registry correct` supersede:
+    /// the id answers as itself, flagged with its successor and the chain to the
+    /// active end.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub succession: Option<registry::Succession>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -10820,6 +10825,7 @@ pub struct Registry {
     pub meta: RegistryMeta,
     pub db_path: PathBuf,
     pub scope_policy: registry::ScopePolicy,
+    pub successions: std::collections::BTreeMap<String, registry::SuccessionRecord>,
 }
 
 #[derive(Debug, Clone)]

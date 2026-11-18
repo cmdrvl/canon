@@ -436,6 +436,7 @@ fn lint_standard(context: &mut LintContext) {
     check_index_status(context, &mapping_files);
     lint_relation_sidecar(context, &records);
     lint_corrections(context, &records);
+    lint_successions(context, &records);
 }
 
 /// A retired id (`corrections.jsonl`) has no remaining entry as a canonical id
@@ -503,6 +504,73 @@ fn lint_corrections(context: &mut LintContext, records: &[MappingRecord]) {
                 json!({"retired": id, "superseded_id_aliases": superseded}),
                 "Repair the registry or reapply the correction",
             );
+        }
+    }
+}
+
+/// A succession (`supersede`) names two ids that both still exist, is recorded
+/// once per old id, and never forms a cycle.
+fn lint_successions(context: &mut LintContext, records: &[MappingRecord]) {
+    let path = context.registry_dir.join("corrections.jsonl");
+    let Ok(text) = fs::read_to_string(&path) else {
+        return;
+    };
+    let mut seen = std::collections::BTreeMap::<String, String>::new();
+    for line in text
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+    {
+        if line.get("op").and_then(Value::as_str) != Some("supersede") {
+            continue;
+        }
+        let field = |name: &str| line.get(name).and_then(Value::as_str).unwrap_or_default();
+        let (old, new) = (
+            field("superseded").to_string(),
+            field("successor").to_string(),
+        );
+        for id in [&old, &new] {
+            if !records.iter().any(|record| record.canonical_id == *id) {
+                context.finding(
+                    RegistryLintSeverity::Error,
+                    "corrections",
+                    "succession_id_missing",
+                    format!("Succession names '{id}', which is not a canonical id"),
+                    FindingLocation::path(&path),
+                    json!({"superseded": old, "successor": new, "missing": id}),
+                    "Repair the registry or reapply the correction",
+                );
+            }
+        }
+        if seen.insert(old.clone(), new.clone()).is_some() {
+            context.finding(
+                RegistryLintSeverity::Error,
+                "corrections",
+                "succession_repeated",
+                format!("Id '{old}' is superseded more than once"),
+                FindingLocation::path(&path),
+                json!({"superseded": old}),
+                "An id has one successor; supersede the active end instead",
+            );
+        }
+    }
+    for start in seen.keys() {
+        let mut cursor = start.clone();
+        let mut hops = 0;
+        while let Some(next) = seen.get(&cursor) {
+            hops += 1;
+            if next == start || hops > seen.len() {
+                context.finding(
+                    RegistryLintSeverity::Error,
+                    "corrections",
+                    "succession_cycle",
+                    format!("The succession chain from '{start}' loops"),
+                    FindingLocation::path(&path),
+                    json!({"superseded": start}),
+                    "A succession chain ends at one active id",
+                );
+                break;
+            }
+            cursor = next.clone();
         }
     }
 }
