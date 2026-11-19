@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+## 0.16.0 — 2026-11-19
+
+- Entity evidence sessions (`canon entity session ...`): `init`, `ingest`, `assert`,
+  `solve`, `commit`, `status`, `explain`, `frontier`, `next`, `export`, `derive`, and
+  `sample`, with typed relations, verified evidence artifacts and receipts, per-kind
+  session registries (`--registries`), and a commit receipt that hands off the base,
+  new and changed files, closures, and export command. A commit with nothing to write
+  reports `nothing_to_commit`.
+- Registry maintenance: `registry correct` (merge, detach, split, remove_cannot_link,
+  and supersede, which records succession rather than sameness), `registry identity`,
+  `registry check-id` (`E_BAD_ID`), `--expect-base` pinning, `registry scope-policy`
+  with a role scope dimension and scope-collision lint, key aliases in their own
+  files with a `key-crosswalk` export, `link-evidence` export, and bounded
+  `entity-card` export.
+- `standalone.split_shared_names` mints one entity per key for a shared name.
+- Person and trust names (Last, First; suffixes; initials), dba/fka alternates and
+  member lists, legal-form equivalence, and table-driven security-tail normalization.
+  Attribute agreement (`numeric_within_tolerance`, `date_exact`, `categorical_match`)
+  now counts as positive evidence.
+- Retained Geo replay goldens refreshed for the new crate version
+  (`GEO_EXECUTOR_VERSION` is hashed into the plan; see bd-8czc).
+
 - Strategies can opt into `solve: {hard_cannot_link: split_direct}`. Support edges
   between directly hard-cannot-linked surfaces are cut and components recomputed,
   so numbered siblings ("Sub III" / "Sub IV") become separate entities instead of
