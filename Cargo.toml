@@ -19,11 +19,14 @@ required-features = ["geo"]
 
 # The default build is the core: lookup, registry, and the evidence-session
 # engine. `geo` adds the Geo workbench (`canon geo ...`, src/geo, and the
-# canon_geo_measurements bin). Release and CI builds use `--all-features`, so
-# the shipped binary keeps every command.
+# canon_geo_measurements bin). `workbench` adds the legacy entity workbench
+# leaves (`canon entity alias-withholding` and `generalization`, src/evaluation;
+# more leaves move behind it in later stages of bd-1pjc). Release and CI builds
+# use `--all-features`, so the shipped binary keeps every command.
 [features]
 default = []
 geo = ["dep:h3o", "dep:libc", "dep:sha2", "dep:base64"]
+workbench = []
 
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
@@ -62,15 +65,24 @@ strip = true
 # contract targets that compare the whole CLI surface with operator.json.
 [[test]]
 name = "canon_v1_contract_inventory"
-required-features = ["geo"]
+required-features = ["geo", "workbench"]
 
 [[test]]
 name = "command_contract"
-required-features = ["geo"]
+required-features = ["geo", "workbench"]
 
 [[test]]
 name = "contract_parity"
-required-features = ["geo"]
+required-features = ["geo", "workbench"]
+
+# Test targets for the `workbench` leaves.
+[[test]]
+name = "entity_alias_withholding"
+required-features = ["workbench"]
+
+[[test]]
+name = "entity_generalization"
+required-features = ["workbench"]
 
 [[test]]
 name = "geo_accretion"

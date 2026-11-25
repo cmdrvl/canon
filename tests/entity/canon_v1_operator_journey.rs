@@ -1698,6 +1698,9 @@ fn exercise_artifact_backed_benchmark_leaves(
         ],
         2,
     ));
+    // These two leaves exist only in a `workbench` build; a core build rejects
+    // them at argument parsing, which is not the refusal this journey checks.
+    #[cfg(feature = "workbench")]
     command_log.push(canon_raw(
         &[
             "entity",
@@ -1709,6 +1712,7 @@ fn exercise_artifact_backed_benchmark_leaves(
         ],
         2,
     ));
+    #[cfg(feature = "workbench")]
     command_log.push(canon_raw(
         &[
             "entity",
@@ -1796,7 +1800,10 @@ fn exercise_preflight_and_calibration_leaves(
 }
 
 fn operator_entity_leaf_names() -> BTreeSet<String> {
-    let operator: Value = serde_json::from_str(include_str!("../../operator.json")).unwrap();
+    // The binary under test advertises only the leaves it was built with (a
+    // core build omits the `workbench` leaves), and a full build emits
+    // operator.json byte for byte, so read the manifest from the binary.
+    let operator: Value = canon_json(&["capabilities", "--json"], 0).value;
     let mut leaves = BTreeSet::new();
     collect_operator_entity_leaves(&operator, &mut leaves);
     leaves

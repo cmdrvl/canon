@@ -12,6 +12,7 @@ pub mod distribution {
 }
 pub mod doctor;
 pub mod entity;
+#[cfg(feature = "workbench")]
 pub mod evaluation;
 pub mod extensions;
 mod fs_safety;
@@ -54,16 +55,16 @@ pub mod telemetry;
 pub mod witness;
 
 use crate::cli::{
-    CanonCommand, Cli, EntityAliasWithholdingCli, EntityApplyCli, EntityAuditCli, EntityBlockCli,
-    EntityBlockPreflightCli, EntityBlockSubcommand, EntityCacheModeArg, EntityCalibrateCommand,
-    EntityCalibrateSubcommand, EntityCalibrateSweepCli, EntityCandidateRecallCli, EntityCommand,
-    EntityEmitMode, EntityEvidenceCli, EntityExplainCli, EntityGeneralizationCli,
-    EntityIndexBuildCli, EntityIndexCommand, EntityIndexSubcommand, EntityLinkCli,
-    EntityPrepareCli, EntityProfileCommand, EntityProfileInitCli, EntityProfileListCli,
-    EntityProfileSubcommand, EntityPromoteCli, EntityReviewCommand, EntityReviewExportArtifact,
-    EntityReviewExportCli, EntityReviewExportEmitMode, EntityReviewGroupBy, EntityReviewImportCli,
-    EntityReviewInclude, EntityReviewSubcommand, EntityRunCli, EntitySessionAssertCli,
-    EntitySessionCommitCli, EntitySessionExplainCli, EntitySessionIngestCli, EntitySessionInitCli,
+    CanonCommand, Cli, EntityApplyCli, EntityAuditCli, EntityBlockCli, EntityBlockPreflightCli,
+    EntityBlockSubcommand, EntityCacheModeArg, EntityCalibrateCommand, EntityCalibrateSubcommand,
+    EntityCalibrateSweepCli, EntityCandidateRecallCli, EntityCommand, EntityEmitMode,
+    EntityEvidenceCli, EntityExplainCli, EntityIndexBuildCli, EntityIndexCommand,
+    EntityIndexSubcommand, EntityLinkCli, EntityPrepareCli, EntityProfileCommand,
+    EntityProfileInitCli, EntityProfileListCli, EntityProfileSubcommand, EntityPromoteCli,
+    EntityReviewCommand, EntityReviewExportArtifact, EntityReviewExportCli,
+    EntityReviewExportEmitMode, EntityReviewGroupBy, EntityReviewImportCli, EntityReviewInclude,
+    EntityReviewSubcommand, EntityRunCli, EntitySessionAssertCli, EntitySessionCommitCli,
+    EntitySessionExplainCli, EntitySessionIngestCli, EntitySessionInitCli,
     EntitySessionRulesCommand, EntitySessionRulesInitCli, EntitySessionRulesSubcommand,
     EntitySessionRulesValidateCli, EntitySessionSampleCli, EntitySessionSampleEmitMode,
     EntitySessionSolveCli, EntitySessionStatusCli, EntitySessionSubcommand, EntitySolveCli,
@@ -79,6 +80,8 @@ use crate::cli::{
     StrategyRegisterCli, StrategyResolveCli, StrategyStatusArg, StrategySubcommand,
     StrategyUpdateCli,
 };
+#[cfg(feature = "workbench")]
+use crate::cli::{EntityAliasWithholdingCli, EntityGeneralizationCli};
 use crate::entity::runtime as entity_runtime;
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
 use std::{
@@ -979,9 +982,11 @@ fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
         EntitySubcommand::Index(index) => run_entity_index_command(index),
         EntitySubcommand::Block(block) => run_entity_block_command(block),
         EntitySubcommand::CandidateRecall(recall) => run_entity_candidate_recall_command(recall),
+        #[cfg(feature = "workbench")]
         EntitySubcommand::AliasWithholding(alias_withholding) => {
             run_entity_alias_withholding_command(alias_withholding)
         }
+        #[cfg(feature = "workbench")]
         EntitySubcommand::Generalization(generalization) => {
             run_entity_generalization_command(generalization)
         }
@@ -1686,6 +1691,7 @@ fn run_entity_candidate_recall_command(
     }
 }
 
+#[cfg(feature = "workbench")]
 fn run_entity_alias_withholding_command(
     alias_withholding: &EntityAliasWithholdingCli,
 ) -> Result<u8, Box<dyn Error>> {
@@ -1705,6 +1711,7 @@ fn run_entity_alias_withholding_command(
     }
 }
 
+#[cfg(feature = "workbench")]
 fn run_entity_generalization_command(
     generalization: &EntityGeneralizationCli,
 ) -> Result<u8, Box<dyn Error>> {
@@ -5529,6 +5536,7 @@ fn run_entity_prepare_pipeline(
 }
 
 #[allow(clippy::result_large_err)]
+#[cfg(feature = "workbench")]
 fn run_entity_alias_withholding_pipeline(
     alias_withholding: &EntityAliasWithholdingCli,
 ) -> Result<evaluation::alias_withholding::AliasWithholdingReport, CanonOutput> {
@@ -5539,6 +5547,7 @@ fn run_entity_alias_withholding_pipeline(
 }
 
 #[allow(clippy::result_large_err)]
+#[cfg(feature = "workbench")]
 fn read_alias_withholding_execution_envelope(
     path: &Path,
 ) -> Result<evaluation::alias_withholding::AliasWithholdingExecutionEnvelope, CanonOutput> {
@@ -5565,6 +5574,7 @@ fn read_alias_withholding_execution_envelope(
     })
 }
 
+#[cfg(feature = "workbench")]
 fn alias_withholding_manifest_base_dir(manifest: &Path) -> PathBuf {
     manifest
         .parent()
@@ -5573,6 +5583,7 @@ fn alias_withholding_manifest_base_dir(manifest: &Path) -> PathBuf {
         .to_path_buf()
 }
 
+#[cfg(feature = "workbench")]
 fn render_alias_withholding_report_summary(
     report: &evaluation::alias_withholding::AliasWithholdingReport,
 ) -> String {
@@ -5589,6 +5600,7 @@ fn render_alias_withholding_report_summary(
     )
 }
 
+#[cfg(feature = "workbench")]
 fn alias_withholding_cli_report_json(
     report: &evaluation::alias_withholding::AliasWithholdingReport,
 ) -> Result<serde_json::Value, Box<dyn Error>> {
@@ -5603,6 +5615,7 @@ fn alias_withholding_cli_report_json(
     Ok(value)
 }
 
+#[cfg(feature = "workbench")]
 fn alias_withholding_redact_identifier_fields(value: &mut serde_json::Value) {
     match value {
         serde_json::Value::Object(object) => {
@@ -5639,14 +5652,17 @@ fn alias_withholding_redact_identifier_fields(value: &mut serde_json::Value) {
     }
 }
 
+#[cfg(feature = "workbench")]
 fn alias_withholding_public_fingerprint(bytes: &[u8]) -> String {
     witness::hash_bytes(bytes)
 }
 
+#[cfg(feature = "workbench")]
 fn alias_withholding_path_fingerprint(path: &Path) -> String {
     alias_withholding_public_fingerprint(path.to_string_lossy().as_bytes())
 }
 
+#[cfg(feature = "workbench")]
 fn alias_withholding_public_reason(
     code: evaluation::alias_withholding::AliasWithholdingErrorCode,
 ) -> &'static str {
@@ -5676,6 +5692,7 @@ fn alias_withholding_public_reason(
     }
 }
 
+#[cfg(feature = "workbench")]
 fn alias_withholding_refusal(
     manifest: &Path,
     error: evaluation::alias_withholding::AliasWithholdingError,
@@ -5698,6 +5715,7 @@ fn alias_withholding_refusal(
     )
 }
 
+#[cfg(feature = "workbench")]
 fn alias_withholding_manifest_refusal(
     manifest: &Path,
     reason: &str,
@@ -5722,6 +5740,7 @@ fn alias_withholding_manifest_refusal(
 }
 
 #[allow(clippy::result_large_err)]
+#[cfg(feature = "workbench")]
 fn run_entity_generalization_pipeline(
     generalization: &EntityGeneralizationCli,
 ) -> Result<evaluation::generalization::GeneralizationReport, CanonOutput> {
@@ -5729,6 +5748,7 @@ fn run_entity_generalization_pipeline(
         .map_err(|error| generalization_refusal(&generalization.manifest, error))
 }
 
+#[cfg(feature = "workbench")]
 fn render_generalization_report_summary(
     report: &evaluation::generalization::GeneralizationReport,
 ) -> String {
@@ -5757,6 +5777,7 @@ fn render_generalization_report_summary(
     )
 }
 
+#[cfg(feature = "workbench")]
 fn generalization_release_claim_status_label(
     status: &evaluation::generalization::GeneralizationReleaseClaimStatus,
 ) -> &'static str {
@@ -5766,6 +5787,7 @@ fn generalization_release_claim_status_label(
     }
 }
 
+#[cfg(feature = "workbench")]
 fn generalization_quality_gate_status_counts(
     report: &evaluation::generalization::GeneralizationReport,
 ) -> (usize, usize) {
@@ -5785,6 +5807,7 @@ fn generalization_quality_gate_status_counts(
     (failed_gate_count, not_applicable_gate_count)
 }
 
+#[cfg(feature = "workbench")]
 fn generalization_cli_report_json(
     report: &evaluation::generalization::GeneralizationReport,
 ) -> Result<serde_json::Value, Box<dyn Error>> {
@@ -5799,6 +5822,7 @@ fn generalization_cli_report_json(
     Ok(value)
 }
 
+#[cfg(feature = "workbench")]
 fn generalization_redact_identifier_fields(value: &mut serde_json::Value) {
     match value {
         serde_json::Value::Object(object) => {
@@ -5835,6 +5859,7 @@ fn generalization_redact_identifier_fields(value: &mut serde_json::Value) {
     }
 }
 
+#[cfg(feature = "workbench")]
 fn generalization_identifier_scalar_key(key: &str) -> bool {
     if matches!(key, "gate_id" | "metric_id") {
         return false;
@@ -5854,10 +5879,12 @@ fn generalization_identifier_scalar_key(key: &str) -> bool {
         )
 }
 
+#[cfg(feature = "workbench")]
 fn generalization_identifier_array_key(key: &str) -> bool {
     key.ends_with("_ids") || matches!(key, "paths" | "locators" | "source_refs")
 }
 
+#[cfg(feature = "workbench")]
 fn generalization_corpus_visibility_label(
     visibility: evaluation::generalization::CorpusVisibility,
 ) -> &'static str {
@@ -5867,6 +5894,7 @@ fn generalization_corpus_visibility_label(
     }
 }
 
+#[cfg(feature = "workbench")]
 fn generalization_public_reason(
     code: evaluation::generalization::GeneralizationErrorCode,
 ) -> &'static str {
@@ -5895,6 +5923,7 @@ fn generalization_public_reason(
     }
 }
 
+#[cfg(feature = "workbench")]
 fn generalization_refusal(
     manifest: &Path,
     error: evaluation::generalization::GeneralizationError,
@@ -10859,6 +10888,7 @@ pub struct ResolveResult {
 #[cfg(test)]
 mod tests {
     use super::{DisplayMode, detect_display_mode};
+    #[cfg(feature = "workbench")]
     use std::path::Path;
 
     #[test]
@@ -10972,6 +11002,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "workbench")]
     #[test]
     fn generalization_redaction_hashes_identifiers_but_keeps_hashes_and_counts() {
         let mut value = serde_json::json!({
@@ -11015,6 +11046,7 @@ mod tests {
         assert_eq!(value["self_attested_outcomes_used"], false);
     }
 
+    #[cfg(feature = "workbench")]
     #[test]
     fn generalization_redaction_preserves_public_quality_ids_and_hashes_private_ids() {
         let mut value = serde_json::json!({
@@ -11057,6 +11089,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "workbench")]
     #[test]
     fn generalization_summary_exposes_blocked_quality_status_and_gate_counts() {
         use crate::evaluation::generalization::{
@@ -11139,6 +11172,7 @@ mod tests {
         assert!(!summary.contains("release_claim_status=eligible"));
     }
 
+    #[cfg(feature = "workbench")]
     #[test]
     fn generalization_refusal_omits_raw_manifest_and_error_text() {
         let output = super::generalization_refusal(

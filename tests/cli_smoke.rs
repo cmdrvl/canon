@@ -1109,19 +1109,31 @@ fn entity_namespace_cli() {
     let entity_help_stdout = String::from_utf8(entity_help.get_output().stdout.clone()).unwrap();
     assert!(entity_help_stdout.contains("run"));
     assert!(entity_help_stdout.contains("candidate-recall"));
-    assert!(entity_help_stdout.contains("alias-withholding"));
-    assert!(entity_help_stdout.contains("generalization"));
+    // The evaluation leaves exist only in a `workbench` build.
+    assert_eq!(
+        entity_help_stdout.contains("alias-withholding"),
+        cfg!(feature = "workbench")
+    );
+    assert_eq!(
+        entity_help_stdout.contains("generalization"),
+        cfg!(feature = "workbench")
+    );
     assert!(entity_help_stdout.contains("evidence"));
     assert!(entity_help_stdout.contains("link"));
     assert!(!entity_help_stdout.contains("edge"));
     assert!(!entity_help_stdout.contains("org"));
-    let expected_entity_help =
-        std::fs::read_to_string(fixture_path("tests/fixtures/canon_v1/help/entity_help.txt"))
-            .unwrap();
-    assert_eq!(
-        normalize_help(&entity_help_stdout),
-        normalize_help(&expected_entity_help)
-    );
+    // The golden is the full command list. A core build lists fewer leaves and
+    // clap re-aligns the column, so the exact-text check runs only where the
+    // golden describes the build.
+    if cfg!(feature = "workbench") {
+        let expected_entity_help =
+            std::fs::read_to_string(fixture_path("tests/fixtures/canon_v1/help/entity_help.txt"))
+                .unwrap();
+        assert_eq!(
+            normalize_help(&entity_help_stdout),
+            normalize_help(&expected_entity_help)
+        );
+    }
 
     let run_help = Command::new(env!("CARGO_BIN_EXE_canon"))
         .args(["entity", "run", "--help"])
@@ -1191,11 +1203,14 @@ fn entity_namespace_cli() {
             .as_str()
             .is_some_and(|usage| usage.starts_with("canon entity evidence"))
     }));
-    assert!(usage.iter().any(|entry| {
-        entry
-            .as_str()
-            .is_some_and(|usage| usage.starts_with("canon entity generalization"))
-    }));
+    assert_eq!(
+        usage.iter().any(|entry| {
+            entry
+                .as_str()
+                .is_some_and(|usage| usage.starts_with("canon entity generalization"))
+        }),
+        cfg!(feature = "workbench")
+    );
     assert!(!usage.iter().any(|entry| {
         entry
             .as_str()
@@ -1220,11 +1235,12 @@ fn entity_namespace_cli() {
             .any(|entry| entry["name"] == "entity evidence"
                 && entry["output_schema"] == "canon_entity_evidence.v1")
     );
-    assert!(
+    assert_eq!(
         subcommands
             .iter()
             .any(|entry| entry["name"] == "entity generalization"
-                && entry["output_schema"] == "canon.evaluation.generalization.v1")
+                && entry["output_schema"] == "canon.evaluation.generalization.v1"),
+        cfg!(feature = "workbench")
     );
     assert!(
         !subcommands

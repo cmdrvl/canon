@@ -867,6 +867,10 @@ pub fn embedded_operator_manifest() -> std::borrow::Cow<'static, str> {
     let absent_roots: &[&str] = &[
         #[cfg(not(feature = "geo"))]
         "geo",
+        #[cfg(not(feature = "workbench"))]
+        "entity alias-withholding",
+        #[cfg(not(feature = "workbench"))]
+        "entity generalization",
     ];
     if absent_roots.is_empty() {
         return std::borrow::Cow::Borrowed(EMBEDDED_OPERATOR_JSON);
@@ -2883,6 +2887,34 @@ mod tests {
                     .is_some_and(|text| text.starts_with("canon geo "))),
             cfg!(feature = "geo")
         );
+    }
+
+    #[test]
+    fn embedded_manifest_advertises_workbench_leaves_only_when_compiled() {
+        let manifest: Value = serde_json::from_str(&embedded_operator_manifest()).unwrap();
+        let has_row = |leaf: &str| {
+            manifest["commands"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|row| row["name"].as_str() == Some(leaf))
+        };
+        let has_usage = |leaf: &str| {
+            manifest["invocation"]["usage"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|line| {
+                    line.as_str()
+                        .is_some_and(|text| text.starts_with(&format!("canon {leaf}")))
+                })
+        };
+        for leaf in ["entity alias-withholding", "entity generalization"] {
+            assert_eq!(has_row(leaf), cfg!(feature = "workbench"), "row {leaf}");
+            assert_eq!(has_usage(leaf), cfg!(feature = "workbench"), "usage {leaf}");
+        }
+        // The core session leaves are never filtered.
+        assert!(has_row("entity session init"));
     }
 
     #[test]

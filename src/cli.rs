@@ -1836,9 +1836,11 @@ pub enum EntitySubcommand {
     #[command(name = "candidate-recall")]
     CandidateRecall(EntityCandidateRecallCli),
     /// Compile a public alias-withholding execution envelope into a report
+    #[cfg(feature = "workbench")]
     #[command(name = "alias-withholding")]
     AliasWithholding(EntityAliasWithholdingCli),
     /// Compile a strict artifact-backed generalization execution envelope into a report
+    #[cfg(feature = "workbench")]
     Generalization(EntityGeneralizationCli),
     /// Sweep entity threshold tuples against gold labels and recommend a read-only strategy fragment
     Calibrate(EntityCalibrateCommand),
@@ -4533,6 +4535,7 @@ mod tests {
         assert!(Cli::try_parse_from(args).is_err());
     }
 
+    #[cfg(feature = "workbench")]
     #[test]
     fn test_cli_entity_generalization_parsing() {
         let args = [

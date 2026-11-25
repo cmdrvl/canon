@@ -24,8 +24,10 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-features
 ```
 
-The default build is the core and drops `canon geo`; add `--all-features` to
-run, describe, or test the full surface (`cargo run --all-features -- --describe`).
+The default build is the core and drops `canon geo` and the `workbench` entity
+leaves (`canon entity alias-withholding`, `canon entity generalization`); add
+`--all-features` to run, describe, or test the full surface
+(`cargo run --all-features -- --describe`).
 
 For registry maintenance work, prefer the implemented `registry next-id`,
 `registry mint`, and `registry add-entry` commands over hand editing mapping
