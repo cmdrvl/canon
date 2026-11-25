@@ -1,10 +1,17 @@
 use assert_cmd::Command;
 use canon::entity::publication::{EntityPublicationSnapshot, open_current_stream_generation};
 use canon::session::{SESSION_EVIDENCE_STREAM_ID, SESSION_OBSERVATIONS_STREAM_ID};
+use parquet::{
+    basic::Compression,
+    data_type::{ByteArray, ByteArrayType},
+    file::{properties::WriterProperties, writer::SerializedFileWriter},
+    schema::parser::parse_message_type,
+};
 use serde_json::{Value, json};
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 use tempfile::TempDir;
 
@@ -75,6 +82,12 @@ fn artifact(artifact_id: &str, byte_hash: &str) -> Value {
     })
 }
 
+fn parquet_artifact(artifact_id: &str, byte_hash: &str) -> Value {
+    let mut value = artifact(artifact_id, byte_hash);
+    value["media_type"] = Value::String("application/vnd.apache.parquet".to_string());
+    value
+}
+
 fn receipt(artifact_id: &str) -> Value {
     json!({
         "artifacts": [artifact_id],
@@ -92,6 +105,35 @@ fn receipt(artifact_id: &str) -> Value {
         "observed_at": "2026-11-16T00:00:00Z",
         "schema": "receipt.v0"
     })
+}
+
+fn write_parquet(path: &Path, schema: &str, columns: &[&[&str]]) {
+    let schema = Arc::new(parse_message_type(schema).expect("Parquet schema"));
+    let properties = Arc::new(
+        WriterProperties::builder()
+            .set_compression(Compression::SNAPPY)
+            .build(),
+    );
+    let file = fs::File::create(path).expect("create Parquet file");
+    let mut writer = SerializedFileWriter::new(file, schema, properties).expect("Parquet writer");
+    let mut row_group = writer.next_row_group().expect("Parquet row group");
+    for values in columns {
+        let mut column = row_group
+            .next_column()
+            .expect("Parquet column result")
+            .expect("Parquet column");
+        let values = values
+            .iter()
+            .map(|value| ByteArray::from(*value))
+            .collect::<Vec<_>>();
+        column
+            .typed::<ByteArrayType>()
+            .write_batch(&values, None, None)
+            .expect("write Parquet values");
+        column.close().expect("close Parquet column");
+    }
+    row_group.close().expect("close Parquet row group");
+    writer.close().expect("close Parquet file");
 }
 
 fn observation_rows(snapshot: &EntityPublicationSnapshot) -> Vec<Value> {
@@ -389,8 +431,11 @@ fn published_artifact_and_receipt_fixtures_validate_or_skip_by_name() {
             return;
         }
         let schema: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        validate_published_schema(&fixture, &schema, &schema, "$")
-            .unwrap_or_else(|error| panic!("{TEST_NAME}: {file_name}: {error}"));
+        assert_eq!(
+            validate_published_schema(&fixture, &schema, &schema, "$"),
+            Ok(()),
+            "{TEST_NAME}: {file_name}"
+        );
     }
     eprintln!("VALIDATED {TEST_NAME}: artifact.v0 and receipt.v0 published schemas");
 }
@@ -620,6 +665,286 @@ fn assert_rows_map_binds_the_verified_payload_digest_to_evidence() {
             .iter()
             .all(|record| { record["provenance"][0]["content_hash"] == digest(&payload_bytes) })
     );
+}
+
+#[test]
+fn parquet_session_ingest_and_assert_accept_canonical_rows_without_projection_options() {
+    let temp = TempDir::new().expect("temp root");
+    let session = init_session(&temp);
+    let observations_path = temp.path().join("canonical-observations.parquet");
+    write_parquet(
+        &observations_path,
+        "message observations { REQUIRED BINARY obs_id (UTF8); REQUIRED BINARY entity_type (UTF8); REQUIRED BINARY surface (UTF8); REQUIRED group source { REQUIRED BINARY channel (UTF8); } }",
+        &[
+            &["obs-1"],
+            &["organisation"],
+            &["Acme Properties"],
+            &["warehouse_read"],
+        ],
+    );
+    let output = canon_command()
+        .args([
+            "entity",
+            "session",
+            "ingest",
+            session.to_str().unwrap(),
+            observations_path.to_str().unwrap(),
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .success();
+    let result: Value = serde_json::from_slice(&output.get_output().stdout).expect("ingest JSON");
+    assert_eq!(result["accepted"], 1);
+    let observation_snapshot =
+        open_current_stream_generation(&session, SESSION_OBSERVATIONS_STREAM_ID)
+            .expect("observation generation");
+    let rows = observation_rows(&observation_snapshot);
+    assert_eq!(rows[0]["obs_id"], "obs-1");
+    assert_eq!(rows[0]["source"]["channel"], "warehouse_read");
+
+    let evidence_path = temp.path().join("canonical-evidence.parquet");
+    write_parquet(
+        &evidence_path,
+        "message evidence { REQUIRED BINARY type (UTF8); REQUIRED BINARY left (UTF8); REQUIRED BINARY right (UTF8); REQUIRED BINARY asserted_by (UTF8); REQUIRED group basis { REQUIRED BINARY rule (UTF8); } REQUIRED group source { REQUIRED BINARY channel (UTF8); REQUIRED BINARY id (UTF8); } }",
+        &[
+            &["name_equivalent"],
+            &["obs-1"],
+            &["obs-2"],
+            &["agent:warehouse"],
+            &["same filing"],
+            &["warehouse_read"],
+            &["query-1"],
+        ],
+    );
+    let output = canon_command()
+        .args([
+            "entity",
+            "session",
+            "assert",
+            session.to_str().unwrap(),
+            evidence_path.to_str().unwrap(),
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .success();
+    let result: Value = serde_json::from_slice(&output.get_output().stdout).expect("assert JSON");
+    assert_eq!(result["accepted"], 1);
+    let evidence_snapshot = open_current_stream_generation(&session, SESSION_EVIDENCE_STREAM_ID)
+        .expect("evidence generation");
+    let evidence_shard = evidence_snapshot
+        .logical_paths()
+        .find(|path| path.starts_with("evidence/") && path.ends_with(".jsonl"))
+        .expect("evidence shard");
+    let records = evidence_snapshot
+        .read_logical_file(evidence_shard)
+        .unwrap()
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice::<Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0]["reason_code"], "name_equivalent");
+}
+
+#[test]
+fn parquet_ingest_and_assert_verify_original_bytes_and_preserve_provenance() {
+    let temp = TempDir::new().expect("temp root");
+    let session = init_session(&temp);
+    let observations_path = temp.path().join("observations.parquet");
+    write_parquet(
+        &observations_path,
+        "message observations { REQUIRED BINARY obs_id (UTF8); REQUIRED BINARY entity_type (UTF8); REQUIRED BINARY surface (UTF8); REQUIRED BINARY channel (UTF8); REQUIRED BINARY source_id (UTF8); }",
+        &[
+            &["obs-1"],
+            &["organisation"],
+            &["Acme Properties"],
+            &["warehouse_read"],
+            &["query-obs-1"],
+        ],
+    );
+    let observation_bytes = fs::read(&observations_path).expect("observation Parquet bytes");
+    let observation_artifact_id =
+        "artifact:blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let observation_artifact = temp.path().join("observation-artifact.json");
+    fs::write(
+        &observation_artifact,
+        serde_json::to_vec_pretty(&parquet_artifact(
+            observation_artifact_id,
+            &digest(&observation_bytes),
+        ))
+        .unwrap(),
+    )
+    .expect("observation artifact");
+    let observation_receipt = temp.path().join("observation-receipt.json");
+    fs::write(
+        &observation_receipt,
+        serde_json::to_vec_pretty(&receipt(observation_artifact_id)).unwrap(),
+    )
+    .expect("observation receipt");
+    let observation_map = temp.path().join("observations.yaml");
+    fs::write(
+        &observation_map,
+        "obs_id: obs_id\nentity_type: entity_type\nsurface: surface\nsource:\n  channel: channel\n  id: source_id\n",
+    )
+    .expect("observation column map");
+
+    let output = canon_command()
+        .args([
+            "entity",
+            "session",
+            "ingest",
+            session.to_str().unwrap(),
+            observations_path.to_str().unwrap(),
+            "--rows-field",
+            "rows",
+            "--column-map",
+            observation_map.to_str().unwrap(),
+            "--expect-digest",
+            &digest(&observation_bytes),
+            "--artifact",
+            observation_artifact.to_str().unwrap(),
+            "--receipt",
+            observation_receipt.to_str().unwrap(),
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .success();
+    let result: Value = serde_json::from_slice(&output.get_output().stdout).expect("ingest JSON");
+    assert_eq!(result["accepted"], 1);
+    let observation_snapshot =
+        open_current_stream_generation(&session, SESSION_OBSERVATIONS_STREAM_ID)
+            .expect("observation generation");
+    let row = &observation_rows(&observation_snapshot)[0];
+    assert_eq!(row["surface"], "Acme Properties");
+    assert_eq!(row["source"]["result_digest"], digest(&observation_bytes));
+    assert_eq!(row["source"]["artifact_id"], observation_artifact_id);
+    assert_eq!(
+        row["source"]["receipt_digest"],
+        digest(&fs::read(&observation_receipt).unwrap())
+    );
+
+    let evidence_path = temp.path().join("evidence.parquet");
+    write_parquet(
+        &evidence_path,
+        "message evidence { REQUIRED BINARY left (UTF8); REQUIRED BINARY right (UTF8); REQUIRED BINARY rule (UTF8); REQUIRED BINARY channel (UTF8); REQUIRED BINARY source_id (UTF8); REQUIRED BINARY asserted_by (UTF8); }",
+        &[
+            &["obs-1", "obs-2"],
+            &["obs-2", "obs-3"],
+            &["same filing", "same filing"],
+            &["warehouse_read", "warehouse_read"],
+            &["query-evidence-1", "query-evidence-2"],
+            &["agent:warehouse", "agent:warehouse"],
+        ],
+    );
+    let evidence_bytes = fs::read(&evidence_path).expect("evidence Parquet bytes");
+    let evidence_artifact_id =
+        "artifact:blake3:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+    let evidence_artifact = temp.path().join("evidence-artifact.json");
+    fs::write(
+        &evidence_artifact,
+        serde_json::to_vec_pretty(&parquet_artifact(
+            evidence_artifact_id,
+            &digest(&evidence_bytes),
+        ))
+        .unwrap(),
+    )
+    .expect("evidence artifact");
+    let evidence_receipt = temp.path().join("evidence-receipt.json");
+    fs::write(
+        &evidence_receipt,
+        serde_json::to_vec_pretty(&receipt(evidence_artifact_id)).unwrap(),
+    )
+    .expect("evidence receipt");
+    let evidence_map = temp.path().join("evidence.yaml");
+    fs::write(
+        &evidence_map,
+        "type:\n  literal: name_equivalent\nleft: left\nright: right\nasserted_by: asserted_by\nbasis:\n  rule: rule\nsource:\n  channel: channel\n  id: source_id\n",
+    )
+    .expect("evidence column map");
+
+    let output = canon_command()
+        .args([
+            "entity",
+            "session",
+            "assert",
+            session.to_str().unwrap(),
+            evidence_path.to_str().unwrap(),
+            "--rows-field",
+            "rows",
+            "--column-map",
+            evidence_map.to_str().unwrap(),
+            "--expect-digest",
+            &digest(&evidence_bytes),
+            "--artifact",
+            evidence_artifact.to_str().unwrap(),
+            "--receipt",
+            evidence_receipt.to_str().unwrap(),
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .success();
+    let result: Value = serde_json::from_slice(&output.get_output().stdout).expect("assert JSON");
+    assert_eq!(result["accepted"], 2);
+    let evidence_snapshot = open_current_stream_generation(&session, SESSION_EVIDENCE_STREAM_ID)
+        .expect("evidence generation");
+    let evidence_path = evidence_snapshot
+        .logical_paths()
+        .find(|path| path.starts_with("evidence/") && path.ends_with(".jsonl"))
+        .expect("evidence shard");
+    let records = evidence_snapshot
+        .read_logical_file(evidence_path)
+        .unwrap()
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice::<Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(records.len(), 2);
+    assert!(
+        records
+            .iter()
+            .all(|record| { record["provenance"][0]["content_hash"] == digest(&evidence_bytes) })
+    );
+
+    let rejected_path = temp.path().join("wrong-digest.parquet");
+    write_parquet(
+        &rejected_path,
+        "message observations { REQUIRED BINARY obs_id (UTF8); REQUIRED BINARY entity_type (UTF8); REQUIRED BINARY surface (UTF8); REQUIRED BINARY channel (UTF8); REQUIRED BINARY source_id (UTF8); }",
+        &[
+            &["obs-rejected"],
+            &["organisation"],
+            &["Must Not Publish"],
+            &["warehouse_read"],
+            &["query-rejected"],
+        ],
+    );
+    let rejected = canon_command()
+        .args([
+            "entity",
+            "session",
+            "ingest",
+            session.to_str().unwrap(),
+            rejected_path.to_str().unwrap(),
+            "--rows-field",
+            "rows",
+            "--column-map",
+            observation_map.to_str().unwrap(),
+            "--expect-digest",
+            &digest(&observation_bytes),
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .code(2);
+    let refusal: Value =
+        serde_json::from_slice(&rejected.get_output().stdout).expect("refusal JSON");
+    assert_eq!(refusal["refusal"]["detail"]["code"], "digest_mismatch");
+    let unchanged = open_current_stream_generation(&session, SESSION_OBSERVATIONS_STREAM_ID)
+        .expect("unchanged observations");
+    assert_eq!(observation_rows(&unchanged).len(), 1);
 }
 
 #[test]

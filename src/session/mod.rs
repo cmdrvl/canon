@@ -960,6 +960,13 @@ pub fn ingest(request: SessionIngestRequest) -> Result<SessionIngestOutput, Refu
     let Some(manifest) = read_current_manifest(&work_dir)? else {
         return Err(session_not_initialized_refusal(&work_dir));
     };
+    if intake::is_parquet_path(&request.observations) {
+        return intake::ingest_with_options(
+            &request.session,
+            &request.observations,
+            &intake::IntakeOptions::default(),
+        );
+    }
 
     let current = match open_current_stream_generation(&work_dir, SESSION_OBSERVATIONS_STREAM_ID) {
         Ok(snapshot) => Some(snapshot),
@@ -1097,6 +1104,13 @@ pub fn assert_evidence(request: SessionAssertRequest) -> Result<SessionAssertOut
     let Some(manifest) = read_current_manifest(&work_dir)? else {
         return Err(session_not_initialized_refusal(&work_dir));
     };
+    if intake::is_parquet_path(&request.evidence) {
+        return intake::assert_with_options(
+            &request.session,
+            &request.evidence,
+            &intake::IntakeOptions::default(),
+        );
+    }
 
     let current = match open_current_stream_generation(&work_dir, SESSION_EVIDENCE_STREAM_ID) {
         Ok(snapshot) => Some(snapshot),

@@ -1,23 +1,25 @@
 //! Evidence Machine file intake for entity sessions.
 //!
-//! This module is deliberately a boundary adapter.  It validates the bytes and
-//! the handed artifact/receipt, projects an optional `warehouse_read` rows
-//! payload into the existing session JSONL shapes, and then delegates to the
-//! normal session writers in `super`.  Canon never acquires data or calls an
-//! external service here.
+//! This module is deliberately a boundary adapter. It validates input digests
+//! and handed artifacts/receipts, projects `warehouse_read` rows into the
+//! existing session JSONL shapes, and delegates to the normal session writers
+//! in `super`. Parquet rows are read incrementally into a temporary JSONL file.
+//! Canon never acquires data or calls an external service here.
 
 use super::{
     SessionAssertOutput, SessionAssertRequest, SessionIngestOutput, SessionIngestRequest,
     assert_evidence, ingest,
 };
 use crate::{Refusal, RefusalCode};
+use parquet::file::reader::{FileReader, SerializedFileReader};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use std::{
     collections::BTreeMap,
-    fs,
-    io::{self, Read},
+    fs::{self, File, OpenOptions},
+    io::{self, BufWriter, Read, Write},
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 const ARTIFACT_VERSION: &str = "artifact.v0";
@@ -43,9 +45,21 @@ impl IntakeOptions {
     }
 }
 
+/// Whether a path names a Parquet input. Standard input remains JSONL because
+/// a stream has no reliable filename extension to inspect.
+pub fn is_parquet_path(path: &Path) -> bool {
+    path != Path::new("-")
+        && path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("parquet"))
+}
+
 #[derive(Debug, Clone)]
 struct VerifiedInput {
-    bytes: Vec<u8>,
+    bytes: Option<Vec<u8>>,
+    parquet_path: Option<PathBuf>,
+    input_digest: String,
     result_digest: Option<String>,
     artifact_id: Option<String>,
     sensitivity: Option<String>,
@@ -130,10 +144,33 @@ pub fn ingest_with_options(
     options: &IntakeOptions,
 ) -> Result<SessionIngestOutput, Refusal> {
     let verified = verify_input(observations, options)?;
+    if let Some(parquet_path) = &verified.parquet_path {
+        let prepared =
+            write_parquet_observations(parquet_path, &verified, options.column_map.as_deref())?;
+        let result = ingest(SessionIngestRequest {
+            session: session.to_path_buf(),
+            observations: prepared.path.clone(),
+        });
+        drop(prepared);
+        return result;
+    }
+    let input_bytes = verified.bytes.as_deref().ok_or_else(|| {
+        contract_refusal(
+            observations,
+            "input_format",
+            "input bytes are unavailable for this file format",
+            json!({"writes_performed": false}),
+        )
+    })?;
     let bytes = if let Some(column_map) = &options.column_map {
-        project_observations(&verified, options.rows_field.as_deref(), column_map)?
+        project_observations(
+            &verified,
+            input_bytes,
+            options.rows_field.as_deref(),
+            column_map,
+        )?
     } else {
-        stamp_jsonl(&verified.bytes, &verified, None, false)?
+        stamp_jsonl(input_bytes, &verified, None, false)?
     };
     let input = prepared_input_path(observations, &bytes, options.is_active())?;
     ingest(SessionIngestRequest {
@@ -149,10 +186,33 @@ pub fn assert_with_options(
     options: &IntakeOptions,
 ) -> Result<SessionAssertOutput, Refusal> {
     let verified = verify_input(evidence, options)?;
+    if let Some(parquet_path) = &verified.parquet_path {
+        let prepared =
+            write_parquet_evidence(parquet_path, &verified, options.column_map.as_deref())?;
+        let result = assert_evidence(SessionAssertRequest {
+            session: session.to_path_buf(),
+            evidence: prepared.path.clone(),
+        });
+        drop(prepared);
+        return result;
+    }
+    let input_bytes = verified.bytes.as_deref().ok_or_else(|| {
+        contract_refusal(
+            evidence,
+            "input_format",
+            "input bytes are unavailable for this file format",
+            json!({"writes_performed": false}),
+        )
+    })?;
     let bytes = if let Some(column_map) = &options.column_map {
-        project_evidence(&verified, options.rows_field.as_deref(), column_map)?
+        project_evidence(
+            &verified,
+            input_bytes,
+            options.rows_field.as_deref(),
+            column_map,
+        )?
     } else {
-        stamp_jsonl(&verified.bytes, &verified, None, true)?
+        stamp_jsonl(input_bytes, &verified, None, true)?
     };
     let input = prepared_input_path(evidence, &bytes, options.is_active())?;
     assert_evidence(SessionAssertRequest {
@@ -179,8 +239,14 @@ fn verify_input(path: &Path, options: &IntakeOptions) -> Result<VerifiedInput, R
         ));
     }
 
-    let bytes = read_input(path)?;
-    let actual_digest = hash_bytes(&bytes);
+    let parquet_path = is_parquet_path(path).then(|| path.to_path_buf());
+    let (bytes, actual_digest) = if parquet_path.is_some() {
+        (None, hash_file(path)?)
+    } else {
+        let bytes = read_input(path)?;
+        let digest = hash_bytes(&bytes);
+        (Some(bytes), digest)
+    };
     if let Some(expected) = &options.expect_digest
         && expected != &actual_digest
     {
@@ -236,7 +302,9 @@ fn verify_input(path: &Path, options: &IntakeOptions) -> Result<VerifiedInput, R
     };
 
     Ok(VerifiedInput {
+        parquet_path,
         bytes,
+        input_digest: actual_digest.clone(),
         result_digest: if options.expect_digest.is_some() || artifact_value.is_some() {
             Some(actual_digest)
         } else {
@@ -695,6 +763,7 @@ fn validate_receipt_context(value: &Value, path: &Path) -> Result<(), Refusal> {
 
 fn project_observations(
     verified: &VerifiedInput,
+    input_bytes: &[u8],
     rows_field: Option<&str>,
     map_path: &Path,
 ) -> Result<Vec<u8>, Refusal> {
@@ -707,7 +776,7 @@ fn project_observations(
         )
     })?;
     let map = parse_yaml::<ObservationColumnMap>(map_path)?;
-    let payload = parse_document(map_path, &verified.bytes, "rows payload")?;
+    let payload = parse_document(map_path, input_bytes, "rows payload")?;
     let rows = payload[rows_field].as_array().ok_or_else(|| {
         contract_refusal(
             map_path,
@@ -720,99 +789,117 @@ fn project_observations(
     let catalog_key = payload.get("catalog_key").cloned();
     let mut lines = Vec::with_capacity(rows.len());
     for (index, row) in rows.iter().enumerate() {
-        let row = row.as_object().ok_or_else(|| {
+        let observation = project_observation_row(
+            row,
+            &map,
+            verified,
+            catalog_key.as_ref(),
+            index + 1,
+            map_path,
+        )?;
+        lines.push(serde_json::to_string(&observation).map_err(|error| {
             contract_refusal(
                 map_path,
-                "row_not_object",
-                format!("row {} in '{rows_field}' must be an object", index + 1),
+                "row_projection",
+                format!("failed to serialize mapped row {}: {error}", index + 1),
                 json!({"row": index + 1, "writes_performed": false}),
             )
-        })?;
-        let mut observation = Map::new();
-        observation.insert(
-            "obs_id".to_string(),
-            mapped_value(row, &map.obs_id, "obs_id")?,
-        );
-        observation.insert(
-            "entity_type".to_string(),
-            mapped_value(row, &map.entity_type, "entity_type")?,
-        );
-        observation.insert(
-            "surface".to_string(),
-            mapped_value(row, &map.surface, "surface")?,
-        );
-        observation.insert("keys".to_string(), mapped_object(row, &map.keys, "keys")?);
-        observation.insert(
-            "attrs".to_string(),
-            mapped_object(row, &map.attrs, "attrs")?,
-        );
-        observation.insert(
-            "context".to_string(),
-            mapped_object(row, &map.context, "context")?,
-        );
-
-        let mut source = row
-            .get("source")
-            .and_then(Value::as_object)
-            .cloned()
-            .unwrap_or_default();
-        source.insert(
-            "channel".to_string(),
-            mapped_value(row, &map.source.channel, "source.channel")?,
-        );
-        insert_optional_mapped(row, &mut source, "id", map.source.id.as_ref(), "source.id")?;
-        insert_optional_mapped(
-            row,
-            &mut source,
-            "lineage",
-            map.source.lineage.as_ref(),
-            "source.lineage",
-        )?;
-        insert_optional_mapped(
-            row,
-            &mut source,
-            "table",
-            map.source.table.as_ref(),
-            "source.table",
-        )?;
-        insert_optional_mapped(
-            row,
-            &mut source,
-            "file",
-            map.source.file.as_ref(),
-            "source.file",
-        )?;
-        if let Some(template) = &map.origin_template {
-            source.insert(
-                "lineage".to_string(),
-                Value::String(expand_template(template, row, map_path)?),
-            );
-        }
-        if let Some(catalog_key) = &catalog_key {
-            source.insert("catalog_key".to_string(), catalog_key.clone());
-        }
-        let mut columns = Map::new();
-        columns.insert("surface".to_string(), ref_name(&map.surface));
-        columns.insert("keys".to_string(), mapped_names(&map.keys));
-        source.insert("columns".to_string(), Value::Object(columns));
-        stamp_source(&mut source, verified, None, &map.primary_key, row);
-        observation.insert("source".to_string(), Value::Object(source));
-        lines.push(
-            serde_json::to_string(&Value::Object(observation)).map_err(|error| {
-                contract_refusal(
-                    map_path,
-                    "row_projection",
-                    format!("failed to serialize mapped row {}: {error}", index + 1),
-                    json!({"row": index + 1, "writes_performed": false}),
-                )
-            })?,
-        );
+        })?);
     }
     Ok(lines.join("\n").into_bytes())
 }
 
+fn project_observation_row(
+    value: &Value,
+    map: &ObservationColumnMap,
+    verified: &VerifiedInput,
+    catalog_key: Option<&Value>,
+    row_number: usize,
+    map_path: &Path,
+) -> Result<Value, Refusal> {
+    let row = value.as_object().ok_or_else(|| {
+        contract_refusal(
+            map_path,
+            "row_not_object",
+            format!("row {row_number} must be an object"),
+            json!({"row": row_number, "writes_performed": false}),
+        )
+    })?;
+    let mut observation = Map::new();
+    observation.insert(
+        "obs_id".to_string(),
+        mapped_value(row, &map.obs_id, "obs_id")?,
+    );
+    observation.insert(
+        "entity_type".to_string(),
+        mapped_value(row, &map.entity_type, "entity_type")?,
+    );
+    observation.insert(
+        "surface".to_string(),
+        mapped_value(row, &map.surface, "surface")?,
+    );
+    observation.insert("keys".to_string(), mapped_object(row, &map.keys, "keys")?);
+    observation.insert(
+        "attrs".to_string(),
+        mapped_object(row, &map.attrs, "attrs")?,
+    );
+    observation.insert(
+        "context".to_string(),
+        mapped_object(row, &map.context, "context")?,
+    );
+
+    let mut source = row
+        .get("source")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    source.insert(
+        "channel".to_string(),
+        mapped_value(row, &map.source.channel, "source.channel")?,
+    );
+    insert_optional_mapped(row, &mut source, "id", map.source.id.as_ref(), "source.id")?;
+    insert_optional_mapped(
+        row,
+        &mut source,
+        "lineage",
+        map.source.lineage.as_ref(),
+        "source.lineage",
+    )?;
+    insert_optional_mapped(
+        row,
+        &mut source,
+        "table",
+        map.source.table.as_ref(),
+        "source.table",
+    )?;
+    insert_optional_mapped(
+        row,
+        &mut source,
+        "file",
+        map.source.file.as_ref(),
+        "source.file",
+    )?;
+    if let Some(template) = &map.origin_template {
+        source.insert(
+            "lineage".to_string(),
+            Value::String(expand_template(template, row, map_path)?),
+        );
+    }
+    if let Some(catalog_key) = catalog_key {
+        source.insert("catalog_key".to_string(), catalog_key.clone());
+    }
+    let mut columns = Map::new();
+    columns.insert("surface".to_string(), ref_name(&map.surface));
+    columns.insert("keys".to_string(), mapped_names(&map.keys));
+    source.insert("columns".to_string(), Value::Object(columns));
+    stamp_source(&mut source, verified, None, &map.primary_key, row);
+    observation.insert("source".to_string(), Value::Object(source));
+    Ok(Value::Object(observation))
+}
+
 fn project_evidence(
     verified: &VerifiedInput,
+    input_bytes: &[u8],
     rows_field: Option<&str>,
     map_path: &Path,
 ) -> Result<Vec<u8>, Refusal> {
@@ -825,7 +912,7 @@ fn project_evidence(
         )
     })?;
     let map = parse_yaml::<EvidenceColumnMap>(map_path)?;
-    let payload = parse_document(map_path, &verified.bytes, "rows payload")?;
+    let payload = parse_document(map_path, input_bytes, "rows payload")?;
     let rows = payload[rows_field].as_array().ok_or_else(|| {
         contract_refusal(
             map_path,
@@ -837,60 +924,194 @@ fn project_evidence(
     validate_evidence_columns(rows, &map, map_path)?;
     let mut lines = Vec::with_capacity(rows.len());
     for (index, row) in rows.iter().enumerate() {
-        let row = row.as_object().ok_or_else(|| {
+        let assertion = project_evidence_row(row, &map, verified, index + 1, map_path)?;
+        lines.push(serde_json::to_string(&assertion).map_err(|error| {
             contract_refusal(
                 map_path,
-                "row_not_object",
-                format!("row {} in '{rows_field}' must be an object", index + 1),
+                "row_projection",
+                format!(
+                    "failed to serialize mapped evidence row {}: {error}",
+                    index + 1
+                ),
+                json!({"row": index + 1, "writes_performed": false}),
+            )
+        })?);
+    }
+    Ok(lines.join("\n").into_bytes())
+}
+
+fn project_evidence_row(
+    value: &Value,
+    map: &EvidenceColumnMap,
+    verified: &VerifiedInput,
+    row_number: usize,
+    map_path: &Path,
+) -> Result<Value, Refusal> {
+    let row = value.as_object().ok_or_else(|| {
+        contract_refusal(
+            map_path,
+            "row_not_object",
+            format!("row {row_number} must be an object"),
+            json!({"row": row_number, "writes_performed": false}),
+        )
+    })?;
+    let mut assertion = Map::new();
+    assertion.insert(
+        "type".to_string(),
+        mapped_value(row, &map.assertion_type, "type")?,
+    );
+    assertion.insert("left".to_string(), mapped_value(row, &map.left, "left")?);
+    assertion.insert("right".to_string(), mapped_value(row, &map.right, "right")?);
+    assertion.insert(
+        "asserted_by".to_string(),
+        mapped_value(row, &map.asserted_by, "asserted_by")?,
+    );
+    assertion.insert(
+        "basis".to_string(),
+        mapped_object(row, &map.basis, "basis")?,
+    );
+    let mut source = Map::new();
+    source.insert(
+        "channel".to_string(),
+        mapped_value(row, &map.source.channel, "source.channel")?,
+    );
+    source.insert(
+        "id".to_string(),
+        mapped_value(row, &map.source.id, "source.id")?,
+    );
+    insert_optional_mapped(
+        row,
+        &mut source,
+        "locator",
+        map.source.locator.as_ref(),
+        "source.locator",
+    )?;
+    insert_optional_mapped(
+        row,
+        &mut source,
+        "content_hash",
+        map.source.content_hash.as_ref(),
+        "source.content_hash",
+    )?;
+    insert_optional_mapped(
+        row,
+        &mut source,
+        "lineage",
+        map.source.lineage.as_ref(),
+        "source.lineage",
+    )?;
+    if let Some(result_digest) = &verified.result_digest
+        && !source.contains_key("content_hash")
+    {
+        source.insert(
+            "content_hash".to_string(),
+            Value::String(result_digest.clone()),
+        );
+    }
+    assertion.insert("source".to_string(), Value::Object(source));
+    Ok(Value::Object(assertion))
+}
+
+fn write_parquet_observations(
+    parquet_path: &Path,
+    verified: &VerifiedInput,
+    column_map_path: Option<&Path>,
+) -> Result<PreparedInputFile, Refusal> {
+    let map = column_map_path
+        .map(parse_yaml::<ObservationColumnMap>)
+        .transpose()?;
+    let (prepared, file) = PreparedInputFile::create()?;
+    let mut output = BufWriter::new(file);
+    visit_parquet_rows(parquet_path, |row_number, row| {
+        let observation = if let Some(map) = &map {
+            let map_path = column_map_path.unwrap_or(parquet_path);
+            validate_observation_columns(std::slice::from_ref(&row), map, map_path)?;
+            let catalog_key = row.get("catalog_key");
+            project_observation_row(&row, map, verified, catalog_key, row_number, map_path)?
+        } else {
+            stamp_direct_record(row, verified, false)
+        };
+        write_json_line(&mut output, &observation, parquet_path, row_number)
+    })?;
+    output
+        .flush()
+        .map_err(|error| io_refusal(&prepared.path, error))?;
+    verify_input_unchanged(parquet_path, verified)?;
+    Ok(prepared)
+}
+
+fn write_parquet_evidence(
+    parquet_path: &Path,
+    verified: &VerifiedInput,
+    column_map_path: Option<&Path>,
+) -> Result<PreparedInputFile, Refusal> {
+    let map = column_map_path
+        .map(parse_yaml::<EvidenceColumnMap>)
+        .transpose()?;
+    let (prepared, file) = PreparedInputFile::create()?;
+    let mut output = BufWriter::new(file);
+    visit_parquet_rows(parquet_path, |row_number, row| {
+        let evidence = if let Some(map) = &map {
+            let map_path = column_map_path.unwrap_or(parquet_path);
+            validate_evidence_columns(std::slice::from_ref(&row), map, map_path)?;
+            project_evidence_row(&row, map, verified, row_number, map_path)?
+        } else {
+            stamp_direct_record(row, verified, true)
+        };
+        write_json_line(&mut output, &evidence, parquet_path, row_number)
+    })?;
+    output
+        .flush()
+        .map_err(|error| io_refusal(&prepared.path, error))?;
+    verify_input_unchanged(parquet_path, verified)?;
+    Ok(prepared)
+}
+
+fn visit_parquet_rows(
+    path: &Path,
+    mut visit: impl FnMut(usize, Value) -> Result<(), Refusal>,
+) -> Result<(), Refusal> {
+    let file = File::open(path).map_err(|error| io_refusal(path, error))?;
+    let reader = SerializedFileReader::new(file).map_err(|error| {
+        contract_refusal(
+            path,
+            "parquet_read",
+            format!("unable to open Parquet input '{}': {error}", path.display()),
+            json!({"writes_performed": false}),
+        )
+    })?;
+    let rows = reader.get_row_iter(None).map_err(|error| {
+        contract_refusal(
+            path,
+            "parquet_read",
+            format!(
+                "unable to read Parquet rows from '{}': {error}",
+                path.display()
+            ),
+            json!({"writes_performed": false}),
+        )
+    })?;
+    for (index, row) in rows.enumerate() {
+        let row = row.map_err(|error| {
+            contract_refusal(
+                path,
+                "parquet_read",
+                format!("unable to read Parquet row {}: {error}", index + 1),
                 json!({"row": index + 1, "writes_performed": false}),
             )
         })?;
-        let mut assertion = Map::new();
-        assertion.insert(
-            "type".to_string(),
-            mapped_value(row, &map.assertion_type, "type")?,
-        );
-        assertion.insert("left".to_string(), mapped_value(row, &map.left, "left")?);
-        assertion.insert("right".to_string(), mapped_value(row, &map.right, "right")?);
-        assertion.insert(
-            "asserted_by".to_string(),
-            mapped_value(row, &map.asserted_by, "asserted_by")?,
-        );
-        assertion.insert(
-            "basis".to_string(),
-            mapped_object(row, &map.basis, "basis")?,
-        );
-        let mut source = Map::new();
-        source.insert(
-            "channel".to_string(),
-            mapped_value(row, &map.source.channel, "source.channel")?,
-        );
-        source.insert(
-            "id".to_string(),
-            mapped_value(row, &map.source.id, "source.id")?,
-        );
-        insert_optional_mapped(
-            row,
-            &mut source,
-            "locator",
-            map.source.locator.as_ref(),
-            "source.locator",
-        )?;
-        insert_optional_mapped(
-            row,
-            &mut source,
-            "content_hash",
-            map.source.content_hash.as_ref(),
-            "source.content_hash",
-        )?;
-        insert_optional_mapped(
-            row,
-            &mut source,
-            "lineage",
-            map.source.lineage.as_ref(),
-            "source.lineage",
-        )?;
-        if let Some(result_digest) = &verified.result_digest
+        visit(index + 1, row.to_json_value())?;
+    }
+    Ok(())
+}
+
+fn stamp_direct_record(mut value: Value, verified: &VerifiedInput, assertion: bool) -> Value {
+    if let Some(object) = value.as_object_mut()
+        && let Some(source) = object.get_mut("source").and_then(Value::as_object_mut)
+    {
+        stamp_source(source, verified, None, &[], &Map::new());
+        if assertion
+            && let Some(result_digest) = &verified.result_digest
             && !source.contains_key("content_hash")
         {
             source.insert(
@@ -898,22 +1119,91 @@ fn project_evidence(
                 Value::String(result_digest.clone()),
             );
         }
-        assertion.insert("source".to_string(), Value::Object(source));
-        lines.push(
-            serde_json::to_string(&Value::Object(assertion)).map_err(|error| {
-                contract_refusal(
-                    map_path,
-                    "row_projection",
-                    format!(
-                        "failed to serialize mapped evidence row {}: {error}",
-                        index + 1
-                    ),
-                    json!({"row": index + 1, "writes_performed": false}),
-                )
-            })?,
-        );
     }
-    Ok(lines.join("\n").into_bytes())
+    value
+}
+
+fn write_json_line(
+    output: &mut impl Write,
+    value: &Value,
+    input_path: &Path,
+    row_number: usize,
+) -> Result<(), Refusal> {
+    serde_json::to_writer(&mut *output, value).map_err(|error| {
+        contract_refusal(
+            input_path,
+            "row_projection",
+            format!("failed to serialize Parquet row {row_number}: {error}"),
+            json!({"row": row_number, "writes_performed": false}),
+        )
+    })?;
+    output
+        .write_all(b"\n")
+        .map_err(|error| io_refusal(input_path, error))
+}
+
+fn verify_input_unchanged(path: &Path, verified: &VerifiedInput) -> Result<(), Refusal> {
+    if let Some(expected) = verified
+        .parquet_path
+        .as_ref()
+        .map(|_| &verified.input_digest)
+    {
+        let actual = hash_file(path)?;
+        if &actual != expected {
+            return Err(contract_refusal(
+                path,
+                "input_changed_during_read",
+                "Parquet input changed while it was being read",
+                json!({
+                    "expected": expected,
+                    "actual": actual,
+                    "writes_performed": false
+                }),
+            ));
+        }
+    }
+    Ok(())
+}
+
+struct PreparedInputFile {
+    path: PathBuf,
+}
+
+impl PreparedInputFile {
+    fn create() -> Result<(Self, File), Refusal> {
+        static NEXT_FILE_ID: AtomicU64 = AtomicU64::new(0);
+        for _ in 0..128 {
+            let sequence = NEXT_FILE_ID.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "canon-session-intake-{}-{sequence}.jsonl",
+                std::process::id()
+            ));
+            let mut options = OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            match options.open(&path) {
+                Ok(file) => return Ok((Self { path }, file)),
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+                Err(error) => return Err(io_refusal(&path, error)),
+            }
+        }
+        Err(contract_refusal(
+            &std::env::temp_dir(),
+            "temporary_input_unavailable",
+            "unable to allocate a unique temporary session input file",
+            json!({"writes_performed": false}),
+        ))
+    }
+}
+
+impl Drop for PreparedInputFile {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
 }
 
 fn validate_observation_columns(
@@ -1242,6 +1532,22 @@ fn read_input(path: &Path) -> Result<Vec<u8>, Refusal> {
     } else {
         fs::read(path).map_err(|error| io_refusal(path, error))
     }
+}
+
+fn hash_file(path: &Path) -> Result<String, Refusal> {
+    let mut file = File::open(path).map_err(|error| io_refusal(path, error))?;
+    let mut buffer = [0_u8; 64 * 1024];
+    let mut hasher = blake3::Hasher::new();
+    loop {
+        let count = file
+            .read(&mut buffer)
+            .map_err(|error| io_refusal(path, error))?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+    Ok(format!("blake3:{}", hasher.finalize().to_hex()))
 }
 
 fn hash_bytes(bytes: &[u8]) -> String {
