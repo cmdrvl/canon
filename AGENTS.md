@@ -68,16 +68,24 @@ industry ontology, provider knowledge, or probabilistic runtime lookup.
 | File | Purpose |
 |------|---------|
 | `src/main.rs` | CLI entry + exit code mapping |
-| `src/lib.rs` | Orchestration flow |
-| `src/cli/` | Argument parsing (clap derive) |
-| `src/input/` | CSV and JSONL parsing, column extraction |
-| `src/registry/` | Registry loading, validation, SQLite index |
-| `src/resolve/` | Lookup logic, dedup, match precedence |
+| `src/lib.rs` | Command dispatch (`run`, `run_command`) and the `run_*` command bodies |
+| `src/cli.rs` | Argument parsing (clap derive) |
+| `src/input.rs` | CSV and JSONL parsing, column extraction |
+| `src/lookup.rs` | The production exact lookup: dedup, match precedence |
+| `src/registry/`, `src/registry.rs`, `src/registry_lint.rs` | Registry loading, validation, SQLite index, maintenance commands, lint |
+| `src/session/` | Session workspace layer: registry binding, intake, status |
+| `src/entity/session/`, `src/entity/session_*.rs` | The evidence-session engine behind `canon entity session` |
+| `src/evidence/` | Evidence IR types (mounted as `entity::evidence_ir` by `#[path]`) |
 | `src/entity/` | Build-time entity workbench artifacts, cluster/link flows, review, and promotion |
+| `src/org/` | **Live despite the name.** The files of `entity::runtime`, mounted by `#[path = "../org/..."]` in `src/entity/runtime.rs`; `src/session/` uses its types and `src/registry/identity.rs` uses `runtime::incumbent`. Never delete or treat as dead |
+| `src/resolve/` | The entity-link decision workbench behind `canon entity link` and `src/evaluation/`. Not the lookup path |
+| `src/geo/` | The Geo workbench behind `canon geo` and the `canon_geo_measurements` bin; outside it only the `lib.rs` dispatch arm and the `cli.rs` definitions refer to it |
 | `src/project/` | Project manifests, locks, and reproducible workflow planning |
 | `src/output/` | JSON and CSV output formatting |
-| `src/refusal/` | Refusal envelope, codes, details |
-| `src/witness/` | Witness append behavior (BLAKE3 hashing) |
+| `src/refusal.rs` | Refusal envelope, codes, details |
+| `src/witness.rs` | Witness append behavior (BLAKE3 hashing) |
+
+Module status, the `#[path]` mounts, and which modules only the legacy workbench commands use are in "Active vs legacy source surface" in [`docs/IDENTITY_ARCHITECTURE.md`](./docs/IDENTITY_ARCHITECTURE.md). Check that map before you delete or move anything under `src/`.
 | `operator.json` | Machine-readable operator contract |
 | `docs/PLAN_CANON.md` | Full specification |
 | `docs/ENTITY_WORKBENCH_AGENT_GUIDE.md` | `canon entity` how-to and operator catalog (which profile operators `run` executes) |

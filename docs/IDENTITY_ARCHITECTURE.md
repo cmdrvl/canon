@@ -224,6 +224,46 @@ local ID allocation, not a new matching mode.
 
 ---
 
+## Active vs Legacy Source Surface
+
+This is a map of `src/`, not a gate. No Cargo feature separates these
+surfaces yet: everything below compiles into the default binary. Update this
+section when a gate lands.
+
+It was built at commit `316597f` from a static module graph (`crate::`,
+`super::` and `#[path]` mounts). Line counts are Rust lines under `src/`.
+Treat the closure numbers as approximate: they are module-level, and a module
+counts as reached if any of its code is.
+
+| Surface | Lines | What it is | Reached from | Status |
+|---|---|---|---|---|
+| `lookup.rs`, `input.rs`, `output.rs`, `refusal.rs`, `witness.rs` | small | The exact lookup path | `canon <input> --registry` | Core |
+| `registry/`, `registry.rs`, `registry_lint.rs` | 19.2k + | Registry maintenance, validation, index, lint | `canon registry ...`, lookup | Core |
+| `session/` and `entity/session/`, `entity/session_*.rs` | 7.4k + about 13.7k | The evidence-session engine and its workspace layer | `canon entity session ...` | Core |
+| `org/` | 14.6k | The files of `entity::runtime`, mounted with `#[path = "../org/..."]` in `entity/runtime.rs` | `session/` uses its `PendingClusterRecord` and `CannotLinkFact`; `registry/identity.rs` uses `runtime::incumbent`; its other files serve the workbench commands | **Live.** The name is historical. Never delete or move it |
+| `resolve/` | 6.1k | The entity-link decision workbench | `canon entity link` (`run_entity_link_command` in `lib.rs`), `entity/link.rs`, `evaluation/` | Legacy workbench, live |
+| `evaluation/` | 21.4k | Recall, alias-withholding and generalization evaluations | `canon entity candidate-recall`, `alias-withholding`, `generalization`; depends on `entity` and `resolve` | Legacy workbench, live |
+| `entity/` run family | about 54k of the 103k lines in the `entity`, `org`, `evidence` and `source_mapping` graph; 8.1k of it is the shared `review_export` and `review_import` below | `run`, `record_link`, `apply`, `promote`, `solve`, `calibrate*`, `schema`, `contracts` and the rest of the `canon entity run` pipeline | Not referenced by the session modules, `registry/` or lookup at module level | Legacy workbench, live |
+| `entity/` shared | about 49k of the same 103k | `runtime` (the `org/` files), `publication`, `evidence_ir`, `index`, `prepare`, `block`, `edge`, `profile` and the session modules | Session commands, including `session derive` | Core closure |
+| `geo/` | 97.2k | The Geo workbench | `canon geo` and the `canon_geo_measurements` bin; outside `geo/` only the `lib.rs` dispatch arm and the `cli.rs` definitions refer to it | Self-contained workbench |
+
+Two modules sit between the groups. `entity/review_export` and
+`entity/review_import` serve both session review queues and the legacy path,
+so they are not counted as legacy-only. `project/` is used by `geo/` (41
+references) and by the `canon project` command, and uses nothing from the
+legacy set.
+
+Rules for agents:
+
+1. `src/org/` is the implementation of `entity::runtime`. Deleting or moving a
+   file there breaks the build and the session commands.
+2. Do not add a dependency from a core module to a legacy-only one (`run`,
+   `record_link`, `resolve`, `evaluation`, `geo`). The closure above is what
+   a core-only build has to keep compiling.
+3. `resolve/` is not the lookup path. Production lookup is `lookup.rs`.
+
+---
+
 ## Documentation Map
 
 - `docs/PLAN_CANON.md`: current source of truth for the core lookup kernel, registry
