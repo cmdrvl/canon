@@ -7,6 +7,9 @@
 
 use crate::namekit::normalize::normalize_normality;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::sync::OnceLock;
 
 pub const LEGAL_FORM_CONTRACT_VERSION: &str = "canon_namekit_legal_form.v0";
 pub const LEGAL_FORM_EQUIVALENCE_CONTRACT_VERSION: &str = "canon_namekit_legal_form_equivalence.v0";
@@ -760,8 +763,25 @@ fn normalize_tokens(input: &str) -> Vec<String> {
         .collect()
 }
 
-fn normalized_entry_tokens(input: &str) -> Vec<String> {
-    normalize_tokens(input)
+/// Normalized tokens of a suffix-table term.
+///
+/// The table is static, so each term is normalized once and then looked up.
+/// `suffix_matches` runs for every table entry on every analyzed name, and
+/// re-running the full normalizer there made it the dominant cost of preparing
+/// a large run (about 70% of a 10,000-row `entity run`). A term that is not in
+/// the table is normalized on the spot, the same way as before.
+fn normalized_entry_tokens(term: &'static str) -> Cow<'static, [String]> {
+    static TABLE: OnceLock<HashMap<&'static str, Vec<String>>> = OnceLock::new();
+    let table = TABLE.get_or_init(|| {
+        LEGAL_SUFFIX_ENTRIES
+            .iter()
+            .map(|entry| (entry.term, normalize_tokens(entry.term)))
+            .collect()
+    });
+    match table.get(term) {
+        Some(tokens) => Cow::Borrowed(tokens.as_slice()),
+        None => Cow::Owned(normalize_tokens(term)),
+    }
 }
 
 fn longest_suffix_entry(tokens: &[String]) -> Option<LegalSuffixEntry> {
@@ -855,7 +875,10 @@ fn push_reason(
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_legal_forms, normalize_legal_forms_with_bare};
+    use super::{
+        LEGAL_SUFFIX_ENTRIES, normalize_legal_forms, normalize_legal_forms_with_bare,
+        normalize_tokens, normalized_entry_tokens,
+    };
 
     #[test]
     fn legal_form_equivalence_covers_each_curated_family() {
@@ -977,6 +1000,35 @@ mod tests {
         assert_ne!(
             normalize_legal_forms_with_bare("Acme LLC").steps,
             normalize_legal_forms_with_bare("Acme Inc").steps
+        );
+    }
+
+    #[test]
+    fn memoized_entry_tokens_equal_a_fresh_normalization_of_every_table_term() {
+        for entry in LEGAL_SUFFIX_ENTRIES {
+            let fresh = normalize_tokens(entry.term);
+            assert!(
+                !fresh.is_empty(),
+                "{:?} normalizes to no tokens, so it could never match",
+                entry.term
+            );
+            assert_eq!(
+                normalized_entry_tokens(entry.term).as_ref(),
+                fresh.as_slice(),
+                "memoized tokens drifted from the normalizer for {:?}",
+                entry.term
+            );
+            assert_eq!(entry.match_token_count(), fresh.len(), "{:?}", entry.term);
+        }
+    }
+
+    #[test]
+    fn entry_tokens_for_a_term_outside_the_table_are_normalized_on_the_spot() {
+        let term: &'static str = "Zzyzx Holdings (Cayman) Ltd.";
+        assert!(!LEGAL_SUFFIX_ENTRIES.iter().any(|entry| entry.term == term));
+        assert_eq!(
+            normalized_entry_tokens(term).as_ref(),
+            normalize_tokens(term).as_slice()
         );
     }
 }
