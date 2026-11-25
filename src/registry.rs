@@ -858,25 +858,31 @@ fn build_index(
     }
 
     let build_result = (|| -> Result<(), Box<dyn Error>> {
-        let conn = Connection::open(&temp_path)
+        let mut conn = Connection::open(&temp_path)
             .map_err(|e| format!("Failed to create SQLite index: {}", e))?;
 
         conn.execute_batch(SCHEMA_SQL)?;
-        conn.execute("DELETE FROM metadata", [])?;
-        conn.execute("DELETE FROM entries", [])?;
-        conn.execute(
+
+        // Fill the index in one transaction. Outside one, SQLite commits every
+        // INSERT on its own and syncs the journal each time, which made a
+        // 50,000-entry index take minutes (and `load_registry` rebuilds it on
+        // every call for a writable registry).
+        let tx = conn.transaction()?;
+        tx.execute("DELETE FROM metadata", [])?;
+        tx.execute("DELETE FROM entries", [])?;
+        tx.execute(
             "INSERT INTO metadata (key, value) VALUES ('schema_version', ?)",
             [INDEX_SCHEMA_VERSION],
         )?;
-        conn.execute(
+        tx.execute(
             "INSERT INTO metadata (key, value) VALUES ('registry_version', ?)",
             [version],
         )?;
-        conn.execute(
+        tx.execute(
             "INSERT INTO metadata (key, value) VALUES ('source_digest', ?)",
             [source_digest],
         )?;
-        conn.execute(
+        tx.execute(
             "INSERT INTO metadata (key, value) VALUES ('entry_count', ?)",
             [mapping_files
                 .iter()
@@ -885,7 +891,7 @@ fn build_index(
                 .to_string()],
         )?;
 
-        let mut stmt = conn.prepare(
+        let mut stmt = tx.prepare(
             "INSERT INTO entries (input, canonical_id, canonical_type, rule_id, source_file, entry_order, namespace, scope) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         )?;
 
@@ -913,6 +919,7 @@ fn build_index(
         }
 
         drop(stmt);
+        tx.commit()?;
         drop(conn);
         Ok(())
     })();
