@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.1.0",
+  "tool_name": "canon",
+  "tool_repo": "/Users/zacharyruiz/Source/cmdrvl/canon",
+  "audit_workspace": "/Users/zacharyruiz/Source/cmdrvl/canon/agent_ergonomics_audit",
+  "rubric_version": "1.0.0",
+  "passes": [
+    {
+      "pass": 1,
+      "started_at": "2026-11-25T05:42:28Z",
+      "completed_at": null,
+      "mode": "full",
+      "target_sha": "511f2d454a18319b347099c7c975b9ea34a7bcf8",
+      "target_branch": "main",
+      "feature_branch": null,
+      "summary": {
+        "surfaces_inventoried": 13,
+        "surfaces_scored": 13,
+        "recommendations_total": 7,
+        "recommendations_applied": 1,
+        "substantive_commits": 1,
+        "dimensions_touched": 3,
+        "ambition_bar_met": false,
+        "ambition_bar_self_prompt_run": false,
+        "ambition_reentered": null,
+        "hard_stop_found": null,
+        "hard_stop_cleared_at": null,
+        "median_uplift_pts": 0,
+        "regressions_count": 0,
+        "fresh_eyes_rounds": 0
+      },
+      "artifacts": {
+        "surface_inventory": "audit/surface_inventory.jsonl",
+        "agent_surfaces": "audit/agent_surfaces.jsonl",
+        "intent_corpus": "audit/intent_inference_corpus.jsonl",
+        "recommendations": "audit/recommendations.jsonl",
+        "applied_changes": "audit/applied_changes.jsonl",
+        "applied_commit": "ca15ba4dbe18805c98cd8a4879566a74fc1c21db",
+        "scorecard": "audit/scorecard_pass_1.md",
+        "uplift_diff": "audit/uplift_diff.md",
+        "handoff": "audit/HANDOFF.md"
+      }
+    }
+  ],
+  "current_pass": 2,
+  "pass_N+1_ready": true,
+  "hard_stop": null,
+  "next_pass_focus": "R-006 lookup --help discovery pointer, R-003 --fix pointer, then R-002 once the intent-inference owner decides on adjacent-swap hints"
+}
