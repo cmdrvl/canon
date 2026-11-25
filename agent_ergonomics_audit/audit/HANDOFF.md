@@ -95,40 +95,47 @@ this change (geo present) and 9 passed on the plan A tree in the core profile
 `--features geo` was still compiling when this was written; its result is in the
 bd-c98n comment, not here.
 
-## Doctor alignment with spine-rules v2: not done, and why
+## Doctor alignment with spine-rules (operator.v1 / cmdrvl.doctor.v1): done in 0731c13
 
-bd-c98n asks to "align `src/doctor.rs` with `spine-rules` v2". That could not be
-carried out, because no doctor specification named v2 was found:
+An earlier version of this section said the alignment could not be carried out
+because no doctor specification named v2 was found. That was wrong for the
+spine-rules revision that matters: it looked at spine-rules `00430f4` (crate
+0.2.0), which has no doctor rule. The specification is in spine-rules `906feed`
+(crate 0.3.1): its `golden_rules_suite!` validates `operator.json` as
+`operator.v1` and the doctor output as `cmdrvl.doctor.v1`. airlock `b0180f8` is
+the reference alignment, and canon followed it in `0731c13` (bd-c98n stage B).
 
-- `spine-rules` (`/Users/zacharyruiz/Source/cmdrvl/spine-rules`, main at
-  `00430f4`, crate 0.2.0, tag v0.1.0) contains the golden-rules test suite,
-  three ast-grep rules (exit-code range, no `HashMap` in output, witness
-  append-only), and from 0.2.0 the `composite_key` and `pipeline` modules. It has
-  no doctor, capabilities or triage rule, and no mention of `read_only_doctor`.
-- canon's `tests/golden_rules.rs` already runs the spine-rules golden-rules suite
-  and passes. `Cargo.lock` pins spine-rules 0.1.0 at `76c87d8`; main is 0.2.0.
-  The 0.2.0 additions are key-tuple and pipeline checks, not doctor checks, and
-  canon has no consumer for them, so the pin was not bumped.
-- The doctor contract that exists is `cmdrvl.read_only_doctor.v1`, which canon
-  and `shape`, `rvl`, `verify`, `assess`, `pack` and `lock` all declare. Their
-  actual output is not one shape. Top-level keys of `capabilities --json`,
-  observed from the installed binaries: `shape` and `rvl` carry
-  `contract_version`, `schema_version`, `agent_surfaces`, `data_paths`,
-  `detectors`, `env_vars`, `fix_mode`, `online_default`; `pack` and `lock` carry
-  `contract`, `schema_version`, `output_contract`, `network`, `fix_mode`;
-  `assess` and canon carry `contract`, `schema`, `config_footprint`, `fixers`,
-  `read_only`, `side_effects`. canon already matches the `assess` layout.
-  `--robot-triage` varies the same way (`summary` and `findings` in
-  `shape`/`rvl`; `health` and `recommended_actions` in `pack`/`lock`; `checks`,
-  `score` and `recommended_next_steps` in `assess` and canon).
+What changed in canon:
 
-Guessing a target among those three layouts would change the
-`canon.doctor.capabilities.v1` payload for existing consumers on no evidence, so
-nothing was changed. What is needed is the name of the document or bead that
-defines "v2". If it is the shape/rvl layout, the gaps in canon are
-`env_vars`, `agent_surfaces` (canon's `top_level_aliases` is the nearest
-equivalent), `fix_mode` and `online_default`; `env_vars` and `error_kinds` are
-already filed as R-005.
+- `operator.json` is `operator.v1`: `tool_version` and `contract_version`
+  (1.0.0) replace `version`, `commands` replaces `subcommands`, and `env_vars`,
+  `formats` and `side_effects` are declared. Two rows are new: `doctor triage` and
+  the aggregate `robot-docs`.
+- `canon doctor [--json]`, `canon doctor capabilities --json` and
+  `canon doctor triage --json` emit `cmdrvl.doctor.v1` (`schema_version`, `mode`,
+  `tool`, `tool_version`, `healthy`, `findings[]`). `doctor capabilities` carries
+  the operator.v1 document as `contract`, equal to `canon capabilities --json`
+  and `canon --describe`. Exit 0 is healthy, 1 is unhealthy, 2 is a usage error.
+- `canon doctor health`, `canon doctor --robot-triage` and `canon --robot-triage`
+  still work as deprecated aliases. canon's own fields (`ok`, `score`,
+  `read_only`, `checks`, `summary`, `contract_parity`) are kept as additions. The
+  old string `contract` is now `read_only_contract`
+  (`cmdrvl.read_only_doctor.v1`), because `contract` is reserved for the
+  operator.v1 document in capabilities mode.
+- The ids `operator.v0` and `canon.doctor.{health,capabilities,triage}.v1` are
+  retired from `src/`, `operator.json` and the contract inventory.
+- `Cargo.lock` pins spine-rules at 0.3.1 / `906feed`, in the same commit, so
+  `tests/golden_rules.rs` (20 tests) stays green.
+
+Evidence is in the bd-c98n comment (commands, per-suite counts, both profiles).
+The fields the old text listed as gaps against the shape/rvl layout
+(`agent_surfaces`, `fix_mode`, `online_default`) are not among operator.v1's
+required fields, so canon does not carry them. `env_vars` is now declared;
+`error_kinds` is not, and is still R-005.
+
+The `.jsonl` files in this folder (surface inventory, recommendations, corpus)
+are snapshots of the surface as audited and still show the retired ids. They
+were not rewritten.
 
 NO_COLOR, `TERM=dumb` and non-tty handling, the other half of that bullet, is
 covered by `discovery_output_ignores_no_color_and_dumb_terminals`; canon emits no
@@ -136,20 +143,22 @@ color, so the requirement holds by absence, and the test pins it.
 
 ## Next
 
-0. Name the document that defines "spine-rules v2" for the doctor (see the section
-   above); until then the alignment half of bd-c98n is open.
-1. After plan A lands: re-run `cli_robot_surfaces` in the core profile and
-   `command_contract`, `contract_parity`, `canon_v1_contract_inventory` with
-   `--all-features`.
+0. Done in `0731c13`: the doctor alignment (see the section above).
+1. Done: plan A landed as `acb81f9`, and `cli_robot_surfaces` was re-run in the
+   core profile with `command_contract`, `contract_parity` and
+   `canon_v1_contract_inventory` under `--all-features` at the `0731c13` tree
+   (details in the bd-c98n comment).
 2. R-006: point `canon --help` at the three discovery commands (`after_help`).
 3. R-003: make `canon doctor --fix` and `canon capabilities --fix` say there is
-   no repair surface and point at `canon --robot-triage`.
+   no repair surface and point at `canon doctor triage --json` (`canon
+   --robot-triage` is now a deprecated alias of it).
 4. R-002 and R-007 belong together and need a decision from whoever owns the
    intent-inference contract: `src/lib.rs` and the Intent inference bullet in
    `docs/PLAN_CANON.md` pin plain edit distance 1 (no adjacent-swap hints); the
    skill counts a swap as one edit.
 5. R-004 waits on bd-ko97 (global `--json`).
-6. R-005 waits on a spine-rules decision on the capabilities schema.
+6. R-005: the capabilities schema is decided (operator.v1) and `env_vars` is now
+   declared; `error_kinds` is still absent.
 7. Whoever owns bd-j7u0 should look at the three failures above.
 
 ## Process note
