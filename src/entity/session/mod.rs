@@ -45,9 +45,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub mod place;
 pub mod rules;
 mod status;
-use rules::{SessionRules, parse_rules};
+use rules::{SessionRules, TIER_A_TYPES, TIER_B_TYPES, parse_rules};
 pub use status::{
     SESSION_STATUS_VERSION, SessionStatusOutput, SessionStatusRequest, session_status,
 };
@@ -56,10 +57,15 @@ pub const SESSION_SOLVE_VERSION: &str = "canon.entity.session.solve.v1";
 pub const SESSION_SOLVE_STREAM_ID: &str = "entity-session-solve";
 const SESSION_PUBLICATION_STAGE: &str = "session";
 
-const TIER_A_TYPES: &[&str] = &["same_key", "asserted_alias"];
-const TIER_B_TYPES: &[&str] = &["same_slot", "attribute_agreement", "name_equivalent"];
 const RELATION_TYPES: &[&str] = &["related"];
-const DISTINCT_TYPES: &[&str] = &["distinct"];
+/// Hard anti-merge evidence: `distinct` and the place vetoes in
+/// `place::PLACE_VETO_TYPES`.
+const DISTINCT_TYPES: &[&str] = &[
+    "distinct",
+    "conflicting_authoritative_apn",
+    "disjoint_parcels",
+    "grain_mismatch",
+];
 const ROLE_RELATIONS: &[&str] = &[
     "sponsor_of",
     "guarantor_of",
@@ -546,6 +552,7 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         .map(|record| (record.evidence_id.clone(), unit_evidence_info(record)))
         .collect::<BTreeMap<_, _>>();
     let mut dangling_evidence_count = 0;
+    let mut grain_mismatches: Vec<SessionSolveContradiction> = Vec::new();
     for record in evidence {
         let Some((left_target_id, right_target_id)) = pair_target(&record) else {
             dangling_evidence_count += 1;
@@ -561,7 +568,52 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             dangling_evidence_count += 1;
             continue;
         };
-        if left_target.entity_type != right_target.entity_type {
+        if left_target.entity_type != right_target.entity_type
+            && place::is_place_grain(&left_target.entity_type)
+            && place::is_place_grain(&right_target.entity_type)
+        {
+            // Two place grains never share a node, so nothing here can merge
+            // them. A hierarchy relation along an allowed (relation, subject
+            // grain, object grain) triple is the only evidence that crosses
+            // grains. A veto between different grains already agrees with the
+            // grains. Any other evidence claims one identity across two
+            // grains: it is contradicted, not applied, and not a refusal, so
+            // one misgrained row cannot block the rest of the session.
+            let crossing_type = evidence_type(&record);
+            if crossing_type.is_empty() || DISTINCT_TYPES.contains(&crossing_type.as_str()) {
+                continue;
+            }
+            let hierarchy = RELATION_TYPES.contains(&crossing_type.as_str()) && {
+                let subject_node = relation_subject_node(
+                    &record,
+                    left_target_id,
+                    right_target_id,
+                    &left_target.node_key,
+                    &right_target.node_key,
+                );
+                let (subject_grain, object_grain) = if subject_node == left_target.node_key {
+                    (&left_target.entity_type, &right_target.entity_type)
+                } else {
+                    (&right_target.entity_type, &left_target.entity_type)
+                };
+                place::hierarchy_allows(&relation_value(&record), subject_grain, object_grain)
+            };
+            if !hierarchy {
+                grain_mismatches.push(SessionSolveContradiction {
+                    reason: place::GRAIN_MISMATCH_REASON.to_string(),
+                    surfaces: ordered_unique_strings([
+                        left_target.surface.clone(),
+                        right_target.surface.clone(),
+                    ]),
+                    obs_ids: ordered_unique_strings([
+                        left_target_id.to_string(),
+                        right_target_id.to_string(),
+                    ]),
+                    evidence_ids: vec![record.evidence_id.clone()],
+                });
+                continue;
+            }
+        } else if left_target.entity_type != right_target.entity_type {
             return Err(solve_refusal(
                 format!(
                     "Evidence {} crosses entity types {} and {}",
@@ -796,6 +848,23 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             .iter()
             .any(|key| member_keys.contains(key))
             || !component.hard_cannot_link_violations.is_empty();
+        // The contradiction reason stays `distinct`; the place veto kinds that
+        // fired inside the component are named beside it.
+        if distinct_conflict {
+            let mut veto_kinds = edge_facts
+                .values()
+                .filter(|facts| {
+                    member_keys.binary_search(&facts.left).is_ok()
+                        && member_keys.binary_search(&facts.right).is_ok()
+                })
+                .flat_map(|facts| facts.evidence_types.iter())
+                .filter(|kind| place::is_place_veto_type(kind))
+                .cloned()
+                .collect::<Vec<_>>();
+            veto_kinds.sort();
+            veto_kinds.dedup();
+            conflict_reasons.extend(veto_kinds);
+        }
         // A pair the session itself states as related (a co-borrower list and
         // one of its members, a parent and a subsidiary) is not the same entity,
         // whatever else was asserted about it.
@@ -1099,6 +1168,8 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
     relations.dedup();
     summary.relations = relations.len();
     summary.dangling_evidence = dangling_evidence_count;
+    summary.contradiction += grain_mismatches.len();
+    contradictions.extend(grain_mismatches);
     summary.cluster_count = clusters.len();
     clusters.sort_by(|left, right| left.cluster_id.cmp(&right.cluster_id));
     derived_evidence.sort_by(|left, right| left.evidence_id.cmp(&right.evidence_id));
@@ -1402,6 +1473,10 @@ pub fn commit(
         }
     }
     let mut final_output = None;
+    let kind_order = known_kinds.clone();
+    // Ids an earlier kind's commit minted in this run. A relation between two
+    // grains is written by the later kind and names the earlier kind's id.
+    let mut committed_ids = BTreeMap::<String, String>::new();
     for binding in &manifest.registries {
         let (loaded_registry, registry_snapshot) =
             current_registries.get(&binding.kind).ok_or_else(|| {
@@ -1420,6 +1495,12 @@ pub fn commit(
             &loaded_registry.meta.version,
         )?;
         if let Some(already) = already {
+            committed_ids.extend(
+                already
+                    .minted
+                    .iter()
+                    .map(|item| (item.cluster_id.clone(), item.canonical_id.clone())),
+            );
             final_output = Some(merge_commit_outputs(final_output.take(), already));
             continue;
         }
@@ -1446,6 +1527,8 @@ pub fn commit(
                 solve_hash: &solve_hash,
                 registry_version: &loaded_registry.meta.version,
                 observation_values: &observation_values,
+                kind_order: &kind_order,
+                committed_ids: &committed_ids,
             },
         )?;
         let SessionCommitPlan {
@@ -1512,6 +1595,12 @@ pub fn commit(
             next_version,
             bump: request.bump,
         })?;
+        committed_ids.extend(
+            output
+                .minted
+                .iter()
+                .map(|item| (item.cluster_id.clone(), item.canonical_id.clone())),
+        );
         final_output = Some(merge_commit_outputs(final_output.take(), output));
     }
     if let Some(output) = final_output.as_mut() {
@@ -1617,7 +1706,9 @@ fn build_registry_memory_write(
     let mut closures = Vec::new();
 
     for record in evidence {
-        if record.operator.operator_id != "distinct" || record.authority_basis.is_none() {
+        if !DISTINCT_TYPES.contains(&record.operator.operator_id.as_str())
+            || record.authority_basis.is_none()
+        {
             continue;
         }
         let crate::entity::evidence_ir::EvidenceTarget::Pair { left_id, right_id } = &record.target
@@ -1648,7 +1739,7 @@ fn build_registry_memory_write(
                     registry_id,
                     rules_hash: &artifact.inputs.rules_hash,
                     decision: json!({
-                        "rule": "distinct",
+                        "rule": record.operator.operator_id,
                         "reason": record.reason_code,
                     }),
                     observations,
@@ -1726,6 +1817,12 @@ fn build_registry_memory_write(
     }
 
     for contradiction in &artifact.contradictions {
+        // Evidence that would merge two grains is an error in that evidence,
+        // not an unresolved identity question: no escrow and no cleared
+        // pending record.
+        if contradiction.reason == place::GRAIN_MISMATCH_REASON {
+            continue;
+        }
         if contradiction.reason == "registry_cannot_link" || contradiction.reason == "distinct" {
             clear_pending_for_surfaces(
                 &mut pending_clear,
@@ -2099,6 +2196,14 @@ fn build_commit_plan(
                     .flatten()
             })
             .filter(|value| observation_belongs_to_cluster(value, &cluster, &artifact.shared_names))
+            // One surface may be observed at two kinds (a building and the
+            // address of the same name); a cluster owns only its own kind.
+            .filter(|value| {
+                value
+                    .get("entity_type")
+                    .and_then(Value::as_str)
+                    .is_none_or(|kind| kind == context.entity_kind)
+            })
             .cloned()
             .collect::<Vec<_>>();
         let mut cluster_observations = cluster_observations;
@@ -2309,9 +2414,9 @@ fn build_commit_plan(
     let relations = artifact
         .relations
         .iter()
-        .filter(|relation| relation.subject_entity_type == context.entity_kind)
+        .filter(|relation| relation_belongs_to_kind(relation, &context))
         .filter_map(|relation| {
-            let subject = commit_relation_endpoint(&artifact.clusters, relation, true)?;
+            let subject = commit_relation_endpoint(&artifact.clusters, relation, true, &context)?;
             let object = if let Some(external_id) = &relation.object_external_id {
                 SessionCommitRelationEndpoint {
                     canonical_id: None,
@@ -2320,7 +2425,7 @@ fn build_commit_plan(
                     entity_type: relation.object_entity_type.clone(),
                 }
             } else {
-                commit_relation_endpoint(&artifact.clusters, relation, false)?
+                commit_relation_endpoint(&artifact.clusters, relation, false, &context)?
             };
             Some(SessionCommitRelation {
                 subject,
@@ -2328,17 +2433,26 @@ fn build_commit_plan(
                 object,
                 valid_time: relation.valid_time.clone(),
                 evidence_ids: relation.evidence_ids.clone(),
-                observations: [&relation.subject_surface, &relation.object_surface]
-                    .iter()
-                    .flat_map(|surface| {
-                        context
-                            .observation_values
-                            .get(*surface)
-                            .into_iter()
-                            .flatten()
-                    })
-                    .cloned()
-                    .collect(),
+                observations: [
+                    (&relation.subject_surface, &relation.subject_entity_type),
+                    (&relation.object_surface, &relation.object_entity_type),
+                ]
+                .into_iter()
+                .flat_map(|(surface, kind)| {
+                    context
+                        .observation_values
+                        .get(surface)
+                        .into_iter()
+                        .flatten()
+                        .filter(move |value| {
+                            value
+                                .get("entity_type")
+                                .and_then(Value::as_str)
+                                .is_none_or(|observed| observed == kind.as_str())
+                        })
+                })
+                .cloned()
+                .collect(),
             })
         })
         .collect();
@@ -2349,15 +2463,52 @@ fn build_commit_plan(
     })
 }
 
+/// Which kind's commit writes a relation. A relation between two different
+/// place grains is written by whichever of the two kinds commits later, so the
+/// earlier kind's minted id is already known; every other relation is written
+/// with its subject's kind.
+fn relation_belongs_to_kind(
+    relation: &SessionSolveRelation,
+    context: &CommitPlanContext<'_>,
+) -> bool {
+    let subject_kind = relation.subject_entity_type.as_str();
+    let object_kind = relation.object_entity_type.as_str();
+    let cross_grain = relation.object_external_id.is_none()
+        && subject_kind != object_kind
+        && place::is_place_grain(subject_kind)
+        && place::is_place_grain(object_kind);
+    if !cross_grain {
+        return subject_kind == context.entity_kind;
+    }
+    let position = |kind: &str| {
+        context
+            .kind_order
+            .iter()
+            .position(|ordered| *ordered == kind)
+    };
+    match (position(subject_kind), position(object_kind)) {
+        (Some(subject), Some(object)) => {
+            context.entity_kind
+                == if subject >= object {
+                    subject_kind
+                } else {
+                    object_kind
+                }
+        }
+        _ => subject_kind == context.entity_kind,
+    }
+}
+
 fn commit_relation_endpoint(
     clusters: &[SessionSolveCluster],
     relation: &SessionSolveRelation,
     subject: bool,
+    context: &CommitPlanContext<'_>,
 ) -> Option<SessionCommitRelationEndpoint> {
-    let surface = if subject {
-        &relation.subject_surface
+    let (surface, entity_type) = if subject {
+        (&relation.subject_surface, &relation.subject_entity_type)
     } else {
-        &relation.object_surface
+        (&relation.object_surface, &relation.object_entity_type)
     };
     clusters
         .iter()
@@ -2366,23 +2517,26 @@ fn commit_relation_endpoint(
                 .surfaces
                 .iter()
                 .any(|candidate| candidate == surface)
+                // The same surface may be a cluster at two kinds.
+                && cluster_entity_kind(cluster, context.observation_values)
+                    .is_none_or(|kind| kind == *entity_type)
                 && ((cluster.outcome == "accepted"
                     && matches!(cluster.tier.as_deref(), Some("A" | "B")))
                     || (cluster.outcome == "resolved_existing"
                         && cluster.incumbent_canonical_id.is_some()))
         })
-        .map(|cluster| SessionCommitRelationEndpoint {
-            canonical_id: cluster.incumbent_canonical_id.clone(),
-            cluster_id: cluster
+        .map(|cluster| {
+            // A cluster an earlier kind minted in this run is already an id.
+            let canonical_id = cluster
                 .incumbent_canonical_id
-                .is_none()
-                .then(|| cluster.cluster_id.clone()),
-            external_id: None,
-            entity_type: if subject {
-                relation.subject_entity_type.clone()
-            } else {
-                relation.object_entity_type.clone()
-            },
+                .clone()
+                .or_else(|| context.committed_ids.get(&cluster.cluster_id).cloned());
+            SessionCommitRelationEndpoint {
+                cluster_id: canonical_id.is_none().then(|| cluster.cluster_id.clone()),
+                canonical_id,
+                external_id: None,
+                entity_type: entity_type.clone(),
+            }
         })
 }
 
@@ -2757,6 +2911,11 @@ struct CommitPlanContext<'a> {
     solve_hash: &'a str,
     registry_version: &'a str,
     observation_values: &'a BTreeMap<String, Vec<Value>>,
+    /// The session's entity kinds in commit order.
+    kind_order: &'a [&'a str],
+    /// Clusters an earlier kind's commit minted in this run, as
+    /// cluster id to canonical id.
+    committed_ids: &'a BTreeMap<String, String>,
 }
 
 struct SessionCommitPlan {
@@ -4911,6 +5070,8 @@ mod tests {
                 solve_hash: "solve-hash",
                 registry_version: "0.0.0",
                 observation_values: &BTreeMap::new(),
+                kind_order: &["organisation"],
+                committed_ids: &BTreeMap::new(),
             },
         )
         .expect("commit plan");
@@ -5014,5 +5175,117 @@ mod tests {
         // Role, similarity and shared tokens are not inputs: with none of the
         // three there is no unit.
         assert_eq!(classify_unit_evidence(false, false, false), None);
+    }
+
+    #[test]
+    fn rule_tables_allow_every_place_type_and_the_solver_treats_place_vetoes_as_hard() {
+        for kind in super::place::PLACE_TIER_A_TYPES {
+            assert!(
+                TIER_A_TYPES.contains(kind),
+                "{kind} must be tier A eligible"
+            );
+        }
+        for kind in super::place::PLACE_TIER_B_TYPES {
+            assert!(
+                TIER_B_TYPES.contains(kind),
+                "{kind} must be tier B eligible"
+            );
+        }
+        for kind in super::place::PLACE_VETO_TYPES {
+            assert!(super::DISTINCT_TYPES.contains(kind), "{kind} must be hard");
+            assert!(!super::is_positive_type(kind), "{kind} is never support");
+        }
+        assert!(super::is_positive_type("same_apn"));
+        assert!(super::is_positive_type("footprint_overlap"));
+    }
+
+    fn cross_grain_relation(subject: &str, object: &str) -> super::SessionSolveRelation {
+        super::SessionSolveRelation {
+            left_surface: "left".to_string(),
+            right_surface: "right".to_string(),
+            subject_surface: "left".to_string(),
+            object_surface: "right".to_string(),
+            relation: "part_of".to_string(),
+            evidence_ids: Vec::new(),
+            subject_entity_type: subject.to_string(),
+            object_entity_type: object.to_string(),
+            object_external_id: None,
+            valid_time: crate::temporal::relation::TimeInterval::default(),
+        }
+    }
+
+    fn context_for<'a>(
+        kind: &'a str,
+        order: &'a [&'a str],
+        ids: &'a BTreeMap<String, String>,
+        observations: &'a BTreeMap<String, Vec<serde_json::Value>>,
+    ) -> CommitPlanContext<'a> {
+        CommitPlanContext {
+            entity_kind: kind,
+            alias_file: "aliases.json",
+            key_file: None,
+            canonical_type: kind,
+            session_id: "session-id",
+            solve_hash: "solve-hash",
+            registry_version: "0.0.0",
+            observation_values: observations,
+            kind_order: order,
+            committed_ids: ids,
+        }
+    }
+
+    #[test]
+    fn a_relation_between_two_grains_is_written_by_the_kind_that_commits_later() {
+        let order = ["building", "parcel", "unit"];
+        let ids = BTreeMap::new();
+        let observations = BTreeMap::new();
+        // building located_on parcel: parcel commits later than building.
+        let located_on = cross_grain_relation("building", "parcel");
+        assert!(!super::relation_belongs_to_kind(
+            &located_on,
+            &context_for("building", &order, &ids, &observations)
+        ));
+        assert!(super::relation_belongs_to_kind(
+            &located_on,
+            &context_for("parcel", &order, &ids, &observations)
+        ));
+        // unit part_of building: unit commits later than building.
+        let part_of = cross_grain_relation("unit", "building");
+        assert!(super::relation_belongs_to_kind(
+            &part_of,
+            &context_for("unit", &order, &ids, &observations)
+        ));
+        assert!(!super::relation_belongs_to_kind(
+            &part_of,
+            &context_for("building", &order, &ids, &observations)
+        ));
+        // Exactly one kind writes it, whatever the kind order.
+        let reversed = ["unit", "parcel", "building"];
+        let writers = ["building", "parcel", "unit"]
+            .into_iter()
+            .filter(|kind| {
+                super::relation_belongs_to_kind(
+                    &located_on,
+                    &context_for(kind, &reversed, &ids, &observations),
+                )
+            })
+            .count();
+        assert_eq!(writers, 1);
+    }
+
+    #[test]
+    fn a_relation_between_non_place_kinds_keeps_the_subject_kind_rule() {
+        let order = ["organisation", "person"];
+        let ids = BTreeMap::new();
+        let observations = BTreeMap::new();
+        let relation = cross_grain_relation("person", "organisation");
+        assert!(super::relation_belongs_to_kind(
+            &relation,
+            &context_for("person", &order, &ids, &observations)
+        ));
+        assert!(!super::relation_belongs_to_kind(
+            &relation,
+            &context_for("organisation", &order, &ids, &observations)
+        ));
     }
 }

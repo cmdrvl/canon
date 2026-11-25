@@ -105,7 +105,12 @@ The supported types are `same_key`, `same_slot`, `attribute_agreement`,
 `name_equivalent`, and `asserted_alias` (positive pair support), `distinct`
 (a hard cannot-link requiring `basis.authority`), and `related` (a contextual
 pair relation requiring `basis.relation` and `basis.subject`). `asserted_alias`
-requires a locator and content hash for non-human asserters. Complete
+requires a locator and content hash for non-human asserters. Place types
+(`same_parcel_id`, `same_apn`, `address_canonical_match`, `point_in_parcel`,
+`footprint_overlap`, `deed_chain_link`, `assessor_corroboration`, and the vetoes
+`conflicting_authoritative_apn`, `disjoint_parcels`, `grain_mismatch`) and the
+`located_on` / `contains_unit` relations are described under
+[Places](#places-grains-place-evidence-and-hierarchy). Complete
 `canon.evidence.v1` records are accepted as well. Rows are canonicalized and
 stored in the `entity-session-evidence` publication stream; malformed rows are
 reported individually with line, code, message, and fix while valid rows are
@@ -988,3 +993,63 @@ make a unit.
 - Solve: an observation with `context.role = R` tries the role-scoped entry
   first. `units` lists each `part_of` unit with its evidence; `scoped_aliases`
   lists the role-scoped spellings.
+
+## Places: grains, place evidence and hierarchy
+
+A place is resolved by the same loop as a name; nothing here is a second solver.
+Canon does not parse addresses, geocode, or read geometry: an adapter or agent
+runs the spatial join (Snowflake `ST_CONTAINS` / `ST_DWITHIN`, Overture, county
+parcels) and asserts the result with the basis that makes it inspectable.
+
+**Grains.** `site`, `parcel`, `building`, `unit` and `address` are entity kinds:
+give each its own entry in the `--registries` map, so each mints from its own id
+space and exact lookup against a grain's registry works like any name lookup. Two
+grains never share a node or a cluster, even when they share a surface string
+("1633 Broadway" as a building and as an address is two clusters, two ids).
+Authoritative keys (`apn`, a building id, a unit id) are ordinary `keys:` rules:
+a shared value is tier A, two different values in one cluster is `key_conflict`.
+Key values are opaque trimmed strings; normalising an APN is the adapter's job.
+
+**Support, same grain only.** Rules decide the tier; the type grants nothing.
+
+| Type | Basis field required | Where the rules usually place it |
+|------|----------------------|----------------------------------|
+| `same_parcel_id`, `same_apn` | `parcel_id` / `apn`; a locator and content hash for a non-human asserter | `tier_a.evidence_types` |
+| `address_canonical_match` | `canonical_address` | `tier_b.eligible_evidence_types` |
+| `point_in_parcel`, `footprint_overlap` | `method` (`overlap_ratio` in (0,1] when given) | tier B |
+| `deed_chain_link` | `instrument` | tier B |
+| `assessor_corroboration` | `field` | tier B |
+
+**Vetoes.** Each is a hard cannot-link like `distinct`; the basis must prove the
+claim or the row is rejected at assert (`invalid_basis`).
+
+- `conflicting_authoritative_apn`: `basis.left_value` and `basis.right_value`,
+  two different identifiers.
+- `disjoint_parcels`: `basis.distance_m` beyond a declared `basis.threshold_m`.
+- `grain_mismatch`: `basis.left_grain` and `basis.right_grain`, two different
+  place grains.
+
+A veto matters when something would merge the pair: the cluster is a
+`contradiction` with reason `distinct` and the veto kinds in `conflict_reasons`,
+nothing in it is committed, and commit writes the pair to
+`_escrow/cannot_link.jsonl` with the veto kind as the reason.
+
+**Hierarchy, never identity.** `part_of`, `located_on` and `contains_unit`
+(`related` evidence with `basis.relation` and `basis.subject`) are the only
+evidence that crosses grains, and only along these (subject, object) pairs:
+`part_of` unit-building, unit-site, building-site, parcel-site; `located_on`
+building-parcel, unit-parcel, address-parcel, address-building; `contains_unit`
+building-unit, site-unit. A unit is never collapsed into a building, nor a
+building into a parcel. Any other evidence between two place grains (a
+`point_in_parcel` between an address and a parcel, `part_of` in the wrong
+direction, `parent_of` across grains) is not applied: solve reports a
+`grain_mismatch` contradiction naming the evidence, commit writes nothing for it
+and opens no review. Evidence between a place grain and a non-place kind is still
+the `cross_entity_type_evidence` refusal. A `grain_mismatch` veto between two
+different grains agrees with the grains and has nothing to veto.
+
+**Commit.** A relation between two different grains is written once, by the
+registry of whichever of the two kinds commits later (the map's kind-name order),
+so the earlier kind's newly minted id is known. Registry export cards read one
+registry's `relations.jsonl`, so a card shows a cross-grain relation only when
+the other endpoint resolves in that same registry.

@@ -18,8 +18,22 @@ use std::{
 pub const SESSION_RULES_VERSION: &str = "canon.entity.session.rules.v1";
 pub const DEFAULT_MAX_CLUSTER_SURFACES: usize = 50;
 
-const TIER_A_TYPES: &[&str] = &["same_key", "asserted_alias"];
-const TIER_B_TYPES: &[&str] = &["same_slot", "attribute_agreement", "name_equivalent"];
+/// Every evidence type a rule table may place in tier A: the name types and the
+/// same-grain place identifier types (`place::PLACE_TIER_A_TYPES`).
+pub(crate) const TIER_A_TYPES: &[&str] =
+    &["same_key", "asserted_alias", "same_parcel_id", "same_apn"];
+/// Every evidence type a rule table may list as tier B eligible: the name types
+/// and the same-grain place types (`place::PLACE_TIER_B_TYPES`).
+pub(crate) const TIER_B_TYPES: &[&str] = &[
+    "same_slot",
+    "attribute_agreement",
+    "name_equivalent",
+    "address_canonical_match",
+    "point_in_parcel",
+    "footprint_overlap",
+    "deed_chain_link",
+    "assessor_corroboration",
+];
 const INCUMBENT_ATTACH_STEPS: &[&str] = &["casefold", "strip_punctuation", "collapse_whitespace"];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
