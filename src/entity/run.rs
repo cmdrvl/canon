@@ -2422,20 +2422,12 @@ fn exact_bucket_anchor_conflict_candidates(
 ) -> Result<Vec<BlockCandidateRecord>, Refusal> {
     let mut candidates = Vec::new();
     for bucket in buckets {
-        let bucket_surfaces = surfaces
-            .iter()
-            .filter(|surface| {
-                bucket
-                    .membership
-                    .surface_ids
-                    .iter()
-                    .any(|surface_id| surface_id == &surface.surface_id)
-                    || bucket.membership.surface_ranges.iter().any(|range| {
-                        range.start_surface_id.as_str() <= surface.surface_id.as_str()
-                            && surface.surface_id.as_str() <= range.end_surface_id.as_str()
-                    })
-            })
-            .collect::<Vec<_>>();
+        // The bucket's surfaces are only needed once an active anchor_conflict
+        // spec asks for them. Resolving them up front scanned every surface for
+        // every bucket even when the profile has no such spec, which made the
+        // block stage quadratic in the surface count (a day-two derive over a
+        // 50,000-alias registry spent most of its time here).
+        let mut cached_bucket_surfaces: Option<Vec<&PreparedSurfaceRecord>> = None;
         for spec in &profile.evidence.cannot_link {
             if spec.op != "anchor_conflict"
                 || optional_score_units_param(spec, "score_units", "score")?
@@ -2444,6 +2436,22 @@ fn exact_bucket_anchor_conflict_candidates(
                 continue;
             }
             let field = required_field_param(spec, "anchor_conflict")?;
+            let bucket_surfaces = cached_bucket_surfaces.get_or_insert_with(|| {
+                surfaces
+                    .iter()
+                    .filter(|surface| {
+                        bucket
+                            .membership
+                            .surface_ids
+                            .iter()
+                            .any(|surface_id| surface_id == &surface.surface_id)
+                            || bucket.membership.surface_ranges.iter().any(|range| {
+                                range.start_surface_id.as_str() <= surface.surface_id.as_str()
+                                    && surface.surface_id.as_str() <= range.end_surface_id.as_str()
+                            })
+                    })
+                    .collect()
+            });
             let grouped_surfaces = bucket_surfaces
                 .iter()
                 .map(|surface| ExactBucketAnchorSurface {
