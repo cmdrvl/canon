@@ -221,9 +221,9 @@ Provider-fetched registries snapshot an external or bundled provider into normal
 
 Provider-specific `--provider-config` semantics are discoverable through canon itself, not only through this prose. `canon registry providers --emit json` lists the available providers, and `canon registry provider-schema <PROVIDER> --emit json` emits the full option contract for one provider — keys, value types, enum values, secret flags, environment fallbacks, defaults, mutual exclusions, the interval encoding rule, and worked examples. Both surfaces are deterministic and offline (no provider call), and the same provider catalog is exposed under `providers` in `canon --describe`. Agents and skills should read the schema rather than hard-coding option lists:
 
-The focused README examples in this section are covered by bd-np37's docs
-parity checks where they use committed fixtures or temporary outputs. Exhaustive
-execution of the generated command corpus is owned by bd-ndfh.
+The focused README examples in this section are covered by docs parity checks
+where they use committed fixtures or temporary outputs. The generated command
+corpus has separate exhaustive verification.
 
 ```bash
 canon registry providers --emit json
@@ -609,7 +609,7 @@ inputs supplied by the caller. Nationwide geocoding and footprint acquisition th
 external tools are not an automated Canon address-to-building result. The
 [four-address baseline](scripts/geo_measurements/README.md#2026-09-16-four-address-bank-2019-bnk18-baseline)
 records the current boundary and replayable NYC evidence. Source-neutral address
-membership and the integrated plan/run journey remain open as bd-3mft and bd-33hh.
+membership and the integrated plan/run journey remain open.
 
 `canon geo plan --question --capabilities --inventory --profile --budget` is a
 deterministic offline planner. It emits `canon_geo_plan.v0`, a Geo semantic overlay over one
