@@ -175,7 +175,9 @@ canon entity session rules validate <RULES.yaml> [--emit json|summary]
 canon entity session commit <SESSION> (--next-version <VER>|--bump patch|minor|major) [--expect-base <HASH>] [--emit json|summary]
 canon entity session status <SESSION> [--rules <RULES.yaml>] [--emit json|summary]
 canon entity session explain <SESSION> <OBS_ID|SURFACE|cluster:CLUSTER_ID> [--emit json|summary]
-canon entity session frontier <SESSION> [--seed-entity <SURFACE_OR_ID>] [--emit json|summary]
+canon entity session frontier <SESSION> [--seed-entity <SURFACE_OR_ID>] [--shard <INDEX/TOTAL>] [--limit <N>] [--emit json|summary]
+canon entity session frontier claim <SESSION> --worker <ID> --limit <N> --ttl-secs <SECONDS> [--emit json|summary]
+canon entity session frontier release <SESSION> --claim-id <CLAIM_ID> [--emit json|summary]
 canon entity session next <SESSION> [--seed-entity <SURFACE_OR_ID>]
 canon entity session export <SESSION> --format evidence-closure --out <DIR> [--outcome <OUTCOME_REF>] [--emit json|summary]
 canon entity session derive <SESSION> --profile <PROFILE.yaml> --strategy <STRATEGY.yaml> [--no-registry-candidates] [--emit json|summary]
@@ -320,6 +322,8 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - `coverage[{key_family, source, attempted, supported, conflicted, unresolved}]`, `unresolved_keys[{namespace, value, surfaces, sources}]`, `components[{group_id, missing, settles_with, items, surfaces, observation_count}]` grouped by `needs_authoritative_key`, `needs_second_evidence_type`, `needs_independent_origin` and `needs_human` (the first three are the solve's `missing` values), `terminal[{reason, count}]`, and `history_requests[{group_id, need: prior_observations, scope, before, settles_with}]`; order is by group id, no score or rank; no field names a command
 - `--seed-entity` restricts the frontier to the seed's neighbourhood and adds `seed{unresolved_keys, unresolved_spellings, unresolved_units, history_requests}`
 - `next` is the same data rendered as plain lines (equal to `frontier --emit summary`)
+- `--shard INDEX/TOTAL` selects one deterministic shard of the frontier and `--limit` caps the items after sharding, so parallel workers can partition the same solve without coordination
+- `frontier claim <SESSION> --worker <ID> --limit <N> --ttl-secs <S>` appends a time-limited lease for a disjoint batch to the session's frontier lease stream and emits `canon.entity.session.frontier.claims.v1` (`claim_id` is null when nothing is claimable); `frontier release <SESSION> --claim-id <ID>` ends a lease early (`released` is false for an unknown, released or expired claim); both write only the session work directory, bound to the current `solve_hash`
 
 `canon entity session export <SESSION> --format evidence-closure --out <DIR> [--outcome <OUTCOME_REF>] [--emit json|summary]`
 - writes, for every outcome of the session's latest commit (or one `--outcome`), `DIR/<64 hex of closure_hash>/` holding `closure.json` (the stored manifest byte for byte, so its blake3 is the `closure_hash` on the registry entry, relation line or cannot-link record), `observations.jsonl` (each stored record with `source_handles`: artifact_id, receipt_digest, result_digest, catalog_key, columns and row_hash, `null` when the observation does not carry one), `evidence.jsonl` and `rules.yaml`; without `--outcome` also `DIR/commit.json`, the stored closure set whose blake3 is the receipt's `closure_set_hash`

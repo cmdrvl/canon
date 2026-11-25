@@ -355,6 +355,62 @@ fn run_operator_journey(label: &str) -> JourneyRun {
         "canon.entity.session.frontier.v1"
     );
 
+    let session_claim = canon_json(
+        &[
+            "entity",
+            "session",
+            "frontier",
+            "claim",
+            path_str(&session_work),
+            "--worker",
+            "journey-worker",
+            "--limit",
+            "1",
+            "--ttl-secs",
+            "600",
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(session_claim.record);
+    assert_eq!(
+        session_claim.value["version"],
+        "canon.entity.session.frontier.claims.v1"
+    );
+    assert_eq!(session_claim.value["worker"], "journey-worker");
+    let claim_id = session_claim.value["claim_id"]
+        .as_str()
+        .expect("the journey's unresolved review item must be claimable")
+        .to_string();
+    assert_eq!(
+        session_claim.value["frontier_ids"].as_array().map(Vec::len),
+        Some(1),
+        "a claim with --limit 1 holds exactly one frontier item"
+    );
+
+    let session_release = canon_json(
+        &[
+            "entity",
+            "session",
+            "frontier",
+            "release",
+            path_str(&session_work),
+            "--claim-id",
+            claim_id.as_str(),
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(session_release.record);
+    assert_eq!(
+        session_release.value["version"],
+        "canon.entity.session.frontier.claims.v1"
+    );
+    assert_eq!(session_release.value["claim_id"], claim_id.as_str());
+    assert_eq!(session_release.value["released"], true);
+
     let session_next = canon_raw(&["entity", "session", "next", path_str(&session_work)], 0);
     assert!(!session_next.stdout.is_empty());
     command_log.push(session_next);
@@ -1857,6 +1913,12 @@ fn classify_entity_leaf(args: &[&str]) -> Option<String> {
         ["entity", "session", "status", ..] => Some("entity session status".to_string()),
         ["entity", "session", "explain", ..] => Some("entity session explain".to_string()),
         ["entity", "session", "export", ..] => Some("entity session export".to_string()),
+        ["entity", "session", "frontier", "claim", ..] => {
+            Some("entity session frontier claim".to_string())
+        }
+        ["entity", "session", "frontier", "release", ..] => {
+            Some("entity session frontier release".to_string())
+        }
         ["entity", "session", "frontier", ..] => Some("entity session frontier".to_string()),
         ["entity", "session", "next", ..] => Some("entity session next".to_string()),
         ["entity", "session", "sample", ..] => Some("entity session sample".to_string()),

@@ -69,7 +69,9 @@
       "canon entity session commit <SESSION> (--next-version <VER>|--bump patch|minor|major) [--expect-base <HASH>] [--emit json|summary]",
       "canon entity session status <SESSION> [--rules <RULES.yaml>] [--emit json|summary]",
       "canon entity session explain <SESSION> <OBS_ID|SURFACE|cluster:CLUSTER_ID> [--emit json|summary]",
-      "canon entity session frontier <SESSION> [--seed-entity <SURFACE_OR_ID>] [--emit json|summary]",
+      "canon entity session frontier <SESSION> [--seed-entity <SURFACE_OR_ID>] [--shard <INDEX/TOTAL>] [--limit <N>] [--emit json|summary]",
+      "canon entity session frontier claim <SESSION> --worker <ID> --limit <N> --ttl-secs <SECONDS> [--emit json|summary]",
+      "canon entity session frontier release <SESSION> --claim-id <CLAIM_ID> [--emit json|summary]",
       "canon entity session next <SESSION> [--seed-entity <SURFACE_OR_ID>]",
       "canon entity session export <SESSION> --format evidence-closure --out <DIR> [--outcome <OUTCOME_REF>] [--emit json|summary]",
       "canon entity session derive <SESSION> --profile <PROFILE.yaml> --strategy <STRATEGY.yaml> [--no-registry-candidates] [--emit json|summary]",
@@ -8423,12 +8425,17 @@
     },
     {
       "name": "entity session frontier",
-      "usage": "canon entity session frontier <SESSION> [--seed-entity <SURFACE_OR_ID>] [--emit json|summary]",
-      "description": "State what the recorded solve still leaves unresolved as data: coverage per key family and source, unresolved keys, review items grouped by missing condition with the evidence types that would settle each, terminal rows, and the prior observations a same_slot would need; bound to a current solve",
+      "usage": "canon entity session frontier <SESSION> [--seed-entity <SURFACE_OR_ID>] [--shard <INDEX/TOTAL>] [--limit <N>] [--emit json|summary]",
+      "description": "State what the recorded solve still leaves unresolved as data: coverage per key family and source, unresolved keys, review items grouped by missing condition with the evidence types that would settle each, terminal rows, and the prior observations a same_slot would need; bound to a current solve; --shard INDEX/TOTAL selects one deterministic shard and --limit caps the items after sharding; the claim and release subcommands hand disjoint batches to parallel workers",
       "output_mode": "mixed",
       "output_schema": "canon.entity.session.frontier.v1",
       "status": "implemented",
       "read_only": true,
+      "aggregate": true,
+      "leaves": [
+        "entity session frontier claim",
+        "entity session frontier release"
+      ],
       "safety": {
         "owned_temp_fixtures_only": true,
         "notes": "reads the committed session observations and solve without changing them",
@@ -8475,6 +8482,18 @@
           "description": "Restrict the frontier to one entity's neighbourhood: a surface or canonical id"
         },
         {
+          "name": "shard",
+          "flag": "--shard",
+          "type": "string",
+          "description": "Select one deterministic shard, written as INDEX/TOTAL"
+        },
+        {
+          "name": "limit",
+          "flag": "--limit",
+          "type": "integer",
+          "description": "Return at most this many frontier items after sharding"
+        },
+        {
           "name": "emit",
           "flag": "--emit",
           "type": "string",
@@ -8485,6 +8504,158 @@
       "next_command": "canon entity session frontier <SESSION> --emit json",
       "recovery": {
         "next_command": "Run canon entity session solve <SESSION> --rules <RULES.yaml>, then rerun",
+        "refusal_exit_code": 2
+      }
+    },
+    {
+      "name": "entity session frontier claim",
+      "usage": "canon entity session frontier claim <SESSION> --worker <ID> --limit <N> --ttl-secs <SECONDS> [--emit json|summary]",
+      "description": "Claim a disjoint batch of unclaimed frontier items for one worker under a time-limited lease, appended to the session's frontier lease stream and bound to the current solve; items held by another live claim are skipped, an expired lease frees its items, and when nothing is claimable the output carries claim_id null and no items",
+      "output_mode": "mixed",
+      "output_schema": "canon.entity.session.frontier.claims.v1",
+      "status": "implemented",
+      "read_only": false,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "appends lease events to the session's own frontier lease stream; concurrent claimers retry stream-head conflicts a bounded number of times; no registry write, no network",
+        "mutation_class": "OwnedOutput",
+        "network_class": "Offline",
+        "concurrency_class": "CacheRaceSafe",
+        "platform_classes": [
+          "PortablePathUtf8",
+          "SameFilesystemAtomicReplace"
+        ],
+        "declaration_command": "entity workbench"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": true,
+        "writes_registry_files": false,
+        "writes_work_dir": true,
+        "writes_output_files": false,
+        "uses_network": false,
+        "appends_witness_ledger": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "claim evaluated; claim_id is null when no unclaimed frontier item remained",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / empty or oversized worker id, zero limit or TTL, stale solve, unreadable session artifacts, a corrupt lease stream, or the lease stream could not advance after bounded retries",
+          "domain": "error"
+        }
+      },
+      "options": [
+        {
+          "name": "session",
+          "type": "directory_path",
+          "required": true,
+          "position": 0,
+          "description": "Session work directory"
+        },
+        {
+          "name": "worker",
+          "flag": "--worker",
+          "type": "string",
+          "required": true,
+          "description": "Stable worker identifier of 1 to 128 characters"
+        },
+        {
+          "name": "limit",
+          "flag": "--limit",
+          "type": "integer",
+          "required": true,
+          "description": "Maximum frontier items to claim; must be greater than zero"
+        },
+        {
+          "name": "ttl_secs",
+          "flag": "--ttl-secs",
+          "type": "integer",
+          "required": true,
+          "description": "Lease lifetime in seconds; must be greater than zero"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json or summary"
+        }
+      ],
+      "next_command": "canon entity session frontier claim <SESSION> --worker <ID> --limit <N> --ttl-secs <SECONDS> --emit json",
+      "recovery": {
+        "next_command": "Run canon entity session solve <SESSION> --rules <RULES.yaml> if the solve is stale, then rerun",
+        "refusal_exit_code": 2
+      }
+    },
+    {
+      "name": "entity session frontier release",
+      "usage": "canon entity session frontier release <SESSION> --claim-id <CLAIM_ID> [--emit json|summary]",
+      "description": "Release an active frontier lease so its items can be claimed again; releasing a claim that is unknown, already released or expired succeeds with released false and writes nothing",
+      "output_mode": "mixed",
+      "output_schema": "canon.entity.session.frontier.claims.v1",
+      "status": "implemented",
+      "read_only": false,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "appends a release event to the session's own frontier lease stream; concurrent writers retry stream-head conflicts a bounded number of times; no registry write, no network",
+        "mutation_class": "OwnedOutput",
+        "network_class": "Offline",
+        "concurrency_class": "CacheRaceSafe",
+        "platform_classes": [
+          "PortablePathUtf8",
+          "SameFilesystemAtomicReplace"
+        ],
+        "declaration_command": "entity workbench"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "writes_registry_files": false,
+        "writes_work_dir": true,
+        "writes_output_files": false,
+        "uses_network": false,
+        "appends_witness_ledger": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "release evaluated; released is false when the claim was not active",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / unreadable session artifacts, a corrupt lease stream, or the lease stream could not advance after bounded retries",
+          "domain": "error"
+        }
+      },
+      "options": [
+        {
+          "name": "session",
+          "type": "directory_path",
+          "required": true,
+          "position": 0,
+          "description": "Session work directory"
+        },
+        {
+          "name": "claim_id",
+          "flag": "--claim-id",
+          "type": "string",
+          "required": true,
+          "description": "Claim identifier returned by canon entity session frontier claim"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json or summary"
+        }
+      ],
+      "next_command": "canon entity session frontier release <SESSION> --claim-id <CLAIM_ID> --emit json",
+      "recovery": {
+        "next_command": "Check the session with canon entity session status <SESSION>, then rerun the release",
         "refusal_exit_code": 2
       }
     },

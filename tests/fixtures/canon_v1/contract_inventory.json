@@ -907,9 +907,25 @@
     {
       "id": "canon entity session frontier",
       "family": "entity",
-      "clap_path": "entity session frontier",
+      "clap_path": null,
       "operator_name": "entity session frontier",
       "primary_contracts": ["canon.entity.session.frontier.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity session frontier claim",
+      "family": "entity",
+      "clap_path": "entity session frontier claim",
+      "operator_name": "entity session frontier claim",
+      "primary_contracts": ["canon.entity.session.frontier.claims.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity session frontier release",
+      "family": "entity",
+      "clap_path": "entity session frontier release",
+      "operator_name": "entity session frontier release",
+      "primary_contracts": ["canon.entity.session.frontier.claims.v1"],
       "action": "preserve"
     },
     {
@@ -1490,6 +1506,12 @@
     { "id": "canon.entity.session.status.v1", "family": "entity", "action": "preserve" },
     { "id": "canon.entity.session.explain.v1", "family": "entity", "action": "preserve" },
     { "id": "canon.entity.session.frontier.v1", "family": "entity", "action": "preserve" },
+    { "id": "canon.entity.session.frontier.claim.v1", "family": "entity", "action": "preserve" },
+    { "id": "canon.entity.session.frontier.claim-retry.v1", "family": "entity", "action": "preserve" },
+    { "id": "canon.entity.session.frontier.claims.v1", "family": "entity", "action": "preserve" },
+    { "id": "canon.entity.session.frontier.claims.receipt.v1", "family": "entity", "action": "preserve" },
+    { "id": "canon.entity.session.frontier.item.v1", "family": "entity", "action": "preserve" },
+    { "id": "canon.entity.session.frontier.key.v1", "family": "entity", "action": "preserve" },
     { "id": "canon.entity.session.sample.v1", "family": "entity", "action": "preserve" },
     { "id": "canon.entity.session.entity-types.v1", "family": "entity", "action": "preserve" },
     { "id": "canon.entity.session.relations.v1", "family": "entity", "action": "preserve" },
