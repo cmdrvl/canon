@@ -408,9 +408,13 @@ brew install cmdrvl/tap/canon
 ### From Source
 
 ```bash
-cargo build --release
+cargo build --release --all-features
 ./target/release/canon --help
 ```
+
+`--all-features` builds the same commands as the released binary, including
+`canon geo`. A plain `cargo build` builds the core: lookup, the registry
+commands, and the evidence-session engine.
 
 ---
 
@@ -1939,9 +1943,12 @@ The full specification is `docs/PLAN_CANON.md`. This README covers everything ne
 
 ```bash
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-features
 ```
+
+The default build is the core, so `cargo clippy --all-targets -- -D warnings`
+and `cargo test` must stay green on their own too; CI runs both profiles.
 
 ---
 

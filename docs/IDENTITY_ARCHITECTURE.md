@@ -226,9 +226,10 @@ local ID allocation, not a new matching mode.
 
 ## Active vs Legacy Source Surface
 
-This is a map of `src/`, not a gate. No Cargo feature separates these
-surfaces yet: everything below compiles into the default binary. Update this
-section when a gate lands.
+This is a map of `src/`. One Cargo feature gates it so far: `geo` (`src/geo/`,
+`canon geo`, and the `canon_geo_measurements` bin). It is off in the default
+build and on in release and CI builds (`--all-features`). Everything else below
+compiles into the default binary. Update this section when another gate lands.
 
 It was built at commit `316597f` from a static module graph (`crate::`,
 `super::` and `#[path]` mounts). Line counts are Rust lines under `src/`.
@@ -245,7 +246,7 @@ counts as reached if any of its code is.
 | `evaluation/` | 21.4k | Recall, alias-withholding and generalization evaluations | `canon entity candidate-recall`, `alias-withholding`, `generalization`; depends on `entity` and `resolve` | Legacy workbench, live |
 | `entity/` run family | about 54k of the 103k lines in the `entity`, `org`, `evidence` and `source_mapping` graph; 8.1k of it is the shared `review_export` and `review_import` below | `run`, `record_link`, `apply`, `promote`, `solve`, `calibrate*`, `schema`, `contracts` and the rest of the `canon entity run` pipeline | Not referenced by the session modules, `registry/` or lookup at module level | Legacy workbench, live |
 | `entity/` shared | about 49k of the same 103k | `runtime` (the `org/` files), `publication`, `evidence_ir`, `index`, `prepare`, `block`, `edge`, `profile` and the session modules | Session commands, including `session derive` | Core closure |
-| `geo/` | 97.2k | The Geo workbench | `canon geo` and the `canon_geo_measurements` bin; outside `geo/` only the `lib.rs` dispatch arm and the `cli.rs` definitions refer to it | Self-contained workbench |
+| `geo/` | 97.2k | The Geo workbench | `canon geo` and the `canon_geo_measurements` bin; outside `geo/` only the `lib.rs` dispatch arm and the `cli.rs` definitions refer to it | Self-contained workbench, behind the `geo` feature |
 
 Two modules sit between the groups. `entity/review_export` and
 `entity/review_import` serve both session review queues and the legacy path,

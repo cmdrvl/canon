@@ -179,6 +179,7 @@ pub enum CanonCommand {
     /// Project bootstrap, validation, and description commands
     Project(ProjectCli),
     /// Bounded geospatial composition, evidence admission, and evaluation commands
+    #[cfg(feature = "geo")]
     Geo(GeoCli),
     /// Unresolved inbox triage, review export, and bounded entity planning
     Inbox(InboxCli),
@@ -205,17 +206,21 @@ pub struct ProjectCli {
     pub command: ProjectSubcommand,
 }
 
-#[derive(Args, Debug, Clone)]
-#[command(
+#[cfg(feature = "geo")]
+mod geo_root_args {
+    use super::*;
+
+    #[derive(Args, Debug, Clone)]
+    #[command(
     subcommand_help_heading = "Primary",
     after_help = GEO_STAGE_LEAF_HELP
 )]
-pub struct GeoCli {
-    #[command(subcommand)]
-    pub command: GeoSubcommand,
-}
+    pub struct GeoCli {
+        #[command(subcommand)]
+        pub command: GeoSubcommand,
+    }
 
-const GEO_STAGE_LEAF_HELP: &str = "\
+    const GEO_STAGE_LEAF_HELP: &str = "\
 Agent guide: canon geo capabilities --guide
   Installed input schemas, supported clue types, and a runnable offline example.
 
@@ -232,13 +237,17 @@ Stage leaves (used by geo run and Demo 0):
   compile-evidence                Admit versioned rho observations into a bounded composition request
   stack-evidence                  Accrete truth-blind evidence onto an exact bounded population";
 
-/// Emit mode for Geo capability inspection
-#[derive(Debug, Clone, ValueEnum, Default)]
-pub enum GeoCapabilitiesEmitMode {
-    /// Structured canon_geo_capabilities.v0 JSON
-    #[default]
-    Json,
+    /// Emit mode for Geo capability inspection
+    #[derive(Debug, Clone, ValueEnum, Default)]
+    pub enum GeoCapabilitiesEmitMode {
+        /// Structured canon_geo_capabilities.v0 JSON
+        #[default]
+        Json,
+    }
 }
+
+#[cfg(feature = "geo")]
+pub use geo_root_args::*;
 
 #[derive(Args, Debug, Clone)]
 pub struct InboxCli {
@@ -290,401 +299,409 @@ pub enum ProjectLockSubcommand {
     Refresh(ProjectLockRefreshCli),
 }
 
-#[derive(Subcommand, Debug, Clone)]
-pub enum GeoSubcommand {
-    /// Emit compiled offline Canon Geo capability contracts
-    Capabilities(GeoCapabilitiesCli),
-    /// Compile a deterministic offline Geo plan from declared local inputs
-    Plan(GeoPlanCli),
-    /// Run a Geo plan offline with explicit local input bindings
-    Run(GeoRunCli),
-    /// Satisfy one acquisition request, publish an inventory advancement, and replan
-    #[command(name = "replan-from-acquisition")]
-    ReplanFromAcquisition(GeoReplanFromAcquisitionCli),
-    /// Inspect a Geo run's sections, receipts, and residual state from stored artifacts
-    Inspect(GeoInspectCli),
-    /// Validate Geo physical collateral ledger artifacts
-    Ledger(GeoLedgerCli),
-    /// Evaluate labeled composition cases without exposing labels to composition logic
-    Evaluate(GeoEvaluateCli),
-    /// Materialize three or more named sources into one budgeted consistency artifact
-    #[command(name = "link-sources", hide = true)]
-    LinkSources(GeoLinkSourcesCli),
-    /// Derive auditable H3 home cells from release-bound representative points
-    #[command(name = "materialize-home-cells", hide = true)]
-    MaterializeHomeCells(GeoMaterializeHomeCellsCli),
-    /// Build one bounded H3 center-plus-halo feature work unit
-    #[command(name = "tile-work", hide = true)]
-    TileWork(GeoTileWorkCli),
-    /// Reconcile independently solved tile decisions under one ownership rule
-    #[command(name = "reconcile-tiles", hide = true)]
-    ReconcileTiles(GeoReconcileTilesCli),
-    /// Solve the exact hard-feasible parcel/building residual for a composition request
-    #[command(hide = true)]
-    Solve(GeoSolveCli),
-    /// Normalize and budget source geometry into canonical tile-local values
-    #[command(name = "materialize-geometry", hide = true)]
-    MaterializeGeometry(GeoMaterializeGeometryCli),
-    /// Decode release-pinned warehouse WKB into a verified source-plane geometry tile
-    #[command(name = "materialize-warehouse-geometry", hide = true)]
-    MaterializeWarehouseGeometry(GeoMaterializeWarehouseGeometryCli),
-    /// Fold release-pinned warehouse rows into a typed evidence request
-    #[command(name = "materialize-evidence", hide = true)]
-    MaterializeEvidence(GeoMaterializeEvidenceCli),
-    /// Parse an address, test PAD membership, and emit a typed parcel-evidence bridge
-    #[command(name = "materialize-address-evidence", hide = true)]
-    MaterializeAddressEvidence(GeoMaterializeAddressEvidenceCli),
-    /// Materialize controlling Appendix H.7 multi-parcel rows into a labeled population
-    #[command(name = "materialize-h7-population", hide = true)]
-    MaterializeH7Population(GeoMaterializeH7PopulationCli),
-    /// Materialize H.7 NYC staging-profile rows through the population adapter
-    #[command(name = "materialize-h7-staging-batch", hide = true)]
-    MaterializeH7StagingBatch(GeoMaterializeH7StagingBatchCli),
-    /// Materialize an H.7 PIP-block export without a warehouse JSON-wrapper pass
-    #[command(name = "materialize-h7-pip-block-batch", hide = true)]
-    MaterializeH7PipBlockBatch(GeoMaterializeH7PipBlockBatchCli),
-    /// Admit versioned rho observations into a bounded composition request
-    #[command(name = "compile-evidence", hide = true)]
-    CompileEvidence(GeoCompileEvidenceCli),
-    /// Accrete truth-blind evidence onto an exact bounded population
-    #[command(name = "stack-evidence", hide = true)]
-    StackEvidence(GeoStackEvidenceCli),
+#[cfg(feature = "geo")]
+mod geo_leaf_args {
+    use super::*;
+
+    #[derive(Subcommand, Debug, Clone)]
+    pub enum GeoSubcommand {
+        /// Emit compiled offline Canon Geo capability contracts
+        Capabilities(GeoCapabilitiesCli),
+        /// Compile a deterministic offline Geo plan from declared local inputs
+        Plan(GeoPlanCli),
+        /// Run a Geo plan offline with explicit local input bindings
+        Run(GeoRunCli),
+        /// Satisfy one acquisition request, publish an inventory advancement, and replan
+        #[command(name = "replan-from-acquisition")]
+        ReplanFromAcquisition(GeoReplanFromAcquisitionCli),
+        /// Inspect a Geo run's sections, receipts, and residual state from stored artifacts
+        Inspect(GeoInspectCli),
+        /// Validate Geo physical collateral ledger artifacts
+        Ledger(GeoLedgerCli),
+        /// Evaluate labeled composition cases without exposing labels to composition logic
+        Evaluate(GeoEvaluateCli),
+        /// Materialize three or more named sources into one budgeted consistency artifact
+        #[command(name = "link-sources", hide = true)]
+        LinkSources(GeoLinkSourcesCli),
+        /// Derive auditable H3 home cells from release-bound representative points
+        #[command(name = "materialize-home-cells", hide = true)]
+        MaterializeHomeCells(GeoMaterializeHomeCellsCli),
+        /// Build one bounded H3 center-plus-halo feature work unit
+        #[command(name = "tile-work", hide = true)]
+        TileWork(GeoTileWorkCli),
+        /// Reconcile independently solved tile decisions under one ownership rule
+        #[command(name = "reconcile-tiles", hide = true)]
+        ReconcileTiles(GeoReconcileTilesCli),
+        /// Solve the exact hard-feasible parcel/building residual for a composition request
+        #[command(hide = true)]
+        Solve(GeoSolveCli),
+        /// Normalize and budget source geometry into canonical tile-local values
+        #[command(name = "materialize-geometry", hide = true)]
+        MaterializeGeometry(GeoMaterializeGeometryCli),
+        /// Decode release-pinned warehouse WKB into a verified source-plane geometry tile
+        #[command(name = "materialize-warehouse-geometry", hide = true)]
+        MaterializeWarehouseGeometry(GeoMaterializeWarehouseGeometryCli),
+        /// Fold release-pinned warehouse rows into a typed evidence request
+        #[command(name = "materialize-evidence", hide = true)]
+        MaterializeEvidence(GeoMaterializeEvidenceCli),
+        /// Parse an address, test PAD membership, and emit a typed parcel-evidence bridge
+        #[command(name = "materialize-address-evidence", hide = true)]
+        MaterializeAddressEvidence(GeoMaterializeAddressEvidenceCli),
+        /// Materialize controlling Appendix H.7 multi-parcel rows into a labeled population
+        #[command(name = "materialize-h7-population", hide = true)]
+        MaterializeH7Population(GeoMaterializeH7PopulationCli),
+        /// Materialize H.7 NYC staging-profile rows through the population adapter
+        #[command(name = "materialize-h7-staging-batch", hide = true)]
+        MaterializeH7StagingBatch(GeoMaterializeH7StagingBatchCli),
+        /// Materialize an H.7 PIP-block export without a warehouse JSON-wrapper pass
+        #[command(name = "materialize-h7-pip-block-batch", hide = true)]
+        MaterializeH7PipBlockBatch(GeoMaterializeH7PipBlockBatchCli),
+        /// Admit versioned rho observations into a bounded composition request
+        #[command(name = "compile-evidence", hide = true)]
+        CompileEvidence(GeoCompileEvidenceCli),
+        /// Accrete truth-blind evidence onto an exact bounded population
+        #[command(name = "stack-evidence", hide = true)]
+        StackEvidence(GeoStackEvidenceCli),
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoCapabilitiesCli {
+        /// Emit the installed agent guide, schemas, and synthetic workflow example
+        #[arg(long)]
+        pub guide: bool,
+        /// Output mode
+        #[arg(long, value_enum, default_value = "json")]
+        pub emit: GeoCapabilitiesEmitMode,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoPlanCli {
+        /// JSON file holding a canon_geo_question.v0 question
+        #[arg(long)]
+        pub question: PathBuf,
+        /// JSON file holding a canon_geo_capabilities.v0 capability artifact
+        #[arg(long)]
+        pub capabilities: PathBuf,
+        /// JSON file holding a canon_geo_regional_inventory.v1 inventory
+        #[arg(long)]
+        pub inventory: PathBuf,
+        /// JSON file holding a canon_geo_composition_profile.v0 profile
+        #[arg(long)]
+        pub profile: PathBuf,
+        /// JSON file holding a canon_geo_resource_budget.v0 budget
+        #[arg(long)]
+        pub budget: PathBuf,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoRunCli {
+        /// JSON file holding a canon_geo_plan.v0 plan
+        #[arg(long)]
+        pub plan: PathBuf,
+        /// Directory used as the Geo run workspace
+        #[arg(long = "work-dir")]
+        pub work_dir: PathBuf,
+        /// Local typed input binding as NODE_ID:BINDING_ID=PATH; repeatable
+        #[arg(long = "input", value_name = "NODE_ID:BINDING_ID=PATH")]
+        pub input: Vec<String>,
+        /// Acquisition satisfaction as REQUEST_ID=RECEIPT.json; repeatable
+        #[arg(long = "satisfy", value_name = "REQUEST_ID=RECEIPT.json")]
+        pub satisfy: Vec<String>,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoInspectCli {
+        /// Geo run workspace root holding .canon/geo-run
+        #[arg(long = "run")]
+        pub run: PathBuf,
+        /// Optional bounded component identifier to focus detail refs
+        #[arg(long)]
+        pub component: Option<String>,
+        /// Optional second Geo run workspace to compare against
+        #[arg(long)]
+        pub compare: Option<PathBuf>,
+        /// Read retained continuation actions and optional next-evidence state; never generates actions
+        #[arg(long = "recommend-next")]
+        pub recommend_next: bool,
+        /// Output mode
+        #[arg(long, value_enum, default_value = "json")]
+        pub emit: RegistryEmitMode,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoReplanFromAcquisitionCli {
+        /// JSON file holding the base canon_geo_plan.v0 plan
+        #[arg(long = "base-plan")]
+        pub base_plan: PathBuf,
+        /// JSON file holding the base canon_geo_regional_inventory.v1 inventory
+        #[arg(long = "base-inventory")]
+        pub base_inventory: PathBuf,
+        /// JSON file holding the original canon_geo_question.v0 question
+        #[arg(long)]
+        pub question: PathBuf,
+        /// JSON file holding the original canon_geo_capabilities.v0 capabilities
+        #[arg(long)]
+        pub capabilities: PathBuf,
+        /// JSON file holding the original canon_geo_composition_profile.v0 profile
+        #[arg(long)]
+        pub profile: PathBuf,
+        /// JSON file holding the original canon_geo_resource_budget.v0 budget
+        #[arg(long)]
+        pub budget: PathBuf,
+        /// Acquisition satisfaction as REQUEST_ID=RECEIPT.json
+        #[arg(long = "satisfy", value_name = "REQUEST_ID=RECEIPT.json")]
+        pub satisfy: String,
+        /// Local typed acquisition artifact as LOCAL_ARTIFACT_ID=PATH; repeatable
+        #[arg(
+            long = "local-artifact",
+            value_name = "LOCAL_ARTIFACT_ID=PATH",
+            required = true
+        )]
+        pub local_artifact: Vec<String>,
+        /// Local result digest artifact as DIGEST_ID=PATH; repeatable
+        #[arg(long = "result", value_name = "DIGEST_ID=PATH")]
+        pub result: Vec<String>,
+        /// Owned output path for canon_geo_regional_inventory_advancement.v0
+        #[arg(long = "advancement-out")]
+        pub advancement_out: PathBuf,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoLedgerCli {
+        #[command(subcommand)]
+        pub command: Option<GeoLedgerSubcommand>,
+    }
+
+    #[derive(Subcommand, Debug, Clone)]
+    pub enum GeoLedgerSubcommand {
+        /// Build a physical collateral ledger from seed rows and bound solve/evidence artifacts
+        Build(GeoLedgerBuildCli),
+        /// Build an offline visual evidence-card data artifact from stored Geo artifacts
+        Card(GeoLedgerCardCli),
+        /// Report cross-deal parcel/building collisions and block concentration from ledgers
+        Collision(GeoLedgerCollisionCli),
+        /// Join a pinned wind-radii advisory to exact ledger building geometry
+        Exposure(GeoLedgerExposureCli),
+        /// Validate a physical collateral ledger artifact and emit canonical bytes
+        Validate(GeoLedgerValidateCli),
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoLedgerBuildCli {
+        /// JSON file holding a canon_geo_collateral_ledger_seed.v0 seed artifact
+        #[arg(long)]
+        pub seed: PathBuf,
+        /// Bound solve artifact as ARTIFACT_ID=COMPOSITION.json; repeatable
+        #[arg(long = "composition", value_name = "ARTIFACT_ID=COMPOSITION.json")]
+        pub composition: Vec<String>,
+        /// Bound evidence artifact as ARTIFACT_ID=EVIDENCE.json; repeatable
+        #[arg(long = "evidence", value_name = "ARTIFACT_ID=EVIDENCE.json")]
+        pub evidence: Vec<String>,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoLedgerValidateCli {
+        /// JSON file holding a canon_geo_collateral_ledger.v0 artifact
+        #[arg(long)]
+        pub ledger: PathBuf,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoLedgerCardCli {
+        /// Subject identifier to copy into the evidence-card artifact
+        #[arg(long = "subject-id")]
+        pub subject_id: String,
+        /// JSON file holding a GeoEvidenceCardBuildContext
+        #[arg(long)]
+        pub context: PathBuf,
+        /// JSON file holding one canon_geo_image_tile_pin.v0 row artifact
+        #[arg(long = "ortho-pin")]
+        pub ortho_pin: PathBuf,
+        /// JSON file holding a canon_geo_composition.v0 artifact; omitted only for reach-none cards
+        #[arg(long)]
+        pub composition: Option<PathBuf>,
+        /// JSON file holding a canon_geo_evidence_compilation.v0 artifact; omitted only for reach-none cards
+        #[arg(long)]
+        pub evidence: Option<PathBuf>,
+        /// JSON object mapping candidate ids to canon_geo_geometry_value.v0 values; omitted only for reach-none cards
+        #[arg(long)]
+        pub geometry: Option<PathBuf>,
+        /// Optional canon_geo_explanation.v0 artifact chained to a conflict or not-conflict composition
+        #[arg(long)]
+        pub explanation: Option<PathBuf>,
+        /// Emit the full evidence-card artifact instead of the default redacted projection
+        #[arg(long)]
+        pub explicit: bool,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoLedgerCollisionCli {
+        /// Two or more JSON files holding canon_geo_collateral_ledger.v0 artifacts
+        #[arg(long = "ledgers", value_name = "LEDGER.json", num_args = 2..)]
+        pub ledgers: Vec<PathBuf>,
+        /// Optional JSON array of source-pinned pari passu declarations
+        #[arg(long = "pari-passu")]
+        pub pari_passu: Option<PathBuf>,
+        /// Optional JSON object mapping parcel ids to adjacency block ids
+        #[arg(long)]
+        pub adjacency: Option<PathBuf>,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoLedgerExposureCli {
+        /// JSON file holding a canon_geo_collateral_ledger.v0 artifact
+        #[arg(long)]
+        pub ledger: PathBuf,
+        /// JSON file holding a pinned advisory with wind-radius rings
+        #[arg(long)]
+        pub advisory: PathBuf,
+        /// JSON file holding frame_id plus building polygons or typed building geometries
+        #[arg(long)]
+        pub geometry: PathBuf,
+        /// JSON file holding archived advisory source pins and advisory numbers
+        #[arg(long)]
+        pub archive: PathBuf,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoLinkSourcesCli {
+        /// JSON file holding a canon_geo_multisource_request.v0 request
+        #[arg(long)]
+        pub request: PathBuf,
+        /// CSV path for the deterministic merged source rows
+        #[arg(long = "rows-out")]
+        pub rows_out: PathBuf,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoTileWorkCli {
+        /// JSON file holding a canon_geo_tile_work_request.v1 request
+        #[arg(long)]
+        pub request: PathBuf,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoMaterializeHomeCellsCli {
+        /// JSON file holding canon_geo_home_cell_rows.v1 rows
+        #[arg(long)]
+        pub rows: PathBuf,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoReconcileTilesCli {
+        /// JSON file holding a canon_geo_tile_reconciliation_request.v1 request
+        #[arg(long)]
+        pub request: PathBuf,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoSolveCli {
+        /// JSON file holding a composition request or evidence-compilation artifact
+        #[arg(long)]
+        pub request: PathBuf,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoMaterializeGeometryCli {
+        /// JSON file holding a canon_geo_geometry_request.v0 request
+        #[arg(long)]
+        pub request: PathBuf,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoMaterializeWarehouseGeometryCli {
+        /// JSON file holding canon_geo_warehouse_geometry_rows.v0 rows
+        #[arg(long)]
+        pub rows: PathBuf,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoCompileEvidenceCli {
+        /// JSON file holding a canon_geo_evidence_request.v0 request
+        #[arg(long)]
+        pub request: PathBuf,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoMaterializeEvidenceCli {
+        /// JSON file holding canon_geo_warehouse_rows.v0 rows
+        #[arg(long)]
+        pub rows: PathBuf,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoMaterializeAddressEvidenceCli {
+        /// JSON file holding canon_geo_address_parcel_evidence_request.v0
+        #[arg(long)]
+        pub request: PathBuf,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoMaterializeH7PopulationCli {
+        /// JSON file holding canon_geo_h7_population_rows.v0 rows
+        #[arg(long)]
+        pub rows: PathBuf,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoMaterializeH7StagingBatchCli {
+        /// JSON file holding an H.7 NYC staging-profile batch
+        #[arg(long)]
+        pub batch: PathBuf,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoMaterializeH7PipBlockBatchCli {
+        /// JSON file holding canon_geo_h7_pip_block_population_batch.v0
+        #[arg(long)]
+        pub batch: PathBuf,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoEvaluateCli {
+        /// JSON file holding a population request or validated evidence-stack artifact
+        #[arg(long)]
+        pub population: PathBuf,
+
+        /// Optional directory for per-case evidence and solve artifacts
+        #[arg(long)]
+        pub artifact_dir: Option<PathBuf>,
+
+        /// Optional deed-truth artifact to bind into matching population cases for scoring
+        #[arg(long, requires = "truth_plane")]
+        pub truth: Option<PathBuf>,
+
+        /// Truth plane for the optional --truth artifact
+        #[arg(long = "truth-plane", requires = "truth")]
+        pub truth_plane: Option<String>,
+
+        /// Optional output path for the E4 gate assessment sidecar
+        #[arg(long = "e4-assessment-out")]
+        pub e4_assessment_out: Option<PathBuf>,
+
+        /// Existing E4 assessment, population request, H7 population, or stack baseline to compare
+        /// against
+        #[arg(long = "e4-before-assessment", requires = "e4_rescore_out")]
+        pub e4_before_assessment: Option<PathBuf>,
+
+        /// Optional output path for the E4 before/after rescore comparison sidecar
+        #[arg(long = "e4-rescore-out", requires = "e4_before_assessment")]
+        pub e4_rescore_out: Option<PathBuf>,
+    }
+
+    #[derive(Args, Debug, Clone)]
+    pub struct GeoStackEvidenceCli {
+        /// JSON file holding a population request or validated prior stack artifact
+        #[arg(long)]
+        pub population: PathBuf,
+        /// JSON file holding canon_geo_population_evidence_stack_request.v0
+        #[arg(long)]
+        pub overlay: PathBuf,
+    }
 }
 
-#[derive(Args, Debug, Clone)]
-pub struct GeoCapabilitiesCli {
-    /// Emit the installed agent guide, schemas, and synthetic workflow example
-    #[arg(long)]
-    pub guide: bool,
-    /// Output mode
-    #[arg(long, value_enum, default_value = "json")]
-    pub emit: GeoCapabilitiesEmitMode,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoPlanCli {
-    /// JSON file holding a canon_geo_question.v0 question
-    #[arg(long)]
-    pub question: PathBuf,
-    /// JSON file holding a canon_geo_capabilities.v0 capability artifact
-    #[arg(long)]
-    pub capabilities: PathBuf,
-    /// JSON file holding a canon_geo_regional_inventory.v1 inventory
-    #[arg(long)]
-    pub inventory: PathBuf,
-    /// JSON file holding a canon_geo_composition_profile.v0 profile
-    #[arg(long)]
-    pub profile: PathBuf,
-    /// JSON file holding a canon_geo_resource_budget.v0 budget
-    #[arg(long)]
-    pub budget: PathBuf,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoRunCli {
-    /// JSON file holding a canon_geo_plan.v0 plan
-    #[arg(long)]
-    pub plan: PathBuf,
-    /// Directory used as the Geo run workspace
-    #[arg(long = "work-dir")]
-    pub work_dir: PathBuf,
-    /// Local typed input binding as NODE_ID:BINDING_ID=PATH; repeatable
-    #[arg(long = "input", value_name = "NODE_ID:BINDING_ID=PATH")]
-    pub input: Vec<String>,
-    /// Acquisition satisfaction as REQUEST_ID=RECEIPT.json; repeatable
-    #[arg(long = "satisfy", value_name = "REQUEST_ID=RECEIPT.json")]
-    pub satisfy: Vec<String>,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoInspectCli {
-    /// Geo run workspace root holding .canon/geo-run
-    #[arg(long = "run")]
-    pub run: PathBuf,
-    /// Optional bounded component identifier to focus detail refs
-    #[arg(long)]
-    pub component: Option<String>,
-    /// Optional second Geo run workspace to compare against
-    #[arg(long)]
-    pub compare: Option<PathBuf>,
-    /// Read retained continuation actions and optional next-evidence state; never generates actions
-    #[arg(long = "recommend-next")]
-    pub recommend_next: bool,
-    /// Output mode
-    #[arg(long, value_enum, default_value = "json")]
-    pub emit: RegistryEmitMode,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoReplanFromAcquisitionCli {
-    /// JSON file holding the base canon_geo_plan.v0 plan
-    #[arg(long = "base-plan")]
-    pub base_plan: PathBuf,
-    /// JSON file holding the base canon_geo_regional_inventory.v1 inventory
-    #[arg(long = "base-inventory")]
-    pub base_inventory: PathBuf,
-    /// JSON file holding the original canon_geo_question.v0 question
-    #[arg(long)]
-    pub question: PathBuf,
-    /// JSON file holding the original canon_geo_capabilities.v0 capabilities
-    #[arg(long)]
-    pub capabilities: PathBuf,
-    /// JSON file holding the original canon_geo_composition_profile.v0 profile
-    #[arg(long)]
-    pub profile: PathBuf,
-    /// JSON file holding the original canon_geo_resource_budget.v0 budget
-    #[arg(long)]
-    pub budget: PathBuf,
-    /// Acquisition satisfaction as REQUEST_ID=RECEIPT.json
-    #[arg(long = "satisfy", value_name = "REQUEST_ID=RECEIPT.json")]
-    pub satisfy: String,
-    /// Local typed acquisition artifact as LOCAL_ARTIFACT_ID=PATH; repeatable
-    #[arg(
-        long = "local-artifact",
-        value_name = "LOCAL_ARTIFACT_ID=PATH",
-        required = true
-    )]
-    pub local_artifact: Vec<String>,
-    /// Local result digest artifact as DIGEST_ID=PATH; repeatable
-    #[arg(long = "result", value_name = "DIGEST_ID=PATH")]
-    pub result: Vec<String>,
-    /// Owned output path for canon_geo_regional_inventory_advancement.v0
-    #[arg(long = "advancement-out")]
-    pub advancement_out: PathBuf,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoLedgerCli {
-    #[command(subcommand)]
-    pub command: Option<GeoLedgerSubcommand>,
-}
-
-#[derive(Subcommand, Debug, Clone)]
-pub enum GeoLedgerSubcommand {
-    /// Build a physical collateral ledger from seed rows and bound solve/evidence artifacts
-    Build(GeoLedgerBuildCli),
-    /// Build an offline visual evidence-card data artifact from stored Geo artifacts
-    Card(GeoLedgerCardCli),
-    /// Report cross-deal parcel/building collisions and block concentration from ledgers
-    Collision(GeoLedgerCollisionCli),
-    /// Join a pinned wind-radii advisory to exact ledger building geometry
-    Exposure(GeoLedgerExposureCli),
-    /// Validate a physical collateral ledger artifact and emit canonical bytes
-    Validate(GeoLedgerValidateCli),
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoLedgerBuildCli {
-    /// JSON file holding a canon_geo_collateral_ledger_seed.v0 seed artifact
-    #[arg(long)]
-    pub seed: PathBuf,
-    /// Bound solve artifact as ARTIFACT_ID=COMPOSITION.json; repeatable
-    #[arg(long = "composition", value_name = "ARTIFACT_ID=COMPOSITION.json")]
-    pub composition: Vec<String>,
-    /// Bound evidence artifact as ARTIFACT_ID=EVIDENCE.json; repeatable
-    #[arg(long = "evidence", value_name = "ARTIFACT_ID=EVIDENCE.json")]
-    pub evidence: Vec<String>,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoLedgerValidateCli {
-    /// JSON file holding a canon_geo_collateral_ledger.v0 artifact
-    #[arg(long)]
-    pub ledger: PathBuf,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoLedgerCardCli {
-    /// Subject identifier to copy into the evidence-card artifact
-    #[arg(long = "subject-id")]
-    pub subject_id: String,
-    /// JSON file holding a GeoEvidenceCardBuildContext
-    #[arg(long)]
-    pub context: PathBuf,
-    /// JSON file holding one canon_geo_image_tile_pin.v0 row artifact
-    #[arg(long = "ortho-pin")]
-    pub ortho_pin: PathBuf,
-    /// JSON file holding a canon_geo_composition.v0 artifact; omitted only for reach-none cards
-    #[arg(long)]
-    pub composition: Option<PathBuf>,
-    /// JSON file holding a canon_geo_evidence_compilation.v0 artifact; omitted only for reach-none cards
-    #[arg(long)]
-    pub evidence: Option<PathBuf>,
-    /// JSON object mapping candidate ids to canon_geo_geometry_value.v0 values; omitted only for reach-none cards
-    #[arg(long)]
-    pub geometry: Option<PathBuf>,
-    /// Optional canon_geo_explanation.v0 artifact chained to a conflict or not-conflict composition
-    #[arg(long)]
-    pub explanation: Option<PathBuf>,
-    /// Emit the full evidence-card artifact instead of the default redacted projection
-    #[arg(long)]
-    pub explicit: bool,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoLedgerCollisionCli {
-    /// Two or more JSON files holding canon_geo_collateral_ledger.v0 artifacts
-    #[arg(long = "ledgers", value_name = "LEDGER.json", num_args = 2..)]
-    pub ledgers: Vec<PathBuf>,
-    /// Optional JSON array of source-pinned pari passu declarations
-    #[arg(long = "pari-passu")]
-    pub pari_passu: Option<PathBuf>,
-    /// Optional JSON object mapping parcel ids to adjacency block ids
-    #[arg(long)]
-    pub adjacency: Option<PathBuf>,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoLedgerExposureCli {
-    /// JSON file holding a canon_geo_collateral_ledger.v0 artifact
-    #[arg(long)]
-    pub ledger: PathBuf,
-    /// JSON file holding a pinned advisory with wind-radius rings
-    #[arg(long)]
-    pub advisory: PathBuf,
-    /// JSON file holding frame_id plus building polygons or typed building geometries
-    #[arg(long)]
-    pub geometry: PathBuf,
-    /// JSON file holding archived advisory source pins and advisory numbers
-    #[arg(long)]
-    pub archive: PathBuf,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoLinkSourcesCli {
-    /// JSON file holding a canon_geo_multisource_request.v0 request
-    #[arg(long)]
-    pub request: PathBuf,
-    /// CSV path for the deterministic merged source rows
-    #[arg(long = "rows-out")]
-    pub rows_out: PathBuf,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoTileWorkCli {
-    /// JSON file holding a canon_geo_tile_work_request.v1 request
-    #[arg(long)]
-    pub request: PathBuf,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoMaterializeHomeCellsCli {
-    /// JSON file holding canon_geo_home_cell_rows.v1 rows
-    #[arg(long)]
-    pub rows: PathBuf,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoReconcileTilesCli {
-    /// JSON file holding a canon_geo_tile_reconciliation_request.v1 request
-    #[arg(long)]
-    pub request: PathBuf,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoSolveCli {
-    /// JSON file holding a composition request or evidence-compilation artifact
-    #[arg(long)]
-    pub request: PathBuf,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoMaterializeGeometryCli {
-    /// JSON file holding a canon_geo_geometry_request.v0 request
-    #[arg(long)]
-    pub request: PathBuf,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoMaterializeWarehouseGeometryCli {
-    /// JSON file holding canon_geo_warehouse_geometry_rows.v0 rows
-    #[arg(long)]
-    pub rows: PathBuf,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoCompileEvidenceCli {
-    /// JSON file holding a canon_geo_evidence_request.v0 request
-    #[arg(long)]
-    pub request: PathBuf,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoMaterializeEvidenceCli {
-    /// JSON file holding canon_geo_warehouse_rows.v0 rows
-    #[arg(long)]
-    pub rows: PathBuf,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoMaterializeAddressEvidenceCli {
-    /// JSON file holding canon_geo_address_parcel_evidence_request.v0
-    #[arg(long)]
-    pub request: PathBuf,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoMaterializeH7PopulationCli {
-    /// JSON file holding canon_geo_h7_population_rows.v0 rows
-    #[arg(long)]
-    pub rows: PathBuf,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoMaterializeH7StagingBatchCli {
-    /// JSON file holding an H.7 NYC staging-profile batch
-    #[arg(long)]
-    pub batch: PathBuf,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoMaterializeH7PipBlockBatchCli {
-    /// JSON file holding canon_geo_h7_pip_block_population_batch.v0
-    #[arg(long)]
-    pub batch: PathBuf,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoEvaluateCli {
-    /// JSON file holding a population request or validated evidence-stack artifact
-    #[arg(long)]
-    pub population: PathBuf,
-
-    /// Optional directory for per-case evidence and solve artifacts
-    #[arg(long)]
-    pub artifact_dir: Option<PathBuf>,
-
-    /// Optional deed-truth artifact to bind into matching population cases for scoring
-    #[arg(long, requires = "truth_plane")]
-    pub truth: Option<PathBuf>,
-
-    /// Truth plane for the optional --truth artifact
-    #[arg(long = "truth-plane", requires = "truth")]
-    pub truth_plane: Option<String>,
-
-    /// Optional output path for the E4 gate assessment sidecar
-    #[arg(long = "e4-assessment-out")]
-    pub e4_assessment_out: Option<PathBuf>,
-
-    /// Existing E4 assessment, population request, H7 population, or stack baseline to compare
-    /// against
-    #[arg(long = "e4-before-assessment", requires = "e4_rescore_out")]
-    pub e4_before_assessment: Option<PathBuf>,
-
-    /// Optional output path for the E4 before/after rescore comparison sidecar
-    #[arg(long = "e4-rescore-out", requires = "e4_before_assessment")]
-    pub e4_rescore_out: Option<PathBuf>,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct GeoStackEvidenceCli {
-    /// JSON file holding a population request or validated prior stack artifact
-    #[arg(long)]
-    pub population: PathBuf,
-    /// JSON file holding canon_geo_population_evidence_stack_request.v0
-    #[arg(long)]
-    pub overlay: PathBuf,
-}
+#[cfg(feature = "geo")]
+pub use geo_leaf_args::*;
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum InboxSubcommand {

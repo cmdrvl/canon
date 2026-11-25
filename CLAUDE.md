@@ -20,9 +20,12 @@ cargo run -- doctor capabilities --json
 cargo run -- doctor --robot-triage
 
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-features
 ```
+
+The default build is the core and drops `canon geo`; add `--all-features` to
+run, describe, or test the full surface (`cargo run --all-features -- --describe`).
 
 For registry maintenance work, prefer the implemented `registry next-id`,
 `registry mint`, and `registry add-entry` commands over hand editing mapping
@@ -52,9 +55,9 @@ and [.github/workflows/release.yml](./.github/workflows/release.yml).
 ## Environment
 
 `canon` is a Rust 2024 Cargo project. There is no `rust-toolchain.toml`; CI
-uses stable Rust. Release builds use `cargo build --release --locked` in the
-release workflow, so keep `Cargo.lock` synchronized when dependency or version
-metadata changes.
+uses stable Rust. Release builds use `cargo build --release --locked
+--all-features` in the release workflow, so keep `Cargo.lock` synchronized when
+dependency or version metadata changes.
 
 ## Session Caveats
 

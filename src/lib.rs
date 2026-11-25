@@ -15,6 +15,7 @@ pub mod entity;
 pub mod evaluation;
 pub mod extensions;
 mod fs_safety;
+#[cfg(feature = "geo")]
 pub mod geo;
 pub mod identity_scope;
 pub mod inbox;
@@ -203,6 +204,7 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
         },
         CanonCommand::Package(package) => run_package_command(package),
         CanonCommand::Project(project) => project::cli::run(project),
+        #[cfg(feature = "geo")]
         CanonCommand::Geo(geo) => geo::cli::run(geo),
         CanonCommand::Inbox(inbox) => inbox::cli::run(inbox),
         CanonCommand::Temporal(temporal) => temporal::cli::run(temporal),
@@ -9285,8 +9287,7 @@ pub fn run_display_mode(mode: DisplayMode) -> Result<u8, Box<dyn Error>> {
             println!("canon {}", env!("CARGO_PKG_VERSION"));
         }
         DisplayMode::Describe => {
-            const OPERATOR_JSON: &str = include_str!("../operator.json");
-            println!("{OPERATOR_JSON}");
+            println!("{}", operator::embedded_operator_manifest());
         }
         DisplayMode::Schema => {
             let schema = serde_json::json!({

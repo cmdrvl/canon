@@ -20,7 +20,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-cargo build --quiet
+# --all-features: feature-gated modules (src/geo) must count as compiled here.
+cargo build --quiet --all-features
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT

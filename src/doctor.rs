@@ -1,6 +1,9 @@
 use crate::{
     cli::{Cli, DoctorArgs, DoctorCommand, DoctorJsonArgs},
-    operator::{OperatorManifestValidationReport, validate_operator_manifest_json},
+    operator::{
+        OperatorManifestValidationReport, embedded_operator_manifest,
+        validate_operator_manifest_json,
+    },
     paths,
     registry::package::REGISTRY_PACKAGE_VERIFY_SCHEMA_VERSION,
 };
@@ -12,7 +15,6 @@ const CONTRACT: &str = "cmdrvl.read_only_doctor.v1";
 const HEALTH_SCHEMA: &str = "canon.doctor.health.v1";
 const CAPABILITIES_SCHEMA: &str = "canon.doctor.capabilities.v1";
 const TRIAGE_SCHEMA: &str = "canon.doctor.triage.v1";
-const OPERATOR_JSON: &str = include_str!("../operator.json");
 
 /// `canon --robot-triage` and `canon doctor --robot-triage`: one compact JSON
 /// triage report; exit 0 when healthy, 1 when the contract parity check fails.
@@ -273,7 +275,7 @@ fn triage_payload() -> Value {
 }
 
 fn operator_manifest_report() -> OperatorManifestValidationReport {
-    validate_operator_manifest_json(&Cli::command(), OPERATOR_JSON)
+    validate_operator_manifest_json(&Cli::command(), &embedded_operator_manifest())
 }
 
 fn operator_manifest_payload(report: &OperatorManifestValidationReport) -> Value {
@@ -331,7 +333,7 @@ fn health_checks(
 }
 
 fn doctor_specific_checks() -> Vec<Value> {
-    let manifest = match serde_json::from_str::<Value>(OPERATOR_JSON) {
+    let manifest = match serde_json::from_str::<Value>(&embedded_operator_manifest()) {
         Ok(manifest) => manifest,
         Err(error) => {
             return vec![check_detail(
@@ -525,14 +527,17 @@ fn print_robot_docs() {
     println!("  canon doctor health --json");
     println!("  canon doctor capabilities --json");
     println!("  canon doctor --robot-triage");
-    println!("  canon geo capabilities --guide");
-    println!("geo:");
-    println!(
-        "  - start with the installed Geo guide for supported clues, input schemas, and an offline example"
-    );
-    println!(
-        "  - the guide is documentation, not a planning capability artifact; use geo capabilities without --guide for --capabilities"
-    );
+    #[cfg(feature = "geo")]
+    {
+        println!("  canon geo capabilities --guide");
+        println!("geo:");
+        println!(
+            "  - start with the installed Geo guide for supported clues, input schemas, and an offline example"
+        );
+        println!(
+            "  - the guide is documentation, not a planning capability artifact; use geo capabilities without --guide for --capabilities"
+        );
+    }
     println!("entity:");
     println!(
         "  - the entity workbench how-to and operator catalog is docs/ENTITY_WORKBENCH_AGENT_GUIDE.md in the canon repo"
@@ -681,7 +686,7 @@ mod tests {
 
     #[test]
     fn doctor_specific_checks_reject_fix_surface() {
-        let mut manifest: Value = serde_json::from_str(OPERATOR_JSON).unwrap();
+        let mut manifest: Value = serde_json::from_str(&embedded_operator_manifest()).unwrap();
         let doctor = manifest
             .get_mut("subcommands")
             .and_then(Value::as_array_mut)

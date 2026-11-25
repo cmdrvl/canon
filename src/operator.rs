@@ -839,6 +839,66 @@ pub fn command_behavior_metadata() -> Vec<OperatorBehaviorMetadata> {
     metadata
 }
 
+const EMBEDDED_OPERATOR_JSON: &str = include_str!("../operator.json");
+
+/// The embedded operator manifest, restricted to the commands this build has.
+///
+/// A build with every feature returns `operator.json` byte for byte. A build
+/// without a feature drops that feature's command rows and `invocation.usage`
+/// lines, so `--describe` and `doctor` never advertise a command the binary
+/// lacks. The narrower form is re-serialised, so its keys come out sorted.
+// Path-included integration tests compile this public lib helper as a private module.
+#[allow(dead_code)]
+pub fn embedded_operator_manifest() -> std::borrow::Cow<'static, str> {
+    let absent_roots: &[&str] = &[
+        #[cfg(not(feature = "geo"))]
+        "geo",
+    ];
+    if absent_roots.is_empty() {
+        return std::borrow::Cow::Borrowed(EMBEDDED_OPERATOR_JSON);
+    }
+    std::borrow::Cow::Owned(manifest_without_commands(
+        EMBEDDED_OPERATOR_JSON,
+        absent_roots,
+    ))
+}
+
+/// Drop the rows and usage lines of every command under the given root names.
+/// Unparseable input is returned unchanged so `doctor` can report the parse
+/// failure itself.
+fn manifest_without_commands(raw: &str, roots: &[&str]) -> String {
+    let Ok(mut manifest) = serde_json::from_str::<Value>(raw) else {
+        return raw.to_string();
+    };
+    let under_absent_root = |text: &str, prefix: &str| {
+        roots.iter().any(|root| {
+            let head = format!("{prefix}{root}");
+            text == head || text.starts_with(&format!("{head} "))
+        })
+    };
+    if let Some(rows) = manifest
+        .get_mut("subcommands")
+        .and_then(Value::as_array_mut)
+    {
+        rows.retain(|row| {
+            !row.get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|name| under_absent_root(name, ""))
+        });
+    }
+    if let Some(lines) = manifest
+        .pointer_mut("/invocation/usage")
+        .and_then(Value::as_array_mut)
+    {
+        lines.retain(|line| {
+            !line
+                .as_str()
+                .is_some_and(|text| under_absent_root(text, "canon "))
+        });
+    }
+    serde_json::to_string_pretty(&manifest).unwrap_or_else(|_| raw.to_string())
+}
+
 pub fn stable_manifest_digest(manifest: &Value) -> String {
     let mut canonical = String::new();
     push_canonical_json(manifest, &mut canonical);
@@ -2691,6 +2751,79 @@ mod tests {
             stable_manifest_digest(&right)
         );
         assert!(stable_manifest_digest(&left).starts_with("blake3:"));
+    }
+
+    #[test]
+    fn manifest_filter_drops_whole_command_words_only() {
+        let raw = json!({
+            "invocation": {"usage": [
+                "canon doctor health [--json]",
+                "canon geo run --plan <PLAN>",
+                "canon geography list",
+                "canon geo"
+            ]},
+            "subcommands": [
+                {"name": "doctor health"},
+                {"name": "geo"},
+                {"name": "geo run"},
+                {"name": "geography list"}
+            ]
+        })
+        .to_string();
+
+        let filtered: Value =
+            serde_json::from_str(&manifest_without_commands(&raw, &["geo"])).unwrap();
+
+        let names: Vec<&str> = filtered["subcommands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| row["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, ["doctor health", "geography list"]);
+        let usage: Vec<&str> = filtered["invocation"]["usage"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|line| line.as_str().unwrap())
+            .collect();
+        assert_eq!(
+            usage,
+            ["canon doctor health [--json]", "canon geography list"]
+        );
+    }
+
+    #[test]
+    fn manifest_filter_returns_unparseable_input_unchanged() {
+        assert_eq!(
+            manifest_without_commands("{not json", &["geo"]),
+            "{not json"
+        );
+    }
+
+    #[test]
+    fn embedded_manifest_advertises_only_compiled_commands() {
+        let manifest: Value = serde_json::from_str(&embedded_operator_manifest()).unwrap();
+        let has_geo = manifest["subcommands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| {
+                row["name"]
+                    .as_str()
+                    .is_some_and(|name| name == "geo" || name.starts_with("geo "))
+            });
+        assert_eq!(has_geo, cfg!(feature = "geo"));
+        assert_eq!(
+            manifest["invocation"]["usage"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|line| line
+                    .as_str()
+                    .is_some_and(|text| text.starts_with("canon geo "))),
+            cfg!(feature = "geo")
+        );
     }
 
     #[test]

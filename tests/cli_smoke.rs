@@ -1583,13 +1583,12 @@ fn test_doctor_robot_docs_is_plain_text_and_read_only() {
     let temp_dir = tempdir().unwrap();
     let witness_path = temp_dir.path().join("witness").join("canon-witness.jsonl");
 
-    doctor_cmd_in(temp_dir.path(), &witness_path)
+    let assert = doctor_cmd_in(temp_dir.path(), &witness_path)
         .args(["doctor", "robot-docs"])
         .assert()
         .success()
         .stdout(predicate::str::contains("cmdrvl.read_only_doctor.v1"))
         .stdout(predicate::str::contains("canon doctor health --json"))
-        .stdout(predicate::str::contains("canon geo capabilities --guide"))
         .stdout(predicate::str::contains("entity:"))
         .stdout(predicate::str::contains("ENTITY_WORKBENCH_AGENT_GUIDE.md"))
         .stdout(predicate::str::contains("composition:"))
@@ -1598,6 +1597,13 @@ fn test_doctor_robot_docs_is_plain_text_and_read_only() {
         ))
         .stdout(predicate::str::contains("rvl old.canon.csv new.canon.csv"))
         .stdout(predicate::str::contains("no --fix surface"));
+
+    // The Geo guide line exists only in a build that has the geo feature; a
+    // core build must not advertise a command it lacks.
+    #[cfg(feature = "geo")]
+    assert.stdout(predicate::str::contains("canon geo capabilities --guide"));
+    #[cfg(not(feature = "geo"))]
+    assert.stdout(predicate::str::contains("canon geo").not());
 
     assert_doctor_side_effects_absent(temp_dir.path(), &witness_path);
 }

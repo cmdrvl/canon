@@ -36,8 +36,8 @@ canon registry mint --registry registries/people/ \
 canon registry add-entry --registry registries/people/ \
   --alias-file aliases.json --canonical-id PPL-001 --input 'J. Doe' --rule-id MANUAL
 
-# Quality gate
-cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+# Quality gate (full surface; the default build is the core, see Quality Gate below)
+cargo fmt --check && cargo clippy --all-targets --all-features -- -D warnings && cargo test --all-features
 ```
 
 ### Product Boundary
@@ -283,9 +283,16 @@ Run after any substantive change:
 
 ```bash
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-features
 ```
+
+The default build is the core (lookup, registry, evidence sessions), so
+`cargo clippy --all-targets -- -D warnings` and `cargo test` must stay green on
+their own as well; CI runs both profiles. The `geo` feature adds `canon geo`,
+`src/geo/`, and the `canon_geo_measurements` bin. Test targets that need it
+declare `required-features = ["geo"]` in `Cargo.toml`, and release and CI builds
+use `--all-features` so the shipped binary keeps every command.
 
 ### Test Coverage Areas
 

@@ -8,6 +8,23 @@ license = "MIT"
 name = "canon"
 path = "src/main.rs"
 
+[[bin]]
+name = "canon_geo_measurements"
+path = "src/bin/canon_geo_measurements.rs"
+required-features = ["geo"]
+
+[[bench]]
+name = "geo_residual_representations"
+required-features = ["geo"]
+
+# The default build is the core: lookup, registry, and the evidence-session
+# engine. `geo` adds the Geo workbench (`canon geo ...`, src/geo, and the
+# canon_geo_measurements bin). Release and CI builds use `--all-features`, so
+# the shipped binary keeps every command.
+[features]
+default = []
+geo = ["dep:h3o", "dep:libc", "dep:sha2", "dep:base64"]
+
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 clap = { version = "4", features = ["derive"] }
@@ -18,13 +35,13 @@ serde_yaml = "0.9"
 rusqlite = { version = "0.32", features = ["bundled"] }
 blake3 = "1"
 parquet = { version = "=56.2.1", default-features = false, features = ["json", "snap"] }
-base64 = "0.22"
-sha2 = "0.10"
+base64 = { version = "0.22", optional = true }
+sha2 = { version = "0.10", optional = true }
 petgraph = "0.6"
 ureq = { version = "2", features = ["json"] }
 rapidfuzz = "=0.5.0"
-h3o = { version = "=0.10.0", default-features = false }
-libc = "0.2"
+h3o = { version = "=0.10.0", default-features = false, optional = true }
+libc = { version = "0.2", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
@@ -40,3 +57,381 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# Test targets that need the `geo` feature: every geo_* target, and the
+# contract targets that compare the whole CLI surface with operator.json.
+[[test]]
+name = "canon_v1_contract_inventory"
+required-features = ["geo"]
+
+[[test]]
+name = "command_contract"
+required-features = ["geo"]
+
+[[test]]
+name = "contract_parity"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_accretion"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_address_evidence"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_address_parcel_schemas"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_address_parse_residual_measurement"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_address_parse"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_address_schemas"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_adjudicate"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_adjudication"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_answer"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_as_of_stability"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_assessment_roll"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_card"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_cli"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_client_input_contract"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_collateral_completeness"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_collision"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_completeness_source_hunt"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_composition"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_condo"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_control_contracts"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_d1_residuals"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_deed_truth"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_demo"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_descriptive_asset"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_discovery_contracts"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_e4_denominator_deficit"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_e4_gate_report"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_e4_metric_restatement"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_e4_restack"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_e5_franklin_parcel"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_e5_measurement_receipt"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_e5_readiness"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_evidence_compilation"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_evidence_stack"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_executor"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_explain"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_exposure"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_footprint_roll"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_geometry_value"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_geometry"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_gsf_conflict_adjudication"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_gsf_property_row_binding"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_gsf_property_type_bands"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_gsf_residuals"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_gsf_value_vector_rebuild"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_h7_candidate_strategy_comparison"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_h7_consensus_truth_extension"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_h7_pip_block_batch"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_h7_population_export"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_h7_population"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_h7_source_record_bytes_export"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_h7_source_record_bytes"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_h7_staging_batch"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_h7_tile_reconciliation"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_identifiers"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_inspect"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_ledger"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_lifecycle"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_materialize"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_measurement_runner"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_multisource"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_next_evidence"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_observer_count"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_observer_null"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_observer_pins"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_observer"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_owner_source_residuals"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_pad_residual_adjudication"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_pad_truth_binding"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_plan_schema"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_plan"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_pluto_vintage_reach"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_point_population"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_point_relations"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_pre_resolve"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_propagate"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_property"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_redaction"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_replay_retained"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_residual_benchmark"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_retry_recovery"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_retry"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_rho_admission_policy"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_run_schema"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_run"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_satisfy"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_schemas"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_sec_property_row_bridge"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_tile"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_truth_binding_remediation_path"
+required-features = ["geo"]
+
+[[test]]
+name = "geo_truth_quality_residuals"
+required-features = ["geo"]

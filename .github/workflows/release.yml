@@ -101,11 +101,11 @@ jobs:
 
       - name: Build (cross)
         if: matrix.use_cross
-        run: cross build --release --locked --target ${{ matrix.target }}
+        run: cross build --release --locked --all-features --target ${{ matrix.target }}
 
       - name: Build (cargo)
         if: matrix.use_cross == false
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        run: cargo build --release --locked --all-features --target ${{ matrix.target }}
 
       - name: Strip binary (linux)
         if: matrix.strip == 'linux'
@@ -240,7 +240,7 @@ jobs:
 
       - name: Generate SBOM
         run: |
-          cargo cyclonedx --format json --override-filename sbom.cdx
+          cargo cyclonedx --format json --all-features --override-filename sbom.cdx
           mv sbom.cdx.json dist/sbom.cdx.json
 
       - name: Generate provenance
