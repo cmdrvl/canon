@@ -191,6 +191,16 @@ impl EntityPublicationError {
             generation_id,
         }
     }
+
+    /// Returns whether a stream patch failed because another writer moved or
+    /// claimed the lineage head after the caller observed it.
+    pub fn is_stream_head_conflict(&self) -> bool {
+        self.kind == EntityPublicationErrorKind::ForkedGeneration
+            || (self.kind == EntityPublicationErrorKind::InvalidRequest
+                && self
+                    .message
+                    .starts_with("publication stream patch expected current head "))
+    }
 }
 
 impl fmt::Display for EntityPublicationError {
