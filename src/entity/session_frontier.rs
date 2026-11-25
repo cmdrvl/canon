@@ -6,28 +6,41 @@
 //! Like explain, this is a projection over the committed session streams. It
 //! re-uses the solve's own `missing` values and explain's observation reader;
 //! it does not re-run tier arithmetic and it names evidence types and scopes,
-//! never commands, queries or a ranking. `settles_with` is conditional on the
-//! evidence existing: canon does not know that it does.
+//! never commands, queries or a ranking. Optional lease claims are stored as
+//! append-only publication records and do not alter the solve or its frontier.
+//! `settles_with` is conditional on the evidence existing: canon does not know
+//! that it does.
 
 use crate::{
     Refusal,
     entity::{
-        session::{SessionSolveArtifact, SessionSolveCluster},
+        publication::{
+            EntityPublicationErrorKind, EntityPublicationFileInput, EntityPublicationRequest,
+            EntityPublicationUpstreamRef, open_current_stream_generation, publish_stream_patch,
+        },
+        session::{SESSION_SOLVE_STREAM_ID, SessionSolveArtifact, SessionSolveCluster},
         session_explain::{
             ObservationView, TIER_B_TYPES, explain_refusal, open_stream, read_observations,
             read_solve_hashed, stale_reasons,
         },
     },
-    session::SESSION_OBSERVATIONS_STREAM_ID,
+    session::{SESSION_MANIFEST_STREAM_ID, SESSION_OBSERVATIONS_STREAM_ID},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
+    thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 pub const SESSION_FRONTIER_VERSION: &str = "canon.entity.session.frontier.v1";
+pub const SESSION_FRONTIER_CLAIMS_VERSION: &str = "canon.entity.session.frontier.claims.v1";
+
+pub const SESSION_FRONTIER_CLAIMS_STREAM_ID: &str = "entity-session-frontier-claims";
+const SESSION_FRONTIER_CLAIMS_RECORDS_PATH: &str = "frontier/leases";
+const SESSION_FRONTIER_CLAIMS_MAX_ATTEMPTS: usize = 32;
 
 const NEEDS_AUTHORITATIVE_KEY: &str = "needs_authoritative_key";
 const NEEDS_SECOND_EVIDENCE_TYPE: &str = "needs_second_evidence_type";
@@ -41,6 +54,38 @@ pub struct SessionFrontierRequest {
     pub seed_entity: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrontierShard {
+    index: u64,
+    total: u64,
+}
+
+impl FrontierShard {
+    pub fn parse(value: &str) -> Result<Self, String> {
+        let (index, total) = value
+            .split_once('/')
+            .ok_or_else(|| "shard must be written as INDEX/TOTAL".to_string())?;
+        let index = index
+            .parse::<u64>()
+            .map_err(|_| "shard index must be a non-negative integer".to_string())?;
+        let total = total
+            .parse::<u64>()
+            .map_err(|_| "shard total must be a positive integer".to_string())?;
+        if total == 0 || index >= total {
+            return Err("shard index must be smaller than its positive total".to_string());
+        }
+        Ok(Self { index, total })
+    }
+}
+
+impl std::str::FromStr for FrontierShard {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::parse(value)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SessionFrontierOutput {
     pub version: String,
@@ -48,10 +93,99 @@ pub struct SessionFrontierOutput {
     pub coverage: Vec<FrontierCoverage>,
     pub unresolved_keys: Vec<FrontierUnresolvedKey>,
     pub components: Vec<FrontierComponent>,
+    /// Stable, bounded work payloads suitable for handing to an agent.
+    pub work_items: Vec<FrontierWorkItem>,
     pub terminal: Vec<FrontierTerminal>,
     pub history_requests: Vec<FrontierHistoryRequest>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seed: Option<FrontierSeed>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub partition: Option<FrontierPartition>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FrontierPartition {
+    pub index: u64,
+    pub total: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FrontierWorkItem {
+    pub frontier_id: String,
+    pub missing: String,
+    pub surfaces: Vec<String>,
+    pub observations: Vec<FrontierObservation>,
+    pub observations_truncated: bool,
+    pub incumbent_candidates: Vec<String>,
+    pub existing_partial_evidence: Vec<String>,
+    pub cannot_link_vetoes: Vec<FrontierCannotLinkVeto>,
+    pub needed_evidence_kinds: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct FrontierCannotLinkVeto {
+    pub reason: String,
+    pub evidence_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FrontierObservation {
+    pub obs_id: String,
+    pub surface: String,
+    pub lineages: Vec<String>,
+    pub keys: BTreeMap<String, Vec<String>>,
+    pub details_truncated: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionFrontierClaimRequest {
+    pub session: PathBuf,
+    pub worker: String,
+    pub limit: usize,
+    pub ttl_secs: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionFrontierReleaseRequest {
+    pub session: PathBuf,
+    pub claim_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SessionFrontierClaimOutput {
+    pub version: String,
+    pub solve_hash: String,
+    pub claim_id: Option<String>,
+    pub worker: String,
+    pub expires_at_unix_secs: Option<u64>,
+    pub frontier_ids: Vec<String>,
+    pub work_items: Vec<FrontierWorkItem>,
+    pub unresolved_keys: Vec<FrontierUnresolvedKey>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SessionFrontierReleaseOutput {
+    pub version: String,
+    pub claim_id: String,
+    pub released: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case")]
+enum FrontierClaimEvent {
+    Claim {
+        claim_id: String,
+        worker: String,
+        solve_hash: String,
+        frontier_ids: Vec<String>,
+        expires_at_unix_secs: u64,
+    },
+    Release {
+        claim_id: String,
+        released_at_unix_secs: u64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -66,6 +200,7 @@ pub struct FrontierCoverage {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FrontierUnresolvedKey {
+    pub frontier_id: String,
     pub namespace: String,
     pub value: String,
     pub surfaces: Vec<String>,
@@ -225,6 +360,14 @@ fn history_line(label: &str, request: &FrontierHistoryRequest) -> String {
 }
 
 pub fn frontier(request: SessionFrontierRequest) -> Result<SessionFrontierOutput, Refusal> {
+    frontier_partitioned(request, None, None)
+}
+
+pub fn frontier_partitioned(
+    request: SessionFrontierRequest,
+    shard: Option<FrontierShard>,
+    limit: Option<usize>,
+) -> Result<SessionFrontierOutput, Refusal> {
     let session = absolute(&request.session)?;
     let (solve, solve_hash) = read_solve_hashed(&session)?;
     let stale = stale_reasons(&session, &solve)?;
@@ -246,6 +389,385 @@ pub fn frontier(request: SessionFrontierRequest) -> Result<SessionFrontierOutput
         &solve_hash,
         &observations,
         request.seed_entity.as_deref(),
+        shard,
+        limit,
+    )
+}
+
+pub fn claim_frontier(
+    request: SessionFrontierClaimRequest,
+) -> Result<SessionFrontierClaimOutput, Refusal> {
+    if request.worker.trim().is_empty() || request.worker.chars().count() > 128 {
+        return Err(explain_refusal(
+            "Frontier worker id must contain 1 to 128 characters",
+            json!({"writes_performed": false}),
+            "Pass a non-empty --worker id of at most 128 characters",
+        ));
+    }
+    if request.limit == 0 || request.ttl_secs == 0 {
+        return Err(explain_refusal(
+            "Frontier claim limit and TTL must be positive",
+            json!({"limit": request.limit, "ttl_secs": request.ttl_secs, "writes_performed": false}),
+            "Pass --limit and --ttl-secs values greater than zero",
+        ));
+    }
+    let session = absolute(&request.session)?;
+    let frontier = frontier_partitioned(
+        SessionFrontierRequest {
+            session: session.clone(),
+            seed_entity: None,
+        },
+        None,
+        None,
+    )?;
+    let solve_hash = frontier.solve_hash.clone();
+    let mut frontier_ids = frontier
+        .work_items
+        .iter()
+        .map(|item| item.frontier_id.clone())
+        .chain(
+            frontier
+                .unresolved_keys
+                .iter()
+                .map(|key| key.frontier_id.clone()),
+        )
+        .collect::<Vec<_>>();
+    frontier_ids.sort();
+    frontier_ids.dedup();
+
+    for attempt in 0..SESSION_FRONTIER_CLAIMS_MAX_ATTEMPTS {
+        let now = unix_time_secs()?;
+        let expires_at_unix_secs = now.checked_add(request.ttl_secs).ok_or_else(|| {
+            explain_refusal(
+                "Frontier claim TTL is too large",
+                json!({"ttl_secs": request.ttl_secs, "writes_performed": false}),
+                "Pass a smaller --ttl-secs value",
+            )
+        })?;
+        let current = read_claim_log(&session)?;
+        let active = active_claims(&current.events, now);
+        let claimed_elsewhere = active
+            .values()
+            .filter(|claim| claim.solve_hash == solve_hash)
+            .flat_map(|claim| claim.frontier_ids.iter().cloned())
+            .collect::<BTreeSet<_>>();
+        let selected = frontier_ids
+            .iter()
+            .filter(|frontier_id| !claimed_elsewhere.contains(*frontier_id))
+            .take(request.limit)
+            .cloned()
+            .collect::<Vec<_>>();
+        if selected.is_empty() {
+            return Ok(SessionFrontierClaimOutput {
+                version: SESSION_FRONTIER_CLAIMS_VERSION.to_string(),
+                solve_hash: solve_hash.clone(),
+                claim_id: None,
+                worker: request.worker,
+                expires_at_unix_secs: None,
+                frontier_ids: Vec::new(),
+                work_items: Vec::new(),
+                unresolved_keys: Vec::new(),
+            });
+        }
+        let claim_material = serde_json::to_vec(&(
+            "canon.entity.session.frontier.claim.v1",
+            &request.worker,
+            &solve_hash,
+            &selected,
+            expires_at_unix_secs,
+            current.generation_id.as_deref(),
+        ))
+        .expect("claim identity fields serialize");
+        let claim_id = format!("frontier-claim:{}", blake3::hash(&claim_material).to_hex());
+        let event = FrontierClaimEvent::Claim {
+            claim_id: claim_id.clone(),
+            worker: request.worker.clone(),
+            solve_hash: solve_hash.clone(),
+            frontier_ids: selected.clone(),
+            expires_at_unix_secs,
+        };
+        match append_claim_event(&session, &current, &event) {
+            Ok(()) => {
+                let selected = selected.into_iter().collect::<BTreeSet<_>>();
+                return Ok(SessionFrontierClaimOutput {
+                    version: SESSION_FRONTIER_CLAIMS_VERSION.to_string(),
+                    solve_hash,
+                    claim_id: Some(claim_id),
+                    worker: request.worker,
+                    expires_at_unix_secs: Some(expires_at_unix_secs),
+                    frontier_ids: selected.iter().cloned().collect(),
+                    work_items: frontier
+                        .work_items
+                        .into_iter()
+                        .filter(|item| selected.contains(&item.frontier_id))
+                        .collect(),
+                    unresolved_keys: frontier
+                        .unresolved_keys
+                        .into_iter()
+                        .filter(|key| selected.contains(&key.frontier_id))
+                        .collect(),
+                });
+            }
+            Err(error) if error.is_stream_head_conflict() => {
+                if attempt + 1 < SESSION_FRONTIER_CLAIMS_MAX_ATTEMPTS {
+                    thread::sleep(Duration::from_millis(((attempt + 1) * 2) as u64));
+                }
+            }
+            Err(error) => {
+                return Err(claim_publication_refusal(
+                    error.message,
+                    error.kind,
+                    error.writes_performed,
+                ));
+            }
+        }
+    }
+
+    Err(explain_refusal(
+        "Frontier claim could not advance the session lease stream after bounded retries",
+        json!({"stream": SESSION_FRONTIER_CLAIMS_STREAM_ID, "writes_performed": true}),
+        "Retry the frontier claim after the concurrent claim writers finish",
+    ))
+}
+
+pub fn release_frontier_claim(
+    request: SessionFrontierReleaseRequest,
+) -> Result<SessionFrontierReleaseOutput, Refusal> {
+    let session = absolute(&request.session)?;
+    open_stream(&session, SESSION_MANIFEST_STREAM_ID)?;
+    for attempt in 0..SESSION_FRONTIER_CLAIMS_MAX_ATTEMPTS {
+        let now = unix_time_secs()?;
+        let current = read_claim_log(&session)?;
+        let active = active_claims(&current.events, now);
+        if !active.contains_key(&request.claim_id) {
+            return Ok(SessionFrontierReleaseOutput {
+                version: SESSION_FRONTIER_CLAIMS_VERSION.to_string(),
+                claim_id: request.claim_id,
+                released: false,
+            });
+        }
+        let event = FrontierClaimEvent::Release {
+            claim_id: request.claim_id.clone(),
+            released_at_unix_secs: now,
+        };
+        match append_claim_event(&session, &current, &event) {
+            Ok(()) => {
+                return Ok(SessionFrontierReleaseOutput {
+                    version: SESSION_FRONTIER_CLAIMS_VERSION.to_string(),
+                    claim_id: request.claim_id,
+                    released: true,
+                });
+            }
+            Err(error) if error.is_stream_head_conflict() => {
+                if attempt + 1 < SESSION_FRONTIER_CLAIMS_MAX_ATTEMPTS {
+                    thread::sleep(Duration::from_millis(((attempt + 1) * 2) as u64));
+                }
+            }
+            Err(error) => {
+                return Err(claim_publication_refusal(
+                    error.message,
+                    error.kind,
+                    error.writes_performed,
+                ));
+            }
+        }
+    }
+    Err(explain_refusal(
+        "Frontier claim release could not advance the session lease stream after bounded retries",
+        json!({"stream": SESSION_FRONTIER_CLAIMS_STREAM_ID, "writes_performed": true}),
+        "Retry the release after the concurrent claim writers finish",
+    ))
+}
+
+#[derive(Debug)]
+struct ClaimLog {
+    generation_id: Option<String>,
+    events: Vec<FrontierClaimEvent>,
+    next_sequence: u64,
+}
+
+#[derive(Debug)]
+struct ActiveClaim {
+    solve_hash: String,
+    frontier_ids: Vec<String>,
+    expires_at_unix_secs: u64,
+}
+
+fn read_claim_log(session: &Path) -> Result<ClaimLog, Refusal> {
+    let snapshot = match open_current_stream_generation(session, SESSION_FRONTIER_CLAIMS_STREAM_ID)
+    {
+        Ok(snapshot) => Some(snapshot),
+        Err(error) if error.kind == EntityPublicationErrorKind::UncommittedGeneration => None,
+        Err(error) => {
+            return Err(claim_publication_refusal(
+                error.message,
+                error.kind,
+                error.writes_performed,
+            ));
+        }
+    };
+    let generation_id = snapshot
+        .as_ref()
+        .map(|snapshot| snapshot.generation_id.clone());
+    let mut events = Vec::new();
+    let mut next_sequence = 0u64;
+    if let Some(snapshot) = snapshot.as_ref() {
+        let records_prefix = format!("{SESSION_FRONTIER_CLAIMS_RECORDS_PATH}/");
+        for logical_path in snapshot
+            .logical_paths()
+            .filter(|path| path.starts_with(records_prefix.as_str()))
+        {
+            let sequence = logical_path
+                .strip_prefix(records_prefix.as_str())
+                .and_then(|name| name.strip_suffix(".json"))
+                .and_then(|sequence| sequence.parse::<u64>().ok())
+                .ok_or_else(|| {
+                    explain_refusal(
+                        format!("Frontier claim record path is invalid: {logical_path}"),
+                        json!({"stream": SESSION_FRONTIER_CLAIMS_STREAM_ID, "writes_performed": false}),
+                        "Repair the session frontier claim stream before claiming more work",
+                    )
+                })?;
+            if sequence != next_sequence {
+                return Err(explain_refusal(
+                    format!(
+                        "Frontier claim stream sequence expected {next_sequence}, found {sequence}"
+                    ),
+                    json!({"stream": SESSION_FRONTIER_CLAIMS_STREAM_ID, "writes_performed": false}),
+                    "Repair the session frontier claim stream before claiming more work",
+                ));
+            }
+            let bytes = snapshot.read_logical_file(logical_path).ok_or_else(|| {
+                explain_refusal(
+                    format!("Frontier claim record {sequence} has no stored bytes"),
+                    json!({
+                        "stream": SESSION_FRONTIER_CLAIMS_STREAM_ID,
+                        "logical_path": logical_path,
+                        "writes_performed": false,
+                    }),
+                    "Repair the session frontier claim stream before claiming more work",
+                )
+            })?;
+            let event = serde_json::from_slice(bytes).map_err(|error| {
+                explain_refusal(
+                    format!("Frontier claim record {sequence} is invalid: {error}"),
+                    json!({"stream": SESSION_FRONTIER_CLAIMS_STREAM_ID, "sequence": sequence, "writes_performed": false}),
+                    "Repair the session frontier claim log before claiming more work",
+                )
+            })?;
+            events.push(event);
+            next_sequence = next_sequence.checked_add(1).ok_or_else(|| {
+                explain_refusal(
+                    "Frontier claim stream sequence is exhausted",
+                    json!({"stream": SESSION_FRONTIER_CLAIMS_STREAM_ID, "writes_performed": false}),
+                    "Start a new session before adding more frontier claim records",
+                )
+            })?;
+        }
+    }
+    Ok(ClaimLog {
+        generation_id,
+        events,
+        next_sequence,
+    })
+}
+
+fn active_claims(events: &[FrontierClaimEvent], now: u64) -> BTreeMap<String, ActiveClaim> {
+    let mut claims = BTreeMap::new();
+    for event in events {
+        match event {
+            FrontierClaimEvent::Claim {
+                claim_id,
+                solve_hash,
+                frontier_ids,
+                expires_at_unix_secs,
+                ..
+            } => {
+                claims.insert(
+                    claim_id.clone(),
+                    ActiveClaim {
+                        solve_hash: solve_hash.clone(),
+                        frontier_ids: frontier_ids.clone(),
+                        expires_at_unix_secs: *expires_at_unix_secs,
+                    },
+                );
+            }
+            FrontierClaimEvent::Release { claim_id, .. } => {
+                claims.remove(claim_id);
+            }
+        }
+    }
+    claims.retain(|_, claim: &mut ActiveClaim| claim.expires_at_unix_secs > now);
+    claims
+}
+
+fn append_claim_event(
+    session: &Path,
+    current: &ClaimLog,
+    event: &FrontierClaimEvent,
+) -> Result<(), crate::entity::publication::EntityPublicationError> {
+    let bytes = serde_json::to_vec(event).expect("claim events serialize");
+    let logical_path = format!(
+        "{SESSION_FRONTIER_CLAIMS_RECORDS_PATH}/{:020}.json",
+        current.next_sequence
+    );
+    let upstream_artifacts = match event {
+        FrontierClaimEvent::Claim { solve_hash, .. } => vec![EntityPublicationUpstreamRef {
+            version: SESSION_SOLVE_STREAM_ID.to_string(),
+            content_hash: solve_hash.clone(),
+        }],
+        FrontierClaimEvent::Release { .. } => Vec::new(),
+    };
+    let request = EntityPublicationRequest {
+        stream_id: SESSION_FRONTIER_CLAIMS_STREAM_ID.to_string(),
+        supersedes_generation_id: current.generation_id.clone(),
+        request_fingerprint: blake3::hash(SESSION_FRONTIER_CLAIMS_VERSION.as_bytes())
+            .to_hex()
+            .to_string(),
+        cache_mode: "disabled".to_string(),
+        cache_status: "cold_start".to_string(),
+        cache_receipt_hash: blake3::hash(b"canon.entity.session.frontier.claims.receipt.v1")
+            .to_hex()
+            .to_string(),
+        stage_order: vec!["session".to_string()],
+        upstream_artifacts,
+        files: vec![EntityPublicationFileInput::new(
+            logical_path,
+            "session",
+            SESSION_FRONTIER_CLAIMS_VERSION,
+            bytes,
+        )],
+        omit_logical_paths: Vec::new(),
+    };
+    publish_stream_patch(session, request).map(|_| ())
+}
+
+fn unix_time_secs() -> Result<u64, Refusal> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .map_err(|error| {
+            explain_refusal(
+                format!("System clock is before the Unix epoch: {error}"),
+                json!({"writes_performed": false}),
+                "Correct the system clock and retry the frontier lease operation",
+            )
+        })
+}
+
+fn claim_publication_refusal(
+    message: String,
+    kind: EntityPublicationErrorKind,
+    writes_performed: bool,
+) -> Refusal {
+    explain_refusal(
+        format!("Unable to update the session frontier claim stream: {message}"),
+        json!({
+            "stream": SESSION_FRONTIER_CLAIMS_STREAM_ID,
+            "kind": format!("{kind:?}"),
+            "writes_performed": writes_performed,
+        }),
+        "Repair the session publication and retry the frontier lease operation",
     )
 }
 
@@ -271,8 +793,10 @@ struct Item {
     group_id: &'static str,
     surfaces: Vec<String>,
     settles_with: Vec<String>,
+    identity_context: Vec<String>,
     /// Present for review pairs only.
     review: Option<ReviewFacts>,
+    cannot_link_vetoes: Vec<FrontierCannotLinkVeto>,
 }
 
 #[derive(Debug, Clone)]
@@ -310,9 +834,11 @@ fn items_of(solve: &SessionSolveArtifact) -> Vec<Item> {
             group_id,
             surfaces: vec![review.left_surface.clone(), review.right_surface.clone()],
             settles_with,
+            identity_context: Vec::new(),
             review: Some(ReviewFacts {
                 evidence_types: review.evidence_types.clone(),
             }),
+            cannot_link_vetoes: Vec::new(),
         });
     }
     for contradiction in &solve.contradictions {
@@ -320,7 +846,32 @@ fn items_of(solve: &SessionSolveArtifact) -> Vec<Item> {
             group_id: NEEDS_HUMAN,
             surfaces: contradiction.surfaces.clone(),
             settles_with: Vec::new(),
+            identity_context: std::iter::once(format!("reason:{}", contradiction.reason))
+                .chain(
+                    contradiction
+                        .obs_ids
+                        .iter()
+                        .map(|id| format!("observation:{id}")),
+                )
+                .chain(
+                    contradiction
+                        .evidence_ids
+                        .iter()
+                        .map(|id| format!("evidence:{id}")),
+                )
+                .collect(),
             review: None,
+            cannot_link_vetoes: if matches!(
+                contradiction.reason.as_str(),
+                "distinct" | "registry_cannot_link"
+            ) {
+                vec![FrontierCannotLinkVeto {
+                    reason: contradiction.reason.clone(),
+                    evidence_ids: contradiction.evidence_ids.clone(),
+                }]
+            } else {
+                Vec::new()
+            },
         });
     }
     for cluster in solve
@@ -332,7 +883,9 @@ fn items_of(solve: &SessionSolveArtifact) -> Vec<Item> {
             group_id: NEEDS_HUMAN,
             surfaces: cluster.surfaces.clone(),
             settles_with: Vec::new(),
+            identity_context: vec![format!("oversized_cluster:{}", cluster.cluster_id)],
             review: None,
+            cannot_link_vetoes: Vec::new(),
         });
     }
     items
@@ -343,6 +896,8 @@ pub(crate) fn build_frontier(
     solve_hash: &str,
     observations: &[ObservationView],
     seed_entity: Option<&str>,
+    shard: Option<FrontierShard>,
+    limit: Option<usize>,
 ) -> Result<SessionFrontierOutput, Refusal> {
     let seed = match seed_entity {
         Some(query) => Some(resolve_seed(solve, observations, query)?),
@@ -354,15 +909,33 @@ pub(crate) fn build_frontier(
     };
 
     let by_surface = surfaces_to_observations(observations);
-    let items = items_of(solve)
+    let mut items = items_of(solve)
         .into_iter()
         .filter(|item| in_scope(&item.surfaces))
         .collect::<Vec<_>>();
 
+    let mut unresolved_keys = unresolved_keys_of(solve, observations, scope);
+    let mut candidate_ids = items
+        .iter()
+        .map(item_frontier_id)
+        .chain(unresolved_keys.iter().map(|key| key.frontier_id.clone()))
+        .filter(|id| shard.is_none_or(|shard| id_in_shard(id, shard)))
+        .collect::<Vec<_>>();
+    candidate_ids.sort();
+    candidate_ids.dedup();
+    if let Some(limit) = limit {
+        candidate_ids.truncate(limit);
+    }
+    let selected = candidate_ids.into_iter().collect::<BTreeSet<_>>();
+    items.retain(|item| selected.contains(&item_frontier_id(item)));
+    unresolved_keys.retain(|key| selected.contains(&key.frontier_id));
+
     let components = components_of(&items, &by_surface);
+    let mut work_items = work_items_of(solve, &items, &by_surface);
+    work_items.extend(key_work_items_of(solve, &unresolved_keys, &by_surface));
+    work_items.sort_by(|left, right| left.frontier_id.cmp(&right.frontier_id));
     let history_requests = history_requests_of(&items, &by_surface);
     let coverage = coverage_of(solve, observations, scope);
-    let unresolved_keys = unresolved_keys_of(solve, observations, scope);
     let terminal = terminal_of(solve, scope);
 
     let seed_block = seed.map(|seed| {
@@ -381,10 +954,223 @@ pub(crate) fn build_frontier(
         coverage,
         unresolved_keys,
         components,
+        work_items,
         terminal,
         history_requests,
         seed: seed_block,
+        partition: shard.map(|shard| FrontierPartition {
+            index: shard.index,
+            total: shard.total,
+            limit,
+        }),
     })
+}
+
+const FRONTIER_MAX_OBSERVATIONS_PER_ITEM: usize = 32;
+const FRONTIER_MAX_LINEAGES_PER_OBSERVATION: usize = 16;
+const FRONTIER_MAX_KEY_FAMILIES_PER_OBSERVATION: usize = 32;
+const FRONTIER_MAX_KEY_VALUES_PER_FAMILY: usize = 16;
+
+fn item_frontier_id(item: &Item) -> String {
+    let mut surfaces = item.surfaces.clone();
+    surfaces.sort();
+    surfaces.dedup();
+    let mut settles_with = item.settles_with.clone();
+    settles_with.sort();
+    settles_with.dedup();
+    let mut evidence_types = item
+        .review
+        .as_ref()
+        .map(|review| review.evidence_types.clone())
+        .unwrap_or_default();
+    evidence_types.sort();
+    evidence_types.dedup();
+    let mut vetoes = item.cannot_link_vetoes.clone();
+    vetoes.sort();
+    vetoes.dedup();
+    let mut identity_context = item.identity_context.clone();
+    identity_context.sort();
+    identity_context.dedup();
+    let material = serde_json::to_vec(&(
+        "canon.entity.session.frontier.item.v1",
+        item.group_id,
+        surfaces,
+        settles_with,
+        evidence_types,
+        vetoes,
+        identity_context,
+    ))
+    .expect("frontier identity fields serialize");
+    format!("frontier:{}", blake3::hash(&material).to_hex())
+}
+
+fn id_in_shard(id: &str, shard: FrontierShard) -> bool {
+    let Some(digest) = id.strip_prefix("frontier:") else {
+        return false;
+    };
+    let Some(prefix_hex) = digest.get(..16) else {
+        return false;
+    };
+    let Ok(prefix) = u64::from_str_radix(prefix_hex, 16) else {
+        return false;
+    };
+    prefix % shard.total == shard.index
+}
+
+fn work_items_of(
+    solve: &SessionSolveArtifact,
+    items: &[Item],
+    by_surface: &BTreeMap<&str, Vec<&ObservationView>>,
+) -> Vec<FrontierWorkItem> {
+    let mut work_items = items
+        .iter()
+        .map(|item| {
+            let mut surfaces = item.surfaces.clone();
+            surfaces.sort();
+            surfaces.dedup();
+            let (observations, observations_truncated) =
+                observations_for_surfaces(&surfaces, by_surface);
+            let mut incumbent_candidates = solve
+                .clusters
+                .iter()
+                .filter(|cluster| {
+                    cluster
+                        .surfaces
+                        .iter()
+                        .any(|surface| surfaces.binary_search(surface).is_ok())
+                })
+                .filter_map(|cluster| cluster.incumbent_canonical_id.clone())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            incumbent_candidates.sort();
+            let existing_partial_evidence = item
+                .review
+                .as_ref()
+                .map(|review| review.evidence_types.clone())
+                .unwrap_or_default();
+            let mut needed_evidence_kinds = item.settles_with.clone();
+            needed_evidence_kinds.sort();
+            needed_evidence_kinds.dedup();
+            FrontierWorkItem {
+                frontier_id: item_frontier_id(item),
+                missing: item.group_id.to_string(),
+                surfaces,
+                observations,
+                observations_truncated,
+                incumbent_candidates,
+                existing_partial_evidence,
+                cannot_link_vetoes: item.cannot_link_vetoes.clone(),
+                needed_evidence_kinds,
+            }
+        })
+        .collect::<Vec<_>>();
+    work_items.sort_by(|left, right| left.frontier_id.cmp(&right.frontier_id));
+    work_items
+}
+
+fn key_work_items_of(
+    solve: &SessionSolveArtifact,
+    keys: &[FrontierUnresolvedKey],
+    by_surface: &BTreeMap<&str, Vec<&ObservationView>>,
+) -> Vec<FrontierWorkItem> {
+    keys.iter()
+        .map(|key| {
+            let (observations, observations_truncated) =
+                observations_for_surfaces(&key.surfaces, by_surface);
+            let incumbent_candidates = solve
+                .clusters
+                .iter()
+                .filter(|cluster| {
+                    cluster
+                        .surfaces
+                        .iter()
+                        .any(|surface| key.surfaces.contains(surface))
+                })
+                .filter_map(|cluster| cluster.incumbent_canonical_id.clone())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            let cannot_link_vetoes = solve
+                .contradictions
+                .iter()
+                .filter(|contradiction| {
+                    matches!(
+                        contradiction.reason.as_str(),
+                        "distinct" | "registry_cannot_link"
+                    ) && contradiction
+                        .surfaces
+                        .iter()
+                        .any(|surface| key.surfaces.contains(surface))
+                })
+                .map(|contradiction| FrontierCannotLinkVeto {
+                    reason: contradiction.reason.clone(),
+                    evidence_ids: contradiction.evidence_ids.clone(),
+                })
+                .collect();
+            FrontierWorkItem {
+                frontier_id: key.frontier_id.clone(),
+                missing: NEEDS_AUTHORITATIVE_KEY.to_string(),
+                surfaces: key.surfaces.clone(),
+                observations,
+                observations_truncated,
+                incumbent_candidates,
+                existing_partial_evidence: Vec::new(),
+                cannot_link_vetoes,
+                needed_evidence_kinds: vec![key.namespace.clone()],
+            }
+        })
+        .collect()
+}
+
+fn observations_for_surfaces(
+    surfaces: &[String],
+    by_surface: &BTreeMap<&str, Vec<&ObservationView>>,
+) -> (Vec<FrontierObservation>, bool) {
+    let mut details_truncated = false;
+    let mut observations = surfaces
+        .iter()
+        .flat_map(|surface| by_surface.get(surface.as_str()).into_iter().flatten())
+        .map(|observation| {
+            let lineages = observation
+                .lineages
+                .iter()
+                .take(FRONTIER_MAX_LINEAGES_PER_OBSERVATION)
+                .cloned()
+                .collect::<Vec<_>>();
+            let mut truncated = observation.lineages.len() > lineages.len();
+            let keys = observation
+                .keys
+                .iter()
+                .take(FRONTIER_MAX_KEY_FAMILIES_PER_OBSERVATION)
+                .map(|(namespace, observed_values)| {
+                    let values = observed_values
+                        .iter()
+                        .take(FRONTIER_MAX_KEY_VALUES_PER_FAMILY)
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    truncated |= observed_values.len() > values.len();
+                    (namespace.clone(), values)
+                })
+                .collect::<BTreeMap<_, _>>();
+            truncated |= observation.keys.len() > keys.len();
+            details_truncated |= truncated;
+            FrontierObservation {
+                obs_id: observation.obs_id.clone(),
+                surface: observation.surface.clone(),
+                lineages,
+                keys,
+                details_truncated: truncated,
+            }
+        })
+        .collect::<Vec<_>>();
+    observations
+        .sort_by(|left, right| (&left.surface, &left.obs_id).cmp(&(&right.surface, &right.obs_id)));
+    observations
+        .dedup_by(|left, right| left.surface == right.surface && left.obs_id == right.obs_id);
+    let truncated = observations.len() > FRONTIER_MAX_OBSERVATIONS_PER_ITEM || details_truncated;
+    observations.truncate(FRONTIER_MAX_OBSERVATIONS_PER_ITEM);
+    (observations, truncated)
 }
 
 fn surfaces_to_observations(
@@ -629,14 +1415,18 @@ fn unresolved_keys_of(
             (alone || conflicting)
                 && scope.is_none_or(|scope| surfaces.iter().any(|surface| scope.contains(surface)))
         })
-        .map(
-            |((namespace, value), (surfaces, sources))| FrontierUnresolvedKey {
+        .map(|((namespace, value), (surfaces, sources))| {
+            let material =
+                serde_json::to_vec(&("canon.entity.session.frontier.key.v1", &namespace, &value))
+                    .expect("key serializes");
+            FrontierUnresolvedKey {
+                frontier_id: format!("frontier:{}", blake3::hash(&material).to_hex()),
                 namespace,
                 value,
                 surfaces: surfaces.into_iter().collect(),
                 sources: sources.into_iter().collect(),
-            },
-        )
+            }
+        })
         .collect()
 }
 
@@ -988,7 +1778,7 @@ mod tests {
             })
             .collect();
         let artifact = solve(reviews, contradictions, Vec::new());
-        let frontier = build_frontier(&artifact, "h", &[], None).unwrap();
+        let frontier = build_frontier(&artifact, "h", &[], None, None, None).unwrap();
         let groups = frontier
             .components
             .iter()
@@ -1036,9 +1826,263 @@ mod tests {
             Vec::new(),
             Vec::new(),
         );
-        let frontier = build_frontier(&artifact, "h", &[], None).unwrap();
+        let frontier = build_frontier(&artifact, "h", &[], None, None, None).unwrap();
         assert_eq!(frontier.components[0].group_id, "needs_authoritative_key");
         assert_eq!(frontier.components[0].settles_with, ["cik"]);
+    }
+
+    #[test]
+    fn shards_are_a_complete_disjoint_partition_and_tasks_carry_bounded_evidence() {
+        let reviews = (0..80)
+            .map(|index| {
+                review(
+                    &format!("pair-{index:03}-left"),
+                    &format!("pair-{index:03}-right"),
+                    &["name_equivalent"],
+                    "second_evidence_type",
+                )
+            })
+            .collect();
+        let mut incumbent = cluster("incumbent", "accepted", &["pair-000-left"]);
+        incumbent.incumbent_canonical_id = Some("ORG-001".to_string());
+        let artifact = solve(
+            reviews,
+            vec![SessionSolveContradiction {
+                reason: "distinct".to_string(),
+                surfaces: vec!["veto-left".to_string(), "veto-right".to_string()],
+                obs_ids: vec!["veto-proof".to_string()],
+                evidence_ids: vec!["evidence-veto".to_string()],
+            }],
+            vec![incumbent],
+        );
+        let mut observations = (0..160)
+            .map(|index| {
+                let pair = index / 2;
+                let side = if index % 2 == 0 { "left" } else { "right" };
+                observation(
+                    &format!("obs-{index:03}"),
+                    &format!("pair-{pair:03}-{side}"),
+                    "source-a",
+                    Some(&format!("key-{index:03}")),
+                )
+            })
+            .collect::<Vec<_>>();
+        observations.push(observation("veto-obs", "veto-left", "source-v", None));
+        observations.push(observation("veto-obs2", "veto-right", "source-v", None));
+        let full = build_frontier(&artifact, "solve", &observations, None, None, None).unwrap();
+        assert_eq!(
+            full.work_items
+                .iter()
+                .map(|item| item.frontier_id.as_str())
+                .collect::<BTreeSet<_>>()
+                .len(),
+            240
+        );
+        let review_task = full
+            .work_items
+            .iter()
+            .find(|item| item.surfaces.contains(&"pair-000-left".to_string()))
+            .unwrap();
+        assert_eq!(review_task.existing_partial_evidence, ["name_equivalent"]);
+        assert_eq!(
+            review_task.needed_evidence_kinds,
+            ["attribute_agreement", "same_slot"]
+        );
+        assert_eq!(review_task.incumbent_candidates, ["ORG-001"]);
+        assert_eq!(review_task.observations.len(), 2);
+        assert_eq!(review_task.observations[0].obs_id, "obs-000");
+        let veto = full
+            .work_items
+            .iter()
+            .find(|item| item.surfaces.contains(&"veto-left".to_string()))
+            .unwrap();
+        assert_eq!(veto.cannot_link_vetoes.len(), 1);
+        assert_eq!(veto.cannot_link_vetoes[0].reason, "distinct");
+        assert_eq!(veto.cannot_link_vetoes[0].evidence_ids, ["evidence-veto"]);
+        let key_task = full
+            .work_items
+            .iter()
+            .find(|item| item.missing == NEEDS_AUTHORITATIVE_KEY)
+            .unwrap();
+        assert_eq!(key_task.needed_evidence_kinds, ["cik"]);
+        assert_eq!(key_task.observations.len(), 1);
+
+        let mut union = BTreeSet::new();
+        for index in 0..4 {
+            let shard = build_frontier(
+                &artifact,
+                "solve",
+                &observations,
+                None,
+                Some(FrontierShard { index, total: 4 }),
+                None,
+            )
+            .unwrap();
+            let local = shard
+                .work_items
+                .iter()
+                .map(|item| item.frontier_id.clone())
+                .chain(
+                    shard
+                        .unresolved_keys
+                        .iter()
+                        .map(|key| key.frontier_id.clone()),
+                )
+                .collect::<BTreeSet<_>>();
+            assert!(
+                local.into_iter().all(|id| union.insert(id)),
+                "shard {index} overlaps"
+            );
+        }
+        let expected = full
+            .work_items
+            .iter()
+            .map(|item| item.frontier_id.clone())
+            .chain(
+                full.unresolved_keys
+                    .iter()
+                    .map(|key| key.frontier_id.clone()),
+            )
+            .collect::<BTreeSet<_>>();
+        assert_eq!(union, expected);
+
+        let limited =
+            build_frontier(&artifact, "solve", &observations, None, None, Some(7)).unwrap();
+        let limited_ids = limited
+            .work_items
+            .iter()
+            .map(|item| item.frontier_id.clone())
+            .chain(
+                limited
+                    .unresolved_keys
+                    .iter()
+                    .map(|key| key.frontier_id.clone()),
+            )
+            .collect::<BTreeSet<_>>();
+        assert_eq!(limited_ids.len(), 7);
+    }
+
+    #[test]
+    fn work_item_observations_are_capped_with_an_explicit_truncation_marker() {
+        let artifact = solve(
+            vec![review(
+                "shared-left",
+                "shared-right",
+                &["same_slot"],
+                "second_lineage",
+            )],
+            Vec::new(),
+            Vec::new(),
+        );
+        let observations = (0..40)
+            .map(|index| {
+                observation(
+                    &format!("obs-{index:02}"),
+                    if index % 2 == 0 {
+                        "shared-left"
+                    } else {
+                        "shared-right"
+                    },
+                    "source",
+                    None,
+                )
+            })
+            .collect::<Vec<_>>();
+        let frontier = build_frontier(&artifact, "solve", &observations, None, None, None).unwrap();
+        assert_eq!(frontier.work_items.len(), 1);
+        assert_eq!(
+            frontier.work_items[0].observations.len(),
+            FRONTIER_MAX_OBSERVATIONS_PER_ITEM
+        );
+        assert!(frontier.work_items[0].observations_truncated);
+    }
+
+    #[test]
+    fn shard_syntax_rejects_empty_and_out_of_range_partitions() {
+        assert_eq!(
+            FrontierShard::parse("0/4"),
+            Ok(FrontierShard { index: 0, total: 4 })
+        );
+        for invalid in ["0", "1/0", "4/4", "x/2", "0/x"] {
+            assert!(FrontierShard::parse(invalid).is_err(), "accepted {invalid}");
+        }
+    }
+
+    #[test]
+    fn distinct_contradictions_on_the_same_surfaces_keep_distinct_frontier_ids() {
+        let frontier = build_frontier(
+            &solve(
+                Vec::new(),
+                vec![
+                    SessionSolveContradiction {
+                        reason: "key_conflict".to_string(),
+                        surfaces: vec!["same-left".to_string(), "same-right".to_string()],
+                        obs_ids: vec!["obs-a".to_string()],
+                        evidence_ids: vec!["evidence-a".to_string()],
+                    },
+                    SessionSolveContradiction {
+                        reason: "temporal_conflict".to_string(),
+                        surfaces: vec!["same-left".to_string(), "same-right".to_string()],
+                        obs_ids: vec!["obs-b".to_string()],
+                        evidence_ids: vec!["evidence-b".to_string()],
+                    },
+                ],
+                Vec::new(),
+            ),
+            "solve",
+            &[],
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(frontier.work_items.len(), 2);
+        assert_ne!(
+            frontier.work_items[0].frontier_id,
+            frontier.work_items[1].frontier_id
+        );
+    }
+
+    #[test]
+    fn lease_events_release_items_and_expire_without_mutating_the_log() {
+        let events = vec![
+            FrontierClaimEvent::Claim {
+                claim_id: "live".to_string(),
+                worker: "worker-a".to_string(),
+                solve_hash: "solve-current".to_string(),
+                frontier_ids: vec!["frontier:a".to_string()],
+                expires_at_unix_secs: 200,
+            },
+            FrontierClaimEvent::Claim {
+                claim_id: "expired".to_string(),
+                worker: "worker-b".to_string(),
+                solve_hash: "solve-current".to_string(),
+                frontier_ids: vec!["frontier:b".to_string()],
+                expires_at_unix_secs: 100,
+            },
+            FrontierClaimEvent::Claim {
+                claim_id: "released".to_string(),
+                worker: "worker-c".to_string(),
+                solve_hash: "solve-current".to_string(),
+                frontier_ids: vec!["frontier:c".to_string()],
+                expires_at_unix_secs: 200,
+            },
+            FrontierClaimEvent::Release {
+                claim_id: "released".to_string(),
+                released_at_unix_secs: 150,
+            },
+        ];
+        let active = active_claims(&events, 150);
+        assert_eq!(active.len(), 1);
+        assert_eq!(active["live"].frontier_ids, ["frontier:a"]);
+        assert!(!active.contains_key("expired"));
+        assert!(!active.contains_key("released"));
+        assert_eq!(
+            events.len(),
+            4,
+            "expiry and release do not rewrite prior events"
+        );
     }
 
     #[test]
@@ -1065,7 +2109,7 @@ mod tests {
             observation("5", "Gamma", "s1", Some("3")),
             observation("6", "Beta", "s2", None),
         ];
-        let frontier = build_frontier(&artifact, "h", &observations, None).unwrap();
+        let frontier = build_frontier(&artifact, "h", &observations, None, None, None).unwrap();
         let cik = frontier
             .coverage
             .iter()
@@ -1120,7 +2164,7 @@ mod tests {
             ("trustee".to_string(), "other".to_string()),
         ]);
         right.as_of = Some("2025-06-30".to_string());
-        let frontier = build_frontier(&artifact, "h", &[left, right], None).unwrap();
+        let frontier = build_frontier(&artifact, "h", &[left, right], None, None, None).unwrap();
         assert_eq!(frontier.history_requests.len(), 1);
         let request = &frontier.history_requests[0];
         assert_eq!(request.need, "prior_observations");
@@ -1147,7 +2191,7 @@ mod tests {
             Vec::new(),
         );
         assert!(
-            build_frontier(&artifact, "h", &[], None)
+            build_frontier(&artifact, "h", &[], None, None, None)
                 .unwrap()
                 .history_requests
                 .is_empty()
@@ -1161,7 +2205,7 @@ mod tests {
             Vec::new(),
             vec![cluster("c", "standalone", &["A"])],
         );
-        let frontier = build_frontier(&artifact, "h", &[], None).unwrap();
+        let frontier = build_frontier(&artifact, "h", &[], None, None, None).unwrap();
         let text = serde_json::to_string(&frontier).unwrap();
         for forbidden in ["\"how\"", "\"command\"", "\"recipe\"", "next_command"] {
             assert!(!text.contains(forbidden), "{forbidden} in {text}");
