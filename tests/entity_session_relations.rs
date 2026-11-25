@@ -1,6 +1,9 @@
 #![forbid(unsafe_code)]
 
 use assert_cmd::Command;
+use canon::entity::{
+    publication::open_current_stream_generation, session::SESSION_SOLVE_STREAM_ID,
+};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -199,6 +202,90 @@ fn copy_registry_without_relations(source: &Path, target: &Path) {
         }
         fs::copy(&path, target.join(entry.file_name())).expect("copy registry file");
     }
+}
+
+fn solve_artifact_hash(session: &Path) -> String {
+    let snapshot = open_current_stream_generation(session, SESSION_SOLVE_STREAM_ID)
+        .expect("current solve generation");
+    let bytes = snapshot
+        .read_logical_file("solve/solve.json")
+        .expect("solve artifact");
+    format!("blake3:{}", blake3::hash(bytes).to_hex())
+}
+
+fn relation_facts(registry: &Path) -> Vec<Value> {
+    fs::read_to_string(registry.join("relations.jsonl"))
+        .expect("relations sidecar")
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("relation line JSON"))
+        .collect()
+}
+
+#[test]
+fn resolving_again_then_recommitting_keeps_relation_fact_and_id_stable() {
+    let temp = TempDir::new().expect("tempdir");
+    let rules = write_lines(&temp, "stable-rules.yaml", &[RULES.trim_end().to_string()]);
+    let (registry, session) = init(&temp, "stable-relation", None);
+    let observations = write_lines(
+        &temp,
+        "stable-observations.jsonl",
+        &[
+            observation("stable-a", "filing-a", "Alpha", "100", None, None, None),
+            observation("stable-b", "filing-b", "Beta", "200", None, None, None),
+        ],
+    );
+    ingest(&session, &observations);
+    let evidence = write_lines(
+        &temp,
+        "stable-evidence.jsonl",
+        &[relation_evidence(
+            "stable-a",
+            "stable-b",
+            "part_of",
+            "stable-relation-lineage",
+        )],
+    );
+    assert_evidence(&session, &evidence);
+
+    let first_solve = solve(&session, &rules);
+    assert_eq!(first_solve["summary"]["relations"], 1);
+    let first_solve_hash = solve_artifact_hash(&session);
+    let first_commit = commit(&session, Some("0.1.0"));
+    assert_eq!(first_commit["relations_written"], 1);
+    let first_facts = relation_facts(&registry);
+    assert_eq!(first_facts.len(), 1);
+    assert_eq!(first_facts[0]["relation"]["value"], "part_of");
+    let relation_id = first_facts[0]["relation_id"]
+        .as_str()
+        .expect("first relation id");
+
+    // A new unrelated observation changes the solve artifact while leaving
+    // the existing relation evidence and edge unchanged.
+    let extra_observation = write_lines(
+        &temp,
+        "stable-extra-observation.jsonl",
+        &[observation(
+            "stable-c", "filing-c", "Gamma", "300", None, None, None,
+        )],
+    );
+    ingest(&session, &extra_observation);
+    let second_solve = solve(&session, &rules);
+    assert_eq!(second_solve["summary"]["relations"], 1);
+    let second_solve_hash = solve_artifact_hash(&session);
+    assert_ne!(
+        second_solve_hash, first_solve_hash,
+        "the regression must exercise a distinct solve artifact"
+    );
+
+    let second_commit = commit(&session, None);
+    assert_eq!(second_commit["relations_written"], 0);
+    let second_facts = relation_facts(&registry);
+    assert_eq!(
+        second_facts.len(),
+        1,
+        "re-commit must not append a duplicate edge"
+    );
+    assert_eq!(second_facts[0]["relation_id"], relation_id);
 }
 
 #[test]

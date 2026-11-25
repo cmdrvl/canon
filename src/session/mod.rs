@@ -1752,7 +1752,6 @@ pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refu
     let relations_written = write_relation_sidecar(
         registry_path,
         &manifest.session_id,
-        &request.solve_hash,
         &request.relations,
         &relation_closure_slots,
         &minted_by_cluster,
@@ -2356,7 +2355,6 @@ fn current_registry_summary(
 fn write_relation_sidecar(
     registry_path: &Path,
     session_id: &str,
-    solve_hash: &str,
     relations: &[SessionCommitRelation],
     closures: &[Option<SessionCommitClosure>],
     minted_by_cluster: &BTreeMap<String, String>,
@@ -2388,7 +2386,6 @@ fn write_relation_sidecar(
         let Some(fact) = build_relation_fact(
             relation,
             session_id,
-            solve_hash,
             minted_by_cluster,
             closures.get(index).and_then(Option::as_ref),
         )?
@@ -2483,7 +2480,6 @@ fn parse_relation_lines(bytes: &[u8], path: &Path) -> Result<Vec<DirectedRelatio
 fn build_relation_fact(
     relation: &SessionCommitRelation,
     session_id: &str,
-    solve_hash: &str,
     minted_by_cluster: &BTreeMap<String, String>,
     closure: Option<&SessionCommitClosure>,
 ) -> Result<Option<DirectedRelationFact>, Refusal> {
@@ -2567,7 +2563,7 @@ fn build_relation_fact(
         valid_time: relation.valid_time.clone(),
         provenance: RelationProvenance {
             source_system: "canon.entity.session".to_string(),
-            locator: format!("session:{session_id}:solve:{solve_hash}"),
+            locator: format!("session:{session_id}:relation"),
             fragment,
             observed_at,
             outcome_ref: closure.map(|closure| closure.outcome_ref.clone()),
@@ -4718,7 +4714,7 @@ mod tests {
             evidence_ids: vec!["evidence-1".to_string()],
             observations: Vec::new(),
         };
-        let fact = build_relation_fact(&relation, "session-1", "solve-1", &BTreeMap::new(), None)
+        let fact = build_relation_fact(&relation, "session-1", &BTreeMap::new(), None)
             .expect("valid relation")
             .expect("committed endpoints");
 
@@ -4730,7 +4726,7 @@ mod tests {
             RelationKindRef::Extension { value, .. } if value == "part_of"
         ));
         assert_eq!(fact.provenance.source_system, "canon.entity.session");
-        assert_eq!(fact.provenance.locator, "session:session-1:solve:solve-1");
+        assert_eq!(fact.provenance.locator, "session:session-1:relation");
         assert_eq!(fact.provenance.fragment.as_deref(), Some("evidence-1"));
         assert!(matches!(
             fact.identity_implication.mode,
@@ -4760,9 +4756,7 @@ mod tests {
             observations: Vec::new(),
         };
 
-        assert!(
-            build_relation_fact(&relation, "session-1", "solve-1", &BTreeMap::new(), None).is_err()
-        );
+        assert!(build_relation_fact(&relation, "session-1", &BTreeMap::new(), None).is_err());
     }
 }
 
