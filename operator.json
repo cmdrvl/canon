@@ -16,7 +16,10 @@
       "canon doctor capabilities [--json]",
       "canon doctor robot-docs",
       "canon doctor --robot-triage",
-      "canon project init <DIR> [--project-id <ID>] [--mapping-profile <PROFILE>] [--emit json|summary]",
+      "canon --robot-triage",
+      "canon capabilities [--json]",
+      "canon robot-docs guide",
+      "canon project init<DIR> [--project-id <ID>] [--mapping-profile <PROFILE>] [--emit json|summary]",
       "canon project validate <DIR> [--manifest <PATH>] [--emit json|summary]",
       "canon project describe <DIR> [--manifest <PATH>] [--emit json|summary]",
       "canon project lock refresh --manifest <MANIFEST> --out <LOCK> [--emit json|summary]",
@@ -222,6 +225,12 @@
       "flag": "--schema",
       "type": "flag",
       "description": "Print canon.v0 JSON Schema and exit 0"
+    },
+    {
+      "name": "robot_triage",
+      "flag": "--robot-triage",
+      "type": "flag",
+      "description": "Emit compact canon.doctor.triage.v1 JSON (same report as doctor --robot-triage) and exit 0, or 1 when the compiled contract is unhealthy"
     },
     {
       "name": "version",
@@ -622,6 +631,122 @@
       "next_command": "canon doctor health --json",
       "recovery": {
         "next_command": "canon doctor health --json",
+        "refusal_exit_code": 2
+      },
+      "options": []
+    },
+    {
+      "name": "capabilities",
+      "usage": "canon capabilities [--json]",
+      "description": "Describe commands, exit codes, side effects, and fixers; same report as doctor capabilities",
+      "output_mode": "mixed",
+      "output_schema": "canon.doctor.capabilities.v1",
+      "alternate_output_schemas": [
+        "text/plain"
+      ],
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "operator contract inspection only; no fixers or writes",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "doctor"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": false,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "capabilities report emitted successfully",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI or artifact contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "canon robot-docs guide",
+      "recovery": {
+        "next_command": "canon robot-docs guide",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "json",
+          "flag": "--json",
+          "type": "flag",
+          "description": "Emit canon.doctor.capabilities.v1 JSON instead of concise text"
+        }
+      ]
+    },
+    {
+      "name": "robot-docs guide",
+      "usage": "canon robot-docs guide",
+      "description": "Emit the agent-oriented markdown guide to canon's read-only discovery surfaces",
+      "output_mode": "mixed",
+      "output_schema": "text/markdown",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "operator contract inspection only; no fixers or writes",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "doctor"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": false,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "guide emitted successfully",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI or artifact contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "canon capabilities --json",
+      "recovery": {
+        "next_command": "canon capabilities --json",
         "refusal_exit_code": 2
       },
       "options": []

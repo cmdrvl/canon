@@ -422,6 +422,9 @@ canon doctor health [--json]
 canon doctor capabilities [--json]
 canon doctor robot-docs
 canon doctor --robot-triage
+canon --robot-triage
+canon capabilities [--json]
+canon robot-docs guide
 canon temporal compile --request <REQUEST.json> [--emit json|summary] [--max-bytes <N>] [--no-witness]
 canon temporal relation finalize --facts <FACTS.json> [--emit json|summary] [--max-bytes <N>] [--no-witness]
 canon package pack --root <DIR> --package <package.json> --out <ARCHIVE>
@@ -981,6 +984,14 @@ exit `0` when their read-only reports are emitted. All doctor forms exit `2` for
 CLI usage errors such as unsupported `--fix`. The JSON schemas are
 `canon.doctor.health.v1`, `canon.doctor.capabilities.v1`, and
 `canon.doctor.triage.v1`.
+
+Three top-level spellings reach the same read-only reports for agents that guess
+the sibling-tool convention: `canon --robot-triage` is `canon doctor
+--robot-triage`, `canon capabilities [--json]` is `canon doctor capabilities
+[--json]`, and `canon robot-docs guide` prints an agent-oriented markdown guide
+to these discovery surfaces. They call the same code as the doctor forms, so
+their output and exit codes are identical, and none of them has a `--fix`
+surface.
 
 ### Output Routing
 

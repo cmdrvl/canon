@@ -122,6 +122,10 @@ pub fn run(cli: Cli) -> Result<u8, Box<dyn Error>> {
         return run_display_mode(DisplayMode::Schema);
     }
 
+    if cli.robot_triage {
+        return doctor::run_robot_triage();
+    }
+
     if let Some(command) = &cli.command {
         return run_command(command);
     }
@@ -193,6 +197,10 @@ pub fn run(cli: Cli) -> Result<u8, Box<dyn Error>> {
 fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
     match command {
         CanonCommand::Doctor(args) => doctor::run(args),
+        CanonCommand::Capabilities(args) => doctor::run_capabilities(args),
+        CanonCommand::RobotDocs(args) => match args.command {
+            crate::cli::RobotDocsSubcommand::Guide => doctor::run_robot_guide(),
+        },
         CanonCommand::Package(package) => run_package_command(package),
         CanonCommand::Project(project) => project::cli::run(project),
         CanonCommand::Geo(geo) => geo::cli::run(geo),
@@ -9121,7 +9129,7 @@ fn parse_provider_config(options: &[String]) -> Result<BTreeMap<String, String>,
 
 /// Long flags an agent commonly types on the core lookup command. Used to
 /// turn clap's generic "unexpected argument" into a did-you-mean suggestion.
-const KNOWN_CORE_FLAGS: [&str; 20] = [
+const KNOWN_CORE_FLAGS: [&str; 21] = [
     "registry",
     "column",
     "scope",
@@ -9141,12 +9149,21 @@ const KNOWN_CORE_FLAGS: [&str; 20] = [
     "version",
     "describe",
     "schema",
+    "robot-triage",
     "help",
 ];
 
 /// Top-level subcommands, for disambiguating a misspelled subcommand that clap
 /// otherwise swallows as the optional positional input.
-const KNOWN_SUBCOMMANDS: [&str; 5] = ["doctor", "package", "registry", "entity", "strategy"];
+const KNOWN_SUBCOMMANDS: [&str; 7] = [
+    "doctor",
+    "capabilities",
+    "robot-docs",
+    "package",
+    "registry",
+    "entity",
+    "strategy",
+];
 
 /// Classic dynamic-programming Levenshtein edit distance.
 fn levenshtein(a: &str, b: &str) -> usize {
@@ -9256,6 +9273,9 @@ pub fn run_display_mode(mode: DisplayMode) -> Result<u8, Box<dyn Error>> {
                  \x20\x20canon <INPUT> --registry <DIR> --column <COLUMN>   resolve a CSV/JSONL column\n\
                  \x20\x20canon --help                                       full usage and flags\n\
                  \x20\x20canon doctor --robot-triage                        machine-readable capabilities + health\n\
+                 \x20\x20canon --robot-triage                               same triage, top-level alias\n\
+                 \x20\x20canon capabilities --json                          machine-readable capabilities\n\
+                 \x20\x20canon robot-docs guide                             agent-oriented markdown guide\n\
                  \x20\x20canon --describe                                   operator.json contract\n\
                  \x20\x20canon --schema                                     canon.v0 output JSON Schema"
             );

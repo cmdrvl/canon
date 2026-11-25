@@ -14,11 +14,23 @@ const CAPABILITIES_SCHEMA: &str = "canon.doctor.capabilities.v1";
 const TRIAGE_SCHEMA: &str = "canon.doctor.triage.v1";
 const OPERATOR_JSON: &str = include_str!("../operator.json");
 
+/// `canon --robot-triage` and `canon doctor --robot-triage`: one compact JSON
+/// triage report; exit 0 when healthy, 1 when the contract parity check fails.
+pub fn run_robot_triage() -> Result<u8, Box<dyn Error>> {
+    let payload = triage_payload();
+    let exit_code = health_exit_code(&payload);
+    write_json_with_code(&payload, exit_code)
+}
+
+/// `canon robot-docs guide`: the markdown guide, read-only, always exit 0.
+pub fn run_robot_guide() -> Result<u8, Box<dyn Error>> {
+    print!("{}", robot_guide_markdown());
+    Ok(0)
+}
+
 pub fn run(args: &DoctorArgs) -> Result<u8, Box<dyn Error>> {
     if args.robot_triage {
-        let payload = triage_payload();
-        let exit_code = health_exit_code(&payload);
-        return write_json_with_code(&payload, exit_code);
+        return run_robot_triage();
     }
 
     match &args.command {
@@ -52,7 +64,8 @@ fn run_health(args: &DoctorJsonArgs) -> Result<u8, Box<dyn Error>> {
     }
 }
 
-fn run_capabilities(args: &DoctorJsonArgs) -> Result<u8, Box<dyn Error>> {
+/// `canon capabilities` and `canon doctor capabilities`.
+pub fn run_capabilities(args: &DoctorJsonArgs) -> Result<u8, Box<dyn Error>> {
     let payload = capabilities_payload();
     if args.json {
         write_json_with_code(&payload, 0)
@@ -61,6 +74,7 @@ fn run_capabilities(args: &DoctorJsonArgs) -> Result<u8, Box<dyn Error>> {
         println!("read_only=true");
         println!("fixers=0");
         println!("commands=health,capabilities,robot-docs,--robot-triage");
+        println!("top_level=--robot-triage,capabilities --json,robot-docs guide");
         Ok(0)
     }
 }
@@ -147,6 +161,22 @@ fn capabilities_payload() -> Value {
                 "description": "Emit a compact triage report for automation"
             }
         ],
+        "top_level_aliases": {
+            "robot_triage": {
+                "command": "canon --robot-triage",
+                "same_as": "canon doctor --robot-triage",
+                "output_schema": TRIAGE_SCHEMA
+            },
+            "capabilities": {
+                "command": "canon capabilities --json",
+                "same_as": "canon doctor capabilities --json",
+                "output_schema": CAPABILITIES_SCHEMA
+            },
+            "robot_docs": {
+                "command": "canon robot-docs guide",
+                "output_schema": "text/markdown"
+            }
+        },
         "exit_codes": {
             "0": "doctor report emitted successfully",
             "1": "unhealthy compiled operator contract parity in health or triage reports",
@@ -167,7 +197,7 @@ fn composition_payload() -> Value {
         "family": {
             "name": "cmdrvl-spine",
             "siblings": [
-                {"tool": "canon", "capabilities": "canon doctor capabilities --json"},
+                {"tool": "canon", "capabilities": "canon capabilities --json"},
                 {"tool": "profile", "capabilities": "profile capabilities --json"},
                 {"tool": "shape", "capabilities": "shape capabilities --json"},
                 {"tool": "rvl", "capabilities": "rvl capabilities --json"},
@@ -533,9 +563,102 @@ fn print_robot_docs() {
     println!("  - use canon --describe for the full operator manifest");
 }
 
+/// The `canon robot-docs guide` body. Plain markdown with no ANSI escapes, so
+/// it reads the same on a pipe, under `NO_COLOR`, and under `TERM=dumb`.
+fn robot_guide_markdown() -> String {
+    let mut guide = String::new();
+    guide.push_str(
+        "# canon robot-docs guide\n\
+         \n\
+         canon's agent discovery surface is read-only. The discovery commands never read input tapes, registries, schemas, or SQLite indexes. They never append witness ledgers, write files, create directories, or contact providers.\n\
+         \n\
+         Commands:\n\
+         - canon --robot-triage\n\
+         - canon capabilities --json\n\
+         - canon robot-docs guide\n\
+         - canon <INPUT> --registry <DIR> --column <COLUMN>\n\
+         - canon doctor health [--json]\n\
+         - canon doctor capabilities [--json]\n\
+         - canon doctor robot-docs\n\
+         - canon doctor --robot-triage\n\
+         - canon --describe\n\
+         - canon --schema\n\
+         \n\
+         Output:\n\
+         - `canon --robot-triage` and `canon doctor --robot-triage` print one JSON object (canon.doctor.triage.v1).\n\
+         - `canon capabilities --json` and `canon doctor capabilities --json` print one JSON object (canon.doctor.capabilities.v1).\n\
+         - Without `--json`, `canon capabilities` prints a short text summary.\n\
+         - Output is plain text or JSON with no color, so NO_COLOR, TERM=dumb, and a non-tty stdout change nothing.\n\
+         \n\
+         Exit codes:\n\
+         - 0: report emitted and the compiled operator contract is healthy\n\
+         - 1: triage found the compiled operator contract unhealthy\n\
+         - 2: command-line usage error or refusal\n\
+         \n\
+         Composition:\n\
+         - Run `canon <old.csv> --registry <REGISTRY> --column <COLUMN> --emit csv --map-out evidence/old.map.json > old.canon.csv` before `shape` and `rvl` when source identifiers are aliases or legacy IDs.\n\
+         - Keep the `--map-out` artifacts; they explain how each source ID mapped to a canonical ID.\n\
+         - Lookup is exact byte match after ASCII-trim. Uncertain evidence belongs in `canon entity` and `canon resolve`, not in lookup.\n",
+    );
+    // Ask the compiled command tree, not a build flag, so the guide never
+    // advertises a command this binary cannot run.
+    if Cli::command().find_subcommand("geo").is_some() {
+        guide.push_str(
+            "\n\
+             Geo:\n\
+             - Start with `canon geo capabilities --guide` for supported clues, input schemas, and an offline example.\n\
+             - The guide is documentation, not a planning capability artifact; use `canon geo capabilities` without `--guide` for the capabilities JSON.\n",
+        );
+    }
+    guide.push_str(
+        "\n\
+         Entity workbench:\n\
+         - The how-to and operator catalog is docs/ENTITY_WORKBENCH_AGENT_GUIDE.md in the canon repo.\n\
+         - Start with `canon entity profile list`, then `canon entity run`.\n\
+         \n\
+         Repair policy: canon doctor has no --fix surface in this release. Use `canon --robot-triage` or `canon capabilities --json` for read-only diagnostics, and `canon registry lint` for registry-file diagnostics.\n",
+    );
+    guide
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn robot_guide_names_every_top_level_discovery_command() {
+        let guide = robot_guide_markdown();
+        for command in [
+            "canon --robot-triage",
+            "canon capabilities --json",
+            "canon robot-docs guide",
+            "canon doctor --robot-triage",
+        ] {
+            assert!(guide.contains(command), "guide must name `{command}`");
+        }
+        assert!(
+            !guide.contains('\u{1b}'),
+            "guide must be plain text with no ANSI escapes"
+        );
+        assert_eq!(
+            guide.contains("canon geo capabilities --guide"),
+            Cli::command().find_subcommand("geo").is_some()
+        );
+    }
+
+    #[test]
+    fn capabilities_payload_declares_top_level_aliases() {
+        let payload = capabilities_payload();
+        let aliases = &payload["top_level_aliases"];
+        assert_eq!(aliases["robot_triage"]["command"], "canon --robot-triage");
+        assert_eq!(
+            aliases["capabilities"]["command"],
+            "canon capabilities --json"
+        );
+        assert_eq!(aliases["robot_docs"]["command"], "canon robot-docs guide");
+        assert_eq!(payload["read_only"], true);
+        assert_eq!(payload["fixers"], json!([]));
+    }
 
     #[test]
     fn shipped_doctor_contract_report_is_healthy() {

@@ -99,6 +99,30 @@
       "action": "preserve"
     },
     {
+      "id": "canon --robot-triage",
+      "family": "doctor",
+      "clap_path": null,
+      "operator_name": null,
+      "primary_contracts": ["canon.doctor.triage.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon capabilities",
+      "family": "doctor",
+      "clap_path": "capabilities",
+      "operator_name": "capabilities",
+      "primary_contracts": ["canon.doctor.capabilities.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon robot-docs guide",
+      "family": "doctor",
+      "clap_path": "robot-docs guide",
+      "operator_name": "robot-docs guide",
+      "primary_contracts": [],
+      "action": "preserve"
+    },
+    {
       "id": "canon package pack",
       "family": "distribution",
       "clap_path": "package pack",

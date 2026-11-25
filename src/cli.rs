@@ -169,6 +169,11 @@ pub enum StrategyKeyTypeArg {
 pub enum CanonCommand {
     /// Read-only health, capabilities, and robot-oriented diagnostics
     Doctor(DoctorArgs),
+    /// Describe commands, exit codes, side effects, and fixers (alias of `doctor capabilities`)
+    Capabilities(DoctorJsonArgs),
+    /// Agent-oriented usage notes
+    #[command(name = "robot-docs")]
+    RobotDocs(RobotDocsCli),
     /// Local package archive operations
     Package(PackageCli),
     /// Project bootstrap, validation, and description commands
@@ -1161,6 +1166,18 @@ pub struct DoctorJsonArgs {
     /// Emit JSON instead of concise text
     #[arg(long)]
     pub json: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct RobotDocsCli {
+    #[command(subcommand)]
+    pub command: RobotDocsSubcommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum RobotDocsSubcommand {
+    /// Emit the agent-oriented markdown guide to canon's discovery surfaces
+    Guide,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -3208,11 +3225,11 @@ pub struct Cli {
     pub input: Option<PathBuf>,
 
     /// Registry directory (versioned)
-    #[arg(long, required_unless_present_any = ["version", "describe", "schema"])]
+    #[arg(long, required_unless_present_any = ["version", "describe", "schema", "robot_triage"])]
     pub registry: Option<PathBuf>,
 
     /// Column containing IDs to resolve
-    #[arg(long, required_unless_present_any = ["version", "describe", "schema"])]
+    #[arg(long, required_unless_present_any = ["version", "describe", "schema", "robot_triage"])]
     pub column: Option<String>,
 
     /// Exact lookup scope binding, repeatable: DIMENSION=VALUE
@@ -3282,6 +3299,10 @@ pub struct Cli {
     /// Print JSON Schema for mapping artifact and exit
     #[arg(long)]
     pub schema: bool,
+
+    /// Emit compact read-only triage JSON (alias of `doctor --robot-triage`) and exit
+    #[arg(long = "robot-triage")]
+    pub robot_triage: bool,
 }
 
 #[cfg(test)]
@@ -3418,6 +3439,37 @@ mod tests {
 
         assert!(cli.explicit);
         assert!(cli.plain_json_values);
+    }
+
+    #[test]
+    fn test_cli_top_level_robot_triage_needs_no_lookup_args() {
+        let cli = Cli::try_parse_from(["canon", "--robot-triage"]).unwrap();
+        assert!(cli.robot_triage);
+        assert!(cli.command.is_none());
+        assert!(cli.registry.is_none() && cli.column.is_none());
+
+        // Without the flag a lookup still requires --registry and --column.
+        assert!(Cli::try_parse_from(["canon", "tape.csv"]).is_err());
+    }
+
+    #[test]
+    fn test_cli_top_level_capabilities_and_robot_docs_parsing() {
+        let cli = Cli::try_parse_from(["canon", "capabilities", "--json"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Some(CanonCommand::Capabilities(DoctorJsonArgs { json: true }))
+        ));
+
+        let cli = Cli::try_parse_from(["canon", "robot-docs", "guide"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Some(CanonCommand::RobotDocs(RobotDocsCli {
+                command: RobotDocsSubcommand::Guide
+            }))
+        ));
+
+        // robot-docs has no default leaf: `guide` must be named.
+        assert!(Cli::try_parse_from(["canon", "robot-docs"]).is_err());
     }
 
     #[test]
