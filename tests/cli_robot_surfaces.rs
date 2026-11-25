@@ -1,9 +1,11 @@
-//! Top-level agent discovery surfaces (bd-c98n): `canon --robot-triage`,
-//! `canon capabilities --json`, and `canon robot-docs guide`.
+//! Agent discovery surfaces (bd-c98n): `canon capabilities --json`,
+//! `canon robot-docs guide`, `canon doctor triage --json` and its deprecated
+//! spellings `canon --robot-triage` and `canon doctor --robot-triage`.
 //!
-//! Every test runs the real `canon` binary. The top-level commands must be the
-//! same read-only doctor layer as `canon doctor ...`, not a second report that
-//! can drift from it.
+//! Every test runs the real `canon` binary. `capabilities --json` must be the
+//! one operator.v1 document `--describe` prints, the deprecated spellings must
+//! be the same read-only doctor report as the canonical command, and none of
+//! them may be a second report that can drift.
 
 use assert_cmd::Command;
 use serde_json::Value;
@@ -57,9 +59,9 @@ fn geo_compiled(dir: &Path) -> bool {
     let run = run_canon(dir, &["--describe"], &[]);
     assert_eq!(run.code, 0, "stderr: {}", run.stderr);
     let manifest: Value = serde_json::from_str(&run.stdout).expect("--describe emits JSON");
-    manifest["subcommands"]
+    manifest["commands"]
         .as_array()
-        .expect("--describe lists subcommands")
+        .expect("--describe lists commands")
         .iter()
         .any(|entry| {
             entry["name"]
@@ -71,17 +73,25 @@ fn geo_compiled(dir: &Path) -> bool {
 #[test]
 fn robot_triage_is_the_doctor_triage_report() {
     let dir = tempdir().unwrap();
+    let canonical = run_canon(dir.path(), &["doctor", "triage", "--json"], &[]);
     let top = run_canon(dir.path(), &["--robot-triage"], &[]);
     let doctor = run_canon(dir.path(), &["doctor", "--robot-triage"], &[]);
 
+    assert_eq!(canonical.code, 0, "stderr: {}", canonical.stderr);
     assert_eq!(top.code, 0, "stderr: {}", top.stderr);
     assert_eq!(top.stderr, "");
     assert_eq!(
-        top.stdout, doctor.stdout,
-        "top-level triage must be byte-identical to doctor triage"
+        top.stdout, canonical.stdout,
+        "deprecated top-level triage must be byte-identical to `doctor triage --json`"
+    );
+    assert_eq!(
+        doctor.stdout, canonical.stdout,
+        "deprecated `doctor --robot-triage` must be byte-identical to `doctor triage --json`"
     );
     let payload: Value = serde_json::from_str(&top.stdout).expect("one JSON object");
-    assert_eq!(payload["schema"], "canon.doctor.triage.v1");
+    assert_eq!(payload["schema_version"], "cmdrvl.doctor.v1");
+    assert_eq!(payload["mode"], "triage");
+    assert_eq!(payload["healthy"], true);
     assert_eq!(payload["ok"], true);
     assert_eq!(payload["read_only"], true);
     assert_eq!(payload["fixers"], serde_json::json!([]));
@@ -100,30 +110,83 @@ fn robot_triage_needs_no_registry_or_column() {
 }
 
 #[test]
-fn capabilities_json_is_the_doctor_capabilities_report() {
+fn capabilities_json_is_the_describe_document() {
     let dir = tempdir().unwrap();
-    let top = run_canon(dir.path(), &["capabilities", "--json"], &[]);
+    let caps = run_canon(dir.path(), &["capabilities", "--json"], &[]);
+    let describe = run_canon(dir.path(), &["--describe"], &[]);
+
+    assert_eq!(caps.code, 0, "stderr: {}", caps.stderr);
+    assert_eq!(caps.stderr, "");
+    assert_eq!(
+        caps.stdout, describe.stdout,
+        "`capabilities --json` must print the same operator.v1 bytes as `--describe`"
+    );
+    let manifest: Value = serde_json::from_str(&caps.stdout).expect("one JSON object");
+    assert_eq!(manifest["schema_version"], "operator.v1");
+    assert_eq!(manifest["name"], "canon");
+    assert_eq!(manifest["tool_version"], env!("CARGO_PKG_VERSION"));
+    assert_nothing_written(dir.path());
+}
+
+#[test]
+fn doctor_capabilities_report_embeds_the_capabilities_document() {
+    let dir = tempdir().unwrap();
+    let caps = run_canon(dir.path(), &["capabilities", "--json"], &[]);
     let doctor = run_canon(dir.path(), &["doctor", "capabilities", "--json"], &[]);
 
-    assert_eq!(top.code, 0, "stderr: {}", top.stderr);
-    assert_eq!(top.stderr, "");
-    assert_eq!(top.stdout, doctor.stdout);
-    let payload: Value = serde_json::from_str(&top.stdout).expect("one JSON object");
-    assert_eq!(payload["schema"], "canon.doctor.capabilities.v1");
-    assert_eq!(payload["read_only"], true);
-    assert_eq!(payload["fixers"], serde_json::json!([]));
+    assert_eq!(doctor.code, 0, "stderr: {}", doctor.stderr);
+    assert_eq!(doctor.stderr, "");
+    let report: Value = serde_json::from_str(&doctor.stdout).expect("one JSON object");
+    let contract: Value = serde_json::from_str(&caps.stdout).expect("capabilities is JSON");
+    assert_eq!(report["schema_version"], "cmdrvl.doctor.v1");
+    assert_eq!(report["mode"], "capabilities");
+    assert_eq!(report["healthy"], true);
     assert_eq!(
-        payload["top_level_aliases"]["robot_triage"]["command"],
-        "canon --robot-triage"
+        report["contract"], contract,
+        "`contract` must be the document `capabilities --json` prints"
     );
+    assert_eq!(report["read_only"], true);
+    assert_eq!(report["fixers"], serde_json::json!([]));
     assert_eq!(
-        payload["top_level_aliases"]["capabilities"]["command"],
+        report["top_level_commands"]["capabilities"]["command"],
         "canon capabilities --json"
     );
     assert_eq!(
-        payload["top_level_aliases"]["robot_docs"]["command"],
+        report["top_level_commands"]["robot_docs"]["command"],
         "canon robot-docs guide"
     );
+    let deprecated: Vec<&str> = report["deprecated_aliases"]
+        .as_array()
+        .expect("deprecated_aliases is an array")
+        .iter()
+        .filter_map(|entry| entry["command"].as_str())
+        .collect();
+    for alias in [
+        "canon doctor health [--json]",
+        "canon doctor --robot-triage",
+        "canon --robot-triage",
+    ] {
+        assert!(deprecated.contains(&alias), "missing alias {alias}");
+    }
+    assert_nothing_written(dir.path());
+}
+
+#[test]
+fn doctor_health_alias_is_the_canonical_health_report() {
+    let dir = tempdir().unwrap();
+    let canonical = run_canon(dir.path(), &["doctor", "--json"], &[]);
+    let alias = run_canon(dir.path(), &["doctor", "health", "--json"], &[]);
+    let json_first = run_canon(dir.path(), &["doctor", "--json", "triage"], &[]);
+    let triage = run_canon(dir.path(), &["doctor", "triage", "--json"], &[]);
+
+    assert_eq!(canonical.code, 0, "stderr: {}", canonical.stderr);
+    assert_eq!(alias.stdout, canonical.stdout);
+    assert_eq!(
+        json_first.stdout, triage.stdout,
+        "--json before or after the subcommand is the same request"
+    );
+    let payload: Value = serde_json::from_str(&canonical.stdout).expect("one JSON object");
+    assert_eq!(payload["mode"], "health");
     assert_nothing_written(dir.path());
 }
 
@@ -132,7 +195,7 @@ fn capabilities_without_json_prints_text_not_json() {
     let dir = tempdir().unwrap();
     let run = run_canon(dir.path(), &["capabilities"], &[]);
     assert_eq!(run.code, 0, "stderr: {}", run.stderr);
-    assert!(run.stdout.starts_with("canon doctor capabilities\n"));
+    assert!(run.stdout.starts_with("canon capabilities\n"));
     assert!(serde_json::from_str::<Value>(&run.stdout).is_err());
 }
 
@@ -149,6 +212,8 @@ fn robot_docs_guide_is_read_only_markdown() {
         "canon capabilities --json",
         "canon robot-docs guide",
         "canon doctor --robot-triage",
+        "canon doctor triage --json",
+        "canon doctor --json",
         "Exit codes:",
         "no --fix surface",
         "ENTITY_WORKBENCH_AGENT_GUIDE.md",
@@ -175,6 +240,7 @@ fn discovery_output_ignores_no_color_and_dumb_terminals() {
     let dir = tempdir().unwrap();
     for args in [
         &["--robot-triage"][..],
+        &["doctor", "triage", "--json"][..],
         &["capabilities", "--json"][..],
         &["capabilities"][..],
         &["robot-docs", "guide"][..],

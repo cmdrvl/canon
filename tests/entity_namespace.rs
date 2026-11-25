@@ -47,7 +47,7 @@ fn entity_namespace_command_surface_has_no_active_org_alias() {
     assert!(!describe_text.contains("canon_org"));
 
     let describe: Value = serde_json::from_slice(&describe_stdout).expect("describe is JSON");
-    let subcommands = describe["subcommands"]
+    let subcommands = describe["commands"]
         .as_array()
         .expect("describe subcommands");
     assert!(
@@ -186,7 +186,7 @@ fn entity_namespace_rejects_removed_resolve_and_advertises_entity_link() {
     );
 
     let describe = json_stdout(&["--describe"], 0);
-    let subcommands = describe["subcommands"]
+    let subcommands = describe["commands"]
         .as_array()
         .expect("describe subcommands");
     assert!(

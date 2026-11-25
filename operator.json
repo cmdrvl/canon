@@ -1,7 +1,8 @@
 {
-  "schema_version": "operator.v0",
+  "schema_version": "operator.v1",
   "name": "canon",
-  "version": "0.16.0",
+  "tool_version": "0.16.0",
+  "contract_version": "1.0.0",
   "description": "Canonical identifier resolution and entity-workbench orchestration using versioned registries",
   "repository": "https://github.com/cmdrvl/canon",
   "license": "MIT",
@@ -11,14 +12,16 @@
     "usage": [
       "canon temporal compile --request <TemporalCompileRequest.json> [--emit json|summary] [--max-bytes <N>] [--no-witness]",
       "canon <INPUT> --registry <DIR> --column <COL> [--scope DIMENSION=VALUE]... [OPTIONS]",
-      "canon doctor [health [--json]|capabilities [--json]|robot-docs|--robot-triage]",
-      "canon doctor health [--json]",
-      "canon doctor capabilities [--json]",
+      "canon doctor [--json|health [--json]|capabilities [--json]|triage [--json]|robot-docs|--robot-triage]",
+      "canon doctor --json",
+      "canon doctor capabilities --json",
+      "canon doctor triage --json",
       "canon doctor robot-docs",
-      "canon doctor --robot-triage",
-      "canon --robot-triage",
       "canon capabilities [--json]",
       "canon robot-docs guide",
+      "canon --robot-triage",
+      "canon doctor health [--json]",
+      "canon doctor --robot-triage",
       "canon project init<DIR> [--project-id <ID>] [--mapping-profile <PROFILE>] [--emit json|summary]",
       "canon project validate <DIR> [--manifest <PATH>] [--emit json|summary]",
       "canon project describe <DIR> [--manifest <PATH>] [--emit json|summary]",
@@ -230,7 +233,7 @@
       "name": "robot_triage",
       "flag": "--robot-triage",
       "type": "flag",
-      "description": "Emit compact canon.doctor.triage.v1 JSON (same report as doctor --robot-triage) and exit 0, or 1 when the compiled contract is unhealthy"
+      "description": "Deprecated alias of `canon doctor triage --json`: emit the cmdrvl.doctor.v1 triage report and exit 0, or 1 when the compiled contract is unhealthy"
     },
     {
       "name": "version",
@@ -239,7 +242,7 @@
       "description": "Print version and exit 0"
     }
   ],
-  "subcommands": [
+  "commands": [
     {
       "name": "temporal relation finalize",
       "usage": "canon temporal relation finalize --facts <FACTS.json> [--emit json|summary] [--max-bytes <N>] [--no-witness]",
@@ -372,10 +375,10 @@
     },
     {
       "name": "doctor",
-      "usage": "canon doctor [health [--json]|capabilities [--json]|robot-docs|--robot-triage]",
-      "description": "Aggregate row for the read-only doctor surfaces; leaf tests must validate the enumerated leaves rather than count this row as an executable leaf",
+      "usage": "canon doctor [--json|health [--json]|capabilities [--json]|triage [--json]|robot-docs|--robot-triage]",
+      "description": "Aggregate row for the read-only doctor surfaces; leaf tests must validate the enumerated leaves rather than count this row as an executable leaf. Every JSON form is a cmdrvl.doctor.v1 report: `doctor --json` is mode health, `doctor capabilities --json` is mode capabilities (its `contract` is this document), `doctor triage --json` is mode triage (with next_actions). Exits 0 healthy, 1 unhealthy, 2 usage error. Deprecated aliases kept for compatibility: `doctor health [--json]`, `doctor --robot-triage` and top-level `--robot-triage` (same documents as the canonical forms)",
       "output_mode": "mixed",
-      "output_schema": "canon.doctor.health.v1",
+      "output_schema": "cmdrvl.doctor.v1",
       "status": "implemented",
       "read_only": true,
       "fixers": [],
@@ -404,7 +407,7 @@
           "name": "robot_triage",
           "flag": "--robot-triage",
           "type": "flag",
-          "description": "Emit compact canon.doctor.triage.v1 JSON"
+          "description": "Deprecated alias of `canon doctor triage --json`: emit the cmdrvl.doctor.v1 triage report"
         }
       ],
       "side_effects": {
@@ -428,11 +431,10 @@
       "leaves": [
         "doctor health",
         "doctor capabilities",
+        "doctor triage",
         "doctor robot-docs"
       ],
       "alternate_output_schemas": [
-        "canon.doctor.capabilities.v1",
-        "canon.doctor.triage.v1",
         "text/plain"
       ],
       "safety": {
@@ -455,9 +457,9 @@
     {
       "name": "doctor health",
       "usage": "canon doctor health [--json]",
-      "description": "Report compiled manifest and read-only contract health",
+      "description": "Report compiled manifest and read-only contract health as a cmdrvl.doctor.v1 report (mode health); deprecated alias of `canon doctor [--json]`",
       "output_mode": "mixed",
-      "output_schema": "canon.doctor.health.v1",
+      "output_schema": "cmdrvl.doctor.v1",
       "alternate_output_schemas": [
         "text/plain"
       ],
@@ -515,16 +517,16 @@
           "name": "json",
           "flag": "--json",
           "type": "flag",
-          "description": "Emit canon.doctor.health.v1 JSON instead of concise text"
+          "description": "Emit the cmdrvl.doctor.v1 health report as JSON instead of concise text"
         }
       ]
     },
     {
       "name": "doctor capabilities",
       "usage": "canon doctor capabilities [--json]",
-      "description": "Describe doctor commands, exit codes, side effects, and fixers",
+      "description": "Describe doctor commands, exit codes, side effects, and fixers as a cmdrvl.doctor.v1 report (mode capabilities) whose `contract` is this operator.v1 document, identical to `canon capabilities --json`",
       "output_mode": "mixed",
-      "output_schema": "canon.doctor.capabilities.v1",
+      "output_schema": "cmdrvl.doctor.v1",
       "alternate_output_schemas": [
         "text/plain"
       ],
@@ -578,7 +580,74 @@
           "name": "json",
           "flag": "--json",
           "type": "flag",
-          "description": "Emit canon.doctor.capabilities.v1 JSON instead of concise text"
+          "description": "Emit the cmdrvl.doctor.v1 capabilities report as JSON instead of concise text"
+        }
+      ]
+    },
+    {
+      "name": "doctor triage",
+      "usage": "canon doctor triage [--json]",
+      "description": "Report compiled manifest and read-only contract health with next actions as a cmdrvl.doctor.v1 report (mode triage); `canon doctor --robot-triage` and `canon --robot-triage` are deprecated aliases",
+      "output_mode": "mixed",
+      "output_schema": "cmdrvl.doctor.v1",
+      "alternate_output_schemas": [
+        "text/plain"
+      ],
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "operator contract inspection only; no fixers or writes",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "doctor"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": false,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "doctor report emitted successfully",
+          "domain": "positive"
+        },
+        "1": {
+          "meaning": "doctor contract parity or health check reported unhealthy findings",
+          "domain": "negative"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI or artifact contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "canon doctor capabilities --json",
+      "recovery": {
+        "next_command": "canon doctor capabilities --json",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "json",
+          "flag": "--json",
+          "type": "flag",
+          "description": "Emit the cmdrvl.doctor.v1 triage report as JSON instead of concise text"
         }
       ]
     },
@@ -638,9 +707,9 @@
     {
       "name": "capabilities",
       "usage": "canon capabilities [--json]",
-      "description": "Describe commands, exit codes, side effects, and fixers; same report as doctor capabilities",
+      "description": "Emit this machine-readable operator.v1 contract; `--json` prints the same document as `canon --describe`",
       "output_mode": "mixed",
-      "output_schema": "canon.doctor.capabilities.v1",
+      "output_schema": "operator.v1",
       "alternate_output_schemas": [
         "text/plain"
       ],
@@ -694,9 +763,67 @@
           "name": "json",
           "flag": "--json",
           "type": "flag",
-          "description": "Emit canon.doctor.capabilities.v1 JSON instead of concise text"
+          "description": "Emit the operator.v1 contract as JSON (the same document as `canon --describe`) instead of concise text"
         }
       ]
+    },
+    {
+      "name": "robot-docs",
+      "usage": "canon robot-docs guide",
+      "description": "Aggregate row for the agent-oriented documentation command; its only leaf is `robot-docs guide`",
+      "output_mode": "mixed",
+      "output_schema": "text/markdown",
+      "status": "implemented",
+      "read_only": true,
+      "fixers": [],
+      "exit_codes": {
+        "0": {
+          "meaning": "guide emitted successfully",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "CLI usage error",
+          "domain": "error"
+        }
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": false,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "aggregate": true,
+      "leaves": [
+        "robot-docs guide"
+      ],
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "operator contract inspection only; no fixers or writes",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "doctor"
+      },
+      "options": [],
+      "next_command": "canon robot-docs guide",
+      "recovery": {
+        "next_command": "canon robot-docs guide",
+        "refusal_exit_code": 2
+      }
     },
     {
       "name": "robot-docs guide",
@@ -10601,6 +10728,49 @@
       ],
       "migration_policy": "copy-only; never delete or move legacy ledgers; path-only notices under ~/.cmdrvl/migrations and ~/.cmdrvl/notices"
     }
+  },
+  "env_vars": [
+    {
+      "name": "EPISTEMIC_WITNESS",
+      "description": "Override the witness ledger path. An explicit override is used as given and no legacy-ledger migration is attempted for it",
+      "default": "~/.cmdrvl/state/witness/witness.jsonl"
+    },
+    {
+      "name": "CANON_REGISTRY_INDEX_MODE",
+      "description": "Set to no-cache (also nocache, memory, in-memory) to skip the persistent registry index cache and rebuild each index in a temporary external path",
+      "default": "managed cache under ~/.cmdrvl/cache/registry-indexes"
+    },
+    {
+      "name": "HOME",
+      "description": "Locates the ~/.cmdrvl configuration, state and cache root (USERPROFILE is read when HOME is unset)"
+    },
+    {
+      "name": "OPENFIGI_API_KEY",
+      "description": "OpenFIGI API key used by registry provider materialization when the provider option api_key is not given. Never read by lookup"
+    },
+    {
+      "name": "CANON_ENTITY_CPU_MODEL",
+      "description": "CPU model label recorded in entity run telemetry",
+      "default": "redacted"
+    },
+    {
+      "name": "CANON_ENTITY_MEMORY_BYTES",
+      "description": "Memory size in bytes recorded in entity run telemetry; a missing, non-numeric or zero value records 1",
+      "default": "1"
+    }
+  ],
+  "formats": [
+    "json",
+    "csv",
+    "text",
+    "markdown"
+  ],
+  "side_effects": {
+    "reads_files": true,
+    "writes_files": true,
+    "network": true,
+    "writes_witness": true,
+    "notes": "Lookup is offline: it reads the input and registry files, prints to stdout, and appends one ambient witness record unless --no-witness is set. Registry, entity, project, package and geo commands also write the paths they are given (mapping sidecars, registries, plans, archives). Only the registry and package commands that name an external provider (OpenFIGI) use the network, and only when asked to. doctor, capabilities, robot-docs, --describe, --schema and --version read no input files, write no files and never open the witness ledger."
   },
   "pipeline": {
     "upstream": [],

@@ -9274,11 +9274,11 @@ pub fn run_display_mode(mode: DisplayMode) -> Result<u8, Box<dyn Error>> {
                  No input given. Start with one of:\n\
                  \x20\x20canon <INPUT> --registry <DIR> --column <COLUMN>   resolve a CSV/JSONL column\n\
                  \x20\x20canon --help                                       full usage and flags\n\
-                 \x20\x20canon doctor --robot-triage                        machine-readable capabilities + health\n\
-                 \x20\x20canon --robot-triage                               same triage, top-level alias\n\
-                 \x20\x20canon capabilities --json                          machine-readable capabilities\n\
+                 \x20\x20canon doctor --json                                health report (cmdrvl.doctor.v1)\n\
+                 \x20\x20canon doctor triage --json                         health with next actions\n\
+                 \x20\x20canon capabilities --json                          machine-readable operator.v1 contract\n\
                  \x20\x20canon robot-docs guide                             agent-oriented markdown guide\n\
-                 \x20\x20canon --describe                                   operator.json contract\n\
+                 \x20\x20canon --describe                                   operator.v1 contract (same as capabilities --json)\n\
                  \x20\x20canon --schema                                     canon.v0 output JSON Schema"
             );
             return Ok(2);

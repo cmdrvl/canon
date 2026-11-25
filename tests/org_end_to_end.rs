@@ -245,7 +245,7 @@ fn entity_describe_includes_command_family() {
 
     assert_eq!(payload["name"], "canon");
     assert!(payload["invocation"]["usage"].as_array().is_some());
-    assert!(payload["subcommands"].as_array().is_some());
+    assert!(payload["commands"].as_array().is_some());
 }
 
 #[test]

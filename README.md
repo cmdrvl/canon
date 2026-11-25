@@ -422,13 +422,15 @@ commands, and the evidence-session engine.
 
 ```bash
 canon <INPUT> --registry <REGISTRY> --column <COLUMN> [--scope DIMENSION=VALUE]... [--emit json|csv] [--canon-column <NAME>] [--map-out <PATH>] [--inbox-out <FILE> --inbox-project <P> --inbox-run <R> --inbox-seen-at <RFC3339> [--inbox-raw-ref]] [--max-rows <N>] [--max-bytes <N>]
-canon doctor health [--json]
+canon doctor [--json]
 canon doctor capabilities [--json]
+canon doctor triage [--json]
 canon doctor robot-docs
-canon doctor --robot-triage
-canon --robot-triage
 canon capabilities [--json]
 canon robot-docs guide
+canon doctor health [--json]          # deprecated alias of `canon doctor [--json]`
+canon doctor --robot-triage           # deprecated alias of `canon doctor triage --json`
+canon --robot-triage                  # deprecated alias of `canon doctor triage --json`
 canon temporal compile --request <REQUEST.json> [--emit json|summary] [--max-bytes <N>] [--no-witness]
 canon temporal relation finalize --facts <FACTS.json> [--emit json|summary] [--max-bytes <N>] [--no-witness]
 canon package pack --root <DIR> --package <package.json> --out <ARCHIVE>
@@ -863,10 +865,12 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 
 | Subcommand | Description |
 |------------|-------------|
-| `doctor health [--json]` | Report compiled manifest and read-only contract health. |
-| `doctor capabilities [--json]` | Describe doctor commands, exit codes, side effects, and fixers. |
+| `doctor [--json]` | Report compiled manifest and read-only contract health (`cmdrvl.doctor.v1`, mode `health`). `doctor health [--json]` is a deprecated alias. |
+| `doctor capabilities [--json]` | Describe doctor commands, exit codes, side effects, and fixers (`cmdrvl.doctor.v1`, mode `capabilities`; `contract` is the operator.v1 document). |
+| `doctor triage [--json]` | Health with `next_actions` for an agent (`cmdrvl.doctor.v1`, mode `triage`). `doctor --robot-triage` and `--robot-triage` are deprecated aliases. |
 | `doctor robot-docs` | Emit concise machine-oriented usage notes. |
-| `doctor --robot-triage` | Emit compact machine-readable triage JSON. |
+| `capabilities [--json]` | With `--json`, the operator.v1 contract, byte for byte the document `--describe` prints. |
+| `robot-docs guide` | Agent-oriented markdown guide to the read-only discovery surfaces. |
 | `package pack --root <DIR> --package <package.json> --out <ARCHIVE>` | Create a deterministic local package archive from canonical package bytes. |
 | `package inspect <ARCHIVE> [--emit json\|summary]` | Inspect package inventory and metadata without writing files. |
 | `package verify <ARCHIVE> [--emit json\|summary]` | Verify package archive digests and semantic package contracts. |
@@ -981,21 +985,28 @@ safe proposed support-score weights. It exits `2` for malformed evidence,
 strategy, or sealed acceptance/holdout inputs. The command is read-only and
 does not mutate strategies, registries, work directories, or witness ledgers.
 
-`canon doctor health`, bare `canon doctor`, and `canon doctor --robot-triage`
-exit `0` when compiled contract parity is healthy and `1` when the report is
-emitted but unhealthy. `canon doctor capabilities` and `canon doctor robot-docs`
-exit `0` when their read-only reports are emitted. All doctor forms exit `2` for
-CLI usage errors such as unsupported `--fix`. The JSON schemas are
-`canon.doctor.health.v1`, `canon.doctor.capabilities.v1`, and
-`canon.doctor.triage.v1`.
+Every `canon doctor ... --json` report follows the CMD+RVL family contract
+`cmdrvl.doctor.v1`: `schema_version`, `mode` (`health`, `capabilities` or
+`triage`), `tool`, `tool_version`, `healthy`, and `findings[]` (`id`, `severity`
+of `info`, `warning` or `error`, `message`, and a `fix` on a failing finding).
+`healthy` is false exactly when a finding has severity `error`. The capabilities
+report adds `contract`, the operator.v1 document; the triage report adds
+`next_actions`. `canon doctor`, `canon doctor capabilities` and `canon doctor
+triage` exit `0` when compiled contract parity is healthy and `1` when the
+report is emitted but unhealthy. `canon doctor robot-docs` exits `0` when its
+read-only text is emitted. All doctor forms exit `2` for CLI usage errors such
+as unsupported `--fix`, never for an unhealthy report. The old per-tool schema
+ids `canon.doctor.health.v1`, `canon.doctor.capabilities.v1` and
+`canon.doctor.triage.v1` are retired in favour of `schema_version`, and the old
+`contract` string is now `read_only_contract`; the other detail fields (`ok`,
+`checks`, `summary`, `contract_parity`, ...) are kept alongside.
 
-Three top-level spellings reach the same read-only reports for agents that guess
-the sibling-tool convention: `canon --robot-triage` is `canon doctor
---robot-triage`, `canon capabilities [--json]` is `canon doctor capabilities
-[--json]`, and `canon robot-docs guide` prints an agent-oriented markdown guide
-to these discovery surfaces. They call the same code as the doctor forms, so
-their output and exit codes are identical, and none of them has a `--fix`
-surface.
+`canon doctor health`, `canon doctor --robot-triage` and `canon --robot-triage`
+are deprecated aliases that print the same documents as `canon doctor --json`
+and `canon doctor triage --json`. `canon capabilities --json` prints the
+operator.v1 contract, the same document as `canon --describe`, and
+`canon robot-docs guide` prints an agent-oriented markdown guide to these
+discovery surfaces. None of them has a `--fix` surface.
 
 ### Output Routing
 

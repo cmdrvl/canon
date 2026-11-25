@@ -15,9 +15,9 @@ br dep cycles --json
 br sync --flush-only
 
 cargo run -- --describe
-cargo run -- doctor health --json
+cargo run -- doctor --json
 cargo run -- doctor capabilities --json
-cargo run -- doctor --robot-triage
+cargo run -- doctor triage --json
 
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings

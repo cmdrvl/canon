@@ -1081,7 +1081,8 @@ fn test_bare_invocation_prints_orientation() {
     let output = assert.get_output();
     let stderr = String::from_utf8(output.stderr.clone()).unwrap();
     assert!(stderr.contains("--registry"));
-    assert!(stderr.contains("canon doctor --robot-triage"));
+    assert!(stderr.contains("canon doctor triage --json"));
+    assert!(stderr.contains("canon capabilities --json"));
     assert!(stderr.contains("canon --describe"));
 }
 
@@ -1171,11 +1172,11 @@ fn entity_namespace_cli() {
         serde_json::from_str(&describe_stdout).expect("--describe should output valid JSON");
     // Regression guard: the embedded operator.json contract version must track the
     // crate version. A release bump that updates Cargo.toml but forgets operator.json
-    // would otherwise ship a stale contract (and fail `doctor health`).
+    // would otherwise ship a stale contract (and fail `doctor`).
     assert_eq!(
-        describe_json["version"].as_str(),
+        describe_json["tool_version"].as_str(),
         Some(env!("CARGO_PKG_VERSION")),
-        "operator.json version must match the crate version; bump operator.json when bumping Cargo.toml"
+        "operator.json tool_version must match the crate version; bump operator.json when bumping Cargo.toml"
     );
     let usage = describe_json["invocation"]["usage"]
         .as_array()
@@ -1206,9 +1207,9 @@ fn entity_namespace_cli() {
             .is_some_and(|usage| usage.starts_with("canon org"))
     }));
 
-    let subcommands = describe_json["subcommands"]
+    let subcommands = describe_json["commands"]
         .as_array()
-        .expect("describe subcommands should be an array");
+        .expect("describe commands should be an array");
     assert!(
         subcommands.iter().any(|entry| entry["name"] == "entity run"
             && entry["output_schema"] == "canon_entity_run.v0")
@@ -1436,11 +1437,16 @@ fn test_describe_command() {
     let json: Value = serde_json::from_str(&stdout).expect("--describe should output valid JSON");
 
     assert_eq!(json["name"], "canon");
-    assert_eq!(json["version"], env!("CARGO_PKG_VERSION"));
-    assert_eq!(json["schema_version"], "operator.v0");
+    assert_eq!(json["tool_version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(json["schema_version"], "operator.v1");
+    assert_eq!(json["contract_version"], "1.0.0");
+    assert!(
+        json.get("version").is_none() && json.get("subcommands").is_none(),
+        "the pre-v1 spellings `version` and `subcommands` must be gone"
+    );
     assert!(json["capabilities"].is_object());
     assert!(
-        json["subcommands"]
+        json["commands"]
             .as_array()
             .unwrap()
             .iter()
@@ -1449,14 +1455,14 @@ fn test_describe_command() {
                 && entry["status"] == "implemented")
     );
     assert!(
-        !json["subcommands"]
+        !json["commands"]
             .as_array()
             .unwrap()
             .iter()
             .any(|entry| entry["name"] == "resolve")
     );
     assert!(
-        json["subcommands"]
+        json["commands"]
             .as_array()
             .unwrap()
             .iter()
@@ -1472,17 +1478,31 @@ fn test_doctor_health_json_is_read_only() {
     let witness_path = temp_dir.path().join("witness").join("canon-witness.jsonl");
 
     let output = doctor_cmd_in(temp_dir.path(), &witness_path)
-        .args(["doctor", "health", "--json"])
+        .args(["doctor", "--json"])
         .assert()
         .success();
 
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
     let payload: Value = serde_json::from_str(&stdout).unwrap();
-    assert_eq!(payload["schema"], "canon.doctor.health.v1");
-    assert_eq!(payload["contract"], "cmdrvl.read_only_doctor.v1");
+    assert_eq!(payload["schema_version"], "cmdrvl.doctor.v1");
+    assert_eq!(payload["mode"], "health");
+    assert_eq!(payload["read_only_contract"], "cmdrvl.read_only_doctor.v1");
+    assert!(
+        payload.get("contract").is_none() && payload.get("schema").is_none(),
+        "`contract` is capabilities-only and the per-tool `schema` id is superseded by schema_version"
+    );
     assert_eq!(payload["tool"], "canon");
-    assert_eq!(payload["version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(payload["tool_version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(payload["healthy"], true);
     assert_eq!(payload["ok"], true);
+    assert!(
+        payload["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|finding| finding["severity"] == "info"),
+        "a healthy report has only info findings"
+    );
     assert_eq!(payload["read_only"], true);
     assert_eq!(payload["summary"]["checks_failed"], 0);
     assert_eq!(
@@ -1518,8 +1538,12 @@ fn test_doctor_capabilities_json_has_no_fixers_or_side_effects() {
 
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
     let payload: Value = serde_json::from_str(&stdout).unwrap();
-    assert_eq!(payload["schema"], "canon.doctor.capabilities.v1");
-    assert_eq!(payload["contract"], "cmdrvl.read_only_doctor.v1");
+    assert_eq!(payload["schema_version"], "cmdrvl.doctor.v1");
+    assert_eq!(payload["mode"], "capabilities");
+    assert_eq!(payload["read_only_contract"], "cmdrvl.read_only_doctor.v1");
+    assert_eq!(payload["healthy"], true);
+    assert_eq!(payload["contract"]["schema_version"], "operator.v1");
+    assert_eq!(payload["contract"]["name"], "canon");
     assert_eq!(payload["read_only"], true);
     assert_eq!(
         payload["config_footprint"]["deprecation_notices"],
@@ -1532,8 +1556,8 @@ fn test_doctor_capabilities_json_has_no_fixers_or_side_effects() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|command| command["name"] == "robot-triage"
-                && command["usage"] == "canon doctor --robot-triage")
+            .any(|command| command["name"] == "triage"
+                && command["usage"] == "canon doctor triage [--json]")
     );
     assert_eq!(payload["composition"]["family"]["name"], "cmdrvl-spine");
     assert_eq!(
@@ -1559,15 +1583,21 @@ fn test_doctor_robot_triage_json_is_machine_readable() {
     let witness_path = temp_dir.path().join("witness").join("canon-witness.jsonl");
 
     let output = doctor_cmd_in(temp_dir.path(), &witness_path)
-        .args(["doctor", "--robot-triage"])
+        .args(["doctor", "triage", "--json"])
         .assert()
         .success();
 
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
     let payload: Value = serde_json::from_str(&stdout).unwrap();
-    assert_eq!(payload["schema"], "canon.doctor.triage.v1");
-    assert_eq!(payload["contract"], "cmdrvl.read_only_doctor.v1");
+    assert_eq!(payload["schema_version"], "cmdrvl.doctor.v1");
+    assert_eq!(payload["mode"], "triage");
+    assert_eq!(payload["read_only_contract"], "cmdrvl.read_only_doctor.v1");
+    assert_eq!(payload["healthy"], true);
     assert_eq!(payload["ok"], true);
+    assert!(
+        payload["next_actions"].is_array(),
+        "a triage report carries next_actions"
+    );
     assert_eq!(payload["score"], 100);
     assert_eq!(payload["read_only"], true);
     assert_eq!(
@@ -1588,7 +1618,9 @@ fn test_doctor_robot_docs_is_plain_text_and_read_only() {
         .assert()
         .success()
         .stdout(predicate::str::contains("cmdrvl.read_only_doctor.v1"))
-        .stdout(predicate::str::contains("canon doctor health --json"))
+        .stdout(predicate::str::contains("canon doctor --json"))
+        .stdout(predicate::str::contains("canon doctor triage --json"))
+        .stdout(predicate::str::contains("deprecated_aliases:"))
         .stdout(predicate::str::contains("entity:"))
         .stdout(predicate::str::contains("ENTITY_WORKBENCH_AGENT_GUIDE.md"))
         .stdout(predicate::str::contains("composition:"))
@@ -1616,6 +1648,7 @@ fn test_doctor_help_is_available() {
         .success()
         .stdout(predicate::str::contains("health"))
         .stdout(predicate::str::contains("capabilities"))
+        .stdout(predicate::str::contains("triage"))
         .stdout(predicate::str::contains("robot-docs"))
         .stdout(predicate::str::contains("--robot-triage"));
 }

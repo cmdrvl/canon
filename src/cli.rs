@@ -169,7 +169,7 @@ pub enum StrategyKeyTypeArg {
 pub enum CanonCommand {
     /// Read-only health, capabilities, and robot-oriented diagnostics
     Doctor(DoctorArgs),
-    /// Describe commands, exit codes, side effects, and fixers (alias of `doctor capabilities`)
+    /// Emit the machine-readable operator.v1 contract (`--json` is the same document as `--describe`)
     Capabilities(DoctorJsonArgs),
     /// Agent-oriented usage notes
     #[command(name = "robot-docs")]
@@ -1155,11 +1155,11 @@ pub struct PackagePullCli {
 
 #[derive(Args, Debug, Clone)]
 pub struct DoctorArgs {
-    /// Emit compact machine-readable triage JSON
+    /// Deprecated alias of `doctor triage --json`
     #[arg(long = "robot-triage")]
     pub robot_triage: bool,
 
-    /// Emit health JSON when no doctor subcommand is provided
+    /// Emit the cmdrvl.doctor.v1 health report as JSON when no doctor subcommand is provided
     #[arg(long)]
     pub json: bool,
 
@@ -1169,10 +1169,12 @@ pub struct DoctorArgs {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum DoctorCommand {
-    /// Report compiled manifest and read-only contract health
+    /// Deprecated alias of `doctor [--json]`: report compiled manifest and read-only contract health
     Health(DoctorJsonArgs),
-    /// Describe doctor commands, exit codes, side effects, and fixers
+    /// Describe doctor commands, exit codes, side effects, and fixers; `--json` embeds the operator.v1 contract
     Capabilities(DoctorJsonArgs),
+    /// Report health with next actions for an agent that has to decide what to run next
+    Triage(DoctorJsonArgs),
     /// Emit concise machine-oriented usage notes
     #[command(name = "robot-docs")]
     RobotDocs,
@@ -3317,7 +3319,7 @@ pub struct Cli {
     #[arg(long)]
     pub schema: bool,
 
-    /// Emit compact read-only triage JSON (alias of `doctor --robot-triage`) and exit
+    /// Deprecated alias of `doctor triage --json`: emit the triage report and exit
     #[arg(long = "robot-triage")]
     pub robot_triage: bool,
 }
@@ -3512,6 +3514,38 @@ mod tests {
         if let Some(CanonCommand::Doctor(doctor)) = command {
             assert!(doctor.robot_triage);
             assert!(doctor.command.is_none());
+        }
+    }
+
+    #[test]
+    fn test_cli_doctor_family_spellings_parse() {
+        // Canonical spine-rules family forms.
+        let cli = Cli::try_parse_from(["canon", "doctor", "--json"]).unwrap();
+        let command = cli.command;
+        assert!(matches!(&command, Some(CanonCommand::Doctor(_))));
+        if let Some(CanonCommand::Doctor(doctor)) = command {
+            assert!(doctor.json && doctor.command.is_none() && !doctor.robot_triage);
+        }
+
+        let cli = Cli::try_parse_from(["canon", "doctor", "triage", "--json"]).unwrap();
+        let command = cli.command;
+        assert!(matches!(&command, Some(CanonCommand::Doctor(_))));
+        if let Some(CanonCommand::Doctor(doctor)) = command {
+            assert!(matches!(
+                doctor.command,
+                Some(DoctorCommand::Triage(DoctorJsonArgs { json: true }))
+            ));
+        }
+
+        // Deprecated aliases keep parsing.
+        let cli = Cli::try_parse_from(["canon", "doctor", "health", "--json"]).unwrap();
+        let command = cli.command;
+        assert!(matches!(&command, Some(CanonCommand::Doctor(_))));
+        if let Some(CanonCommand::Doctor(doctor)) = command {
+            assert!(matches!(
+                doctor.command,
+                Some(DoctorCommand::Health(DoctorJsonArgs { json: true }))
+            ));
         }
     }
 

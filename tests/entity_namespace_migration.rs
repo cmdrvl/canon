@@ -206,7 +206,7 @@ fn assert_operator_surface(
         );
     }
 
-    let subcommands = manifest["subcommands"]
+    let subcommands = manifest["commands"]
         .as_array()
         .unwrap_or_else(|| panic!("{label} subcommands"));
     for required in public_required_subcommands(&fixture.public_surface.required_subcommands) {

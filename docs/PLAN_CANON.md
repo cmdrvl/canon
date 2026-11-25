@@ -76,13 +76,15 @@ out-of-tree extensions. They are not core defaults.
 ## CLI (v0)
 ```bash
 canon <INPUT> --registry <REGISTRY> --column <COLUMN> [--scope DIMENSION=VALUE]... [--emit json|csv] [--canon-column <NAME>] [--map-out <PATH>] [--inbox-out <FILE> --inbox-project <P> --inbox-run <R> --inbox-seen-at <RFC3339> [--inbox-raw-ref]] [--max-rows <N>] [--max-bytes <N>]
-canon doctor health [--json]
+canon doctor [--json]
 canon doctor capabilities [--json]
+canon doctor triage [--json]
 canon doctor robot-docs
-canon doctor --robot-triage
-canon --robot-triage
 canon capabilities [--json]
 canon robot-docs guide
+canon doctor health [--json]          # deprecated alias of `canon doctor [--json]`
+canon doctor --robot-triage           # deprecated alias of `canon doctor triage --json`
+canon --robot-triage                  # deprecated alias of `canon doctor triage --json`
 canon temporal compile --request <REQUEST.json> [--emit json|summary] [--max-bytes <N>] [--no-witness]
 canon temporal relation finalize --facts <FACTS.json> [--emit json|summary] [--max-bytes <N>] [--no-witness]
 canon package pack --root <DIR> --package <package.json> --out <ARCHIVE>
@@ -246,16 +248,17 @@ Options:
 - `--max-bytes <N>`: Refuse if input file exceeds N bytes. For regular files, checked via file size before reading. For stdin (`-`), bytes are counted during streaming; refusal triggers as soon as the limit is exceeded (partial output may have been buffered — in JSON mode this is safe since output is emitted at end; stdin is JSONL-only so CSV mode is not affected).
 - `--explicit`: Show `input` and `canonical_id` values verbatim in `--emit json` output. By default these values are masked as `"[REDACTED]"` for zero-retention safety and the envelope reports `"redacted": true`; with `--explicit` they are shown and `"redacted": false`.
 - `--plain-json-values`: Only valid with `--explicit`. Emit valid UTF-8 JSON `input` and `canonical_id` values without the `u8:` prefix and add `input_encoding` / `canonical_id_encoding` metadata. Values with ASCII control bytes or non-text bytes remain `hex:<hex-bytes>` with `"hex"` metadata. The default `--explicit` contract remains lossless `u8:`/`hex:` identifier encoding.
-- Bare `canon` (no arguments): print a short agent-oriented orientation to stderr — the canonical lookup command plus pointers to `canon --help`, `canon doctor --robot-triage`, `canon --robot-triage`, `canon capabilities --json`, `canon robot-docs guide`, `canon --describe`, and `canon --schema` — and exit 2. Stdout stays empty so pipelines are unaffected. This replaces the bare clap "required arguments" error.
+- Bare `canon` (no arguments): print a short agent-oriented orientation to stderr — the canonical lookup command plus pointers to `canon --help`, `canon doctor --json`, `canon doctor triage --json`, `canon capabilities --json`, `canon robot-docs guide`, `canon --describe`, and `canon --schema` — and exit 2. Stdout stays empty so pipelines are unaffected. This replaces the bare clap "required arguments" error.
 - Intent inference for legible-but-wrong invocations (deterministic, edit distance 1):
   - An unknown long flag within one edit of a known core flag (e.g. `--regisry`, `--colum`, `--explcit`) is rejected with `error: unknown flag '<flag>'` plus `did you mean '--<flag>'?` on stderr, exit 2. Unknown flags with no near match defer to the standard clap error.
   - A misspelled top-level subcommand that would otherwise be swallowed as the positional input (e.g. `canon regstry --registry ... --column ...`) refuses with `E_PARSE`, `detail.suggested_subcommand`, and `next_command: canon <subcommand> --help` — but only when the positional value does not exist as a file, so real input files are never hijacked.
 - `--version`: Print `canon <semver>` and exit 0.
-- `--describe`: Emit `operator.json` as JSON to stdout and exit 0. This is the spine's standard tool identity record (tool name, version, accepted inputs, output schema, refusal codes) — used by orchestrators and `pack` to introspect tools without running them.
+- `--describe`: Emit `operator.json` as JSON to stdout and exit 0. This is the spine's standard tool identity record, an `operator.v1` document (`tool_version`, `contract_version`, `commands`, `exit_codes`, `refusals`, `env_vars`, `formats`, `side_effects`, `pipeline`, plus canon's own per-command detail) — used by orchestrators and `pack` to introspect tools without running them. `canon capabilities --json` prints the same bytes.
 - `--schema`: Print JSON Schema for the mapping artifact (`canon.v0` object) to stdout and exit 0. This is the schema for `--emit json` output and `--map-out` sidecar, not a description of CSV output format.
 - `--no-witness`: Suppress witness ledger append.
-- `canon doctor health`, bare `canon doctor`, and `canon doctor --robot-triage`: emit read-only health/triage reports and exit `0` when compiled contract parity is healthy, `1` when the report is emitted but unhealthy, and `2` on CLI/refusal errors. `canon doctor capabilities` and `canon doctor robot-docs` emit successful read-only reports with exit `0`; CLI/refusal errors still exit `2`.
-- `canon --robot-triage`, `canon capabilities [--json]`, and `canon robot-docs guide`: top-level spellings that agents guess from the sibling spine tools. The first two call the same code as `canon doctor --robot-triage` and `canon doctor capabilities`, so their bytes and exit codes are identical; `canon robot-docs guide` prints an agent-oriented markdown guide to the discovery surfaces and exits `0`. None has a `--fix` surface (an unsupported flag exits `2`), and none requires `--registry` or `--column`.
+- `canon doctor [--json]`, `canon doctor capabilities [--json]`, and `canon doctor triage [--json]`: read-only reports in the CMD+RVL family contract `cmdrvl.doctor.v1` (`schema_version`, `mode` of `health`, `capabilities` or `triage`, `tool`, `tool_version`, `healthy`, `findings[]`; `contract` in capabilities mode is the `operator.v1` document identical to `canon capabilities --json`; `next_actions` in triage mode). They exit `0` when compiled contract parity is healthy and `1` when the report is emitted but unhealthy (`healthy` is false exactly when a finding has severity `error`); `2` is for CLI/refusal errors only. The retired per-tool schema ids were `canon.doctor.health.v1`, `canon.doctor.capabilities.v1`, and `canon.doctor.triage.v1`; the old `contract` string is now `read_only_contract`. `canon doctor robot-docs` emits read-only text with exit `0`.
+- Deprecated aliases: `canon doctor health [--json]` is `canon doctor [--json]`; `canon doctor --robot-triage` and `canon --robot-triage` are `canon doctor triage --json`. Their bytes and exit codes are identical to the canonical forms.
+- `canon capabilities [--json]` and `canon robot-docs guide`: top-level commands that agents guess from the sibling spine tools. `canon capabilities --json` prints the `operator.v1` contract (the same bytes as `canon --describe`; spine-rules asserts this); without `--json` it prints a short text summary. `canon robot-docs guide` prints an agent-oriented markdown guide to the discovery surfaces and exits `0`. None has a `--fix` surface (an unsupported flag exits `2`), and none requires `--registry` or `--column`.
 
 ### Config footprint and witness ledger
 

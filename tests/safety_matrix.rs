@@ -170,7 +170,7 @@ fn safety_matrix_declarations_cover_required_classes_and_platforms() {
 fn operator_json_side_effects_match_declared_offline_read_only_rows() {
     let operator_json: Value =
         serde_json::from_str(include_str!("../operator.json")).expect("operator.json parses");
-    let commands = operator_json["subcommands"]
+    let commands = operator_json["commands"]
         .as_array()
         .expect("subcommands array")
         .iter()

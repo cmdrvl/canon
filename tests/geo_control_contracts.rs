@@ -622,7 +622,7 @@ fn operator_manifest() -> Value {
 }
 
 fn operator_geo_rows(manifest: &Value) -> Vec<&serde_json::Map<String, Value>> {
-    manifest["subcommands"]
+    manifest["commands"]
         .as_array()
         .expect("operator subcommands array")
         .iter()
@@ -640,7 +640,7 @@ fn operator_command_row_mut<'a>(
     manifest: &'a mut Value,
     command_name: &str,
 ) -> &'a mut serde_json::Map<String, Value> {
-    manifest["subcommands"]
+    manifest["commands"]
         .as_array_mut()
         .expect("operator subcommands array")
         .iter_mut()

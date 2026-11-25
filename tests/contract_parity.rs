@@ -444,7 +444,7 @@ fn operator_manifest() -> Value {
 }
 
 fn remove_command(mut manifest: Value, name: &str) -> Value {
-    let rows = manifest["subcommands"]
+    let rows = manifest["commands"]
         .as_array_mut()
         .expect("subcommands array");
     rows.retain(|row| row.get("name").and_then(Value::as_str) != Some(name));
@@ -510,7 +510,7 @@ fn remove_nested_command_field(mut manifest: Value, command: &str, path: &[&str]
 }
 
 fn command_row_mut<'a>(manifest: &'a mut Value, command: &str) -> &'a mut Value {
-    manifest["subcommands"]
+    manifest["commands"]
         .as_array_mut()
         .expect("subcommands array")
         .iter_mut()

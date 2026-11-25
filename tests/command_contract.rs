@@ -44,7 +44,7 @@ const OPERATOR_JSON: &str = include_str!("../operator.json");
 
 #[derive(Debug, Deserialize)]
 struct OperatorManifest {
-    subcommands: Vec<OperatorRow>,
+    commands: Vec<OperatorRow>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -121,7 +121,6 @@ struct JsonExpectation {
 #[derive(Clone, Copy)]
 enum SchemaField {
     None,
-    Schema,
     Title,
     Version,
     SchemaVersion,
@@ -479,7 +478,7 @@ fn help_contract_corpus(
         .map(|command| (command.name.as_str(), command))
         .collect::<BTreeMap<_, _>>();
     let mut cases = manifest
-        .subcommands
+        .commands
         .iter()
         .filter(|row| row_has_public_help(row))
         .filter_map(|row| {
@@ -528,7 +527,7 @@ fn assert_help_corpus_coverage(
 
     let mut errors = Vec::new();
     for row in manifest
-        .subcommands
+        .commands
         .iter()
         .filter(|row| row_has_public_help(row))
     {
@@ -578,7 +577,7 @@ fn assert_corpus_ids_are_deterministic(cases: &[HelpCase]) {
 
 fn assert_runtime_corpus_coverage(manifest: &OperatorManifest, cases: &[RuntimeCase]) {
     let manifest_by_name = manifest
-        .subcommands
+        .commands
         .iter()
         .map(|row| (row.name.as_str(), row))
         .collect::<BTreeMap<_, _>>();
@@ -601,6 +600,7 @@ fn assert_runtime_corpus_coverage(manifest: &OperatorManifest, cases: &[RuntimeC
         "root --schema",
         "doctor --robot-triage",
         "doctor health",
+        "doctor triage",
         "doctor capabilities",
         "doctor robot-docs",
         "geo capabilities",
@@ -1330,11 +1330,27 @@ impl RuntimeHarness {
                 args: args(["doctor", "--robot-triage"]),
                 expected: RuntimeExpectation::json(
                     0,
-                    "canon.doctor.triage.v1",
-                    SchemaField::Schema,
+                    "cmdrvl.doctor.v1",
+                    SchemaField::SchemaVersion,
                 )
-                .assert_eq("contract", json!("cmdrvl.read_only_doctor.v1"))
+                .assert_eq("mode", json!("triage"))
+                .assert_eq("read_only_contract", json!("cmdrvl.read_only_doctor.v1"))
+                .assert_eq("healthy", json!(true))
                 .assert_eq("ok", json!(true))
+                .assert_eq("read_only", json!(true))
+                .with_stderr(StderrExpectation::Empty),
+            },
+            RuntimeCase {
+                id: "doctor_triage_json",
+                command_name: "doctor triage",
+                args: args(["doctor", "triage", "--json"]),
+                expected: RuntimeExpectation::json(
+                    0,
+                    "cmdrvl.doctor.v1",
+                    SchemaField::SchemaVersion,
+                )
+                .assert_eq("mode", json!("triage"))
+                .assert_eq("healthy", json!(true))
                 .assert_eq("read_only", json!(true))
                 .with_stderr(StderrExpectation::Empty),
             },
@@ -1344,10 +1360,12 @@ impl RuntimeHarness {
                 args: args(["doctor", "health", "--json"]),
                 expected: RuntimeExpectation::json(
                     0,
-                    "canon.doctor.health.v1",
-                    SchemaField::Schema,
+                    "cmdrvl.doctor.v1",
+                    SchemaField::SchemaVersion,
                 )
+                .assert_eq("mode", json!("health"))
                 .assert_eq("tool", json!("canon"))
+                .assert_eq("healthy", json!(true))
                 .assert_eq("ok", json!(true))
                 .assert_eq("operator_manifest.blake3", json!(stable_operator_digest()))
                 .with_stderr(StderrExpectation::Empty),
@@ -1358,9 +1376,11 @@ impl RuntimeHarness {
                 args: args(["doctor", "capabilities", "--json"]),
                 expected: RuntimeExpectation::json(
                     0,
-                    "canon.doctor.capabilities.v1",
-                    SchemaField::Schema,
+                    "cmdrvl.doctor.v1",
+                    SchemaField::SchemaVersion,
                 )
+                .assert_eq("mode", json!("capabilities"))
+                .assert_eq("contract.schema_version", json!("operator.v1"))
                 .assert_array_non_empty("commands")
                 .assert_eq("fixers", json!([]))
                 .with_stderr(StderrExpectation::Empty),
@@ -1371,7 +1391,7 @@ impl RuntimeHarness {
                 args: args(["doctor", "robot-docs"]),
                 expected: RuntimeExpectation {
                     exit_code: 0,
-                    stdout: StdoutExpectation::TextContains("canon doctor health --json"),
+                    stdout: StdoutExpectation::TextContains("canon doctor triage --json"),
                     stderr: StderrExpectation::Empty,
                     mutations: Vec::new(),
                 },
@@ -2274,7 +2294,6 @@ impl SchemaField {
     fn assert(self, value: &Value, expected: &str, case_id: &str) {
         let (field, actual) = match self {
             Self::None => return,
-            Self::Schema => ("schema", &value["schema"]),
             Self::Title => ("title", &value["title"]),
             Self::Version => ("version", &value["version"]),
             Self::SchemaVersion => ("schema_version", &value["schema_version"]),

@@ -57,7 +57,7 @@ fn operator_json_provider_catalog_matches_cli() {
 #[test]
 fn operator_json_declares_provider_discovery_subcommands() {
     let manifest: Value = serde_json::from_str(OPERATOR_JSON).unwrap();
-    let names: Vec<&str> = manifest["subcommands"]
+    let names: Vec<&str> = manifest["commands"]
         .as_array()
         .unwrap()
         .iter()

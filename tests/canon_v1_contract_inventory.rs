@@ -613,7 +613,7 @@ fn clap_leaf_commands() -> BTreeSet<String> {
 
 fn operator_subcommands() -> BTreeSet<String> {
     let manifest = serde_json::from_str::<Value>(OPERATOR_JSON).expect("operator.json parses");
-    manifest["subcommands"]
+    manifest["commands"]
         .as_array()
         .expect("operator subcommands array")
         .iter()

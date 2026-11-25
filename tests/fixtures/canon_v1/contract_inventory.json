@@ -47,7 +47,7 @@
       "family": "core",
       "clap_path": null,
       "operator_name": null,
-      "primary_contracts": ["operator.v0"],
+      "primary_contracts": ["operator.v1"],
       "action": "preserve"
     },
     {
@@ -63,7 +63,7 @@
       "family": "doctor",
       "clap_path": null,
       "operator_name": "doctor",
-      "primary_contracts": ["canon.doctor.health.v1"],
+      "primary_contracts": ["cmdrvl.doctor.v1"],
       "action": "preserve"
     },
     {
@@ -71,7 +71,7 @@
       "family": "doctor",
       "clap_path": null,
       "operator_name": null,
-      "primary_contracts": ["canon.doctor.triage.v1"],
+      "primary_contracts": ["cmdrvl.doctor.v1"],
       "action": "preserve"
     },
     {
@@ -79,7 +79,7 @@
       "family": "doctor",
       "clap_path": "doctor health",
       "operator_name": "doctor health",
-      "primary_contracts": ["canon.doctor.health.v1"],
+      "primary_contracts": ["cmdrvl.doctor.v1"],
       "action": "preserve"
     },
     {
@@ -87,7 +87,15 @@
       "family": "doctor",
       "clap_path": "doctor capabilities",
       "operator_name": "doctor capabilities",
-      "primary_contracts": ["canon.doctor.capabilities.v1"],
+      "primary_contracts": ["cmdrvl.doctor.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon doctor triage",
+      "family": "doctor",
+      "clap_path": "doctor triage",
+      "operator_name": "doctor triage",
+      "primary_contracts": ["cmdrvl.doctor.v1"],
       "action": "preserve"
     },
     {
@@ -103,7 +111,7 @@
       "family": "doctor",
       "clap_path": null,
       "operator_name": null,
-      "primary_contracts": ["canon.doctor.triage.v1"],
+      "primary_contracts": ["cmdrvl.doctor.v1"],
       "action": "preserve"
     },
     {
@@ -111,7 +119,15 @@
       "family": "doctor",
       "clap_path": "capabilities",
       "operator_name": "capabilities",
-      "primary_contracts": ["canon.doctor.capabilities.v1"],
+      "primary_contracts": ["operator.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon robot-docs",
+      "family": "doctor",
+      "clap_path": null,
+      "operator_name": "robot-docs",
+      "primary_contracts": [],
       "action": "preserve"
     },
     {
@@ -1100,11 +1116,8 @@
     }
   ],
   "contract_rows": [
-    { "id": "operator.v0", "family": "operator", "action": "preserve" },
+    { "id": "operator.v1", "family": "operator", "action": "preserve" },
     { "id": "canon.v0", "family": "core", "action": "preserve" },
-    { "id": "canon.doctor.capabilities.v1", "family": "doctor", "action": "preserve" },
-    { "id": "canon.doctor.health.v1", "family": "doctor", "action": "preserve" },
-    { "id": "canon.doctor.triage.v1", "family": "doctor", "action": "preserve" },
     { "id": "canon.entity.lint.robot.v0", "family": "entity", "action": "preserve" },
     {
       "id": "canon_entity_cluster_shape.v0",

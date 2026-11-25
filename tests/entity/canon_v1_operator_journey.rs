@@ -1450,7 +1450,7 @@ fn run_operator_journey(label: &str) -> JourneyRun {
 
     let describe = canon_json(&["--describe"], 0);
     command_log.push(describe.record);
-    let legacy_engine_refused = !describe.value["subcommands"]
+    let legacy_engine_refused = !describe.value["commands"]
         .as_array()
         .unwrap()
         .iter()

@@ -56,6 +56,13 @@ pub struct CommandSafetyDeclaration {
 
 pub const SAFETY_MATRIX_SCHEMA_VERSION: &str = "canon.operator.safety_matrix.v1";
 
+/// `schema_version` of the embedded `operator.json` (the spine-rules family
+/// contract) and the family contract version it conforms to.
+pub const OPERATOR_SCHEMA_VERSION: &str = "operator.v1";
+pub const OPERATOR_CONTRACT_VERSION: &str = "1.0.0";
+/// `schema_version` of every `canon doctor` JSON report (family contract).
+pub const DOCTOR_SCHEMA_VERSION: &str = "cmdrvl.doctor.v1";
+
 pub const CORE_PLATFORM_CLASSES: &[PlatformClass] = &[
     PlatformClass::PortablePathUtf8,
     PlatformClass::SameFilesystemAtomicReplace,
@@ -93,7 +100,7 @@ pub const COMMAND_SAFETY_DECLARATIONS: &[CommandSafetyDeclaration] = &[
     CommandSafetyDeclaration {
         command: "doctor",
         operator_contract_name: Some("doctor"),
-        usage: "canon doctor [health --json|capabilities --json|robot-docs|--robot-triage]",
+        usage: "canon doctor [--json|health --json|capabilities --json|triage --json|robot-docs|--robot-triage]",
         read_only: true,
         mutation: MutationClass::ReadOnly,
         network: NetworkClass::Offline,
@@ -841,7 +848,14 @@ pub fn command_behavior_metadata() -> Vec<OperatorBehaviorMetadata> {
 
 const EMBEDDED_OPERATOR_JSON: &str = include_str!("../operator.json");
 
-/// The embedded operator manifest, restricted to the commands this build has.
+/// The embedded `operator.json` text, an `operator.v1` document, restricted to
+/// the commands this build has.
+///
+/// `canon --describe`, `canon capabilities --json` and the `contract` of
+/// `canon doctor capabilities --json` all render this one value, so the three
+/// cannot drift apart (spine-rules `r006_capabilities_json_matches_describe` and
+/// `family_doctor_capabilities_conforms` assert it). Anything that narrows the
+/// manifest for a build belongs in this function.
 ///
 /// A build with every feature returns `operator.json` byte for byte. A build
 /// without a feature drops that feature's command rows and `invocation.usage`
@@ -876,10 +890,7 @@ fn manifest_without_commands(raw: &str, roots: &[&str]) -> String {
             text == head || text.starts_with(&format!("{head} "))
         })
     };
-    if let Some(rows) = manifest
-        .get_mut("subcommands")
-        .and_then(Value::as_array_mut)
-    {
+    if let Some(rows) = manifest.get_mut("commands").and_then(Value::as_array_mut) {
         rows.retain(|row| {
             !row.get("name")
                 .and_then(Value::as_str)
@@ -1073,7 +1084,7 @@ fn validate_root_contract(command: &Command, manifest: &Value, manifest_errors: 
     validate_root_string(
         manifest,
         "schema_version",
-        "operator.v0",
+        OPERATOR_SCHEMA_VERSION,
         "operator manifest schema_version",
         manifest_errors,
     );
@@ -1086,9 +1097,16 @@ fn validate_root_contract(command: &Command, manifest: &Value, manifest_errors: 
     );
     validate_root_string(
         manifest,
-        "version",
+        "tool_version",
         env!("CARGO_PKG_VERSION"),
-        "operator manifest version",
+        "operator manifest tool_version",
+        manifest_errors,
+    );
+    validate_root_string(
+        manifest,
+        "contract_version",
+        OPERATOR_CONTRACT_VERSION,
+        "operator manifest contract_version",
         manifest_errors,
     );
     let invocation_output_schema = manifest
@@ -1267,22 +1285,22 @@ fn operator_manifest_rows(
         manifest_errors.push("operator manifest must be a JSON object".to_string());
         return rows;
     };
-    let Some(subcommands) = object.get("subcommands") else {
-        manifest_errors.push("operator manifest missing subcommands array".to_string());
+    let Some(commands) = object.get("commands") else {
+        manifest_errors.push("operator manifest missing commands array".to_string());
         return rows;
     };
-    let Some(subcommands) = subcommands.as_array() else {
-        manifest_errors.push("operator manifest subcommands must be an array".to_string());
+    let Some(commands) = commands.as_array() else {
+        manifest_errors.push("operator manifest commands must be an array".to_string());
         return rows;
     };
 
-    for (index, row) in subcommands.iter().enumerate() {
+    for (index, row) in commands.iter().enumerate() {
         let Some(row_object) = row.as_object() else {
-            manifest_errors.push(format!("subcommands[{index}] must be a JSON object"));
+            manifest_errors.push(format!("commands[{index}] must be a JSON object"));
             continue;
         };
         let Some(name) = row_object.get("name").and_then(Value::as_str) else {
-            manifest_errors.push(format!("subcommands[{index}] missing string name"));
+            manifest_errors.push(format!("commands[{index}] missing string name"));
             continue;
         };
         if rows.contains_key(name) {
@@ -1349,20 +1367,18 @@ fn aggregate_leaves(
     manifest_errors: &mut Vec<String>,
 ) -> Vec<String> {
     let Some(leaves) = leaves else {
-        manifest_errors.push(format!(
-            "aggregate subcommands[{index}] missing leaves array"
-        ));
+        manifest_errors.push(format!("aggregate commands[{index}] missing leaves array"));
         return Vec::new();
     };
     let Some(leaves) = leaves.as_array() else {
         manifest_errors.push(format!(
-            "aggregate subcommands[{index}] leaves must be an array"
+            "aggregate commands[{index}] leaves must be an array"
         ));
         return Vec::new();
     };
     if leaves.is_empty() {
         manifest_errors.push(format!(
-            "aggregate subcommands[{index}] leaves must not be empty"
+            "aggregate commands[{index}] leaves must not be empty"
         ));
     }
     let mut seen = BTreeSet::new();
@@ -1370,14 +1386,12 @@ fn aggregate_leaves(
     for (leaf_index, leaf) in leaves.iter().enumerate() {
         let Some(leaf) = leaf.as_str() else {
             manifest_errors.push(format!(
-                "aggregate subcommands[{index}].leaves[{leaf_index}] must be a string"
+                "aggregate commands[{index}].leaves[{leaf_index}] must be a string"
             ));
             continue;
         };
         if !seen.insert(leaf.to_string()) {
-            manifest_errors.push(format!(
-                "aggregate subcommands[{index}] repeats leaf '{leaf}'"
-            ));
+            manifest_errors.push(format!("aggregate commands[{index}] repeats leaf '{leaf}'"));
             continue;
         }
         parsed.push(leaf.to_string());
@@ -1440,19 +1454,15 @@ fn validate_known_aggregate_contract(
     if command_name != "doctor" {
         return;
     }
-    if row.output_schema.as_deref() != Some("canon.doctor.health.v1") {
+    if row.output_schema.as_deref() != Some(DOCTOR_SCHEMA_VERSION) {
         manifest_errors.push(format!(
-            "operator row '{command_name}' output_schema must be canon.doctor.health.v1"
+            "operator row '{command_name}' output_schema must be {DOCTOR_SCHEMA_VERSION}"
         ));
     }
-    let expected_alternates = [
-        "canon.doctor.capabilities.v1",
-        "canon.doctor.triage.v1",
-        "text/plain",
-    ]
-    .into_iter()
-    .map(str::to_string)
-    .collect::<BTreeSet<_>>();
+    let expected_alternates = ["text/plain"]
+        .into_iter()
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
     let actual_alternates = row
         .alternate_output_schemas
         .iter()
@@ -1605,7 +1615,7 @@ fn operator_row_string_array(
         return Vec::new();
     };
     let Some(values) = value.as_array() else {
-        manifest_errors.push(format!("subcommands[{row_index}].{field} must be an array"));
+        manifest_errors.push(format!("commands[{row_index}].{field} must be an array"));
         return Vec::new();
     };
     values
@@ -1614,7 +1624,7 @@ fn operator_row_string_array(
         .filter_map(|(index, value)| {
             let Some(value) = value.as_str() else {
                 manifest_errors.push(format!(
-                    "subcommands[{row_index}].{field}[{index}] must be a string"
+                    "commands[{row_index}].{field}[{index}] must be a string"
                 ));
                 return None;
             };
@@ -1636,7 +1646,7 @@ fn operator_row_positionals(
     for (option_index, option) in options.iter().enumerate() {
         let Some(option_object) = option.as_object() else {
             manifest_errors.push(format!(
-                "subcommands[{row_index}].options[{option_index}] must be a JSON object"
+                "commands[{row_index}].options[{option_index}] must be a JSON object"
             ));
             continue;
         };
@@ -1648,20 +1658,20 @@ fn operator_row_positionals(
         };
         let Some(position) = position.as_u64() else {
             manifest_errors.push(format!(
-                "subcommands[{row_index}].options[{option_index}].position must be an integer"
+                "commands[{row_index}].options[{option_index}].position must be an integer"
             ));
             continue;
         };
         let Some(name) = option_object.get("name").and_then(Value::as_str) else {
             manifest_errors.push(format!(
-                "subcommands[{row_index}].options[{option_index}] positional missing string name"
+                "commands[{row_index}].options[{option_index}] positional missing string name"
             ));
             continue;
         };
         let position = position as usize;
         if !seen.insert((position, name.to_string())) {
             manifest_errors.push(format!(
-                "subcommands[{row_index}].options repeats positional '{name}' at position {position}"
+                "commands[{row_index}].options repeats positional '{name}' at position {position}"
             ));
             continue;
         }
@@ -2203,7 +2213,7 @@ mod tests {
     #[test]
     fn manifest_validation_reports_missing_and_extra_surface_drift() {
         let manifest = json!({
-            "subcommands": [
+            "commands": [
                 {
                     "name": "alpha run",
                     "usage": "canon alpha run --input <INPUT>",
@@ -2257,7 +2267,7 @@ mod tests {
     #[test]
     fn aggregate_rows_are_not_executable_leaves_but_their_leaves_are_checked() {
         let manifest = json!({
-            "subcommands": [
+            "commands": [
                 {
                     "name": "beta",
                     "usage": "canon beta ...",
@@ -2311,7 +2321,7 @@ mod tests {
     #[test]
     fn aggregate_rows_refuse_unknown_declared_leaves() {
         let manifest = json!({
-            "subcommands": [
+            "commands": [
                 {
                     "name": "beta",
                     "usage": "canon beta ...",
@@ -2332,13 +2342,13 @@ mod tests {
     #[test]
     fn behavior_validation_checks_safety_classes_and_recovery() {
         let manifest = json!({
-            "subcommands": [
+            "commands": [
                 {
                     "name": "doctor",
                     "usage": "canon doctor health --json",
                     "description": "example",
                     "output_mode": "json",
-                    "output_schema": "canon.doctor.health.v1",
+                    "output_schema": "cmdrvl.doctor.v1",
                     "exit_codes": {},
                     "options": [],
                     "status": "implemented",
@@ -2361,13 +2371,13 @@ mod tests {
     #[test]
     fn behavior_validation_reports_safety_class_and_recovery_drift() {
         let manifest = json!({
-            "subcommands": [
+            "commands": [
                 {
                     "name": "doctor",
                     "usage": "canon doctor health --json",
                     "description": "example",
                     "output_mode": "json",
-                    "output_schema": "canon.doctor.health.v1",
+                    "output_schema": "cmdrvl.doctor.v1",
                     "exit_codes": {},
                     "options": [],
                     "status": "implemented",
@@ -2406,13 +2416,13 @@ mod tests {
     #[test]
     fn behavior_validation_cross_checks_read_only_and_offline_footprint() {
         let manifest = json!({
-            "subcommands": [
+            "commands": [
                 {
                     "name": "doctor",
                     "usage": "canon doctor health --json",
                     "description": "example",
                     "output_mode": "json",
-                    "output_schema": "canon.doctor.health.v1",
+                    "output_schema": "cmdrvl.doctor.v1",
                     "exit_codes": {},
                     "options": [],
                     "status": "implemented",
@@ -2460,13 +2470,13 @@ mod tests {
             "options": [
                 {"name": "stale", "flag": "--stale"}
             ],
-            "subcommands": [
+            "commands": [
                 {
                     "name": "doctor",
                     "usage": "canon doctor",
                     "description": "example",
                     "output_mode": "json",
-                    "output_schema": "canon.doctor.health.v1",
+                    "output_schema": "cmdrvl.doctor.v1",
                     "exit_codes": {},
                     "options": [],
                     "status": "implemented",
@@ -2495,20 +2505,21 @@ mod tests {
         let manifest = json!({
             "schema_version": "stale",
             "name": "not-canon",
-            "version": "0.0.0",
+            "tool_version": "0.0.0",
+            "contract_version": "0.0.0",
             "arguments": [
                 {"name": "wrong", "position": 0}
             ],
             "invocation": {
                 "output_schema": "wrong.v0"
             },
-            "subcommands": [
+            "commands": [
                 {
                     "name": "doctor",
                     "usage": "canon doctor",
                     "description": "example",
                     "output_mode": "json",
-                    "output_schema": "canon.doctor.health.v1",
+                    "output_schema": "cmdrvl.doctor.v1",
                     "exit_codes": {"0": {"meaning": "ok"}},
                     "options": [],
                     "status": "implemented",
@@ -2526,7 +2537,7 @@ mod tests {
             report
                 .manifest_errors
                 .iter()
-                .any(|error| error.contains("schema_version must be operator.v0"))
+                .any(|error| error.contains("schema_version must be operator.v1"))
         );
         assert!(
             report
@@ -2546,6 +2557,58 @@ mod tests {
                 .iter()
                 .any(|error| error.contains("root arguments must match compiled args"))
         );
+        for field in ["tool_version", "contract_version"] {
+            let needle = format!("operator manifest {field} must be");
+            assert!(
+                report
+                    .manifest_errors
+                    .iter()
+                    .any(|error| error.contains(&needle)),
+                "a stale {field} must be reported: {:?}",
+                report.manifest_errors
+            );
+        }
+    }
+
+    #[test]
+    fn pre_v1_key_spellings_are_rejected() {
+        // The previous operator contract spelled `tool_version` as `version`
+        // and `commands` as `subcommands`. With a correct schema_version the
+        // renamed keys must still be reported, so a half-migrated manifest
+        // cannot pass.
+        let command = Command::new("canon");
+        let manifest = json!({
+            "schema_version": OPERATOR_SCHEMA_VERSION,
+            "name": "canon",
+            "version": env!("CARGO_PKG_VERSION"),
+            "contract_version": OPERATOR_CONTRACT_VERSION,
+            "subcommands": []
+        });
+
+        let report = validate_operator_manifest(&command, &manifest);
+
+        for needle in [
+            "operator manifest tool_version must be",
+            "operator manifest missing commands array",
+        ] {
+            assert!(
+                report
+                    .manifest_errors
+                    .iter()
+                    .any(|error| error.contains(needle)),
+                "a pre-v1 manifest must report `{needle}`: {:?}",
+                report.manifest_errors
+            );
+        }
+        assert!(
+            !report
+                .manifest_errors
+                .iter()
+                .any(|error| error.contains("schema_version")),
+            "the schema_version is correct here: {:?}",
+            report.manifest_errors
+        );
+        assert!(!report.ok);
     }
 
     #[test]
@@ -2558,7 +2621,7 @@ mod tests {
             ),
         );
         let manifest = json!({
-            "subcommands": [
+            "commands": [
                 {
                     "name": "package inspect",
                     "usage": "canon package stale <ARCHIVE>",
@@ -2596,13 +2659,13 @@ mod tests {
     #[test]
     fn safety_binding_requires_known_typed_declaration() {
         let manifest = json!({
-            "subcommands": [
+            "commands": [
                 {
                     "name": "doctor",
                     "usage": "canon doctor",
                     "description": "example",
                     "output_mode": "json",
-                    "output_schema": "canon.doctor.health.v1",
+                    "output_schema": "cmdrvl.doctor.v1",
                     "exit_codes": {"0": {"meaning": "ok"}},
                     "options": [],
                     "status": "implemented",
@@ -2661,7 +2724,7 @@ mod tests {
                 .subcommand(Command::new("robot-docs")),
         );
         let manifest = json!({
-            "subcommands": [
+            "commands": [
                 {
                     "name": "doctor",
                     "usage": "canon doctor [health [--json]|capabilities [--json]|robot-docs|--robot-triage]",
@@ -2672,7 +2735,7 @@ mod tests {
                     ],
                     "description": "doctor parent",
                     "output_mode": "mixed",
-                    "output_schema": "canon.doctor.health.v1",
+                    "output_schema": "cmdrvl.doctor.v1",
                     "exit_codes": {"0": {"meaning": "ok"}},
                     "status": "implemented",
                     "read_only": true,
@@ -2687,7 +2750,7 @@ mod tests {
                     "usage": "canon doctor health [--json]",
                     "description": "example",
                     "output_mode": "json",
-                    "output_schema": "canon.doctor.health.v1",
+                    "output_schema": "cmdrvl.doctor.v1",
                     "exit_codes": {},
                     "options": [{"name": "json", "flag": "--json"}],
                     "status": "implemented",
@@ -2701,7 +2764,7 @@ mod tests {
                     "usage": "canon doctor capabilities [--json]",
                     "description": "example",
                     "output_mode": "json",
-                    "output_schema": "canon.doctor.capabilities.v1",
+                    "output_schema": "cmdrvl.doctor.v1",
                     "exit_codes": {},
                     "options": [{"name": "json", "flag": "--json"}],
                     "status": "implemented",
@@ -2762,7 +2825,7 @@ mod tests {
                 "canon geography list",
                 "canon geo"
             ]},
-            "subcommands": [
+            "commands": [
                 {"name": "doctor health"},
                 {"name": "geo"},
                 {"name": "geo run"},
@@ -2774,7 +2837,7 @@ mod tests {
         let filtered: Value =
             serde_json::from_str(&manifest_without_commands(&raw, &["geo"])).unwrap();
 
-        let names: Vec<&str> = filtered["subcommands"]
+        let names: Vec<&str> = filtered["commands"]
             .as_array()
             .unwrap()
             .iter()
@@ -2804,15 +2867,11 @@ mod tests {
     #[test]
     fn embedded_manifest_advertises_only_compiled_commands() {
         let manifest: Value = serde_json::from_str(&embedded_operator_manifest()).unwrap();
-        let has_geo = manifest["subcommands"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|row| {
-                row["name"]
-                    .as_str()
-                    .is_some_and(|name| name == "geo" || name.starts_with("geo "))
-            });
+        let has_geo = manifest["commands"].as_array().unwrap().iter().any(|row| {
+            row["name"]
+                .as_str()
+                .is_some_and(|name| name == "geo" || name.starts_with("geo "))
+        });
         assert_eq!(has_geo, cfg!(feature = "geo"));
         assert_eq!(
             manifest["invocation"]["usage"]
