@@ -15,6 +15,57 @@ const OBSERVATIONS_CSV: &str =
 const EXPECTED_REVIEW_JSON: &str =
     include_str!("../fixtures/canon_v1/operator_journey/expected_review.json");
 const STRATEGY_YAML: &str = include_str!("../../rules/golden_rules.yaml");
+const SESSION_DERIVE_STRATEGY_YAML: &str =
+    "block:\n  preflight: false\n  max_candidates_per_run: 5000000\n";
+const SESSION_DERIVE_PROFILE_YAML: &str = r#"profile: operator_journey_session
+version: 0.1.0
+entity_type: organisation
+identity_semantics: same_normalized_name
+canonical_type: org
+required_fields: [source_row_id, surface]
+normalized_views:
+  core:
+    operators: [legal_basename]
+  row_key:
+    operators: [ascii_trim_upper]
+prepare:
+  primary_surface_fields: [surface]
+  canonical_surface_normalized_view: core
+  normalized_view_fields:
+    core: surface
+    row_key: source_row_id
+  anchor_fields:
+    cik: cik
+    lei: lei
+  surface_key_fields: [row_key]
+  nullable_fields: [cik, lei]
+  provenance_fields: [source_row_id, origin]
+blocking:
+  operators:
+    - op: exact_identity
+      view: core
+evidence:
+  support:
+    - op: exact_view
+      view: core
+  cannot_link:
+    - op: protected_token_conflict
+      view: core
+      params:
+        score_units: "0"
+  relation_hints:
+    - op: cross_profile_alignment
+      params:
+        merge_authorized: "false"
+        review_policy: relation_hint_only
+patch_namespaces:
+  aliases: operator_journey_session.aliases
+  distinct: operator_journey_session.distinct
+  relations: operator_journey_session.relations
+solve:
+  hard_cannot_link: contradiction
+  standalone_surfaces: include
+"#;
 
 #[test]
 fn canon_v1_operator_journey_uses_one_public_binary_and_exact_replay() {
@@ -183,6 +234,40 @@ fn run_operator_journey(label: &str) -> JourneyRun {
     );
     assert_eq!(session_ingest.value["accepted"], 4);
 
+    let rules_template = fixture.root.join("session-rules-template.yaml");
+    let rules_init = canon_json(
+        &[
+            "entity",
+            "session",
+            "rules",
+            "init",
+            "--out",
+            path_str(&rules_template),
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(rules_init.record);
+    assert_eq!(rules_init.value["version"], "canon.entity.session.rules.v1");
+    let rules_validate = canon_json(
+        &[
+            "entity",
+            "session",
+            "rules",
+            "validate",
+            path_str(&rules_template),
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(rules_validate.record);
+    assert_eq!(
+        rules_validate.value["version"],
+        "canon.entity.session.rules.v1"
+    );
+
     let session_evidence = fixture.root.join("session-evidence.jsonl");
     fs::write(
         &session_evidence,
@@ -235,6 +320,45 @@ fn run_operator_journey(label: &str) -> JourneyRun {
     );
     assert_eq!(session_solve.value["summary"]["review"], 1);
 
+    let session_explain = canon_json(
+        &[
+            "entity",
+            "session",
+            "explain",
+            path_str(&session_work),
+            "journey-review-1",
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(session_explain.record);
+    assert_eq!(
+        session_explain.value["version"],
+        "canon.entity.session.explain.v1"
+    );
+
+    let session_frontier = canon_json(
+        &[
+            "entity",
+            "session",
+            "frontier",
+            path_str(&session_work),
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(session_frontier.record);
+    assert_eq!(
+        session_frontier.value["version"],
+        "canon.entity.session.frontier.v1"
+    );
+
+    let session_next = canon_raw(&["entity", "session", "next", path_str(&session_work)], 0);
+    assert!(!session_next.stdout.is_empty());
+    command_log.push(session_next);
+
     let session_commit = canon_json(
         &[
             "entity",
@@ -255,6 +379,57 @@ fn run_operator_journey(label: &str) -> JourneyRun {
     );
     assert_eq!(session_commit.value["outcome"], "committed");
     assert_eq!(session_commit.value["minted"].as_array().unwrap().len(), 1);
+
+    let session_export_dir = fixture.root.join("session-evidence-closure");
+    let session_export = canon_json(
+        &[
+            "entity",
+            "session",
+            "export",
+            path_str(&session_work),
+            "--format",
+            "evidence-closure",
+            "--out",
+            path_str(&session_export_dir),
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(session_export.record);
+    assert_eq!(
+        session_export.value["version"],
+        "canon.entity.session.evidence_closure_export.v0"
+    );
+
+    let session_sample = canon_json(
+        &[
+            "entity",
+            "session",
+            "sample",
+            path_str(&session_work),
+            "--stratum",
+            "tier_a",
+            "--count",
+            "5",
+            "--seed",
+            "operator-journey",
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(session_sample.record);
+    assert_eq!(
+        session_sample.value["header"]["version"],
+        "canon.entity.session.sample.v1"
+    );
+    assert_eq!(
+        session_sample.value["header"]["returned_count"].as_u64(),
+        session_sample.value["rows"]
+            .as_array()
+            .map(|rows| rows.len() as u64)
+    );
 
     let session_status = canon_json(
         &[
@@ -306,6 +481,82 @@ fn run_operator_journey(label: &str) -> JourneyRun {
             .unwrap()
             .contains("same_firm_or_reviewed_alias")
     );
+
+    let derive_registry = fixture.root.join("session-derive-registry");
+    let derive_work = fixture.root.join("session-derive-work");
+    let derive_init = canon_json(
+        &[
+            "entity",
+            "session",
+            "init",
+            "--goal",
+            "exercise session derive",
+            "--registry",
+            path_str(&derive_registry),
+            "--work-dir",
+            path_str(&derive_work),
+            "--registry-id",
+            "derive",
+            "--prefix",
+            "DRV",
+            "--zero-pad",
+            "3",
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(derive_init.record);
+    assert_eq!(derive_init.value["version"], "canon.entity.session.init.v1");
+    let derive_observations = fixture.root.join("session-derive-observations.jsonl");
+    fs::write(
+        &derive_observations,
+        r#"{"obs_id":"derive-observation-1","entity_type":"organisation","surface":"Journey Derive","keys":{},"source":{"channel":"file","file":"session-derive-observations.jsonl","lineage":"derive-a"}}
+{"obs_id":"derive-observation-2","entity_type":"organisation","surface":"Journey Derive","keys":{},"source":{"channel":"file","file":"session-derive-observations.jsonl","lineage":"derive-b"}}
+"#,
+    )
+    .unwrap();
+    let derive_ingest = canon_json(
+        &[
+            "entity",
+            "session",
+            "ingest",
+            path_str(&derive_work),
+            path_str(&derive_observations),
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(derive_ingest.record);
+    assert_eq!(derive_ingest.value["accepted"], 2);
+    let derive_profile = fixture.root.join("session-derive-profile.yaml");
+    fs::write(&derive_profile, SESSION_DERIVE_PROFILE_YAML).unwrap();
+    let derive_strategy = fixture.root.join("session-derive-strategy.yaml");
+    fs::write(&derive_strategy, SESSION_DERIVE_STRATEGY_YAML).unwrap();
+    let session_derive = canon_json(
+        &[
+            "entity",
+            "session",
+            "derive",
+            path_str(&derive_work),
+            "--profile",
+            path_str(&derive_profile),
+            "--strategy",
+            path_str(&derive_strategy),
+            "--no-registry-candidates",
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(session_derive.record);
+    assert_eq!(
+        session_derive.value["version"],
+        "canon.entity.session.derive.v1"
+    );
+    assert_eq!(session_derive.value["accepted"], 1);
+
     enable_neutral_similarity_support(&fixture.profile);
     exercise_artifact_backed_benchmark_leaves(&fixture, &mut command_log);
 
@@ -1589,9 +1840,19 @@ fn classify_entity_leaf(args: &[&str]) -> Option<String> {
         ["entity", "session", "init", ..] => Some("entity session init".to_string()),
         ["entity", "session", "ingest", ..] => Some("entity session ingest".to_string()),
         ["entity", "session", "assert", ..] => Some("entity session assert".to_string()),
+        ["entity", "session", "derive", ..] => Some("entity session derive".to_string()),
+        ["entity", "session", "rules", "init", ..] => Some("entity session rules init".to_string()),
+        ["entity", "session", "rules", "validate", ..] => {
+            Some("entity session rules validate".to_string())
+        }
         ["entity", "session", "solve", ..] => Some("entity session solve".to_string()),
         ["entity", "session", "commit", ..] => Some("entity session commit".to_string()),
         ["entity", "session", "status", ..] => Some("entity session status".to_string()),
+        ["entity", "session", "explain", ..] => Some("entity session explain".to_string()),
+        ["entity", "session", "export", ..] => Some("entity session export".to_string()),
+        ["entity", "session", "frontier", ..] => Some("entity session frontier".to_string()),
+        ["entity", "session", "next", ..] => Some("entity session next".to_string()),
+        ["entity", "session", "sample", ..] => Some("entity session sample".to_string()),
         ["entity", "index", "build", ..] => Some("entity index build".to_string()),
         ["entity", "profile", "list", ..] => Some("entity profile list".to_string()),
         ["entity", "profile", "init", ..] => Some("entity profile init".to_string()),
