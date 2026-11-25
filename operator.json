@@ -145,6 +145,13 @@
       "description": "Output mode: json (JSON mapping) or csv (CSV with canonical column)"
     },
     {
+      "name": "json",
+      "flag": "--json",
+      "type": "boolean",
+      "default": false,
+      "description": "Shorthand for --emit json; refused when combined with --emit"
+    },
+    {
       "name": "canon_column",
       "flag": "--canon-column",
       "type": "string",

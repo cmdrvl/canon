@@ -3259,6 +3259,10 @@ pub struct Cli {
     #[arg(long, value_enum, default_value = "json")]
     pub emit: EmitMode,
 
+    /// Shorthand for `--emit json`; refused when combined with `--emit`
+    #[arg(long, conflicts_with = "emit")]
+    pub json: bool,
+
     /// Name of appended canonical column (CSV mode only)
     #[arg(long)]
     pub canon_column: Option<String>,
@@ -3546,6 +3550,33 @@ mod tests {
                 doctor.command,
                 Some(DoctorCommand::Health(DoctorJsonArgs { json: true }))
             ));
+        }
+    }
+
+    #[test]
+    fn test_cli_lookup_json_alias_conflicts_with_emit() {
+        let lookup = ["canon", "in.csv", "--registry", "r", "--column", "c"];
+
+        // Alone, `--json` is accepted and leaves the (already JSON) default emit.
+        let cli = Cli::try_parse_from(lookup.iter().copied().chain(["--json"])).unwrap();
+        assert!(cli.json);
+        assert!(matches!(cli.emit, EmitMode::Json));
+
+        // Without it nothing changes.
+        let cli = Cli::try_parse_from(lookup).unwrap();
+        assert!(!cli.json);
+
+        // Combined with any explicit `--emit` it is refused, naming both flags.
+        for emit in ["json", "csv"] {
+            let error =
+                Cli::try_parse_from(lookup.iter().copied().chain(["--json", "--emit", emit]))
+                    .unwrap_err();
+            assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+            let message = error.to_string();
+            assert!(
+                message.contains("--json") && message.contains("--emit"),
+                "conflict message must name both flags: {message}"
+            );
         }
     }
 

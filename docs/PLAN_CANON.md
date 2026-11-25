@@ -75,7 +75,7 @@ out-of-tree extensions. They are not core defaults.
 
 ## CLI (v0)
 ```bash
-canon <INPUT> --registry <REGISTRY> --column <COLUMN> [--scope DIMENSION=VALUE]... [--emit json|csv] [--canon-column <NAME>] [--map-out <PATH>] [--inbox-out <FILE> --inbox-project <P> --inbox-run <R> --inbox-seen-at <RFC3339> [--inbox-raw-ref]] [--max-rows <N>] [--max-bytes <N>]
+canon <INPUT> --registry <REGISTRY> --column <COLUMN> [--scope DIMENSION=VALUE]... [--emit json|csv | --json] [--canon-column <NAME>] [--map-out <PATH>] [--inbox-out <FILE> --inbox-project <P> --inbox-run <R> --inbox-seen-at <RFC3339> [--inbox-raw-ref]] [--max-rows <N>] [--max-bytes <N>]
 canon doctor [--json]
 canon doctor capabilities [--json]
 canon doctor triage [--json]

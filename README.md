@@ -314,6 +314,11 @@ Single JSON object to stdout. The mapping artifact for audit, `pack`, or inspect
 canon tape.csv --registry registries/cusip-isin/ --column cusip
 ```
 
+`--json` is shorthand for `--emit json`, so the spelling the other spine tools use
+works here too. It cannot be combined with `--emit` (not even `--emit json`): clap
+refuses with `the argument '--json' cannot be used with '--emit <EMIT>'` and exit 2,
+so `--json --emit csv` can never silently pick one of the two.
+
 ### CSV (`--emit csv`)
 
 Original CSV with a canonical column appended. Makes `canon` a pipeline stage.
@@ -421,7 +426,7 @@ commands, and the evidence-session engine.
 ## CLI Reference
 
 ```bash
-canon <INPUT> --registry <REGISTRY> --column <COLUMN> [--scope DIMENSION=VALUE]... [--emit json|csv] [--canon-column <NAME>] [--map-out <PATH>] [--inbox-out <FILE> --inbox-project <P> --inbox-run <R> --inbox-seen-at <RFC3339> [--inbox-raw-ref]] [--max-rows <N>] [--max-bytes <N>]
+canon <INPUT> --registry <REGISTRY> --column <COLUMN> [--scope DIMENSION=VALUE]... [--emit json|csv | --json] [--canon-column <NAME>] [--map-out <PATH>] [--inbox-out <FILE> --inbox-project <P> --inbox-run <R> --inbox-seen-at <RFC3339> [--inbox-raw-ref]] [--max-rows <N>] [--max-bytes <N>]
 canon doctor [--json]
 canon doctor capabilities [--json]
 canon doctor triage [--json]
