@@ -64,7 +64,8 @@ use crate::cli::{
     EntityReviewCommand, EntityReviewExportArtifact, EntityReviewExportCli,
     EntityReviewExportEmitMode, EntityReviewGroupBy, EntityReviewImportCli, EntityReviewInclude,
     EntityReviewSubcommand, EntityRunCli, EntitySessionAssertCli, EntitySessionCommitCli,
-    EntitySessionExplainCli, EntitySessionIngestCli, EntitySessionInitCli,
+    EntitySessionExplainCli, EntitySessionFrontierClaimCli, EntitySessionFrontierReleaseCli,
+    EntitySessionFrontierSubcommand, EntitySessionIngestCli, EntitySessionInitCli,
     EntitySessionRulesCommand, EntitySessionRulesInitCli, EntitySessionRulesSubcommand,
     EntitySessionRulesValidateCli, EntitySessionSampleCli, EntitySessionSampleEmitMode,
     EntitySessionSolveCli, EntitySessionStatusCli, EntitySessionSubcommand, EntitySolveCli,
@@ -964,16 +965,37 @@ fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
             EntitySessionSubcommand::Explain(explain) => {
                 run_entity_session_explain_command(explain)
             }
-            EntitySessionSubcommand::Frontier(frontier) => run_entity_session_frontier_command(
-                &frontier.session,
-                frontier.seed_entity.clone(),
-                matches!(frontier.emit, EntityEmitMode::Summary),
-            ),
+            EntitySessionSubcommand::Frontier(frontier) => match &frontier.command {
+                Some(EntitySessionFrontierSubcommand::Claim(claim)) => {
+                    run_entity_session_frontier_claim_command(claim)
+                }
+                Some(EntitySessionFrontierSubcommand::Release(release)) => {
+                    run_entity_session_frontier_release_command(release)
+                }
+                None => match frontier.session.as_deref() {
+                    Some(session) => run_entity_session_frontier_command(
+                        session,
+                        frontier.seed_entity.clone(),
+                        frontier.shard,
+                        frontier.limit,
+                        matches!(frontier.emit, EntityEmitMode::Summary),
+                    ),
+                    None => Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "frontier requires a session work directory",
+                    )
+                    .into()),
+                },
+            },
             EntitySessionSubcommand::Export(export) => run_entity_session_export_command(export),
             EntitySessionSubcommand::Derive(derive) => run_entity_session_derive_command(derive),
-            EntitySessionSubcommand::Next(next) => {
-                run_entity_session_frontier_command(&next.session, next.seed_entity.clone(), true)
-            }
+            EntitySessionSubcommand::Next(next) => run_entity_session_frontier_command(
+                &next.session,
+                next.seed_entity.clone(),
+                None,
+                None,
+                true,
+            ),
             EntitySessionSubcommand::Sample(sample) => run_entity_session_sample_command(sample),
             EntitySessionSubcommand::Rules(rules) => run_entity_session_rules_command(rules),
         },
@@ -1238,17 +1260,84 @@ fn run_entity_session_solve_command(solve: &EntitySessionSolveCli) -> Result<u8,
 fn run_entity_session_frontier_command(
     session: &Path,
     seed_entity: Option<String>,
+    shard: Option<entity::session_frontier::FrontierShard>,
+    limit: Option<usize>,
     summary_mode: bool,
 ) -> Result<u8, Box<dyn Error>> {
-    let result =
-        entity::session_frontier::frontier(entity::session_frontier::SessionFrontierRequest {
+    let result = entity::session_frontier::frontier_partitioned(
+        entity::session_frontier::SessionFrontierRequest {
             session: session.to_path_buf(),
             seed_entity,
-        });
+        },
+        shard,
+        limit,
+    );
     match result {
         Ok(output) => {
             let rendered = if summary_mode {
                 output.render_summary()
+            } else {
+                serde_json::to_string(&output)?
+            };
+            emit_entity_output(&rendered, summary_mode);
+            Ok(0)
+        }
+        Err(refusal) => emit_entity_refusal(refusal.to_canon_output(), true, summary_mode),
+    }
+}
+
+fn run_entity_session_frontier_claim_command(
+    claim: &EntitySessionFrontierClaimCli,
+) -> Result<u8, Box<dyn Error>> {
+    let result = entity::session_frontier::claim_frontier(
+        entity::session_frontier::SessionFrontierClaimRequest {
+            session: claim.session.clone(),
+            worker: claim.worker.clone(),
+            limit: claim.limit,
+            ttl_secs: claim.ttl_secs,
+        },
+    );
+    let summary_mode = matches!(claim.emit, EntityEmitMode::Summary);
+    match result {
+        Ok(output) => {
+            let rendered = if summary_mode {
+                format!(
+                    "frontier_claim solve_hash={} worker={} claim_id={} items={} expires_at_unix_secs={}",
+                    output.solve_hash,
+                    serde_json::to_string(&output.worker)?,
+                    output.claim_id.as_deref().unwrap_or("none"),
+                    output.frontier_ids.len(),
+                    output
+                        .expires_at_unix_secs
+                        .map_or_else(|| "none".to_string(), |expires| expires.to_string())
+                )
+            } else {
+                serde_json::to_string(&output)?
+            };
+            emit_entity_output(&rendered, summary_mode);
+            Ok(0)
+        }
+        Err(refusal) => emit_entity_refusal(refusal.to_canon_output(), true, summary_mode),
+    }
+}
+
+fn run_entity_session_frontier_release_command(
+    release: &EntitySessionFrontierReleaseCli,
+) -> Result<u8, Box<dyn Error>> {
+    let result = entity::session_frontier::release_frontier_claim(
+        entity::session_frontier::SessionFrontierReleaseRequest {
+            session: release.session.clone(),
+            claim_id: release.claim_id.clone(),
+        },
+    );
+    let summary_mode = matches!(release.emit, EntityEmitMode::Summary);
+    match result {
+        Ok(output) => {
+            let rendered = if summary_mode {
+                format!(
+                    "frontier_release claim_id={} released={}",
+                    output.claim_id, output.released
+                )
             } else {
                 serde_json::to_string(&output)?
             };

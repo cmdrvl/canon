@@ -990,3 +990,67 @@ fn place_assertions_without_an_inspectable_basis_are_rejected_at_assert() {
         assert_eq!(output["rejected"][0]["code"], code, "{line} -> {output}");
     }
 }
+
+#[test]
+fn place_frontier_shards_and_claims_authoritative_key_gaps() {
+    let fixture = Fixture::new();
+    fixture.ingest(&[observation(
+        "place-frontier-apn",
+        "parcel",
+        "Paramount Plaza parcel 1022",
+        "assessor-release",
+        json!({"apn": "1022-0043"}),
+    )]);
+    fixture.solve();
+
+    let frontier = stdout_json(&run(
+        &[
+            "entity",
+            "session",
+            "frontier",
+            p(&fixture.session),
+            "--shard",
+            "0/1",
+            "--emit",
+            "json",
+        ],
+        0,
+    ));
+    assert_eq!(frontier["partition"]["index"], 0);
+    assert_eq!(frontier["partition"]["total"], 1);
+    assert_eq!(frontier["unresolved_keys"][0]["namespace"], "apn");
+
+    let claim = stdout_json(&run(
+        &[
+            "entity",
+            "session",
+            "frontier",
+            "claim",
+            p(&fixture.session),
+            "--worker",
+            "place-agent",
+            "--limit",
+            "1",
+            "--ttl-secs",
+            "60",
+            "--emit",
+            "json",
+        ],
+        0,
+    ));
+    assert_eq!(claim["unresolved_keys"][0]["namespace"], "apn");
+    let claim_id = claim["claim_id"].as_str().unwrap();
+    let released = stdout_json(&run(
+        &[
+            "entity",
+            "session",
+            "frontier",
+            "release",
+            p(&fixture.session),
+            "--claim-id",
+            claim_id,
+        ],
+        0,
+    ));
+    assert_eq!(released["released"], true);
+}

@@ -1,14 +1,19 @@
 //! Public-command acceptance for `canon entity session frontier` and
-//! `canon entity session next` (bd-vdcw.23): what the session still leaves
-//! unresolved, as data, with the evidence kinds that would settle each part.
-//! Every flow runs the real binary on temp sessions.
+//! `canon entity session next` (bd-vdcw.23), plus the shard and claim workflows
+//! (bd-umbh). Every flow runs the real binary on temp sessions.
 
 use assert_cmd::Command;
+use canon::entity::{
+    publication::open_current_stream_generation,
+    session_frontier::SESSION_FRONTIER_CLAIMS_STREAM_ID,
+};
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
+    thread,
+    time::Duration,
 };
 use tempfile::TempDir;
 
@@ -177,6 +182,22 @@ fn strings(value: &Value) -> Vec<String> {
         .collect()
 }
 
+fn frontier_ids(frontier: &Value) -> BTreeSet<String> {
+    frontier["work_items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["frontier_id"].as_str().unwrap().to_string())
+        .chain(
+            frontier["unresolved_keys"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|key| key["frontier_id"].as_str().unwrap().to_string()),
+        )
+        .collect()
+}
+
 /// 20 pairs missing an independent origin, 7 missing a second evidence type,
 /// 3 contradictions (key conflicts), plus one lone keyed surface.
 fn thirty_item_fixture(temp: &TempDir) -> (PathBuf, PathBuf, Vec<Value>, Vec<Value>) {
@@ -256,6 +277,44 @@ fn groups_counts_coverage_and_the_supply_and_resolve_loop() {
     let before = frontier(&session, &[]);
     eprintln!("frontier before: {before}");
     assert_eq!(before["version"], "canon.entity.session.frontier.v1");
+    let mut partition_union = BTreeSet::new();
+    for index in 0..4 {
+        let shard_spec = format!("{index}/4");
+        let sharded = frontier(&session, &["--shard", &shard_spec, "--emit", "json"]);
+        assert_eq!(sharded["partition"]["index"], index);
+        assert_eq!(sharded["partition"]["total"], 4);
+        assert!(
+            frontier_ids(&sharded)
+                .into_iter()
+                .all(|id| partition_union.insert(id)),
+            "shard {index} overlaps"
+        );
+    }
+    assert_eq!(partition_union, frontier_ids(&before));
+    let limited = frontier(&session, &["--limit", "7"]);
+    assert_eq!(frontier_ids(&limited).len(), 7);
+    let shard_limited = frontier(
+        &session,
+        &["--shard", "0/4", "--limit", "7", "--emit", "json"],
+    );
+    assert_eq!(shard_limited["partition"]["limit"], 7);
+    assert_eq!(frontier_ids(&shard_limited).len(), 7);
+    let invalid_shard = canon()
+        .args([
+            "entity",
+            "session",
+            "frontier",
+            path_str(&session),
+            "--shard",
+            "4/4",
+        ])
+        .output()
+        .expect("canon runs");
+    assert_eq!(invalid_shard.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&invalid_shard.stderr).contains("index must be smaller"),
+        "invalid shard syntax is rejected before reading session data"
+    );
     assert_eq!(before["components"].as_array().unwrap().len(), 3);
     let origin = group(&before, "needs_independent_origin").expect("origin group");
     let kind = group(&before, "needs_second_evidence_type").expect("kind group");
@@ -651,5 +710,143 @@ fn history_requests_and_the_seed_neighbourhood() {
             .iter()
             .all(|request| request["scope"]["role"] != "sponsor"),
         "same_slot evidence removed the request"
+    );
+}
+
+#[test]
+fn concurrent_frontier_claims_are_disjoint_and_expired_leases_recover() {
+    const WORKERS: usize = 8;
+    const BARRIER: &str = "CANON_TEST_FAILPOINT_PUBLICATION_BARRIER";
+    const PARTICIPANTS: &str = "CANON_TEST_FAILPOINT_PUBLICATION_PARTICIPANTS";
+    const MARKER: &str = "CANON_TEST_FAILPOINT_PUBLICATION_MARKER_ID";
+
+    let temp = TempDir::new().unwrap();
+    let (session, _, _, _) = thirty_item_fixture(&temp);
+    let barrier = temp.path().join("claim-publication-barrier");
+    let mut workers = Vec::new();
+    for worker_id in 0..WORKERS {
+        let session = session.clone();
+        let barrier = barrier.clone();
+        workers.push(thread::spawn(move || {
+            let output = canon()
+                .args([
+                    "entity",
+                    "session",
+                    "frontier",
+                    "claim",
+                    path_str(&session),
+                    "--worker",
+                    &format!("worker-{worker_id}"),
+                    "--limit",
+                    "1",
+                    "--ttl-secs",
+                    "120",
+                    "--emit",
+                    "json",
+                ])
+                .env(BARRIER, &barrier)
+                .env(PARTICIPANTS, WORKERS.to_string())
+                .env(MARKER, worker_id.to_string())
+                .output()
+                .expect("frontier claim process starts");
+            assert_eq!(
+                output.status.code(),
+                Some(0),
+                "claim worker {worker_id} stdout={} stderr={}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            serde_json::from_slice::<Value>(&output.stdout).expect("claim JSON")
+        }));
+    }
+    let claimed = workers
+        .into_iter()
+        .map(|worker| worker.join().expect("claim worker thread completes"))
+        .collect::<Vec<_>>();
+    let mut claimed_ids = BTreeSet::new();
+    let mut claim_ids = BTreeSet::new();
+    for response in &claimed {
+        assert_eq!(
+            response["frontier_ids"].as_array().unwrap().len(),
+            1,
+            "{response}"
+        );
+        let frontier_id = response["frontier_ids"][0].as_str().unwrap().to_string();
+        assert!(
+            claimed_ids.insert(frontier_id),
+            "double-claimed item: {response}"
+        );
+        claim_ids.insert(response["claim_id"].as_str().unwrap().to_string());
+    }
+    assert_eq!(claimed_ids.len(), WORKERS);
+    assert_eq!(claim_ids.len(), WORKERS);
+
+    let claim = |worker: &str, ttl: &str| {
+        run_json(
+            &[
+                "entity",
+                "session",
+                "frontier",
+                "claim",
+                path_str(&session),
+                "--worker",
+                worker,
+                "--limit",
+                "1",
+                "--ttl-secs",
+                ttl,
+                "--emit",
+                "json",
+            ],
+            0,
+        )
+    };
+    let expiring = claim("short-lease", "1");
+    let expiring_frontier_id = expiring["frontier_ids"][0].as_str().unwrap().to_string();
+    thread::sleep(Duration::from_secs(2));
+    let recovered = claim("recovery-worker", "120");
+    assert_eq!(
+        recovered["frontier_ids"][0], expiring_frontier_id,
+        "the expired task returns to the frontier"
+    );
+    let claim_id = recovered["claim_id"].as_str().unwrap();
+    let released = run_json(
+        &[
+            "entity",
+            "session",
+            "frontier",
+            "release",
+            path_str(&session),
+            "--claim-id",
+            claim_id,
+        ],
+        0,
+    );
+    assert_eq!(released["released"], true);
+    let after_release = claim("after-release", "120");
+    assert_eq!(after_release["frontier_ids"][0], expiring_frontier_id);
+
+    let claim_stream = open_current_stream_generation(&session, SESSION_FRONTIER_CLAIMS_STREAM_ID)
+        .expect("claim event stream is committed");
+    let claim_events = claim_stream
+        .logical_paths()
+        .filter(|path| path.starts_with("frontier/leases/"))
+        .map(|path| {
+            serde_json::from_slice::<Value>(
+                claim_stream
+                    .read_logical_file(path)
+                    .expect("claim event is stored"),
+            )
+            .expect("claim event is JSON")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(claim_events.len(), WORKERS + 4);
+    assert_eq!(
+        claim_events
+            .iter()
+            .filter(|event| event["action"] == "release")
+            .count(),
+        1,
+        "release appends an event without rewriting prior lease records"
     );
 }

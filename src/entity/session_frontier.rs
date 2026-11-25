@@ -40,7 +40,7 @@ pub const SESSION_FRONTIER_CLAIMS_VERSION: &str = "canon.entity.session.frontier
 
 pub const SESSION_FRONTIER_CLAIMS_STREAM_ID: &str = "entity-session-frontier-claims";
 const SESSION_FRONTIER_CLAIMS_RECORDS_PATH: &str = "frontier/leases";
-const SESSION_FRONTIER_CLAIMS_MAX_ATTEMPTS: usize = 32;
+const SESSION_FRONTIER_CLAIMS_MAX_ATTEMPTS: usize = 64;
 
 const NEEDS_AUTHORITATIVE_KEY: &str = "needs_authoritative_key";
 const NEEDS_SECOND_EVIDENCE_TYPE: &str = "needs_second_evidence_type";
@@ -510,7 +510,11 @@ pub fn claim_frontier(
             }
             Err(error) if error.is_stream_head_conflict() => {
                 if attempt + 1 < SESSION_FRONTIER_CLAIMS_MAX_ATTEMPTS {
-                    thread::sleep(Duration::from_millis(((attempt + 1) * 2) as u64));
+                    thread::sleep(frontier_claim_retry_delay(
+                        &request.worker,
+                        attempt,
+                        current.generation_id.as_deref(),
+                    ));
                 }
             }
             Err(error) => {
@@ -560,7 +564,11 @@ pub fn release_frontier_claim(
             }
             Err(error) if error.is_stream_head_conflict() => {
                 if attempt + 1 < SESSION_FRONTIER_CLAIMS_MAX_ATTEMPTS {
-                    thread::sleep(Duration::from_millis(((attempt + 1) * 2) as u64));
+                    thread::sleep(frontier_claim_retry_delay(
+                        &request.claim_id,
+                        attempt,
+                        current.generation_id.as_deref(),
+                    ));
                 }
             }
             Err(error) => {
@@ -721,14 +729,16 @@ fn append_claim_event(
     let request = EntityPublicationRequest {
         stream_id: SESSION_FRONTIER_CLAIMS_STREAM_ID.to_string(),
         supersedes_generation_id: current.generation_id.clone(),
-        request_fingerprint: blake3::hash(SESSION_FRONTIER_CLAIMS_VERSION.as_bytes())
-            .to_hex()
-            .to_string(),
+        request_fingerprint: format!(
+            "blake3:{}",
+            blake3::hash(SESSION_FRONTIER_CLAIMS_VERSION.as_bytes()).to_hex()
+        ),
         cache_mode: "disabled".to_string(),
         cache_status: "cold_start".to_string(),
-        cache_receipt_hash: blake3::hash(b"canon.entity.session.frontier.claims.receipt.v1")
-            .to_hex()
-            .to_string(),
+        cache_receipt_hash: format!(
+            "blake3:{}",
+            blake3::hash(b"canon.entity.session.frontier.claims.receipt.v1").to_hex()
+        ),
         stage_order: vec!["session".to_string()],
         upstream_artifacts,
         files: vec![EntityPublicationFileInput::new(
@@ -740,6 +750,38 @@ fn append_claim_event(
         omit_logical_paths: Vec::new(),
     };
     publish_stream_patch(session, request).map(|_| ())
+}
+
+fn frontier_claim_retry_delay(
+    identity: &str,
+    attempt: usize,
+    generation_id: Option<&str>,
+) -> Duration {
+    const INITIAL_CAP_MILLIS: u64 = 24;
+    const CAP_STEP_MILLIS: u64 = 4;
+    const MAX_CAP_MILLIS: u64 = 100;
+
+    let attempt = u64::try_from(attempt).unwrap_or(u64::MAX);
+    let cap_millis = INITIAL_CAP_MILLIS
+        .saturating_add(attempt.saturating_mul(CAP_STEP_MILLIS))
+        .min(MAX_CAP_MILLIS);
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"canon.entity.session.frontier.claim-retry.v1\0");
+    hasher.update(identity.as_bytes());
+    hasher.update(&[0]);
+    hasher.update(generation_id.unwrap_or("initial").as_bytes());
+    hasher.update(&[0]);
+    hasher.update(&attempt.to_le_bytes());
+    let digest = hasher.finalize();
+    let jitter = digest
+        .as_bytes()
+        .iter()
+        .take(8)
+        .enumerate()
+        .fold(0_u64, |value, (index, byte)| {
+            value | (u64::from(*byte) << (index * 8))
+        });
+    Duration::from_millis(1 + jitter % cap_millis)
 }
 
 fn unix_time_secs() -> Result<u64, Refusal> {

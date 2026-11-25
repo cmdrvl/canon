@@ -2076,13 +2076,69 @@ pub struct EntitySessionExplainCli {
 }
 
 #[derive(Args, Debug, Clone)]
+#[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
 pub struct EntitySessionFrontierCli {
+    #[command(subcommand)]
+    pub command: Option<EntitySessionFrontierSubcommand>,
+
     /// Session work directory
-    pub session: PathBuf,
+    pub session: Option<PathBuf>,
 
     /// Restrict the frontier to one entity's neighbourhood: a surface or canonical id
     #[arg(long = "seed-entity")]
     pub seed_entity: Option<String>,
+
+    /// Select one deterministic shard, written as INDEX/TOTAL
+    #[arg(long, value_parser = crate::entity::session_frontier::FrontierShard::parse)]
+    pub shard: Option<crate::entity::session_frontier::FrontierShard>,
+
+    /// Return at most this many frontier items after sharding
+    #[arg(long)]
+    pub limit: Option<usize>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum EntitySessionFrontierSubcommand {
+    /// Claim a disjoint batch of unclaimed frontier items for a worker
+    Claim(EntitySessionFrontierClaimCli),
+    /// Release an active frontier lease
+    Release(EntitySessionFrontierReleaseCli),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntitySessionFrontierClaimCli {
+    /// Session work directory
+    pub session: PathBuf,
+
+    /// Stable worker identifier
+    #[arg(long)]
+    pub worker: String,
+
+    /// Maximum frontier items to claim
+    #[arg(long)]
+    pub limit: usize,
+
+    /// Lease lifetime in seconds
+    #[arg(long = "ttl-secs")]
+    pub ttl_secs: u64,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntitySessionFrontierReleaseCli {
+    /// Session work directory
+    pub session: PathBuf,
+
+    /// Claim identifier returned by `frontier claim`
+    #[arg(long = "claim-id")]
+    pub claim_id: String,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
