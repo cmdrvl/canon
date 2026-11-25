@@ -11,6 +11,12 @@ use std::{
 };
 use tempfile::TempDir;
 
+const RETRY_DISABLED_TEST_FAILPOINT: &str = "CANON_TEST_FAILPOINT_SESSION_RETRY_DISABLED";
+const PUBLISH_BARRIER_TEST_FAILPOINT: &str = "CANON_TEST_FAILPOINT_PUBLICATION_BARRIER";
+const PUBLISH_BARRIER_PARTICIPANTS_TEST_FAILPOINT: &str =
+    "CANON_TEST_FAILPOINT_PUBLICATION_PARTICIPANTS";
+const PUBLISH_BARRIER_MARKER_TEST_FAILPOINT: &str = "CANON_TEST_FAILPOINT_PUBLICATION_MARKER_ID";
+
 fn canon_command() -> Command {
     Command::new(env!("CARGO_BIN_EXE_canon"))
 }
@@ -122,26 +128,42 @@ fn write_input(root: &Path, kind: IntakeKind, worker: usize) -> PathBuf {
     path
 }
 
-fn spawn_worker(session: &Path, gate: &Path, worker: &Worker) -> Child {
+fn spawn_worker(
+    session: &Path,
+    gate: &Path,
+    worker: &Worker,
+    retry_disabled: bool,
+    publication_barrier: Option<&Path>,
+) -> Child {
     let subcommand = match worker.kind {
         IntakeKind::Ingest => "ingest",
         IntakeKind::Assert => "assert",
     };
-    ProcessCommand::new("/bin/sh")
-        .args([
-            "-c",
-            "while [ ! -f \"$1\" ]; do sleep 0.005; done; shift; exec \"$@\"",
-            "canon-session-worker",
-            gate.to_str().unwrap(),
-            env!("CARGO_BIN_EXE_canon"),
-            "entity",
-            "session",
-            subcommand,
-            session.to_str().unwrap(),
-            worker.input.to_str().unwrap(),
-            "--emit",
-            "json",
-        ])
+    let mut command = ProcessCommand::new("/bin/sh");
+    command.args([
+        "-c",
+        "while [ ! -f \"$1\" ]; do sleep 0.005; done; shift; exec \"$@\"",
+        "canon-session-worker",
+        gate.to_str().unwrap(),
+        env!("CARGO_BIN_EXE_canon"),
+        "entity",
+        "session",
+        subcommand,
+        session.to_str().unwrap(),
+        worker.input.to_str().unwrap(),
+        "--emit",
+        "json",
+    ]);
+    if retry_disabled {
+        command.env(RETRY_DISABLED_TEST_FAILPOINT, "1");
+    }
+    if let Some(barrier) = publication_barrier {
+        command
+            .env(PUBLISH_BARRIER_TEST_FAILPOINT, barrier)
+            .env(PUBLISH_BARRIER_PARTICIPANTS_TEST_FAILPOINT, "8")
+            .env(PUBLISH_BARRIER_MARKER_TEST_FAILPOINT, worker.id.to_string());
+    }
+    command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -159,7 +181,7 @@ fn run_concurrently(session: &Path, root: &Path, workers: Vec<Worker>) -> Vec<Va
         children.push((
             worker.id,
             worker.kind,
-            spawn_worker(session, &gate, &worker),
+            spawn_worker(session, &gate, &worker, false, None),
         ));
     }
 
@@ -307,7 +329,10 @@ fn conflicting_pair(root: &Path, session: &Path, reverse: bool) {
     let order = if reverse { [1, 0] } else { [0, 1] };
     let mut children = Vec::with_capacity(2);
     for index in order {
-        children.push((index, spawn_worker(session, &gate, &inputs[index])));
+        children.push((
+            index,
+            spawn_worker(session, &gate, &inputs[index], false, None),
+        ));
     }
     fs::write(&gate, b"start\n").expect("release conflict processes");
 
@@ -450,6 +475,102 @@ fn concurrent_process_ingest_and_assert_preserve_all_rows_and_stable_stream_cont
         "[reversed mixed final evidence stream] generation={} content_hash={mixed_evidence_hash}",
         mixed_b_evidence.generation_id
     );
+}
+
+#[test]
+fn concurrent_processes_without_retry_expose_lost_head_conflict() {
+    let temp = TempDir::new().expect("temp root");
+    let session = init_session(temp.path(), "retry-disabled");
+    let seed_input = temp.path().join("retry-disabled-seed.jsonl");
+    fs::write(&seed_input, format!("{}\n", observation(99, 0)))
+        .expect("write retry-disabled seed observation");
+    let seed_output = canon_command()
+        .args([
+            "entity",
+            "session",
+            "ingest",
+            session.to_str().unwrap(),
+            seed_input.to_str().unwrap(),
+            "--emit",
+            "json",
+        ])
+        .output()
+        .expect("seed retry-disabled session");
+    assert!(
+        seed_output.status.success(),
+        "seed ingest failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&seed_output.stdout),
+        String::from_utf8_lossy(&seed_output.stderr)
+    );
+    let seed_payload: Value = serde_json::from_slice(&seed_output.stdout).expect("seed JSON");
+    let seed_generation = seed_payload["generation_id"]
+        .as_str()
+        .expect("seed generation id")
+        .to_string();
+
+    let workers = ingest_workers(temp.path(), 0..8);
+    let gate = temp.path().join("start-retry-disabled-workers");
+    let publication_barrier = temp.path().join("retry-disabled-publication-barrier");
+    let mut children = Vec::with_capacity(workers.len());
+    for worker in &workers {
+        children.push((
+            worker.id,
+            spawn_worker(&session, &gate, worker, true, Some(&publication_barrier)),
+        ));
+    }
+
+    fs::write(&gate, b"start\n").expect("release retry-disabled process start gate");
+
+    let mut successes = 0;
+    let mut failures = 0;
+    for (id, child) in children {
+        let output = child.wait_with_output().expect("wait for canon process");
+        let payload: Value =
+            serde_json::from_slice(&output.stdout).expect("worker emitted valid JSON");
+        eprintln!(
+            "[retry-disabled worker {id}] exit={} stdout={} stderr={}",
+            output.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+
+        if output.status.success() {
+            successes += 1;
+            assert_eq!(payload["attempts"], 1);
+            assert_eq!(payload["accepted"], 500);
+            assert_eq!(payload["rejected"].as_array().unwrap().len(), 0);
+        } else {
+            failures += 1;
+            assert_eq!(output.status.code(), Some(2));
+            let refusal = &payload["refusal"];
+            assert_eq!(refusal["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+            assert_eq!(refusal["detail"]["attempts"], 1);
+            assert_eq!(refusal["detail"]["kind"], "ForkedGeneration");
+            assert_eq!(
+                refusal["detail"]["expected_generation_id"].as_str(),
+                Some(seed_generation.as_str())
+            );
+            assert_ne!(
+                refusal["detail"]["observed_generation_id"].as_str(),
+                Some(seed_generation.as_str())
+            );
+            assert!(
+                refusal["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("after 1 attempts")
+            );
+        }
+    }
+
+    assert!(successes > 0, "one writer must publish the initial head");
+    assert!(
+        failures > 0,
+        "disabling retry must expose at least one stale-head writer failure"
+    );
+    let snapshot = open_current_stream_generation(&session, SESSION_OBSERVATIONS_STREAM_ID)
+        .expect("retry-disabled writers published one observation stream");
+    assert_eq!(observation_count(&snapshot), 1 + successes * 500);
 }
 
 #[test]

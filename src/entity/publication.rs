@@ -13,6 +13,14 @@ pub const ENTITY_PUBLICATION_ROOT: &str = ".canon/entity/publications/v1";
 
 static ATTEMPT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+#[cfg(debug_assertions)]
+const TEST_FAILPOINT_PUBLICATION_BARRIER: &str = "CANON_TEST_FAILPOINT_PUBLICATION_BARRIER";
+#[cfg(debug_assertions)]
+const TEST_FAILPOINT_PUBLICATION_PARTICIPANTS: &str =
+    "CANON_TEST_FAILPOINT_PUBLICATION_PARTICIPANTS";
+#[cfg(debug_assertions)]
+const TEST_FAILPOINT_PUBLICATION_MARKER_ID: &str = "CANON_TEST_FAILPOINT_PUBLICATION_MARKER_ID";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntityPublicationFileInput {
     pub logical_path: String,
@@ -134,6 +142,8 @@ pub enum EntityPublicationFailpoint {
     AfterClaimSync,
     BeforeClaimPublish,
     AfterClaimPublishBeforeParentSync,
+    /// Debug-build-only process test barrier after reading a stream head.
+    TestBarrierBeforeClaim,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -231,7 +241,18 @@ pub fn publish_stream_patch(
     work_dir: &Path,
     request: EntityPublicationRequest,
 ) -> Result<EntityPublicationReceipt, EntityPublicationError> {
-    publish_stream_patch_with_options(work_dir, request, EntityPublicationOptions::default())
+    publish_stream_patch_with_options(work_dir, request, stream_patch_test_options())
+}
+
+fn stream_patch_test_options() -> EntityPublicationOptions {
+    #[cfg(debug_assertions)]
+    if std::env::var_os(TEST_FAILPOINT_PUBLICATION_BARRIER).is_some() {
+        return EntityPublicationOptions {
+            failpoint: EntityPublicationFailpoint::TestBarrierBeforeClaim,
+        };
+    }
+
+    EntityPublicationOptions::default()
 }
 
 pub fn publish_stream_patch_with_options(
@@ -893,6 +914,11 @@ fn claim_stream_lineage(
     child_generation_id: &str,
     failpoint: EntityPublicationFailpoint,
 ) -> Result<StreamLineageClaim, EntityPublicationError> {
+    #[cfg(debug_assertions)]
+    if failpoint == EntityPublicationFailpoint::TestBarrierBeforeClaim {
+        wait_for_test_publication_barrier()?;
+    }
+
     validate_publication_token(stream_id, "stream_id")?;
     validate_hash(child_generation_id)?;
     if let Some(parent_generation_id) = parent_generation_id {
@@ -1081,6 +1107,7 @@ fn claim_stream_lineage(
                 writes_performed: true,
             })
         }
+
         Err(err) if claim_path.is_dir() || err.kind() == io::ErrorKind::AlreadyExists => {
             validate_existing_lineage_claim(
                 work_dir,
@@ -1098,6 +1125,100 @@ fn claim_stream_lineage(
             Some(child_generation_id.to_string()),
         )),
     }
+}
+
+#[cfg(debug_assertions)]
+fn wait_for_test_publication_barrier() -> Result<(), EntityPublicationError> {
+    let Some(barrier_dir) = std::env::var_os(TEST_FAILPOINT_PUBLICATION_BARRIER) else {
+        return Ok(());
+    };
+    let barrier_dir = PathBuf::from(barrier_dir);
+    let participants = std::env::var(TEST_FAILPOINT_PUBLICATION_PARTICIPANTS)
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .ok_or_else(|| {
+            EntityPublicationError::new(
+                EntityPublicationErrorKind::InvalidRequest,
+                "publication test barrier requires a positive participant count",
+                false,
+                Some(false),
+                None,
+            )
+        })?;
+    let marker_id = std::env::var(TEST_FAILPOINT_PUBLICATION_MARKER_ID)
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .ok_or_else(|| {
+            EntityPublicationError::new(
+                EntityPublicationErrorKind::InvalidRequest,
+                "publication test barrier requires a numeric marker id",
+                false,
+                Some(false),
+                None,
+            )
+        })?;
+    fs::create_dir_all(&barrier_dir).map_err(|error| {
+        EntityPublicationError::new(
+            EntityPublicationErrorKind::Io,
+            format!("publication test barrier could not create its directory: {error}"),
+            false,
+            Some(false),
+            None,
+        )
+    })?;
+    let marker = barrier_dir.join(format!("ready-{marker_id}"));
+    if marker.exists() {
+        return Ok(());
+    }
+    fs::write(&marker, b"ready").map_err(|error| {
+        EntityPublicationError::new(
+            EntityPublicationErrorKind::Io,
+            format!("publication test barrier could not write its marker: {error}"),
+            false,
+            Some(false),
+            None,
+        )
+    })?;
+
+    for _ in 0..6_000 {
+        let entries = fs::read_dir(&barrier_dir).map_err(|error| {
+            EntityPublicationError::new(
+                EntityPublicationErrorKind::Io,
+                format!("publication test barrier could not read its directory: {error}"),
+                false,
+                Some(false),
+                None,
+            )
+        })?;
+        let ready = entries
+            .map(|entry| {
+                entry.map_err(|error| {
+                    EntityPublicationError::new(
+                        EntityPublicationErrorKind::Io,
+                        format!("publication test barrier could not read a marker: {error}"),
+                        false,
+                        Some(false),
+                        None,
+                    )
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with("ready-"))
+            .count();
+        if ready >= participants {
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    Err(EntityPublicationError::new(
+        EntityPublicationErrorKind::Io,
+        format!("publication test barrier timed out waiting for {participants} writers"),
+        false,
+        Some(false),
+        None,
+    ))
 }
 
 fn validate_existing_lineage_claim(

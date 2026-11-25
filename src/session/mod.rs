@@ -45,6 +45,8 @@ pub const SESSION_COMMIT_STREAM_ID: &str = "entity-session-commit";
 const SESSION_PUBLICATION_STAGE: &str = "session";
 const SESSION_PUBLICATION_VERSION: &str = "canon.entity.session.v1";
 const SESSION_PUBLICATION_MAX_ATTEMPTS: usize = 32;
+#[cfg(debug_assertions)]
+const SESSION_RETRY_DISABLED_TEST_FAILPOINT: &str = "CANON_TEST_FAILPOINT_SESSION_RETRY_DISABLED";
 const SESSION_EVIDENCE_EXTENSION_SCHEMA: &str = "canon.entity.session.assertion.v1";
 const EVIDENCE_VOCABULARY: &str = r#"[{"type":"same_key","kind":"pair_support","target":"pair"},{"type":"same_slot","kind":"pair_support","target":"pair"},{"type":"attribute_agreement","kind":"pair_support","target":"pair"},{"type":"name_equivalent","kind":"pair_support","target":"pair"},{"type":"asserted_alias","kind":"pair_support","target":"pair"},{"type":"distinct","kind":"anti_merge_veto","target":"pair"},{"type":"related","kind":"context_only","target":"pair"},{"type":"name_similar","kind":"pair_support","target":"pair"},{"type":"value_similar","kind":"pair_support","target":"pair"},{"type":"same_parcel_id","kind":"pair_support","target":"pair"},{"type":"same_apn","kind":"pair_support","target":"pair"},{"type":"address_canonical_match","kind":"pair_support","target":"pair"},{"type":"point_in_parcel","kind":"pair_support","target":"pair"},{"type":"footprint_overlap","kind":"pair_support","target":"pair"},{"type":"deed_chain_link","kind":"pair_support","target":"pair"},{"type":"assessor_corroboration","kind":"pair_support","target":"pair"},{"type":"conflicting_authoritative_apn","kind":"anti_merge_veto","target":"pair"},{"type":"disjoint_parcels","kind":"anti_merge_veto","target":"pair"},{"type":"grain_mismatch","kind":"anti_merge_veto","target":"pair"}]"#;
 
@@ -962,7 +964,16 @@ fn initialize_mapped_registry(
 }
 
 pub fn ingest(request: SessionIngestRequest) -> Result<SessionIngestOutput, Refusal> {
-    ingest_with_retry_hook(request, SESSION_PUBLICATION_MAX_ATTEMPTS, |_, _| Ok(()))
+    ingest_with_retry_hook(request, session_publication_max_attempts(), |_, _| Ok(()))
+}
+
+fn session_publication_max_attempts() -> usize {
+    #[cfg(debug_assertions)]
+    if std::env::var_os(SESSION_RETRY_DISABLED_TEST_FAILPOINT).is_some() {
+        return 1;
+    }
+
+    SESSION_PUBLICATION_MAX_ATTEMPTS
 }
 
 fn ingest_with_retry_hook<F>(
@@ -1148,7 +1159,7 @@ where
 }
 
 pub fn assert_evidence(request: SessionAssertRequest) -> Result<SessionAssertOutput, Refusal> {
-    assert_evidence_with_retry_hook(request, SESSION_PUBLICATION_MAX_ATTEMPTS, |_, _| Ok(()))
+    assert_evidence_with_retry_hook(request, session_publication_max_attempts(), |_, _| Ok(()))
 }
 
 fn assert_evidence_with_retry_hook<F>(
@@ -4883,53 +4894,87 @@ mod session_publication_retry_tests {
         })
     }
 
-    #[test]
-    fn ingest_and_assert_rebuild_after_a_competing_writer_and_bounded_retry_refuses() {
-        let temp = TempDir::new().expect("temp root");
-
-        let retry_disabled_session = init_session(temp.path(), "retry-disabled");
-        let seed_path = write_jsonl(
-            temp.path(),
-            "retry-disabled-seed.jsonl",
-            observation("seed", "Seed organisation", "seed.jsonl"),
-        );
-        let seed = ingest(SessionIngestRequest {
-            session: retry_disabled_session.clone(),
-            observations: seed_path,
-        })
-        .expect("seed observation");
-        assert_eq!(seed.accepted, 1);
-
-        let target_path = write_jsonl(
-            temp.path(),
-            "retry-disabled-target.jsonl",
-            observation("target", "Target organisation", "target.jsonl"),
-        );
-        let competing_path = write_jsonl(
-            temp.path(),
-            "retry-disabled-competing.jsonl",
-            observation("competing", "Competing organisation", "competing.jsonl"),
-        );
+    fn ingest_with_competing_writer(
+        session: &Path,
+        observations: PathBuf,
+        competing_observations: PathBuf,
+        max_attempts: usize,
+    ) -> Result<SessionIngestOutput, Refusal> {
         let mut competitor_published = false;
-        let refusal = ingest_with_retry_hook(
+        ingest_with_retry_hook(
             SessionIngestRequest {
-                session: retry_disabled_session.clone(),
-                observations: target_path,
+                session: session.to_path_buf(),
+                observations,
             },
-            1,
+            max_attempts,
             |attempt, work_dir| {
                 if attempt == 1 && !competitor_published {
                     competitor_published = true;
                     let output = ingest(SessionIngestRequest {
                         session: work_dir.to_path_buf(),
-                        observations: competing_path.clone(),
+                        observations: competing_observations.clone(),
                     })?;
                     assert_eq!(output.accepted, 1);
                 }
                 Ok(())
             },
         )
-        .expect_err("one attempt cannot publish against the moved head");
+    }
+
+    fn assert_with_competing_writer(
+        session: &Path,
+        evidence: PathBuf,
+        competing_evidence: PathBuf,
+        max_attempts: usize,
+    ) -> Result<SessionAssertOutput, Refusal> {
+        let mut competitor_published = false;
+        assert_evidence_with_retry_hook(
+            SessionAssertRequest {
+                session: session.to_path_buf(),
+                evidence,
+            },
+            max_attempts,
+            |attempt, work_dir| {
+                if attempt == 1 && !competitor_published {
+                    competitor_published = true;
+                    let output = assert_evidence(SessionAssertRequest {
+                        session: work_dir.to_path_buf(),
+                        evidence: competing_evidence.clone(),
+                    })?;
+                    assert_eq!(output.accepted, 1);
+                }
+                Ok(())
+            },
+        )
+    }
+
+    #[test]
+    fn ingest_retry_disabled_failpoint_refuses_a_stale_head() {
+        let temp = TempDir::new().expect("temp root");
+        let session = init_session(temp.path(), "ingest-retry-disabled");
+        let seed_path = write_jsonl(
+            temp.path(),
+            "ingest-retry-disabled-seed.jsonl",
+            observation("seed", "Seed organisation", "seed.jsonl"),
+        );
+        let seed = ingest(SessionIngestRequest {
+            session: session.clone(),
+            observations: seed_path,
+        })
+        .expect("seed observation");
+        let target = write_jsonl(
+            temp.path(),
+            "ingest-retry-disabled-target.jsonl",
+            observation("target", "Target organisation", "target.jsonl"),
+        );
+        let competing = write_jsonl(
+            temp.path(),
+            "ingest-retry-disabled-competing.jsonl",
+            observation("competing", "Competing organisation", "competing.jsonl"),
+        );
+
+        let refusal = ingest_with_competing_writer(&session, target, competing, 1)
+            .expect_err("one attempt cannot publish against the moved head");
         assert_eq!(refusal.detail["attempts"], 1);
         assert_eq!(
             refusal.detail["expected_generation_id"].as_str(),
@@ -4943,96 +4988,65 @@ mod session_publication_retry_tests {
                 .unwrap()
                 .contains("session ingest")
         );
-        let retry_disabled_snapshot =
-            open_current_stream_generation(&retry_disabled_session, SESSION_OBSERVATIONS_STREAM_ID)
-                .expect("competing observation committed");
-        assert_eq!(
-            existing_observations(&retry_disabled_snapshot)
-                .unwrap()
-                .rows
-                .len(),
-            2
-        );
+    }
 
-        let retry_disabled_assert_session = init_session(temp.path(), "retry-disabled-assert");
-        let assert_seed_path = write_jsonl(
+    #[test]
+    fn assert_retry_disabled_failpoint_refuses_a_stale_head() {
+        let temp = TempDir::new().expect("temp root");
+        let session = init_session(temp.path(), "assert-retry-disabled");
+        let seed_path = write_jsonl(
             temp.path(),
-            "retry-disabled-assert-seed.jsonl",
+            "assert-retry-disabled-seed.jsonl",
             assertion("seed-left", "seed-right", "seed-assertion"),
         );
-        let assert_seed = assert_evidence(SessionAssertRequest {
-            session: retry_disabled_assert_session.clone(),
-            evidence: assert_seed_path,
+        let seed = assert_evidence(SessionAssertRequest {
+            session: session.clone(),
+            evidence: seed_path,
         })
-        .expect("seed retry-disabled evidence stream");
-        let assert_target_path = write_jsonl(
+        .expect("seed evidence stream");
+        let target = write_jsonl(
             temp.path(),
-            "retry-disabled-assert-target.jsonl",
+            "assert-retry-disabled-target.jsonl",
             assertion("target-left", "target-right", "target-assertion"),
         );
-        let assert_competing_path = write_jsonl(
+        let competing = write_jsonl(
             temp.path(),
-            "retry-disabled-assert-competing.jsonl",
+            "assert-retry-disabled-competing.jsonl",
             assertion("competing-left", "competing-right", "competing-assertion"),
         );
-        let mut assert_competitor_published = false;
-        let assert_refusal = assert_evidence_with_retry_hook(
-            SessionAssertRequest {
-                session: retry_disabled_assert_session.clone(),
-                evidence: assert_target_path,
-            },
-            1,
-            |attempt, work_dir| {
-                if attempt == 1 && !assert_competitor_published {
-                    assert_competitor_published = true;
-                    let output = assert_evidence(SessionAssertRequest {
-                        session: work_dir.to_path_buf(),
-                        evidence: assert_competing_path.clone(),
-                    })?;
-                    assert_eq!(output.accepted, 1);
-                }
-                Ok(())
-            },
-        )
-        .expect_err("one attempt cannot publish against the moved evidence head");
-        assert_eq!(assert_refusal.detail["attempts"], 1);
+
+        let refusal = assert_with_competing_writer(&session, target, competing, 1)
+            .expect_err("one attempt cannot publish against the moved evidence head");
+        assert_eq!(refusal.detail["attempts"], 1);
         assert_eq!(
-            assert_refusal.detail["expected_generation_id"].as_str(),
-            assert_seed.generation_id.as_deref()
+            refusal.detail["expected_generation_id"].as_str(),
+            seed.generation_id.as_deref()
         );
-        assert!(assert_refusal.detail["observed_generation_id"].is_string());
+        assert!(refusal.detail["observed_generation_id"].is_string());
         assert!(
-            assert_refusal
+            refusal
                 .next_command
                 .as_deref()
                 .unwrap()
                 .contains("session assert")
         );
-        let retry_disabled_assert_snapshot = open_current_stream_generation(
-            &retry_disabled_assert_session,
-            SESSION_EVIDENCE_STREAM_ID,
-        )
-        .expect("competing assertion committed");
-        assert_eq!(
-            existing_evidence(&retry_disabled_assert_snapshot)
-                .unwrap()
-                .records
-                .len(),
-            2
-        );
+    }
 
-        let ingest_session = init_session(temp.path(), "ingest-retry");
-        let ingest_seed = write_jsonl(
+    #[test]
+    fn ingest_retry_hook_rebuilds_against_the_current_head() {
+        let temp = TempDir::new().expect("temp root");
+        let session = init_session(temp.path(), "ingest-retry");
+        let seed_path = write_jsonl(
             temp.path(),
             "ingest-retry-seed.jsonl",
             observation("ingest-seed", "Seed organisation", "ingest-seed.jsonl"),
         );
         ingest(SessionIngestRequest {
-            session: ingest_session.clone(),
-            observations: ingest_seed,
+            session: session.clone(),
+            observations: seed_path,
         })
         .expect("seed retry observation stream");
-        let ingest_target = write_jsonl(
+        let target = write_jsonl(
             temp.path(),
             "ingest-retry-target.jsonl",
             observation(
@@ -5041,7 +5055,7 @@ mod session_publication_retry_tests {
                 "ingest-target.jsonl",
             ),
         );
-        let ingest_competing = write_jsonl(
+        let competing = write_jsonl(
             temp.path(),
             "ingest-retry-competing.jsonl",
             observation(
@@ -5050,85 +5064,61 @@ mod session_publication_retry_tests {
                 "ingest-competing.jsonl",
             ),
         );
-        let mut ingest_competitor_published = false;
-        let ingest_output = ingest_with_retry_hook(
-            SessionIngestRequest {
-                session: ingest_session.clone(),
-                observations: ingest_target,
-            },
-            SESSION_PUBLICATION_MAX_ATTEMPTS,
-            |attempt, work_dir| {
-                if attempt == 1 && !ingest_competitor_published {
-                    ingest_competitor_published = true;
-                    let output = ingest(SessionIngestRequest {
-                        session: work_dir.to_path_buf(),
-                        observations: ingest_competing.clone(),
-                    })?;
-                    assert_eq!(output.accepted, 1);
-                }
-                Ok(())
-            },
-        )
-        .expect("ingest rebuilds against the latest head");
-        assert_eq!(ingest_output.accepted, 1);
-        assert_eq!(ingest_output.attempts, 2);
-        let ingest_snapshot =
-            open_current_stream_generation(&ingest_session, SESSION_OBSERVATIONS_STREAM_ID)
-                .expect("retried observation stream");
-        assert_eq!(
-            existing_observations(&ingest_snapshot).unwrap().rows.len(),
-            3
-        );
 
-        let assert_session = init_session(temp.path(), "assert-retry");
-        let assert_seed = write_jsonl(
+        let output = ingest_with_competing_writer(
+            &session,
+            target,
+            competing,
+            SESSION_PUBLICATION_MAX_ATTEMPTS,
+        )
+        .expect("ingest retries the stale patch against the current head");
+        assert_eq!(output.accepted, 1);
+        assert_eq!(output.attempts, 2);
+        let snapshot = open_current_stream_generation(&session, SESSION_OBSERVATIONS_STREAM_ID)
+            .expect("retried observation stream");
+        let rows = existing_observations(&snapshot).unwrap().rows;
+        assert_eq!(rows.len(), 3);
+        for obs_id in ["ingest-seed", "ingest-target", "ingest-competing"] {
+            assert!(rows.contains_key(obs_id), "missing {obs_id} after retry");
+        }
+    }
+
+    #[test]
+    fn assert_retry_hook_rebuilds_against_the_current_head() {
+        let temp = TempDir::new().expect("temp root");
+        let session = init_session(temp.path(), "assert-retry");
+        let seed_path = write_jsonl(
             temp.path(),
             "assert-retry-seed.jsonl",
             assertion("seed-left", "seed-right", "seed-assertion"),
         );
         assert_evidence(SessionAssertRequest {
-            session: assert_session.clone(),
-            evidence: assert_seed,
+            session: session.clone(),
+            evidence: seed_path,
         })
         .expect("seed retry evidence stream");
-        let assert_target = write_jsonl(
+        let target = write_jsonl(
             temp.path(),
             "assert-retry-target.jsonl",
             assertion("target-left", "target-right", "target-assertion"),
         );
-        let assert_competing = write_jsonl(
+        let competing = write_jsonl(
             temp.path(),
             "assert-retry-competing.jsonl",
             assertion("competing-left", "competing-right", "competing-assertion"),
         );
-        let mut assert_competitor_published = false;
-        let assert_output = assert_evidence_with_retry_hook(
-            SessionAssertRequest {
-                session: assert_session.clone(),
-                evidence: assert_target,
-            },
+
+        let output = assert_with_competing_writer(
+            &session,
+            target,
+            competing,
             SESSION_PUBLICATION_MAX_ATTEMPTS,
-            |attempt, work_dir| {
-                if attempt == 1 && !assert_competitor_published {
-                    assert_competitor_published = true;
-                    let output = assert_evidence(SessionAssertRequest {
-                        session: work_dir.to_path_buf(),
-                        evidence: assert_competing.clone(),
-                    })?;
-                    assert_eq!(output.accepted, 1);
-                }
-                Ok(())
-            },
         )
-        .expect("assert rebuilds against the latest head");
-        assert_eq!(assert_output.accepted, 1);
-        assert_eq!(assert_output.attempts, 2);
-        let assert_snapshot =
-            open_current_stream_generation(&assert_session, SESSION_EVIDENCE_STREAM_ID)
-                .expect("retried evidence stream");
-        assert_eq!(
-            existing_evidence(&assert_snapshot).unwrap().records.len(),
-            3
-        );
+        .expect("assert retries the stale patch against the current head");
+        assert_eq!(output.accepted, 1);
+        assert_eq!(output.attempts, 2);
+        let snapshot = open_current_stream_generation(&session, SESSION_EVIDENCE_STREAM_ID)
+            .expect("retried evidence stream");
+        assert_eq!(existing_evidence(&snapshot).unwrap().records.len(), 3);
     }
 }
