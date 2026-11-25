@@ -50,6 +50,24 @@ fn assert_nothing_written(dir: &Path) {
     );
 }
 
+/// True when this binary has the `canon geo` commands. Read from the binary's
+/// own `--describe` contract, which lists only the commands it was compiled
+/// with, so the answer is right in every build profile.
+fn geo_compiled(dir: &Path) -> bool {
+    let run = run_canon(dir, &["--describe"], &[]);
+    assert_eq!(run.code, 0, "stderr: {}", run.stderr);
+    let manifest: Value = serde_json::from_str(&run.stdout).expect("--describe emits JSON");
+    manifest["subcommands"]
+        .as_array()
+        .expect("--describe lists subcommands")
+        .iter()
+        .any(|entry| {
+            entry["name"]
+                .as_str()
+                .is_some_and(|name| name == "geo" || name.starts_with("geo "))
+        })
+}
+
 #[test]
 fn robot_triage_is_the_doctor_triage_report() {
     let dir = tempdir().unwrap();
@@ -144,13 +162,9 @@ fn robot_docs_guide_is_read_only_markdown() {
     assert_nothing_written(dir.path());
 
     // The guide must advertise Geo commands exactly when this binary has them.
-    // Probe the real binary in its own directory so a refusal in a build
-    // without geo cannot leave files in the directory checked above.
-    let probe_dir = tempdir().unwrap();
-    let geo_compiled = run_canon(probe_dir.path(), &["geo", "--help"], &[]).code == 0;
     assert_eq!(
         run.stdout.contains("canon geo capabilities --guide"),
-        geo_compiled
+        geo_compiled(dir.path())
     );
 }
 
