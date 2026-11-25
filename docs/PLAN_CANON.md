@@ -137,24 +137,24 @@ canon inbox stats --inbox <INBOX.json> [--policy <POLICY.json>] [--emit json|sum
 canon inbox export-review --inbox <INBOX.json> [--out <REVIEW.json>] [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json|summary]
 canon inbox apply-review --inbox <INBOX.json> --review <REVIEW.json> --expected-inbox-hash <HASH> --out <GROUPS.json> [--emit json|summary]
 canon inbox plan-entity --inbox <INBOX.json> --expected-inbox-hash <HASH> --out <REQUEST.json> [--policy <POLICY.json>] [--event-key <KEY>...] [--limit <N>] [--mode cluster|link] [--emit json|summary]
-canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]
-canon registry init --registry <DIR> --registry-id <ID> --prefix <PREFIX> [--zero-pad <N>] [--description <TEXT>] [--emit json|summary]
-canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card|link-evidence (--registry <REGISTRY>|--registries <MAP>) [--out <PATH>] [--from <A> --to <B>] [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>] [--emit json|summary]
-canon registry providers [--emit json|summary]
-canon registry provider-schema <PROVIDER> [--emit json|summary]
-canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]
-canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary]
-canon registry identity --registry <DIR> [--ref <REF>] [--emit json|summary]
-canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
-canon registry add-entries --registry <DIR> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
-canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--create-alias-file] [--no-lint] [--emit json|plain]
-canon registry mint-batch --registry <DIR> [--prefix <PREFIX>] --canonical-type <TYPE> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
-canon registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict] [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]
-canon registry scope-policy --registry <DIR> (--optional-dimension <DIM>... | --remove-dimension <DIM>...) [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]
-canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
-canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
-canon registry correct --registry <DIR> --from <CORRECTIONS.jsonl> (--next-version <VER>|--bump patch|minor|major) [--rules <RULES.yaml>] [--expect-base <HASH>] [--dry-run] [--emit json|summary]
-canon registry lint <REGISTRY> [--profile standard|org|strategy|auto] [--emit json|summary]
+canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>] [--json]
+canon registry init --registry <DIR> --registry-id <ID> --prefix <PREFIX> [--zero-pad <N>] [--description <TEXT>] [--emit json|summary | --json]
+canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card|link-evidence (--registry <REGISTRY>|--registries <MAP>) [--out <PATH>] [--from <A> --to <B>] [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>] [--emit json|summary | --json]
+canon registry providers [--emit json|summary | --json]
+canon registry provider-schema <PROVIDER> [--emit json|summary | --json]
+canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json | --json]
+canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary | --json]
+canon registry identity --registry <DIR> [--ref <REF>] [--emit json|summary | --json]
+canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain | --json]
+canon registry add-entries --registry <DIR> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain | --json]
+canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--create-alias-file] [--no-lint] [--emit json|plain | --json]
+canon registry mint-batch --registry <DIR> [--prefix <PREFIX>] --canonical-type <TYPE> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain | --json]
+canon registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict] [--bump patch|minor|major | --next-version <VER>] [--emit json|plain | --json]
+canon registry scope-policy --registry <DIR> (--optional-dimension <DIM>... | --remove-dimension <DIM>...) [--bump patch|minor|major | --next-version <VER>] [--emit json|plain | --json]
+canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary | --json]
+canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary | --json] [--max-rows <N>] [--max-bytes <N>]
+canon registry correct --registry <DIR> --from <CORRECTIONS.jsonl> (--next-version <VER>|--bump patch|minor|major) [--rules <RULES.yaml>] [--expect-base <HASH>] [--dry-run] [--emit json|summary | --json]
+canon registry lint <REGISTRY> [--profile standard|org|strategy|auto] [--emit json|summary | --json]
 canon strategy profile <INPUT> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
 canon strategy audit --schema <PROFILE.json> --script <SCRIPT> --suite <DIR> [--emit json|summary]
 canon strategy resolve --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
@@ -164,7 +164,7 @@ canon strategy deprecate --registry <REGISTRY> (--schema <SCHEMA.json>|--task <T
 canon strategy promote --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VER> [--emit json|summary] [--no-witness]
 canon strategy list --registry <REGISTRY> [--key-type schema|task] [--grade operator-attested|proof-attested] [--status active|deprecated] [--emit json|summary]
 canon strategy explain --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
-canon strategy diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
+canon strategy diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary | --json]
 canon entity run <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--cache-mode enabled|disabled] [--suite <DIR>] [--emit json|summary] [--no-witness]
 canon entity session init --goal <GOAL> (--registry <REGISTRY_DIR> | --registries <MAP_YAML>) --work-dir <DIR> [--entity-kind <KIND>] [--registry-id <ID>] [--prefix <PREFIX>] [--zero-pad <N>] [--emit json|summary]
 canon entity session ingest <SESSION> <OBSERVATIONS.jsonl|-> [--expect-digest blake3:<HEX>] [--artifact <ARTIFACT.json> --receipt <RECEIPT.json>] [--rows-field <FIELD> --column-map <MAP.yaml>] [--emit json|summary]
@@ -273,7 +273,7 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 
 `canon` also exposes explicit registry-maintenance workflows that reuse the normal exact-match parser and lookup semantics without changing the `canon.v0` resolution contract.
 
-`canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]`
+`canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>] [--json]`
 - materializes a standard registry directory from a provider-backed seed corpus using the same dedup semantics as normal resolution
 - writes `registry.json`, mapping files, and `_build.json` provenance
 - exits `0` on successful materialization, `2` on refusal
@@ -284,7 +284,7 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - identifier-heavy OpenFIGI workflows should extract identifiers from source tapes, normalize/dedupe them, split CUSIP/ISIN/SEDOL into separate seed files, run one build per id type, publish static registries, and use `--incremental` for refreshes
 - provider implementation and regression tests should use a local `twinning rest` fixture through `--provider-config base_url=...`; live OpenFIGI calls are maintenance operations, never normal lookup behavior
 
-`canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card --registry <REGISTRY> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>] [--emit json|summary]`
+`canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card --registry <REGISTRY> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>] [--emit json|summary | --json]`
 - exports a versioned flat registry into a downstream artifact without changing normal lookup semantics or mutating registry files
 - applies explicit narrowing filters before deterministic first-match deduplication; `--namespace` is required for `dbt-seed` so transform consumers cannot accidentally treat a full shared registry as one context
 - `dbt-seed` writes a deterministic CSV with `namespace`, `source_input`, `normalized_key`, `canonical_id`, `canonical_iri`, `canonical_type`, `alias_kind`, `rule_id`, `match_source`, registry provenance, source file, and entry order
@@ -296,19 +296,19 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - the embedded normalization spec is generic (`canon_registry_search_key.v0`): ASCII uppercase, then remove every non-ASCII-alphanumeric character
 - emits `canon_registry_export.v0` JSON or a human-readable summary; exits `0` on successful export, `2` on refusal
 
-`canon registry providers [--emit json|summary]`
+`canon registry providers [--emit json|summary | --json]`
 - lists the registry build providers available for materialization with their id, name, description, and supported seed columns
 - emits `canon_registry_providers.v0` JSON (default) or a human-readable summary; deterministic and offline (no provider call)
 - the same catalog is exposed under the top-level `providers` key in `canon --describe`/`operator.json`, and a test guards the two against drift
 
-`canon registry provider-schema <PROVIDER> [--emit json|summary]`
+`canon registry provider-schema <PROVIDER> [--emit json|summary | --json]`
 - emits the machine-discoverable `--provider-config` option contract for one provider as `canon_registry_provider_schema.v0`: option keys, value types (`string`, `bool`, `enum`, `url`, `numeric_interval`, `date_interval`), required status, secret flags, environment fallbacks, defaults, examples, mutual exclusions, and the interval encoding rule
 - `--provider-config` is generic transport at the CLI boundary; each provider owns and publishes its option schema. The allowed keys, secret status, and validation rules are therefore discoverable through canon, not only through prose or source, so skills and agents read the schema instead of hard-coding option lists
 - secret options (e.g. OpenFIGI `api_key`) are flagged `"secret": true` so agents do not echo their values; this matches `_build.json` redaction
 - the OpenFIGI schema is derived from the same constants the resolver validates against, so the published contract cannot drift from runtime behavior; tests assert this and never contact `api.openfigi.com`
 - an unknown provider refuses with `E_PARSE`, the available provider ids in `detail`, and `next_command: canon registry providers --emit json`; deterministic and offline
 
-`canon registry identity --registry <DIR> [--ref <REF>] [--emit json|summary]`
+`canon registry identity --registry <DIR> [--ref <REF>] [--emit json|summary | --json]`
 - prints `canon_registry_identity.v0`: registry id and version, `package_digest`, and `content_hash`, the hash of the sorted `path / bytes / blake3` list over registry.json, every mapping file, `_anchors/*`, `_escrow/*`, `_build.json`, `relations.jsonl` and `corrections.jsonl`; the hash does not depend on the directory path or file order
 - `--ref '[<registry id>:]<canonical id>@<registry version>#<closure hash>'` (split at the first `@` and the last `#`) prints `canon_registry_ref_check.v0`: `id_status` `current`, `superseded` (only a `SUPERSEDED_ID_ALIAS` entry resolves it; `resolves_to` names the survivor) or `unknown`, `version_match`, and `closure_found` (an entry of that id carries the closure hash in its `session_authority`, or a `corrections.jsonl` line does); a malformed reference is refused with the expected form
 - `canon entity session commit ... --expect-base <content_hash>` (`kind=hash,kind=hash` per registry) refuses with `base_moved`, naming expected and actual, before any write when the directory's current `content_hash` differs; a solve already committed is an exact repeat and is not refused
@@ -327,13 +327,13 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - stdout lists each closure with its sensitivity `{level, values, unstated_inputs}`: `public` only when every input states `public` and none is unstated; no stated sensitivity is never public
 - deterministic (no clock, no session id in the closure directories); a session with no commit refuses and names `canon entity session commit`; canon does not seal, upload or index: `pack seal` runs on the directories
 
-`canon registry export --format link-evidence (--registry <DIR>|--registries <MAP>) --from <A> --to <B> [--out <FILE>] [--emit json|summary]`
+`canon registry export --format link-evidence (--registry <DIR>|--registries <MAP>) --from <A> --to <B> [--out <FILE>] [--emit json|summary | --json]`
 - answers "how are these two linked?" from the registry directory alone (no session directory is read); `A` and `B` are an exact surface, `key:<namespace>:<value>` or a canonical id
 - `canon_registry_link_evidence.v0`: `chain[{from, to, hop: identity|relation, relation, outcome_ref, closure_hash}]`, the shortest chain over committed outcomes only: alias and key entries and superseded-id aliases are identity hops, `relations.jsonl` lines are relation hops (never reported as identity); ties break by canonical id order
 - a hop whose entry predates sessions has `closure_hash: null, reason: no_session_authority`; no chain is `chain: null, reason: no_committed_chain` (exit 0), with `unresolved` naming an endpoint no registry holds
 - with `--registries` every mapped registry is searched in kind-name order, ids read `<registry id>:<canonical id>`, each hop names its registry, and the search leaves a registry only along a relation whose object is another registry's id; an identity hop never crosses a registry; with `--registry` alone a relation that names an id outside it adds a `note` pointing at `--registries`
 
-`canon registry correct --registry <DIR> --from <CORRECTIONS.jsonl> (--next-version <VER>|--bump patch|minor|major) [--rules <RULES.yaml>] [--expect-base <HASH>] [--dry-run] [--emit json|summary]`
+`canon registry correct --registry <DIR> --from <CORRECTIONS.jsonl> (--next-version <VER>|--bump patch|minor|major) [--rules <RULES.yaml>] [--expect-base <HASH>] [--dry-run] [--emit json|summary | --json]`
 - merges two canonical IDs as a reviewed registry version: each line is `{"op":"merge","survivor","retired","reviewer":"human:<name>","evidence_ids":[...],"reason","source"}`; canon never generates or applies a merge on its own
 - refuses (writing nothing) unless both ids exist with one `canonical_type`, `reviewer` starts with `human:` and `evidence_ids` is non-empty; refuses a merge across a recorded cannot-link between the two ids, and with `--rules` a merge of ids carrying different values of an authoritative single-valued key (naming both); without `--rules` the output says `key_check: not_run`
 - re-points every alias and key alias (rule_id kept; the entry gains `correction` beside its original `session_authority`), relations and memory that name the retired id (a relation that becomes self-referential is dropped and reported), and writes the retired id (and its `cmdrvl:<ID>` form when present) as a `SUPERSEDED_ID_ALIAS` of the survivor, so exact lookup of the retired id resolves to the survivor and shows that rule_id
@@ -358,13 +358,13 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - registry candidates (day two): the rows file also carries the aliases of the registries the session maps as rows marked `origin: registry` (row id `registry:alias:<input>`, the id's key aliases as columns; the profile must list `origin` in `prepare.provenance_fields`). Block treats such a surface as a candidate for a session surface and never as a query or a pair of its own: no registry-to-registry candidate is generated or scored (the output reports `registry_candidates.registry_registry_pairs_scored`, measured from the candidate file), and an exact bucket is lifted to session-to-member edges only. A hit between a session surface and a registry row is evidence with the registry endpoint form (`registry:alias:<input>`; `registry:<id>` for a shared key), so an `exact_view` hit equal under the rule table's `incumbent_attach.name_equivalent_steps` attaches the spelling to the incumbent. `--no-registry-candidates` turns this off. `records_digest` is the hash of the sorted assertion lines: the same cut gives the same digest whatever else the registry holds
 - observations the prepare stage rejects (an unnormalisable surface) are reported by obs_id and skipped; a profile operator derive would silently ignore is refused by name; the relation-hint lane the profile validator requires is reported as `relation_hints_not_executed`; hits between different entity types are counted, not recorded; the profile must list `source_row_id` in `prepare.provenance_fields`
 
-`canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary]`
+`canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary | --json]`
 - verifies an agent-friendly id (`<kind>_` plus a 10-symbol body and 2 check symbols) before any lookup; every single-symbol substitution and adjacent swap is refused
 - refuses a bad id with `E_BAD_ID` and `detail.reason` of `bad_length`, `bad_symbol`, `unknown_kind` or `bad_check`; upper-case input is checked as its lower-case form
 - a good id returns `canon_registry_check_id.v0` `{kind, id, resolves_to, label}`; an optional `~label` is compared with the entity's aliases and a difference is `label: mismatch`, never a refusal
 - is read-only
 
-`canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]`
+`canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json | --json]`
 - inspects existing `canonical_id` values in all root mapping files and suggests the next `<PREFIX>-<number>` ID
 - is read-only; it does not write registry files or mutate the derived SQLite index
 - uses `registry.json.default_id_scheme` when `PREFIX` is omitted; without either source, refuses with recovery guidance
@@ -372,7 +372,7 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - emits plain text by default (`<PREFIX>-<zero-padded-number>`) or `canon_registry_next_id.v0` JSON
 - exits `0` when an ID is suggested, `2` on refusal
 
-`canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]`
+`canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain | --json]`
 - appends one exact alias entry to an existing root-level mapping file; `--alias-file` cannot point into a subdirectory and cannot be `registry.json` or `_build.json`
 - requires `--input` to be non-empty and already ASCII-trimmed; the lookup key written is exactly that value
 - refuses duplicate unscoped inputs or duplicate inputs in the same scope because first-match precedence would make the new entry ambiguous or shadowed
@@ -383,14 +383,14 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - emits `canon_registry_add_entry.v0` JSON by default; `--emit plain` prints a one-line shell-oriented receipt
 - exits `0` on accepted write, `2` on refusal
 
-`canon registry add-entries --registry <DIR> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]`
+`canon registry add-entries --registry <DIR> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain | --json]`
 - attaches a JSONL batch of exact aliases to canonical IDs that already exist in the local registry; each line has `canonical_id`, `alias_file`, `input`, and `rule_id`
 - infers each incumbent's canonical type from the existing mapping and refuses unknown IDs, cross-incumbent alias collisions, duplicate inputs, malformed lines, or missing alias files before writing anything
 - aliases already owned by the requested ID are idempotent skips; new aliases share one registry version bump, one entry-count update, and one linted atomic write
 - emits `canon_registry_add_entries.v0` with `attached[]`, `skipped[]`, registry version/counts, and touched files; `--emit plain` prints attached input-to-ID pairs
 - exits `0` when the batch is attached or is already present, `2` on refusal
 
-`canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]`
+`canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain | --json]`
 - creates one self-authored canonical ID with one or more starting exact aliases in a single versioned write
 - accepts either an explicit `--canonical-id` or an allocation prefix; when both are omitted, allocation uses `registry.json.default_id_scheme`
 - requires at least one `--with-alias`; each alias target file must already exist at the registry root
@@ -400,7 +400,7 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - emits `canon_registry_mint.v0` JSON by default; `--emit plain` prints only the minted canonical ID
 - exits `0` on accepted write, `2` on refusal
 
-`canon registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict] [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]`
+`canon registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict] [--bump patch|minor|major | --next-version <VER>] [--emit json|plain | --json]`
 - persists the registry's default self-authored ID convention in `registry.json.default_id_scheme`
 - validates prefixes as uppercase ASCII letters/digits starting with a letter; default `--zero-pad` is `3`, with allowed range `1..=20`
 - is metadata-only: it writes `registry.json` and does not change mapping entries, `_build.json`, or `_index.sqlite`
@@ -409,7 +409,7 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - emits `canon_registry_default_id_scheme.v0` JSON by default; `--emit plain` prints `<PREFIX>-<zero_pad>`
 - exits `0` on accepted write, `2` on refusal
 
-`canon registry scope-policy --registry <DIR> (--optional-dimension <DIM>... | --remove-dimension <DIM>...) [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]`
+`canon registry scope-policy --registry <DIR> (--optional-dimension <DIM>... | --remove-dimension <DIM>...) [--bump patch|minor|major | --next-version <VER>] [--emit json|plain | --json]`
 - writes `registry.json.scope_policy.optional_dimensions` (supported: `role`) as a new registry version; no mapping entry changes
 - `role` is a core scope dimension (`--scope role=R`); a role is scope context for exact lookup, never an identity or a registry
 - for a listed dimension a bare lookup resolves only unscoped entries and a scoped lookup returns the entry scoped exactly so, else the unscoped entry; other dimensions and registries without the policy keep `E_SCOPE_REQUIRED` and exact scope matching
@@ -419,18 +419,18 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - session commit writes a role-scoped alias (`asserted_alias` with `basis.scope {role}` and `basis.subject`) as an entry scoped `role=R` on the unit's id and refuses with `scope_policy_missing` for a registry without the policy; solve reports `units` and `scoped_aliases`
 - exits `0` on accepted write, `2` on refusal
 
-`canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]`
+`canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary | --json]`
 - compares two versions of the same registry id
 - emits `canon_registry_diff.v0` JSON or a human-readable summary line
 - exits `0` on successful comparison, `2` on refusal
 
-`canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]`
+`canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary | --json] [--max-rows <N>] [--max-bytes <N>]`
 - audits a seed corpus against a registry using the same dedup + exact-match semantics as normal resolution
 - emits `canon_registry_audit.v0` JSON with `resolved`, `unresolved`, `canonical_targets`, and `rule_hits`, or a human-readable summary line
 - exits `0` on successful audit, `2` on refusal
 - does not change the normal `canon.v0` output contract or witness semantics for the primary resolution path
 
-`canon registry lint <REGISTRY> [--profile standard|org|strategy|auto] [--emit json|summary]`
+`canon registry lint <REGISTRY> [--profile standard|org|strategy|auto] [--emit json|summary | --json]`
 - validates a registry directory without mutating lookup indexes, mappings, strategy entries, or profile-specific entity sidecars
 - emits `canon_registry_lint.v0` with severity-tagged findings, counts by category, registry provenance, and next-command guidance
 - `standard` checks `registry.json`, mapping-file parseability, duplicate/shadowed inputs, stale `entry_count`, empty required mapping fields, and lookup-index rebuild eligibility
@@ -511,7 +511,7 @@ Strategy registries are local artifacts. No remote provider calls happen during 
 - emits `canon_strategy_explain.v0` describing the active entry, ignored deprecated entries, and the next command for resolve or register
 - is read-only and does not append witness records
 
-`canon strategy diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]`
+`canon strategy diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary | --json]`
 - compares two strategy registry versions with the same registry id
 - emits `canon_strategy_diff.v0`
 - keys effective entries by typed key plus skill hash

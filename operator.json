@@ -38,22 +38,22 @@
       "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>",
       "canon geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]",
       "canon geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVENTORY.json> --question <QUESTION.json> --capabilities <CAPABILITIES.json> --profile <PROFILE.json> --budget <BUDGET.json> --satisfy <REQUEST_ID=RECEIPT.json> --local-artifact <LOCAL_ARTIFACT_ID=PATH>... [--result <DIGEST_ID=PATH>...] --advancement-out <ADVANCEMENT.json>",
-      "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
-      "canon registry init --registry <DIR> --registry-id <ID> --prefix <PREFIX> [--zero-pad <N>] [--description <TEXT>] [--emit json|summary]",
-      "canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card|link-evidence (--registry <DIR>|--registries <MAP>) [--out <PATH>] [--from <A> --to <B>] [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>] [--emit json|summary]",
-      "canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]",
-      "canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary]",
-      "canon registry identity --registry <DIR> [--ref <REF>] [--emit json|summary]",
-      "canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
-      "canon registry add-entries --registry <DIR> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
-      "canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--create-alias-file] [--no-lint] [--emit json|plain]",
-      "canon registry mint-batch --registry <DIR> [--prefix <PREFIX>] --canonical-type <TYPE> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
-      "canon registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict] [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]",
-      "canon registry scope-policy --registry <DIR> (--optional-dimension <DIM>... | --remove-dimension <DIM>...) [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]",
-      "canon registry diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
-      "canon registry audit <SEED> --registry <DIR> --column <COL> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]",
-      "canon registry correct --registry <DIR> --from <CORRECTIONS.jsonl> (--next-version <VER>|--bump patch|minor|major) [--rules <RULES.yaml>] [--expect-base <HASH>] [--dry-run] [--emit json|summary]",
-      "canon registry lint <DIR> [--profile standard|org|strategy|auto] [--emit json|summary]",
+      "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>] [--json]",
+      "canon registry init --registry <DIR> --registry-id <ID> --prefix <PREFIX> [--zero-pad <N>] [--description <TEXT>] [--emit json|summary | --json]",
+      "canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card|link-evidence (--registry <DIR>|--registries <MAP>) [--out <PATH>] [--from <A> --to <B>] [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>] [--emit json|summary | --json]",
+      "canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json | --json]",
+      "canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary | --json]",
+      "canon registry identity --registry <DIR> [--ref <REF>] [--emit json|summary | --json]",
+      "canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain | --json]",
+      "canon registry add-entries --registry <DIR> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain | --json]",
+      "canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--create-alias-file] [--no-lint] [--emit json|plain | --json]",
+      "canon registry mint-batch --registry <DIR> [--prefix <PREFIX>] --canonical-type <TYPE> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain | --json]",
+      "canon registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict] [--bump patch|minor|major | --next-version <VER>] [--emit json|plain | --json]",
+      "canon registry scope-policy --registry <DIR> (--optional-dimension <DIM>... | --remove-dimension <DIM>...) [--bump patch|minor|major | --next-version <VER>] [--emit json|plain | --json]",
+      "canon registry diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary | --json]",
+      "canon registry audit <SEED> --registry <DIR> --column <COL> [--emit json|summary | --json] [--max-rows <N>] [--max-bytes <N>]",
+      "canon registry correct --registry <DIR> --from <CORRECTIONS.jsonl> (--next-version <VER>|--bump patch|minor|major) [--rules <RULES.yaml>] [--expect-base <HASH>] [--dry-run] [--emit json|summary | --json]",
+      "canon registry lint <DIR> [--profile standard|org|strategy|auto] [--emit json|summary | --json]",
       "canon strategy profile <INPUT> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]",
       "canon strategy audit --schema <PROFILE.json> --script <SCRIPT> --suite <DIR> [--emit json|summary]",
       "canon strategy resolve --registry <DIR> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]",
@@ -4507,7 +4507,7 @@
     },
     {
       "name": "registry check-id",
-      "usage": "canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary]",
+      "usage": "canon registry check-id <ID> [--registry <DIR> | --registries <MAP_YAML>] [--emit json|summary | --json]",
       "description": "Verify an agent-friendly id (length, alphabet, kind prefix, check symbols) before any lookup, then resolve it exactly against the named registry and compare an optional ~label with the entity's aliases",
       "output_mode": "mixed",
       "output_schema": "canon_registry_check_id.v0",
@@ -4579,6 +4579,13 @@
           "type": "string",
           "default": "json",
           "description": "Output mode: json (canon_registry_check_id.v0) or summary"
+        },
+        {
+          "name": "json",
+          "flag": "--json",
+          "type": "boolean",
+          "default": false,
+          "description": "Shorthand for --emit json; refused when combined with --emit"
         }
       ],
       "next_command": "canon registry lint <DIR>",
@@ -4589,7 +4596,7 @@
     },
     {
       "name": "registry identity",
-      "usage": "canon registry identity --registry <DIR> [--ref <REF>] [--emit json|summary]",
+      "usage": "canon registry identity --registry <DIR> [--ref <REF>] [--emit json|summary | --json]",
       "description": "Print a registry directory's hand-off identity (registry id and version, package digest, content hash over every published file, per-file hashes), or with --ref check a pinned reference [<registry id>:]<canonical id>@<registry version>#<closure hash> against the directory; reads only, uploads nothing",
       "output_mode": "mixed",
       "output_schema": "canon_registry_identity.v0",
@@ -4654,6 +4661,13 @@
           "type": "string",
           "default": "json",
           "description": "Output mode: json (canon_registry_identity.v0 or canon_registry_ref_check.v0) or summary"
+        },
+        {
+          "name": "json",
+          "flag": "--json",
+          "type": "boolean",
+          "default": false,
+          "description": "Shorthand for --emit json; refused when combined with --emit"
         }
       ],
       "next_command": "canon entity session commit <SESSION> --next-version <VER> --expect-base <HASH>",
@@ -4664,7 +4678,7 @@
     },
     {
       "name": "registry next-id",
-      "usage": "canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]",
+      "usage": "canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json | --json]",
       "description": "Suggest the next canonical ID for a self-authored registry namespace without mutating registry files or the derived SQLite index",
       "output_mode": "mixed",
       "output_schema": "canon_registry_next_id.v0",
@@ -4723,6 +4737,13 @@
           "type": "string",
           "default": "plain",
           "description": "Output mode: plain (ID only) or json (canon_registry_next_id.v0)"
+        },
+        {
+          "name": "json",
+          "flag": "--json",
+          "type": "boolean",
+          "default": false,
+          "description": "Shorthand for --emit json; refused when combined with --emit"
         }
       ],
       "alternate_output_schemas": [
@@ -4747,7 +4768,7 @@
     },
     {
       "name": "registry add-entry",
-      "usage": "canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
+      "usage": "canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain | --json]",
       "description": "Append one exact alias entry to a self-authored registry with metadata version/count update and optional standard lint gate",
       "output_mode": "mixed",
       "output_schema": "canon_registry_add_entry.v0",
@@ -4854,6 +4875,13 @@
           "type": "string",
           "default": "json",
           "description": "Output mode: json (canon_registry_add_entry.v0) or plain"
+        },
+        {
+          "name": "json",
+          "flag": "--json",
+          "type": "boolean",
+          "default": false,
+          "description": "Shorthand for --emit json; refused when combined with --emit"
         }
       ],
       "alternate_output_schemas": [
@@ -4879,7 +4907,7 @@
     },
     {
       "name": "registry add-entries",
-      "usage": "canon registry add-entries --registry <DIR> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
+      "usage": "canon registry add-entries --registry <DIR> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain | --json]",
       "description": "Attach a batch of exact aliases to existing canonical IDs in one atomic registry version",
       "output_mode": "mixed",
       "output_schema": "canon_registry_add_entries.v0",
@@ -4947,6 +4975,13 @@
           "type": "string",
           "default": "json",
           "description": "Output mode: json (canon_registry_add_entries.v0) or plain"
+        },
+        {
+          "name": "json",
+          "flag": "--json",
+          "type": "boolean",
+          "default": false,
+          "description": "Shorthand for --emit json; refused when combined with --emit"
         }
       ],
       "alternate_output_schemas": [
@@ -4972,7 +5007,7 @@
     },
     {
       "name": "registry mint",
-      "usage": "canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--create-alias-file] [--no-lint] [--emit json|plain]",
+      "usage": "canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--scope DIMENSION=VALUE]... [--bump patch|minor|major | --next-version <VER>] [--create-alias-file] [--no-lint] [--emit json|plain | --json]",
       "description": "Mint one self-authored canonical ID and one or more exact starting aliases with a single registry metadata update",
       "output_mode": "mixed",
       "output_schema": "canon_registry_mint.v0",
@@ -5078,6 +5113,13 @@
           "type": "string",
           "default": "json",
           "description": "Output mode: json (canon_registry_mint.v0) or plain (canonical ID only)"
+        },
+        {
+          "name": "json",
+          "flag": "--json",
+          "type": "boolean",
+          "default": false,
+          "description": "Shorthand for --emit json; refused when combined with --emit"
         }
       ],
       "alternate_output_schemas": [
@@ -5103,7 +5145,7 @@
     },
     {
       "name": "registry correct",
-      "usage": "canon registry correct --registry <DIR> --from <CORRECTIONS.jsonl> (--next-version <VER>|--bump patch|minor|major) [--rules <RULES.yaml>] [--expect-base <HASH>] [--dry-run] [--emit json|summary]",
+      "usage": "canon registry correct --registry <DIR> --from <CORRECTIONS.jsonl> (--next-version <VER>|--bump patch|minor|major) [--rules <RULES.yaml>] [--expect-base <HASH>] [--dry-run] [--emit json|summary | --json]",
       "description": "Apply reviewer-written corrections as one new registry version: merge two canonical IDs (the retired ID keeps resolving to the survivor as a SUPERSEDED_ID_ALIAS), detach an alias or key from an ID, split one ID into two, remove a cannot-link from registry memory, or supersede (record succession, not sameness: the old ID keeps its own entries and answers lookups as itself with a succession block naming superseded_by and the chain to the active end; named spellings move to the successor; needs a named human reviewer, evidence ids, a succession kind merged_into and an effective_date stated by the evidence); each is recorded with its closure in corrections.jsonl and never automatic",
       "output_mode": "mixed",
       "output_schema": "canon_registry_correct.v0",
@@ -5187,6 +5229,13 @@
           "type": "string",
           "default": "json",
           "description": "Output mode: json or summary"
+        },
+        {
+          "name": "json",
+          "flag": "--json",
+          "type": "boolean",
+          "default": false,
+          "description": "Shorthand for --emit json; refused when combined with --emit"
         }
       ],
       "alternate_output_schemas": [
@@ -5212,7 +5261,7 @@
     },
     {
       "name": "registry mint-batch",
-      "usage": "canon registry mint-batch --registry <DIR> [--prefix <PREFIX>] --canonical-type <TYPE> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
+      "usage": "canon registry mint-batch --registry <DIR> [--prefix <PREFIX>] --canonical-type <TYPE> --from <FILE.jsonl> [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain | --json]",
       "description": "Mint many self-authored canonical IDs, each with exact starting aliases, from a JSONL file in one atomic registry version (one version bump, one lint pass)",
       "output_mode": "mixed",
       "output_schema": "canon_registry_mint_batch.v0",
@@ -5298,6 +5347,13 @@
           "type": "string",
           "default": "json",
           "description": "Output mode: json (canon_registry_mint_batch.v0) or plain (one canonical ID per line)"
+        },
+        {
+          "name": "json",
+          "flag": "--json",
+          "type": "boolean",
+          "default": false,
+          "description": "Shorthand for --emit json; refused when combined with --emit"
         }
       ],
       "alternate_output_schemas": [
@@ -5323,7 +5379,7 @@
     },
     {
       "name": "registry default-id-scheme",
-      "usage": "canon registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict] [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]",
+      "usage": "canon registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict] [--bump patch|minor|major | --next-version <VER>] [--emit json|plain | --json]",
       "description": "Persist a registry's default self-authored canonical ID convention in registry.json without changing mapping entries",
       "output_mode": "mixed",
       "output_schema": "canon_registry_default_id_scheme.v0",
@@ -5403,6 +5459,13 @@
           "type": "string",
           "default": "json",
           "description": "Output mode: json (canon_registry_default_id_scheme.v0) or plain (<PREFIX>-<zero_pad>)"
+        },
+        {
+          "name": "json",
+          "flag": "--json",
+          "type": "boolean",
+          "default": false,
+          "description": "Shorthand for --emit json; refused when combined with --emit"
         }
       ],
       "alternate_output_schemas": [
@@ -5428,7 +5491,7 @@
     },
     {
       "name": "registry scope-policy",
-      "usage": "canon registry scope-policy --registry <DIR> (--optional-dimension <DIM>... | --remove-dimension <DIM>...) [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]",
+      "usage": "canon registry scope-policy --registry <DIR> (--optional-dimension <DIM>... | --remove-dimension <DIM>...) [--bump patch|minor|major | --next-version <VER>] [--emit json|plain | --json]",
       "description": "Declare scope dimensions optional for a registry in registry.json scope_policy (supported: role): a bare lookup then resolves the unscoped entry, and a lookup with --scope role=R returns the entry scoped exactly role=R when one exists for the input, otherwise the unscoped entry; a registry without the policy keeps refusing a bare lookup with E_SCOPE_REQUIRED",
       "output_mode": "mixed",
       "output_schema": "canon_registry_scope_policy.v0",
@@ -5500,6 +5563,13 @@
           "type": "string",
           "default": "json",
           "description": "Output mode: json (canon_registry_scope_policy.v0) or plain (one summary line)"
+        },
+        {
+          "name": "json",
+          "flag": "--json",
+          "type": "boolean",
+          "default": false,
+          "description": "Shorthand for --emit json; refused when combined with --emit"
         }
       ],
       "alternate_output_schemas": [
@@ -5525,7 +5595,7 @@
     },
     {
       "name": "registry build",
-      "usage": "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
+      "usage": "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>] [--json]",
       "description": "Materialize a standard canon registry directory from a provider-backed seed corpus and write build provenance to _build.json; OpenFIGI is a maintenance-only CUSIP/ISIN/SEDOL registry materializer with optional static mapping filters, not normal lookup",
       "output_mode": "json",
       "output_schema": "canon_registry_build.v0",
@@ -5610,6 +5680,13 @@
           "flag": "--provider-config",
           "type": "string",
           "description": "Repeatable provider-specific key=value option such as id_type=ID_CUSIP|ID_ISIN|ID_SEDOL, base_url=http://... for local twins, api_key=..., or OpenFIGI mapping filters such as exchCode=US; secret-like values are redacted in _build.json. Discover valid keys with: canon registry provider-schema <PROVIDER> --emit json"
+        },
+        {
+          "name": "json",
+          "flag": "--json",
+          "type": "boolean",
+          "default": false,
+          "description": "Accepted so --json works on every registry command; the output is always JSON"
         }
       ],
       "status": "implemented",
@@ -5651,7 +5728,7 @@
     },
     {
       "name": "registry init",
-      "usage": "canon registry init --registry <DIR> --registry-id <ID> --prefix <PREFIX> [--zero-pad <N>] [--description <TEXT>] [--emit json|summary]",
+      "usage": "canon registry init --registry <DIR> --registry-id <ID> --prefix <PREFIX> [--zero-pad <N>] [--description <TEXT>] [--emit json|summary | --json]",
       "description": "Create an empty self-authored registry with registry.json, aliases.json, and a default canonical ID scheme",
       "output_mode": "mixed",
       "output_schema": "canon_registry_init.v0",
@@ -5729,6 +5806,13 @@
           "type": "string",
           "default": "json",
           "description": "Output mode: json or summary"
+        },
+        {
+          "name": "json",
+          "flag": "--json",
+          "type": "boolean",
+          "default": false,
+          "description": "Shorthand for --emit json; refused when combined with --emit"
         }
       ],
       "next_command": "canon registry next-id --registry <DIR>",
@@ -5739,7 +5823,7 @@
     },
     {
       "name": "registry export",
-      "usage": "canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card|link-evidence (--registry <DIR>|--registries <MAP>) [--out <PATH>] [--from <A> --to <B>] [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>] [--emit json|summary]",
+      "usage": "canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card|link-evidence (--registry <DIR>|--registries <MAP>) [--out <PATH>] [--from <A> --to <B>] [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>] [--emit json|summary | --json]",
       "description": "Export a versioned flat registry into deterministic downstream artifacts without changing lookup semantics: dbt-seed writes a context-scoped CSV seed plus optional dbt scaffolds; search-index writes a self-describing SQLite artifact with entities, aliases, external keys, scoring metadata, normalization metadata, canonical IRIs, and entity context; entity-card writes one bounded JSON document per canonical ID",
       "output_mode": "mixed",
       "output_schema": "canon_registry_export.v0",
@@ -5877,6 +5961,13 @@
           "type": "string",
           "default": "json",
           "description": "Output mode: json (canon_registry_export.v0) or summary"
+        },
+        {
+          "name": "json",
+          "flag": "--json",
+          "type": "boolean",
+          "default": false,
+          "description": "Shorthand for --emit json; refused when combined with --emit"
         }
       ],
       "safety": {
@@ -5899,7 +5990,7 @@
     },
     {
       "name": "registry providers",
-      "usage": "canon registry providers [--emit json|summary]",
+      "usage": "canon registry providers [--emit json|summary | --json]",
       "description": "List registry build providers available for materialization; matches the top-level providers catalog in this manifest",
       "output_mode": "mixed",
       "output_schema": "canon_registry_providers.v0",
@@ -5920,6 +6011,13 @@
           "type": "string",
           "default": "json",
           "description": "Output mode: json (canon_registry_providers.v0) or summary"
+        },
+        {
+          "name": "json",
+          "flag": "--json",
+          "type": "boolean",
+          "default": false,
+          "description": "Shorthand for --emit json; refused when combined with --emit"
         }
       ],
       "status": "implemented",
@@ -5960,7 +6058,7 @@
     },
     {
       "name": "registry provider-schema",
-      "usage": "canon registry provider-schema <PROVIDER> [--emit json|summary]",
+      "usage": "canon registry provider-schema <PROVIDER> [--emit json|summary | --json]",
       "description": "Show the --provider-config option schema for one registry build provider (keys, types, enum values, secret flags, env fallbacks, defaults, mutual exclusions, examples). Deterministic and offline; does not contact the provider",
       "output_mode": "mixed",
       "output_schema": "canon_registry_provider_schema.v0",
@@ -5988,6 +6086,13 @@
           "type": "string",
           "default": "json",
           "description": "Output mode: json (canon_registry_provider_schema.v0) or summary"
+        },
+        {
+          "name": "json",
+          "flag": "--json",
+          "type": "boolean",
+          "default": false,
+          "description": "Shorthand for --emit json; refused when combined with --emit"
         }
       ],
       "status": "implemented",
@@ -6028,7 +6133,7 @@
     },
     {
       "name": "registry diff",
-      "usage": "canon registry diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
+      "usage": "canon registry diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary | --json]",
       "description": "Compare two versions of the same registry and report added, removed, changed, and unchanged effective mappings",
       "output_mode": "mixed",
       "output_schema": "canon_registry_diff.v0",
@@ -6063,6 +6168,13 @@
           "type": "string",
           "default": "json",
           "description": "Output mode: json (structured diff) or summary (human-readable summary line)"
+        },
+        {
+          "name": "json",
+          "flag": "--json",
+          "type": "boolean",
+          "default": false,
+          "description": "Shorthand for --emit json; refused when combined with --emit"
         }
       ],
       "status": "implemented",
@@ -6103,7 +6215,7 @@
     },
     {
       "name": "registry audit",
-      "usage": "canon registry audit <SEED> --registry <DIR> --column <COL> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]",
+      "usage": "canon registry audit <SEED> --registry <DIR> --column <COL> [--emit json|summary | --json] [--max-rows <N>] [--max-bytes <N>]",
       "description": "Audit a seed corpus against a registry and report resolved entries, unresolved entries, canonical target counts, and rule-hit counts",
       "output_mode": "mixed",
       "output_schema": "canon_registry_audit.v0",
@@ -6145,6 +6257,13 @@
           "type": "string",
           "default": "json",
           "description": "Output mode: json (structured audit artifact) or summary (human-readable summary line)"
+        },
+        {
+          "name": "json",
+          "flag": "--json",
+          "type": "boolean",
+          "default": false,
+          "description": "Shorthand for --emit json; refused when combined with --emit"
         },
         {
           "name": "max_rows",
@@ -6197,7 +6316,7 @@
     },
     {
       "name": "registry lint",
-      "usage": "canon registry lint <DIR> [--profile standard|org|strategy|auto] [--emit json|summary]",
+      "usage": "canon registry lint <DIR> [--profile standard|org|strategy|auto] [--emit json|summary | --json]",
       "description": "Check standard, org, or strategy registry health without mutating registry files",
       "output_mode": "mixed",
       "output_schema": "canon_registry_lint.v0",
@@ -6232,6 +6351,13 @@
           "type": "string",
           "default": "json",
           "description": "Output mode: json (canon_registry_lint.v0) or summary"
+        },
+        {
+          "name": "json",
+          "flag": "--json",
+          "type": "boolean",
+          "default": false,
+          "description": "Shorthand for --emit json; refused when combined with --emit"
         }
       ],
       "status": "implemented",

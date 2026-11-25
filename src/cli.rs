@@ -1373,6 +1373,10 @@ pub struct RegistryExportCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: RegistryEmitMode,
+
+    /// Shorthand for `--emit json`; refused when combined with `--emit`
+    #[arg(long, conflicts_with = "emit")]
+    pub json: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1400,6 +1404,10 @@ pub struct RegistryInitCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: RegistryEmitMode,
+
+    /// Shorthand for `--emit json`; refused when combined with `--emit`
+    #[arg(long, conflicts_with = "emit")]
+    pub json: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1440,6 +1448,10 @@ pub struct RegistryCorrectCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: RegistryEmitMode,
+
+    /// Shorthand for `--emit json`; refused when combined with `--emit`
+    #[arg(long, conflicts_with = "emit")]
+    pub json: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1447,6 +1459,10 @@ pub struct RegistryProvidersCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: RegistryEmitMode,
+
+    /// Shorthand for `--emit json`; refused when combined with `--emit`
+    #[arg(long, conflicts_with = "emit")]
+    pub json: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1457,6 +1473,10 @@ pub struct RegistryProviderSchemaCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: RegistryEmitMode,
+
+    /// Shorthand for `--emit json`; refused when combined with `--emit`
+    #[arg(long, conflicts_with = "emit")]
+    pub json: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1475,6 +1495,10 @@ pub struct RegistryCheckIdCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: RegistryEmitMode,
+
+    /// Shorthand for `--emit json`; refused when combined with `--emit`
+    #[arg(long, conflicts_with = "emit")]
+    pub json: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1490,6 +1514,10 @@ pub struct RegistryIdentityCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: RegistryEmitMode,
+
+    /// Shorthand for `--emit json`; refused when combined with `--emit`
+    #[arg(long, conflicts_with = "emit")]
+    pub json: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1506,8 +1534,17 @@ pub struct RegistryNextIdCli {
     pub zero_pad: Option<usize>,
 
     /// Output mode
-    #[arg(long, value_enum, default_value = "plain")]
+    #[arg(
+        long,
+        value_enum,
+        default_value = "plain",
+        default_value_if("json", clap::builder::ArgPredicate::IsPresent, "json")
+    )]
     pub emit: RegistryPlainJsonEmitMode,
+
+    /// Shorthand for `--emit json`; refused when combined with `--emit`
+    #[arg(long, conflicts_with = "emit")]
+    pub json: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1560,6 +1597,10 @@ pub struct RegistryAddEntryCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: RegistryPlainJsonEmitMode,
+
+    /// Shorthand for `--emit json`; refused when combined with `--emit`
+    #[arg(long, conflicts_with = "emit")]
+    pub json: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1592,6 +1633,10 @@ pub struct RegistryAddEntriesCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: RegistryPlainJsonEmitMode,
+
+    /// Shorthand for `--emit json`; refused when combined with `--emit`
+    #[arg(long, conflicts_with = "emit")]
+    pub json: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1632,6 +1677,10 @@ pub struct RegistryMintBatchCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: RegistryPlainJsonEmitMode,
+
+    /// Shorthand for `--emit json`; refused when combined with `--emit`
+    #[arg(long, conflicts_with = "emit")]
+    pub json: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1689,6 +1738,10 @@ pub struct RegistryMintCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: RegistryPlainJsonEmitMode,
+
+    /// Shorthand for `--emit json`; refused when combined with `--emit`
+    #[arg(long, conflicts_with = "emit")]
+    pub json: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1725,6 +1778,10 @@ pub struct RegistryDefaultIdSchemeCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: RegistryPlainJsonEmitMode,
+
+    /// Shorthand for `--emit json`; refused when combined with `--emit`
+    #[arg(long, conflicts_with = "emit")]
+    pub json: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1757,6 +1814,10 @@ pub struct RegistryScopePolicyCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: RegistryPlainJsonEmitMode,
+
+    /// Shorthand for `--emit json`; refused when combined with `--emit`
+    #[arg(long, conflicts_with = "emit")]
+    pub json: bool,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -2218,6 +2279,10 @@ pub struct RegistryDiffCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: RegistryEmitMode,
+
+    /// Shorthand for `--emit json`; refused when combined with `--emit`
+    #[arg(long, conflicts_with = "emit")]
+    pub json: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -2236,6 +2301,10 @@ pub struct RegistryAuditCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: RegistryEmitMode,
+
+    /// Shorthand for `--emit json`; refused when combined with `--emit`
+    #[arg(long, conflicts_with = "emit")]
+    pub json: bool,
 
     /// Refuse if input exceeds N data rows
     #[arg(long)]
@@ -2291,6 +2360,10 @@ pub struct RegistryBuildCli {
     /// Provider-specific key=value option (repeatable), e.g. OpenFIGI id_type/base_url/api_key/exchCode
     #[arg(long = "provider-config", value_name = "KEY=VALUE")]
     pub provider_config: Vec<String>,
+
+    /// Accepted so `--json` works on every registry command; the output is always JSON
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Debug, Clone, ValueEnum, Default)]
@@ -2318,6 +2391,10 @@ pub struct RegistryLintCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: RegistryEmitMode,
+
+    /// Shorthand for `--emit json`; refused when combined with `--emit`
+    #[arg(long, conflicts_with = "emit")]
+    pub json: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -3578,6 +3655,169 @@ mod tests {
                 "conflict message must name both flags: {message}"
             );
         }
+    }
+
+    /// Minimal valid argv for every `canon registry` leaf, after `canon registry`.
+    const REGISTRY_LEAVES: [&[&str]; 18] = [
+        &["check-id", "ID", "--registry", "r"],
+        &["identity", "--registry", "r"],
+        &["next-id", "PPL", "--registry", "r"],
+        &[
+            "add-entry",
+            "--registry",
+            "r",
+            "--alias-file",
+            "a.json",
+            "--canonical-id",
+            "C-1",
+            "--input",
+            "x",
+            "--rule-id",
+            "R",
+        ],
+        &["add-entries", "--registry", "r", "--from", "f.jsonl"],
+        &["mint", "--registry", "r", "--canonical-type", "T"],
+        &[
+            "correct",
+            "--registry",
+            "r",
+            "--from",
+            "c.jsonl",
+            "--bump",
+            "patch",
+        ],
+        &[
+            "mint-batch",
+            "--registry",
+            "r",
+            "--canonical-type",
+            "T",
+            "--from",
+            "f.jsonl",
+        ],
+        &["default-id-scheme", "--registry", "r", "--prefix", "PPL"],
+        &[
+            "scope-policy",
+            "--registry",
+            "r",
+            "--optional-dimension",
+            "role",
+        ],
+        &[
+            "build",
+            "--source",
+            "s",
+            "--seed",
+            "s.csv",
+            "--seed-column",
+            "c",
+            "--output",
+            "o",
+            "--version",
+            "1",
+        ],
+        &[
+            "init",
+            "--registry",
+            "r",
+            "--registry-id",
+            "id",
+            "--prefix",
+            "PPL",
+        ],
+        &["export", "--format", "dbt-seed", "--registry", "r"],
+        &["providers"],
+        &["provider-schema", "openfigi"],
+        &["diff", "--old", "a", "--new", "b"],
+        &["audit", "seed.csv", "--registry", "r", "--column", "c"],
+        &["lint", "dir"],
+    ];
+
+    fn registry_leaf_argv<'a>(leaf: &[&'a str], extra: &[&'a str]) -> Vec<&'a str> {
+        ["canon", "registry"]
+            .into_iter()
+            .chain(leaf.iter().copied())
+            .chain(extra.iter().copied())
+            .collect()
+    }
+
+    #[test]
+    fn test_cli_registry_leaves_accept_json_alias() {
+        for leaf in REGISTRY_LEAVES {
+            let name = leaf[0];
+            let plain = Cli::try_parse_from(registry_leaf_argv(leaf, &[]));
+            assert!(
+                plain.is_ok(),
+                "registry {name} base argv: {:?}",
+                plain.err()
+            );
+            let aliased = Cli::try_parse_from(registry_leaf_argv(leaf, &["--json"]));
+            assert!(
+                aliased.is_ok(),
+                "registry {name} --json must parse: {:?}",
+                aliased.err()
+            );
+        }
+    }
+
+    #[test]
+    fn test_cli_registry_leaves_refuse_json_with_emit() {
+        for leaf in REGISTRY_LEAVES {
+            let name = leaf[0];
+            if name == "build" {
+                // build has no --emit: its output is always JSON.
+                continue;
+            }
+            // Which of these `--emit` values a leaf takes depends on its enum
+            // (json|summary or json|plain), so ask the parser instead of listing them.
+            let mut refused = 0;
+            for emit in ["json", "plain", "summary"] {
+                if Cli::try_parse_from(registry_leaf_argv(leaf, &["--emit", emit])).is_err() {
+                    continue;
+                }
+                let error =
+                    Cli::try_parse_from(registry_leaf_argv(leaf, &["--json", "--emit", emit]))
+                        .unwrap_err();
+                assert_eq!(
+                    error.kind(),
+                    clap::error::ErrorKind::ArgumentConflict,
+                    "registry {name} --json --emit {emit}: {error}"
+                );
+                let message = error.to_string();
+                assert!(
+                    message.contains("--json") && message.contains("--emit"),
+                    "conflict message must name both flags: {message}"
+                );
+                refused += 1;
+            }
+            assert_eq!(refused, 2, "registry {name} takes two --emit values");
+        }
+    }
+
+    #[test]
+    fn test_cli_registry_next_id_json_alias_selects_json_output() {
+        let next_id = |extra: &[&str]| {
+            let cli = Cli::try_parse_from(registry_leaf_argv(
+                &["next-id", "PPL", "--registry", "r"],
+                extra,
+            ))
+            .unwrap();
+            match registry_command(cli).map(|command| command.command) {
+                Some(RegistrySubcommand::NextId(next_id)) => Some(next_id),
+                _ => None,
+            }
+        };
+
+        // Plain stays the default; `--json` is the only way to flip it besides `--emit json`.
+        let default = next_id(&[]).unwrap();
+        assert!(matches!(default.emit, RegistryPlainJsonEmitMode::Plain));
+        assert!(!default.json);
+        let aliased = next_id(&["--json"]).unwrap();
+        assert!(matches!(aliased.emit, RegistryPlainJsonEmitMode::Json));
+        assert!(aliased.json);
+        let explicit = next_id(&["--emit", "json"]).unwrap();
+        assert!(matches!(explicit.emit, RegistryPlainJsonEmitMode::Json));
+        assert!(!explicit.json);
     }
 
     #[test]
