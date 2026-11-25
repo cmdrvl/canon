@@ -66,13 +66,7 @@ const DISTINCT_TYPES: &[&str] = &[
     "disjoint_parcels",
     "grain_mismatch",
 ];
-const ROLE_RELATIONS: &[&str] = &[
-    "sponsor_of",
-    "guarantor_of",
-    "borrower_of",
-    "servicer_of",
-    "trustee_of",
-];
+const ROLE_RELATIONS: &[&str] = &["sponsor_of", "guarantor_of", "borrower_of", "trustee_of"];
 const CROSS_ENTITY_TYPE_EVIDENCE_REASON: &str = "cross_entity_type_evidence";
 
 #[derive(Debug, Clone)]
@@ -4427,7 +4421,6 @@ fn map_role(value: Option<&Value>) -> Option<String> {
         "sponsor" => "sponsor_of",
         "guarantor" => "guarantor_of",
         "borrower" => "borrower_of",
-        "servicer" => "servicer_of",
         "trustee" => "trustee_of",
         _ => return None,
     };
