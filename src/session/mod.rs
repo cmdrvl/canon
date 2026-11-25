@@ -24,9 +24,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::{
     collections::BTreeMap,
-    fs,
-    io::{self, Read},
+    fs::{self, File},
+    io::{self, BufRead, BufReader, Read},
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 pub mod intake;
@@ -43,6 +44,7 @@ pub const SESSION_COMMIT_VERSION: &str = "canon.entity.session.commit.v1";
 pub const SESSION_COMMIT_STREAM_ID: &str = "entity-session-commit";
 const SESSION_PUBLICATION_STAGE: &str = "session";
 const SESSION_PUBLICATION_VERSION: &str = "canon.entity.session.v1";
+const SESSION_PUBLICATION_MAX_ATTEMPTS: usize = 32;
 const SESSION_EVIDENCE_EXTENSION_SCHEMA: &str = "canon.entity.session.assertion.v1";
 const EVIDENCE_VOCABULARY: &str = r#"[{"type":"same_key","kind":"pair_support","target":"pair"},{"type":"same_slot","kind":"pair_support","target":"pair"},{"type":"attribute_agreement","kind":"pair_support","target":"pair"},{"type":"name_equivalent","kind":"pair_support","target":"pair"},{"type":"asserted_alias","kind":"pair_support","target":"pair"},{"type":"distinct","kind":"anti_merge_veto","target":"pair"},{"type":"related","kind":"context_only","target":"pair"},{"type":"name_similar","kind":"pair_support","target":"pair"},{"type":"value_similar","kind":"pair_support","target":"pair"},{"type":"same_parcel_id","kind":"pair_support","target":"pair"},{"type":"same_apn","kind":"pair_support","target":"pair"},{"type":"address_canonical_match","kind":"pair_support","target":"pair"},{"type":"point_in_parcel","kind":"pair_support","target":"pair"},{"type":"footprint_overlap","kind":"pair_support","target":"pair"},{"type":"deed_chain_link","kind":"pair_support","target":"pair"},{"type":"assessor_corroboration","kind":"pair_support","target":"pair"},{"type":"conflicting_authoritative_apn","kind":"anti_merge_veto","target":"pair"},{"type":"disjoint_parcels","kind":"anti_merge_veto","target":"pair"},{"type":"grain_mismatch","kind":"anti_merge_veto","target":"pair"}]"#;
 
@@ -143,6 +145,7 @@ pub struct SessionIngestOutput {
     pub key_warnings: Vec<SessionKeyWarning>,
     pub shard: Option<String>,
     pub generation_id: Option<String>,
+    pub attempts: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -167,15 +170,17 @@ pub struct SessionAssertOutput {
     pub rejected: Vec<SessionAssertRejection>,
     pub shard: Option<String>,
     pub generation_id: Option<String>,
+    pub attempts: usize,
 }
 
 impl SessionAssertOutput {
     pub fn render_summary(&self) -> String {
         format!(
-            "accepted={} already_present={} rejected={} shard={} generation={}",
+            "accepted={} already_present={} rejected={} attempts={} shard={} generation={}",
             self.accepted,
             self.already_present,
             self.rejected.len(),
+            self.attempts,
             self.shard.as_deref().unwrap_or("<none>"),
             self.generation_id.as_deref().unwrap_or("<none>"),
         )
@@ -573,11 +578,12 @@ impl SessionCommitOutput {
 impl SessionIngestOutput {
     pub fn render_summary(&self) -> String {
         format!(
-            "accepted={} already_present={} rejected={} key_warnings={} shard={} generation={}",
+            "accepted={} already_present={} rejected={} key_warnings={} attempts={} shard={} generation={}",
             self.accepted,
             self.already_present,
             self.rejected.len(),
             self.key_warnings.len(),
+            self.attempts,
             self.shard.as_deref().unwrap_or("<none>"),
             self.generation_id.as_deref().unwrap_or("<none>"),
         )
@@ -956,6 +962,18 @@ fn initialize_mapped_registry(
 }
 
 pub fn ingest(request: SessionIngestRequest) -> Result<SessionIngestOutput, Refusal> {
+    ingest_with_retry_hook(request, SESSION_PUBLICATION_MAX_ATTEMPTS, |_, _| Ok(()))
+}
+
+fn ingest_with_retry_hook<F>(
+    request: SessionIngestRequest,
+    max_attempts: usize,
+    mut before_publish: F,
+) -> Result<SessionIngestOutput, Refusal>
+where
+    F: FnMut(usize, &Path) -> Result<(), Refusal>,
+{
+    let max_attempts = max_attempts.max(1);
     let work_dir = absolute_path(&request.session)?;
     let Some(manifest) = read_current_manifest(&work_dir)? else {
         return Err(session_not_initialized_refusal(&work_dir));
@@ -967,139 +985,181 @@ pub fn ingest(request: SessionIngestRequest) -> Result<SessionIngestOutput, Refu
             &intake::IntakeOptions::default(),
         );
     }
-
-    let current = match open_current_stream_generation(&work_dir, SESSION_OBSERVATIONS_STREAM_ID) {
-        Ok(snapshot) => Some(snapshot),
-        Err(error) if error.kind == EntityPublicationErrorKind::UncommittedGeneration => None,
-        Err(error) => return Err(observation_artifact_refusal(&error.message)),
-    };
-    let existing = match current.as_ref() {
-        Some(snapshot) => existing_observations(snapshot)?,
-        None => ExistingObservations::default(),
-    };
-    let known_rows = existing.rows;
-    let existing_shard = existing.shard;
-
     let input = read_observation_input(&request.observations)?;
-    let mut accepted_rows = BTreeMap::new();
-    let mut already_present = 0;
-    let mut rejected = Vec::new();
-    let mut key_warnings = Vec::new();
 
-    for (line_index, line) in input.lines().enumerate() {
-        let line_number = line_index + 1;
-        if line.trim().is_empty() {
-            continue;
-        }
-        let mut row = match canonicalize_observation_line(line, line_number) {
-            Ok(row) => row,
-            Err(error) => {
-                rejected.push(error.into_rejection());
-                continue;
-            }
+    for attempt in 1..=max_attempts {
+        let current =
+            match open_current_stream_generation(&work_dir, SESSION_OBSERVATIONS_STREAM_ID) {
+                Ok(snapshot) => Some(snapshot),
+                Err(error) if error.kind == EntityPublicationErrorKind::UncommittedGeneration => {
+                    None
+                }
+                Err(error) => return Err(observation_artifact_refusal(&error.message)),
+            };
+        let existing = match current.as_ref() {
+            Some(snapshot) => existing_observations(snapshot)?,
+            None => ExistingObservations::default(),
         };
+        let known_rows = existing.rows;
+        let existing_shard = existing.shard;
+        let mut accepted_rows = BTreeMap::new();
+        let mut already_present = 0;
+        let mut rejected = Vec::new();
+        let mut key_warnings = Vec::new();
 
-        key_warnings.append(&mut row.key_warnings);
+        input.for_each_line(|line_number, line| {
+            if line.trim().is_empty() {
+                return Ok(());
+            }
+            let mut row = match canonicalize_observation_line(line, line_number) {
+                Ok(row) => row,
+                Err(error) => {
+                    rejected.push(error.into_rejection());
+                    return Ok(());
+                }
+            };
 
-        let entity_type = serde_json::from_slice::<Value>(&row.bytes)
-            .ok()
-            .and_then(|value| {
-                value
-                    .get("entity_type")
-                    .and_then(Value::as_str)
-                    .map(str::to_owned)
-            });
-        if entity_type.as_deref().is_none_or(|kind| {
-            !manifest
-                .registries
-                .iter()
-                .any(|binding| binding.kind == kind)
-        }) {
-            let kind = entity_type.as_deref().unwrap_or("<missing>");
-            rejected.push(SessionIngestRejection {
-                line: line_number,
-                obs_id: Some(row.obs_id),
-                code: "unmapped_entity_kind".to_string(),
-                message: format!(
-                    "Observation entity_type '{kind}' has no session registry mapping"
-                ),
-                fix: "Add the entity_type under kinds in the registries YAML, then rerun ingest"
-                    .to_string(),
-            });
-            continue;
-        }
+            key_warnings.append(&mut row.key_warnings);
 
-        if let Some(existing) = known_rows
-            .get(&row.obs_id)
-            .or(accepted_rows.get(&row.obs_id))
-        {
-            if existing == &row.bytes {
-                already_present += 1;
-            } else {
+            let entity_type = serde_json::from_slice::<Value>(&row.bytes)
+                .ok()
+                .and_then(|value| {
+                    value
+                        .get("entity_type")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned)
+                });
+            if entity_type.as_deref().is_none_or(|kind| {
+                !manifest
+                    .registries
+                    .iter()
+                    .any(|binding| binding.kind == kind)
+            }) {
+                let kind = entity_type.as_deref().unwrap_or("<missing>");
                 rejected.push(SessionIngestRejection {
                     line: line_number,
                     obs_id: Some(row.obs_id),
-                    code: "obs_id_conflict".to_string(),
-                    message: "obs_id already exists with different observation content".to_string(),
-                    fix: "obs_id or observation fields".to_string(),
+                    code: "unmapped_entity_kind".to_string(),
+                    message: format!(
+                        "Observation entity_type '{kind}' has no session registry mapping"
+                    ),
+                    fix:
+                        "Add the entity_type under kinds in the registries YAML, then rerun ingest"
+                            .to_string(),
                 });
+                return Ok(());
             }
-            continue;
+
+            if let Some(existing) = known_rows
+                .get(&row.obs_id)
+                .or(accepted_rows.get(&row.obs_id))
+            {
+                if existing == &row.bytes {
+                    already_present += 1;
+                } else {
+                    rejected.push(SessionIngestRejection {
+                        line: line_number,
+                        obs_id: Some(row.obs_id),
+                        code: "obs_id_conflict".to_string(),
+                        message: "obs_id already exists with different observation content"
+                            .to_string(),
+                        fix: "obs_id or observation fields".to_string(),
+                    });
+                }
+                return Ok(());
+            }
+
+            accepted_rows.insert(row.obs_id, row.bytes);
+            Ok(())
+        })?;
+
+        if accepted_rows.is_empty() {
+            return Ok(SessionIngestOutput {
+                version: SESSION_INGEST_VERSION.to_string(),
+                accepted: 0,
+                already_present,
+                rejected,
+                key_warnings,
+                shard: existing_shard,
+                generation_id: current.map(|snapshot| snapshot.generation_id),
+                attempts: attempt,
+            });
         }
 
-        accepted_rows.insert(row.obs_id, row.bytes);
+        let shard_bytes = canonical_shard_bytes(&accepted_rows);
+        let digest = hash_bytes(&shard_bytes);
+        let digest_hex = digest.strip_prefix("blake3:").unwrap_or(&digest);
+        let logical_path = format!("observations/{digest_hex}.jsonl");
+        let patch = EntityPublicationRequest {
+            stream_id: SESSION_OBSERVATIONS_STREAM_ID.to_string(),
+            supersedes_generation_id: current
+                .as_ref()
+                .map(|snapshot| snapshot.generation_id.clone()),
+            request_fingerprint: hash_bytes(b"canon.entity.session.observations.v1"),
+            cache_mode: "disabled".to_string(),
+            cache_status: "cold_start".to_string(),
+            cache_receipt_hash: hash_bytes(b"canon.entity.session.observations.receipt.v1"),
+            stage_order: vec![SESSION_PUBLICATION_STAGE.to_string()],
+            upstream_artifacts: Vec::<EntityPublicationUpstreamRef>::new(),
+            files: vec![EntityPublicationFileInput::new(
+                logical_path.clone(),
+                SESSION_PUBLICATION_STAGE,
+                SESSION_PUBLICATION_VERSION,
+                shard_bytes,
+            )],
+            omit_logical_paths: Vec::new(),
+        };
+        before_publish(attempt, &work_dir)?;
+        match publish_stream_patch(&work_dir, patch) {
+            Ok(receipt) => {
+                return Ok(SessionIngestOutput {
+                    version: SESSION_INGEST_VERSION.to_string(),
+                    accepted: accepted_rows.len(),
+                    already_present,
+                    rejected,
+                    key_warnings,
+                    shard: Some(logical_path),
+                    generation_id: Some(receipt.generation_id),
+                    attempts: attempt,
+                });
+            }
+            Err(error) if error.is_stream_head_conflict() && attempt < max_attempts => {
+                sleep_before_session_retry(attempt);
+            }
+            Err(error) if error.is_stream_head_conflict() => {
+                return Err(session_retry_exhausted_refusal(
+                    error,
+                    SESSION_OBSERVATIONS_STREAM_ID,
+                    "ingest",
+                    &work_dir,
+                    &request.observations,
+                    attempt,
+                ));
+            }
+            Err(error) => {
+                return Err(observation_publication_refusal(&error.message));
+            }
+        }
     }
 
-    if accepted_rows.is_empty() {
-        return Ok(SessionIngestOutput {
-            version: SESSION_INGEST_VERSION.to_string(),
-            accepted: 0,
-            already_present,
-            rejected,
-            key_warnings,
-            shard: existing_shard,
-            generation_id: current.map(|snapshot| snapshot.generation_id),
-        });
-    }
-
-    let shard_bytes = canonical_shard_bytes(&accepted_rows);
-    let digest = hash_bytes(&shard_bytes);
-    let digest_hex = digest.strip_prefix("blake3:").unwrap_or(&digest);
-    let logical_path = format!("observations/{digest_hex}.jsonl");
-    let request = EntityPublicationRequest {
-        stream_id: SESSION_OBSERVATIONS_STREAM_ID.to_string(),
-        supersedes_generation_id: current
-            .as_ref()
-            .map(|snapshot| snapshot.generation_id.clone()),
-        request_fingerprint: hash_bytes(b"canon.entity.session.observations.v1"),
-        cache_mode: "disabled".to_string(),
-        cache_status: "cold_start".to_string(),
-        cache_receipt_hash: hash_bytes(b"canon.entity.session.observations.receipt.v1"),
-        stage_order: vec![SESSION_PUBLICATION_STAGE.to_string()],
-        upstream_artifacts: Vec::<EntityPublicationUpstreamRef>::new(),
-        files: vec![EntityPublicationFileInput::new(
-            logical_path.clone(),
-            SESSION_PUBLICATION_STAGE,
-            SESSION_PUBLICATION_VERSION,
-            shard_bytes,
-        )],
-        omit_logical_paths: Vec::new(),
-    };
-    let receipt = publish_stream_patch(&work_dir, request)
-        .map_err(|error| observation_publication_refusal(&error.message))?;
-
-    Ok(SessionIngestOutput {
-        version: SESSION_INGEST_VERSION.to_string(),
-        accepted: accepted_rows.len(),
-        already_present,
-        rejected,
-        key_warnings,
-        shard: Some(logical_path),
-        generation_id: Some(receipt.generation_id),
-    })
+    Err(observation_publication_refusal(
+        "Session ingest retry loop ended without a publication result",
+    ))
 }
 
 pub fn assert_evidence(request: SessionAssertRequest) -> Result<SessionAssertOutput, Refusal> {
+    assert_evidence_with_retry_hook(request, SESSION_PUBLICATION_MAX_ATTEMPTS, |_, _| Ok(()))
+}
+
+fn assert_evidence_with_retry_hook<F>(
+    request: SessionAssertRequest,
+    max_attempts: usize,
+    mut before_publish: F,
+) -> Result<SessionAssertOutput, Refusal>
+where
+    F: FnMut(usize, &Path) -> Result<(), Refusal>,
+{
+    let max_attempts = max_attempts.max(1);
     let work_dir = absolute_path(&request.session)?;
     let Some(manifest) = read_current_manifest(&work_dir)? else {
         return Err(session_not_initialized_refusal(&work_dir));
@@ -1111,105 +1171,132 @@ pub fn assert_evidence(request: SessionAssertRequest) -> Result<SessionAssertOut
             &intake::IntakeOptions::default(),
         );
     }
-
-    let current = match open_current_stream_generation(&work_dir, SESSION_EVIDENCE_STREAM_ID) {
-        Ok(snapshot) => Some(snapshot),
-        Err(error) if error.kind == EntityPublicationErrorKind::UncommittedGeneration => None,
-        Err(error) => return Err(evidence_artifact_refusal(&error.message)),
-    };
-    let existing = match current.as_ref() {
-        Some(snapshot) => existing_evidence(snapshot)?,
-        None => ExistingEvidence::default(),
-    };
-    let known_records = existing.records;
-    let existing_shard = existing.shard;
     let input = read_evidence_input(&request.evidence)?;
-    let mut accepted_records = BTreeMap::new();
-    let mut already_present = 0;
-    let mut rejected = Vec::new();
 
-    for (line_index, line) in input.lines().enumerate() {
-        let line_number = line_index + 1;
-        if line.trim().is_empty() {
-            continue;
-        }
-        let record = match canonicalize_assertion_line(
-            line,
-            line_number,
-            &manifest.evidence_vocabulary_hash,
-        ) {
-            Ok(record) => record,
-            Err(error) => {
-                rejected.push(error.into_rejection());
-                continue;
-            }
+    for attempt in 1..=max_attempts {
+        let current = match open_current_stream_generation(&work_dir, SESSION_EVIDENCE_STREAM_ID) {
+            Ok(snapshot) => Some(snapshot),
+            Err(error) if error.kind == EntityPublicationErrorKind::UncommittedGeneration => None,
+            Err(error) => return Err(evidence_artifact_refusal(&error.message)),
         };
+        let existing = match current.as_ref() {
+            Some(snapshot) => existing_evidence(snapshot)?,
+            None => ExistingEvidence::default(),
+        };
+        let known_records = existing.records;
+        let existing_shard = existing.shard;
+        let mut accepted_records = BTreeMap::new();
+        let mut already_present = 0;
+        let mut rejected = Vec::new();
 
-        if let Some(existing) = known_records
-            .get(&record.evidence_id)
-            .or(accepted_records.get(&record.evidence_id))
-        {
-            if existing == &record.bytes {
-                already_present += 1;
-            } else {
-                rejected.push(SessionAssertRejection {
-                    line: line_number,
-                    code: "evidence_id_conflict".to_string(),
-                    message: "evidence_id already exists with different record content".to_string(),
-                    fix: "evidence fields or a new assertion".to_string(),
+        input.for_each_line(|line_number, line| {
+            if line.trim().is_empty() {
+                return Ok(());
+            }
+            let record = match canonicalize_assertion_line(
+                line,
+                line_number,
+                &manifest.evidence_vocabulary_hash,
+            ) {
+                Ok(record) => record,
+                Err(error) => {
+                    rejected.push(error.into_rejection());
+                    return Ok(());
+                }
+            };
+
+            if let Some(existing) = known_records
+                .get(&record.evidence_id)
+                .or(accepted_records.get(&record.evidence_id))
+            {
+                if existing == &record.bytes {
+                    already_present += 1;
+                } else {
+                    rejected.push(SessionAssertRejection {
+                        line: line_number,
+                        code: "evidence_id_conflict".to_string(),
+                        message: "evidence_id already exists with different record content"
+                            .to_string(),
+                        fix: "evidence fields or a new assertion".to_string(),
+                    });
+                }
+                return Ok(());
+            }
+
+            accepted_records.insert(record.evidence_id, record.bytes);
+            Ok(())
+        })?;
+
+        if accepted_records.is_empty() {
+            return Ok(SessionAssertOutput {
+                version: SESSION_ASSERT_VERSION.to_string(),
+                accepted: 0,
+                already_present,
+                rejected,
+                shard: existing_shard,
+                generation_id: current.map(|snapshot| snapshot.generation_id),
+                attempts: attempt,
+            });
+        }
+
+        let shard_bytes = canonical_shard_bytes(&accepted_records);
+        let digest = hash_bytes(&shard_bytes);
+        let digest_hex = digest.strip_prefix("blake3:").unwrap_or(&digest);
+        let logical_path = format!("evidence/{digest_hex}.jsonl");
+        let patch = EntityPublicationRequest {
+            stream_id: SESSION_EVIDENCE_STREAM_ID.to_string(),
+            supersedes_generation_id: current
+                .as_ref()
+                .map(|snapshot| snapshot.generation_id.clone()),
+            request_fingerprint: hash_bytes(b"canon.entity.session.evidence.v1"),
+            cache_mode: "disabled".to_string(),
+            cache_status: "cold_start".to_string(),
+            cache_receipt_hash: hash_bytes(b"canon.entity.session.evidence.receipt.v1"),
+            stage_order: vec![SESSION_PUBLICATION_STAGE.to_string()],
+            upstream_artifacts: Vec::<EntityPublicationUpstreamRef>::new(),
+            files: vec![EntityPublicationFileInput::new(
+                logical_path.clone(),
+                SESSION_PUBLICATION_STAGE,
+                SESSION_PUBLICATION_VERSION,
+                shard_bytes,
+            )],
+            omit_logical_paths: Vec::new(),
+        };
+        before_publish(attempt, &work_dir)?;
+        match publish_stream_patch(&work_dir, patch) {
+            Ok(receipt) => {
+                return Ok(SessionAssertOutput {
+                    version: SESSION_ASSERT_VERSION.to_string(),
+                    accepted: accepted_records.len(),
+                    already_present,
+                    rejected,
+                    shard: Some(logical_path),
+                    generation_id: Some(receipt.generation_id),
+                    attempts: attempt,
                 });
             }
-            continue;
+            Err(error) if error.is_stream_head_conflict() && attempt < max_attempts => {
+                sleep_before_session_retry(attempt);
+            }
+            Err(error) if error.is_stream_head_conflict() => {
+                return Err(session_retry_exhausted_refusal(
+                    error,
+                    SESSION_EVIDENCE_STREAM_ID,
+                    "assert",
+                    &work_dir,
+                    &request.evidence,
+                    attempt,
+                ));
+            }
+            Err(error) => {
+                return Err(evidence_publication_refusal(&error.message));
+            }
         }
-
-        accepted_records.insert(record.evidence_id, record.bytes);
     }
 
-    if accepted_records.is_empty() {
-        return Ok(SessionAssertOutput {
-            version: SESSION_ASSERT_VERSION.to_string(),
-            accepted: 0,
-            already_present,
-            rejected,
-            shard: existing_shard,
-            generation_id: current.map(|snapshot| snapshot.generation_id),
-        });
-    }
-
-    let shard_bytes = canonical_shard_bytes(&accepted_records);
-    let digest = hash_bytes(&shard_bytes);
-    let digest_hex = digest.strip_prefix("blake3:").unwrap_or(&digest);
-    let logical_path = format!("evidence/{digest_hex}.jsonl");
-    let request = EntityPublicationRequest {
-        stream_id: SESSION_EVIDENCE_STREAM_ID.to_string(),
-        supersedes_generation_id: current
-            .as_ref()
-            .map(|snapshot| snapshot.generation_id.clone()),
-        request_fingerprint: hash_bytes(b"canon.entity.session.evidence.v1"),
-        cache_mode: "disabled".to_string(),
-        cache_status: "cold_start".to_string(),
-        cache_receipt_hash: hash_bytes(b"canon.entity.session.evidence.receipt.v1"),
-        stage_order: vec![SESSION_PUBLICATION_STAGE.to_string()],
-        upstream_artifacts: Vec::<EntityPublicationUpstreamRef>::new(),
-        files: vec![EntityPublicationFileInput::new(
-            logical_path.clone(),
-            SESSION_PUBLICATION_STAGE,
-            SESSION_PUBLICATION_VERSION,
-            shard_bytes,
-        )],
-        omit_logical_paths: Vec::new(),
-    };
-    let receipt = publish_stream_patch(&work_dir, request)
-        .map_err(|error| evidence_publication_refusal(&error.message))?;
-
-    Ok(SessionAssertOutput {
-        version: SESSION_ASSERT_VERSION.to_string(),
-        accepted: accepted_records.len(),
-        already_present,
-        rejected,
-        shard: Some(logical_path),
-        generation_id: Some(receipt.generation_id),
-    })
+    Err(evidence_publication_refusal(
+        "Session assert retry loop ended without a publication result",
+    ))
 }
 
 pub fn commit(request: SessionCommitRequest) -> Result<SessionCommitOutput, Refusal> {
@@ -3845,26 +3932,104 @@ fn canonical_shard_bytes(rows: &BTreeMap<String, Vec<u8>>) -> Vec<u8> {
     bytes
 }
 
-fn read_observation_input(path: &Path) -> Result<String, Refusal> {
-    read_session_jsonl_input(path, "Observation")
+struct SessionJsonlInput {
+    path: PathBuf,
+    label: &'static str,
+    source: SessionJsonlSource,
 }
 
-fn read_evidence_input(path: &Path) -> Result<String, Refusal> {
-    read_session_jsonl_input(path, "Evidence")
+enum SessionJsonlSource {
+    File { digest: String },
+    InMemory(String),
 }
 
-fn read_session_jsonl_input(path: &Path, label: &str) -> Result<String, Refusal> {
-    let mut bytes = Vec::new();
-    if path == Path::new("-") {
-        let stdin = io::stdin();
-        let mut locked = stdin.lock();
-        locked
-            .read_to_end(&mut bytes)
-            .map_err(|error| io_refusal(path, error))?;
-    } else {
-        bytes = fs::read(path).map_err(|error| io_refusal(path, error))?;
+impl SessionJsonlInput {
+    fn open(path: &Path, label: &'static str) -> Result<Self, Refusal> {
+        let source = if path == Path::new("-") {
+            SessionJsonlSource::InMemory(read_stdin_jsonl_input(path, label)?)
+        } else {
+            SessionJsonlSource::File {
+                digest: hash_file(path)?,
+            }
+        };
+        Ok(Self {
+            path: path.to_path_buf(),
+            label,
+            source,
+        })
     }
-    String::from_utf8(bytes).map_err(|error| Refusal {
+
+    fn for_each_line(
+        &self,
+        mut visit: impl FnMut(usize, &str) -> Result<(), Refusal>,
+    ) -> Result<(), Refusal> {
+        match &self.source {
+            SessionJsonlSource::InMemory(contents) => {
+                for (line_index, line) in contents.lines().enumerate() {
+                    visit(line_index + 1, line)?;
+                }
+            }
+            SessionJsonlSource::File { digest } => {
+                let file = File::open(&self.path).map_err(|error| io_refusal(&self.path, error))?;
+                let mut reader = BufReader::new(file);
+                let mut line = String::new();
+                let mut hasher = blake3::Hasher::new();
+                let mut line_number = 0;
+                loop {
+                    line.clear();
+                    let bytes_read = reader.read_line(&mut line).map_err(|error| {
+                        if error.kind() == io::ErrorKind::InvalidData {
+                            session_input_encoding_refusal(&self.path, self.label, &error)
+                        } else {
+                            io_refusal(&self.path, error)
+                        }
+                    })?;
+                    if bytes_read == 0 {
+                        break;
+                    }
+                    hasher.update(line.as_bytes());
+                    line_number += 1;
+                    visit(line_number, strip_jsonl_line_ending(&line))?;
+                }
+                let actual_digest = format!("blake3:{}", hasher.finalize().to_hex());
+                if actual_digest != *digest {
+                    return Err(session_input_changed_refusal(
+                        &self.path,
+                        self.label,
+                        digest,
+                        &actual_digest,
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+fn read_observation_input(path: &Path) -> Result<SessionJsonlInput, Refusal> {
+    SessionJsonlInput::open(path, "Observation")
+}
+
+fn read_evidence_input(path: &Path) -> Result<SessionJsonlInput, Refusal> {
+    SessionJsonlInput::open(path, "Evidence")
+}
+
+fn read_stdin_jsonl_input(path: &Path, label: &str) -> Result<String, Refusal> {
+    let mut bytes = Vec::new();
+    let stdin = io::stdin();
+    let mut locked = stdin.lock();
+    locked
+        .read_to_end(&mut bytes)
+        .map_err(|error| io_refusal(path, error))?;
+    String::from_utf8(bytes).map_err(|error| session_input_encoding_refusal(path, label, &error))
+}
+
+fn session_input_encoding_refusal(
+    path: &Path,
+    label: &str,
+    error: &impl std::fmt::Display,
+) -> Refusal {
+    Refusal {
         code: RefusalCode::EEncoding,
         message: format!("{label} JSONL '{}' is not valid UTF-8", path.display()),
         detail: json!({
@@ -3875,7 +4040,53 @@ fn read_session_jsonl_input(path: &Path, label: &str) -> Result<String, Refusal>
         next_command: Some(format!(
             "Convert the {label} JSONL to UTF-8, then rerun the same command"
         )),
-    })
+    }
+}
+
+fn session_input_changed_refusal(
+    path: &Path,
+    label: &str,
+    expected: &str,
+    actual: &str,
+) -> Refusal {
+    Refusal {
+        code: RefusalCode::EIo,
+        message: format!(
+            "{label} JSONL '{}' changed while it was being read",
+            path.display()
+        ),
+        detail: json!({
+            "path": path.display().to_string(),
+            "expected_digest": expected,
+            "actual_digest": actual,
+            "writes_performed": false,
+        }),
+        next_command: Some(
+            "Stop modifying the input file and rerun the same session command".to_string(),
+        ),
+    }
+}
+
+fn strip_jsonl_line_ending(line: &str) -> &str {
+    line.strip_suffix('\n')
+        .map(|line| line.strip_suffix('\r').unwrap_or(line))
+        .unwrap_or(line)
+}
+
+fn hash_file(path: &Path) -> Result<String, Refusal> {
+    let mut file = File::open(path).map_err(|error| io_refusal(path, error))?;
+    let mut buffer = [0_u8; 64 * 1024];
+    let mut hasher = blake3::Hasher::new();
+    loop {
+        let bytes_read = file
+            .read(&mut buffer)
+            .map_err(|error| io_refusal(path, error))?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
+    }
+    Ok(format!("blake3:{}", hasher.finalize().to_hex()))
 }
 
 fn ascii_trim(value: &str) -> &str {
@@ -3938,6 +4149,69 @@ fn evidence_publication_refusal(message: &str) -> Refusal {
         detail: json!({"stream": SESSION_EVIDENCE_STREAM_ID, "writes_performed": false}),
         next_command: Some("Rerun the same canon entity session assert command".to_string()),
     }
+}
+
+fn sleep_before_session_retry(failed_attempt: usize) {
+    let exponent = failed_attempt.saturating_sub(1).min(2) as u32;
+    let delay_ms = 50_u64 << exponent;
+    std::thread::sleep(Duration::from_millis(delay_ms));
+}
+
+fn session_retry_exhausted_refusal(
+    error: EntityPublicationError,
+    stream_id: &str,
+    action: &str,
+    work_dir: &Path,
+    input: &Path,
+    attempts: usize,
+) -> Refusal {
+    let (expected_generation_id, observed_generation_id) = publication_conflict_generations(&error);
+    Refusal {
+        code: RefusalCode::EEntityArtifactContract,
+        message: format!(
+            "Unable to publish session {action} after {attempts} attempts: {}",
+            error.message
+        ),
+        detail: json!({
+            "stream": stream_id,
+            "attempts": attempts,
+            "kind": format!("{:?}", error.kind),
+            "expected_generation_id": expected_generation_id,
+            "observed_generation_id": observed_generation_id,
+            "generation_id": error.generation_id.clone(),
+            "last_error": error.message.clone(),
+            "writes_performed": error.writes_performed,
+            "committed": error.committed,
+        }),
+        next_command: Some(format!(
+            "canon entity session {action} {} {} --emit json",
+            shell_quote(&work_dir.display().to_string()),
+            shell_quote(&input.display().to_string()),
+        )),
+    }
+}
+
+fn publication_conflict_generations(
+    error: &EntityPublicationError,
+) -> (Option<String>, Option<String>) {
+    if let Some(generations) = error
+        .message
+        .strip_prefix("publication stream patch expected current head ")
+        && let Some((expected, observed)) = generations.split_once(" but found ")
+    {
+        return (Some(expected.to_string()), Some(observed.to_string()));
+    }
+    if let Some(observed) = error
+        .message
+        .strip_prefix("publication stream lineage is already claimed by generation ")
+    {
+        return (error.generation_id.clone(), Some(observed.to_string()));
+    }
+    (error.generation_id.clone(), None)
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 fn output(
@@ -4547,5 +4821,314 @@ mod commit_effect_tests {
         assert!(!memory_is_substantive(
             &SessionRegistryMemoryWrite::default()
         ));
+    }
+}
+
+#[cfg(test)]
+mod session_publication_retry_tests {
+    use super::*;
+    use serde_json::json;
+    use tempfile::TempDir;
+
+    fn init_session(root: &Path, name: &str) -> PathBuf {
+        let work_dir = root.join(name);
+        init(SessionInitRequest {
+            goal: "exercise concurrent session writes".to_string(),
+            registry: root.join(format!("{name}-registry")),
+            work_dir: work_dir.clone(),
+            entity_kind: "organisation".to_string(),
+            registry_id: Some("organisations".to_string()),
+            prefix: Some("ORG".to_string()),
+            zero_pad: Some(4),
+        })
+        .expect("initialize test session");
+        work_dir
+    }
+
+    fn write_jsonl(root: &Path, name: &str, value: serde_json::Value) -> PathBuf {
+        let path = root.join(name);
+        fs::write(
+            &path,
+            format!("{}\n", serde_json::to_string(&value).expect("row JSON")),
+        )
+        .expect("write test JSONL");
+        path
+    }
+
+    fn observation(obs_id: &str, surface: &str, file: &str) -> serde_json::Value {
+        json!({
+            "obs_id": obs_id,
+            "entity_type": "organisation",
+            "surface": surface,
+            "keys": {"cik": null},
+            "attrs": {"role": "borrower"},
+            "context": {"as_of_date": "2025-06-30"},
+            "source": {"channel": "file", "file": file}
+        })
+    }
+
+    fn assertion(left: &str, right: &str, source_id: &str) -> serde_json::Value {
+        json!({
+            "type": "same_slot",
+            "left": left,
+            "right": right,
+            "basis": {
+                "rule": "same loan and role",
+                "left_value": format!("{left}:sponsor"),
+                "right_value": format!("{right}:sponsor"),
+                "steps": ["join:loan_id", "join:role"]
+            },
+            "source": {"channel": "agent", "id": source_id},
+            "asserted_by": format!("agent:{source_id}")
+        })
+    }
+
+    #[test]
+    fn ingest_and_assert_rebuild_after_a_competing_writer_and_bounded_retry_refuses() {
+        let temp = TempDir::new().expect("temp root");
+
+        let retry_disabled_session = init_session(temp.path(), "retry-disabled");
+        let seed_path = write_jsonl(
+            temp.path(),
+            "retry-disabled-seed.jsonl",
+            observation("seed", "Seed organisation", "seed.jsonl"),
+        );
+        let seed = ingest(SessionIngestRequest {
+            session: retry_disabled_session.clone(),
+            observations: seed_path,
+        })
+        .expect("seed observation");
+        assert_eq!(seed.accepted, 1);
+
+        let target_path = write_jsonl(
+            temp.path(),
+            "retry-disabled-target.jsonl",
+            observation("target", "Target organisation", "target.jsonl"),
+        );
+        let competing_path = write_jsonl(
+            temp.path(),
+            "retry-disabled-competing.jsonl",
+            observation("competing", "Competing organisation", "competing.jsonl"),
+        );
+        let mut competitor_published = false;
+        let refusal = ingest_with_retry_hook(
+            SessionIngestRequest {
+                session: retry_disabled_session.clone(),
+                observations: target_path,
+            },
+            1,
+            |attempt, work_dir| {
+                if attempt == 1 && !competitor_published {
+                    competitor_published = true;
+                    let output = ingest(SessionIngestRequest {
+                        session: work_dir.to_path_buf(),
+                        observations: competing_path.clone(),
+                    })?;
+                    assert_eq!(output.accepted, 1);
+                }
+                Ok(())
+            },
+        )
+        .expect_err("one attempt cannot publish against the moved head");
+        assert_eq!(refusal.detail["attempts"], 1);
+        assert_eq!(
+            refusal.detail["expected_generation_id"].as_str(),
+            seed.generation_id.as_deref()
+        );
+        assert!(refusal.detail["observed_generation_id"].is_string());
+        assert!(
+            refusal
+                .next_command
+                .as_deref()
+                .unwrap()
+                .contains("session ingest")
+        );
+        let retry_disabled_snapshot =
+            open_current_stream_generation(&retry_disabled_session, SESSION_OBSERVATIONS_STREAM_ID)
+                .expect("competing observation committed");
+        assert_eq!(
+            existing_observations(&retry_disabled_snapshot)
+                .unwrap()
+                .rows
+                .len(),
+            2
+        );
+
+        let retry_disabled_assert_session = init_session(temp.path(), "retry-disabled-assert");
+        let assert_seed_path = write_jsonl(
+            temp.path(),
+            "retry-disabled-assert-seed.jsonl",
+            assertion("seed-left", "seed-right", "seed-assertion"),
+        );
+        let assert_seed = assert_evidence(SessionAssertRequest {
+            session: retry_disabled_assert_session.clone(),
+            evidence: assert_seed_path,
+        })
+        .expect("seed retry-disabled evidence stream");
+        let assert_target_path = write_jsonl(
+            temp.path(),
+            "retry-disabled-assert-target.jsonl",
+            assertion("target-left", "target-right", "target-assertion"),
+        );
+        let assert_competing_path = write_jsonl(
+            temp.path(),
+            "retry-disabled-assert-competing.jsonl",
+            assertion("competing-left", "competing-right", "competing-assertion"),
+        );
+        let mut assert_competitor_published = false;
+        let assert_refusal = assert_evidence_with_retry_hook(
+            SessionAssertRequest {
+                session: retry_disabled_assert_session.clone(),
+                evidence: assert_target_path,
+            },
+            1,
+            |attempt, work_dir| {
+                if attempt == 1 && !assert_competitor_published {
+                    assert_competitor_published = true;
+                    let output = assert_evidence(SessionAssertRequest {
+                        session: work_dir.to_path_buf(),
+                        evidence: assert_competing_path.clone(),
+                    })?;
+                    assert_eq!(output.accepted, 1);
+                }
+                Ok(())
+            },
+        )
+        .expect_err("one attempt cannot publish against the moved evidence head");
+        assert_eq!(assert_refusal.detail["attempts"], 1);
+        assert_eq!(
+            assert_refusal.detail["expected_generation_id"].as_str(),
+            assert_seed.generation_id.as_deref()
+        );
+        assert!(assert_refusal.detail["observed_generation_id"].is_string());
+        assert!(
+            assert_refusal
+                .next_command
+                .as_deref()
+                .unwrap()
+                .contains("session assert")
+        );
+        let retry_disabled_assert_snapshot = open_current_stream_generation(
+            &retry_disabled_assert_session,
+            SESSION_EVIDENCE_STREAM_ID,
+        )
+        .expect("competing assertion committed");
+        assert_eq!(
+            existing_evidence(&retry_disabled_assert_snapshot)
+                .unwrap()
+                .records
+                .len(),
+            2
+        );
+
+        let ingest_session = init_session(temp.path(), "ingest-retry");
+        let ingest_seed = write_jsonl(
+            temp.path(),
+            "ingest-retry-seed.jsonl",
+            observation("ingest-seed", "Seed organisation", "ingest-seed.jsonl"),
+        );
+        ingest(SessionIngestRequest {
+            session: ingest_session.clone(),
+            observations: ingest_seed,
+        })
+        .expect("seed retry observation stream");
+        let ingest_target = write_jsonl(
+            temp.path(),
+            "ingest-retry-target.jsonl",
+            observation(
+                "ingest-target",
+                "Target organisation",
+                "ingest-target.jsonl",
+            ),
+        );
+        let ingest_competing = write_jsonl(
+            temp.path(),
+            "ingest-retry-competing.jsonl",
+            observation(
+                "ingest-competing",
+                "Competing organisation",
+                "ingest-competing.jsonl",
+            ),
+        );
+        let mut ingest_competitor_published = false;
+        let ingest_output = ingest_with_retry_hook(
+            SessionIngestRequest {
+                session: ingest_session.clone(),
+                observations: ingest_target,
+            },
+            SESSION_PUBLICATION_MAX_ATTEMPTS,
+            |attempt, work_dir| {
+                if attempt == 1 && !ingest_competitor_published {
+                    ingest_competitor_published = true;
+                    let output = ingest(SessionIngestRequest {
+                        session: work_dir.to_path_buf(),
+                        observations: ingest_competing.clone(),
+                    })?;
+                    assert_eq!(output.accepted, 1);
+                }
+                Ok(())
+            },
+        )
+        .expect("ingest rebuilds against the latest head");
+        assert_eq!(ingest_output.accepted, 1);
+        assert_eq!(ingest_output.attempts, 2);
+        let ingest_snapshot =
+            open_current_stream_generation(&ingest_session, SESSION_OBSERVATIONS_STREAM_ID)
+                .expect("retried observation stream");
+        assert_eq!(
+            existing_observations(&ingest_snapshot).unwrap().rows.len(),
+            3
+        );
+
+        let assert_session = init_session(temp.path(), "assert-retry");
+        let assert_seed = write_jsonl(
+            temp.path(),
+            "assert-retry-seed.jsonl",
+            assertion("seed-left", "seed-right", "seed-assertion"),
+        );
+        assert_evidence(SessionAssertRequest {
+            session: assert_session.clone(),
+            evidence: assert_seed,
+        })
+        .expect("seed retry evidence stream");
+        let assert_target = write_jsonl(
+            temp.path(),
+            "assert-retry-target.jsonl",
+            assertion("target-left", "target-right", "target-assertion"),
+        );
+        let assert_competing = write_jsonl(
+            temp.path(),
+            "assert-retry-competing.jsonl",
+            assertion("competing-left", "competing-right", "competing-assertion"),
+        );
+        let mut assert_competitor_published = false;
+        let assert_output = assert_evidence_with_retry_hook(
+            SessionAssertRequest {
+                session: assert_session.clone(),
+                evidence: assert_target,
+            },
+            SESSION_PUBLICATION_MAX_ATTEMPTS,
+            |attempt, work_dir| {
+                if attempt == 1 && !assert_competitor_published {
+                    assert_competitor_published = true;
+                    let output = assert_evidence(SessionAssertRequest {
+                        session: work_dir.to_path_buf(),
+                        evidence: assert_competing.clone(),
+                    })?;
+                    assert_eq!(output.accepted, 1);
+                }
+                Ok(())
+            },
+        )
+        .expect("assert rebuilds against the latest head");
+        assert_eq!(assert_output.accepted, 1);
+        assert_eq!(assert_output.attempts, 2);
+        let assert_snapshot =
+            open_current_stream_generation(&assert_session, SESSION_EVIDENCE_STREAM_ID)
+                .expect("retried evidence stream");
+        assert_eq!(
+            existing_evidence(&assert_snapshot).unwrap().records.len(),
+            3
+        );
     }
 }
