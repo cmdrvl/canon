@@ -57,9 +57,9 @@
       "next_command_key": "none",
       "telemetry_link_keys": ["diagnostics", "postings"],
       "counts": {
-        "ngram_count": 110,
+        "ngram_count": 107,
         "surface_count": 14,
-        "token_count": 62
+        "token_count": 61
       }
     },
     {

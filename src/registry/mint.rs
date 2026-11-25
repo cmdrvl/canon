@@ -876,11 +876,18 @@ pub(crate) fn commit_typed_entries(
                 "Use a canonical_id already present in the registry, then rerun",
             ));
         }
-        add_entry::validate_default_id_scheme(
-            &request.registry,
-            &canonical_id,
-            registry_json.default_id_scheme.as_ref(),
-        )?;
+        // An ID allocated above already follows the effective numbered scheme,
+        // which is the registry default unless `--prefix` overrides it. Only
+        // IDs the caller (or an agent-id mint) supplied are checked against
+        // the registry's default scheme, as `registry mint` does.
+        let allocated_from_scheme = first.canonical_id.is_none() && !agent_canonical;
+        if !allocated_from_scheme {
+            add_entry::validate_default_id_scheme(
+                &request.registry,
+                &canonical_id,
+                registry_json.default_id_scheme.as_ref(),
+            )?;
+        }
         let canonical_type = add_entry::resolve_canonical_type(
             &request.registry,
             &canonical_id,

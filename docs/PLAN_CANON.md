@@ -406,7 +406,7 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - writes `registry.json.scope_policy.optional_dimensions` (supported: `role`) as a new registry version; no mapping entry changes
 - `role` is a core scope dimension (`--scope role=R`); a role is scope context for exact lookup, never an identity or a registry
 - for a listed dimension a bare lookup resolves only unscoped entries and a scoped lookup returns the entry scoped exactly so, else the unscoped entry; other dimensions and registries without the policy keep `E_SCOPE_REQUIRED` and exact scope matching
-- `registry lint` reports `scope_collision` when one input maps to two ids under the same scope
+- `registry lint` reports `scope_collision` when one input maps to two ids under the same scope; unscoped duplicates across mapping files keep file-precedence resolution and the `shadowed_input` warning
 - rules `standalone.split_shared_names: true`: one spelling under different authoritative single-valued keys is one node per key; solve reports `shared_names`, commit writes the spelling as an alias of none of them and lists each with its keys and ids; off by default, `key_conflict` unchanged
 - lookups against a registry with the policy report `matched_scope` (`role=R` or `unscoped`) on each mapping
 - session commit writes a role-scoped alias (`asserted_alias` with `basis.scope {role}` and `basis.subject`) as an entry scoped `role=R` on the unit's id and refuses with `scope_policy_missing` for a registry without the policy; solve reports `units` and `scoped_aliases`

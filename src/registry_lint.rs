@@ -995,15 +995,20 @@ fn mapping_record_from_raw(
     })
 }
 
-/// Two entries with the same input and the same scope must name the same id.
+/// Two scoped entries with the same input and the same scope must name the
+/// same id. Unscoped entries are not checked here: the same input in several
+/// mapping files is resolved by file precedence and already reported as a
+/// `shadowed_input` warning.
 fn check_scope_collisions(context: &mut LintContext, records: &[MappingRecord]) {
     let mut first_by_key = BTreeMap::<(String, String), &MappingRecord>::new();
     for record in records {
-        let scope_key = record
+        let Some(scope_key) = record
             .scope
             .as_ref()
             .and_then(|scope| serde_json::to_string(scope).ok())
-            .unwrap_or_default();
+        else {
+            continue;
+        };
         match first_by_key.get(&(record.input.clone(), scope_key.clone())) {
             Some(first) if first.canonical_id != record.canonical_id => {
                 context.finding(
