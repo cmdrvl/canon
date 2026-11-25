@@ -225,6 +225,22 @@ fn legal_suffix_protected_forms() {
     );
 }
 
+#[test]
+fn tenant_label_keeps_name_bearing_company_before_an_explicit_legal_form() {
+    let stacked = analyze_legal_suffixes(
+        "Hudson's Bay Company ULC",
+        LegalSuffixProfile::CmbsTenantLabel,
+    );
+
+    assert_eq!(stacked.basename, "hudson s bay company");
+    assert_eq!(stacked.stripped_terms, ["ulc"]);
+
+    let standalone =
+        analyze_legal_suffixes("Hudson's Bay Company", LegalSuffixProfile::CmbsTenantLabel);
+    assert_eq!(standalone.basename, "hudson s bay");
+    assert_eq!(standalone.stripped_terms, ["co"]);
+}
+
 fn jsonl_cases(input: &str) -> impl Iterator<Item = Value> + '_ {
     input
         .lines()

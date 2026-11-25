@@ -585,6 +585,14 @@ pub fn analyze_legal_suffixes(input: &str, profile: LegalSuffixProfile) -> Legal
     record_protected_terms(profile, &tokens, &mut preserved_terms, &mut reasons);
 
     while let Some(entry) = longest_suffix_entry(&tokens) {
+        // A full "Company" token can be part of the name before a more
+        // specific legal form (for example, "Acme Company ULC"). Keep that
+        // name-bearing token when repeated stripping has already removed the
+        // explicit trailing form.
+        if !stripped_terms.is_empty() && entry.term == "Company" {
+            break;
+        }
+
         if should_preserve(entry, profile) {
             push_reason(&mut reasons, LEGAL_SUFFIX_PRESERVED_PROFILE, entry, profile);
             if !preserved_terms
