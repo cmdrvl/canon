@@ -2401,6 +2401,8 @@ fn build_relation_fact(
         "affiliate_of",
         "co_borrower_of",
         "trust_of",
+        "located_on",
+        "contains_unit",
     ]
     .contains(&relation.relation.as_str())
     {
@@ -2489,8 +2491,6 @@ fn relation_closure(
     let Some(object_id) = relation_endpoint_id(&relation.object, minted_by_cluster) else {
         return Ok(None);
     };
-        "located_on",
-        "contains_unit",
     let start = relation.valid_time.start_at.clone().unwrap_or_default();
     let subject = format!("{subject_id}|{}|{object_id}|{start}", relation.relation);
     let closure = crate::entity::session_provenance::build_outcome_closure(
@@ -2564,7 +2564,9 @@ fn relation_package_digest() -> Result<String, Refusal> {
         ("affiliate_of", "association"),
         ("borrower_of", "role"),
         ("co_borrower_of", "association"),
+        ("contains_unit", "hierarchy"),
         ("guarantor_of", "role"),
+        ("located_on", "hierarchy"),
         ("managed_by", "hierarchy"),
         ("owned_by", "hierarchy"),
         ("parent_of", "hierarchy"),
@@ -2646,9 +2648,7 @@ pub(crate) fn already_committed(
             .map(at_rest)
             .collect::<Vec<_>>()
     };
-        ("contains_unit", "hierarchy"),
     let generation_id = current_generation_id_for_stream(work_dir, SESSION_COMMIT_STREAM_ID)?;
-        ("located_on", "hierarchy"),
     Ok(Some(SessionCommitOutput {
         shared_names: Vec::new(),
         version: SESSION_COMMIT_VERSION.to_string(),
@@ -2855,6 +2855,20 @@ fn compile_short_assertion(
         ));
     }
 
+    // A parcel identifier is authoritative like a cited alias: a non-human
+    // asserter names the record that carries it.
+    if place::requires_citation(&assertion_type)
+        && !asserted_by.starts_with("human:")
+        && !(locator_supplied && content_hash_supplied)
+    {
+        return Err(AssertionRowError::new(
+            line_number,
+            "place_identifier_citation",
+            format!("{assertion_type} requires locator and content_hash for a non-human asserter"),
+            "source.locator and source.content_hash, or asserted_by human:<id>",
+        ));
+    }
+
     if assertion_type == "asserted_alias"
         && let Some(scope) = basis.get("scope")
     {
@@ -2906,6 +2920,43 @@ fn compile_short_assertion(
             None,
             None,
         ),
+        // Place support: same-grain pair evidence. The rule table, not this
+        // type, decides which tier it counts toward.
+        kind if place::is_place_support_type(kind) => {
+            place::validate_basis(kind, basis).map_err(|error| {
+                AssertionRowError::new(
+                    line_number,
+                    "invalid_basis",
+                    error.message,
+                    format!("basis.{}", error.field),
+                )
+            })?;
+            (
+                EvidenceKind::PairSupport,
+                assertion_type.clone(),
+                None,
+                None,
+            )
+        }
+        // Place vetoes are hard cannot-links; the basis proves the claim
+        // (two different identifiers, a distance beyond the declared
+        // threshold, two different grains).
+        kind if place::is_place_veto_type(kind) => {
+            place::validate_basis(kind, basis).map_err(|error| {
+                AssertionRowError::new(
+                    line_number,
+                    "invalid_basis",
+                    error.message,
+                    format!("basis.{}", error.field),
+                )
+            })?;
+            (
+                EvidenceKind::AntiMergeVeto,
+                assertion_type.clone(),
+                Some(EvidenceAuthorityBasis::AuthoritativeIncompatibility),
+                None,
+            )
+        }
         "distinct" => {
             let authority = required_assertion_string(basis, "authority", line_number)?;
             let authority_basis = match authority.as_str() {
@@ -2936,23 +2987,11 @@ fn compile_short_assertion(
                 "part_of"
                     | "parent_of"
                     | "successor_of"
-    // A parcel identifier is authoritative like a cited alias: a non-human
-    // asserter names the record that carries it.
-    if place::requires_citation(&assertion_type)
-        && !asserted_by.starts_with("human:")
-        && !(locator_supplied && content_hash_supplied)
-    {
-        return Err(AssertionRowError::new(
-            line_number,
-            "place_identifier_citation",
-            format!("{assertion_type} requires locator and content_hash for a non-human asserter"),
-            "source.locator and source.content_hash, or asserted_by human:<id>",
-        ));
-    }
-
                     | "affiliate_of"
                     | "co_borrower_of"
                     | "trust_of"
+                    | "located_on"
+                    | "contains_unit"
             ) {
                 return Err(AssertionRowError::new(
                     line_number,
@@ -3001,43 +3040,6 @@ fn compile_short_assertion(
         extension_payload.insert(
             "lineage".to_string(),
             EvidenceExtensionValue::String(lineage),
-        // Place support: same-grain pair evidence. The rule table, not this
-        // type, decides which tier it counts toward.
-        kind if place::is_place_support_type(kind) => {
-            place::validate_basis(kind, basis).map_err(|error| {
-                AssertionRowError::new(
-                    line_number,
-                    "invalid_basis",
-                    error.message,
-                    format!("basis.{}", error.field),
-                )
-            })?;
-            (
-                EvidenceKind::PairSupport,
-                assertion_type.clone(),
-                None,
-                None,
-            )
-        }
-        // Place vetoes are hard cannot-links; the basis proves the claim
-        // (two different identifiers, a distance beyond the declared
-        // threshold, two different grains).
-        kind if place::is_place_veto_type(kind) => {
-            place::validate_basis(kind, basis).map_err(|error| {
-                AssertionRowError::new(
-                    line_number,
-                    "invalid_basis",
-                    error.message,
-                    format!("basis.{}", error.field),
-                )
-            })?;
-            (
-                EvidenceKind::AntiMergeVeto,
-                assertion_type.clone(),
-                Some(EvidenceAuthorityBasis::AuthoritativeIncompatibility),
-                None,
-            )
-        }
         );
     }
     if let Some(ancestry) = ancestry
@@ -3071,8 +3073,6 @@ fn compile_short_assertion(
         },
         authority_basis,
         scope: None,
-                    | "located_on"
-                    | "contains_unit"
         temporal_scope: None,
         provenance: vec![EvidenceProvenanceRef {
             source_type: channel,
