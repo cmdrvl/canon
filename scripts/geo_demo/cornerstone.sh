@@ -74,7 +74,8 @@ if [[ "$recompute" == 1 ]]; then
   else
     command -v cargo >/dev/null 2>&1 || fail 'recompute requires Cargo or CANON_BIN'
     target_dir="$(cargo metadata --quiet --no-deps --format-version 1 --manifest-path "$repo_root/Cargo.toml" | jq -er '.target_directory')"
-    cargo build --quiet --locked --manifest-path "$repo_root/Cargo.toml" --bin canon
+    # all features: the core build has no `canon geo` (bd-vjgi)
+    cargo build --quiet --locked --manifest-path "$repo_root/Cargo.toml" --all-features --bin canon
     canon_bin="$target_dir/debug/canon"
   fi
 fi

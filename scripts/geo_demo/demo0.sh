@@ -58,7 +58,9 @@ else
     printf 'demo0 could not resolve cargo target directory for %s\n' "$repo_root/Cargo.toml" >&2
     exit 70
   fi
-  (cd -- "$repo_root" && cargo build --quiet --manifest-path "$repo_root/Cargo.toml" --bin canon)
+  # The default build is the core, which has no `canon geo`. All features, as the
+  # tests and releases build it, so a test run's binary is not replaced (bd-vjgi).
+  (cd -- "$repo_root" && cargo build --quiet --manifest-path "$repo_root/Cargo.toml" --all-features --bin canon)
   canon_bin="$cargo_target_dir/debug/canon"
   if [[ ! -x "$canon_bin" ]]; then
     printf 'demo0 cargo build did not produce executable canon binary at %s\n' "$canon_bin" >&2
