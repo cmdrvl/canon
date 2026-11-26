@@ -23,7 +23,9 @@ use crate::{
         },
     },
     keys::KeyNamespace,
-    lookup, registry,
+    lookup,
+    namekit::legal_suffix::{LegalSuffixProfile, analyze_legal_suffixes},
+    registry,
     session::{
         self, SESSION_EVIDENCE_STREAM_ID, SESSION_MANIFEST_STREAM_ID,
         SESSION_OBSERVATIONS_STREAM_ID, SessionCommitAlias, SessionCommitClosure,
@@ -324,6 +326,9 @@ struct EdgeFacts {
     relation_subject: BTreeMap<String, String>,
     positive: bool,
     variant_of_incumbent: bool,
+    /// A variant only once legal suffixes are stripped, where another committed
+    /// ID has a name with the same stripped form.
+    ambiguous_suffix_match: bool,
     authoritative_same_key: bool,
 }
 
@@ -395,6 +400,7 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
     let mut endpoints = BTreeMap::new();
     let mut related_pairs = BTreeSet::new();
     let mut role_incumbents = Vec::new();
+    let mut stripped_names = StrippedNames::new();
     let mut registry_cannot_link_facts = Vec::new();
     let mut registry_pending_clusters = Vec::new();
     for registry_binding in &manifest.registries {
@@ -408,7 +414,9 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             &scoped_observations,
             &evidence,
             &registry_binding.kind,
+            &rules.incumbent_attach_steps,
         )?;
+        stripped_names.extend(registry_info.stripped_names);
         registry_metadata_parts.push((registry_binding.kind.clone(), registry_info.metadata));
         incumbents.extend(registry_info.incumbents);
         incumbent_keys.extend(registry_info.incumbent_keys);
@@ -678,12 +686,29 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
         facts.obs_ids.insert(left_target_id.to_string());
         facts.obs_ids.insert(right_target_id.to_string());
         facts.positive |= is_positive_type(&evidence_type);
-        facts.variant_of_incumbent |= is_incumbent_variant(
+        match incumbent_variant(
             &record,
             &left_target,
             &right_target,
             &rules.incumbent_attach_steps,
-        );
+        ) {
+            IncumbentVariant::No => {}
+            IncumbentVariant::Yes => facts.variant_of_incumbent = true,
+            IncumbentVariant::BySuffix(committed) => {
+                let form = normalize_name(&committed.surface, &rules.incumbent_attach_steps);
+                let owner = nodes
+                    .get(&committed.node_key)
+                    .and_then(|node| node.incumbent_canonical_id.as_ref());
+                let sole_owner = stripped_names
+                    .get(&(committed.entity_type.clone(), form))
+                    .is_some_and(|ids| ids.len() == 1 && owner.is_some_and(|id| ids.contains(id)));
+                if sole_owner {
+                    facts.variant_of_incumbent = true;
+                } else {
+                    facts.ambiguous_suffix_match = true;
+                }
+            }
+        }
         if RELATION_TYPES.contains(&evidence_type.as_str()) {
             let relation = relation_value(&record);
             facts.relation.insert(relation.clone());
@@ -1044,7 +1069,9 @@ pub fn solve(request: SessionSolveRequest) -> Result<SessionSolveOutput, Refusal
             .filter(|kind| is_positive_type(kind))
             .cloned()
             .collect::<Vec<_>>();
-        let missing = if rules
+        let missing = if facts.ambiguous_suffix_match {
+            "unambiguous_incumbent_after_strip_legal_suffix"
+        } else if rules
             .required_evidence_types
             .iter()
             .any(|kind| !evidence_types.contains(kind))
@@ -2894,6 +2921,54 @@ struct RegistryInfo {
     /// (surface, role, canonical id) where the role-scoped entry answers
     /// differently from the unscoped one.
     role_incumbents: Vec<(String, String, String)>,
+    /// Filled only when `strip_legal_suffix` is an attach step.
+    stripped_names: StrippedNames,
+}
+
+/// (entity type, committed name after the attach steps) to the IDs holding it.
+type StrippedNames = BTreeMap<(String, String), BTreeSet<String>>;
+
+const STRIP_LEGAL_SUFFIX_STEP: &str = "strip_legal_suffix";
+
+/// Index every committed name of one registry, not only those the session's
+/// evidence cites: an attach by stripped name needs the form to have one owner.
+fn load_stripped_names(
+    connection: &Connection,
+    registry_path: &Path,
+    entity_type: &str,
+    steps: &[String],
+) -> Result<StrippedNames, Refusal> {
+    let refusal = |error: rusqlite::Error| {
+        solve_refusal(
+            format!("Unable to index session registry names: {error}"),
+            json!({"registry": registry_path.display().to_string(), "writes_performed": false}),
+            "Repair the registry index, then rerun canon entity session solve",
+        )
+    };
+    let mut statement = connection
+        .prepare("SELECT input, canonical_id, rule_id FROM entries")
+        .map_err(refusal)?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .map_err(refusal)?;
+    let mut names = StrippedNames::new();
+    for row in rows {
+        let (input, canonical_id, rule_id) = row.map_err(refusal)?;
+        if rule_id.starts_with("SESSION_KEY_") || rule_id == "SUPERSEDED_ID_ALIAS" {
+            continue;
+        }
+        names
+            .entry((entity_type.to_string(), normalize_name(&input, steps)))
+            .or_default()
+            .insert(canonical_id);
+    }
+    Ok(names)
 }
 
 struct CommitPlanContext<'a> {
@@ -3027,6 +3102,7 @@ fn load_registry_info(
     observations: &[Observation],
     evidence: &[crate::entity::evidence_ir::EvidenceRecord],
     entity_type: &str,
+    incumbent_attach_steps: &[String],
 ) -> Result<RegistryInfo, Refusal> {
     let loaded = registry::load_registry(registry_path).map_err(|error| Refusal {
         code: RefusalCode::EBadRegistry,
@@ -3323,9 +3399,23 @@ fn load_registry_info(
             endpoints.insert(target, endpoint);
         }
     }
+    let stripped_names = if incumbent_attach_steps
+        .iter()
+        .any(|step| step == STRIP_LEGAL_SUFFIX_STEP)
+    {
+        load_stripped_names(
+            &connection,
+            registry_path,
+            entity_type,
+            incumbent_attach_steps,
+        )?
+    } else {
+        StrippedNames::new()
+    };
     let snapshot_hash =
         registry_snapshot_hash(registry_path, &loaded.meta.id, &loaded.meta.version)?;
     Ok(RegistryInfo {
+        stripped_names,
         metadata: SessionSolveRegistry {
             id: loaded.meta.id,
             version: loaded.meta.version,
@@ -4141,6 +4231,35 @@ fn resolve_target(
     })
 }
 
+enum IncumbentVariant<'a> {
+    No,
+    Yes,
+    /// Equal only with `strip_legal_suffix`; carries the committed side.
+    BySuffix(&'a TargetInfo),
+}
+
+fn incumbent_variant<'a>(
+    record: &crate::entity::evidence_ir::EvidenceRecord,
+    left: &'a TargetInfo,
+    right: &'a TargetInfo,
+    steps: &[String],
+) -> IncumbentVariant<'a> {
+    let without_suffix_step = steps
+        .iter()
+        .filter(|step| step.as_str() != STRIP_LEGAL_SUFFIX_STEP)
+        .cloned()
+        .collect::<Vec<_>>();
+    if is_incumbent_variant(record, left, right, &without_suffix_step) {
+        IncumbentVariant::Yes
+    } else if without_suffix_step.len() < steps.len()
+        && is_incumbent_variant(record, left, right, steps)
+    {
+        IncumbentVariant::BySuffix(if left.alias_endpoint { left } else { right })
+    } else {
+        IncumbentVariant::No
+    }
+}
+
 fn is_incumbent_variant(
     record: &crate::entity::evidence_ir::EvidenceRecord,
     left: &TargetInfo,
@@ -4192,6 +4311,16 @@ fn normalize_name(value: &str, steps: &[String]) -> String {
                 .filter(|character| character.is_alphanumeric() || character.is_whitespace())
                 .collect(),
             "collapse_whitespace" => value.split_whitespace().collect::<Vec<_>>().join(" "),
+            STRIP_LEGAL_SUFFIX_STEP => {
+                let analysis =
+                    analyze_legal_suffixes(&value, LegalSuffixProfile::RegabFirmIdentity);
+                // a name that is nothing but a legal form keeps itself
+                if analysis.basename.is_empty() {
+                    value
+                } else {
+                    analysis.basename
+                }
+            }
             _ => value,
         })
 }

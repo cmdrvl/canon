@@ -34,7 +34,13 @@ pub(crate) const TIER_B_TYPES: &[&str] = &[
     "deed_chain_link",
     "assessor_corroboration",
 ];
-const INCUMBENT_ATTACH_STEPS: &[&str] = &["casefold", "strip_punctuation", "collapse_whitespace"];
+/// `strip_legal_suffix` is opt-in: the `rules init` template leaves it out.
+const INCUMBENT_ATTACH_STEPS: &[&str] = &[
+    "casefold",
+    "strip_punctuation",
+    "collapse_whitespace",
+    "strip_legal_suffix",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct KeyRule {

@@ -578,6 +578,12 @@ A rules file without that section still gets the evidence, but solve treats it
 as a review item that needs a second lineage, which a registry alias cannot
 bring, and nothing attaches.
 
+`strip_legal_suffix` may be added to those steps; the template leaves it out. A
+spelling that is equal only with it attaches only when every committed name in
+that kind's registry with the same stripped form belongs to one ID. Otherwise it
+stays in review with `missing:
+unambiguous_incumbent_after_strip_legal_suffix`.
+
 Similar is not equal: `Mode Purchaser` and `BGI Purchaser` produce
 `name_similar` only and are never accepted, whatever the lineages. The profile
 must put `source_row_id` in `prepare.provenance_fields` and use

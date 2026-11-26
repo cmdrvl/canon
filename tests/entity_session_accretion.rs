@@ -506,3 +506,160 @@ fn session_accretion_attaches_to_incumbents_and_rejects_planted_conflicts() {
     assert_eq!(no_op_json["outcome"], "nothing_to_commit");
     assert_eq!(no_op_json["attached"], json!([]));
 }
+
+#[test]
+fn strip_legal_suffix_attaches_only_when_one_committed_id_owns_the_stripped_name() {
+    let temp = TempDir::new().expect("tempdir");
+    let registry = temp.path().join("registry");
+    let conservative = temp.path().join("rules.yaml");
+    fs::write(&conservative, RULES).expect("rules");
+    let stripping = temp.path().join("stripping.yaml");
+    let steps = "[casefold, strip_punctuation, collapse_whitespace]";
+    assert!(RULES.contains(steps));
+    fs::write(
+        &stripping,
+        RULES.replace(
+            steps,
+            "[casefold, strip_punctuation, collapse_whitespace, strip_legal_suffix]",
+        ),
+    )
+    .expect("stripping rules");
+
+    let first = temp.path().join("first");
+    init(&registry, &first, Some("ORG"));
+    ingest(
+        &first,
+        &write_lines(
+            &temp,
+            "first.jsonl",
+            &[
+                observation("acme", "fund-a", "Acme Holdings, LLC", "111"),
+                observation("summit", "fund-a", "Summit Partners Fund LP", "222"),
+                observation("beacon-lp", "fund-a", "Beacon Partners LP", "333"),
+                observation("beacon-llc", "fund-a", "Beacon Partners LLC", "444"),
+            ],
+        ),
+    );
+    solve(&first, &conservative);
+    let minted = json_output(&commit(&first, "1.0.1").success());
+    assert_eq!(minted["minted"].as_array().expect("minted").len(), 4);
+
+    let day_two = temp.path().join("day-two");
+    init(&registry, &day_two, None);
+    ingest(
+        &day_two,
+        &write_lines(
+            &temp,
+            "day-two.jsonl",
+            &[
+                observation_without_key("n-acme", "fund-b", "Acme Holdings"),
+                observation_without_key("n-summit", "fund-b", "Summit Partners Fund, L.P."),
+                observation_without_key("n-beacon", "fund-b", "Beacon Partners"),
+            ],
+        ),
+    );
+    // only one of the two Beacon ids is cited: the other must still be found
+    assert_evidence(
+        &day_two,
+        &write_lines(
+            &temp,
+            "day-two-evidence.jsonl",
+            &[
+                name_equivalent(
+                    "n-acme",
+                    "registry:alias:Acme Holdings, LLC",
+                    "Acme Holdings",
+                    "Acme Holdings, LLC",
+                ),
+                name_equivalent(
+                    "n-summit",
+                    "registry:alias:Summit Partners Fund LP",
+                    "Summit Partners Fund, L.P.",
+                    "Summit Partners Fund LP",
+                ),
+                name_equivalent(
+                    "n-beacon",
+                    "registry:alias:Beacon Partners LP",
+                    "Beacon Partners",
+                    "Beacon Partners LP",
+                ),
+            ],
+        ),
+    );
+
+    // removing punctuation already makes `L.P.` equal `LP`; the other two need
+    // the suffix step
+    let unchanged = solve(&day_two, &conservative);
+    assert_eq!(outcome_of(&unchanged, "Acme Holdings"), "resolved_existing");
+    assert_eq!(
+        outcome_of(&unchanged, "Summit Partners Fund, L.P."),
+        "accepted"
+    );
+    assert_eq!(unchanged["summary"]["review_new"], 2, "{unchanged}");
+
+    let stripped = solve(&day_two, &stripping);
+    for surface in ["Acme Holdings", "Summit Partners Fund, L.P."] {
+        assert_eq!(outcome_of(&stripped, surface), "accepted", "{stripped}");
+    }
+    assert_eq!(
+        outcome_of(&stripped, "Beacon Partners"),
+        "resolved_existing",
+        "{stripped}"
+    );
+    assert_eq!(stripped["summary"]["review_new"], 1, "{stripped}");
+    let review = &stripped["review"][0];
+    assert_eq!(
+        review["missing"], "unambiguous_incumbent_after_strip_legal_suffix",
+        "{stripped}"
+    );
+    let reviewed = [&review["left_surface"], &review["right_surface"]];
+    assert!(reviewed.contains(&&json!("Beacon Partners")), "{stripped}");
+
+    // a distinct veto still wins over the attach
+    assert_evidence(
+        &day_two,
+        &write_lines(
+            &temp,
+            "veto.jsonl",
+            &[serde_json::to_string(&json!({
+                "type": "distinct",
+                "left": "n-acme",
+                "right": "registry:alias:Acme Holdings, LLC",
+                "basis": {
+                    "reason": "reviewed: different companies",
+                    "authority": "authoritative_incompatibility"
+                },
+                "source": {"channel": "human", "id": "review:accretion"},
+                "asserted_by": "human:accretion"
+            }))
+            .expect("distinct evidence")],
+        ),
+    );
+    let vetoed = solve(&day_two, &stripping);
+    assert_eq!(
+        outcome_of(&vetoed, "Acme Holdings"),
+        "contradiction",
+        "{vetoed}"
+    );
+}
+
+/// The outcome of the cluster that holds `surface`.
+fn outcome_of(solved: &Value, surface: &str) -> String {
+    solved["clusters"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .chain(solved["contradictions"].as_array().into_iter().flatten())
+        .find(|entry| {
+            entry["surfaces"]
+                .as_array()
+                .is_some_and(|surfaces| surfaces.contains(&json!(surface)))
+        })
+        .map(|entry| {
+            entry["outcome"]
+                .as_str()
+                .unwrap_or("contradiction")
+                .to_string()
+        })
+        .unwrap_or_else(|| panic!("no cluster holds {surface}: {solved}"))
+}
