@@ -529,7 +529,7 @@ equal. Each field is read from `context`, else `attrs`; values are compared
 trimmed, with runs of whitespace collapsed, ignoring case. A blank or
 placeholder field writes nothing. A slot held by more than 50 observations of
 one type is skipped and counted in `slots.oversized_slots_skipped`. Only
-`derive` runs this operator; `entity run` refuses a profile that declares it.
+`derive` runs this operator; `entity run` does nothing with it and warns.
 
 **Person and trust names.** Declare a normalized view with the `person_name`
 operator and derive treats people differently from organisations:
@@ -880,7 +880,8 @@ Every operator the profile validator accepts, and whether `canon entity run`
 executes it. **"declared only" means the validator accepts it but `run` does
 nothing with it** — `entity run --emit summary` prints a warning naming them.
 Relation hints are never executed per operator: `run` emits one generic review
-hint per retained candidate.
+hint per retained candidate. `same_slot` is run by `entity session derive`, not
+by `run`.
 
 <!-- operator-catalog:start -->
 | Lane | Operator | Executed by `entity run` |
@@ -896,6 +897,7 @@ hint per retained candidate.
 | support | numeric_within_tolerance | yes |
 | support | date_exact | yes |
 | support | categorical_match | yes |
+| support | same_slot | declared only |
 | cannot_link | anchor_conflict | yes |
 | cannot_link | attribute_conflict | yes |
 | cannot_link | protected_token_conflict | yes |

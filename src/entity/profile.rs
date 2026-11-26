@@ -975,7 +975,7 @@ const SUPPORTED_SUPPORT_OPS: &[&str] = &[
     "numeric_within_tolerance",
     "date_exact",
     "categorical_match",
-    // executed by `session derive` only, so `entity run` refuses it
+    // executed by `session derive` only; `entity run` ignores it and warns
     "same_slot",
 ];
 
