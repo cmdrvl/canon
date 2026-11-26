@@ -975,6 +975,8 @@ const SUPPORTED_SUPPORT_OPS: &[&str] = &[
     "numeric_within_tolerance",
     "date_exact",
     "categorical_match",
+    // executed by `session derive` only, so `entity run` refuses it
+    "same_slot",
 ];
 
 const SUPPORTED_CANNOT_LINK_OPS: &[&str] = &[

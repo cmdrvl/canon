@@ -26,6 +26,7 @@ use crate::{
             FragmentRejection, NameNode, NameStageStats, classify_observation, effective_type,
             name_assertions, person_views,
         },
+        session_slots::{SAME_SLOT_OPERATOR, SlotStats, slot_assertions, slot_rules},
         session_structure::{
             StructureNode, StructureStats, multi_party_ids, structure_assertions, structure_views,
         },
@@ -100,6 +101,9 @@ pub struct SessionDeriveOutput {
     /// multi_party surfaces and the records they produced.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub structure: Option<StructureStats>,
+    /// Shared slots, when the profile declares `same_slot`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slots: Option<SlotStats>,
     /// Exact buckets stored as surface ranges, which derive does not expand.
     pub exact_bucket_ranges_skipped: usize,
     /// Declared relation hints: a profile must list them, `entity run` emits one
@@ -692,7 +696,11 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
     })?;
 
     let loaded = load_prepare_profile_with_hash(&request.profile)?;
-    let (inert, relation_hints_not_executed) = split_inert(unwired_run_operators(&loaded.document));
+    let (mut inert, relation_hints_not_executed) =
+        split_inert(unwired_run_operators(&loaded.document));
+    // derive runs same_slot itself; `entity run` does not
+    inert.retain(|label| label != &format!("support:{SAME_SLOT_OPERATOR}"));
+    let slot_rules = slot_rules(&loaded.document)?;
     if !inert.is_empty() {
         return Err(Refusal {
             code: RefusalCode::EParse,
@@ -1139,6 +1147,28 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
         }
     }
 
+    // Slots are read from the observations, not from block's candidate pairs.
+    let mut slot_stats = None;
+    for fields in &slot_rules {
+        let stats = slot_stats.get_or_insert_with(SlotStats::default);
+        let nameable = observations.iter().filter(|observation| {
+            name_views.is_empty()
+                || observation
+                    .get("surface")
+                    .and_then(Value::as_str)
+                    .is_none_or(|surface| !classify_observation("", surface).1)
+        });
+        for slot_line in slot_assertions(
+            nameable,
+            fields,
+            document.profile.as_str(),
+            &profile_hash,
+            stats,
+        ) {
+            push(slot_line, &mut lines);
+        }
+    }
+
     // What the registry contributed, measured from the candidates block wrote.
     let registry_surfaces = by_surface
         .iter()
@@ -1262,6 +1292,7 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
         cross_type_skipped,
         names: name_stats,
         structure: structure_stats,
+        slots: slot_stats,
         exact_bucket_ranges_skipped,
         relation_hints_not_executed,
         registry_candidates: registry_stats,

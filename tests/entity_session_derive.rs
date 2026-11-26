@@ -1993,3 +1993,71 @@ fn real_bdc_gold_sets_name_structure_counts_markers_and_lists() {
         structure["asserted_alias_records"].as_u64().unwrap()
     );
 }
+
+const SLOT_SUPPORT: &str = "    - op: exact_view\n      view: core\n    - op: same_slot\n      params:\n        slot_fields: \"deal_id,loan_id,role\"";
+
+fn in_slot(obs_id: &str, lineage: &str, surface: &str, loan_id: &str) -> Value {
+    let mut row = observation(obs_id, lineage, surface, json!({}));
+    row["context"] = json!({"deal_id": "DEAL-1", "loan_id": loan_id});
+    row["attrs"] = json!({"role": "borrower"});
+    row
+}
+
+#[test]
+fn a_shared_slot_is_a_second_evidence_type_under_the_strict_rule_table() {
+    let case = init(ATTRIBUTE_RULES);
+    case.ingest(&[
+        // two lineages, one slot, one name
+        in_slot("a1", "fundA", "Apex Capital LLC", "1"),
+        in_slot("a2", "fundB", "APEX CAPITAL, LLC.", "1"),
+        // one lineage, so the slot says nothing
+        in_slot("b1", "fundA", "Birch Lane LLC", "2"),
+        in_slot("b2", "fundA", "BIRCH LANE, LLC.", "2"),
+        // a placeholder slot field
+        in_slot("c1", "fundA", "Cedar Point LLC", "N/A"),
+        in_slot("c2", "fundB", "CEDAR POINT, LLC.", "N/A"),
+    ]);
+    let profile_text = profile(SLOT_SUPPORT, NO_CANNOT, EXACT_BLOCK, "");
+    let derived = case.derive(&profile_text, 0);
+    assert_eq!(count(&derived, "same_slot"), 1, "{derived}");
+    assert_eq!(count(&derived, "name_equivalent"), 3, "{derived}");
+    assert_eq!(derived["rejected_assertions"], 0, "{derived}");
+    assert_eq!(derived["slots"]["shared_slots"], 2, "{derived}");
+    let again = case.derive(&profile_text, 0);
+    assert_eq!(again["records_digest"], derived["records_digest"]);
+    assert_eq!(again["accepted"], 0, "{again}");
+
+    let solved = case.solve();
+    assert_eq!(solved["summary"]["accepted_tier_b"], 1, "{solved}");
+    assert_eq!(solved["summary"]["review_new"], 2, "{solved}");
+    let committed = run_json(
+        &[
+            "entity",
+            "session",
+            "commit",
+            p(&case.session),
+            "--bump",
+            "patch",
+        ],
+        0,
+    );
+    assert_eq!(committed["outcome"], "committed", "{committed}");
+    let minted = committed["minted"].to_string();
+    assert!(minted.contains("Apex Capital LLC"), "{minted}");
+    for unaccepted in ["Birch Lane", "Cedar Point"] {
+        assert!(!minted.contains(unaccepted), "{minted}");
+    }
+}
+
+#[test]
+fn same_slot_without_slot_fields_is_refused_before_anything_is_written() {
+    let case = init(ATTRIBUTE_RULES);
+    case.ingest(&[in_slot("a1", "fundA", "Apex Capital LLC", "1")]);
+    let support = format!("{EXACT_SUPPORT}\n    - op: same_slot");
+    let refused = case.derive(&profile(&support, NO_CANNOT, EXACT_BLOCK, ""), 2);
+    assert_eq!(refused["refusal"]["code"], "E_PARSE", "{refused}");
+    assert_eq!(
+        refused["refusal"]["detail"]["field"], "params.slot_fields",
+        "{refused}"
+    );
+}

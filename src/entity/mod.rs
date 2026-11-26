@@ -59,6 +59,7 @@ pub mod session_frontier;
 pub mod session_names;
 pub mod session_provenance;
 pub mod session_sample;
+pub mod session_slots;
 pub mod session_structure;
 pub mod sidecar;
 pub mod solve;

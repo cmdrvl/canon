@@ -521,6 +521,16 @@ tier B on a same-lineage pair, and an `attribute_conflict` on the pair still
 vetoes. The default score of an attribute hit is 2,500 of 10,000 units
 (`score_units` changes it, `"0"` disables the operator).
 
+**Shared slots.** A support operator `same_slot` with
+`params: {slot_fields: "deal_id,loan_id,role"}` makes `derive` write a
+`same_slot` record for two observations of one entity type, from different
+lineages and with different spellings, whose listed fields are all present and
+equal. Each field is read from `context`, else `attrs`; values are compared
+trimmed, with runs of whitespace collapsed, ignoring case. A blank or
+placeholder field writes nothing. A slot held by more than 50 observations of
+one type is skipped and counted in `slots.oversized_slots_skipped`. Only
+`derive` runs this operator; `entity run` refuses a profile that declares it.
+
 **Person and trust names.** Declare a normalized view with the `person_name`
 operator and derive treats people differently from organisations:
 
