@@ -4,9 +4,14 @@ use canon::session::{SESSION_EVIDENCE_STREAM_ID, SESSION_OBSERVATIONS_STREAM_ID}
 use parquet::{
     basic::Compression,
     data_type::{ByteArray, ByteArrayType},
-    file::{properties::WriterProperties, writer::SerializedFileWriter},
+    file::{
+        properties::WriterProperties,
+        reader::{FileReader, SerializedFileReader},
+        writer::SerializedFileWriter,
+    },
     schema::parser::parse_message_type,
 };
+use rusqlite::Connection;
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -134,6 +139,135 @@ fn write_parquet(path: &Path, schema: &str, columns: &[&[&str]]) {
     }
     row_group.close().expect("close Parquet row group");
     writer.close().expect("close Parquet file");
+}
+
+fn init_place_export_session(temp: &TempDir) -> PathBuf {
+    let mut kinds = serde_json::Map::new();
+    for (kind, prefix) in [
+        ("site", "SIT"),
+        ("parcel", "PRC"),
+        ("building", "BLD"),
+        ("unit", "UNT"),
+    ] {
+        kinds.insert(
+            kind.to_string(),
+            json!({
+                "registry": temp.path().join(kind),
+                "registry_id": format!("{kind}s"),
+                "prefix": prefix,
+                "zero_pad": 3,
+                "canonical_type": kind,
+                "alias_file": "aliases.json"
+            }),
+        );
+    }
+    let registries_path = temp.path().join("registries.yaml");
+    fs::write(
+        &registries_path,
+        serde_yaml::to_string(&json!({
+            "version": "canon.session.registries.v1",
+            "kinds": kinds
+        }))
+        .expect("registry map YAML"),
+    )
+    .expect("write registry map");
+
+    let rules_path = temp.path().join("place-rules.yaml");
+    fs::write(
+        &rules_path,
+        "version: canon.entity.session.rules.v1\nkeys:\n  apn: {authoritative: true, single_valued: true}\n  parcel_id: {authoritative: true, single_valued: true}\n  bin: {authoritative: true, single_valued: true}\n  unit_id: {authoritative: true, single_valued: true}\n  site_id: {authoritative: true, single_valued: true}\ntier_a:\n  evidence_types: [same_key, asserted_alias, same_apn, same_parcel_id]\ntier_b:\n  eligible_evidence_types: [address_canonical_match, point_in_parcel, footprint_overlap, deed_chain_link, assessor_corroboration]\n  min_distinct_evidence_types: 2\n  min_distinct_lineages: 2\nstandalone:\n  mint_when_authoritative_key: true\n",
+    )
+    .expect("write place rules");
+
+    let session = temp.path().join("place-session");
+    canon_command()
+        .args([
+            "entity",
+            "session",
+            "init",
+            "--goal",
+            "Parquet place export round trip",
+            "--work-dir",
+        ])
+        .arg(&session)
+        .args(["--registries"])
+        .arg(registries_path)
+        .assert()
+        .success();
+    session
+}
+
+fn ingest_parquet_observations(session: &Path, path: &Path, schema: &str, columns: &[&[&str]]) {
+    write_parquet(path, schema, columns);
+    canon_command()
+        .args(["entity", "session", "ingest"])
+        .arg(session)
+        .arg(path)
+        .args(["--emit", "json"])
+        .assert()
+        .success();
+}
+
+fn export_registry(
+    registry: &Path,
+    format: &str,
+    out: &Path,
+    parquet: bool,
+    namespace: Option<&str>,
+) -> Value {
+    let mut command = canon_command();
+    command
+        .args(["registry", "export", "--registry"])
+        .arg(registry)
+        .args(["--format", format, "--out"])
+        .arg(out);
+    if let Some(namespace) = namespace {
+        command.args(["--namespace", namespace]);
+    }
+    if parquet {
+        command.arg("--parquet");
+    }
+    let output = command.args(["--emit", "json"]).assert().success();
+    serde_json::from_slice(&output.get_output().stdout).expect("registry export JSON")
+}
+
+fn parquet_rows(path: &Path) -> Vec<Value> {
+    let reader = SerializedFileReader::new(fs::File::open(path).expect("open Parquet export"))
+        .expect("read Parquet export");
+    reader
+        .get_row_iter(None)
+        .expect("Parquet row iterator")
+        .map(|row| row.expect("Parquet row").to_json_value())
+        .collect()
+}
+
+fn lookup_export_roundtrip_id(root: &Path, registry: &Path, value: &str) -> String {
+    let input = root.join("exact-lookup.csv");
+    fs::write(&input, format!("value\n{value}\n")).expect("write lookup input");
+    let output = canon_command()
+        .arg(input)
+        .args(["--registry"])
+        .arg(registry)
+        .args([
+            "--column",
+            "value",
+            "--explicit",
+            "--plain-json-values",
+            "--no-witness",
+        ])
+        .output()
+        .expect("exact lookup process");
+    assert!(
+        output.status.success(),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let result: Value = serde_json::from_slice(&output.stdout).expect("lookup result JSON");
+    result["mappings"][0]["canonical_id"]
+        .as_str()
+        .expect("resolved canonical id")
+        .to_string()
 }
 
 fn observation_rows(snapshot: &EntityPublicationSnapshot) -> Vec<Value> {
@@ -981,4 +1115,455 @@ fn plain_jsonl_has_no_external_provenance_defaults() {
             .unwrap()
             > 0
     );
+}
+
+#[test]
+fn parquet_place_observations_round_trip_through_existing_registry_exports() {
+    let temp = TempDir::new().expect("temp root");
+    let session = init_place_export_session(&temp);
+    let parcel_input = temp.path().join("parcel-observations.parquet");
+    ingest_parquet_observations(
+        &session,
+        &parcel_input,
+        "message observations { REQUIRED BINARY obs_id (UTF8); REQUIRED BINARY entity_type (UTF8); REQUIRED BINARY surface (UTF8); REQUIRED group keys { REQUIRED BINARY apn (UTF8); REQUIRED BINARY parcel_id (UTF8); } REQUIRED group source { REQUIRED BINARY channel (UTF8); REQUIRED BINARY id (UTF8); REQUIRED BINARY lineage (UTF8); } }",
+        &[
+            &["parcel-row-1", "parcel-row-2"],
+            &["parcel", "parcel"],
+            &["Parcel 1022-0043", "Tax lot 1022-0043"],
+            &["1022-0043", "1022-0043"],
+            &["BBL-1022-0043", "BBL-1022-0043"],
+            &["warehouse_read", "warehouse_read"],
+            &["county-parcel-1", "assessor-roll-1"],
+            &["county-parcels:2026-11", "assessor-roll:2026-11"],
+        ],
+    );
+    // a lone record with two authoritative keys stays standalone, so the parcel
+    // needs evidence joining its two source records
+    let same_parcel = temp.path().join("same-parcel.jsonl");
+    fs::write(
+        &same_parcel,
+        format!(
+            "{}\n",
+            json!({
+                "type": "same_apn",
+                "left": "parcel-row-1",
+                "right": "parcel-row-2",
+                "asserted_by": "agent:warehouse",
+                "basis": {"apn": "1022-0043"},
+                "source": {
+                    "channel": "warehouse_read",
+                    "id": "assessor-roll-match",
+                    "lineage": "assessor-roll:2026-11",
+                    "locator": "assessor-roll:row-1",
+                    "content_hash": format!("blake3:{}", "c".repeat(64))
+                }
+            })
+        ),
+    )
+    .expect("write parcel assertion");
+    canon_command()
+        .args(["entity", "session", "assert"])
+        .arg(&session)
+        .arg(&same_parcel)
+        .args(["--emit", "json"])
+        .assert()
+        .success();
+    let building_input = temp.path().join("building-observations.parquet");
+    ingest_parquet_observations(
+        &session,
+        &building_input,
+        "message observations { REQUIRED BINARY obs_id (UTF8); REQUIRED BINARY entity_type (UTF8); REQUIRED BINARY surface (UTF8); REQUIRED group keys { REQUIRED BINARY bin (UTF8); } REQUIRED group source { REQUIRED BINARY channel (UTF8); REQUIRED BINARY id (UTF8); REQUIRED BINARY lineage (UTF8); } }",
+        &[
+            &["building-row-1"],
+            &["building"],
+            &["Paramount Plaza"],
+            &["BIN-3112312"],
+            &["warehouse_read"],
+            &["county-building-1"],
+            &["county-buildings:2026-11"],
+        ],
+    );
+    let unit_input = temp.path().join("unit-observations.parquet");
+    ingest_parquet_observations(
+        &session,
+        &unit_input,
+        "message observations { REQUIRED BINARY obs_id (UTF8); REQUIRED BINARY entity_type (UTF8); REQUIRED BINARY surface (UTF8); REQUIRED group keys { REQUIRED BINARY unit_id (UTF8); } REQUIRED group source { REQUIRED BINARY channel (UTF8); REQUIRED BINARY id (UTF8); REQUIRED BINARY lineage (UTF8); } }",
+        &[
+            &["unit-row-1"],
+            &["unit"],
+            &["Suite 3600"],
+            &["UNIT-1633B-3600"],
+            &["warehouse_read"],
+            &["county-unit-1"],
+            &["county-units:2026-11"],
+        ],
+    );
+    let site_input = temp.path().join("site-observations.parquet");
+    ingest_parquet_observations(
+        &session,
+        &site_input,
+        "message observations { REQUIRED BINARY obs_id (UTF8); REQUIRED BINARY entity_type (UTF8); REQUIRED BINARY surface (UTF8); REQUIRED group keys { REQUIRED BINARY site_id (UTF8); } REQUIRED group source { REQUIRED BINARY channel (UTF8); REQUIRED BINARY id (UTF8); REQUIRED BINARY lineage (UTF8); } }",
+        &[
+            &["site-row-1"],
+            &["site"],
+            &["Paramount Plaza Site"],
+            &["SITE-PP"],
+            &["warehouse_read"],
+            &["county-site-1"],
+            &["county-sites:2026-11"],
+        ],
+    );
+
+    let relation_input = temp.path().join("relations.parquet");
+    write_parquet(
+        &relation_input,
+        "message evidence { REQUIRED BINARY type (UTF8); REQUIRED BINARY left (UTF8); REQUIRED BINARY right (UTF8); REQUIRED BINARY asserted_by (UTF8); REQUIRED group basis { REQUIRED BINARY relation (UTF8); REQUIRED BINARY subject (UTF8); } REQUIRED group source { REQUIRED BINARY channel (UTF8); REQUIRED BINARY id (UTF8); REQUIRED BINARY lineage (UTF8); REQUIRED BINARY locator (UTF8); REQUIRED BINARY content_hash (UTF8); } }",
+        &[
+            &["related", "related"],
+            &["unit-row-1", "building-row-1"],
+            &["building-row-1", "site-row-1"],
+            &["agent:warehouse", "agent:warehouse"],
+            &["part_of", "part_of"],
+            // the child of each `part_of` edge
+            &["unit-row-1", "building-row-1"],
+            &["warehouse_read", "warehouse_read"],
+            &["unit-building-hierarchy", "building-site-hierarchy"],
+            &["place-hierarchy:2026-11", "place-hierarchy:2026-11"],
+            &[
+                "place-hierarchy:unit-building",
+                "place-hierarchy:building-site",
+            ],
+            &[
+                "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            ],
+        ],
+    );
+    let asserted = canon_command()
+        .args(["entity", "session", "assert"])
+        .arg(&session)
+        .arg(&relation_input)
+        .args(["--emit", "json"])
+        .assert()
+        .success();
+    let asserted: Value =
+        serde_json::from_slice(&asserted.get_output().stdout).expect("assert JSON");
+    assert_eq!(asserted["accepted"], 2);
+
+    let rules = temp.path().join("place-rules.yaml");
+    let solve = canon_command()
+        .args(["entity", "session", "solve"])
+        .arg(&session)
+        .args(["--rules"])
+        .arg(&rules)
+        .args(["--emit", "json"])
+        .assert()
+        .success();
+    let solve: Value = serde_json::from_slice(&solve.get_output().stdout).expect("solve JSON");
+    assert_eq!(solve["summary"]["contradiction"], 0, "{solve}");
+    let committed = canon_command()
+        .args(["entity", "session", "commit"])
+        .arg(&session)
+        .args(["--bump", "patch", "--emit", "json"])
+        .assert()
+        .success();
+    let committed: Value =
+        serde_json::from_slice(&committed.get_output().stdout).expect("commit JSON");
+    assert_eq!(committed["outcome"], "committed", "{committed}");
+
+    let parcel_registry = temp.path().join("parcel");
+    let building_registry = temp.path().join("building");
+    let unit_registry = temp.path().join("unit");
+    let site_registry = temp.path().join("site");
+    let parcel_id = lookup_export_roundtrip_id(temp.path(), &parcel_registry, "1022-0043");
+    let building_id = lookup_export_roundtrip_id(temp.path(), &building_registry, "BIN-3112312");
+    let unit_id = lookup_export_roundtrip_id(temp.path(), &unit_registry, "UNIT-1633B-3600");
+    let site_id = lookup_export_roundtrip_id(temp.path(), &site_registry, "SITE-PP");
+
+    let seed_one = temp.path().join("places-one.parquet");
+    let seed_two = temp.path().join("places-two.parquet");
+    let seed_one_result = export_registry(
+        &parcel_registry,
+        "dbt-seed",
+        &seed_one,
+        true,
+        Some("warehouse_places"),
+    );
+    let seed_two_result = export_registry(
+        &parcel_registry,
+        "dbt-seed",
+        &seed_two,
+        true,
+        Some("warehouse_places"),
+    );
+    assert_eq!(seed_one_result["format"], "dbt-seed");
+    assert_eq!(
+        seed_one_result["content_hash"],
+        seed_two_result["content_hash"]
+    );
+    assert!(
+        seed_one_result["content_hash"]
+            .as_str()
+            .is_some_and(|hash| hash.starts_with("blake3:"))
+    );
+    assert_eq!(fs::read(&seed_one).unwrap(), fs::read(&seed_two).unwrap());
+    let seed_rows = parquet_rows(&seed_one);
+    assert!(seed_rows.iter().any(|row| {
+        row["canonical_id"] == parcel_id
+            && row["canonical_type"] == "parcel"
+            && row["rule_id"] == "SESSION_KEY_APN"
+    }));
+    assert!(seed_rows.iter().any(|row| {
+        row["canonical_id"] == parcel_id
+            && row["canonical_type"] == "parcel"
+            && row["rule_id"] == "SESSION_KEY_PARCEL_ID"
+    }));
+    for (kind, registry, canonical_id) in [
+        ("building", &building_registry, &building_id),
+        ("unit", &unit_registry, &unit_id),
+        ("site", &site_registry, &site_id),
+    ] {
+        let out = temp.path().join(format!("{kind}-seed.parquet"));
+        export_registry(registry, "dbt-seed", &out, true, Some("warehouse_places"));
+        assert!(
+            parquet_rows(&out).iter().any(|row| {
+                row["canonical_id"] == *canonical_id && row["canonical_type"] == kind
+            })
+        );
+    }
+
+    let seed_csv = temp.path().join("places.csv");
+    let seed_csv_result = export_registry(
+        &parcel_registry,
+        "dbt-seed",
+        &seed_csv,
+        false,
+        Some("warehouse_places"),
+    );
+    assert_eq!(seed_csv_result["format"], "dbt-seed");
+    assert_ne!(
+        seed_csv_result["content_hash"],
+        seed_one_result["content_hash"]
+    );
+    let csv_bytes = fs::read(&seed_csv).expect("default CSV seed remains available");
+    assert!(csv_bytes.starts_with(b"namespace,source_input,normalized_key,"));
+
+    // the dbt schema and anti-collapse test do not depend on the seed's encoding
+    let scaffold = |parquet: bool| -> (String, String) {
+        let directory = temp.path().join(format!("scaffold-{parquet}"));
+        let schema = directory.join("schema.yml");
+        let anti_collapse = directory.join("anti_collapse.sql");
+        let mut command = canon_command();
+        command
+            .args(["registry", "export", "--registry"])
+            .arg(&parcel_registry)
+            .args(["--format", "dbt-seed", "--namespace", "warehouse_places"])
+            .arg("--out")
+            .arg(directory.join("places"))
+            .arg("--schema-out")
+            .arg(&schema)
+            .arg("--anti-collapse-test-out")
+            .arg(&anti_collapse);
+        if parquet {
+            command.arg("--parquet");
+        }
+        command.assert().success();
+        (
+            fs::read_to_string(schema).expect("dbt schema"),
+            fs::read_to_string(anti_collapse).expect("anti-collapse test"),
+        )
+    };
+    assert_eq!(scaffold(true), scaffold(false));
+    let mut ids_by_key = std::collections::BTreeMap::<String, String>::new();
+    for row in &seed_rows {
+        let key = format!("{}|{}", row["namespace"], row["normalized_key"]);
+        let id = row["canonical_id"].to_string();
+        assert_eq!(
+            ids_by_key.entry(key).or_insert_with(|| id.clone()),
+            &id,
+            "{row}"
+        );
+    }
+
+    let crosswalk_one = temp.path().join("crosswalk-one.parquet");
+    let crosswalk_two = temp.path().join("crosswalk-two.parquet");
+    let crosswalk_one_result = export_registry(
+        &parcel_registry,
+        "key-crosswalk",
+        &crosswalk_one,
+        true,
+        None,
+    );
+    let crosswalk_two_result = export_registry(
+        &parcel_registry,
+        "key-crosswalk",
+        &crosswalk_two,
+        true,
+        None,
+    );
+    assert_eq!(
+        crosswalk_one_result["content_hash"],
+        crosswalk_two_result["content_hash"]
+    );
+    assert_eq!(
+        fs::read(&crosswalk_one).unwrap(),
+        fs::read(&crosswalk_two).unwrap()
+    );
+    assert_eq!(crosswalk_one_result["format"], "key-crosswalk");
+    assert!(
+        crosswalk_one_result["content_hash"]
+            .as_str()
+            .is_some_and(|hash| hash.starts_with("blake3:"))
+    );
+    let crosswalk_rows = parquet_rows(&crosswalk_one);
+    let parcel_crosswalk = crosswalk_rows
+        .iter()
+        .find(|row| row["canonical_id"] == parcel_id)
+        .expect("parcel appears in the key crosswalk");
+    assert_eq!(parcel_crosswalk["canonical_type"], "parcel");
+    assert_eq!(parcel_crosswalk["apn"], "1022-0043");
+    assert_eq!(parcel_crosswalk["parcel_id"], "BBL-1022-0043");
+    for (kind, registry, canonical_id, key_name, key_value) in [
+        (
+            "building",
+            &building_registry,
+            &building_id,
+            "bin",
+            "BIN-3112312",
+        ),
+        (
+            "unit",
+            &unit_registry,
+            &unit_id,
+            "unit_id",
+            "UNIT-1633B-3600",
+        ),
+        ("site", &site_registry, &site_id, "site_id", "SITE-PP"),
+    ] {
+        let out = temp.path().join(format!("{kind}-crosswalk.parquet"));
+        export_registry(registry, "key-crosswalk", &out, true, None);
+        let rows = parquet_rows(&out);
+        let row = rows
+            .iter()
+            .find(|row| row["canonical_id"] == *canonical_id)
+            .expect("place grain appears in the key crosswalk");
+        assert_eq!(row["canonical_type"], kind);
+        assert_eq!(row[key_name], key_value);
+    }
+
+    let crosswalk_csv = temp.path().join("crosswalk.csv");
+    let crosswalk_csv_result = export_registry(
+        &parcel_registry,
+        "key-crosswalk",
+        &crosswalk_csv,
+        false,
+        None,
+    );
+    assert_eq!(crosswalk_csv_result["format"], "key-crosswalk");
+    assert_ne!(
+        crosswalk_csv_result["content_hash"],
+        crosswalk_one_result["content_hash"]
+    );
+    let csv_bytes = fs::read(&crosswalk_csv).expect("default CSV key crosswalk remains available");
+    assert!(csv_bytes.starts_with(b"canonical_id,canonical_type,primary_name,apn,parcel_id\n"));
+    assert!(
+        String::from_utf8(csv_bytes)
+            .expect("key crosswalk CSV is UTF-8")
+            .lines()
+            .any(|line| line.ends_with(",1022-0043,BBL-1022-0043"))
+    );
+
+    for (kind, registry, canonical_id, keys, parent_id) in [
+        (
+            "parcel",
+            &parcel_registry,
+            &parcel_id,
+            vec![("apn", "1022-0043"), ("parcel_id", "BBL-1022-0043")],
+            None,
+        ),
+        (
+            "building",
+            &building_registry,
+            &building_id,
+            vec![("bin", "BIN-3112312")],
+            None,
+        ),
+        (
+            "unit",
+            &unit_registry,
+            &unit_id,
+            vec![("unit_id", "UNIT-1633B-3600")],
+            Some(building_id.as_str()),
+        ),
+        (
+            "site",
+            &site_registry,
+            &site_id,
+            vec![("site_id", "SITE-PP")],
+            None,
+        ),
+    ] {
+        let index_path = temp.path().join(format!("{kind}-search.sqlite"));
+        export_registry(registry, "search-index", &index_path, false, None);
+        let index = Connection::open(&index_path).expect("open search index");
+        let indexed_type: String = index
+            .query_row(
+                "SELECT canonical_type FROM entities WHERE canonical_id = ?1",
+                [canonical_id],
+                |row| row.get(0),
+            )
+            .expect("place grain is projected into the search index");
+        assert_eq!(indexed_type, kind);
+        for (namespace, expected_value) in keys {
+            let indexed_key: String = index
+                .query_row(
+                    "SELECT key_value FROM external_keys WHERE canonical_id = ?1 AND key_namespace = ?2",
+                    rusqlite::params![canonical_id, namespace],
+                    |row| row.get(0),
+                )
+                .expect("place key reaches the search index");
+            assert_eq!(indexed_key, expected_value);
+        }
+        // Each relation appears in the export of the registry that stores it:
+        // unit -> building with the unit, building -> site with the site.
+        let related = |context_kind: &str| -> Vec<String> {
+            index
+                .prepare(
+                    "SELECT counterpart_id FROM entity_context WHERE canonical_id = ?1 AND kind = ?2",
+                )
+                .expect("entity context query")
+                .query_map(rusqlite::params![canonical_id, context_kind], |row| {
+                    row.get(0)
+                })
+                .expect("entity context rows")
+                .map(|row| row.expect("counterpart id"))
+                .collect()
+        };
+        assert_eq!(
+            related("part_of"),
+            parent_id.into_iter().collect::<Vec<_>>(),
+            "{kind}"
+        );
+        let children = if kind == "site" {
+            vec![building_id.as_str()]
+        } else {
+            Vec::new()
+        };
+        assert_eq!(related("unit"), children, "{kind}");
+    }
+
+    let unsupported_path = temp.path().join("unsupported-search.parquet");
+    let unsupported = canon_command()
+        .args(["registry", "export", "--registry"])
+        .arg(&unit_registry)
+        .args(["--format", "search-index", "--out"])
+        .arg(&unsupported_path)
+        .args(["--parquet", "--emit", "json"])
+        .output()
+        .expect("unsupported-format refusal process");
+    assert_eq!(unsupported.status.code(), Some(2));
+    let refusal: Value = serde_json::from_slice(&unsupported.stdout).expect("refusal JSON");
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(refusal["refusal"]["code"], "E_PARSE");
+    assert!(!unsupported_path.exists());
 }

@@ -111,7 +111,7 @@ yet know enough.
 | `canon entity generalization --manifest <STRICT_ENVELOPE.json>` | Compile artifact-backed entity-disjoint and time-forward trials into a JSON or summary report. | Strict execution envelope only; one public/private command, redacted identifiers and paths, outcomes and leakage checks derived from referenced artifacts rather than self-attested fields. Strict solve derivation binds typed edge artifacts, edge records, prepared surfaces, and `canon.evaluation.generalization.solve_policy.v0`. |
 | `canon entity calibrate sweep <RESULT> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml>` | Sweep integer threshold tuples against gold labels and emit a truth-space recommendation report. | Read-only workbench report; no registry writes, no strategy mutation, frozen `canon.entity.quality.v1` gates. |
 | `canon entity calibrate em <EVIDENCE.jsonl> --strategy <STRATEGY.yaml>` | Estimate support-evidence weights from aggregated agreement patterns and emit proposed support-score YAML. | Read-only calibration assist; fixed-point EM over existing evidence only, no registry writes, no strategy mutation, no automatic authority. |
-| `canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card` | Project exact registry knowledge into transform or serving artifacts, the key-to-key crosswalk, or one bounded JSON context card per canonical ID. | Deterministic downstream snapshots; no new matching semantics. |
+| `canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card` | Project exact registry knowledge into transform or serving artifacts, the key-to-key crosswalk, or one bounded JSON context card per canonical ID. `dbt-seed` and `key-crosswalk` also support `--parquet`; CSV remains the default. | Deterministic downstream snapshots; no new matching semantics. |
 | `canon temporal compile --request <REQUEST.json> [--emit json\|summary] [--no-witness]` | Compile the native `TemporalCompileRequest` at explicit `valid_at` and `known_as_of` cutoffs into `canon.temporal.compile.v1`. | Offline snapshot artifact with mapping proofs and conflict omissions; no registry writes or promotion. Exit 0 means compilation succeeded, including an empty or conflict-omitting snapshot. Malformed or invalid requests refuse with exit 2. |
 | `canon temporal relation finalize --facts <FACTS.json> [--emit json\|summary] [--max-bytes <N>] [--no-witness]` | Finalize a JSON array of native `canon.identity.relation.v1` facts using Canon's relation interval, provenance, deduplication, and graph-constraint APIs. | Deterministic relation facts only; no registry writes, alias creation, or identity acceptance. |
 | Package and project workflows | Move registries and strategies through reproducible deployment and project locks. | They package and check knowledge; they do not change exact lookup. |
@@ -493,7 +493,7 @@ canon inbox apply-review --inbox <INBOX.json> --review <REVIEW.json> --expected-
 canon inbox plan-entity --inbox <INBOX.json> --expected-inbox-hash <HASH> --out <REQUEST.json> [--policy <POLICY.json>] [--event-key <KEY>...] [--limit <N>] [--mode cluster|link] [--emit json|summary]
 canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>] [--json]
 canon registry init --registry <DIR> --registry-id <ID> --prefix <PREFIX> [--zero-pad <N>] [--description <TEXT>] [--emit json|summary | --json]
-canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card|link-evidence (--registry <REGISTRY>|--registries <MAP>) [--out <PATH>] [--from <A> --to <B>] [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>] [--emit json|summary | --json]
+canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card|link-evidence (--registry <REGISTRY>|--registries <MAP>) [--out <PATH>] [--from <A> --to <B>] [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>] [--parquet] [--emit json|summary | --json]
 canon registry providers [--emit json|summary | --json]
 canon registry provider-schema <PROVIDER> [--emit json|summary | --json]
 canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json | --json]
@@ -910,7 +910,7 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `inbox apply-review --inbox <INBOX.json> --review <REVIEW.json> --expected-inbox-hash <HASH> --out <GROUPS.json> [--emit json\|summary]` | Apply explicit review decisions into a grouped unresolved artifact. |
 | `inbox plan-entity --inbox <INBOX.json> --expected-inbox-hash <HASH> --out <REQUEST.json> [--policy <POLICY.json>] [--event-key <KEY>...] [--limit <N>] [--mode cluster\|link] [--emit json\|summary]` | Plan a bounded entity workbench request without deciding identity. |
 | `registry build --source <NAME> --seed <PATH> --seed-column <COLUMN> --output <DIR> --version <VER>` | Materialize a standard canon registry directory from a provider-backed seed corpus, with optional repeatable `--provider-config key=value` overrides such as OpenFIGI `id_type`, `base_url`, `api_key`, or mapping filters like `exchCode=US`. |
-| `registry export --format dbt-seed\|search-index\|key-crosswalk\|entity-card --registry <DIR> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--id <ID>...] [--max-bytes <N>]` | Export a versioned registry as a deterministic dbt seed CSV, self-describing SQLite search index, key crosswalk, or one JSON entity card per ID, with format-specific filters and budgets. |
+| `registry export --format dbt-seed\|search-index\|key-crosswalk\|entity-card --registry <DIR> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--parquet] [--id <ID>...] [--max-bytes <N>]` | Export a versioned registry as a deterministic dbt seed CSV (or Parquet with `--parquet`), self-describing SQLite search index, key crosswalk CSV (or Parquet), or one JSON entity card per ID, with format-specific filters and budgets. |
 | `registry providers [--emit json\|summary]` | List the registry build providers available for materialization, with their seed-column support and a pointer to each provider's schema command. |
 | `registry provider-schema <PROVIDER> [--emit json\|summary]` | Emit one provider's machine-readable `--provider-config` option contract — keys, types, enum values, secret flags, env fallbacks, defaults, mutual exclusions, interval encoding, and examples. Deterministic and offline; never contacts the provider. |
 | `registry identity --registry <DIR> [--ref <REF>] [--emit json\|summary]` | Print the hand-off identity of a registry directory (id, version, package digest, `content_hash` over registry.json, mapping files, `_anchors`, `_escrow`, `_build.json`, `relations.jsonl`, `corrections.jsonl`, per-file hashes) so a driver can read the base after a sync; with `--ref '[<registry id>:]<canonical id>@<registry version>#<closure hash>'` report `id_status` (`current`, `superseded`, `unknown`), `resolves_to`, `version_match` and `closure_found`. Reads only; canon uploads nothing. `entity session commit --expect-base <content_hash>` refuses `base_moved` before any write when the directory differs. The commit receipt carries, per `registries[]` entry, `base` and `new` (`version`, `content_hash`, `package_digest`), `changed_files`, `closures` (`outcome_ref`, `closure_hash`, `ref`), `commit_closure_hash` and the `export_command` that builds the search index; a repeat or a nothing-to-commit reports equal `base` and `new` and empty `changed_files` and `closures`. |
@@ -1094,6 +1094,23 @@ canon registry export \
   --out seeds/canon_funds.csv \
   --schema-out models/schema.yml \
   --anti-collapse-test-out tests/assert_canon_funds_no_collapse.sql
+```
+
+For a Parquet seed or key crosswalk, add `--parquet` and use a `.parquet` output path. CSV remains the default; `--parquet` is refused for `search-index` and other export formats.
+
+```bash
+canon registry export \
+  --format dbt-seed \
+  --registry registries/funds/ \
+  --namespace funds \
+  --out seeds/canon_funds.parquet \
+  --parquet
+
+canon registry export \
+  --format key-crosswalk \
+  --registry registries/funds/ \
+  --out artifacts/funds.keys.parquet \
+  --parquet
 ```
 
 Export a generic SQLite search index for serving endpoints:

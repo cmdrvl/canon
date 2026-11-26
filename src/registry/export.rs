@@ -4,6 +4,12 @@ use super::{
 };
 use crate::{Refusal, RefusalCode, RegistryMeta};
 use chrono::{DateTime, SecondsFormat, Utc};
+use parquet::{
+    basic::Compression,
+    data_type::{ByteArray, ByteArrayType},
+    file::{properties::WriterProperties, writer::SerializedFileWriter},
+    schema::parser::parse_message_type,
+};
 use rusqlite::{Connection, params};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -11,27 +17,55 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{self, File},
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 const EXPORT_VERSION: &str = "canon_registry_export.v0";
 const SEARCH_INDEX_ARTIFACT_VERSION: &str = "canon_registry_search_index.v0";
 const SEARCH_INDEX_SCHEMA_VERSION: &str = "canon_registry_search_index_schema.v1";
 const NORMALIZATION_SPEC_ID: &str = "canon_registry_search_key.v0";
+const PARQUET_EXPORT_ROW_GROUP_ROWS: usize = 8_192;
+const DBT_SEED_COLUMNS: [&str; 18] = [
+    "namespace",
+    "source_input",
+    "normalized_key",
+    "canonical_id",
+    "canonical_iri",
+    "canonical_type",
+    "alias_kind",
+    "rule_id",
+    "match_source",
+    "registry_id",
+    "registry_version",
+    "registry_content_hash",
+    "registry_package_id",
+    "registry_package_version",
+    "registry_package_digest",
+    "registry_package_schema_version",
+    "source_file",
+    "entry_order",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegistryExportFormat {
     DbtSeed,
+    DbtSeedParquet,
     SearchIndex,
     KeyCrosswalk,
+    KeyCrosswalkParquet,
 }
 
 impl RegistryExportFormat {
     fn as_str(self) -> &'static str {
         match self {
-            Self::DbtSeed => "dbt-seed",
+            Self::DbtSeed | Self::DbtSeedParquet => "dbt-seed",
             Self::SearchIndex => "search-index",
-            Self::KeyCrosswalk => "key-crosswalk",
+            Self::KeyCrosswalk | Self::KeyCrosswalkParquet => "key-crosswalk",
         }
+    }
+
+    fn is_parquet(self) -> bool {
+        matches!(self, Self::DbtSeedParquet | Self::KeyCrosswalkParquet)
     }
 }
 
@@ -327,12 +361,22 @@ impl RegistryExportFormat {
                 plan_files: plan_dbt_seed_files,
                 execute: execute_dbt_seed_backend,
             },
+            Self::DbtSeedParquet => RegistryExportBackendContract {
+                id: self.as_str(),
+                plan_files: plan_dbt_seed_files,
+                execute: execute_dbt_seed_backend,
+            },
             Self::SearchIndex => RegistryExportBackendContract {
                 id: self.as_str(),
                 plan_files: plan_search_index_files,
                 execute: execute_search_index_backend,
             },
             Self::KeyCrosswalk => RegistryExportBackendContract {
+                id: self.as_str(),
+                plan_files: plan_search_index_files,
+                execute: execute_key_crosswalk_backend,
+            },
+            Self::KeyCrosswalkParquet => RegistryExportBackendContract {
                 id: self.as_str(),
                 plan_files: plan_search_index_files,
                 execute: execute_key_crosswalk_backend,
@@ -458,12 +502,16 @@ pub fn build_entity_card_views(
         let (Some(subject), Some(object)) = (subject, object) else {
             continue;
         };
-        let Some(subject_id) = resolve_card_endpoint(subject, &aliases, &cards) else {
+        // A relation between two grains is stored by one of the two registries,
+        // so either end may be the one this registry holds. The other end is
+        // shown by its committed identity id.
+        let local_subject = resolve_card_endpoint(subject, &aliases, &cards);
+        let local_object = resolve_card_endpoint(object, &aliases, &cards);
+        if local_subject.is_none() && local_object.is_none() {
             continue;
-        };
-        let Some(object_id) = resolve_card_endpoint(object, &aliases, &cards) else {
-            continue;
-        };
+        }
+        let subject_id = local_subject.unwrap_or_else(|| subject.to_string());
+        let object_id = local_object.unwrap_or_else(|| object.to_string());
         if subject_id == object_id {
             continue;
         }
@@ -762,15 +810,14 @@ fn insert_counterpart(
     counterpart: &str,
     cards: &BTreeMap<String, RegistryEntityCard>,
 ) {
-    if let Some(card) = cards.get(counterpart) {
-        values
-            .entry(owner.to_string())
-            .or_default()
-            .insert(RegistryEntityCardCounterpart {
-                id: Some(card.id.clone()),
-                name: card.name.clone(),
-            });
-    }
+    let card = cards.get(counterpart);
+    values
+        .entry(owner.to_string())
+        .or_default()
+        .insert(RegistryEntityCardCounterpart {
+            id: Some(card.map_or_else(|| counterpart.to_string(), |card| card.id.clone())),
+            name: card.map_or_else(|| counterpart.to_string(), |card| card.name.clone()),
+        });
 }
 
 fn insert_unknown_counterpart(
@@ -1006,8 +1053,10 @@ fn validate_request(request: &RegistryExportRequest) -> Result<(), Refusal> {
         ));
     }
 
-    if matches!(request.format, RegistryExportFormat::DbtSeed)
-        && request.namespace.as_deref().unwrap_or("").trim().is_empty()
+    if matches!(
+        request.format,
+        RegistryExportFormat::DbtSeed | RegistryExportFormat::DbtSeedParquet
+    ) && request.namespace.as_deref().unwrap_or("").trim().is_empty()
     {
         return Err(parse_refusal(
             "canon registry export --format dbt-seed requires --namespace",
@@ -1016,8 +1065,10 @@ fn validate_request(request: &RegistryExportRequest) -> Result<(), Refusal> {
         ));
     }
 
-    if !matches!(request.format, RegistryExportFormat::DbtSeed)
-        && (request.schema_out.is_some() || request.anti_collapse_test_out.is_some())
+    if !matches!(
+        request.format,
+        RegistryExportFormat::DbtSeed | RegistryExportFormat::DbtSeedParquet
+    ) && (request.schema_out.is_some() || request.anti_collapse_test_out.is_some())
     {
         return Err(parse_refusal(
             "dbt scaffold outputs are only valid with --format dbt-seed",
@@ -1260,6 +1311,123 @@ fn write_dbt_seed(path: &Path, plan: &RegistryExportExecutionPlan) -> Result<(),
     Ok(())
 }
 
+fn write_dbt_seed_parquet(path: &Path, plan: &RegistryExportExecutionPlan) -> Result<(), Refusal> {
+    let content_hash = hash_rows_only(&plan.snapshot.rows)?;
+    let package = &plan.snapshot.package;
+    let columns = DBT_SEED_COLUMNS
+        .iter()
+        .map(|column| (*column).to_string())
+        .collect::<Vec<_>>();
+    write_parquet_string_table(
+        path,
+        &columns,
+        plan.snapshot.rows.len(),
+        |row_index, column| {
+            let row = &plan.snapshot.rows[row_index];
+            match column {
+                0 => row.namespace.clone().unwrap_or_default(),
+                1 => row.input.clone(),
+                2 => row.normalized_key.clone(),
+                3 => row.canonical_id.clone(),
+                4 => row.canonical_iri.clone(),
+                5 => row.canonical_type.clone(),
+                6 => row.alias_kind.clone(),
+                7 => row.rule_id.clone(),
+                8 => row.match_source.clone(),
+                9 => row.registry_id.clone(),
+                10 => row.registry_version.clone(),
+                11 => content_hash.clone(),
+                12 => package.id.clone(),
+                13 => package.version.clone(),
+                14 => package.content_digest.clone(),
+                15 => package.schema_version.clone(),
+                16 => row.source_file.clone(),
+                17 => row.entry_order.to_string(),
+                _ => String::new(),
+            }
+        },
+    )
+}
+
+fn write_parquet_string_table(
+    path: &Path,
+    columns: &[String],
+    row_count: usize,
+    mut value_at: impl FnMut(usize, usize) -> String,
+) -> Result<(), Refusal> {
+    let mut schema = String::from("message canon_registry_export {\n");
+    for column in columns {
+        if !valid_parquet_identifier(column) {
+            return Err(parse_refusal(
+                "Registry export column cannot be represented by the Parquet schema",
+                json!({"column": column, "writes_performed": false}),
+                "Use a key namespace containing only ASCII letters, digits, and underscores",
+            ));
+        }
+        schema.push_str(&format!("  REQUIRED BINARY {column} (UTF8);\n"));
+    }
+    schema.push_str("}\n");
+    let schema = parse_message_type(&schema).map_err(|error| {
+        parse_refusal(
+            "Could not construct the registry export Parquet schema",
+            json!({"error": error.to_string(), "writes_performed": false}),
+            "Check the registry export columns, then rerun the Parquet export",
+        )
+    })?;
+
+    ensure_parent_dir(path)?;
+    let file = File::create(path).map_err(|error| io_refusal(path, error))?;
+    let properties = Arc::new(
+        WriterProperties::builder()
+            .set_compression(Compression::SNAPPY)
+            .set_created_by("canon registry export".to_string())
+            .build(),
+    );
+    let mut writer = SerializedFileWriter::new(file, Arc::new(schema), properties)
+        .map_err(|error| io_refusal(path, error))?;
+    let mut row_start = 0;
+    while row_start < row_count {
+        let row_end = row_start
+            .saturating_add(PARQUET_EXPORT_ROW_GROUP_ROWS)
+            .min(row_count);
+        let mut row_group = writer
+            .next_row_group()
+            .map_err(|error| io_refusal(path, error))?;
+        for column_index in 0..columns.len() {
+            let mut column = row_group
+                .next_column()
+                .map_err(|error| io_refusal(path, error))?
+                .ok_or_else(|| {
+                    parse_refusal(
+                        "Parquet writer returned fewer columns than the declared schema",
+                        json!({"column_index": column_index}),
+                        "Rerun the registry export with a valid Parquet schema",
+                    )
+                })?;
+            let values = (row_start..row_end)
+                .map(|row_index| ByteArray::from(value_at(row_index, column_index).into_bytes()))
+                .collect::<Vec<_>>();
+            column
+                .typed::<ByteArrayType>()
+                .write_batch(&values, None, None)
+                .map_err(|error| io_refusal(path, error))?;
+            column.close().map_err(|error| io_refusal(path, error))?;
+        }
+        row_group.close().map_err(|error| io_refusal(path, error))?;
+        row_start = row_end;
+    }
+    writer.close().map_err(|error| io_refusal(path, error))?;
+    Ok(())
+}
+
+fn valid_parquet_identifier(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    bytes
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == b'_')
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+}
+
 fn write_dbt_schema(path: &Path, seed_path: &Path) -> Result<(), Refusal> {
     ensure_parent_dir(path)?;
     let seed_name = dbt_seed_name(seed_path);
@@ -1279,7 +1447,11 @@ fn write_anti_collapse_test(path: &Path, seed_path: &Path) -> Result<(), Refusal
 }
 
 fn execute_dbt_seed_backend(plan: &RegistryExportExecutionPlan) -> Result<(), Refusal> {
-    write_dbt_seed(&plan.request.out, plan)?;
+    if plan.request.format.is_parquet() {
+        write_dbt_seed_parquet(&plan.request.out, plan)?;
+    } else {
+        write_dbt_seed(&plan.request.out, plan)?;
+    }
     for file in &plan.files {
         match file.role {
             RegistryExportPlannedFileRole::PrimaryArtifact => {}
@@ -1390,8 +1562,23 @@ fn write_key_crosswalk(path: &Path, plan: &RegistryExportExecutionPlan) -> Resul
     Ok(())
 }
 
+fn write_key_crosswalk_parquet(
+    path: &Path,
+    plan: &RegistryExportExecutionPlan,
+) -> Result<(), Refusal> {
+    let (header, table) = render_key_crosswalk(&plan.snapshot.rows);
+    let row_count = table.len();
+    write_parquet_string_table(path, &header, row_count, |row_index, column| {
+        table[row_index][column].clone()
+    })
+}
+
 fn execute_key_crosswalk_backend(plan: &RegistryExportExecutionPlan) -> Result<(), Refusal> {
-    write_key_crosswalk(&plan.request.out, plan)
+    if plan.request.format.is_parquet() {
+        write_key_crosswalk_parquet(&plan.request.out, plan)
+    } else {
+        write_key_crosswalk(&plan.request.out, plan)
+    }
 }
 
 fn execute_search_index_backend(plan: &RegistryExportExecutionPlan) -> Result<(), Refusal> {
@@ -1735,6 +1922,34 @@ fn insert_external_keys(conn: &Connection, rows: &[ExportRow], path: &Path) -> R
             ));
         }
     }
+    // Authoritative keys a session committed, under the namespace their rule id
+    // names (as in the key crosswalk). A row listed above already stands.
+    let mut listed = keys
+        .iter()
+        .map(|(kind, id, namespace, value, _, _)| {
+            (kind.clone(), id.clone(), namespace.clone(), value.clone())
+        })
+        .collect::<BTreeSet<_>>();
+    for row in rows {
+        let Some(namespace) = key_namespace_of(&row.rule_id) else {
+            continue;
+        };
+        if listed.insert((
+            row.canonical_type.clone(),
+            row.canonical_id.clone(),
+            namespace.clone(),
+            row.input.clone(),
+        )) {
+            keys.insert((
+                row.canonical_type.clone(),
+                row.canonical_id.clone(),
+                namespace,
+                row.input.clone(),
+                row.canonical_iri.clone(),
+                "session_key".to_string(),
+            ));
+        }
+    }
     for (canonical_type, canonical_id, key_namespace, key_value, canonical_iri, source) in keys {
         conn.execute(
             "INSERT INTO external_keys (canonical_type, canonical_id, key_namespace, key_value, canonical_iri, source) VALUES (?, ?, ?, ?, ?, ?)",
@@ -1872,7 +2087,7 @@ fn hash_backend_export(
     format: RegistryExportFormat,
     snapshot: &RegistryExportSnapshot,
 ) -> Result<String, Refusal> {
-    let value = json!({
+    let mut value = json!({
         "format": format.as_str(),
         "registry": registry_hash_identity(&snapshot.registry),
         "package": &snapshot.package,
@@ -1880,6 +2095,9 @@ fn hash_backend_export(
         "rows": &snapshot.rows,
         "entities": &snapshot.entities,
     });
+    if format.is_parquet() {
+        value["physical_encoding"] = json!("parquet");
+    }
     hash_json_value(&value)
 }
 

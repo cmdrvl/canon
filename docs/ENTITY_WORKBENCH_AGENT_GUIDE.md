@@ -1050,6 +1050,7 @@ different grains agrees with the grains and has nothing to veto.
 
 **Commit.** A relation between two different grains is written once, by the
 registry of whichever of the two kinds commits later (the map's kind-name order),
-so the earlier kind's newly minted id is known. Registry export cards read one
-registry's `relations.jsonl`, so a card shows a cross-grain relation only when
-the other endpoint resolves in that same registry.
+so the earlier kind's newly minted id is known. Registry export cards and the
+search index read one registry's `relations.jsonl`. They show a cross-grain
+relation on whichever endpoint that registry holds and name the other endpoint
+by its committed id. The other endpoint's own registry export does not show it.

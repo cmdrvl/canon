@@ -1291,13 +1291,13 @@ pub enum RegistrySubcommand {
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum RegistryExportFormatCli {
-    /// Deterministic CSV seed for dbt or SQL transform tools
+    /// Deterministic CSV seed for dbt or SQL transform tools; Parquet is available with --parquet
     #[value(name = "dbt-seed")]
     DbtSeed,
     /// Self-describing SQLite search artifact for serving endpoints
     #[value(name = "search-index")]
     SearchIndex,
-    /// Deterministic key-to-key CSV: one row per canonical ID, one column per key namespace
+    /// Deterministic key-to-key CSV: one row per canonical ID, one column per key namespace; Parquet is available with --parquet
     #[value(name = "key-crosswalk")]
     KeyCrosswalk,
     /// One deterministic JSON entity card per canonical ID, including relation and distinct context
@@ -1329,6 +1329,10 @@ pub struct RegistryExportCli {
     /// Export format
     #[arg(long, value_enum)]
     pub format: RegistryExportFormatCli,
+
+    /// Write dbt-seed or key-crosswalk as Parquet; CSV remains the default
+    #[arg(long)]
+    pub parquet: bool,
 
     /// Output artifact path; optional for link-evidence, whose answer goes to stdout
     #[arg(long)]

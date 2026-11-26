@@ -5094,9 +5094,26 @@ fn registry_version_bump(bump: RegistryVersionBumpMode) -> registry::RegistryVer
 }
 
 fn run_registry_export(export: &RegistryExportCli) -> Result<u8, Box<dyn Error>> {
+    if export.parquet
+        && matches!(
+            &export.format,
+            RegistryExportFormatCli::SearchIndex
+                | RegistryExportFormatCli::EntityCard
+                | RegistryExportFormatCli::LinkEvidence
+        )
+    {
+        return refuse_registry_export_parquet(export);
+    }
+
     let format = match export.format {
+        RegistryExportFormatCli::DbtSeed if export.parquet => {
+            registry::RegistryExportFormat::DbtSeedParquet
+        }
         RegistryExportFormatCli::DbtSeed => registry::RegistryExportFormat::DbtSeed,
         RegistryExportFormatCli::SearchIndex => registry::RegistryExportFormat::SearchIndex,
+        RegistryExportFormatCli::KeyCrosswalk if export.parquet => {
+            registry::RegistryExportFormat::KeyCrosswalkParquet
+        }
         RegistryExportFormatCli::KeyCrosswalk => registry::RegistryExportFormat::KeyCrosswalk,
         RegistryExportFormatCli::EntityCard => return run_registry_entity_cards(export),
         RegistryExportFormatCli::LinkEvidence => return run_registry_link_evidence(export),
@@ -5150,6 +5167,31 @@ fn run_registry_export(export: &RegistryExportCli) -> Result<u8, Box<dyn Error>>
             Ok(2)
         }
     }
+}
+
+fn refuse_registry_export_parquet(export: &RegistryExportCli) -> Result<u8, Box<dyn Error>> {
+    let format_name = match &export.format {
+        RegistryExportFormatCli::DbtSeed => "dbt-seed",
+        RegistryExportFormatCli::SearchIndex => "search-index",
+        RegistryExportFormatCli::KeyCrosswalk => "key-crosswalk",
+        RegistryExportFormatCli::EntityCard => "entity-card",
+        RegistryExportFormatCli::LinkEvidence => "link-evidence",
+    };
+    let refusal = refusal::create_refusal(
+        RefusalCode::EParse,
+        "--parquet is only valid with --format dbt-seed or --format key-crosswalk".to_string(),
+        serde_json::json!({
+            "format": format_name,
+            "option": "--parquet",
+            "writes_performed": false,
+        }),
+        Some("Use --parquet with --format dbt-seed or --format key-crosswalk".to_string()),
+    );
+    match export.emit {
+        RegistryEmitMode::Json => println!("{}", serde_json::to_string(&refusal)?),
+        RegistryEmitMode::Summary => eprintln!("{}", serde_json::to_string(&refusal)?),
+    }
+    Ok(2)
 }
 
 /// `--registry` and `--out` are optional on the command line only for
