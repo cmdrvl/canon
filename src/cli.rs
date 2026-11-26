@@ -3373,7 +3373,6 @@ pub struct EntityExplainCli {
 #[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "Resolve messy identifiers to canonical IDs using versioned registries")]
 #[command(disable_version_flag = true)]
-#[command(subcommand_precedence_over_arg = true)]
 #[command(subcommand_negates_reqs = true)]
 pub struct Cli {
     #[command(subcommand)]

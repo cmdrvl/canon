@@ -5785,3 +5785,34 @@ fn test_non_utf8_input_path_does_not_panic() {
         .code(2)
         .stdout(predicate::str::contains("E_IO"));
 }
+
+#[test]
+fn a_registry_directory_named_like_a_subcommand_is_read_as_the_option_value() {
+    use std::fs;
+
+    let source = fixture_path("tests/fixtures/registries/cusip-isin");
+    for name in ["registry", "entity", "strategy", "doctor", "package"] {
+        let directory = tempdir().unwrap();
+        let registry = directory.path().join(name);
+        fs::create_dir(&registry).unwrap();
+        for entry in fs::read_dir(&source).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_file() {
+                fs::copy(&path, registry.join(path.file_name().unwrap())).unwrap();
+            }
+        }
+        fs::write(
+            directory.path().join("q.csv"),
+            "name\nnot-in-the-registry\n",
+        )
+        .unwrap();
+        Command::new(env!("CARGO_BIN_EXE_canon"))
+            .current_dir(directory.path())
+            .args(["q.csv", "--registry", name, "--column", "name"])
+            .args(["--emit", "csv", "--no-witness"])
+            .assert()
+            // looked up and unresolved, not a usage error
+            .code(1)
+            .stdout(predicate::str::contains("not-in-the-registry"));
+    }
+}
