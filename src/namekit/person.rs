@@ -54,6 +54,45 @@ const LEGAL_FORMS: &[&str] = &[
 
 const HONORIFICS: &[&str] = &["mr", "mrs", "ms", "miss", "dr", "prof", "hon", "rev", "sir"];
 
+/// Post-nominal credentials: not part of the name. Generational suffixes are
+/// not among them; they tell people apart.
+const CREDENTIALS: &[&str] = &[
+    "md", "do", "dds", "dmd", "jd", "esq", "phd", "cpa", "cfa", "mba", "pe", "rn", "dvm",
+];
+
+/// Credentials that are also family names ("Nguyen Van Do"), so are dropped
+/// only where a comma sets them apart.
+const CREDENTIALS_AFTER_A_COMMA_ONLY: &[&str] = &["do"];
+
+/// Drop the credentials that end `parts`: whole comma parts, then trailing
+/// words of the last part. Two name words are always left. Returns whether
+/// anything was dropped.
+fn drop_credentials(parts: &mut Vec<Vec<String>>) -> bool {
+    let name_words = |parts: &[Vec<String>]| parts.iter().map(Vec::len).sum::<usize>();
+    let mut dropped = false;
+
+    while let Some((last, before)) = parts.split_last()
+        && !before.is_empty()
+        && last.iter().all(|w| CREDENTIALS.contains(&w.as_str()))
+        && name_words(before) >= 2
+    {
+        parts.pop();
+        dropped = true;
+    }
+    while name_words(parts) > 2
+        && let Some(last) = parts.last_mut()
+        && last.len() > 1
+        && last.last().is_some_and(|w| {
+            CREDENTIALS.contains(&w.as_str())
+                && !CREDENTIALS_AFTER_A_COMMA_ONLY.contains(&w.as_str())
+        })
+    {
+        last.pop();
+        dropped = true;
+    }
+    dropped
+}
+
 /// Family-name particles that stay with the family name.
 const PARTICLES: &[&str] = &[
     "van", "von", "der", "den", "de", "da", "del", "di", "la", "le", "st",
@@ -171,11 +210,14 @@ pub fn parse_person_name(surface: &str) -> Option<PersonName> {
     if surface.contains('.') {
         steps.push("person:strip_periods".to_string());
     }
-    let parts = surface
+    let mut parts = surface
         .split(',')
         .map(words)
         .filter(|part| !part.is_empty())
         .collect::<Vec<_>>();
+    if drop_credentials(&mut parts) {
+        steps.push("person:drop_credential".to_string());
+    }
     let is_suffix_part = |part: &[String]| part.iter().all(|w| suffix_form(w).is_some());
     let (mut family, mut rest, mut suffix_words): (Vec<String>, Vec<String>, Vec<String>) =
         match parts.as_slice() {
@@ -381,6 +423,55 @@ mod tests {
         assert_eq!(person("John Smith, Jr").suffix, "jr");
         assert_eq!(person("Smith, John, III").key(), "smith|john||iii");
         assert_eq!(person("Smith, Mary Ann").middle, "ann");
+    }
+
+    #[test]
+    fn credentials_are_dropped_and_are_not_read_as_a_given_name() {
+        let jane = person("Jane Doe");
+        for text in [
+            "Dr. Jane Doe, MD",
+            "Jane Doe, M.D.",
+            "Jane Doe MD",
+            "Jane Doe, Esq.",
+            "Doe, Jane, CPA",
+            "Doe, Jane JD",
+            "Jane Doe, DO",
+            "Jane Doe, MD, PhD",
+        ] {
+            let parsed = person(text);
+            assert_eq!(parsed.key(), "doe|jane||", "{text}");
+            assert!(
+                parsed.steps.contains(&"person:drop_credential".to_string()),
+                "{text}"
+            );
+            assert!(compare_persons(&parsed, &jane).eq_equiv(), "{text}");
+        }
+        let junior = person("John A. Smith Jr., MD");
+        assert_eq!(junior.suffix, "jr");
+        assert!(matches!(
+            compare_persons(&junior, &person("John A. Smith Sr.")),
+            PersonRelation::SuffixConflict { .. }
+        ));
+    }
+
+    #[test]
+    fn a_name_that_only_looks_like_a_credential_is_kept() {
+        for (text, key) in [
+            ("Smith, Jones", "smith|jones||"),
+            // a family name, with no comma before it
+            ("Nguyen Van Do", "van do|nguyen||"),
+            ("Anh Do", "do|anh||"),
+            // dropping it would leave one name word
+            ("Smith, Do", "smith|do||"),
+            ("Jane Pe", "pe|jane||"),
+        ] {
+            let parsed = person(text);
+            assert_eq!(parsed.key(), key, "{text}");
+            assert!(
+                !parsed.steps.contains(&"person:drop_credential".to_string()),
+                "{text}"
+            );
+        }
     }
 
     #[test]

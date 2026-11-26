@@ -1004,15 +1004,17 @@ pub fn derive(request: SessionDeriveRequest) -> Result<SessionDeriveOutput, Refu
     }
 
     if let (Some(stats), Some(view)) = (name_stats.as_mut(), name_views.iter().next()) {
+        // Committed aliases are here too (when registry candidates are on), so
+        // a new spelling of a committed person is compared with them.
         let nodes = by_surface
             .values()
-            .filter(|info| !info.is_registry())
             .map(|info| NameNode {
                 obs_id: info.obs_id.as_str(),
                 surface: surface_text
                     .get(&info.obs_id)
                     .map_or(info.record.primary_surface.as_str(), String::as_str),
                 entity_type: info.entity_type.as_str(),
+                registry: info.is_registry(),
             })
             .collect::<Vec<_>>();
         let view_steps = document

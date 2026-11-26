@@ -1479,6 +1479,55 @@ fn one_person_in_three_spellings_is_name_equivalent_with_listed_steps() {
     assert_eq!(derived["names"]["classified"]["person"], 5);
 }
 
+/// Commit `aliases` of one person to the person registry of a `names_case`.
+fn seed_people(case: &Case, aliases: &[&str]) {
+    let registry = case.root.join("persons");
+    let rows = aliases
+        .iter()
+        .map(|alias| {
+            json!({
+                "input": alias,
+                "canonical_id": "PER-1",
+                "canonical_type": "person",
+                "rule_id": "SEEDED",
+            })
+        })
+        .collect::<Vec<_>>();
+    fs::write(
+        registry.join("seed.json"),
+        serde_json::to_vec(&rows).unwrap(),
+    )
+    .unwrap();
+    let manifest_path = registry.join("registry.json");
+    let mut manifest: Value = serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+    let entry_count = manifest["entry_count"].as_u64().unwrap() + aliases.len() as u64;
+    manifest["entry_count"] = json!(entry_count);
+    fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+}
+
+#[test]
+fn day_two_a_new_person_spelling_is_compared_with_committed_people_but_never_two_of_them() {
+    let case = names_case(ATTRIBUTE_RULES);
+    seed_people(&case, &["John Smith", "Smith, John"]);
+    case.ingest(&[typed("n1", "fundB", "John A.B. Smith, CPA", "person")]);
+    let profile = names_profile().replace(EXACT_BLOCK, DAY_TWO_BLOCK);
+
+    let derived = case.derive(&profile, 0);
+    eprintln!("day two person derive: {derived}");
+    // the observation against each alias; a third would be alias against alias
+    assert_eq!(count(&derived, "name_equivalent"), 2, "{derived}");
+    assert_eq!(
+        derived["registry_candidates"]["registry_registry_pairs_scored"],
+        0
+    );
+    assert_eq!(records_of(&case, "n1", "name_equivalent").len(), 2);
+    let explained = run_json(&["entity", "session", "explain", p(&case.session), "n1"], 0);
+    let edges = explained["edges"].to_string();
+    for alias in ["registry:alias:John Smith", "registry:alias:Smith, John"] {
+        assert!(edges.contains(alias), "{alias}: {edges}");
+    }
+}
+
 #[test]
 fn a_different_suffix_is_distinct_and_a_different_middle_is_not_equivalent() {
     let case = names_case(ATTRIBUTE_RULES);

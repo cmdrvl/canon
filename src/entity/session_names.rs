@@ -105,6 +105,9 @@ pub struct NameNode<'a> {
     pub obs_id: &'a str,
     pub surface: &'a str,
     pub entity_type: &'a str,
+    /// A committed registry alias, not a session observation. Two of these are
+    /// never related to each other.
+    pub registry: bool,
 }
 
 struct Person<'a> {
@@ -179,7 +182,9 @@ pub fn name_assertions(
     for members in groups.values() {
         for (index, left) in members.iter().enumerate() {
             for right in &members[index + 1..] {
-                if left.node.obs_id == right.node.obs_id {
+                if left.node.obs_id == right.node.obs_id
+                    || (left.node.registry && right.node.registry)
+                {
                     continue;
                 }
                 stats.person_pairs_compared += 1;
@@ -266,7 +271,12 @@ pub fn name_assertions(
         else {
             continue;
         };
-        for person in by_key.get(&holder.key()).into_iter().flatten() {
+        for person in by_key
+            .get(&holder.key())
+            .into_iter()
+            .flatten()
+            .filter(|person| !(trust.registry && person.node.registry))
+        {
             stats.trust_relations.push(TrustRelation {
                 trust_obs_id: trust.obs_id.to_string(),
                 person_obs_id: person.node.obs_id.to_string(),
