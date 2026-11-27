@@ -9269,8 +9269,14 @@ fn run_pipeline(
         .map_err(|error| create_scope_parse_refusal(&cli.scope, error))?;
 
     // Step 5: Parse input
-    let input_values = input::parse_input(input_path, column, cli.max_bytes, cli.max_rows)
-        .map_err(create_input_refusal)?;
+    let input_values = input::parse_lookup_input(
+        input_path,
+        column,
+        cli.sheet.as_deref(),
+        cli.max_bytes,
+        cli.max_rows,
+    )
+    .map_err(create_input_refusal)?;
 
     // Step 6: Hash input bytes for witness
     let (input_hash, input_bytes) = if input_path == Path::new("-") {
@@ -9291,15 +9297,22 @@ fn run_pipeline(
     };
 
     // Step 7: Validate emit mode
-    if matches!(cli.emit, crate::cli::EmitMode::Csv)
-        && matches!(input_values.format, InputFormat::Jsonl)
-    {
-        return Err(refusal::create_refusal(
-            RefusalCode::EEmitFormat,
-            "--emit csv cannot be used with JSONL input".to_string(),
-            serde_json::json!({"input_format": "jsonl", "emit_mode": "csv"}),
-            Some("Use --emit json with JSONL input".to_string()),
-        ));
+    if matches!(cli.emit, crate::cli::EmitMode::Csv) {
+        // CSV output re-reads the input as delimited text.
+        let other = match input_values.format {
+            InputFormat::Csv => None,
+            InputFormat::Jsonl => Some(("JSONL", "jsonl")),
+            InputFormat::Parquet => Some(("Parquet", "parquet")),
+            InputFormat::Xlsx => Some(("XLSX", "xlsx")),
+        };
+        if let Some((name, format)) = other {
+            return Err(refusal::create_refusal(
+                RefusalCode::EEmitFormat,
+                format!("--emit csv cannot be used with {name} input"),
+                serde_json::json!({"input_format": format, "emit_mode": "csv"}),
+                Some(format!("Use --emit json with {name} input")),
+            ));
+        }
     }
 
     // Step 8: Resolve values
@@ -10506,6 +10519,8 @@ pub struct Refusal {
 pub enum InputFormat {
     Csv,
     Jsonl,
+    Parquet,
+    Xlsx,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

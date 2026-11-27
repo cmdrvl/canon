@@ -6,6 +6,9 @@
   generalization` are removed, with their `canon.evaluation.*` contracts and the
   `canon.evaluation.corpus.v1` schema file. There is no replacement command.
   `canon entity candidate-recall`, `calibrate sweep` and `calibrate em` stay.
+- Lookup reads `.parquet` and `.xlsx` input through the shared `cmdrvl-tabular`
+  reader, with `--sheet <name|index>` for workbooks. `--emit csv` still needs CSV
+  input. Other commands read the same formats as before.
 
 ## 0.16.0 — 2026-11-19
 

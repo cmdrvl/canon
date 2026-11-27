@@ -837,7 +837,7 @@ manually assembled evidence, and retained replays establish integration rather t
 
 | Argument | Description |
 |----------|-------------|
-| `<INPUT>` | CSV or JSONL file. Format detected by extension (`.csv`, `.tsv`, `.jsonl`, `.ndjson`). Use `-` for stdin (JSONL only). |
+| `<INPUT>` | CSV, JSONL, Parquet or XLSX file. Format detected by extension (`.csv`, `.tsv`, `.jsonl`, `.ndjson`, `.parquet`, `.xlsx`). Use `-` for stdin (JSONL only). The same table gives the same mapping from CSV, Parquet or XLSX. |
 
 ### Flags
 
@@ -845,6 +845,7 @@ manually assembled evidence, and retained replays establish integration rather t
 |------|------|---------|-------------|
 | `--registry <PATH>` | string | *(required)* | Registry directory (versioned). |
 | `--column <COLUMN>` | string | *(required)* | Column containing IDs to resolve. |
+| `--sheet <NAME\|INDEX>` | string | *(none)* | Worksheet of a `.xlsx` input, by name or 0-based index. Needed when the workbook has more than one visible sheet. |
 | `--scope DIMENSION=VALUE` | string | *(none)* | Exact lookup scope binding; repeatable. Use matching scope for scoped registry entries. |
 | `--emit <json\|csv>` | string | `json` | Output mode. `csv` requires CSV input. |
 | `--canon-column <NAME>` | string | `<COLUMN>__canon` | Name of the appended canonical column. Only with `--emit csv`. |

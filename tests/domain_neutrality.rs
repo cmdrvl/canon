@@ -1436,8 +1436,35 @@ fn collect_rust_source_files(
     Ok(())
 }
 
+/// Brotli's built-in dictionary (linked for Brotli-compressed Parquet input) is
+/// English words stored with no separators, so "Service" next to "respect" reads
+/// as "servicer". Only this exact run is set aside; the term stays forbidden.
+const BROTLI_DICTIONARY_RUN: &str = "problemservicerespect";
+
+#[test]
+fn binary_scan_sets_aside_only_the_brotli_dictionary_run() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let scan = |content: &str| {
+        let path = dir.path().join("binary");
+        fs::write(&path, content).expect("write sample");
+        scan_binary_domain_terms(&path).expect("scan sample")
+    };
+
+    assert!(scan("privacyproblemServicerespectdisplay").is_empty());
+    for leak in [
+        "loan servicer name",
+        "privacyproblemServicerespectdisplay servicer",
+        "otherServicerespect",
+    ] {
+        assert_eq!(scan(leak), BTreeSet::from(["servicer"]), "{leak}");
+    }
+}
+
 fn scan_binary_domain_terms(binary_path: &Path) -> std::io::Result<BTreeSet<&'static str>> {
-    let strings = printable_ascii_strings(&fs::read(binary_path)?);
+    let strings = printable_ascii_strings(&fs::read(binary_path)?)
+        .into_iter()
+        .map(|line| line.replace(BROTLI_DICTIONARY_RUN, " "))
+        .collect::<Vec<_>>();
     Ok(FORBIDDEN_ENTITY_ENGINE_DOMAIN_TERMS
         .iter()
         .copied()

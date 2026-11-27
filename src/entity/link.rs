@@ -3201,6 +3201,15 @@ fn load_link_input_rows(path: &Path, role: EntityLinkRole) -> Result<LinkInputRo
     let rows = match format {
         InputFormat::Csv => load_delimited_link_rows(path, role)?,
         InputFormat::Jsonl => load_jsonl_link_rows(path, role)?,
+        // `detect_format` never returns these: link reads delimited text and JSONL.
+        InputFormat::Parquet | InputFormat::Xlsx => {
+            return Err(link_input_refusal(
+                "Unsupported entity link row input format",
+                path,
+                role,
+                "Parquet and XLSX are lookup inputs only".to_string(),
+            ));
+        }
     };
     ensure_no_reserved_link_columns(&rows.headers, path, role)?;
     Ok(rows)

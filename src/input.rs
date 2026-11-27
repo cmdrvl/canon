@@ -15,8 +15,53 @@ pub fn parse_input(
     max_rows: Option<usize>,
 ) -> Result<InputValues, InputError> {
     let format = detect_format(input_path)?;
+    check_file_size(input_path, max_bytes)?;
 
-    // Handle file size check for regular files
+    let input_values = match format {
+        InputFormat::Csv => parse_csv(input_path, column, max_bytes, max_rows)?,
+        InputFormat::Jsonl => parse_jsonl(input_path, column, max_bytes, max_rows)?,
+        // `detect_format` never returns these.
+        InputFormat::Parquet | InputFormat::Xlsx => {
+            return Err(InputError::Parse("Unrecognized file extension".to_string()));
+        }
+    };
+
+    non_empty(input_values)
+}
+
+/// Lookup input: everything [`parse_input`] reads, plus `.parquet` and `.xlsx`
+/// through the shared `cmdrvl-tabular` reader. `sheet` selects a worksheet by
+/// exact name or 0-based index and applies to `.xlsx` only; without it a
+/// workbook with more than one visible sheet is refused.
+pub(crate) fn parse_lookup_input(
+    input_path: &Path,
+    column: &str,
+    sheet: Option<&str>,
+    max_bytes: Option<u64>,
+    max_rows: Option<usize>,
+) -> Result<InputValues, InputError> {
+    let tabular = input_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .and_then(|ext| match ext.to_lowercase().as_str() {
+            "parquet" => Some(InputFormat::Parquet),
+            "xlsx" => Some(InputFormat::Xlsx),
+            _ => None,
+        });
+    if sheet.is_some() && tabular != Some(InputFormat::Xlsx) {
+        return Err(InputError::Parse(
+            "--sheet applies only to .xlsx input".to_string(),
+        ));
+    }
+    let Some(format) = tabular else {
+        return parse_input(input_path, column, max_bytes, max_rows);
+    };
+    check_file_size(input_path, max_bytes)?;
+    non_empty(parse_tabular(input_path, column, format, sheet, max_rows)?)
+}
+
+/// Handle file size check for regular files.
+fn check_file_size(input_path: &Path, max_bytes: Option<u64>) -> Result<(), InputError> {
     if input_path != Path::new("-")
         && let Some(limit) = max_bytes
     {
@@ -31,18 +76,128 @@ pub fn parse_input(
             });
         }
     }
+    Ok(())
+}
 
-    let input_values = match format {
-        InputFormat::Csv => parse_csv(input_path, column, max_bytes, max_rows)?,
-        InputFormat::Jsonl => parse_jsonl(input_path, column, max_bytes, max_rows)?,
-    };
-
-    // Check for empty input
+fn non_empty(input_values: InputValues) -> Result<InputValues, InputError> {
     if input_values.values.is_empty() && input_values.special.is_empty() {
         return Err(InputError::EmptyInput);
     }
-
     Ok(input_values)
+}
+
+/// Parse Parquet or XLSX input. Cells are treated as CSV fields are: trimmed,
+/// an empty one is `empty_value`, and a row with nothing in it is skipped. The
+/// reader does not tell a null from an empty string.
+fn parse_tabular(
+    input_path: &Path,
+    column: &str,
+    format: InputFormat,
+    sheet: Option<&str>,
+    max_rows: Option<usize>,
+) -> Result<InputValues, InputError> {
+    let options = cmdrvl_tabular::OpenOptions {
+        sheet: sheet.map(cmdrvl_tabular::SheetSel::parse),
+        ..Default::default()
+    };
+    let mut table = cmdrvl_tabular::open(input_path, &options).map_err(tabular_error)?;
+
+    let column_index = table
+        .headers()
+        .iter()
+        .position(|header| header.as_slice() == column.as_bytes())
+        .ok_or_else(|| InputError::ColumnNotFound {
+            column: column.to_string(),
+            available: table
+                .headers()
+                .iter()
+                .map(|header| String::from_utf8_lossy(header).into_owned())
+                .collect(),
+        })?;
+
+    let mut values = HashMap::new();
+    let mut special = HashMap::new();
+    let mut row_count = 0;
+
+    for row in table.rows() {
+        let row = row.map_err(tabular_error)?;
+
+        if let Some(limit) = max_rows
+            && row_count >= limit
+        {
+            return Err(InputError::TooLarge {
+                limit_type: "max_rows".to_string(),
+                limit: limit.to_string(),
+                actual: row_count.to_string(),
+            });
+        }
+
+        if row
+            .cells
+            .iter()
+            .all(|cell| cell.as_bytes().trim_ascii().is_empty())
+        {
+            continue;
+        }
+
+        row_count += 1;
+
+        let bytes = row
+            .cells
+            .get(column_index)
+            .map_or(&[][..], |cell| cell.as_bytes());
+        let value = std::str::from_utf8(bytes).map_err(|_| {
+            InputError::Encoding(format!(
+                "Row {} of column '{column}' is not UTF-8",
+                row.index
+            ))
+        })?;
+        let trimmed = value.trim();
+
+        if trimmed.is_empty() {
+            *special.entry(SpecialReason::EmptyValue).or_insert(0) += 1;
+        } else {
+            values.insert(trimmed.to_string(), ());
+        }
+    }
+
+    Ok(InputValues {
+        values,
+        special,
+        format,
+        delimiter: None,
+        source_hash: None,
+        source_bytes: None,
+    })
+}
+
+/// The reader's details and context name codes, types, coordinates, sheets and
+/// headers, never cell values, so both are safe to report.
+fn tabular_error(refusal: cmdrvl_tabular::Refusal) -> InputError {
+    use cmdrvl_tabular::RefusalCode;
+
+    let context = serde_json::to_string(&refusal.context).unwrap_or_default();
+    let message = format!("{}: {} {context}", refusal.code, refusal.detail);
+    match refusal.code {
+        RefusalCode::EIo => InputError::Io(message),
+        RefusalCode::EEncoding => InputError::Encoding(message),
+        RefusalCode::EEmpty => InputError::EmptyInput,
+        RefusalCode::ETooLarge => {
+            let text = |key: &str| {
+                refusal
+                    .context
+                    .get(key)
+                    .map(|value| value.to_string().trim_matches('"').to_string())
+                    .unwrap_or_default()
+            };
+            InputError::TooLarge {
+                limit_type: text("limit"),
+                limit: text("max"),
+                actual: text("actual"),
+            }
+        }
+        _ => InputError::Parse(message),
+    }
 }
 
 /// Detect input format from file extension

@@ -235,13 +235,14 @@ binding from silently changing the lot/address payload, but it does not
 authenticate the upstream PAD row or replace an acquisition receipt.
 
 Arguments:
-- `<INPUT>`: CSV or JSONL file with IDs to canonicalize. Format is detected by file extension: `.csv` and `.tsv` are parsed as CSV; `.jsonl` and `.ndjson` are parsed as JSONL. Files with unrecognized or missing extensions are REFUSAL (`E_PARSE`). Use `-` for stdin (JSONL only; CSV requires seekable input for delimiter detection).
+- `<INPUT>`: CSV, JSONL, Parquet or XLSX file with IDs to canonicalize. Format is detected by file extension: `.csv` and `.tsv` are parsed as CSV; `.jsonl` and `.ndjson` are parsed as JSONL; `.parquet` and `.xlsx` are read by the shared `cmdrvl-tabular` reader. Files with unrecognized or missing extensions are REFUSAL (`E_PARSE`). Use `-` for stdin (JSONL only; CSV requires seekable input for delimiter detection).
 
 Options:
 - `--registry <PATH>`: Registry directory (versioned). Required.
 - `--column <COLUMN>`: Column containing IDs to resolve (CSV column name or JSONL field name). Required. Uses the same identifier encoding as `rvl` (`u8:<...>` or `hex:<...>` for ambiguous names).
+- `--sheet <NAME|INDEX>`: Worksheet of a `.xlsx` input, by exact name or 0-based index. Without it a workbook with more than one visible sheet is refused. With any other input it is a REFUSAL (`E_PARSE`).
 - `--scope DIMENSION=VALUE`: Optional exact lookup scope binding; repeatable. Core dimensions are `dataset`/`deal`, `jurisdiction`, `source_system`, and `profile`. Scoped registry entries require the matching query scope.
-- `--emit <json|csv>`: What goes to stdout. Default: `json` (mapping artifact). `csv` emits the original file with a canonical ID column appended — making `canon` a pipeline stage, not just an artifact producer. CSV input only; `--emit csv` with JSONL input is a REFUSAL (`E_EMIT_FORMAT`).
+- `--emit <json|csv>`: What goes to stdout. Default: `json` (mapping artifact). `csv` emits the original file with a canonical ID column appended — making `canon` a pipeline stage, not just an artifact producer. CSV input only; `--emit csv` with JSONL, Parquet or XLSX input is a REFUSAL (`E_EMIT_FORMAT`).
 - `--canon-column <NAME>`: Name of the appended canonical ID column. Default: `<COLUMN>__canon` (e.g., `cusip__canon`). Only meaningful with `--emit csv`; ignored otherwise.
 - `--map-out <PATH>`: Write the JSON mapping artifact to this file. Only meaningful with `--emit csv` — provides the mapping sidecar for `pack` or audit. Without it, `--emit csv` produces no JSON artifact (the witness ledger still records the run). Ignored with a stderr warning in `--emit json` mode (the mapping already IS stdout).
 - `--max-rows <N>`: Refuse if input exceeds N data rows (raw row count including duplicates, excluding header). This is an I/O budget, not a cardinality limit — contrast with `summary.total` which counts unique values.
@@ -763,6 +764,13 @@ gold/result calibration contract exits `2` with a structured refusal.
 - Field must exist in each object (missing field on a line => that line is unresolved with reason `"missing_field"`)
 - Input values are string-coerced and ASCII-trimmed before lookup. JSON `null` is treated as a missing value (unresolved with reason `"null_value"`), not coerced to the string `"null"`. Objects and arrays are unresolved with reason `"non_scalar_value"` (IDs are scalars; structured values aren't coercible to a lookup key). Numbers and booleans are coerced to their JSON string representation (e.g., `42` → `"42"`, `true` → `"true"`).
 
+### Parquet and XLSX input
+- Read by the shared `cmdrvl-tabular` reader, which renders every cell as text (whole numbers without a decimal point)
+- Cells are then handled as CSV fields are: ASCII-trimmed, blank rows skipped, an empty lookup cell unresolved with reason `"empty_value"`. The reader does not distinguish a null from an empty string
+- The same table gives the same mapping artifact as CSV
+- `--max-bytes` applies to the file's size on disk
+- The reader refuses what it cannot render faithfully (for example nested values, formula errors and encrypted workbooks). Those arrive as `E_PARSE`, with the reader's own code in the message
+
 ### Identifier encoding
 - Input values and canonical IDs in JSON output use the same encoding as `rvl`:
   - `u8:<utf8-string>` if valid UTF-8 with no ASCII control bytes
@@ -1079,10 +1087,10 @@ pack seal evidence/ --note "Q4 recon with canonical IDs"
 | `E_BAD_REGISTRY` | Registry format invalid (missing `registry.json`, malformed entries) | Fix registry |
 | `E_SCOPE_REQUIRED` | Scoped registry lookup was attempted without a query scope | Rerun with `--scope <SCOPE>` after selecting the intended registry scope |
 | `E_COLUMN_NOT_FOUND` | `--column` doesn't exist in input | Check column name |
-| `E_PARSE` | Can't parse JSONL input or unrecognized/missing file extension | Check format; use `.csv`, `.tsv`, `.jsonl`, or `.ndjson` extension |
+| `E_PARSE` | Can't parse JSONL, Parquet or XLSX input, unrecognized/missing file extension, or `--sheet` with input that is not XLSX | Check format; use `.csv`, `.tsv`, `.jsonl`, `.ndjson`, `.parquet`, or `.xlsx` extension |
 | `E_EMPTY_INPUT` | Input has no processable data (header only, empty JSONL, or all rows are blank records) | Check input file |
 | `E_TOO_LARGE` | Input exceeds `--max-rows` or `--max-bytes` | Increase limits or reduce input |
-| `E_EMIT_FORMAT` | `--emit csv` used with JSONL input | Use `--emit json` or provide CSV input |
+| `E_EMIT_FORMAT` | `--emit csv` used with input that is not CSV | Use `--emit json` or provide CSV input |
 | `E_COLUMN_EXISTS` | `--emit csv` and canonical column name already exists in input header | Choose a different `--canon-column` name |
 | `E_GEO_COMMAND_UNAVAILABLE` | Geo primary command is planned but not implemented in this build | Use `canon geo capabilities --emit json` |
 

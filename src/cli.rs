@@ -3349,7 +3349,7 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Option<CanonCommand>,
 
-    /// Input CSV or JSONL file (use '-' for stdin with JSONL)
+    /// Input CSV, JSONL, Parquet or XLSX file (use '-' for stdin with JSONL)
     pub input: Option<PathBuf>,
 
     /// Registry directory (versioned)
@@ -3359,6 +3359,10 @@ pub struct Cli {
     /// Column containing IDs to resolve
     #[arg(long, required_unless_present_any = ["version", "describe", "schema", "robot_triage"])]
     pub column: Option<String>,
+
+    /// Worksheet of a .xlsx input, by exact name or 0-based index
+    #[arg(long)]
+    pub sheet: Option<String>,
 
     /// Exact lookup scope binding, repeatable: DIMENSION=VALUE
     #[arg(long = "scope")]

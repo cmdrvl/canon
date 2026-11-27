@@ -246,6 +246,11 @@ pub fn profile(
     match format {
         InputFormat::Csv => profile_csv(input_path, max_rows),
         InputFormat::Jsonl => profile_jsonl(input_path, max_bytes, max_rows),
+        // `detect_format` never returns these.
+        InputFormat::Parquet | InputFormat::Xlsx => Err(Refusal::parse_error(
+            &input_path.display().to_string(),
+            "Parquet and XLSX are lookup inputs only",
+        )),
     }
 }
 
@@ -630,6 +635,8 @@ fn format_label(input_path: &Path, format: InputFormat, delimiter: Option<u8>) -
             InputFormat::Csv if delimiter == Some(b'\t') => "tsv".to_string(),
             InputFormat::Csv => "csv".to_string(),
             InputFormat::Jsonl => "jsonl".to_string(),
+            InputFormat::Parquet => "parquet".to_string(),
+            InputFormat::Xlsx => "xlsx".to_string(),
         })
 }
 

@@ -112,7 +112,7 @@
       "type": "file_path",
       "required": true,
       "position": 0,
-      "description": "Input CSV or JSONL file. Format detected by extension (.csv, .tsv, .jsonl, .ndjson). Use - for stdin (JSONL only)."
+      "description": "Input CSV, JSONL, Parquet or XLSX file. Format detected by extension (.csv, .tsv, .jsonl, .ndjson, .parquet, .xlsx). Use - for stdin (JSONL only)."
     }
   ],
   "options": [
@@ -129,6 +129,12 @@
       "type": "string",
       "required": true,
       "description": "Column containing IDs to resolve"
+    },
+    {
+      "name": "sheet",
+      "flag": "--sheet",
+      "type": "string",
+      "description": "Worksheet of a .xlsx input, by exact name or 0-based index; required when the workbook has more than one visible sheet"
     },
     {
       "name": "scope",
@@ -10739,7 +10745,7 @@
     },
     {
       "code": "E_EMIT_FORMAT",
-      "message": "--emit csv requested with JSONL input",
+      "message": "--emit csv requested with input that is not CSV",
       "action": "adjust_input"
     },
     {

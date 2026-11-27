@@ -51,6 +51,14 @@ pub fn load_tape(
     let loaded = match format {
         InputFormat::Csv => load_csv_tape(path, side, &required_columns, strategy, &options)?,
         InputFormat::Jsonl => load_jsonl_tape(path, side, &required_columns, strategy, &options)?,
+        // `detect_format` never returns these: tapes are delimited text or JSONL.
+        InputFormat::Parquet | InputFormat::Xlsx => {
+            return Err(parse_error(
+                path,
+                side,
+                "Parquet and XLSX are lookup inputs only".to_string(),
+            ));
+        }
     };
 
     if loaded.records.is_empty() {
