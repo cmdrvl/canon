@@ -446,9 +446,10 @@ pub fn claim_frontier(
         })?;
         let current = read_claim_log(&session)?;
         let active = active_claims(&current.events, now);
+        // A frontier id hashes the item's content, so a lease keeps holding
+        // when any worker solves again and the item is unchanged.
         let claimed_elsewhere = active
             .values()
-            .filter(|claim| claim.solve_hash == solve_hash)
             .flat_map(|claim| claim.frontier_ids.iter().cloned())
             .collect::<BTreeSet<_>>();
         let selected = frontier_ids
@@ -596,7 +597,6 @@ struct ClaimLog {
 
 #[derive(Debug)]
 struct ActiveClaim {
-    solve_hash: String,
     frontier_ids: Vec<String>,
     expires_at_unix_secs: u64,
 }
@@ -686,7 +686,6 @@ fn active_claims(events: &[FrontierClaimEvent], now: u64) -> BTreeMap<String, Ac
         match event {
             FrontierClaimEvent::Claim {
                 claim_id,
-                solve_hash,
                 frontier_ids,
                 expires_at_unix_secs,
                 ..
@@ -694,7 +693,6 @@ fn active_claims(events: &[FrontierClaimEvent], now: u64) -> BTreeMap<String, Ac
                 claims.insert(
                     claim_id.clone(),
                     ActiveClaim {
-                        solve_hash: solve_hash.clone(),
                         frontier_ids: frontier_ids.clone(),
                         expires_at_unix_secs: *expires_at_unix_secs,
                     },

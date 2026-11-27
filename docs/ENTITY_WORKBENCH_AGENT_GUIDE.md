@@ -366,6 +366,22 @@ still in review, units with no `part_of` evidence, and the history needed.
 Nothing here names a command; rejected ingest rows are not persisted, so they
 are not part of the frontier.
 
+**Several workers.** Either split the work with no coordination, or lease it:
+
+```bash
+canon entity session frontier work/bdc-session --shard 0/4 --limit 20 --emit json
+canon entity session frontier claim work/bdc-session --worker w1 --limit 5 --ttl-secs 900
+canon entity session frontier release work/bdc-session --claim-id <CLAIM_ID>
+```
+
+Shards `0/N` to `N-1/N` are disjoint and together hold the whole frontier.
+`claim` never hands out an item under another live lease, even after a new
+solve; a lease ends when released or when its TTL passes. Each `work_items`
+entry carries the surfaces, a bounded set of observations, incumbent candidates,
+existing evidence, cannot-link vetoes and `needed_evidence_kinds`. A lease
+follows the item's content: once new evidence and a solve change an item, it has
+a new id that another worker can claim.
+
 ## The evidence behind an outcome
 
 `session export --format evidence-closure` writes the records a committed outcome

@@ -850,3 +850,57 @@ fn concurrent_frontier_claims_are_disjoint_and_expired_leases_recover() {
         "release appends an event without rewriting prior lease records"
     );
 }
+
+#[test]
+fn a_lease_still_holds_after_another_worker_solves_again() {
+    let temp = TempDir::new().unwrap();
+    let (session, rules, _, _) = thirty_item_fixture(&temp);
+    let claim = |worker: &str, limit: &str| {
+        run_json(
+            &[
+                "entity",
+                "session",
+                "frontier",
+                "claim",
+                path_str(&session),
+                "--worker",
+                worker,
+                "--limit",
+                limit,
+                "--ttl-secs",
+                "120",
+                "--emit",
+                "json",
+            ],
+            0,
+        )
+    };
+    let first = claim("first", "1");
+    let held = first["frontier_ids"][0].clone();
+
+    // an unrelated row changes the solve but not the leased item
+    ingest(
+        &session,
+        &write_jsonl(
+            &temp,
+            "later-obs.jsonl",
+            &[observation(
+                "L1",
+                "fundA",
+                "Later Arrival",
+                json!({"cik": "555"}),
+            )],
+        ),
+    );
+    solve(&session, &rules);
+    assert!(
+        frontier_ids(&frontier(&session, &["--emit", "json"])).contains(held.as_str().unwrap()),
+        "the leased item is still unresolved"
+    );
+
+    let second = claim("second", "1000");
+    assert_ne!(second["solve_hash"], first["solve_hash"]);
+    let handed_out = second["frontier_ids"].as_array().unwrap();
+    assert!(!handed_out.is_empty());
+    assert!(!handed_out.contains(&held), "double-claimed {held}");
+}
