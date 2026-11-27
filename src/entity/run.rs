@@ -134,6 +134,7 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
+#[cfg(feature = "workbench")]
 #[path = "link.rs"]
 pub mod link;
 
@@ -154,7 +155,11 @@ const LINK_MATERIALIZED_ROWS_PUBLICATION_PATH: &str = "link/combined_rows.csv";
 const LINK_ASSIGNMENT_ALIGNMENT_PUBLICATION_PATH: &str = "link/assignment_alignment.json";
 const LINK_OBSERVATION_SURFACE_BINDINGS_PUBLICATION_PATH: &str =
     "link/observation_surface_bindings.jsonl";
-const LINK_ARTIFACT_PUBLICATION_PATH: &str = "link/link.json";
+/// The link artifact's version and logical path stay in every build: core code
+/// has to recognise one in order to refuse it. `link` itself needs `workbench`.
+pub const ENTITY_LINK_VERSION: &str = "canon_entity_link.v1";
+pub const LINK_ARTIFACT_PATH: &str = "link/link.json";
+const LINK_ARTIFACT_PUBLICATION_PATH: &str = LINK_ARTIFACT_PATH;
 pub const RUN_CACHE_EXECUTION_RECEIPT_PATH: &str = "run/cache_execution_receipt.json";
 pub const ENTITY_RUN_PUBLICATION_STREAM_ID: &str = "entity-run-stage-set";
 const RUN_PUBLICATION_STREAM_ID: &str = ENTITY_RUN_PUBLICATION_STREAM_ID;

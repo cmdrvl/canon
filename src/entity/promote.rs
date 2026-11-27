@@ -7,6 +7,14 @@
 //! the alias file and registry metadata together. Registry lint failures restore
 //! the original files.
 
+#[cfg(feature = "workbench")]
+use crate::entity::{
+    contracts::EntityArtifactReference,
+    run::link::{
+        EntityLinkArtifact, validate_entity_link_artifact_contract,
+        validate_entity_link_artifact_raw_shape,
+    },
+};
 use crate::{
     Refusal,
     entity::{
@@ -14,17 +22,13 @@ use crate::{
         contracts::{
             CANON_ENTITY_AUDIT_VERSION, CANON_ENTITY_AUDIT_VERSION_V1,
             CANON_ENTITY_PROMOTE_VERSION, CANON_ENTITY_PROMOTE_VERSION_V1,
-            CANON_ENTITY_RUN_VERSION_V1, CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactReference,
-            EntityArtifactStageV1, EntityProfileReference,
+            CANON_ENTITY_RUN_VERSION_V1, CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactStageV1,
+            EntityProfileReference,
         },
         error::EntityRefusalKind,
         review::{required_value_string, value_string_or, value_u64_or},
         run::{
-            EntityRunArtifact,
-            link::{
-                EntityLinkArtifact, LINK_ARTIFACT_PATH, validate_entity_link_artifact_contract,
-                validate_entity_link_artifact_raw_shape,
-            },
+            EntityRunArtifact, LINK_ARTIFACT_PATH,
             read_entity_run_committed_publication_logical_bytes,
         },
         schema::{
@@ -52,6 +56,7 @@ use std::{
 };
 
 const TEMP_FILE_STALE_AFTER: Duration = Duration::from_secs(30);
+#[cfg(feature = "workbench")]
 const RUN_ARTIFACT_PATH: &str = "run/run.json";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1126,9 +1131,24 @@ fn refuse_link_bound_promotion(request: &EntityPromoteV1Request) -> Result<(), R
             }
         };
 
-    let link = validated_sibling_link_artifact_from_bytes(&link_path, &link_bytes)?;
-    validate_sibling_link_binds_promotion_source(request, &work_dir, result_stage, &link)?;
-    Err(link_bound_promotion_refusal(request, &link_path, &link))
+    // Every path from here refuses. A workbench build also says what is wrong
+    // with the link artifact, or how to promote through it.
+    #[cfg(feature = "workbench")]
+    {
+        let link = validated_sibling_link_artifact_from_bytes(&link_path, &link_bytes)?;
+        validate_sibling_link_binds_promotion_source(request, &work_dir, result_stage, &link)?;
+        Err(link_bound_promotion_refusal(request, &link_path, &link))
+    }
+    #[cfg(not(feature = "workbench"))]
+    {
+        let _ = (link_bytes, result_stage);
+        Err(link_bound_validation_refusal(
+            &link_path,
+            "link_artifact",
+            "Promotion source is bound to an entity link artifact, which this build cannot validate",
+            json!({ "reason": "workbench_feature_required" }),
+        ))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1299,6 +1319,7 @@ fn validate_promote_workdir_root_dir(root_dir: &str) -> Result<PathBuf, Refusal>
     Ok(path.to_path_buf())
 }
 
+#[cfg(feature = "workbench")]
 fn validated_sibling_link_artifact_from_bytes(
     link_path: &Path,
     link_bytes: &[u8],
@@ -1334,6 +1355,7 @@ fn validated_sibling_link_artifact_from_bytes(
     Ok(link)
 }
 
+#[cfg(feature = "workbench")]
 fn validate_sibling_link_binds_promotion_source(
     request: &EntityPromoteV1Request,
     work_dir: &Path,
@@ -1392,6 +1414,7 @@ fn validate_sibling_link_binds_promotion_source(
     Ok(())
 }
 
+#[cfg(feature = "workbench")]
 fn validated_sibling_run_hashes(
     run_path: &Path,
     run_bytes: &[u8],
@@ -1414,6 +1437,7 @@ fn validated_sibling_run_hashes(
     Ok((run_hash, solve_hash))
 }
 
+#[cfg(feature = "workbench")]
 fn solve_hash_from_run_value(
     value: &Value,
     artifact_role: &'static str,
@@ -1449,6 +1473,7 @@ fn solve_hash_from_run_value(
     Ok(solve_stages[0].artifact_content_hash.clone())
 }
 
+#[cfg(feature = "workbench")]
 fn validate_link_shared_reference(
     field: &'static str,
     reference: &EntityArtifactReference,
@@ -1473,6 +1498,7 @@ fn validate_link_shared_reference(
     Ok(())
 }
 
+#[cfg(feature = "workbench")]
 fn link_bound_promotion_refusal(
     request: &EntityPromoteV1Request,
     link_path: &Path,
@@ -1539,12 +1565,15 @@ fn link_bound_validation_refusal(
     EntityRefusalKind::ArtifactContract.to_refusal(
         message,
         detail,
-        Some(
-            "Rerun canon entity link to rebuild link/link.json, then review/export/import the link artifact"
-                .to_string(),
-        ),
+        Some(LINK_BOUND_NEXT_COMMAND.to_string()),
     )
 }
+
+#[cfg(feature = "workbench")]
+const LINK_BOUND_NEXT_COMMAND: &str = "Rerun canon entity link to rebuild link/link.json, then review/export/import the link artifact";
+#[cfg(not(feature = "workbench"))]
+const LINK_BOUND_NEXT_COMMAND: &str =
+    "Use a canon build with the workbench feature to review and import the link artifact";
 
 fn validate_promote_v1_self_hash(artifact: &Value, artifact_role: &str) -> Result<(), Refusal> {
     validate_entity_v1_self_hash(artifact)
@@ -1684,6 +1713,7 @@ fn validated_solve_artifact_from_run(result: &Value) -> Result<SolveArtifact, Re
     Ok(solve)
 }
 
+#[cfg(feature = "workbench")]
 fn read_optional_sibling_artifact_bytes(
     work_dir: &Path,
     logical_path: &'static str,
@@ -2394,4 +2424,88 @@ fn io_refusal(path: &Path, error: std::io::Error) -> Refusal {
         }),
         Some("Check file permissions and rerun canon entity promote".to_string()),
     )
+}
+
+/// A build without `workbench` cannot read a link artifact, so promotion from a
+/// link-bound result must refuse. It must not treat the link as absent.
+#[cfg(all(test, not(feature = "workbench")))]
+mod core_link_guard_tests {
+    use super::*;
+    use crate::entity::{
+        publication::{EntityPublicationFileInput, EntityPublicationRequest, publish_stream_patch},
+        run::ENTITY_RUN_PUBLICATION_STREAM_ID,
+    };
+
+    fn request(work_dir: &Path) -> EntityPromoteV1Request {
+        EntityPromoteV1Request {
+            result_path: work_dir.join("solve/solve.json"),
+            result_artifact: json!({
+                "version": CANON_ENTITY_SOLVE_VERSION_V1,
+                "metadata": { "workdir": { "root_dir": work_dir.to_str().unwrap() } }
+            }),
+            audit_artifact: Value::Null,
+            registry: work_dir.join("registry"),
+            next_version: "2.0.0".to_string(),
+        }
+    }
+
+    fn publish(work_dir: &Path, logical_path: &str, stage: &str) {
+        let hash = format!("blake3:{}", "0".repeat(64));
+        publish_stream_patch(
+            work_dir,
+            EntityPublicationRequest {
+                stream_id: ENTITY_RUN_PUBLICATION_STREAM_ID.to_string(),
+                supersedes_generation_id: None,
+                request_fingerprint: hash.clone(),
+                cache_mode: "disabled".to_string(),
+                cache_status: "disabled".to_string(),
+                cache_receipt_hash: hash,
+                stage_order: vec![stage.to_string()],
+                upstream_artifacts: Vec::new(),
+                files: vec![EntityPublicationFileInput::new(
+                    logical_path,
+                    stage,
+                    "fixture.v1",
+                    b"{}".to_vec(),
+                )],
+                omit_logical_paths: Vec::new(),
+            },
+        )
+        .expect("publish fixture generation");
+    }
+
+    #[test]
+    fn promotion_without_a_link_is_not_blocked() {
+        let temp = tempfile::tempdir().unwrap();
+        refuse_link_bound_promotion(&request(temp.path())).expect("no link, no refusal");
+    }
+
+    #[test]
+    fn promotion_refuses_a_committed_link_it_cannot_validate() {
+        let temp = tempfile::tempdir().unwrap();
+        publish(temp.path(), LINK_ARTIFACT_PATH, "link");
+        let refusal = refuse_link_bound_promotion(&request(temp.path()))
+            .expect_err("a committed link blocks promotion");
+        let envelope = serde_json::to_value(&refusal).unwrap();
+        assert_eq!(
+            envelope["detail"]["reason"], "workbench_feature_required",
+            "{envelope}"
+        );
+        assert_eq!(envelope["detail"]["writes_performed"], false, "{envelope}");
+        assert!(
+            envelope["next_command"]
+                .as_str()
+                .is_some_and(|command| command.contains("workbench feature")),
+            "{envelope}"
+        );
+    }
+
+    #[test]
+    fn promotion_refuses_an_uncommitted_link_file() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::create_dir(temp.path().join("link")).unwrap();
+        fs::write(temp.path().join(LINK_ARTIFACT_PATH), "{}").unwrap();
+        refuse_link_bound_promotion(&request(temp.path()))
+            .expect_err("a link file with no publication blocks promotion");
+    }
 }

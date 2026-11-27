@@ -22,6 +22,7 @@ mod block_exact_bucket_hyperedge;
 mod blocking_golden;
 #[path = "entity/cache_reload.rs"]
 mod cache_reload;
+#[cfg(feature = "workbench")]
 #[path = "entity/canon_v1_operator_journey.rs"]
 mod canon_v1_operator_journey;
 #[path = "entity/index_cli.rs"]

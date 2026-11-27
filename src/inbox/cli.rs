@@ -686,8 +686,12 @@ fn run_plan_entity(args: &InboxPlanEntityCli) -> Result<u8, Box<dyn Error>> {
         },
         next_commands: BTreeMap::from([(
             "run_entity".to_string(),
-            "Fill required_inputs in the request, then run the preview_command explicitly"
-                .to_string(),
+            if matches!(args.mode, InboxEntityPlanMode::Link) && !cfg!(feature = "workbench") {
+                "Fill required_inputs in the request, then run the preview_command with a canon build that has the workbench feature"
+            } else {
+                "Fill required_inputs in the request, then run the preview_command explicitly"
+            }
+            .to_string(),
         )]),
     };
     let bytes = serde_json::to_vec(&plan)?;

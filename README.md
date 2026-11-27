@@ -416,7 +416,7 @@ cargo build --release --all-features
 ```
 
 `--all-features` builds the same commands as the released binary, including
-`canon geo`. A plain `cargo build` builds the core: lookup, the registry
+`canon geo` and `canon entity link`. A plain `cargo build` builds the core: lookup, the registry
 commands, and the evidence-session engine.
 
 ---
@@ -1293,6 +1293,9 @@ This is still not the core lookup path. The normal
 workbench for manufacturing audited cross-reference entries that normal lookup
 can use later. There is no public compatibility alias for the superseded
 standalone resolve namespace.
+
+Released binaries include `canon entity link`. A source build needs
+`--features workbench`.
 
 `--profile` and `--work-dir` stay bracketed in generated-help syntax because
 the parser emits a structured `E_ENTITY_INPUT_CONTRACT` refusal when either is

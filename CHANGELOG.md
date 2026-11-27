@@ -6,6 +6,12 @@
   generalization` are removed, with their `canon.evaluation.*` contracts and the
   `canon.evaluation.corpus.v1` schema file. There is no replacement command.
   `canon entity candidate-recall`, `calibrate sweep` and `calibrate em` stay.
+- **Breaking for source builds (0.17.0):** `canon entity link` and its
+  `src/resolve/` engine now need the `workbench` feature. Released binaries are
+  built with `--all-features` and keep the command. A build without the feature
+  does not list `entity link`, and refuses (`E_ENTITY_ARTIFACT_CONTRACT`) to
+  export a review from a link artifact or to promote a result that is bound to
+  one.
 - Lookup reads `.parquet` and `.xlsx` input through the shared `cmdrvl-tabular`
   reader, with `--sheet <name|index>` for workbooks. `--emit csv` still needs CSV
   input. Other commands read the same formats as before.

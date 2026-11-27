@@ -1,3 +1,7 @@
+// Without `workbench` the link tests are compiled out and their helpers sit
+// unused. The all-features build still lints them.
+#![cfg_attr(not(feature = "workbench"), allow(dead_code, unused_imports))]
+
 use assert_cmd::prelude::*;
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, fs, path::Path};
@@ -16,6 +20,7 @@ const UNCHANGED_MANIFEST: &str = "tests/fixtures/resolve/parity/unchanged-link/m
 const UNCHANGED_SOURCE_MAPPING: &str =
     "tests/fixtures/resolve/parity/unchanged-link/source_mapping.canon.source.mapping.v1.json";
 
+#[cfg(feature = "workbench")]
 #[test]
 fn legacy_cmbs_loan_strategy_refuses_native_tenant_profile_without_writes() {
     let temp_dir = tempdir().unwrap();
@@ -51,6 +56,7 @@ fn legacy_cmbs_loan_strategy_refuses_native_tenant_profile_without_writes() {
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn legacy_decision_projection_is_not_blessed_as_v1_matching_acceptance() {
     let temp_dir = tempdir().unwrap();
@@ -157,6 +163,7 @@ fn unchanged_input_manifest_and_source_mapping_contract_are_executable() {
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn unchanged_input_refusal_code_matches_manifest_public_side_without_mutation() {
     let temp_dir = tempdir().unwrap();
@@ -201,6 +208,7 @@ fn unchanged_input_refusal_code_matches_manifest_public_side_without_mutation() 
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn legacy_one_to_many_strategy_refuses_instead_of_synthesizing_v1_conflict_warning() {
     let temp_dir = tempdir().unwrap();
@@ -265,6 +273,7 @@ ambiguity_gap: 0.10
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn writeback_refuses_before_mutating_registry_or_inputs() {
     let temp_dir = tempdir().unwrap();

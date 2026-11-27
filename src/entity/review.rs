@@ -10,9 +10,6 @@ use crate::{
         EntityArtifactStageV1, EntityDeterministicSummary,
         error::EntityRefusalKind,
         graph::EntityClusterShapeReport,
-        run::link::{
-            ENTITY_LINK_VERSION, EntityLinkArtifact, validate_entity_link_artifact_contract,
-        },
         schema::{
             CANON_ENTITY_REVIEW_QUEUE_VERSION, entity_v1_artifact_reference,
             entity_v1_lifecycle_metadata_from_source, finalize_entity_v1_self_hash,
@@ -24,8 +21,14 @@ use crate::{
             validate_solve_artifact_envelope_contract,
         },
     },
-    resolve::{AmbiguousRecord, CandidateScore, MatchRecord, UnmatchedRecord},
     witness,
+};
+#[cfg(feature = "workbench")]
+use crate::{
+    entity::run::link::{
+        ENTITY_LINK_VERSION, EntityLinkArtifact, validate_entity_link_artifact_contract,
+    },
+    resolve::{AmbiguousRecord, CandidateScore, MatchRecord, UnmatchedRecord},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -72,6 +75,7 @@ pub struct ReviewQueueRequest {
     pub relation_hints: Vec<ReviewRelationHint>,
 }
 
+#[cfg(feature = "workbench")]
 #[derive(Debug, Clone, PartialEq)]
 pub struct LinkReviewQueueRequest {
     pub link_artifact: EntityLinkArtifact,
@@ -236,6 +240,7 @@ fn build_review_queue_artifact_from_validated_solve(
     Ok(artifact)
 }
 
+#[cfg(feature = "workbench")]
 pub fn build_link_review_queue_artifact(
     request: LinkReviewQueueRequest,
 ) -> Result<ReviewQueueArtifact, Refusal> {
@@ -627,6 +632,7 @@ fn review_items_from_solve(
         .collect()
 }
 
+#[cfg(feature = "workbench")]
 fn review_items_from_link(
     link_artifact: &EntityLinkArtifact,
     include: ReviewExportInclude,
@@ -667,6 +673,7 @@ fn review_items_from_link(
     resolved.into_iter().chain(escrow).collect()
 }
 
+#[cfg(feature = "workbench")]
 fn review_item_from_match(record: &MatchRecord) -> ReviewQueueItem {
     let relation_hints = link_relation_hints(
         &record.target_id,
@@ -700,6 +707,7 @@ fn review_item_from_match(record: &MatchRecord) -> ReviewQueueItem {
     }
 }
 
+#[cfg(feature = "workbench")]
 fn review_item_from_ambiguous(record: &AmbiguousRecord) -> ReviewQueueItem {
     let candidate_ids = sorted_candidate_reference_ids(&record.candidates);
     let relation_hints = link_relation_hints(
@@ -731,6 +739,7 @@ fn review_item_from_ambiguous(record: &AmbiguousRecord) -> ReviewQueueItem {
     }
 }
 
+#[cfg(feature = "workbench")]
 fn review_item_from_unmatched(record: &UnmatchedRecord) -> ReviewQueueItem {
     let candidate_ids = record
         .best_candidate
@@ -766,6 +775,7 @@ fn review_item_from_unmatched(record: &UnmatchedRecord) -> ReviewQueueItem {
     }
 }
 
+#[cfg(feature = "workbench")]
 fn sorted_candidate_reference_ids(candidates: &[CandidateScore]) -> Vec<String> {
     let mut ids = candidates
         .iter()
@@ -776,6 +786,7 @@ fn sorted_candidate_reference_ids(candidates: &[CandidateScore]) -> Vec<String> 
     ids
 }
 
+#[cfg(feature = "workbench")]
 fn link_relation_hints<'a>(
     target_id: &str,
     reference_ids: impl Iterator<Item = &'a str>,
@@ -793,6 +804,7 @@ fn link_relation_hints<'a>(
     hints
 }
 
+#[cfg(feature = "workbench")]
 fn link_surface_ids<'a>(
     target_id: &str,
     reference_ids: impl Iterator<Item = &'a str>,
@@ -805,6 +817,7 @@ fn link_surface_ids<'a>(
     surface_ids
 }
 
+#[cfg(feature = "workbench")]
 fn link_review_id<'a>(
     partition: &str,
     target_id: &str,
@@ -1365,6 +1378,7 @@ fn hash_review_queue_without_self(artifact: &ReviewQueueArtifact) -> Result<Stri
     Ok(witness::hash_bytes(&bytes))
 }
 
+#[cfg(feature = "workbench")]
 fn artifact_ref_cmp(
     left: &EntityArtifactReference,
     right: &EntityArtifactReference,

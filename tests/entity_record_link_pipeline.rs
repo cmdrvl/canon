@@ -1,5 +1,10 @@
 #![forbid(unsafe_code)]
+// Without `workbench` the link tests are compiled out and their helpers sit
+// unused. The all-features build still lints them.
+#![cfg_attr(not(feature = "workbench"), allow(dead_code, unused_imports))]
 
+#[cfg(feature = "workbench")]
+use canon::entity::run::link::EntityLinkArtifact;
 use canon::{
     RefusalCode,
     entity::{
@@ -14,7 +19,7 @@ use canon::{
             AssignmentAlignmentSidecar, RecordLinkCandidateSet,
             canonical_assignment_alignment_bytes, canonical_record_link_candidate_set_bytes,
         },
-        run::{ENTITY_RUN_PUBLICATION_STREAM_ID, link::EntityLinkArtifact},
+        run::ENTITY_RUN_PUBLICATION_STREAM_ID,
         score::ScoreLane,
         source_mapping::{
             AnchorMapping, AssignmentMapping, CANON_SOURCE_MAPPING_VERSION, CapturePolicy,
@@ -39,6 +44,7 @@ use std::{
 const SHARED_SURFACE_ROW_COUNT: usize = 12;
 const CONTEXT_COLLISION_ROW_COUNT: usize = 1;
 
+#[cfg(feature = "workbench")]
 #[test]
 fn public_subprocess_record_link_stages_link_and_run_publish_sidecars() {
     let fixture = RecordLinkFixture::new();
@@ -214,6 +220,7 @@ fn public_subprocess_record_link_outputs_are_stable_when_strategy_input_order_ch
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn public_subprocess_record_link_shared_surface_binds_each_source_lane() {
     let first = RecordLinkFixture::new_shared_surface();
@@ -553,6 +560,7 @@ fn public_subprocess_record_link_malformed_blocking_refuses_before_block_writes(
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn public_subprocess_link_stale_assignment_and_evidence_mirrors_use_committed_payloads() {
     let fixture = RecordLinkFixture::new();
@@ -589,6 +597,7 @@ fn public_subprocess_link_stale_assignment_and_evidence_mirrors_use_committed_pa
     assert_review_export_uses_committed_link(output, &original_link_hash);
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn public_subprocess_link_stale_profile_source_mirror_uses_committed_link() {
     let fixture = RecordLinkFixture::new();
@@ -611,6 +620,7 @@ fn public_subprocess_link_stale_profile_source_mirror_uses_committed_link() {
     assert_review_export_uses_committed_link(output, &original_link_hash);
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn public_subprocess_link_review_export_replays_relative_strategy_from_artifact_context() {
     let fixture = RecordLinkFixture::new();
@@ -653,6 +663,7 @@ fn public_subprocess_link_review_export_replays_relative_strategy_from_artifact_
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn public_subprocess_link_review_export_rejects_unrelated_cwd_strategy_when_context_stale() {
     let fixture = RecordLinkFixture::new();
@@ -1631,10 +1642,12 @@ fn run_command(fixture: &RecordLinkFixture, work_dir: &Path) -> Output {
     ])
 }
 
+#[cfg(feature = "workbench")]
 fn link_command(fixture: &RecordLinkFixture, work_dir: &Path) -> Output {
     link_command_from_cwd(fixture, work_dir, &fixture.strategy, Path::new("."))
 }
 
+#[cfg(feature = "workbench")]
 fn link_command_from_cwd(
     fixture: &RecordLinkFixture,
     work_dir: &Path,
@@ -1663,10 +1676,12 @@ fn link_command_from_cwd(
     )
 }
 
+#[cfg(feature = "workbench")]
 fn review_export_command(link_artifact: &Path) -> Output {
     review_export_command_from_cwd(link_artifact, Path::new("."))
 }
 
+#[cfg(feature = "workbench")]
 fn review_export_command_from_cwd(link_artifact: &Path, cwd: &Path) -> Output {
     canon_from_cwd(
         cwd,
@@ -1704,6 +1719,7 @@ fn assert_success(output: Output, label: &str) {
     );
 }
 
+#[cfg(feature = "workbench")]
 fn assert_review_export_uses_committed_link(output: Output, expected_link_hash: &str) {
     assert!(
         output.status.success(),
@@ -1796,6 +1812,7 @@ fn reseal_assignment_alignment_sidecar(sidecar: &mut AssignmentAlignmentSidecar)
         hash_bytes(&serde_json::to_vec(sidecar).expect("hashable assignment sidecar"));
 }
 
+#[cfg(feature = "workbench")]
 fn reseal_link_artifact(artifact: &mut EntityLinkArtifact) {
     artifact.artifact_content_hash.clear();
     artifact.metadata.artifact_content_hash.clear();

@@ -226,10 +226,11 @@ local ID allocation, not a new matching mode.
 
 ## Active vs Legacy Source Surface
 
-This is a map of `src/`. One Cargo feature gates it: `geo` (`src/geo/`, `canon
-geo`, and the `canon_geo_measurements` bin), off in the default build and on in
-release and CI builds (`--all-features`). A second feature, `workbench`, is
-reserved for legacy entity workbench code and gates nothing yet. Everything else
+This is a map of `src/`. Two Cargo features gate it, both off in the default
+build and on in release and CI builds (`--all-features`): `geo` (`src/geo/`,
+`canon geo`, and the `canon_geo_measurements` bin) and `workbench`
+(`src/resolve/`, `src/entity/link.rs`, `canon entity link`, and the link paths of
+review export and promote). Everything else
 below compiles into the default binary. `src/evaluation/` and its two commands
 were removed in 0.17.0. Update this section when another gate lands.
 
@@ -244,7 +245,7 @@ counts as reached if any of its code is.
 | `registry/`, `registry.rs`, `registry_lint.rs` | 19.2k + | Registry maintenance, validation, index, lint | `canon registry ...`, lookup | Core |
 | `session/` and `entity/session/`, `entity/session_*.rs` | 7.4k + about 13.7k | The evidence-session engine and its workspace layer | `canon entity session ...` | Core |
 | `org/` | 14.6k | The files of `entity::runtime`, mounted with `#[path = "../org/..."]` in `entity/runtime.rs` | `session/` uses its `PendingClusterRecord` and `CannotLinkFact`; `registry/identity.rs` uses `runtime::incumbent`; its other files serve the workbench commands | **Live.** The name is historical. Never delete or move it |
-| `resolve/` | 6.1k | The entity-link decision workbench | `canon entity link` (`run_entity_link_command` in `lib.rs`), `entity/link.rs` | Legacy workbench, live |
+| `resolve/` | 6.1k | The entity-link decision workbench | `canon entity link` (`run_entity_link_command` in `lib.rs`), `entity/link.rs` | Legacy workbench, behind the `workbench` feature |
 | `entity/` run family | about 54k of the 103k lines in the `entity`, `org`, `evidence` and `source_mapping` graph; 8.1k of it is the shared `review_export` and `review_import` below | `run`, `record_link`, `apply`, `promote`, `solve`, `calibrate*`, `schema`, `contracts` and the rest of the `canon entity run` pipeline | Mostly `canon entity run` and its leaves, but not all of it: `entity/run.rs` is imported by `session_derive` (which calls `run::run_entity_workbench` and `unwired_run_operators`), `score_pair`, `summary`, `promote` and `promotion_policy`, so `run` is in the core closure and cannot be gated whole. Found 2026-11-25 by gating `entity::run` and `entity::runtime` behind a feature and compiling the core: the errors were in those files. The other members of this family were not checked one by one | Legacy workbench, live; `run` is core by dependency |
 | `entity/` shared | about 49k of the same 103k | `runtime` (the `org/` files), `publication`, `evidence_ir`, `index`, `prepare`, `block`, `edge`, `profile` and the session modules | Session commands, including `session derive` | Core closure |
 | `geo/` | 97.2k | The Geo workbench | `canon geo` and the `canon_geo_measurements` bin; outside `geo/` only the `lib.rs` dispatch arm and the `cli.rs` definitions refer to it | Self-contained workbench, behind the `geo` feature |

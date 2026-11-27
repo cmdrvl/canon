@@ -33,6 +33,7 @@ pub mod providers {
 pub mod refusal;
 pub mod registry;
 pub mod registry_lint;
+#[cfg(feature = "workbench")]
 #[doc(hidden)]
 pub mod resolve;
 pub mod sdk;
@@ -52,17 +53,19 @@ pub mod strategy_registry;
 pub mod telemetry;
 pub mod witness;
 
+#[cfg(feature = "workbench")]
+use crate::cli::EntityLinkCli;
 use crate::cli::{
     CanonCommand, Cli, EntityApplyCli, EntityAuditCli, EntityBlockCli, EntityBlockPreflightCli,
     EntityBlockSubcommand, EntityCacheModeArg, EntityCalibrateCommand, EntityCalibrateSubcommand,
     EntityCalibrateSweepCli, EntityCandidateRecallCli, EntityCommand, EntityEmitMode,
     EntityEvidenceCli, EntityExplainCli, EntityIndexBuildCli, EntityIndexCommand,
-    EntityIndexSubcommand, EntityLinkCli, EntityPrepareCli, EntityProfileCommand,
-    EntityProfileInitCli, EntityProfileListCli, EntityProfileSubcommand, EntityPromoteCli,
-    EntityReviewCommand, EntityReviewExportArtifact, EntityReviewExportCli,
-    EntityReviewExportEmitMode, EntityReviewGroupBy, EntityReviewImportCli, EntityReviewInclude,
-    EntityReviewSubcommand, EntityRunCli, EntitySessionAssertCli, EntitySessionCommitCli,
-    EntitySessionExplainCli, EntitySessionFrontierClaimCli, EntitySessionFrontierReleaseCli,
+    EntityIndexSubcommand, EntityPrepareCli, EntityProfileCommand, EntityProfileInitCli,
+    EntityProfileListCli, EntityProfileSubcommand, EntityPromoteCli, EntityReviewCommand,
+    EntityReviewExportArtifact, EntityReviewExportCli, EntityReviewExportEmitMode,
+    EntityReviewGroupBy, EntityReviewImportCli, EntityReviewInclude, EntityReviewSubcommand,
+    EntityRunCli, EntitySessionAssertCli, EntitySessionCommitCli, EntitySessionExplainCli,
+    EntitySessionFrontierClaimCli, EntitySessionFrontierReleaseCli,
     EntitySessionFrontierSubcommand, EntitySessionIngestCli, EntitySessionInitCli,
     EntitySessionRulesCommand, EntitySessionRulesInitCli, EntitySessionRulesSubcommand,
     EntitySessionRulesValidateCli, EntitySessionSampleCli, EntitySessionSampleEmitMode,
@@ -1003,6 +1006,7 @@ fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
         EntitySubcommand::Calibrate(calibrate) => run_entity_calibrate_command(calibrate),
         EntitySubcommand::Evidence(evidence) => run_entity_evidence_command(evidence),
         EntitySubcommand::Solve(solve) => run_entity_solve_command(solve),
+        #[cfg(feature = "workbench")]
         EntitySubcommand::Link(link) => run_entity_link_command(link),
         EntitySubcommand::Audit(audit) => run_entity_audit_command(audit),
         EntitySubcommand::Promote(promote) => run_entity_promote_command(promote),
@@ -1918,6 +1922,7 @@ fn run_entity_solve_command(solve: &EntitySolveCli) -> Result<u8, Box<dyn Error>
     }
 }
 
+#[cfg(feature = "workbench")]
 fn run_entity_link_command(link: &EntityLinkCli) -> Result<u8, Box<dyn Error>> {
     let summary_mode = matches!(link.emit, EntityEmitMode::Summary);
     let (Some(profile), Some(work_dir)) = (link.profile.as_ref(), link.work_dir.as_ref()) else {
@@ -2047,12 +2052,14 @@ fn run_entity_link_command(link: &EntityLinkCli) -> Result<u8, Box<dyn Error>> {
 }
 
 #[allow(clippy::result_large_err)]
+#[cfg(feature = "workbench")]
 fn validate_entity_link_input_rows(link: &EntityLinkCli) -> Result<(), CanonOutput> {
     validate_entity_link_input_path("reference", &link.reference)?;
     validate_entity_link_input_path("target", &link.target)
 }
 
 #[allow(clippy::result_large_err)]
+#[cfg(feature = "workbench")]
 fn validate_entity_link_input_path(role: &str, path: &Path) -> Result<(), CanonOutput> {
     fs::File::open(path).map(|_| ()).map_err(|error| {
         refusal::create_refusal(
@@ -2077,6 +2084,7 @@ fn validate_entity_link_input_path(role: &str, path: &Path) -> Result<(), CanonO
 }
 
 #[allow(clippy::result_large_err)]
+#[cfg(feature = "workbench")]
 fn validate_entity_link_candidate_budget_preflight(
     link: &EntityLinkCli,
     strategy: &resolve::ResolveStrategy,
@@ -2119,6 +2127,7 @@ fn validate_entity_link_candidate_budget_preflight(
 }
 
 #[allow(clippy::result_large_err)]
+#[cfg(feature = "workbench")]
 fn validate_entity_link_profile_strategy_contract(
     profile_source: &str,
     strategy: &resolve::ResolveStrategy,
@@ -2324,6 +2333,7 @@ fn preflight_entity_audit_gates(
 }
 
 #[allow(clippy::result_large_err)]
+#[cfg(feature = "workbench")]
 fn run_entity_link_suite_audit(
     run_artifact: &entity::run::EntityRunArtifact,
     suite: &entity::audit::EntityAuditSuite,
@@ -2393,6 +2403,7 @@ fn run_entity_link_suite_audit(
     Ok(entity_link_audit_receipt(&audit_path, &audit))
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_audit_receipt(
     audit_path: &Path,
     audit: &entity::audit::EntityAuditArtifact,
@@ -2411,6 +2422,7 @@ fn entity_link_audit_receipt(
     })
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_v1_decision_artifact(
     link: &EntityLinkCli,
     work_dir: &Path,
@@ -2441,6 +2453,7 @@ fn entity_link_v1_decision_artifact(
     )
 }
 
+#[cfg(feature = "workbench")]
 fn validate_entity_link_v1_run_artifact(
     result: &entity::run::link::EntityLinkResult,
 ) -> Result<(), CanonOutput> {
@@ -2468,6 +2481,7 @@ fn validate_entity_link_v1_run_artifact(
     Ok(())
 }
 
+#[cfg(feature = "workbench")]
 fn validate_entity_link_run_strategy_continuity(
     run: &entity::run::EntityRunArtifact,
     strategy: &resolve::ResolveStrategy,
@@ -2499,6 +2513,7 @@ fn validate_entity_link_run_strategy_continuity(
     Ok(())
 }
 
+#[cfg(feature = "workbench")]
 fn load_entity_link_v1_solve_artifact(
     work_dir: &Path,
     run: &entity::run::EntityRunArtifact,
@@ -2560,12 +2575,14 @@ fn load_entity_link_v1_solve_artifact(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg(feature = "workbench")]
 struct EntityLinkDecisionBinding {
     side: entity::run::link::EntityLinkRole,
     link_id: String,
     surface_id: String,
 }
 
+#[cfg(feature = "workbench")]
 fn derive_entity_link_decision_bindings(
     link: &EntityLinkCli,
     work_dir: &Path,
@@ -2621,6 +2638,7 @@ fn derive_entity_link_decision_bindings(
     Ok(bindings)
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_prepare_contract_for_cli_profile(
     profile: &str,
     run: &entity::run::EntityRunArtifact,
@@ -2639,6 +2657,7 @@ fn entity_link_prepare_contract_for_cli_profile(
     Ok(contract)
 }
 
+#[cfg(feature = "workbench")]
 fn validate_entity_link_profile_continuity(
     profile: &entity::EntityProfileReference,
     run: &entity::run::EntityRunArtifact,
@@ -2693,6 +2712,7 @@ fn validate_entity_link_profile_continuity(
     Ok(())
 }
 
+#[cfg(feature = "workbench")]
 fn read_entity_link_prepared_surfaces(
     work_dir: &Path,
     run: &entity::run::EntityRunArtifact,
@@ -2763,6 +2783,7 @@ fn read_entity_link_prepared_surfaces(
     Ok(surfaces)
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_role_order(role: entity::run::link::EntityLinkRole) -> u8 {
     match role {
         entity::run::link::EntityLinkRole::Reference => 0,
@@ -2771,11 +2792,13 @@ fn entity_link_role_order(role: entity::run::link::EntityLinkRole) -> u8 {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg(feature = "workbench")]
 struct EntityLinkMaterializedDecisionRow {
     side: entity::run::link::EntityLinkRole,
     link_id: String,
 }
 
+#[cfg(feature = "workbench")]
 fn read_entity_link_materialized_decision_rows(
     path: &Path,
     strategy: &resolve::ResolveStrategy,
@@ -2854,6 +2877,7 @@ fn read_entity_link_materialized_decision_rows(
     Ok(rows)
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_materialized_side(
     values: &BTreeMap<String, String>,
     row_number: usize,
@@ -2880,6 +2904,7 @@ fn entity_link_materialized_side(
     }
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_materialized_id(
     values: &BTreeMap<String, String>,
     id_columns: &[String],
@@ -2906,6 +2931,7 @@ fn entity_link_materialized_id(
     Ok(parts.join(LINK_COMPOSITE_ID_SEPARATOR))
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_required_materialized_value(
     values: &BTreeMap<String, String>,
     field: &str,
@@ -2937,6 +2963,7 @@ fn entity_link_required_materialized_value(
     Ok(value.to_string())
 }
 
+#[cfg(feature = "workbench")]
 fn prepared_surface_for_observation<'a>(
     observation: &entity::prepare::PreparedInputObservation,
     surfaces: &'a [entity::prepare::PreparedSurfaceRecord],
@@ -2974,6 +3001,7 @@ fn prepared_surface_for_observation<'a>(
     }
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_decision_records_from_solve(
     solve: &entity::solve::SolveArtifact,
     bindings: &[EntityLinkDecisionBinding],
@@ -3133,6 +3161,7 @@ fn entity_link_decision_records_from_solve(
     })
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_directional_match_allowed(
     entity: &entity::solve::SolveEntityRecord,
     reference_ids: &BTreeSet<String>,
@@ -3150,6 +3179,7 @@ fn entity_link_directional_match_allowed(
         && entity.adjusted_support_score_units >= threshold_units
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_prepared_surface_collapse_reference(
     entity: &entity::solve::SolveEntityRecord,
     reference_ids: &BTreeSet<String>,
@@ -3177,6 +3207,7 @@ fn entity_link_prepared_surface_collapse_reference(
     }
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_prepared_surface_collapse_assertion() -> resolve::AssertionResult {
     let mut detail = BTreeMap::new();
     detail.insert(
@@ -3199,10 +3230,12 @@ fn entity_link_prepared_surface_collapse_assertion() -> resolve::AssertionResult
     }
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_score(score_units: entity::score::ScoreUnits) -> f64 {
     f64::from(score_units.as_u32()) / f64::from(entity::score::ENTITY_SCORE_SCALE)
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_best_candidate(
     reference_ids: &BTreeSet<String>,
     score: f64,
@@ -3218,6 +3251,7 @@ fn entity_link_best_candidate(
         })
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_candidate_scores(
     reference_ids: &BTreeSet<String>,
     score: f64,
@@ -3233,6 +3267,7 @@ fn entity_link_candidate_scores(
         .collect()
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_conflict_warnings(matches: &[resolve::MatchRecord]) -> Vec<String> {
     let mut by_reference = BTreeMap::<String, Vec<String>>::new();
     for record in matches {
@@ -3255,6 +3290,7 @@ fn entity_link_conflict_warnings(matches: &[resolve::MatchRecord]) -> Vec<String
         .collect()
 }
 
+#[cfg(feature = "workbench")]
 fn enforce_entity_link_candidate_limit(
     link: &EntityLinkCli,
     strategy: &resolve::ResolveStrategy,
@@ -3285,6 +3321,7 @@ fn enforce_entity_link_candidate_limit(
     Ok(())
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_resolve_artifact_from_v1(
     link: &EntityLinkCli,
     run: &entity::run::EntityRunArtifact,
@@ -3316,6 +3353,7 @@ fn entity_link_resolve_artifact_from_v1(
     })
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_registry_snapshot_from_v1_run(
     link: &EntityLinkCli,
     run: &entity::run::EntityRunArtifact,
@@ -3383,6 +3421,7 @@ fn entity_link_registry_snapshot_from_v1_run(
     })
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_value_string(
     value: &serde_json::Value,
     path: &[&str],
@@ -3413,6 +3452,7 @@ fn entity_link_value_string(
     })
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_v1_artifact_refusal(
     message: impl Into<String>,
     detail: serde_json::Value,
@@ -3425,6 +3465,7 @@ fn entity_link_v1_artifact_refusal(
     )
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_output_value(
     artifact: &entity::run::link::EntityLinkArtifact,
     audit_receipt: Option<&serde_json::Value>,
@@ -5834,6 +5875,7 @@ fn entity_missing_block_stage_args_refusal(block: &EntityBlockCli) -> CanonOutpu
     )
 }
 
+#[cfg(feature = "workbench")]
 fn entity_missing_link_context_refusal(link: &EntityLinkCli) -> CanonOutput {
     let stage = entity::EntityArtifactStageV1::Run;
     let contract = entity_runtime::entity_v1_contract_for_stage(stage);
@@ -5867,6 +5909,7 @@ fn entity_missing_link_context_refusal(link: &EntityLinkCli) -> CanonOutput {
     )
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_v1_write_back_refusal(link: &EntityLinkCli, work_dir: &Path) -> CanonOutput {
     let link_artifact = work_dir.join(entity::run::link::LINK_ARTIFACT_PATH);
     refusal::create_refusal(
@@ -5889,6 +5932,7 @@ fn entity_link_v1_write_back_refusal(link: &EntityLinkCli, work_dir: &Path) -> C
     )
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_summary(
     artifact: &entity::run::link::EntityLinkArtifact,
     audit_receipt: Option<&serde_json::Value>,
@@ -5913,6 +5957,7 @@ fn entity_link_summary(
     ) + &audit
 }
 
+#[cfg(feature = "workbench")]
 fn append_entity_link_witness(
     link: &EntityLinkCli,
     decisions: &resolve::ResolveArtifact,
@@ -6353,7 +6398,7 @@ fn run_entity_native_review_artifact_export_command(
                     entity::CANON_ENTITY_RUN_VERSION,
                     entity::CANON_ENTITY_SOLVE_VERSION_V1,
                     entity::CANON_ENTITY_RUN_VERSION_V1,
-                    entity::run::link::ENTITY_LINK_VERSION
+                    entity::run::ENTITY_LINK_VERSION
                 ],
                 "actual": actual,
                 "writes_performed": false
@@ -6470,6 +6515,45 @@ fn run_entity_native_run_review_artifact_export(
     build_entity_native_review_artifact(review_queue, source_execution_hash)
 }
 
+/// What a build without `workbench` says when it is handed a link artifact.
+#[cfg(not(feature = "workbench"))]
+fn entity_link_requires_workbench_refusal(stage: &'static str) -> CanonOutput {
+    refusal::create_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "This build cannot read entity link artifacts; use a canon build with the workbench feature"
+            .to_string(),
+        serde_json::json!({
+            "stage": stage,
+            "reason": "workbench_feature_required",
+            "writes_performed": false
+        }),
+        Some("cargo build --release --features workbench".to_string()),
+    )
+}
+
+#[cfg(not(feature = "workbench"))]
+#[allow(clippy::result_large_err)]
+fn run_entity_native_link_review_artifact_export(
+    _export: &EntityReviewExportCli,
+    _result_probe: &serde_json::Value,
+    _result_bytes: &[u8],
+) -> Result<entity::review_export::NativeReviewArtifact, CanonOutput> {
+    Err(entity_link_requires_workbench_refusal(
+        "native_review_export",
+    ))
+}
+
+#[cfg(not(feature = "workbench"))]
+#[allow(clippy::result_large_err)]
+fn run_entity_native_link_review_export(
+    _export: &EntityReviewExportCli,
+    _result_probe: &serde_json::Value,
+    _result_bytes: &[u8],
+) -> Result<entity::review::ReviewQueueArtifact, CanonOutput> {
+    Err(entity_link_requires_workbench_refusal("review_export"))
+}
+
+#[cfg(feature = "workbench")]
 #[allow(clippy::result_large_err)]
 fn run_entity_native_link_review_artifact_export(
     export: &EntityReviewExportCli,
@@ -6571,6 +6655,7 @@ fn run_entity_native_run_review_export(
 }
 
 #[allow(clippy::result_large_err)]
+#[cfg(feature = "workbench")]
 fn run_entity_native_link_review_export(
     export: &EntityReviewExportCli,
     result_probe: &serde_json::Value,
@@ -6595,6 +6680,7 @@ fn run_entity_native_link_review_export(
     .map_err(|refusal| refusal.to_canon_output())
 }
 
+#[cfg(feature = "workbench")]
 fn validate_entity_link_review_export_decision_derivation(
     link_path: &Path,
     link: &entity::run::link::EntityLinkArtifact,
@@ -6624,6 +6710,7 @@ fn validate_entity_link_review_export_decision_derivation(
     Ok(())
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_review_export_work_dir(
     link_path: &Path,
     stage: &str,
@@ -6661,6 +6748,7 @@ fn entity_link_review_export_work_dir(
     Ok(work_dir.to_path_buf())
 }
 
+#[cfg(feature = "workbench")]
 fn read_hash_bound_entity_link_review_run_artifact(
     work_dir: &Path,
     link: &entity::run::link::EntityLinkArtifact,
@@ -6728,6 +6816,7 @@ fn read_hash_bound_entity_link_review_run_artifact(
     Ok(run)
 }
 
+#[cfg(feature = "workbench")]
 fn validate_entity_link_review_export_solve_binding(
     link: &entity::run::link::EntityLinkArtifact,
     solve: &entity::solve::SolveArtifact,
@@ -6756,6 +6845,7 @@ fn validate_entity_link_review_export_solve_binding(
     Ok(())
 }
 
+#[cfg(feature = "workbench")]
 fn load_entity_link_review_export_strategy(
     run: &entity::run::EntityRunArtifact,
     link: &entity::run::link::EntityLinkArtifact,
@@ -6836,6 +6926,7 @@ fn load_entity_link_review_export_strategy(
     Ok(strategy)
 }
 
+#[cfg(feature = "workbench")]
 fn load_entity_link_review_export_strategy_from_context(
     strategy_source: &str,
     link_path: &Path,
@@ -6937,6 +7028,7 @@ fn load_entity_link_review_export_strategy_from_context(
     }
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_review_export_strategy_candidates(
     strategy_source: &Path,
     link_path: &Path,
@@ -6952,6 +7044,7 @@ fn entity_link_review_export_strategy_candidates(
     candidates
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_review_export_strategy_context_dirs(
     link_path: &Path,
     work_dir: &Path,
@@ -6974,6 +7067,7 @@ fn entity_link_review_export_strategy_context_dirs(
     dirs
 }
 
+#[cfg(feature = "workbench")]
 fn push_unique_path(paths: &mut Vec<PathBuf>, path: &Path) {
     let candidate = path.to_path_buf();
     if !paths.contains(&candidate) {
@@ -6981,6 +7075,7 @@ fn push_unique_path(paths: &mut Vec<PathBuf>, path: &Path) {
     }
 }
 
+#[cfg(feature = "workbench")]
 fn validate_entity_link_review_export_decision_parity(
     link: &entity::run::link::EntityLinkArtifact,
     derived: &resolve::MatchDecisions,
@@ -7042,6 +7137,7 @@ fn validate_entity_link_review_export_decision_parity(
     Ok(())
 }
 
+#[cfg(feature = "workbench")]
 fn canonicalize_entity_link_review_export_expected_summary(
     summary: &resolve::ResolveSummary,
     stage: &str,
@@ -7070,6 +7166,7 @@ fn canonicalize_entity_link_review_export_expected_summary(
     })
 }
 
+#[cfg(feature = "workbench")]
 fn entity_link_review_export_decision_mismatch_refusal(
     stage: &str,
     field: &str,
@@ -7368,7 +7465,7 @@ fn entity_artifact_value_looks_like_native_solve_v0(value: &serde_json::Value) -
 }
 
 fn entity_artifact_value_looks_like_native_link_v1(value: &serde_json::Value) -> bool {
-    entity_artifact_version(value) == Some(entity::run::link::ENTITY_LINK_VERSION)
+    entity_artifact_version(value) == Some(entity::run::ENTITY_LINK_VERSION)
 }
 
 fn entity_artifact_has_metadata_object(value: &serde_json::Value) -> bool {
@@ -8488,6 +8585,42 @@ fn parse_entity_lifecycle_json_bytes(
 }
 
 #[allow(clippy::result_large_err)]
+fn validate_committed_entity_link_value(
+    value: &serde_json::Value,
+    logical_path: &str,
+) -> Result<(), CanonOutput> {
+    #[cfg(feature = "workbench")]
+    {
+        entity::run::link::validate_entity_link_artifact_raw_shape(value)
+            .map_err(|refusal| refusal.to_canon_output())?;
+        let link = serde_json::from_value::<entity::run::link::EntityLinkArtifact>(value.clone())
+            .map_err(|error| {
+            refusal::create_refusal(
+                RefusalCode::EEntityArtifactContract,
+                "Committed entity link artifact failed typed validation".to_string(),
+                serde_json::json!({
+                    "stage": "entity_lifecycle_source",
+                    "logical_path": logical_path,
+                    "error": error.to_string(),
+                    "committed": true,
+                    "writes_performed": false
+                }),
+                Some("canon entity link --help".to_string()),
+            )
+        })?;
+        entity::run::link::validate_entity_link_artifact_contract(&link)
+            .map_err(|refusal| refusal.to_canon_output())
+    }
+    #[cfg(not(feature = "workbench"))]
+    {
+        let _ = (value, logical_path);
+        Err(entity_link_requires_workbench_refusal(
+            "entity_lifecycle_source",
+        ))
+    }
+}
+
+#[allow(clippy::result_large_err)]
 fn validate_entity_lifecycle_committed_value(
     value: &serde_json::Value,
     logical_path: &str,
@@ -8495,7 +8628,7 @@ fn validate_entity_lifecycle_committed_value(
     let expected_version = match logical_path {
         "solve/solve.json" => entity::CANON_ENTITY_SOLVE_VERSION_V1,
         "run/run.json" => entity::CANON_ENTITY_RUN_VERSION_V1,
-        "link/link.json" => entity::run::link::ENTITY_LINK_VERSION,
+        "link/link.json" => entity::run::ENTITY_LINK_VERSION,
         _ => {
             return Err(refusal::create_refusal(
                 RefusalCode::EEntityArtifactContract,
@@ -8526,26 +8659,7 @@ fn validate_entity_lifecycle_committed_value(
         ));
     }
     if logical_path == "link/link.json" {
-        entity::run::link::validate_entity_link_artifact_raw_shape(value)
-            .map_err(|refusal| refusal.to_canon_output())?;
-        let link = serde_json::from_value::<entity::run::link::EntityLinkArtifact>(value.clone())
-            .map_err(|error| {
-            refusal::create_refusal(
-                RefusalCode::EEntityArtifactContract,
-                "Committed entity link artifact failed typed validation".to_string(),
-                serde_json::json!({
-                    "stage": "entity_lifecycle_source",
-                    "logical_path": logical_path,
-                    "error": error.to_string(),
-                    "committed": true,
-                    "writes_performed": false
-                }),
-                Some("canon entity link --help".to_string()),
-            )
-        })?;
-        entity::run::link::validate_entity_link_artifact_contract(&link)
-            .map_err(|refusal| refusal.to_canon_output())?;
-        return Ok(());
+        return validate_committed_entity_link_value(value, logical_path);
     }
     entity::schema::validate_artifact_v1_core_contract(value)
         .map_err(|refusal| refusal.to_canon_output())?;
@@ -9869,6 +9983,7 @@ fn create_entity_refusal(error: entity_runtime::EntityError) -> CanonOutput {
     }
 }
 
+#[cfg(feature = "workbench")]
 fn create_resolve_refusal(error: resolve::ResolveError) -> CanonOutput {
     let detail = error.detail.unwrap_or_else(|| serde_json::json!({}));
     let message = error.message;
@@ -10688,6 +10803,7 @@ mod tests {
         assert_eq!(super::suggest_subcommand("positions.csv"), None);
     }
 
+    #[cfg(feature = "workbench")]
     #[test]
     fn link_review_export_expected_summary_uses_json_boundary() {
         let expected = crate::resolve::ResolveSummary {

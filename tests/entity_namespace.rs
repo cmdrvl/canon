@@ -189,11 +189,12 @@ fn entity_namespace_rejects_removed_resolve_and_advertises_entity_link() {
     let subcommands = describe["commands"]
         .as_array()
         .expect("describe subcommands");
-    assert!(
+    assert_eq!(
         subcommands
             .iter()
             .any(|entry| entry["name"].as_str() == Some("entity link")),
-        "describe must expose entity link"
+        cfg!(feature = "workbench"),
+        "describe must expose entity link exactly when the binary has it"
     );
     assert!(
         subcommands.iter().all(|entry| !entry["name"]

@@ -1,3 +1,9 @@
+// Without `workbench` the link test is compiled out and its helpers sit unused.
+// The all-features build still lints them.
+#![cfg_attr(not(feature = "workbench"), allow(dead_code, unused_imports))]
+
+#[cfg(feature = "workbench")]
+use canon::entity::run::link::{EntityLinkArtifact, validate_entity_link_artifact_at_path};
 use canon::entity::{
     EntityPatchNamespaces,
     diagnostics::{
@@ -15,7 +21,6 @@ use canon::entity::{
         RecordLinkFeatureKind, RecordLinkFeaturePolicy, RecordLinkFeatureValue,
         RecordLinkSupportPolicy, record_link_self_support_feature,
     },
-    run::link::{EntityLinkArtifact, validate_entity_link_artifact_at_path},
     score::{ScoreContribution, ScoreLane, ScoreUnits, accumulate_score_units},
 };
 use serde_json::Value;
@@ -117,6 +122,7 @@ fn unlinkables_report_lists_sparse_surface_and_preserves_full_ceiling_parity() {
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn entity_link_artifact_records_unlinkables_section_without_decision_drift() {
     let fixture = LinkFixture::new();

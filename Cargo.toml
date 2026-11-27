@@ -19,9 +19,10 @@ required-features = ["geo"]
 
 # The default build is the core: lookup, registry, and the evidence-session
 # engine. `geo` adds the Geo workbench (`canon geo ...`, src/geo, and the
-# canon_geo_measurements bin). `workbench` is reserved for legacy entity
-# workbench code and gates nothing yet (bd-1pjc). Release and CI builds use
-# `--all-features`, so the shipped binary keeps every command.
+# canon_geo_measurements bin). `workbench` adds the legacy link workbench
+# (`canon entity link`, src/resolve, src/entity/link.rs, and the link paths of
+# review export and promote). Release and CI builds use `--all-features`, so the
+# shipped binary keeps every command.
 [features]
 default = []
 geo = ["dep:h3o", "dep:libc", "dep:sha2", "dep:base64"]
@@ -290,10 +291,10 @@ name = "entity_ledger_golden"
 required-features = ["integration"]
 [[test]]
 name = "entity_link"
-required-features = ["integration"]
+required-features = ["workbench", "integration"]
 [[test]]
 name = "entity_multisource"
-required-features = ["integration"]
+required-features = ["workbench", "integration"]
 [[test]]
 name = "entity_namespace"
 required-features = ["integration"]
@@ -818,16 +819,16 @@ name = "resolve_end_to_end"
 required-features = ["integration"]
 [[test]]
 name = "resolve_fixtures"
-required-features = ["integration"]
+required-features = ["workbench", "integration"]
 [[test]]
 name = "resolve_golden"
-required-features = ["integration"]
+required-features = ["workbench", "integration"]
 [[test]]
 name = "resolve_refusal"
 required-features = ["integration"]
 [[test]]
 name = "resolve_scaling"
-required-features = ["integration"]
+required-features = ["workbench", "integration"]
 [[test]]
 name = "review_grouping"
 required-features = ["integration"]

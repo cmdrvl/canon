@@ -6,6 +6,7 @@ use canon::entity::{
     EntityLinkageContractSlice, EntityProfileDocument, EntityTypedContractErrorCode,
     EntityTypedReference, entity_profile_contract_schema_version,
 };
+#[cfg(feature = "workbench")]
 use canon::resolve::{LinkageMapDocument, ResolveErrorCode, parse_strategy_bytes};
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -189,6 +190,7 @@ ambiguity_gap: 0.1
     assert_eq!(error.detail["actual_kind"], "linkage-map");
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn resolve_loader_refuses_profile_and_frozen_strategy_documents() {
     let profile_error =
@@ -216,6 +218,7 @@ content_hash: blake3:frozen-script
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn legacy_linkage_yaml_has_a_lossless_typed_destination() {
     let yaml = r#"

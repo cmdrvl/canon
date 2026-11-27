@@ -867,6 +867,8 @@ pub fn embedded_operator_manifest() -> std::borrow::Cow<'static, str> {
     let absent_roots: &[&str] = &[
         #[cfg(not(feature = "geo"))]
         "geo",
+        #[cfg(not(feature = "workbench"))]
+        "entity link",
     ];
     if absent_roots.is_empty() {
         return std::borrow::Cow::Borrowed(EMBEDDED_OPERATOR_JSON);
@@ -2910,6 +2912,8 @@ mod tests {
             assert!(!has_row(leaf), "row {leaf}");
             assert!(!has_usage(leaf), "usage {leaf}");
         }
+        assert_eq!(has_row("entity link"), cfg!(feature = "workbench"));
+        assert_eq!(has_usage("entity link"), cfg!(feature = "workbench"));
         // The core session leaves are never filtered.
         assert!(has_row("entity session init"));
     }

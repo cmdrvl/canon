@@ -1,3 +1,7 @@
+// Without `workbench` the link tests are compiled out and their helpers sit
+// unused. The all-features build still lints them.
+#![cfg_attr(not(feature = "workbench"), allow(dead_code, unused_imports))]
+
 use assert_cmd::prelude::*;
 use serde_json::Value;
 use std::{
@@ -56,6 +60,7 @@ fn entity_link_refusal(
     refusal(&args)
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn malformed_strategy_refuses_with_bad_strategy() {
     let payload = entity_link_refusal(
@@ -75,6 +80,7 @@ fn malformed_strategy_refuses_with_bad_strategy() {
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn empty_target_tape_refuses_with_empty_tape() {
     let payload = entity_link_refusal(
@@ -88,6 +94,7 @@ fn empty_target_tape_refuses_with_empty_tape() {
     assert_eq!(payload["refusal"]["detail"]["side"], "target");
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn loan_strategy_under_tenant_profile_refuses_before_candidate_limiting() {
     let payload = entity_link_refusal(
@@ -132,6 +139,7 @@ fn assert_nonempty_string(value: &Value) {
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn missing_column_refusal_includes_available_columns() {
     let payload = entity_link_refusal(
@@ -151,6 +159,7 @@ fn missing_column_refusal_includes_available_columns() {
     assert!(!available.iter().any(|column| column == "balance"));
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn max_rows_refusal_uses_existing_too_large_envelope() {
     let payload = entity_link_refusal(

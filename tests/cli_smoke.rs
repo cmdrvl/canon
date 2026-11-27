@@ -1,3 +1,7 @@
+// Without `workbench` the link tests are compiled out and their helpers sit
+// unused. The all-features build still lints them.
+#![cfg_attr(not(feature = "workbench"), allow(dead_code, unused_imports))]
+
 use assert_cmd::Command;
 use canon::entity::{
     EntityArtifactMetadata, EntityArtifactReference, EntityInputReference, EntityPatchNamespaces,
@@ -643,6 +647,7 @@ fn native_review_html_for_artifact(artifact_path: &Path, include: &str) -> Strin
     String::from_utf8(output.get_output().stdout.clone()).unwrap()
 }
 
+#[cfg(feature = "workbench")]
 fn assert_link_review_export_refuses_without_writes(
     artifact_path: &Path,
     link_dir: &Path,
@@ -669,6 +674,7 @@ fn assert_link_review_export_refuses_without_writes(
     assert_eq!(registry_files(link_dir), files_before);
 }
 
+#[cfg(feature = "workbench")]
 fn assert_link_review_export_surfaces_refuse_without_writes(
     artifact_path: &Path,
     link_dir: &Path,
@@ -697,6 +703,37 @@ fn assert_link_review_export_surfaces_refuse_without_writes(
     assert_eq!(refusal["refusal"]["detail"]["field"], expected_field);
     assert_eq!(refusal["refusal"]["detail"]["writes_performed"], false);
     assert_eq!(registry_files(link_dir), files_before);
+}
+
+#[cfg(not(feature = "workbench"))]
+#[test]
+fn review_export_of_a_link_artifact_requires_workbench_and_writes_nothing() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let artifact_path = temp_dir.path().join("link.json");
+    std::fs::write(&artifact_path, r#"{"version":"canon_entity_link.v1"}"#).unwrap();
+    let surfaces: [&[&str]; 2] = [&[], &["--artifact", "native-review"]];
+
+    for surface in surfaces {
+        let files_before = registry_files(temp_dir.path());
+        let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+            .args(["entity", "review", "export"])
+            .arg(&artifact_path)
+            .args(surface)
+            .args(["--include", "escrow", "--emit", "json"])
+            .assert()
+            .code(2);
+        let refusal: Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+        assert_eq!(
+            refusal["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT",
+            "{refusal}"
+        );
+        assert_eq!(
+            refusal["refusal"]["detail"]["reason"], "workbench_feature_required",
+            "{refusal}"
+        );
+        assert_eq!(refusal["refusal"]["detail"]["writes_performed"], false);
+        assert_eq!(registry_files(temp_dir.path()), files_before);
+    }
 }
 
 fn assert_review_csv_id_parity(
@@ -866,6 +903,7 @@ fn link_observation_surface_by_id(
         .collect()
 }
 
+#[cfg(feature = "workbench")]
 fn resealed_typed_link_artifact(artifact: &Value) -> canon::entity::run::link::EntityLinkArtifact {
     let mut hashable: canon::entity::run::link::EntityLinkArtifact =
         serde_json::from_value(artifact.clone()).unwrap();
@@ -877,6 +915,7 @@ fn resealed_typed_link_artifact(artifact: &Value) -> canon::entity::run::link::E
     hashable
 }
 
+#[cfg(feature = "workbench")]
 fn resealed_typed_link_artifact_with_rehashed_decisions(
     artifact: &Value,
 ) -> canon::entity::run::link::EntityLinkArtifact {
@@ -1113,12 +1152,20 @@ fn entity_namespace_cli() {
     assert!(!entity_help_stdout.contains("alias-withholding"));
     assert!(!entity_help_stdout.contains("generalization"));
     assert!(entity_help_stdout.contains("evidence"));
-    assert!(entity_help_stdout.contains("link"));
+    assert_eq!(
+        entity_help_stdout.contains("\n  link "),
+        cfg!(feature = "workbench")
+    );
     assert!(!entity_help_stdout.contains("edge"));
     assert!(!entity_help_stdout.contains("org"));
+    // The golden is the workbench help. A build without it lacks one line.
     let expected_entity_help =
         std::fs::read_to_string(fixture_path("tests/fixtures/canon_v1/help/entity_help.txt"))
-            .unwrap();
+            .unwrap()
+            .lines()
+            .filter(|line| cfg!(feature = "workbench") || !line.starts_with("  link "))
+            .map(|line| format!("{line}\n"))
+            .collect::<String>();
     assert_eq!(
         normalize_help(&entity_help_stdout),
         normalize_help(&expected_entity_help)
@@ -1133,22 +1180,30 @@ fn entity_namespace_cli() {
     assert!(run_help_stdout.contains("default: enabled"));
     assert!(run_help_stdout.contains("disabled"));
 
-    let link_help = Command::new(env!("CARGO_BIN_EXE_canon"))
+    #[cfg(feature = "workbench")]
+    {
+        let link_help = Command::new(env!("CARGO_BIN_EXE_canon"))
+            .args(["entity", "link", "--help"])
+            .assert()
+            .success();
+        let link_help_stdout = String::from_utf8(link_help.get_output().stdout.clone()).unwrap();
+        assert!(link_help_stdout.contains("--cache-mode <CACHE_MODE>"));
+        assert!(link_help_stdout.contains("default: enabled"));
+        assert!(link_help_stdout.contains("disabled"));
+        let expected_link_help = std::fs::read_to_string(fixture_path(
+            "tests/fixtures/canon_v1/help/entity_link_help.txt",
+        ))
+        .unwrap();
+        assert_eq!(
+            normalize_help(&link_help_stdout),
+            normalize_help(&expected_link_help)
+        );
+    }
+    #[cfg(not(feature = "workbench"))]
+    Command::new(env!("CARGO_BIN_EXE_canon"))
         .args(["entity", "link", "--help"])
         .assert()
-        .success();
-    let link_help_stdout = String::from_utf8(link_help.get_output().stdout.clone()).unwrap();
-    assert!(link_help_stdout.contains("--cache-mode <CACHE_MODE>"));
-    assert!(link_help_stdout.contains("default: enabled"));
-    assert!(link_help_stdout.contains("disabled"));
-    let expected_link_help = std::fs::read_to_string(fixture_path(
-        "tests/fixtures/canon_v1/help/entity_link_help.txt",
-    ))
-    .unwrap();
-    assert_eq!(
-        normalize_help(&link_help_stdout),
-        normalize_help(&expected_link_help)
-    );
+        .code(2);
 
     Command::new(env!("CARGO_BIN_EXE_canon"))
         .args(["entity", "edge", "--help"])
@@ -1269,33 +1324,36 @@ fn entity_cutover_dispatch_smoke() {
         false
     );
 
-    let link = Command::new(env!("CARGO_BIN_EXE_canon"))
-        .args([
-            "entity",
-            "link",
-            "reference.csv",
-            "target.csv",
-            "--profile",
-            "entity_profile",
-            "--strategy",
-            "strategy.yaml",
-            "--registry",
-            "registry",
-            "--work-dir",
-            "work/entity-link",
-            "--emit",
-            "json",
-        ])
-        .assert()
-        .code(2);
-    let stdout = String::from_utf8(link.get_output().stdout.clone()).unwrap();
-    let payload: Value = serde_json::from_str(&stdout).unwrap();
-    assert_eq!(payload["refusal"]["code"], "E_ENTITY_INPUT_CONTRACT");
-    let detail = &payload["refusal"]["detail"];
-    assert_eq!(detail["stage"], "link");
-    assert_eq!(detail["role"], "reference");
-    assert_eq!(detail["path"], "reference.csv");
-    assert_eq!(detail["writes_performed"], false);
+    #[cfg(feature = "workbench")]
+    {
+        let link = Command::new(env!("CARGO_BIN_EXE_canon"))
+            .args([
+                "entity",
+                "link",
+                "reference.csv",
+                "target.csv",
+                "--profile",
+                "entity_profile",
+                "--strategy",
+                "strategy.yaml",
+                "--registry",
+                "registry",
+                "--work-dir",
+                "work/entity-link",
+                "--emit",
+                "json",
+            ])
+            .assert()
+            .code(2);
+        let stdout = String::from_utf8(link.get_output().stdout.clone()).unwrap();
+        let payload: Value = serde_json::from_str(&stdout).unwrap();
+        assert_eq!(payload["refusal"]["code"], "E_ENTITY_INPUT_CONTRACT");
+        let detail = &payload["refusal"]["detail"];
+        assert_eq!(detail["stage"], "link");
+        assert_eq!(detail["role"], "reference");
+        assert_eq!(detail["path"], "reference.csv");
+        assert_eq!(detail["writes_performed"], false);
+    }
 }
 
 #[test]
@@ -1445,14 +1503,15 @@ fn test_describe_command() {
         "the pre-v1 spellings `version` and `subcommands` must be gone"
     );
     assert!(json["capabilities"].is_object());
-    assert!(
+    assert_eq!(
         json["commands"]
             .as_array()
             .unwrap()
             .iter()
             .any(|entry| entry["name"] == "entity link"
                 && entry["output_schema"] == "canon_entity_link.v1"
-                && entry["status"] == "implemented")
+                && entry["status"] == "implemented"),
+        cfg!(feature = "workbench")
     );
     assert!(
         !json["commands"]
@@ -1669,6 +1728,7 @@ fn test_doctor_fix_is_not_available() {
     assert_doctor_side_effects_absent(temp_dir.path(), &witness_path);
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_link_cli_success_json() {
     let temp_dir = tempdir().unwrap();
@@ -1753,6 +1813,7 @@ fn test_entity_link_cli_success_json() {
     }
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_link_prepared_surface_collapse_matches_without_candidate_credit() {
     let temp_dir = tempdir().unwrap();
@@ -1802,6 +1863,7 @@ fn test_entity_link_prepared_surface_collapse_matches_without_candidate_credit()
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_link_prepared_surface_collapse_preserves_multi_reference_guard() {
     let temp_dir = tempdir().unwrap();
@@ -1850,6 +1912,7 @@ fn test_entity_link_prepared_surface_collapse_preserves_multi_reference_guard() 
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_cache_mode_disabled_reaches_native_run_and_link() {
     let temp_dir = tempdir().unwrap();
@@ -1924,6 +1987,7 @@ fn test_entity_cache_mode_disabled_reaches_native_run_and_link() {
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_link_cli_suite_writes_stable_audit_artifact() {
     let temp_dir = tempdir().unwrap();
@@ -1959,6 +2023,7 @@ fn test_entity_link_cli_suite_writes_stable_audit_artifact() {
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_link_emitted_native_handoffs_execute() {
     let temp_dir = tempdir().unwrap();
@@ -2202,6 +2267,7 @@ fn test_entity_link_emitted_native_handoffs_execute() {
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_link_neutral_mixed_review_queue_contract() {
     let first_temp = tempdir().unwrap();
@@ -2328,6 +2394,7 @@ fn test_entity_link_neutral_mixed_review_queue_contract() {
     assert_eq!(review_ids(&second_all_json), review_ids(&all_json));
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_review_default_native_artifacts_stay_review_queue_contract() {
     let temp_dir = tempdir().unwrap();
@@ -2363,6 +2430,7 @@ fn test_entity_review_default_native_artifacts_stay_review_queue_contract() {
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_review_export_public_formats_cover_v1_run_and_native_link() {
     let temp_dir = tempdir().unwrap();
@@ -2452,6 +2520,7 @@ fn test_entity_review_export_public_formats_cover_v1_run_and_native_link() {
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_native_review_import_public_receipt_and_refusals() {
     let temp_dir = tempdir().unwrap();
@@ -2555,6 +2624,7 @@ fn test_entity_native_review_import_public_receipt_and_refusals() {
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_review_export_run_handoff_rejects_unsafe_or_mismatched_solve_path() {
     let temp_dir = tempdir().unwrap();
@@ -2708,6 +2778,7 @@ fn test_entity_review_export_run_handoff_rejects_unsafe_or_mismatched_solve_path
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_review_export_link_handoff_rejects_malformed_or_tampered_artifacts() {
     let temp_dir = tempdir().unwrap();
@@ -2939,6 +3010,7 @@ fn test_entity_review_export_link_handoff_rejects_malformed_or_tampered_artifact
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_link_review_ids_are_path_independent() {
     let left_temp = tempdir().unwrap();
@@ -2986,6 +3058,7 @@ fn run_link_review_ids(root: &Path) -> Vec<String> {
     ids
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_link_cli_invalid_suite_refuses_before_writes() {
     let temp_dir = tempdir().unwrap();
@@ -3017,6 +3090,7 @@ fn test_entity_link_cli_invalid_suite_refuses_before_writes() {
     assert_eq!(registry_snapshot(&fixture.registry), registry_before);
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_link_cli_accepts_advertised_row_formats() {
     let temp_dir = tempdir().unwrap();
@@ -3055,6 +3129,7 @@ fn test_entity_link_cli_accepts_advertised_row_formats() {
     }
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_link_cli_budget_refusals_are_public() {
     for (flag, value, expected_code) in [
@@ -3086,6 +3161,7 @@ fn test_entity_link_cli_budget_refusals_are_public() {
     }
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_link_cli_without_writeback_does_not_mutate_inputs_or_registry() {
     let temp_dir = tempdir().unwrap();
@@ -3113,6 +3189,7 @@ fn test_entity_link_cli_without_writeback_does_not_mutate_inputs_or_registry() {
     );
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_link_cli_summary_output() {
     let temp_dir = tempdir().unwrap();
@@ -3132,6 +3209,7 @@ fn test_entity_link_cli_summary_output() {
     assert!(stdout.contains("match_rate=1.000"));
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_link_cli_partial_exit_one() {
     let temp_dir = tempdir().unwrap();
@@ -3162,6 +3240,7 @@ fn test_entity_link_cli_partial_exit_one() {
     assert!(decisions["unmatched"][0]["best_candidate"].is_null());
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_link_cli_malformed_strategy_refusal() {
     let temp_dir = tempdir().unwrap();
@@ -3182,6 +3261,7 @@ fn test_entity_link_cli_malformed_strategy_refusal() {
     assert_eq!(payload["refusal"]["code"], "E_BAD_STRATEGY");
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_link_cli_missing_column_refusal() {
     let temp_dir = tempdir().unwrap();
@@ -3218,6 +3298,7 @@ fn test_entity_link_cli_missing_column_refusal() {
     assert_eq!(payload["refusal"]["code"], "E_COLUMN_NOT_FOUND");
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_link_cli_empty_tape_refusal() {
     let temp_dir = tempdir().unwrap();
@@ -3254,6 +3335,7 @@ fn test_entity_link_cli_empty_tape_refusal() {
     assert_eq!(payload["refusal"]["code"], "E_EMPTY_TAPE");
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_link_cli_no_witness_suppresses_ledger() {
     let temp_dir = tempdir().unwrap();
@@ -3272,6 +3354,7 @@ fn test_entity_link_cli_no_witness_suppresses_ledger() {
     assert!(!ledger_path.exists());
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_link_cli_witness_append_and_failure_nonfatal() {
     let temp_dir = tempdir().unwrap();
@@ -3303,6 +3386,7 @@ fn test_entity_link_cli_witness_append_and_failure_nonfatal() {
         .success();
 }
 
+#[cfg(feature = "workbench")]
 #[test]
 fn test_entity_link_cli_writeback_refuses_without_mutation() {
     let temp_dir = tempdir().unwrap();

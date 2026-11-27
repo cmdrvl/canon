@@ -1846,6 +1846,7 @@ pub enum EntitySubcommand {
     /// Solve entity identity assignments from evidence artifacts
     Solve(EntitySolveCli),
     /// Link two row sets through the artifact-backed entity workbench
+    #[cfg(feature = "workbench")]
     Link(EntityLinkCli),
     /// Audit an entity result artifact against a suite
     Audit(EntityAuditCli),
@@ -3078,6 +3079,7 @@ pub struct EntitySolveCli {
     pub emit: EntityEmitMode,
 }
 
+#[cfg(feature = "workbench")]
 #[derive(Args, Debug, Clone)]
 pub struct EntityLinkCli {
     /// Reference rows
@@ -4726,6 +4728,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "workbench")]
     #[test]
     fn test_cli_entity_link_parsing() {
         let args = [
@@ -4785,6 +4788,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "workbench")]
     #[test]
     fn test_cli_entity_link_cache_mode_defaults_to_enabled() {
         let args = [

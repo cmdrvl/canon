@@ -60,7 +60,7 @@ use std::{
 
 pub mod multisource;
 
-pub const ENTITY_LINK_VERSION: &str = "canon_entity_link.v1";
+pub use super::{ENTITY_LINK_VERSION, LINK_ARTIFACT_PATH};
 pub const ENTITY_LINK_DECISIONS_VERSION: &str = "canon_entity_link_decisions.v1";
 pub const ENTITY_LINK_MATERIALIZED_ROWS_VERSION: &str = "canon_entity_link_materialized_rows.v1";
 pub const ENTITY_LINK_OBSERVATION_SURFACE_BINDINGS_VERSION: &str =
@@ -69,7 +69,6 @@ pub const LINK_SIDE_COLUMN: &str = "canon_link_side";
 pub const LINK_SOURCE_NAME_COLUMN: &str = "canon_link_source_name";
 pub const LINK_SOURCE_ROW_COLUMN: &str = "canon_link_source_row_id";
 pub const LINK_SOURCE_ORDINAL_COLUMN: &str = "canon_link_source_ordinal";
-pub const LINK_ARTIFACT_PATH: &str = "link/link.json";
 pub const LINK_MATERIALIZED_ROWS_PATH: &str = "combined_rows.csv";
 pub const LINK_OBSERVATION_SURFACE_BINDINGS_PATH: &str = "observation_surface_bindings.jsonl";
 pub const LINK_ASSIGNMENT_ALIGNMENT_PATH: &str = "assignment_alignment.json";
