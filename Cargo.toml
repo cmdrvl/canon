@@ -506,6 +506,9 @@ required-features = ["integration"]
 name = "entity_session_status"
 required-features = ["integration"]
 [[test]]
+name = "entity_session_swarm_proof"
+required-features = ["integration"]
+[[test]]
 name = "entity_session_units_scope"
 required-features = ["integration"]
 [[test]]
