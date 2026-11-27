@@ -471,7 +471,9 @@ fn ci_wires_focused_safety_matrix_on_linux_and_macos() {
     assert!(ci.contains("cargo test --test safety_matrix"));
     assert!(ci.contains("ubuntu-latest"));
     assert!(ci.contains("macos-latest"));
-    assert!(ci.contains("needs: [fmt, clippy, test, core, reachability, safety-matrix, build]"));
+    assert!(
+        ci.contains("needs: [fmt, clippy, unit, test, core, reachability, safety-matrix, build]")
+    );
     assert!(ci.contains("./scripts/check-reachability.sh"));
 }
 

@@ -620,9 +620,9 @@ fn e2e_deed_truth_script_uses_measurement_binary_and_public_evaluate() {
         "artifact_blake3",
         "solver_digest",
         "compilation_digest",
-        "cargo test --manifest-path \"$repo_root/Cargo.toml\" --test geo_deed_truth",
-        "cargo test --manifest-path \"$repo_root/Cargo.toml\" --test geo_schemas deed_",
-        "cargo test --manifest-path \"$repo_root/Cargo.toml\" --test geo_e5_franklin_parcel franklin_instance_names_do_not_enter_the_generic_geo_engine",
+        "cargo test --manifest-path \"$repo_root/Cargo.toml\" --features geo,integration --test geo_deed_truth",
+        "cargo test --manifest-path \"$repo_root/Cargo.toml\" --features geo,integration --test geo_schemas deed_",
+        "cargo test --manifest-path \"$repo_root/Cargo.toml\" --features geo,integration --test geo_e5_franklin_parcel franklin_instance_names_do_not_enter_the_generic_geo_engine",
     ] {
         assert!(
             E2E_DEED_TRUTH_SCRIPT.contains(required),
