@@ -867,10 +867,6 @@ pub fn embedded_operator_manifest() -> std::borrow::Cow<'static, str> {
     let absent_roots: &[&str] = &[
         #[cfg(not(feature = "geo"))]
         "geo",
-        #[cfg(not(feature = "workbench"))]
-        "entity alias-withholding",
-        #[cfg(not(feature = "workbench"))]
-        "entity generalization",
     ];
     if absent_roots.is_empty() {
         return std::borrow::Cow::Borrowed(EMBEDDED_OPERATOR_JSON);
@@ -2909,9 +2905,10 @@ mod tests {
                         .is_some_and(|text| text.starts_with(&format!("canon {leaf}")))
                 })
         };
+        // Removed in 0.17.0: no build advertises them.
         for leaf in ["entity alias-withholding", "entity generalization"] {
-            assert_eq!(has_row(leaf), cfg!(feature = "workbench"), "row {leaf}");
-            assert_eq!(has_usage(leaf), cfg!(feature = "workbench"), "usage {leaf}");
+            assert!(!has_row(leaf), "row {leaf}");
+            assert!(!has_usage(leaf), "usage {leaf}");
         }
         // The core session leaves are never filtered.
         assert!(has_row("entity session init"));

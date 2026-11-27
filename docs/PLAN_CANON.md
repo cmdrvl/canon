@@ -183,8 +183,6 @@ canon entity session export <SESSION> --format evidence-closure --out <DIR> [--o
 canon entity session derive <SESSION> --profile <PROFILE.yaml> --strategy <STRATEGY.yaml> [--no-registry-candidates] [--emit json|summary]
 canon entity session sample <SESSION> [--stratum tier_a|tier_b|tier_c|standalone|neighbourhood] [--count <N>] [--seed <SEED>] [--entity-type <TYPE>] [--blind] [--seed-entity <SURFACE_OR_ID>] [--score <LABELS.jsonl>] [--emit jsonl|json|summary]
 canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--suite <DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
-canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]
-canon entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json|summary]
 canon entity calibrate sweep <RESULT|EVIDENCE> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml> [--emit json|summary]
 canon entity calibrate em <EVIDENCE.jsonl> --strategy <STRATEGY.yaml> [--emit json|summary]
 canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY> --work-dir <DIR>
@@ -549,90 +547,6 @@ lookup path and it does not change `canon.v0` exact-match semantics.
   `E_ENTITY_INPUT_CONTRACT` refusal when either is omitted. Successful link
   execution requires both flags, and omission performs no writes.
 
-`canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]`
-- compiles a strict alias-withholding execution envelope into a benchmark report
-- the envelope version is `canon.evaluation.alias_withholding.execution_manifest.v0`
-  and contains the benchmark plus one native execution manifest per trial
-- loads manifest-relative artifacts for clean registry absence, candidate
-  recall, link, run/solve, review, audit, leak scans, assignment firewall, and
-  optional reviewed promotion plus exact replay
-- requires the real clean registry id/version and complete exact mapping set to
-  equal the benchmark retained snapshot; absence against a weaker or unrelated
-  registry is not evidence
-- recomputes nonempty source-bound scans for mapping, search-index, cache,
-  normalization-patch, generated-corpus, and display-name channels; the mapping
-  scan enumerates the complete clean registry tree, and the assignment firewall
-  checks distinct concrete assignment and issuer-identity sources
-- for a credited attachment, rebuilds a cluster-mode review queue from the
-  validated solve artifact, binds a typed native review-import receipt to that
-  queue/run/policy/registry context, requires an exact one-entry clean-to-promoted
-  registry diff, and verifies ordinary exact replay against the promoted registry
-- keeps resolver/link observation IDs separate from prepared surface IDs through
-  a hash-bound sidecar that is re-derived from materialized rows and the supplied
-  run profile/strategy before candidate, solve, review, or promotion joins
-- reports candidate disposition explicitly: `evaluated_pair` requires rank-or-miss
-  evidence; `prepared_surface_collapse` binds distinct link observations to one
-  prepared surface without candidate-rank/recall credit; `relation_policy_control`
-  excludes non-identity controls from recall, forbids promotion/replay, and records
-  an automatic attachment as an `unsupported_guess` false merge
-- supports a derivation-proven collapse receipt through the public native review
-  artifact/import path: a singleton cluster Alias decision requires an explicit
-  target canonical ID and exact exported-surface equality
-- derives trial decisions, promotion replay, and aggregate counts from those
-  artifacts; caller-declared outcomes or self-reported pass/fail fields are not
-  accepted as evidence
-- emits `json` by default or a compact `summary`; a valid report exits `0`, and
-  malformed envelopes or stale/missing/tampered artifacts refuse with exit `2`
-- hashes report identifiers and manifest paths at the CLI boundary; public
-  refusals expose a stable reason and message fingerprint rather than private
-  artifact text
-- does not mutate registries and does not change normal exact lookup semantics
-
-`canon entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json|summary]`
-- compiles a strict artifact-backed entity-disjoint/time-forward execution
-  envelope into a benchmark report
-- uses the same public command for public fixtures and operator-owned private
-  corpora
-- loads manifest-relative native candidate-recall, link, run, solve,
-  observation/surface sidecar, and leakage-source artifacts by path, version,
-  and content hash
-- requires strict solve derivation refs for `solve_derivation.edge_artifact.path`,
-  `solve_derivation.edge_records.path`, `solve_derivation.prepared_surfaces.path`,
-  and a hash-bound `solve_derivation.solve_policy` artifact with version
-  `canon.evaluation.generalization.solve_policy.v0`; the policy file byte hash
-  must equal `cross_bindings.policy_digest`, and edge/prepared refs are
-  path-bound to the loaded run `work_dir`
-- requires each trial's `registry_dir` to be manifest-relative and resolved
-  inside the envelope root; absolute paths, traversal segments, and symlink
-  registry roots are refused
-- treats `run.metadata.registry_snapshot.source` as inert metadata continuity,
-  not as a filesystem path to open
-- rebuilds the loaded solve and run exactly from those derivation inputs before
-  scoring
-- derives decisions, candidate ranks, false-merge outcomes, and leakage status
-  from those artifacts rather than self-attested fields in the envelope
-- emits main report version `canon.evaluation.generalization.v1` with nested
-  `quality.version` `canon.evaluation.generalization.quality_gate_report.v0`,
-  `quality.contract_version` `canon.entity.quality.v1`, fixed canonical gate
-  results for `candidate_recall_at_50_min`, `auto_link_precision_min`,
-  `auto_link_recall_min`, `critical_false_merges_max`, and
-  `accounted_case_rate_min`, and `quality.release_claim_status`
-  `eligible|blocked`
-- defines the `canon.entity.quality.v1` fixed thresholds as
-  `candidate_recall_at_50 >= 0.995`, `auto_link_precision >= 0.995`,
-  `auto_link_recall >= 0.98`, critical false merges `== 0`, and
-  `accounted_case_rate == 1.0`; zero-denominator rate gates emit
-  `not_applicable`, which keeps `quality.release_claim_status` `blocked`
-  because eligibility requires every gate to pass
-- accepts no caller-adjustable threshold or waiver inputs for this command
-- hashes report identifiers, paths, and cutoffs at the CLI boundary; public
-  refusals expose a stable reason and message fingerprint rather than private
-  artifact text
-- is read-only, exits `0` for a structurally valid `eligible` or `blocked`
-  report, including low-quality or critical-false-merge blocked reports, and
-  exits `2` only for malformed envelopes or stale/missing/tampered artifacts;
-  it does not change normal exact lookup semantics
-
 `canon entity calibrate sweep <RESULT|EVIDENCE> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml> [--emit json|summary]`
 - compiles a read-only threshold-selection report for entity workbench scored
   pairs; it emits `canon.entity.calibrate_sweep.v0`
@@ -814,9 +728,8 @@ Streams
 
 No other outcomes.
 
-Workbench evaluation commands such as `canon entity alias-withholding`,
-`canon entity generalization`, `canon entity calibrate sweep`, and `canon entity
-calibrate em` are report compilers rather than core lookup runs: a valid report
+Workbench evaluation commands such as `canon entity calibrate sweep` and `canon
+entity calibrate em` are report compilers rather than core lookup runs: a valid report
 exits `0` even when its internal release claim or recommendation is blocked, and
 a bad execution envelope, referenced artifact, evidence, strategy, or
 gold/result calibration contract exits `2` with a structured refusal.

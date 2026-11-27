@@ -1839,13 +1839,6 @@ pub enum EntitySubcommand {
     /// Evaluate candidate retrieval recall against sealed public gold labels
     #[command(name = "candidate-recall")]
     CandidateRecall(EntityCandidateRecallCli),
-    /// Compile a public alias-withholding execution envelope into a report
-    #[cfg(feature = "workbench")]
-    #[command(name = "alias-withholding")]
-    AliasWithholding(EntityAliasWithholdingCli),
-    /// Compile a strict artifact-backed generalization execution envelope into a report
-    #[cfg(feature = "workbench")]
-    Generalization(EntityGeneralizationCli),
     /// Sweep entity threshold tuples against gold labels and recommend a read-only strategy fragment
     Calibrate(EntityCalibrateCommand),
     /// Score typed evidence for candidate pairs
@@ -2987,28 +2980,6 @@ pub struct EntityCandidateRecallCli {
     /// Compact exact buckets emitted alongside candidates
     #[arg(long = "exact-bucket-count")]
     pub exact_bucket_count: u64,
-
-    /// Output mode
-    #[arg(long, value_enum, default_value = "json")]
-    pub emit: EntityEmitMode,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct EntityAliasWithholdingCli {
-    /// Alias-withholding execution envelope JSON
-    #[arg(long)]
-    pub manifest: PathBuf,
-
-    /// Output mode
-    #[arg(long, value_enum, default_value = "json")]
-    pub emit: EntityEmitMode,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct EntityGeneralizationCli {
-    /// Strict generalization execution envelope JSON
-    #[arg(long)]
-    pub manifest: PathBuf,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
@@ -4592,34 +4563,6 @@ mod tests {
             "strategy.yaml",
         ];
         assert!(Cli::try_parse_from(args).is_err());
-    }
-
-    #[cfg(feature = "workbench")]
-    #[test]
-    fn test_cli_entity_generalization_parsing() {
-        let args = [
-            "canon",
-            "entity",
-            "generalization",
-            "--manifest",
-            "strict-envelope.json",
-            "--emit",
-            "summary",
-        ];
-        let cli = Cli::try_parse_from(args).unwrap();
-
-        let Some(command) = entity_command(cli) else {
-            return;
-        };
-        let subcommand = command.command;
-        assert!(matches!(&subcommand, EntitySubcommand::Generalization(_)));
-        if let EntitySubcommand::Generalization(generalization) = subcommand {
-            assert_eq!(
-                generalization.manifest,
-                PathBuf::from("strict-envelope.json")
-            );
-            assert!(matches!(generalization.emit, EntityEmitMode::Summary));
-        }
     }
 
     #[test]

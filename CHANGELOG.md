@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Breaking (0.17.0):** `canon entity alias-withholding` and `canon entity
+  generalization` are removed, with their `canon.evaluation.*` contracts and the
+  `canon.evaluation.corpus.v1` schema file. There is no replacement command.
+  `canon entity candidate-recall`, `calibrate sweep` and `calibrate em` stay.
+
 ## 0.16.0 — 2026-11-19
 
 - Entity evidence sessions (`canon entity session ...`): `init`, `ingest`, `assert`,

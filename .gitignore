@@ -46,13 +46,6 @@ _index.sqlite
 /storage.sqlite3-shm
 /storage.sqlite3-wal
 
-# Stray outputs from a manual generalization pipeline run (2026-07-12) that was
-# pointed at the fixture tree. Tests build these in tempdirs
-# (TempGeneralizationScaffold in tests/entity_generalization.rs) and never read
-# the in-tree copies. Files retained on disk pending operator deletion.
-/tests/fixtures/extensions/neutral-domain/time_forward/artifacts/
-/tests/fixtures/extensions/neutral-domain/time_forward/generalization_execution_envelope.json
-
 # br writes a timestamped backup here on every --force flush (see the beads
 # hooks in cmdrvl-cli/scripts/beads-hooks). Local safety net, not shared state.
 .beads/.br_history/

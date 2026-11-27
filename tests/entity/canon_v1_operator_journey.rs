@@ -1754,32 +1754,6 @@ fn exercise_artifact_backed_benchmark_leaves(
         ],
         2,
     ));
-    // These two leaves exist only in a `workbench` build; a core build rejects
-    // them at argument parsing, which is not the refusal this journey checks.
-    #[cfg(feature = "workbench")]
-    command_log.push(canon_raw(
-        &[
-            "entity",
-            "alias-withholding",
-            "--manifest",
-            path_str(&missing_manifest),
-            "--emit",
-            "json",
-        ],
-        2,
-    ));
-    #[cfg(feature = "workbench")]
-    command_log.push(canon_raw(
-        &[
-            "entity",
-            "generalization",
-            "--manifest",
-            path_str(&missing_manifest),
-            "--emit",
-            "json",
-        ],
-        2,
-    ));
 }
 
 /// Exercise the three planning and calibration leaves the run stages do not

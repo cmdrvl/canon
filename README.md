@@ -107,8 +107,6 @@ yet know enough.
 | `canon registry build/providers/provider-schema` | Materialize provider-backed seed mappings into local registry files. | Provider calls happen during maintenance, never during runtime lookup. |
 | `canon entity run` | Cluster profiled observations inside one corpus and propose registry knowledge. | Deterministic artifacts, audit, review inbox, promotion. |
 | `canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json\|summary] [--cache-mode enabled\|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]` | Link two row sets through the same typed artifact path used by project mode. | Cross-source linkage; relation evidence is not an equivalence shortcut. Profile and work-dir are required for execution; omissions write nothing. Cache mode defaults to enabled. |
-| `canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json>` | Compile artifact-backed withheld-alias trials into a JSON or summary report. | Strict execution envelope only; outcomes are derived from referenced artifacts, not self-declared. |
-| `canon entity generalization --manifest <STRICT_ENVELOPE.json>` | Compile artifact-backed entity-disjoint and time-forward trials into a JSON or summary report. | Strict execution envelope only; one public/private command, redacted identifiers and paths, outcomes and leakage checks derived from referenced artifacts rather than self-attested fields. Strict solve derivation binds typed edge artifacts, edge records, prepared surfaces, and `canon.evaluation.generalization.solve_policy.v0`. |
 | `canon entity calibrate sweep <RESULT> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml>` | Sweep integer threshold tuples against gold labels and emit a truth-space recommendation report. | Read-only workbench report; no registry writes, no strategy mutation, frozen `canon.entity.quality.v1` gates. |
 | `canon entity calibrate em <EVIDENCE.jsonl> --strategy <STRATEGY.yaml>` | Estimate support-evidence weights from aggregated agreement patterns and emit proposed support-score YAML. | Read-only calibration assist; fixed-point EM over existing evidence only, no registry writes, no strategy mutation, no automatic authority. |
 | `canon registry export --format dbt-seed|search-index|key-crosswalk|entity-card` | Project exact registry knowledge into transform or serving artifacts, the key-to-key crosswalk, or one bounded JSON context card per canonical ID. `dbt-seed` and `key-crosswalk` also support `--parquet`; CSV remains the default. | Deterministic downstream snapshots; no new matching semantics. |
@@ -537,8 +535,6 @@ canon entity session export <SESSION> --format evidence-closure --out <DIR> [--o
 canon entity session derive <SESSION> --profile <PROFILE.yaml> --strategy <STRATEGY.yaml> [--no-registry-candidates] [--emit json|summary]
 canon entity session sample <SESSION> [--stratum tier_a|tier_b|tier_c|standalone|neighbourhood] [--count <N>] [--seed <SEED>] [--entity-type <TYPE>] [--blind] [--seed-entity <SURFACE_OR_ID>] [--score <LABELS.jsonl>] [--emit jsonl|json|summary]
 canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
-canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]
-canon entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json|summary]
 canon entity calibrate sweep <RESULT|EVIDENCE> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml> [--emit json|summary]
 canon entity calibrate em <EVIDENCE.jsonl> --strategy <STRATEGY.yaml> [--emit json|summary]
 canon entity prepare <ROWS> --profile <PROFILE> --registry <DIR> --work-dir <DIR>
@@ -936,8 +932,6 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `strategy diff --old <DIR> --new <DIR> [--emit json\|summary]` | Compare frozen-script strategy registry versions by typed key plus skill hash, including grade/status/attestation changes. |
 | `entity run <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--cache-mode enabled\|disabled] [--suite <DIR>] [--emit json\|summary]` | Run the cluster-mode artifact pipeline (prepare -> index -> block -> evidence -> solve, optional audit). Cache mode defaults to enabled, and native cache receipts are recorded in the run artifact. |
 | `entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json\|summary] [--cache-mode enabled\|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]` | Run link mode for aligning two row sets through the same typed request and artifact path as project mode, with optional suite/gold scoring. Profile and work-dir are required for successful execution even though generated syntax shows them bracketed; omissions write nothing. `--write-back` currently refuses before work-dir or registry mutation, so accepted knowledge flows through review, audit, promote, and apply. Cache mode defaults to enabled, and native cache receipts are inherited from the nested run. |
-| `entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json\|summary]` | Compile a strict execution envelope into an alias-withholding report. The envelope references clean registry, candidate, link, run/solve, review, audit, leak-scan, assignment-firewall, and optional promotion/replay artifacts; Canon derives outcomes from those artifacts and refuses self-declared results. |
-| `entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json\|summary]` | Compile a strict artifact-backed entity-disjoint/time-forward envelope into a redacted report. The same command is used for public fixtures and operator-owned private corpora; identifiers, paths, and cutoffs are hashed at the CLI boundary, and outcomes/leakage checks are derived from referenced artifacts rather than self-attested fields. |
 | `entity calibrate sweep <RESULT\|EVIDENCE> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml> [--emit json\|summary]` | Sweep deterministic integer threshold tuples against gold labels and emit `canon.entity.calibrate_sweep.v0`. The report maximizes auto-accept subject to frozen `canon.entity.quality.v1` gates, emits a YAML threshold fragment for manual application, and never writes registry or strategy files. |
 | `entity calibrate em <EVIDENCE.jsonl> --strategy <STRATEGY.yaml> [--emit json\|summary]` | Estimate m/u probabilities from aggregated support-evidence agreement patterns and emit `canon.entity.calibrate_em.v0`. The report uses integer fixed-point EM, suppresses weights for constant, zero-cell, or non-converged operators, emits a proposed `support_scores` YAML fragment for manual review, and never writes registry or strategy files. |
 | `entity prepare <ROWS> --profile <PROFILE> --registry <DIR> --work-dir <DIR>` | Validate and project profile-mapped observations for artifact-backed entity preparation. |
@@ -969,17 +963,6 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 `canon strategy profile`, `canon strategy register`, `canon strategy update`, `canon strategy deprecate`, `canon strategy promote`, `canon strategy list`, `canon strategy explain`, and `canon strategy diff` exit `0` when their reports or writes succeed and `2` on refusal. `canon strategy audit` exits `0` when all fixtures pass, `1` when deterministic fixture checks fail, and `2` on refusal. `canon strategy resolve` exits `0` for a schema EXACT/COMPATIBLE or task EXACT match, `1` for schema PARTIAL/UNRESOLVED or task UNRESOLVED, and `2` on refusal.
 
 `canon entity link` exits `0` when every target record is matched, `1` when any target record is unmatched or ambiguous, and `2` on refusal. In `summary` mode, refusal JSON is written to stderr.
-
-`canon entity alias-withholding` exits `0` when it emits a JSON or summary
-report from a valid execution envelope and `2` when the envelope or any
-referenced artifact refuses validation. It does not use exit `1` for benchmark
-outcomes.
-
-`canon entity generalization` exits `0` when it emits a structurally valid JSON
-or summary report, including low-quality or critical-false-merge reports whose
-`quality.release_claim_status` is `blocked`. It exits `2` only when the envelope
-or referenced artifacts are malformed, missing, stale, tampered, or otherwise
-refuse validation. It does not use exit `1` for benchmark outcomes.
 
 `canon entity calibrate sweep` exits `0` when it emits a structurally valid JSON
 or summary report, including `recommendation.status: blocked` when no threshold
@@ -1460,60 +1443,6 @@ There are two public entity modes:
 - **Cluster mode:** `canon entity run` groups observations inside one profiled corpus and emits solved clusters, escrow, review, and promotion artifacts.
 - **Link mode:** `canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]` aligns two row sets through the same typed request and artifact path used by project mode. It is for cross-source linkage, not a hidden alias for edge scoring.
 
-`canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json>` is an
-evaluation compiler for artifact-backed withheld-alias trials. The manifest is
-a strict execution envelope: it names a benchmark plus native execution
-manifests whose paths are loaded relative to the envelope, including clean
-registry, candidate-recall, link/run/solve, review, audit, leak-scan,
-assignment-firewall, and optional promotion/exact-replay artifacts. The command
-emits a JSON report by default or a compact `--emit summary` report; it refuses
-invalid envelopes or stale/missing/tampered artifacts with exit 2. It does not
-accept caller-declared decisions or outcomes, does not write registry files, and
-does not change ordinary exact lookup semantics. The real clean registry must
-exactly match the retained benchmark mappings; leakage and assignment checks
-read nonempty concrete source files bound to the validated chain. Credited
-attachments additionally require a rebuilt solve review queue, typed native
-review-import receipt, exact one-entry sandbox registry diff, and ordinary exact
-replay. CLI output hashes identifiers and paths so the public report can retain
-counts, statuses, and evidence digests without disclosing source surfaces.
-
-`canon entity generalization --manifest <STRICT_ENVELOPE.json>` is the
-artifact-backed evaluation compiler for entity-disjoint and time-forward
-discovery trials. Public fixtures and operator-owned private corpora use the
-same command. The strict envelope binds the benchmark, native candidate-recall,
-link, run, solve, observation/surface sidecar, and leakage-source artifacts by
-path, version, and content hash. Strict solve derivation also requires
-`solve_derivation.edge_artifact.path`, `solve_derivation.edge_records.path`,
-`solve_derivation.prepared_surfaces.path`, and a hash-bound
-`solve_derivation.solve_policy` artifact with version
-`canon.evaluation.generalization.solve_policy.v0`; the policy file byte hash
-must equal `policy_digest`, and the edge/prepared refs are path-bound to the
-loaded run `work_dir`. Each trial's `registry_dir` must be manifest-relative
-and resolve inside the envelope root; absolute paths, traversal segments, and
-symlink registry roots are refused. `run.metadata.registry_snapshot.source` is
-retained only as inert metadata continuity and is not opened for replay. The
-loaded solve and run are rebuilt exactly from those inputs before scoring. The
-report derives decisions, candidate ranks,
-false-merge outcomes, and leakage status from those artifacts instead of
-accepting caller-authored actual outcomes. The main report is
-`canon.evaluation.generalization.v1` and carries a nested `quality` report with
-`quality.version` set to
-`canon.evaluation.generalization.quality_gate_report.v0`,
-`quality.contract_version` set to `canon.entity.quality.v1`, fixed canonical
-gate results for `candidate_recall_at_50_min`, `auto_link_precision_min`,
-`auto_link_recall_min`, `critical_false_merges_max`, and
-`accounted_case_rate_min`, and `quality.release_claim_status` set to `eligible`
-or `blocked`. Under `canon.entity.quality.v1`, the fixed thresholds are
-candidate recall at 50 `>= 0.995`, auto-link precision `>= 0.995`, auto-link
-recall `>= 0.98`, critical false merges `== 0`, and accounted case rate
-`== 1.0`; zero-denominator gates are `not_applicable`, which keeps the report
-blocked because eligibility requires every gate to pass. The command accepts no
-caller-adjustable thresholds or waivers. A structurally valid `blocked` report
-is emitted with exit `0`; only malformed or tampered envelopes and artifacts
-refuse with exit `2`. The command is read-only, emits JSON or summary, hashes
-identifiers, paths, and cutoffs at the CLI boundary, and does not change
-ordinary exact lookup semantics.
-
 `canon entity calibrate sweep <RESULT|EVIDENCE> --gold <GOLD.jsonl> --strategy
 <STRATEGY.yaml>` is a read-only threshold-selection report compiler for entity
 workbench score artifacts. It builds a deterministic integer grid from observed
@@ -1546,16 +1475,7 @@ stage, refuse stale or tampered bundles before reuse, and preserve semantic
 outputs across enabled and disabled cache modes.
 
 Link observation IDs and prepared `surface_id` values are separate namespaces.
-The link artifact therefore carries a hash-bound observation/surface sidecar;
-alias-withholding re-derives it from the materialized rows plus the supplied run
-profile/strategy before joining candidate, solve, review, and promotion evidence.
-Reports distinguish `evaluated_pair`, `prepared_surface_collapse`, and
-`relation_policy_control`. A prepared-surface collapse binds two distinct link
-observations to one derived surface, receives no candidate rank or recall
-denominator credit, and is reported as collapse/accretion rather than retrieval.
-Non-identity relation-policy controls are also excluded from candidate recall,
-forbid promotion/replay, and surface any automatic attachment as an
-`unsupported_guess` false merge.
+The link artifact therefore carries a hash-bound observation/surface sidecar.
 
 `canon entity review export` defaults to the existing queue review contract:
 `--artifact queue --emit json|csv` keeps the v1/legacy review queue behavior and

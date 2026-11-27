@@ -548,12 +548,6 @@ required-features = ["integration"]
 name = "entity_value_frequency"
 required-features = ["integration"]
 [[test]]
-name = "evaluation_corpus"
-required-features = ["integration"]
-[[test]]
-name = "evaluation_corpus_splits"
-required-features = ["integration"]
-[[test]]
 name = "evidence_contract"
 required-features = ["integration"]
 [[test]]
@@ -921,15 +915,6 @@ required-features = ["geo", "workbench", "integration"]
 [[test]]
 name = "contract_parity"
 required-features = ["geo", "workbench", "integration"]
-
-# Test targets for the `workbench` leaves.
-[[test]]
-name = "entity_alias_withholding"
-required-features = ["workbench", "integration"]
-
-[[test]]
-name = "entity_generalization"
-required-features = ["workbench", "integration"]
 
 [[test]]
 name = "geo_accretion"

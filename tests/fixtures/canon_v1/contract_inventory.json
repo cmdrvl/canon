@@ -1014,39 +1014,6 @@
       "action": "preserve"
     },
     {
-      "id": "canon entity alias-withholding",
-      "family": "entity",
-      "clap_path": "entity alias-withholding",
-      "operator_name": "entity alias-withholding",
-      "primary_contracts": [
-        "canon.evaluation.alias_withholding.v1",
-        "canon.evaluation.alias_withholding.execution_manifest.v0",
-        "canon.evaluation.alias_withholding.native_engine_evidence.v0",
-        "canon.evaluation.alias_withholding.assignment_firewall.v0",
-        "canon.evaluation.alias_withholding.leakage_scan.v0",
-        "canon_entity_native_review_import.v0"
-      ],
-      "action": "preserve"
-    },
-    {
-      "id": "canon entity generalization",
-      "family": "entity",
-      "clap_path": "entity generalization",
-      "operator_name": "entity generalization",
-      "primary_contracts": [
-        "canon.evaluation.generalization.v1",
-        "canon.evaluation.generalization.quality_gate_report.v0",
-        "canon.evaluation.generalization.strict_execution_envelope.v0",
-        "canon.evaluation.generalization.leak_scan_sources.v0",
-        "canon.evaluation.generalization.candidate_recall_quality_manifest.v0",
-        "canon.evaluation.generalization.cache_execution.v0",
-        "canon.evaluation.generalization.solve_policy.v0",
-        "canon_entity_index_cache_receipt.v0",
-        "canon.entity.quality.v1"
-      ],
-      "action": "preserve"
-    },
-    {
       "id": "canon entity calibrate sweep",
       "family": "entity",
       "clap_path": "entity calibrate sweep",
@@ -1467,7 +1434,6 @@
     { "id": "canon_entity_index.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_index.v1", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_index_cache_receipt.v0", "family": "entity", "action": "preserve" },
-    { "id": "canon_entity_index_cache_receipt.v999", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_index_diagnostic.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_index_disk_bundle.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_lint.v0", "family": "entity", "action": "preserve" },
@@ -1699,19 +1665,6 @@
       "access_boundary": "public_schema",
       "source_path": "schemas/canon.entity.calibrate_em.v0.schema.json"
     },
-    { "id": "canon.evaluation.alias_withholding.v1", "family": "evaluation", "action": "preserve" },
-    { "id": "canon.evaluation.alias_withholding.assignment_firewall.v0", "family": "evaluation", "action": "preserve" },
-    { "id": "canon.evaluation.alias_withholding.execution_manifest.v0", "family": "evaluation", "action": "preserve" },
-    { "id": "canon.evaluation.alias_withholding.leakage_scan.v0", "family": "evaluation", "action": "preserve" },
-    { "id": "canon.evaluation.alias_withholding.native_engine_evidence.v0", "family": "evaluation", "action": "preserve" },
-    { "id": "canon.evaluation.generalization.cache_execution.v0", "family": "evaluation", "action": "preserve" },
-    { "id": "canon.evaluation.generalization.cache_execution.v999", "family": "evaluation", "action": "preserve" },
-    { "id": "canon.evaluation.generalization.candidate_recall_quality_manifest.v0", "family": "evaluation", "action": "preserve" },
-    { "id": "canon.evaluation.generalization.leak_scan_sources.v0", "family": "evaluation", "action": "preserve" },
-    { "id": "canon.evaluation.generalization.quality_gate_report.v0", "family": "evaluation", "action": "preserve" },
-    { "id": "canon.evaluation.generalization.solve_policy.v0", "family": "evaluation", "action": "preserve" },
-    { "id": "canon.evaluation.generalization.strict_execution_envelope.v0", "family": "evaluation", "action": "preserve" },
-    { "id": "canon.evaluation.generalization.v1", "family": "evaluation", "action": "preserve" },
     { "id": "canon.entity.quality.v1", "family": "evaluation", "action": "preserve" },
     { "id": "canon.export.projection.v1", "family": "registry", "action": "preserve" },
     { "id": "canon.inbox.entity_plan.v1", "family": "inbox", "action": "preserve" },
