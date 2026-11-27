@@ -226,12 +226,12 @@ local ID allocation, not a new matching mode.
 
 ## Active vs Legacy Source Surface
 
-This is a map of `src/`. Two Cargo features gate it so far: `geo` (`src/geo/`,
-`canon geo`, and the `canon_geo_measurements` bin) and `workbench`
-(`src/evaluation/` and the `canon entity alias-withholding` and `generalization`
-leaves). Both are off in the default build and on in release and CI builds
-(`--all-features`). Everything else below compiles into the default binary.
-Update this section when another gate lands.
+This is a map of `src/`. One Cargo feature gates it: `geo` (`src/geo/`, `canon
+geo`, and the `canon_geo_measurements` bin), off in the default build and on in
+release and CI builds (`--all-features`). A second feature, `workbench`, is
+reserved for legacy entity workbench code and gates nothing yet. Everything else
+below compiles into the default binary. `src/evaluation/` and its two commands
+were removed in 0.17.0. Update this section when another gate lands.
 
 It was built at commit `316597f` from a static module graph (`crate::`,
 `super::` and `#[path]` mounts). Line counts are Rust lines under `src/`.
@@ -244,8 +244,7 @@ counts as reached if any of its code is.
 | `registry/`, `registry.rs`, `registry_lint.rs` | 19.2k + | Registry maintenance, validation, index, lint | `canon registry ...`, lookup | Core |
 | `session/` and `entity/session/`, `entity/session_*.rs` | 7.4k + about 13.7k | The evidence-session engine and its workspace layer | `canon entity session ...` | Core |
 | `org/` | 14.6k | The files of `entity::runtime`, mounted with `#[path = "../org/..."]` in `entity/runtime.rs` | `session/` uses its `PendingClusterRecord` and `CannotLinkFact`; `registry/identity.rs` uses `runtime::incumbent`; its other files serve the workbench commands | **Live.** The name is historical. Never delete or move it |
-| `resolve/` | 6.1k | The entity-link decision workbench | `canon entity link` (`run_entity_link_command` in `lib.rs`), `entity/link.rs`, `evaluation/` | Legacy workbench, live |
-| `evaluation/` | 21.4k | Alias-withholding and generalization evaluations (`candidate-recall` is not in this module) | `canon entity alias-withholding` and `generalization`; depends on `entity` and `resolve`. Nothing in the core imports it (gating it alone leaves only `lib.rs` glue to cfg) | Legacy workbench, behind the `workbench` feature |
+| `resolve/` | 6.1k | The entity-link decision workbench | `canon entity link` (`run_entity_link_command` in `lib.rs`), `entity/link.rs` | Legacy workbench, live |
 | `entity/` run family | about 54k of the 103k lines in the `entity`, `org`, `evidence` and `source_mapping` graph; 8.1k of it is the shared `review_export` and `review_import` below | `run`, `record_link`, `apply`, `promote`, `solve`, `calibrate*`, `schema`, `contracts` and the rest of the `canon entity run` pipeline | Mostly `canon entity run` and its leaves, but not all of it: `entity/run.rs` is imported by `session_derive` (which calls `run::run_entity_workbench` and `unwired_run_operators`), `score_pair`, `summary`, `promote` and `promotion_policy`, so `run` is in the core closure and cannot be gated whole. Found 2026-11-25 by gating `entity::run` and `entity::runtime` behind a feature and compiling the core: the errors were in those files. The other members of this family were not checked one by one | Legacy workbench, live; `run` is core by dependency |
 | `entity/` shared | about 49k of the same 103k | `runtime` (the `org/` files), `publication`, `evidence_ir`, `index`, `prepare`, `block`, `edge`, `profile` and the session modules | Session commands, including `session derive` | Core closure |
 | `geo/` | 97.2k | The Geo workbench | `canon geo` and the `canon_geo_measurements` bin; outside `geo/` only the `lib.rs` dispatch arm and the `cli.rs` definitions refer to it | Self-contained workbench, behind the `geo` feature |
@@ -261,9 +260,9 @@ Rules for agents:
 1. `src/org/` is the implementation of `entity::runtime`. Deleting or moving a
    file there breaks the build and the session commands.
 2. Do not add a dependency from a core module to a legacy-only one
-   (`record_link`, `resolve`, `evaluation`, `geo`). `evaluation` and `geo` are
-   behind features, so the compiler enforces it for them: `cargo check --lib`
-   without the feature fails. `run` is not on this list because the core
+   (`record_link`, `resolve`, `geo`). `geo` is behind a feature, so the compiler
+   enforces it: `cargo check --lib` without the feature fails. `run` is not on
+   this list because the core
    already depends on it (see the run-family row). The closure above is what a
    core-only build has to keep compiling.
 3. `resolve/` is not the lookup path. Production lookup is `lookup.rs`.

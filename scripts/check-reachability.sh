@@ -20,7 +20,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# --all-features: feature-gated modules (src/geo, src/evaluation) must count as compiled here.
+# --all-features: feature-gated modules (src/geo) must count as compiled here.
 cargo build --quiet --all-features
 
 work=$(mktemp -d)

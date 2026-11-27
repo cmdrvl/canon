@@ -19,10 +19,9 @@ required-features = ["geo"]
 
 # The default build is the core: lookup, registry, and the evidence-session
 # engine. `geo` adds the Geo workbench (`canon geo ...`, src/geo, and the
-# canon_geo_measurements bin). `workbench` adds the legacy entity workbench
-# leaves (`canon entity alias-withholding` and `generalization`, src/evaluation;
-# more leaves move behind it in later stages of bd-1pjc). Release and CI builds
-# use `--all-features`, so the shipped binary keeps every command.
+# canon_geo_measurements bin). `workbench` is reserved for legacy entity
+# workbench code and gates nothing yet (bd-1pjc). Release and CI builds use
+# `--all-features`, so the shipped binary keeps every command.
 [features]
 default = []
 geo = ["dep:h3o", "dep:libc", "dep:sha2", "dep:base64"]

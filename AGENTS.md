@@ -78,8 +78,7 @@ industry ontology, provider knowledge, or probabilistic runtime lookup.
 | `src/evidence/` | Evidence IR types (mounted as `entity::evidence_ir` by `#[path]`) |
 | `src/entity/` | Build-time entity workbench artifacts, cluster/link flows, review, and promotion |
 | `src/org/` | **Live despite the name.** The files of `entity::runtime`, mounted by `#[path = "../org/..."]` in `src/entity/runtime.rs`; `src/session/` uses its types and `src/registry/identity.rs` uses `runtime::incumbent`. Never delete or treat as dead |
-| `src/resolve/` | The entity-link decision workbench behind `canon entity link` and `src/evaluation/`. Not the lookup path |
-| `src/evaluation/` | Alias-withholding and generalization evaluations behind `canon entity alias-withholding` and `canon entity generalization`; behind the `workbench` feature. Nothing in the core imports it |
+| `src/resolve/` | The entity-link decision workbench behind `canon entity link`. Not the lookup path |
 | `src/geo/` | The Geo workbench behind `canon geo` and the `canon_geo_measurements` bin; outside it only the `lib.rs` dispatch arm and the `cli.rs` definitions refer to it |
 | `src/project/` | Project manifests, locks, and reproducible workflow planning |
 | `src/output/` | JSON and CSV output formatting |
@@ -302,9 +301,8 @@ The default build is the core (lookup, registry, evidence sessions), so
 `cargo clippy --all-targets --features integration -- -D warnings` and
 `cargo test --features integration` must stay green without `geo` or
 `workbench`; CI runs both profiles. The `geo` feature adds `canon geo`,
-`src/geo/`, and the `canon_geo_measurements` bin. The `workbench` feature adds
-the legacy entity leaves `canon entity alias-withholding` and `generalization`
-and `src/evaluation/`; more leaves move behind it in later stages of bd-1pjc.
+`src/geo/`, and the `canon_geo_measurements` bin. The `workbench` feature is
+reserved for legacy entity workbench code; it gates nothing yet (bd-1pjc).
 Test targets that need a feature declare `required-features` in `Cargo.toml`,
 and release and CI builds use `--all-features` so the shipped binary keeps every
 command.
