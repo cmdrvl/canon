@@ -438,6 +438,19 @@ fn publish_planned_generation(
         options.failpoint,
     )?;
     writes_performed |= write.writes_performed;
+    // Each object file is synced as it is written. Its directory entry only has
+    // to be durable before the commit marker names the generation, so one
+    // directory sync covers every object. It runs even when every object was
+    // already there: another writer may not have synced its rename yet.
+    sync_object_directory(work_dir).map_err(|err| {
+        EntityPublicationError::new(
+            EntityPublicationErrorKind::Io,
+            format!("failed to sync publication object directory: {err}"),
+            writes_performed,
+            Some(false),
+            Some(generation_id.clone()),
+        )
+    })?;
     validate_manifest_bundle(work_dir, &publication.manifest)?;
 
     if options.failpoint == EntityPublicationFailpoint::BeforeCommitMarker {
@@ -1449,7 +1462,7 @@ fn write_content_object(
             Some(generation_id.to_string()),
         ));
     }
-    ensure_directory_synced(object_parent).map_err(|err| {
+    fs::create_dir_all(object_parent).map_err(|err| {
         EntityPublicationError::new(
             EntityPublicationErrorKind::Io,
             format!("failed to create publication object directory: {err}"),
@@ -1468,7 +1481,8 @@ fn write_content_object(
         ));
     }
     let attempts_dir = publication_root(work_dir).join("attempts");
-    ensure_directory_synced(&attempts_dir).map_err(|err| {
+    // Attempt files are transient. Nothing reads them after a crash.
+    fs::create_dir_all(&attempts_dir).map_err(|err| {
         EntityPublicationError::new(
             EntityPublicationErrorKind::Io,
             format!("failed to create publication attempts directory: {err}"),
@@ -1506,15 +1520,6 @@ fn write_content_object(
                     Some(generation_id.to_string()),
                 ));
             }
-            sync_directory(object_parent).map_err(|err| {
-                EntityPublicationError::new(
-                    EntityPublicationErrorKind::Io,
-                    format!("failed to sync publication object directory: {err}"),
-                    true,
-                    Some(false),
-                    Some(generation_id.to_string()),
-                )
-            })?;
             validate_existing_object(&target, content_hash)?;
             Ok(ObjectWrite {
                 writes_performed: true,
@@ -1630,15 +1635,6 @@ fn create_attempt_file(
                         Some(generation_id.to_string()),
                     ));
                 }
-                sync_directory(attempts_dir).map_err(|err| {
-                    EntityPublicationError::new(
-                        EntityPublicationErrorKind::Io,
-                        format!("failed to sync publication attempts directory: {err}"),
-                        true,
-                        Some(false),
-                        Some(generation_id.to_string()),
-                    )
-                })?;
                 return Ok(attempt);
             }
             Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
@@ -2027,6 +2023,13 @@ fn hash_hex(value: &str) -> Result<&str, EntityPublicationError> {
         ));
     }
     Ok(hex)
+}
+
+/// Make every object rename durable, with the object directory's own entry.
+fn sync_object_directory(work_dir: &Path) -> io::Result<()> {
+    let objects = publication_root(work_dir).join("objects");
+    sync_directory(&objects.join("blake3"))?;
+    sync_directory(&objects)
 }
 
 fn sync_directory(path: &Path) -> io::Result<()> {

@@ -12,6 +12,10 @@
   does not list `entity link`, and refuses (`E_ENTITY_ARTIFACT_CONTRACT`) to
   export a review from a link artifact or to promote a result that is bound to
   one.
+- Publishing session and entity artifacts forces data to disk far less often:
+  once per new object file, and once for the object directory before the commit
+  marker, instead of about seven times per object. On macOS this made
+  `entity session commit` about three times faster at a few hundred objects.
 - Lookup reads `.parquet` and `.xlsx` input through the shared `cmdrvl-tabular`
   reader, with `--sheet <name|index>` for workbooks. `--emit csv` still needs CSV
   input. Other commands read the same formats as before.
