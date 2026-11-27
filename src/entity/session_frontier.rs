@@ -16,7 +16,8 @@ use crate::{
     entity::{
         publication::{
             EntityPublicationErrorKind, EntityPublicationFileInput, EntityPublicationRequest,
-            EntityPublicationUpstreamRef, open_current_stream_generation, publish_stream_patch,
+            EntityPublicationUpstreamRef, open_current_stream_generation,
+            publish_stream_patch_at_head,
         },
         session::{SESSION_SOLVE_STREAM_ID, SessionSolveArtifact, SessionSolveCluster},
         session_explain::{
@@ -747,7 +748,8 @@ fn append_claim_event(
         )],
         omit_logical_paths: Vec::new(),
     };
-    publish_stream_patch(session, request).map(|_| ())
+    // the record's number comes from the log just read, so the head must match it
+    publish_stream_patch_at_head(session, request).map(|_| ())
 }
 
 fn frontier_claim_retry_delay(

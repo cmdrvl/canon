@@ -255,10 +255,29 @@ fn stream_patch_test_options() -> EntityPublicationOptions {
     EntityPublicationOptions::default()
 }
 
+/// A patch for a caller whose records depend on the head it read, such as a
+/// numbered log. `supersedes_generation_id: None` means "the stream has no head
+/// yet": [`publish_stream_patch`] would instead append to whatever is there.
+pub fn publish_stream_patch_at_head(
+    work_dir: &Path,
+    request: EntityPublicationRequest,
+) -> Result<EntityPublicationReceipt, EntityPublicationError> {
+    publish_stream_patch_checked(work_dir, request, stream_patch_test_options(), true)
+}
+
 pub fn publish_stream_patch_with_options(
+    work_dir: &Path,
+    request: EntityPublicationRequest,
+    options: EntityPublicationOptions,
+) -> Result<EntityPublicationReceipt, EntityPublicationError> {
+    publish_stream_patch_checked(work_dir, request, options, false)
+}
+
+fn publish_stream_patch_checked(
     work_dir: &Path,
     mut request: EntityPublicationRequest,
     options: EntityPublicationOptions,
+    exact_head: bool,
 ) -> Result<EntityPublicationReceipt, EntityPublicationError> {
     validate_publication_token(&request.stream_id, "stream_id")?;
     let current = match open_current_stream_generation(work_dir, &request.stream_id) {
@@ -304,6 +323,18 @@ pub fn publish_stream_patch_with_options(
         return validate_stream_receipt_lineage(work_dir, receipt);
     };
 
+    if exact_head && request.supersedes_generation_id.is_none() {
+        return Err(EntityPublicationError::new(
+            EntityPublicationErrorKind::InvalidRequest,
+            format!(
+                "publication stream patch expected current head none but found {}",
+                current.generation_id
+            ),
+            false,
+            Some(true),
+            Some(current.generation_id.clone()),
+        ));
+    }
     if let Some(supersedes_generation_id) = &request.supersedes_generation_id {
         validate_hash(supersedes_generation_id)?;
         if supersedes_generation_id != &current.generation_id {
@@ -1326,19 +1357,31 @@ fn validate_stream_receipt_lineage(
     }
     let snapshot = open_committed_generation(work_dir, &receipt.generation_id)?;
     let current = open_current_stream_generation(work_dir, &snapshot.manifest.stream_id)?;
-    if current.generation_id != receipt.generation_id {
-        return Err(EntityPublicationError::new(
-            EntityPublicationErrorKind::ForkedGeneration,
-            format!(
-                "publication stream {} current head is {} after committing {}",
-                snapshot.manifest.stream_id, current.generation_id, receipt.generation_id
-            ),
-            receipt.writes_performed,
-            Some(true),
-            Some(receipt.generation_id),
-        ));
+    // Another writer may already have built on this generation. That write
+    // succeeded too: reporting a conflict would make the caller apply it again.
+    let head = current.generation_id.clone();
+    let mut ancestor = Some(current);
+    while let Some(generation) = ancestor {
+        if generation.generation_id == receipt.generation_id {
+            return Ok(receipt);
+        }
+        ancestor = generation
+            .manifest
+            .supersedes_generation_id
+            .as_deref()
+            .map(|parent| open_committed_generation(work_dir, parent))
+            .transpose()?;
     }
-    Ok(receipt)
+    Err(EntityPublicationError::new(
+        EntityPublicationErrorKind::ForkedGeneration,
+        format!(
+            "publication stream {} current head is {head} after committing {}",
+            snapshot.manifest.stream_id, receipt.generation_id
+        ),
+        receipt.writes_performed,
+        Some(true),
+        Some(receipt.generation_id),
+    ))
 }
 
 fn receipt_for_manifest(
@@ -2007,4 +2050,56 @@ fn parse_error(err: serde_json::Error) -> EntityPublicationError {
         Some(false),
         None,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn append(name: &str, parent: Option<&str>) -> EntityPublicationRequest {
+        EntityPublicationRequest {
+            stream_id: "race".to_string(),
+            supersedes_generation_id: parent.map(str::to_string),
+            request_fingerprint: hash_bytes(b"race"),
+            cache_mode: "disabled".to_string(),
+            cache_status: "cold_start".to_string(),
+            cache_receipt_hash: hash_bytes(b"race-receipt"),
+            stage_order: vec!["session".to_string()],
+            upstream_artifacts: Vec::new(),
+            files: vec![EntityPublicationFileInput::new(
+                format!("records/{name}.json"),
+                "session",
+                "race.v1",
+                name.as_bytes().to_vec(),
+            )],
+            omit_logical_paths: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_write_another_writer_has_already_built_on_is_still_a_success() {
+        let temp = tempfile::tempdir().unwrap();
+        let first = publish_stream_patch(temp.path(), append("first", None)).unwrap();
+        publish_stream_patch(temp.path(), append("second", Some(&first.generation_id))).unwrap();
+
+        // what the first writer sees when the second lands before its last check
+        let receipt = validate_stream_receipt_lineage(temp.path(), first.clone()).unwrap();
+        assert_eq!(receipt.generation_id, first.generation_id);
+        let current = open_current_stream_generation(temp.path(), "race").unwrap();
+        assert!(current.read_logical_file("records/first.json").is_some());
+    }
+
+    #[test]
+    fn an_exact_head_patch_that_saw_no_head_does_not_replace_a_newer_record() {
+        let temp = tempfile::tempdir().unwrap();
+        publish_stream_patch_at_head(temp.path(), append("0", None)).unwrap();
+
+        // a second writer that also read an empty stream, writing the same path
+        let mut stale = append("0", None);
+        stale.files[0].bytes = b"stale".to_vec();
+        let error = publish_stream_patch_at_head(temp.path(), stale).unwrap_err();
+        assert!(error.is_stream_head_conflict(), "{error}");
+        let current = open_current_stream_generation(temp.path(), "race").unwrap();
+        assert_eq!(current.read_logical_file("records/0.json"), Some(&b"0"[..]));
+    }
 }
