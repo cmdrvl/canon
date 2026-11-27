@@ -24,9 +24,9 @@ telemetry file for the run.
 These commands work now and guard the eval/performance contract itself:
 
 ```bash
-cargo test --test entity_eval_performance_contract -- --nocapture
-cargo test --test entity_evidence_ablation -- --nocapture
-cargo test sec10d_regab -- --nocapture
+cargo test --features integration --test entity_eval_performance_contract -- --nocapture
+cargo test --features integration --test entity_evidence_ablation -- --nocapture
+cargo test --features integration sec10d_regab -- --nocapture
 jq '.' tests/fixtures/canon_v1/quality/ablation_cases.json
 jq '.' tests/fixtures/entity/evals/entity_eval_performance_targets.json
 jq '.' tests/fixtures/entity/cmbs/tenant_sample_benchmark_manifest.json
@@ -37,8 +37,8 @@ These are target commands for future implementation Beads:
 
 ```bash
 # Small normal-CI evals.
-cargo test entity_eval_ci_small -- --nocapture
-cargo test entity_perf_ci_small -- --nocapture
+cargo test --features integration entity_eval_ci_small -- --nocapture
+cargo test --features integration entity_perf_ci_small -- --nocapture
 
 # Full public samples when local public-data files are available.
 canon entity eval run \
@@ -56,16 +56,16 @@ canon entity eval run \
   --emit json
 
 # Operator stress tiers.
-cargo test --ignored cmbs_500k_stress -- --nocapture
-cargo test --ignored entity_500k_unique_stress -- --nocapture
+cargo test --features integration --ignored cmbs_500k_stress -- --nocapture
+cargo test --features integration --ignored entity_500k_unique_stress -- --nocapture
 
 # Final guardrail suites.
-cargo test entity_registry_mutation_safety -- --nocapture
-cargo test entity_explainability_completeness -- --nocapture
-cargo test entity_review_golden_artifacts -- --nocapture
-cargo test entity_metamorphic_eval -- --nocapture
-cargo test entity_runtime_guard -- --nocapture
-cargo test --ignored entity_peak_memory -- --nocapture
+cargo test --features integration entity_registry_mutation_safety -- --nocapture
+cargo test --features integration entity_explainability_completeness -- --nocapture
+cargo test --features integration entity_review_golden_artifacts -- --nocapture
+cargo test --features integration entity_metamorphic_eval -- --nocapture
+cargo test --features integration entity_runtime_guard -- --nocapture
+cargo test --features integration --ignored entity_peak_memory -- --nocapture
 ```
 
 Every future eval run should write:

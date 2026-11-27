@@ -67,9 +67,9 @@ sha_pin scripts/geo_observer/pins/nyc_ortho_2022.pins.json
 sha_pin scripts/geo_observer/populations/nyc_h7_observer_source_population.v0.json
 sha_pin scripts/geo_observer/populations/nyc_h7_observer_population.v0.json
 
-run_step cargo test --test geo_observer_pins license_text_digest_matches_every_pin_row -- --nocapture
-run_step cargo test --test geo_observer_pins -- --nocapture
-run_step cargo test --test geo_schemas error_population_schema_matches_a_real_instance -- --nocapture
+run_step cargo test --features geo,integration --test geo_observer_pins license_text_digest_matches_every_pin_row -- --nocapture
+run_step cargo test --features geo,integration --test geo_observer_pins -- --nocapture
+run_step cargo test --features geo,integration --test geo_schemas error_population_schema_matches_a_real_instance -- --nocapture
 run_step jq -e '.title == "canon.geo.error_population.v0" and .properties.version.const == "canon_geo_error_population.v0" and .additionalProperties == false' schemas/canon.geo.error_population.v0.schema.json
 
 if [[ "$live_acquisition" == true ]]; then

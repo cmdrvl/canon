@@ -26,7 +26,7 @@ if [[ ! -f "$fixture/manifest.json" ]]; then
   exit 2
 fi
 
-cmd=(cargo test --test cmbs_e2e entity_cmbs_e2e_small -- --nocapture)
+cmd=(cargo test --features integration --test cmbs_e2e entity_cmbs_e2e_small -- --nocapture)
 if [[ "$verbose" -eq 1 ]]; then
   printf 'fixture=%s\n' "$fixture"
   printf 'command='

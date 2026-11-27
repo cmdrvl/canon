@@ -34,7 +34,7 @@ if [[ ! -x "$canon_bin" ]]; then
 fi
 
 if [[ "$refresh" -eq 1 ]]; then
-  CANON_GEO_E4_RESTACK_WRITE=1 cargo test --test geo_e4_restack rewrite_e4_gate_v2_measurement_artifacts -- --ignored --nocapture
+  CANON_GEO_E4_RESTACK_WRITE=1 cargo test --features geo,integration --test geo_e4_restack rewrite_e4_gate_v2_measurement_artifacts -- --ignored --nocapture
 fi
 
 mkdir -p "$work_dir"

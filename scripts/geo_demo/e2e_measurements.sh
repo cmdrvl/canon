@@ -61,7 +61,7 @@ bash "$repo_root/scripts/geo_measurements/run.sh" \
   --dry-run \
   --out "$work_dir/dry-run"
 
-cargo test --manifest-path "$repo_root/Cargo.toml" --test geo_measurement_runner -- --nocapture
+cargo test --manifest-path "$repo_root/Cargo.toml" --features geo,integration --test geo_measurement_runner -- --nocapture
 
 if [[ -n "$live_receipts" ]]; then
   if [[ -z "$live_geography" || -z "$live_tier" ]]; then

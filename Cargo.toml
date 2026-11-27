@@ -27,6 +27,11 @@ required-features = ["geo"]
 default = []
 geo = ["dep:h3o", "dep:libc", "dep:sha2", "dep:base64"]
 workbench = []
+# Test layer only; changes no code. Every target in tests/ requires it, so plain
+# `cargo test` runs unit tests and doctests. `cargo test --features integration`
+# adds the CLI and pipeline tests for the core; `--all-features` runs everything.
+# A new file in tests/ needs a [[test]] entry below.
+integration = []
 
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
@@ -61,389 +66,1231 @@ codegen-units = 1
 panic = "abort"
 strip = true
 
-# Test targets that need the `geo` feature: every geo_* target, and the
+# Every target in tests/ requires `integration`.
+[[test]]
+name = "baseline_compare"
+required-features = ["integration"]
+[[test]]
+name = "cli_robot_surfaces"
+required-features = ["integration"]
+[[test]]
+name = "cli_smoke"
+required-features = ["integration"]
+[[test]]
+name = "cmbs_500k"
+required-features = ["integration"]
+[[test]]
+name = "cmbs_apply_loop"
+required-features = ["integration"]
+[[test]]
+name = "cmbs_e2e"
+required-features = ["integration"]
+[[test]]
+name = "cmbs_id_namespace_contract"
+required-features = ["integration"]
+[[test]]
+name = "cmbs_profile"
+required-features = ["integration"]
+[[test]]
+name = "cmbs_profile_integration"
+required-features = ["integration"]
+[[test]]
+name = "cmbs_promotion_loop"
+required-features = ["integration"]
+[[test]]
+name = "cmbs_review_loop"
+required-features = ["integration"]
+[[test]]
+name = "cmbs_run_orchestration"
+required-features = ["integration"]
+[[test]]
+name = "cmbs_tenant_sample_benchmark"
+required-features = ["integration"]
+[[test]]
+name = "csv_emit"
+required-features = ["integration"]
+[[test]]
+name = "domain_neutrality"
+required-features = ["integration"]
+[[test]]
+name = "edge_cases"
+required-features = ["integration"]
+[[test]]
+name = "entity"
+required-features = ["integration"]
+[[test]]
+name = "entity_apply"
+required-features = ["integration"]
+[[test]]
+name = "entity_apply_refusal_matrix"
+required-features = ["integration"]
+[[test]]
+name = "entity_artifact_chain"
+required-features = ["integration"]
+[[test]]
+name = "entity_audit"
+required-features = ["integration"]
+[[test]]
+name = "entity_audit_promote_apply_golden"
+required-features = ["integration"]
+[[test]]
+name = "entity_audit_refusal_matrix"
+required-features = ["integration"]
+[[test]]
+name = "entity_block_artifact"
+required-features = ["integration"]
+[[test]]
+name = "entity_block_budget"
+required-features = ["integration"]
+[[test]]
+name = "entity_block_candidates"
+required-features = ["integration"]
+[[test]]
+name = "entity_block_diagnostics"
+required-features = ["integration"]
+[[test]]
+name = "entity_block_preflight"
+required-features = ["integration"]
+[[test]]
+name = "entity_blocking_golden"
+required-features = ["integration"]
+[[test]]
+name = "entity_budget_exact_bucket_readiness"
+required-features = ["integration"]
+[[test]]
+name = "entity_budget_policy"
+required-features = ["integration"]
+[[test]]
+name = "entity_cache_correctness"
+required-features = ["integration"]
+[[test]]
+name = "entity_cache_invalidation_matrix"
+required-features = ["integration"]
+[[test]]
+name = "entity_cache_reload"
+required-features = ["integration"]
+[[test]]
+name = "entity_calibrate_em"
+required-features = ["integration"]
+[[test]]
+name = "entity_calibrate_sweep"
+required-features = ["integration"]
+[[test]]
+name = "entity_candidate_recall"
+required-features = ["integration"]
+[[test]]
+name = "entity_cluster_shape"
+required-features = ["integration"]
+[[test]]
+name = "entity_cmbs_backfill"
+required-features = ["integration"]
+[[test]]
+name = "entity_cmbs_batching"
+required-features = ["integration"]
+[[test]]
+name = "entity_cmbs_run_orchestration"
+required-features = ["integration"]
+[[test]]
+name = "entity_cmbs_tenant_id_replay"
+required-features = ["integration"]
+[[test]]
+name = "entity_contracts"
+required-features = ["integration"]
+[[test]]
+name = "entity_contracts_golden"
+required-features = ["integration"]
+[[test]]
+name = "entity_decision_ledger"
+required-features = ["integration"]
+[[test]]
+name = "entity_decision_ledger_replay"
+required-features = ["integration"]
+[[test]]
+name = "entity_doctor_lint_golden"
+required-features = ["integration"]
+[[test]]
+name = "entity_domain_ops"
+required-features = ["integration"]
+[[test]]
+name = "entity_edge_artifact"
+required-features = ["integration"]
+[[test]]
+name = "entity_edge_budget"
+required-features = ["integration"]
+[[test]]
+name = "entity_edge_cannot_link"
+required-features = ["integration"]
+[[test]]
+name = "entity_edge_evidence_golden"
+required-features = ["integration"]
+[[test]]
+name = "entity_edge_relation_hints"
+required-features = ["integration"]
+[[test]]
+name = "entity_edge_score_determinism"
+required-features = ["integration"]
+[[test]]
+name = "entity_edge_score_units"
+required-features = ["integration"]
+[[test]]
+name = "entity_edge_support"
+required-features = ["integration"]
+[[test]]
+name = "entity_edge_tfidf"
+required-features = ["integration"]
+[[test]]
+name = "entity_ergonomics_golden"
+required-features = ["integration"]
+[[test]]
+name = "entity_eval_performance_contract"
+required-features = ["integration"]
+[[test]]
+name = "entity_evidence_ablation"
+required-features = ["integration"]
+[[test]]
+name = "entity_exact_bucket_anchor_conflict"
+required-features = ["integration"]
+[[test]]
+name = "entity_exact_bucket_contract"
+required-features = ["integration"]
+[[test]]
+name = "entity_explain"
+required-features = ["integration"]
+[[test]]
+name = "entity_explain_golden"
+required-features = ["integration"]
+[[test]]
+name = "entity_external_decision_import"
+required-features = ["integration"]
+[[test]]
+name = "entity_fixture_manifest"
+required-features = ["integration"]
+[[test]]
+name = "entity_harness_contract"
+required-features = ["integration"]
+[[test]]
+name = "entity_index_contract"
+required-features = ["integration"]
+[[test]]
+name = "entity_index_golden"
+required-features = ["integration"]
+[[test]]
+name = "entity_index_io"
+required-features = ["integration"]
+[[test]]
+name = "entity_index_postings"
+required-features = ["integration"]
+[[test]]
+name = "entity_ledger_golden"
+required-features = ["integration"]
+[[test]]
+name = "entity_link"
+required-features = ["integration"]
+[[test]]
+name = "entity_multisource"
+required-features = ["integration"]
+[[test]]
+name = "entity_namespace"
+required-features = ["integration"]
+[[test]]
+name = "entity_namespace_migration"
+required-features = ["integration"]
+[[test]]
+name = "entity_operator_journey"
+required-features = ["integration"]
+[[test]]
+name = "entity_perf_ci_small"
+required-features = ["integration"]
+[[test]]
+name = "entity_perf_stress"
+required-features = ["integration"]
+[[test]]
+name = "entity_performance_metadata"
+required-features = ["integration"]
+[[test]]
+name = "entity_performance_regression"
+required-features = ["integration"]
+[[test]]
+name = "entity_prepare_golden"
+required-features = ["integration"]
+[[test]]
+name = "entity_prepare_input"
+required-features = ["integration"]
+[[test]]
+name = "entity_prepare_refusal"
+required-features = ["integration"]
+[[test]]
+name = "entity_prepare_row_rejection"
+required-features = ["integration"]
+[[test]]
+name = "entity_profile_cli"
+required-features = ["integration"]
+[[test]]
+name = "entity_profile_cmbs"
+required-features = ["integration"]
+[[test]]
+name = "entity_profile_firewall_contract"
+required-features = ["integration"]
+[[test]]
+name = "entity_profile_instrument"
+required-features = ["integration"]
+[[test]]
+name = "entity_profile_regab"
+required-features = ["integration"]
+[[test]]
+name = "entity_profile_schema"
+required-features = ["integration"]
+[[test]]
+name = "entity_promote_apply"
+required-features = ["integration"]
+[[test]]
+name = "entity_promote_apply_profile_firewall"
+required-features = ["integration"]
+[[test]]
+name = "entity_promote_refusal_matrix"
+required-features = ["integration"]
+[[test]]
+name = "entity_promote_registry"
+required-features = ["integration"]
+[[test]]
+name = "entity_promote_sidecars"
+required-features = ["integration"]
+[[test]]
+name = "entity_publication_protocol"
+required-features = ["integration"]
+[[test]]
+name = "entity_quality_contract"
+required-features = ["integration"]
+[[test]]
+name = "entity_record_link_core"
+required-features = ["integration"]
+[[test]]
+name = "entity_record_link_input"
+required-features = ["integration"]
+[[test]]
+name = "entity_record_link_pipeline"
+required-features = ["integration"]
+[[test]]
+name = "entity_refusals"
+required-features = ["integration"]
+[[test]]
+name = "entity_registry_snapshot_refusal_contract"
+required-features = ["integration"]
+[[test]]
+name = "entity_review_end_to_end"
+required-features = ["integration"]
+[[test]]
+name = "entity_review_export"
+required-features = ["integration"]
+[[test]]
+name = "entity_review_golden"
+required-features = ["integration"]
+[[test]]
+name = "entity_review_import"
+required-features = ["integration"]
+[[test]]
+name = "entity_review_patch_derivation"
+required-features = ["integration"]
+[[test]]
+name = "entity_review_profile_firewall"
+required-features = ["integration"]
+[[test]]
+name = "entity_review_signature_groups"
+required-features = ["integration"]
+[[test]]
+name = "entity_review_waterfall"
+required-features = ["integration"]
+[[test]]
+name = "entity_robot_json"
+required-features = ["integration"]
+[[test]]
+name = "entity_run_cmbs"
+required-features = ["integration"]
+[[test]]
+name = "entity_scale_e2e"
+required-features = ["integration"]
+[[test]]
+name = "entity_scaling_regression"
+required-features = ["integration"]
+[[test]]
+name = "entity_schema_snapshots"
+required-features = ["integration"]
+[[test]]
+name = "entity_score_determinism"
+required-features = ["integration"]
+[[test]]
+name = "entity_score_pair"
+required-features = ["integration"]
+[[test]]
+name = "entity_sec10d_e2e"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_accretion"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_assert"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_commit"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_concurrency"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_derive"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_evidence_closure"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_explain"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_frontier"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_ingest"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_ingest_artifact"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_init"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_key_crosswalk"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_keys"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_place"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_provenance_sample"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_registries_by_kind"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_registry_memory"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_relations"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_review"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_rules"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_shared_names"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_shared_names_repeat"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_skeleton"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_solve"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_status"
+required-features = ["integration"]
+[[test]]
+name = "entity_session_units_scope"
+required-features = ["integration"]
+[[test]]
+name = "entity_solve_artifact"
+required-features = ["integration"]
+[[test]]
+name = "entity_solve_cannot_link"
+required-features = ["integration"]
+[[test]]
+name = "entity_solve_diagnostics"
+required-features = ["integration"]
+[[test]]
+name = "entity_solve_exact_bucket_hyperedge"
+required-features = ["integration"]
+[[test]]
+name = "entity_solve_graph"
+required-features = ["integration"]
+[[test]]
+name = "entity_solve_reconcile"
+required-features = ["integration"]
+[[test]]
+name = "entity_solver_signed_graph"
+required-features = ["integration"]
+[[test]]
+name = "entity_stage_telemetry"
+required-features = ["integration"]
+[[test]]
+name = "entity_stream_contract"
+required-features = ["integration"]
+[[test]]
+name = "entity_stress_generators"
+required-features = ["integration"]
+[[test]]
+name = "entity_structured_support"
+required-features = ["integration"]
+[[test]]
+name = "entity_summaries"
+required-features = ["integration"]
+[[test]]
+name = "entity_topk_candidates"
+required-features = ["integration"]
+[[test]]
+name = "entity_unlinkables"
+required-features = ["integration"]
+[[test]]
+name = "entity_value_frequency"
+required-features = ["integration"]
+[[test]]
+name = "evaluation_corpus"
+required-features = ["integration"]
+[[test]]
+name = "evaluation_corpus_splits"
+required-features = ["integration"]
+[[test]]
+name = "evidence_contract"
+required-features = ["integration"]
+[[test]]
+name = "evidence_explain"
+required-features = ["integration"]
+[[test]]
+name = "export_extensions"
+required-features = ["integration"]
+[[test]]
+name = "extensions_evidence_policy"
+required-features = ["integration"]
+[[test]]
+name = "extensions_identifier"
+required-features = ["integration"]
+[[test]]
+name = "extensions_normalization"
+required-features = ["integration"]
+[[test]]
+name = "extensions_ontology"
+required-features = ["integration"]
+[[test]]
+name = "extensions_profile"
+required-features = ["integration"]
+[[test]]
+name = "extensions_relation_policy"
+required-features = ["integration"]
+[[test]]
+name = "extensions_review_policy"
+required-features = ["integration"]
+[[test]]
+name = "extensions_source_mapping"
+required-features = ["integration"]
+[[test]]
+name = "extensions_vocabulary"
+required-features = ["integration"]
+[[test]]
+name = "golden_json"
+required-features = ["integration"]
+[[test]]
+name = "golden_rules"
+required-features = ["integration"]
+[[test]]
+name = "identity_assignment"
+required-features = ["integration"]
+[[test]]
+name = "identity_scope"
+required-features = ["integration"]
+[[test]]
+name = "identity_scope_promotion"
+required-features = ["integration"]
+[[test]]
+name = "inbox_capture"
+required-features = ["integration"]
+[[test]]
+name = "inbox_cli"
+required-features = ["integration"]
+[[test]]
+name = "inbox_context"
+required-features = ["integration"]
+[[test]]
+name = "inbox_contract"
+required-features = ["integration"]
+[[test]]
+name = "inbox_group"
+required-features = ["integration"]
+[[test]]
+name = "inbox_metrics"
+required-features = ["integration"]
+[[test]]
+name = "inbox_rank"
+required-features = ["integration"]
+[[test]]
+name = "intent_inference"
+required-features = ["integration"]
+[[test]]
+name = "json_alias"
+required-features = ["integration"]
+[[test]]
+name = "lookup_inbox_capture"
+required-features = ["integration"]
+[[test]]
+name = "metamorphic"
+required-features = ["integration"]
+[[test]]
+name = "namekit"
+required-features = ["integration"]
+[[test]]
+name = "namekit_harness"
+required-features = ["integration"]
+[[test]]
+name = "namekit_legal_suffix"
+required-features = ["integration"]
+[[test]]
+name = "namekit_metrics"
+required-features = ["integration"]
+[[test]]
+name = "namekit_normalize"
+required-features = ["integration"]
+[[test]]
+name = "namekit_reason_codes"
+required-features = ["integration"]
+[[test]]
+name = "namekit_similarity"
+required-features = ["integration"]
+[[test]]
+name = "namekit_similarity_fixed_point"
+required-features = ["integration"]
+[[test]]
+name = "namekit_tfidf"
+required-features = ["integration"]
+[[test]]
+name = "oci_contract"
+required-features = ["integration"]
+[[test]]
+name = "oci_remote_e2e"
+required-features = ["integration"]
+[[test]]
+name = "org_end_to_end"
+required-features = ["integration"]
+[[test]]
+name = "org_scaling"
+required-features = ["integration"]
+[[test]]
+name = "package_local"
+required-features = ["integration"]
+[[test]]
+name = "package_mirror"
+required-features = ["integration"]
+[[test]]
+name = "package_trust"
+required-features = ["integration"]
+[[test]]
+name = "project_cli"
+required-features = ["integration"]
+[[test]]
+name = "project_lifecycle"
+required-features = ["integration"]
+[[test]]
+name = "project_lock"
+required-features = ["integration"]
+[[test]]
+name = "project_manifest"
+required-features = ["integration"]
+[[test]]
+name = "project_plan"
+required-features = ["integration"]
+[[test]]
+name = "project_resume"
+required-features = ["integration"]
+[[test]]
+name = "project_workspace_safety"
+required-features = ["integration"]
+[[test]]
+name = "properties"
+required-features = ["integration"]
+[[test]]
+name = "provider_identity_conformance"
+required-features = ["integration"]
+[[test]]
+name = "provider_reconcile"
+required-features = ["integration"]
+[[test]]
+name = "provider_schema"
+required-features = ["integration"]
+[[test]]
+name = "provider_sdk_conformance"
+required-features = ["integration"]
+[[test]]
+name = "publication_backend_conformance"
+required-features = ["integration"]
+[[test]]
+name = "redaction"
+required-features = ["integration"]
+[[test]]
+name = "refusal"
+required-features = ["integration"]
+[[test]]
+name = "regab_profile"
+required-features = ["integration"]
+[[test]]
+name = "registry_add_entries"
+required-features = ["integration"]
+[[test]]
+name = "registry_add_entry"
+required-features = ["integration"]
+[[test]]
+name = "registry_cache"
+required-features = ["integration"]
+[[test]]
+name = "registry_concurrency"
+required-features = ["integration"]
+[[test]]
+name = "registry_concurrency_e2e"
+required-features = ["integration"]
+[[test]]
+name = "registry_correct_merge"
+required-features = ["integration"]
+[[test]]
+name = "registry_correct_split_detach"
+required-features = ["integration"]
+[[test]]
+name = "registry_correct_supersede"
+required-features = ["integration"]
+[[test]]
+name = "registry_domain_compile"
+required-features = ["integration"]
+[[test]]
+name = "registry_export_conformance"
+required-features = ["integration"]
+[[test]]
+name = "registry_export_dbt"
+required-features = ["integration"]
+[[test]]
+name = "registry_export_entity_card"
+required-features = ["integration"]
+[[test]]
+name = "registry_export_link_evidence"
+required-features = ["integration"]
+[[test]]
+name = "registry_export_search_index"
+required-features = ["integration"]
+[[test]]
+name = "registry_handoff_identity"
+required-features = ["integration"]
+[[test]]
+name = "registry_handoff_receipt"
+required-features = ["integration"]
+[[test]]
+name = "registry_id_scheme"
+required-features = ["integration"]
+[[test]]
+name = "registry_json_alias"
+required-features = ["integration"]
+[[test]]
+name = "registry_merge"
+required-features = ["integration"]
+[[test]]
+name = "registry_mint"
+required-features = ["integration"]
+[[test]]
+name = "registry_mint_batch"
+required-features = ["integration"]
+[[test]]
+name = "registry_next_id"
+required-features = ["integration"]
+[[test]]
+name = "registry_package"
+required-features = ["integration"]
+[[test]]
+name = "registry_package_verify"
+required-features = ["integration"]
+[[test]]
+name = "registry_scope_policy"
+required-features = ["integration"]
+[[test]]
+name = "registry_v1_acceptance"
+required-features = ["integration"]
+[[test]]
+name = "resolve_end_to_end"
+required-features = ["integration"]
+[[test]]
+name = "resolve_fixtures"
+required-features = ["integration"]
+[[test]]
+name = "resolve_golden"
+required-features = ["integration"]
+[[test]]
+name = "resolve_refusal"
+required-features = ["integration"]
+[[test]]
+name = "resolve_scaling"
+required-features = ["integration"]
+[[test]]
+name = "review_grouping"
+required-features = ["integration"]
+[[test]]
+name = "safety_matrix"
+required-features = ["integration"]
+[[test]]
+name = "sdk_conformance"
+required-features = ["integration"]
+[[test]]
+name = "sec10d_apply_fields"
+required-features = ["integration"]
+[[test]]
+name = "sec10d_contract_snapshots"
+required-features = ["integration"]
+[[test]]
+name = "sec10d_entity_contract"
+required-features = ["integration"]
+[[test]]
+name = "sec10d_migration_handoff"
+required-features = ["integration"]
+[[test]]
+name = "sec10d_regab_baseline_benchmark"
+required-features = ["integration"]
+[[test]]
+name = "sec10d_regab_fixtures"
+required-features = ["integration"]
+[[test]]
+name = "sec10d_review_queue"
+required-features = ["integration"]
+[[test]]
+name = "strategy_contract"
+required-features = ["integration"]
+[[test]]
+name = "strategy_entity_boundary"
+required-features = ["integration"]
+[[test]]
+name = "strategy_lifecycle"
+required-features = ["integration"]
+[[test]]
+name = "strategy_package"
+required-features = ["integration"]
+[[test]]
+name = "strategy_sandbox"
+required-features = ["integration"]
+[[test]]
+name = "strategy_tournament"
+required-features = ["integration"]
+[[test]]
+name = "temporal_alias"
+required-features = ["integration"]
+[[test]]
+name = "temporal_cli"
+required-features = ["integration"]
+[[test]]
+name = "temporal_compile"
+required-features = ["integration"]
+[[test]]
+name = "temporal_end_to_end"
+required-features = ["integration"]
+[[test]]
+name = "temporal_explain"
+required-features = ["integration"]
+[[test]]
+name = "temporal_fact"
+required-features = ["integration"]
+[[test]]
+name = "temporal_instrument"
+required-features = ["integration"]
+[[test]]
+name = "temporal_project"
+required-features = ["integration"]
+[[test]]
+name = "temporal_properties"
+required-features = ["integration"]
+[[test]]
+name = "temporal_relation"
+required-features = ["integration"]
+[[test]]
+name = "temporal_relation_cli"
+required-features = ["integration"]
+
+# Targets that also need `geo` or `workbench`: every geo_* target, and the
 # contract targets that compare the whole CLI surface with operator.json.
 [[test]]
 name = "canon_v1_contract_inventory"
-required-features = ["geo", "workbench"]
+required-features = ["geo", "workbench", "integration"]
 
 [[test]]
 name = "command_contract"
-required-features = ["geo", "workbench"]
+required-features = ["geo", "workbench", "integration"]
 
 [[test]]
 name = "contract_parity"
-required-features = ["geo", "workbench"]
+required-features = ["geo", "workbench", "integration"]
 
 # Test targets for the `workbench` leaves.
 [[test]]
 name = "entity_alias_withholding"
-required-features = ["workbench"]
+required-features = ["workbench", "integration"]
 
 [[test]]
 name = "entity_generalization"
-required-features = ["workbench"]
+required-features = ["workbench", "integration"]
 
 [[test]]
 name = "geo_accretion"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_address_evidence"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_address_parcel_schemas"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_address_parse_residual_measurement"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_address_parse"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_address_schemas"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_adjudicate"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_adjudication"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_answer"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_as_of_stability"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_assessment_roll"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_card"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_cli"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_client_input_contract"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_collateral_completeness"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_collision"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_completeness_source_hunt"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_composition"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_condo"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_control_contracts"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_d1_residuals"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_deed_truth"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_demo"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_descriptive_asset"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_discovery_contracts"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_e4_denominator_deficit"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_e4_gate_report"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_e4_metric_restatement"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_e4_restack"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_e5_franklin_parcel"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_e5_measurement_receipt"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_e5_readiness"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_evidence_compilation"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_evidence_stack"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_executor"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_explain"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_exposure"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_footprint_roll"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_geometry_value"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_geometry"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_gsf_conflict_adjudication"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_gsf_property_row_binding"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_gsf_property_type_bands"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_gsf_residuals"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_gsf_value_vector_rebuild"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_h7_candidate_strategy_comparison"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_h7_consensus_truth_extension"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_h7_pip_block_batch"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_h7_population_export"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_h7_population"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_h7_source_record_bytes_export"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_h7_source_record_bytes"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_h7_staging_batch"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_h7_tile_reconciliation"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_identifiers"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_inspect"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_ledger"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_lifecycle"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_materialize"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_measurement_runner"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_multisource"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_next_evidence"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_observer_count"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_observer_null"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_observer_pins"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_observer"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_owner_source_residuals"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_pad_residual_adjudication"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_pad_truth_binding"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_plan_schema"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_plan"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_pluto_vintage_reach"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_point_population"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_point_relations"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_pre_resolve"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_propagate"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_property"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_redaction"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_replay_retained"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_residual_benchmark"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_retry_recovery"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_retry"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_rho_admission_policy"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_run_schema"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_run"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_satisfy"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_schemas"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_sec_property_row_bridge"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_tile"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_truth_binding_remediation_path"
-required-features = ["geo"]
+required-features = ["geo", "integration"]
 
 [[test]]
 name = "geo_truth_quality_residuals"
-required-features = ["geo"]
+required-features = ["geo", "integration"]

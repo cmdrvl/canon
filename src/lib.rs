@@ -11022,6 +11022,36 @@ mod tests {
     #[cfg(feature = "workbench")]
     use std::path::Path;
 
+    /// A file in tests/ without a [[test]] entry joins the default `cargo test`,
+    /// which is how that run reached 40 minutes.
+    #[test]
+    fn every_integration_test_target_requires_the_integration_feature() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let manifest = std::fs::read_to_string(root.join("Cargo.toml")).unwrap();
+        let gated = manifest
+            .split("[[test]]")
+            .skip(1)
+            .filter_map(|entry| {
+                let value = |key: &str| entry.lines().find_map(|line| line.strip_prefix(key));
+                value("required-features = ")?
+                    .contains("\"integration\"")
+                    .then_some(())?;
+                Some(value("name = ")?.trim_matches('"').to_string())
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        let ungated = std::fs::read_dir(root.join("tests"))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
+            .map(|path| path.file_stem().unwrap().to_string_lossy().into_owned())
+            .filter(|name| !gated.contains(name))
+            .collect::<Vec<_>>();
+        assert!(
+            ungated.is_empty(),
+            "add a [[test]] entry requiring \"integration\" to Cargo.toml for: {ungated:?}"
+        );
+    }
+
     #[test]
     fn apply_builtin_columns_follow_declared_primary_fields() {
         for (profile, expected) in [

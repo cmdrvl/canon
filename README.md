@@ -1979,11 +1979,14 @@ The full specification is `docs/PLAN_CANON.md`. This README covers everything ne
 ```bash
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-features
+cargo test                  # unit tests and doctests only
+cargo test --all-features   # everything, including tests/ (slow)
 ```
 
-The default build is the core, so `cargo clippy --all-targets -- -D warnings`
-and `cargo test` must stay green on their own too; CI runs both profiles.
+Targets in `tests/` require the `integration` feature; run one with
+`cargo test --features integration --test cli_smoke`. The default build is the
+core, so `cargo test --features integration` must stay green without `geo` or
+`workbench`; CI runs both profiles.
 
 ---
 

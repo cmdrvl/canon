@@ -228,9 +228,9 @@ for artifact in "$deed_truth" "$evaluation" "$artifact_index"; do
 done
 
 if [[ "$run_cargo_tests" -eq 1 ]]; then
-  run_cmd cargo test --manifest-path "$repo_root/Cargo.toml" --test geo_deed_truth -- --nocapture
-  run_cmd cargo test --manifest-path "$repo_root/Cargo.toml" --test geo_schemas deed_ -- --nocapture
-  run_cmd cargo test --manifest-path "$repo_root/Cargo.toml" --test geo_e5_franklin_parcel franklin_instance_names_do_not_enter_the_generic_geo_engine -- --nocapture
+  run_cmd cargo test --manifest-path "$repo_root/Cargo.toml" --features geo,integration --test geo_deed_truth -- --nocapture
+  run_cmd cargo test --manifest-path "$repo_root/Cargo.toml" --features geo,integration --test geo_schemas deed_ -- --nocapture
+  run_cmd cargo test --manifest-path "$repo_root/Cargo.toml" --features geo,integration --test geo_e5_franklin_parcel franklin_instance_names_do_not_enter_the_generic_geo_engine -- --nocapture
 else
   log_line "cargo_tests=skipped"
 fi

@@ -3,7 +3,7 @@ set -euo pipefail
 if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
   printf 'Usage: %s [CANON_BINARY] [GEO_ANSWER_TEST_BINARY] [EMPTY_OUTPUT_DIR]\n' "${0##*/}"
   printf 'Offline retained answer projection and registered public geo run. Builds nothing.\n'
-  printf 'Prepare binaries with cargo test --test geo_answer --no-run, then pass the printed test executable.\n'
+  printf 'Prepare binaries with cargo test --features geo,integration --test geo_answer --no-run, then pass the printed test executable.\n'
   exit 0
 fi
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"

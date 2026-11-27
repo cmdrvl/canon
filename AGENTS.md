@@ -280,17 +280,28 @@ strip = true
 
 ## Quality Gate
 
-Run after any substantive change:
+While working, run the fast checks plus the integration targets your change
+touches:
 
 ```bash
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-features
+cargo test                                        # unit tests and doctests only
+cargo test --features integration --test cli_smoke   # one integration target
 ```
 
+CI runs the rest on every push; a change is not done until CI is green. The whole
+suite is `cargo test --all-features` and is slow.
+
+Every target in `tests/` requires the `integration` feature, so a new test file
+needs a `[[test]]` entry in `Cargo.toml` (a unit test checks this). Targets for
+`geo` or `workbench` code need that feature too, for example
+`--features integration,geo`.
+
 The default build is the core (lookup, registry, evidence sessions), so
-`cargo clippy --all-targets -- -D warnings` and `cargo test` must stay green on
-their own as well; CI runs both profiles. The `geo` feature adds `canon geo`,
+`cargo clippy --all-targets --features integration -- -D warnings` and
+`cargo test --features integration` must stay green without `geo` or
+`workbench`; CI runs both profiles. The `geo` feature adds `canon geo`,
 `src/geo/`, and the `canon_geo_measurements` bin. The `workbench` feature adds
 the legacy entity leaves `canon entity alias-withholding` and `generalization`
 and `src/evaluation/`; more leaves move behind it in later stages of bd-1pjc.

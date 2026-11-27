@@ -23,12 +23,12 @@ done
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(cd -- "$script_dir/../.." && pwd -P)"
 
-cargo test --manifest-path "$repo_root/Cargo.toml" \
+cargo test --manifest-path "$repo_root/Cargo.toml" --features geo,integration \
   --test geo_propagate \
   t03_propagation_preserves_fixture_and_seeded_random_model_sets \
   -- --nocapture
 
-cargo test --manifest-path "$repo_root/Cargo.toml" \
+cargo test --manifest-path "$repo_root/Cargo.toml" --features geo,integration \
   --test geo_executor \
   geo_project_node_executor_runs_the_six_planner_leaf_chain \
   -- --nocapture

@@ -73,7 +73,7 @@ sha256_file() {
   fi
 }
 
-if run_logged cargo test --test geo_adjudication e4_acceptance_gate_requires_the_full_population_to_be_reachable -- --ignored --nocapture; then
+if run_logged cargo test --features geo,integration --test geo_adjudication e4_acceptance_gate_requires_the_full_population_to_be_reachable -- --ignored --nocapture; then
   echo "frozen_e4_gate=GREEN" | tee -a "$log"
 else
   echo "frozen_e4_gate=RED" | tee -a "$log"

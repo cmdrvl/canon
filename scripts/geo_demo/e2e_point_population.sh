@@ -115,7 +115,7 @@ check_jq condo "$condo_fixture" '[.points[] | select(.billing_equals_pip == true
 check_jq gross "$gross_fixture" '.source_dataset | startswith("fixture.")' true
 check_jq condo "$condo_fixture" '.source_dataset | startswith("fixture.")' true
 
-run_cmd cargo test --manifest-path "$repo_root/Cargo.toml" --test geo_point_population -- --nocapture
-run_cmd cargo test --manifest-path "$repo_root/Cargo.toml" --test geo_schemas point_population_schema_matches_a_real_instance -- --nocapture
+run_cmd cargo test --manifest-path "$repo_root/Cargo.toml" --features geo,integration --test geo_point_population -- --nocapture
+run_cmd cargo test --manifest-path "$repo_root/Cargo.toml" --features geo,integration --test geo_schemas point_population_schema_matches_a_real_instance -- --nocapture
 
 log_line "point-population e2e ok work_dir=$work_dir"
