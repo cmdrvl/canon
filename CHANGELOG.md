@@ -1,24 +1,90 @@
 # Changelog
 
-## Unreleased
+## Unreleased (0.17.0)
 
-- **Breaking (0.17.0):** `canon entity alias-withholding` and `canon entity
-  generalization` are removed, with their `canon.evaluation.*` contracts and the
+canon is now presented as three things: exact lookup, versioned registries and
+evidence sessions. The released binary still contains every command group.
+
+Breaking:
+
+- `canon entity alias-withholding` and `canon entity generalization` are
+  removed, with their `canon.evaluation.*` contracts and the
   `canon.evaluation.corpus.v1` schema file. There is no replacement command.
   `canon entity candidate-recall`, `calibrate sweep` and `calibrate em` stay.
-- **Breaking for source builds (0.17.0):** `canon entity link` and its
-  `src/resolve/` engine now need the `workbench` feature. Released binaries are
-  built with `--all-features` and keep the command. A build without the feature
-  does not list `entity link`, and refuses (`E_ENTITY_ARTIFACT_CONTRACT`) to
-  export a review from a link artifact or to promote a result that is bound to
-  one.
+- The session engine no longer knows the CMBS relation `servicer_of`, which
+  shipped in 0.16.0. Role vocabulary is to come from a profile or session rules.
+- `operator.json` and `canon --describe` are now the `operator.v1` document
+  (`version` became `tool_version`, `subcommands` became `commands`), and
+  `canon doctor --json` emits `cmdrvl.doctor.v1`. The old per-tool doctor schema
+  ids are retired.
+- For source builds only: a plain `cargo build` is the core. `canon geo` needs
+  the `geo` feature, and `canon entity link` with its `src/resolve/` engine needs
+  the `workbench` feature. `geo` turns `workbench` on. Released binaries are
+  built with `--all-features` and keep both. A build without `workbench` does not
+  list `entity link`, and refuses (`E_ENTITY_ARTIFACT_CONTRACT`) to export a
+  review from a link artifact or to promote a result that is bound to one.
+
+Evidence sessions:
+
+- Several workers can share one session. `entity session frontier --shard
+  <INDEX/TOTAL>` splits the open work, `frontier claim --worker <ID> --limit <N>
+  --ttl-secs <S>` leases a batch to one worker and `frontier release` returns
+  it. A lease survives a re-solve.
+- `ingest` and `assert` run by concurrent processes retry on a stale head, up to
+  a bound, instead of failing or losing rows.
+- Places resolve through the same loop as names. Grains (site, parcel, building,
+  unit, address) are registry kinds. New evidence types: `same_parcel_id`,
+  `same_apn`, `address_canonical_match`, `point_in_parcel`, `footprint_overlap`,
+  `deed_chain_link`, `assessor_corroboration`, and the vetoes
+  `conflicting_authoritative_apn`, `disjoint_parcels` and `grain_mismatch`.
+- `ingest` and `assert` read `.parquet` files.
+- `session derive` emits `same_slot` evidence from slot fields a profile
+  declares.
+- A rules file may add `strip_legal_suffix` to
+  `incumbent_attach.name_equivalent_steps`, so a later spelling that differs from
+  a committed alias only by legal form attaches when that is unambiguous.
+- Person names drop trailing credentials ("Dr. Jane Doe, MD"), and `derive`
+  compares new spellings of a person with committed ones.
+- A relation keeps its identity when the session is solved again.
+
+Lookup and registries:
+
+- Lookup reads `.parquet` and `.xlsx` input through the shared `cmdrvl-tabular`
+  reader, with `--sheet <name|index>` for workbooks. `--emit csv` still needs CSV
+  input. Other commands read the same formats as before.
+- `--json` is shorthand for `--emit json` on lookup and on every registry
+  command.
+- `registry export --format dbt-seed` and `key-crosswalk` take `--parquet`. The
+  search index lists each authoritative session key under its own namespace, and
+  entity cards and the search index show cross-grain relations.
+- `canon q.csv --registry registry --column name` works: an option value that
+  happens to name a subcommand is read as a value.
+- `registry mint-batch --prefix` no longer refuses a prefix that differs from
+  the registry default. Lint's `scope_collision` checks scoped entries only.
+- New discovery commands: `canon doctor triage`, `canon capabilities --json` and
+  `canon robot-docs guide`.
+
+Speed:
+
+- The registry SQLite index is built in one transaction.
 - Publishing session and entity artifacts forces data to disk far less often:
   once per new object file, and once for the object directory before the commit
   marker, instead of about seven times per object. On macOS this made
   `entity session commit` about three times faster at a few hundred objects.
-- Lookup reads `.parquet` and `.xlsx` input through the shared `cmdrvl-tabular`
-  reader, with `--sheet <name|index>` for workbooks. `--emit csv` still needs CSV
-  input. Other commands read the same formats as before.
+- The block stage no longer scans every surface per bucket when a profile has no
+  active `anchor_conflict` rule.
+
+Documentation and development:
+
+- The README is rewritten around lookup, registries and evidence sessions. The
+  full command list moved to `docs/CLI_REFERENCE.md`, and the longer sections to
+  `docs/LOOKUP_AND_REGISTRIES.md`, `docs/SCRIPTING_EXAMPLES.md`,
+  `docs/ENTITY_PIPELINE.md` and `docs/GEO.md`.
+- Plain `cargo test` runs unit tests and doctests only. Tests under `tests/`
+  need the `integration` feature.
+- The Geo executor version hashed into a Geo plan is now the fixed string
+  `0.16.0` instead of the crate version, so a release no longer invalidates
+  retained Geo replays.
 
 ## 0.16.0 — 2026-11-19
 

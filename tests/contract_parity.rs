@@ -14,6 +14,25 @@ use serde_json::{Value, json};
 const OPERATOR_JSON: &str = include_str!("../operator.json");
 const README_MD: &str = include_str!("../README.md");
 const PLAN_CANON_MD: &str = include_str!("../docs/PLAN_CANON.md");
+// The README's full command list and its longer sections moved to these files
+// in 0.17.0. The checks that read the README for them read these instead.
+const CLI_REFERENCE_MD: &str = include_str!("../docs/CLI_REFERENCE.md");
+const MOVED_FROM_README: [(&str, &str); 5] = [
+    ("docs/CLI_REFERENCE.md", CLI_REFERENCE_MD),
+    (
+        "docs/LOOKUP_AND_REGISTRIES.md",
+        include_str!("../docs/LOOKUP_AND_REGISTRIES.md"),
+    ),
+    (
+        "docs/SCRIPTING_EXAMPLES.md",
+        include_str!("../docs/SCRIPTING_EXAMPLES.md"),
+    ),
+    (
+        "docs/ENTITY_PIPELINE.md",
+        include_str!("../docs/ENTITY_PIPELINE.md"),
+    ),
+    ("docs/GEO.md", include_str!("../docs/GEO.md")),
+];
 
 #[test]
 fn compiled_clap_describe_and_operator_contract_match_fail_closed() {
@@ -220,8 +239,8 @@ fn core_contract_digest_and_leaf_order_are_deterministic() {
 fn readme_and_plan_cli_reference_blocks_cover_compiled_leaves_and_flags() {
     let blocks = [
         (
-            "README.md CLI Reference",
-            cli_block(README_MD, "## CLI Reference"),
+            "docs/CLI_REFERENCE.md CLI Reference",
+            cli_block(CLI_REFERENCE_MD, "## CLI Reference"),
         ),
         (
             "PLAN_CANON.md CLI (v0)",
@@ -256,7 +275,10 @@ fn readme_and_plan_reject_retired_org_terms_except_profile_value() {
     for (label, document) in [
         ("README.md", README_MD),
         ("docs/PLAN_CANON.md", PLAN_CANON_MD),
-    ] {
+    ]
+    .into_iter()
+    .chain(MOVED_FROM_README)
+    {
         assert_no_retired_org_doc_terms(label, document);
     }
 }

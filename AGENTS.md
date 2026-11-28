@@ -303,9 +303,18 @@ The default build is the core (lookup, registry, evidence sessions), so
 `workbench`; CI runs both profiles. The `geo` feature adds `canon geo`,
 `src/geo/`, and the `canon_geo_measurements` bin. The `workbench` feature adds
 `canon entity link`, `src/resolve/`, `src/entity/link.rs`, and the link paths of
-review export and promote. Test targets that need a feature declare `required-features` in `Cargo.toml`,
+review export and promote. `geo` turns `workbench` on, because Geo reads the
+multi-source link module. Test targets that need a feature declare `required-features` in `Cargo.toml`,
 and release and CI builds use `--all-features` so the shipped binary keeps every
 command.
+
+The README describes the core. The full command list lives in
+`docs/CLI_REFERENCE.md`, and `tests/contract_parity.rs` fails if a compiled
+command or flag is missing from it or from `docs/PLAN_CANON.md`. A new command
+goes in both, and in `operator.json`.
+
+`GEO_EXECUTOR_VERSION` is a fixed string, not the crate version. Change it only
+when Geo executor behaviour changes; a release does not touch it.
 
 ### Test Coverage Areas
 

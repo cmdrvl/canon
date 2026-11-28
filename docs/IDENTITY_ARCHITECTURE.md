@@ -230,7 +230,8 @@ This is a map of `src/`. Two Cargo features gate it, both off in the default
 build and on in release and CI builds (`--all-features`): `geo` (`src/geo/`,
 `canon geo`, and the `canon_geo_measurements` bin) and `workbench`
 (`src/resolve/`, `src/entity/link.rs`, `canon entity link`, and the link paths of
-review export and promote). Everything else
+review export and promote). `geo` turns `workbench` on, because `geo/control.rs`
+and `geo/multisource.rs` read the multi-source link module. Everything else
 below compiles into the default binary. `src/evaluation/` and its two commands
 were removed in 0.17.0. Update this section when another gate lands.
 
@@ -272,6 +273,14 @@ Rules for agents:
 
 ## Documentation Map
 
+- `README.md`: what canon is now: exact lookup, registries and evidence
+  sessions, with one worked session.
+- `docs/ENTITY_WORKBENCH_AGENT_GUIDE.md`: how to run an evidence session, step
+  by step.
+- `docs/CLI_REFERENCE.md`: every command and flag, exit codes and refusal
+  codes. `docs/LOOKUP_AND_REGISTRIES.md`, `docs/SCRIPTING_EXAMPLES.md`,
+  `docs/ENTITY_PIPELINE.md` and `docs/GEO.md` hold the longer sections that were
+  in the README before 0.17.0.
 - `docs/PLAN_CANON.md`: current source of truth for the core lookup kernel, registry
   substrate, refusal semantics, exact-match invariants, and shared release
   contract.
