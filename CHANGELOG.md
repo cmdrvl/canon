@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (0.17.0)
+## 0.17.0 — 2026-11-28
 
 canon is now presented as three things: exact lookup, versioned registries and
 evidence sessions. The released binary still contains every command group.
