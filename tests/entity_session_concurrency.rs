@@ -133,7 +133,8 @@ fn spawn_worker(
     gate: &Path,
     worker: &Worker,
     retry_disabled: bool,
-    publication_barrier: Option<&Path>,
+    // barrier directory and this writer's place in it, unique within the batch
+    publication_barrier: Option<(&Path, usize)>,
 ) -> Child {
     let subcommand = match worker.kind {
         IntakeKind::Ingest => "ingest",
@@ -157,11 +158,11 @@ fn spawn_worker(
     if retry_disabled {
         command.env(RETRY_DISABLED_TEST_FAILPOINT, "1");
     }
-    if let Some(barrier) = publication_barrier {
+    if let Some((barrier, marker)) = publication_barrier {
         command
             .env(PUBLISH_BARRIER_TEST_FAILPOINT, barrier)
             .env(PUBLISH_BARRIER_PARTICIPANTS_TEST_FAILPOINT, "8")
-            .env(PUBLISH_BARRIER_MARKER_TEST_FAILPOINT, worker.id.to_string());
+            .env(PUBLISH_BARRIER_MARKER_TEST_FAILPOINT, marker.to_string());
     }
     command
         .stdout(Stdio::piped())
@@ -176,12 +177,18 @@ fn run_concurrently(session: &Path, root: &Path, workers: Vec<Worker>) -> Vec<Va
         .and_then(|name| name.to_str())
         .unwrap_or("session");
     let gate = root.join(format!("start-workers-{session_name}"));
+    // Every writer waits here, after reading the head and before claiming the
+    // next generation, until all eight have arrived. Without it a fast or
+    // lightly loaded machine can run the writers one after another, and the
+    // retry this test is about never happens.
+    let barrier = root.join(format!("publication-barrier-{session_name}"));
+    assert_eq!(workers.len(), 8, "the barrier waits for eight writers");
     let mut children = Vec::with_capacity(workers.len());
-    for worker in workers {
+    for (place, worker) in workers.into_iter().enumerate() {
         children.push((
             worker.id,
             worker.kind,
-            spawn_worker(session, &gate, &worker, false, None),
+            spawn_worker(session, &gate, &worker, false, Some((&barrier, place))),
         ));
     }
 
@@ -515,7 +522,13 @@ fn concurrent_processes_without_retry_expose_lost_head_conflict() {
     for worker in &workers {
         children.push((
             worker.id,
-            spawn_worker(&session, &gate, worker, true, Some(&publication_barrier)),
+            spawn_worker(
+                &session,
+                &gate,
+                worker,
+                true,
+                Some((&publication_barrier, worker.id)),
+            ),
         ));
     }
 
