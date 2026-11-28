@@ -101,7 +101,11 @@ use std::{
 };
 
 pub const GEO_EXECUTOR_ID: &str = "canon.geo.project_node_executor.v0";
-pub const GEO_EXECUTOR_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Hashed into every Geo plan. It names the executor's behaviour, not the
+/// crate: change it only when a plan built by the old executor must not be
+/// taken for one built by the new. It was the crate version up to 0.16.0, and
+/// each release then invalidated every retained replay (bd-8czc).
+pub const GEO_EXECUTOR_VERSION: &str = "0.16.0";
 
 pub const GEO_MATERIALIZE_HOME_CELLS_COMMAND: &str =
     "canon geo materialize-home-cells --rows <ROWS.json>";

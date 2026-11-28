@@ -1007,7 +1007,11 @@ pub fn default_geo_capabilities() -> Result<GeoCapabilities, GeoControlError> {
     finalized_capabilities(GeoCapabilities {
         version: CANON_GEO_CAPABILITIES_VERSION.to_string(),
         semantic_hash: String::new(),
-        crate_version: env!("CARGO_PKG_VERSION").to_string(),
+        // The field keeps its name for the artifact contract, but since 0.17.0
+        // it carries the fixed Geo executor version, not the crate version. It
+        // is hashed into every plan as the capabilities reference, so the crate
+        // version here made each release invalidate every retained replay.
+        crate_version: super::executor::GEO_EXECUTOR_VERSION.to_string(),
         status: GeoCapabilityStatus::Implemented,
         next_command: "canon --describe".to_string(),
         contracts: GeoCapabilityStatusSets {

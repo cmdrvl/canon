@@ -25,7 +25,9 @@ required-features = ["geo"]
 # shipped binary keeps every command.
 [features]
 default = []
-geo = ["dep:h3o", "dep:libc", "dep:sha2", "dep:base64"]
+# Geo reads the multi-source link module, which is workbench code, so `geo`
+# turns `workbench` on. Without that, `--features geo` alone did not compile.
+geo = ["workbench", "dep:h3o", "dep:libc", "dep:sha2", "dep:base64"]
 workbench = []
 # Test layer only; changes no code. Every target in tests/ requires it, so plain
 # `cargo test` runs unit tests and doctests. `cargo test --features integration`
